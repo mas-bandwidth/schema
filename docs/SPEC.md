@@ -430,8 +430,8 @@ from this projection rather than carried in it.
   variant, or a union arm. **A `//` block above the same item stays an
   ordinary comment and never reaches a descriptor**, and that is the whole
   reason the marker exists: a schema tree is full of working notes written
-  directly above things — 166 such lines, above a declaration, a field, a
-  variant or an arm, in 40 of this repo's 47 corpus files — and under an
+  directly above things — above a declaration, a field, a variant or an
+  arm, throughout this repo's own corpus — and under an
   implicit rule every one of them would become a descriptor string, a comment
   in nine generated languages, and read-only data in the binary of every game
   that links the table headers (SPEC-TABLES.md §8.1). What a build carries is
