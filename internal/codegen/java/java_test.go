@@ -113,19 +113,19 @@ public final class Driver {
     public static void main(String[] args) {
         Probe.Low low = new Probe.Low();
         low.f = 8388609.0f;
-        byte[] lb = new byte[Probe.lowMaxBytes];
+        byte[] lb = new byte[Probe.LOW_MAX_BYTES];
         int ln = Probe.writeLow(low, lb);
         Probe.Low lout = new Probe.Low();
         boolean lread = Probe.readLow(lout, lb, ln * 8);
-        one("low", low.f, Probe.lowMaxBytes, new byte[] {0x01, 0x00, (byte) 0x80}, ln, lb, lread, lout.f);
+        one("low", low.f, Probe.LOW_MAX_BYTES, new byte[] {0x01, 0x00, (byte) 0x80}, ln, lb, lread, lout.f);
 
         Probe.High high = new Probe.High();
         high.f = 16777215.0f;
-        byte[] hb = new byte[Probe.highMaxBytes];
+        byte[] hb = new byte[Probe.HIGH_MAX_BYTES];
         int hn = Probe.writeHigh(high, hb);
         Probe.High hout = new Probe.High();
         boolean hread = Probe.readHigh(hout, hb, hn * 8);
-        one("high", high.f, Probe.highMaxBytes, new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF}, hn, hb, hread, hout.f);
+        one("high", high.f, Probe.HIGH_MAX_BYTES, new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF}, hn, hb, hread, hout.f);
 
         System.out.println("ok");
     }
@@ -238,11 +238,11 @@ type Wide {
 	// walk without a functions.go change, so it is the Java analogue of the
 	// C# twin's Debug.Assert: an inline assert in the write loop, gone
 	// without -ea. Release carries neither as an unconditional throw.
-	write := funcBody(t, text, "public static int writeWide(")
-	if !strings.Contains(write, "assert checkWriteWide(value, data);") {
-		t.Errorf("writeWide missing its checkWrite predicate call")
+	write := funcBody(t, text, "public static int writeWideBits(")
+	if !strings.Contains(write, "assert checkWriteWide(value, data, bitOffset);") {
+		t.Errorf("writeWideBits missing its checkWrite predicate call")
 	}
-	if !strings.Contains(write, "assert v != 0;") {
+	if !strings.Contains(write, "assert value.text[wideIndex] != 0;") {
 		t.Errorf("debug writer missing null-unit check assert")
 	}
 	for _, bad := range []string{
@@ -263,8 +263,8 @@ type Wide {
 			t.Errorf("checkWriteWide missing contract check %q", want)
 		}
 	}
-	read := funcBody(t, text, "public static boolean readWide(")
-	if !strings.Contains(read, "if (v == 0 || v > 0xFFFF) return false;") {
+	read := funcBody(t, text, "public static int readWideBits(")
+	if !strings.Contains(read, "if (v == 0 || v > 0xFFFF) return -1;") {
 		t.Errorf("read-side null-unit check must stay unconditional")
 	}
 }

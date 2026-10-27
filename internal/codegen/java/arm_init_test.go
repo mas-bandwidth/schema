@@ -124,7 +124,7 @@ func armInitExcludes(t *testing.T, body string, unwanted ...string) {
 func TestUnionSelectionInitializesConstructionDefaults(t *testing.T) {
 	source := armInitOutput(t)
 	leaf := armInitBody(t, source, "public static void initLeaf(")
-	armInitContains(t, leaf, "value.active = true;", "value.kind = Mode.two;", "1073741824")
+	armInitContains(t, leaf, "value.active = true;", "value.kind = Mode.TWO;", "1073741824")
 	zero := armInitBody(t, source, "public static void zeroLeaf(")
 	armInitContains(t, zero, "value.active = false;", "value.kind = 0;", "value.q = 0;")
 
@@ -132,15 +132,17 @@ func TestUnionSelectionInitializesConstructionDefaults(t *testing.T) {
 	armInitContains(t, init, "initLeaf(value.current);", "initLeaf(value.fixedValues[i0]);",
 		"i0 < 3", "initLeaf(value.live[i0]);", "value.liveCount = 1;",
 		"value.nested.type = 0;", "value.nestedValues[i0].type = 0;",
-		"java.util.Arrays.fill(value.raw, (byte) 0);", "value.rawLength = 0;", "initLeaf(value.branch);")
+		"Arrays.fill(value.raw, (byte) 0);", "value.rawLength = 0;", "initLeaf(value.branch);")
 	armInitExcludes(t, init, "new ", "initNested(", "value.nested.leaf", "value.liveCount = 0;")
 	zero = armInitBody(t, source, "public static void zeroPayload(")
 	armInitContains(t, zero, "zeroLeaf(value.current);", "zeroLeaf(value.live[i0]);", "value.liveCount = 0;")
 	armInitExcludes(t, zero, "initLeaf(")
 
-	read := armInitBody(t, source, "public static boolean readChoice(")
-	armInitContains(t, read, "value.selected.current.active = true;", "value.selected.liveCount = 1;",
-		"value.selected.nested.type = 0;")
+	// a read selection restores the arm's construction defaults through its
+	// init, then reads the arm through its own entry
+	read := armInitBody(t, source, "public static int readChoiceBits(")
+	armInitContains(t, read, "initPayload(value.selected);",
+		"bitsRead = readPayloadBits(value.selected, data, bitsRead, numBits);")
 	armInitExcludes(t, read, "new ", "value.empty")
 	armInitContains(t, source, "public final Payload selected = new Payload();")
 }

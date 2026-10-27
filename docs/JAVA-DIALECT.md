@@ -140,6 +140,26 @@ failure in their tree and not only in ours.
   generated files never import each other.
 - **Members are lowerCamelCase**, the first-letter-lowered form of the
   `ir.GoExportName` mapping the other managed targets share.
+- **Packet constants are UPPER_SNAKE**, Java's `static final` convention and
+  the Rust target's mapping (`ir.RustConstName`): schema consts
+  (`MAX_HEALTH`), enum variants and the extent (`Weapon.LASER`,
+  `Weapon.COUNT`, `Weapon.MAX`), union tags (`ShapeType.NONE`), flag masks
+  and counts (`PROBE_FLAGS_ARMED`, `PROBE_FLAGS_COUNT`), the bounds
+  (`PROBE_SAMPLE_MAX_BITS`, `PROBE_SAMPLE_MAX_BYTES`) and `PROTOCOL_ID`.
+- **Unsigned storage is one size up**: uint8 and uint16 store `int`, uint32
+  and `bits(N <= 32)` store `long`, so a field reads as its value with no
+  mask; the writer's contract predicate asserts the width's range. uint64,
+  `bits(N > 32)` and flags store `long`, two's complement. A `[N]uint8` stays
+  a `byte[]`, and enums and union tags keep their narrow storage.
+- **The packet codecs compose** (SPEC §6.1): `write<Name>Bits(value, data,
+  bitOffset)` and `read<Name>Bits(value, data, bitOffset, numBits)` return
+  the bit position after the value (`-1` on a refused read); `write<Name>` and
+  `read<Name>` are their offset-0 forms, and a nested type calls its own
+  `Bits` entry. There is no `measure<Name>`. The position is a plain `int`
+  and the scratch word a plain `long`, locals C2 keeps in registers, rather
+  than a stream object escape analysis would have to scalar-replace through
+  every call; the bitpacker steps are small private static helpers
+  (`putBits`, `peekBits`, ...) under the inline threshold.
 - **The table runtime is one file per type** (`TableBytes.java`,
   `TableBlockInfo.java`, ...), so a runtime type's home is its name and never
   a file order. A schema file that spells a runtime type's name is refused by

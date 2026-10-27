@@ -5,6 +5,8 @@ import java.util.HexFormat;
 import packettext.Text;
 
 public final class Main {
+    // the Bits writer from offset 0 returns the exact wire bits (SPEC §6.1: no measure)
+    static final byte[] BITS = new byte[4096];
     private static String hex(byte[] bytes) {
         return bytes.length == 0 ? "-" : HexFormat.of().formatHex(bytes);
     }
@@ -16,7 +18,7 @@ public final class Main {
             byte[] wire = Arrays.copyOf(raw, (raw.length + 7) & ~7);
             Text.Narrow value = new Text.Narrow();
             if (!Text.readNarrow(value, wire, raw.length * 8)) { System.out.println("REFUSE"); continue; }
-            int bits = Text.measureNarrow(value);
+            int bits = Text.writeNarrowBits(value, BITS, 0);
             if (!Text.readNarrow(new Text.Narrow(), wire, bits)) throw new AssertionError("exact-bit read refused");
             if (Text.readNarrow(new Text.Narrow(), wire, bits - 1)) throw new AssertionError("one-bit-short read accepted");
             byte[] encoded = new byte[256];

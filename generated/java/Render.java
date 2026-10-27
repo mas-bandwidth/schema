@@ -6,6 +6,10 @@
 
 package example;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.nio.ByteOrder;
+
 // Render carries every generated declaration of Render.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -14,25 +18,78 @@ public final class Render {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final java.lang.invoke.VarHandle LONG_LE =
-            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
-                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
+    private static final VarHandle LONG_LE =
+            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
 
-    public static final int renderBlockMaxSprites = 64;
+    // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
+    // pos, storing the word to data once it fills, and returns the new scratch word. The
+    // caller advances pos by bits.
+    private static long putBits(byte[] data, int pos, long scratch, long v, int bits) {
+        final int used = pos & 63;
+        scratch |= v << used;
+        if (used + bits >= 64) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+            return v >>> (64 - used);
+        }
+        return scratch;
+    }
+
+    // flushBits stores the partial scratch word at bit pos — before a bulk copy, a nested
+    // write, or the end of the value.
+    private static void flushBits(byte[] data, int pos, long scratch) {
+        if ((pos & 63) != 0) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+        }
+    }
+
+    // loadBits is the scratch word for writing on from bit pos: the bits data already
+    // holds below pos, zero above it.
+    private static long loadBits(byte[] data, int pos) {
+        final int used = pos & 63;
+        if (used == 0) {
+            return 0;
+        }
+        return (long) LONG_LE.get(data, (pos >>> 6) * 8) & ((1L << used) - 1);
+    }
+
+    // loadTail assembles the buffer's last 64-bit window, once per read (the whole buffer,
+    // zero-extended, when it is shorter than eight bytes).
+    private static long loadTail(byte[] data) {
+        if (data.length >= 8) {
+            return (long) LONG_LE.get(data, data.length - 8);
+        }
+        long word = 0;
+        for (int i = data.length - 1; i >= 0; i--) {
+            word = (word << 8) | (data[i] & 0xffL);
+        }
+        return word;
+    }
+
+    // peekBits is the stream from bit pos on, low bit first, in a 64-bit window that never
+    // loads past the buffer: positions in its last eight bytes read the tail word.
+    private static long peekBits(byte[] data, int pos, int tailBase, long tailWord) {
+        final int at = pos >>> 3;
+        if (at < tailBase) {
+            return (long) LONG_LE.get(data, at) >>> (pos & 7);
+        }
+        return tailWord >>> (pos - tailBase * 8);
+    }
+
+    public static final int RENDER_BLOCK_MAX_SPRITES = 64;
 
     // type RenderSprite
     public static final class RenderSprite {
         public long sortKey;
-        public int meshId;
-        public int materialId;
-        public byte layer;
+        public long meshId;
+        public long materialId;
+        public int layer;
         public byte team;
     }
 
-    // renderSpriteMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // renderSpriteMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int renderSpriteMaxBits = 138;
-    public static final int renderSpriteMaxBytes = 24;
+    // RENDER_SPRITE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // RENDER_SPRITE_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int RENDER_SPRITE_MAX_BITS = 138;
+    public static final int RENDER_SPRITE_MAX_BYTES = 24;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -53,192 +110,111 @@ public final class Render {
         value.team = 0;
     }
 
-    // checkWriteRenderSprite is writeRenderSprite's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteRenderSprite is the contract walk of writeRenderSpriteBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteRenderSprite(RenderSprite value, byte[] data) {
+    private static boolean checkWriteRenderSprite(RenderSprite value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= renderSpriteMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + RENDER_SPRITE_MAX_BITS;
+        assert value.meshId >= 0;
+        assert value.meshId <= 4294967295L;
+        assert value.materialId >= 0;
+        assert value.materialId <= 4294967295L;
+        assert value.layer >= 0;
+        assert value.layer <= 255;
         assert (value.team & 0xffL) >= 0;
         assert (value.team & 0xffL) <= 2;
         return true;
     }
 
-    // writeRenderSprite packs value into data — the trusted writer (contracts in the
-    // checkWriteRenderSprite predicate, one dormant assert call without -ea). The buffer
-    // must hold renderSpriteMaxBytes. Returns the bytes written.
-    public static int writeRenderSprite(RenderSprite value, byte[] data) {
-        assert checkWriteRenderSprite(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.sortKey & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.sortKey >>> 32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.meshId & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.materialId & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.layer & 0xffL;
-        scratch |= v << scratchBits;
-        scratchBits += 8;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (8 - scratchBits);
-        }
-        v = value.team & 0x3L;
-        scratch |= v << scratchBits;
-        scratchBits += 2;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (2 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    // writeRenderSpriteBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteRenderSprite
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + RENDER_SPRITE_MAX_BITS.
+    public static int writeRenderSpriteBits(RenderSprite value, byte[] data, int bitOffset) {
+        assert checkWriteRenderSprite(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.sortKey & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.sortKey >>> 32) & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.meshId & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.materialId & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.layer & 0xffL, 8);
+        pos += 8;
+        scratch = putBits(data, pos, scratch, value.team & 0x3L, 2);
+        pos += 2;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readRenderSprite decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readRenderSprite(RenderSprite value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeRenderSprite packs value into data from its start and returns the bytes written;
+    // data must hold RENDER_SPRITE_MAX_BYTES.
+    public static int writeRenderSprite(RenderSprite value, byte[] data) {
+        return (writeRenderSpriteBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readRenderSpriteBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readRenderSpriteBits(
+            RenderSprite value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
-        long lo = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
+        long lo;
         if (bitsRead + 138 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.sortKey = lo;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
-        value.meshId = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        value.meshId = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
-        value.materialId = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffL;
+        value.materialId = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;
-        value.layer = (byte) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3L;
+        value.layer = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
         if (v > 2) {
-            return false; // headroom above the wire range is refused
+            return -1; // headroom above the wire range is refused
         }
         value.team = (byte) v;
-        return true;
+        return bitsRead;
     }
 
-    // measureRenderSprite is the exact wire bits writeRenderSprite would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureRenderSprite(RenderSprite value) {
-        return 138;
+    // readRenderSprite decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readRenderSprite(RenderSprite value, byte[] data, int numBits) {
+        return readRenderSpriteBits(value, data, 0, numBits) >= 0;
     }
 
     // type RenderBlock
     public static final class RenderBlock {
-        public int workerIndex;
-        public int spriteCountHint;
-        public final RenderSprite[] sprites = new RenderSprite[renderBlockMaxSprites];
+        public long workerIndex;
+        public long spriteCountHint;
+        public final RenderSprite[] sprites = new RenderSprite[RENDER_BLOCK_MAX_SPRITES];
         public int spritesCount;
 
         // pre-allocated element instances — the storage principle (SPEC §6.1):
@@ -250,10 +226,10 @@ public final class Render {
         }
     }
 
-    // renderBlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // renderBlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int renderBlockMaxBits = 8903;
-    public static final int renderBlockMaxBytes = 1120;
+    // RENDER_BLOCK_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // RENDER_BLOCK_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int RENDER_BLOCK_MAX_BITS = 8903;
+    public static final int RENDER_BLOCK_MAX_BYTES = 1120;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -276,264 +252,99 @@ public final class Render {
         value.spritesCount = 0;
     }
 
-    // checkWriteRenderBlock is writeRenderBlock's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteRenderBlock is the contract walk of writeRenderBlockBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteRenderBlock(RenderBlock value, byte[] data) {
+    private static boolean checkWriteRenderBlock(RenderBlock value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= renderBlockMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + RENDER_BLOCK_MAX_BITS;
+        assert value.workerIndex >= 0;
+        assert value.workerIndex <= 4294967295L;
+        assert value.spriteCountHint >= 0;
+        assert value.spriteCountHint <= 4294967295L;
         assert value.spritesCount >= 0;
         assert value.spritesCount <= 64;
-        for (int i0 = 0; i0 < value.spritesCount; i0++) {
-            final RenderSprite e0 = value.sprites[i0];
-            assert (e0.team & 0xffL) >= 0;
-            assert (e0.team & 0xffL) <= 2;
-        }
         return true;
     }
 
-    // writeRenderBlock packs value into data — the trusted writer (contracts in the
-    // checkWriteRenderBlock predicate, one dormant assert call without -ea). The buffer
-    // must hold renderBlockMaxBytes. Returns the bytes written.
-    public static int writeRenderBlock(RenderBlock value, byte[] data) {
-        assert checkWriteRenderBlock(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.workerIndex & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.spriteCountHint & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.spritesCount) & 0x7fL;
-        scratch |= v << scratchBits;
-        scratchBits += 7;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (7 - scratchBits);
-        }
+    // writeRenderBlockBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteRenderBlock
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + RENDER_BLOCK_MAX_BITS.
+    public static int writeRenderBlockBits(RenderBlock value, byte[] data, int bitOffset) {
+        assert checkWriteRenderBlock(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.workerIndex & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.spriteCountHint & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.spritesCount) & 0x7fL, 7);
+        pos += 7;
+        flushBits(data, pos, scratch);
         for (int i0 = 0; i0 < value.spritesCount; i0++) {
-            final RenderSprite e0 = value.sprites[i0];
-            v = e0.sortKey & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (e0.sortKey >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = e0.meshId & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = e0.materialId & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = e0.layer & 0xffL;
-            scratch |= v << scratchBits;
-            scratchBits += 8;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (8 - scratchBits);
-            }
-            v = e0.team & 0x3L;
-            scratch |= v << scratchBits;
-            scratchBits += 2;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (2 - scratchBits);
-            }
+            pos = writeRenderSpriteBits(value.sprites[i0], data, pos);
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        return pos;
     }
 
-    // readRenderBlock decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readRenderBlock(RenderBlock value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeRenderBlock packs value into data from its start and returns the bytes written;
+    // data must hold RENDER_BLOCK_MAX_BYTES.
+    public static int writeRenderBlock(RenderBlock value, byte[] data) {
+        return (writeRenderBlockBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readRenderBlockBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readRenderBlockBits(
+            RenderBlock value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
-        long lo = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 64 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
-        value.workerIndex = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        value.workerIndex = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
-        value.spriteCountHint = (int) v;
+        value.spriteCountHint = v;
         if (bitsRead + 7 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
         bitsRead += 7;
         if (v > 64) {
-            return false; // the count guards the loop — reject, never clamp
+            return -1; // the count guards the loop — reject, never clamp
         }
         value.spritesCount = (int) v;
         if (bitsRead + value.spritesCount * 138L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.spritesCount; i0++) {
-            final RenderSprite e0 = value.sprites[i0];
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
+            bitsRead = readRenderSpriteBits(value.sprites[i0], data, bitsRead, numBits);
+            if (bitsRead < 0) {
+                return -1;
             }
-            v = (window >>> shift) & 0xffffffffL;
-            bitsRead += 32;
-            lo = v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
-            bitsRead += 32;
-            lo |= v << 32;
-            e0.sortKey = lo;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
-            bitsRead += 32;
-            e0.meshId = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
-            bitsRead += 32;
-            e0.materialId = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffL;
-            bitsRead += 8;
-            e0.layer = (byte) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x3L;
-            bitsRead += 2;
-            if (v > 2) {
-                return false; // headroom above the wire range is refused
-            }
-            e0.team = (byte) v;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureRenderBlock is the exact wire bits writeRenderBlock would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureRenderBlock(RenderBlock value) {
-        int bits = 0;
-        bits += 71;
-        bits += value.spritesCount * 138;
-        return bits;
+    // readRenderBlock decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readRenderBlock(RenderBlock value, byte[] data, int numBits) {
+        return readRenderBlockBits(value, data, 0, numBits) >= 0;
     }
 }

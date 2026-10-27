@@ -6,6 +6,11 @@
 
 package example;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.nio.ByteOrder;
+import java.util.Arrays;
+
 // Clauses carries every generated declaration of Clauses.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
 // home; types nest inside it (SPEC §6.1 naming).
@@ -14,434 +19,406 @@ public final class Clauses {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final java.lang.invoke.VarHandle LONG_LE =
-            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
-                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
+    private static final VarHandle LONG_LE =
+            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+
+    // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
+    // pos, storing the word to data once it fills, and returns the new scratch word. The
+    // caller advances pos by bits.
+    private static long putBits(byte[] data, int pos, long scratch, long v, int bits) {
+        final int used = pos & 63;
+        scratch |= v << used;
+        if (used + bits >= 64) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+            return v >>> (64 - used);
+        }
+        return scratch;
+    }
+
+    // alignBits zero-pads the write to the next byte boundary and returns the new scratch
+    // word; the caller rounds pos up to a multiple of 8.
+    private static long alignBits(byte[] data, int pos, long scratch) {
+        if ((pos & 63) > 56) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+            return 0;
+        }
+        return scratch;
+    }
+
+    // flushBits stores the partial scratch word at bit pos — before a bulk copy, a nested
+    // write, or the end of the value.
+    private static void flushBits(byte[] data, int pos, long scratch) {
+        if ((pos & 63) != 0) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+        }
+    }
+
+    // loadBits is the scratch word for writing on from bit pos: the bits data already
+    // holds below pos, zero above it.
+    private static long loadBits(byte[] data, int pos) {
+        final int used = pos & 63;
+        if (used == 0) {
+            return 0;
+        }
+        return (long) LONG_LE.get(data, (pos >>> 6) * 8) & ((1L << used) - 1);
+    }
+
+    // loadTail assembles the buffer's last 64-bit window, once per read (the whole buffer,
+    // zero-extended, when it is shorter than eight bytes).
+    private static long loadTail(byte[] data) {
+        if (data.length >= 8) {
+            return (long) LONG_LE.get(data, data.length - 8);
+        }
+        long word = 0;
+        for (int i = data.length - 1; i >= 0; i--) {
+            word = (word << 8) | (data[i] & 0xffL);
+        }
+        return word;
+    }
+
+    // peekBits is the stream from bit pos on, low bit first, in a 64-bit window that never
+    // loads past the buffer: positions in its last eight bytes read the tail word.
+    private static long peekBits(byte[] data, int pos, int tailBase, long tailWord) {
+        final int at = pos >>> 3;
+        if (at < tailBase) {
+            return (long) LONG_LE.get(data, at) >>> (pos & 7);
+        }
+        return tailWord >>> (pos - tailBase * 8);
+    }
+
+    // alignRead skips the padding to the next byte boundary and returns the new position,
+    // or -1 for padding that is nonzero or runs past numBits (SPEC §4.3).
+    private static int alignRead(byte[] data, int pos, int numBits) {
+        final int pad = pos & 7;
+        if (pad == 0) {
+            return pos;
+        }
+        final int next = pos + 8 - pad;
+        if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
+            return -1;
+        }
+        return next;
+    }
 
     // type W13
     public static final class W13 {
         // wire [0, 8191]
-        public final short[] items = new short[12];
+        public final int[] items = new int[12];
         public int itemsCount;
     }
 
-    // w13MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // w13MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int w13MaxBits = 160;
-    public static final int w13MaxBytes = 24;
+    // W13_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // W13_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int W13_MAX_BITS = 160;
+    public static final int W13_MAX_BYTES = 24;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW13(W13 value) {
-        java.util.Arrays.fill(value.items, (short) 0);
+        Arrays.fill(value.items, 0);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW13(W13 value) {
-        java.util.Arrays.fill(value.items, (short) 0);
+        Arrays.fill(value.items, 0);
         value.itemsCount = 0;
     }
 
-    // checkWriteW13 is writeW13's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteW13 is the contract walk of writeW13Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteW13(W13 value, byte[] data) {
+    private static boolean checkWriteW13(W13 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= w13MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + W13_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 12;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            assert (value.items[i0] & 0xffffL) >= 0;
-            assert (value.items[i0] & 0xffffL) <= 8191;
+            assert value.items[i0] >= 0;
+            assert value.items[i0] <= 8191;
         }
         return true;
     }
 
-    // writeW13 packs value into data — the trusted writer (contracts in the
-    // checkWriteW13 predicate, one dormant assert call without -ea). The buffer
-    // must hold w13MaxBytes. Returns the bytes written.
-    public static int writeW13(W13 value, byte[] data) {
-        assert checkWriteW13(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.itemsCount) & 0xfL;
-        scratch |= v << scratchBits;
-        scratchBits += 4;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (4 - scratchBits);
-        }
+    // writeW13Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteW13
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + W13_MAX_BITS.
+    public static int writeW13Bits(W13 value, byte[] data, int bitOffset) {
+        assert checkWriteW13(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0xfL, 4);
+        pos += 4;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            v = ((value.items[i0] & 0xffffL)) & 0x1fffL;
-            scratch |= v << scratchBits;
-            scratchBits += 13;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (13 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, (value.items[i0]) & 0x1fffL, 13);
+            pos += 13;
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readW13 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readW13(W13 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeW13 packs value into data from its start and returns the bytes written;
+    // data must hold W13_MAX_BYTES.
+    public static int writeW13(W13 value, byte[] data) {
+        return (writeW13Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readW13Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readW13Bits(W13 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 4 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
         bitsRead += 4;
         if (v > 12) {
-            return false; // the count guards the loop — reject, never clamp
+            return -1; // the count guards the loop — reject, never clamp
         }
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 13L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1fffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffL;
             bitsRead += 13;
-            value.items[i0] = (short) v;
+            value.items[i0] = (int) v;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureW13 is the exact wire bits writeW13 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureW13(W13 value) {
-        int bits = 0;
-        bits += 4;
-        bits += value.itemsCount * 13;
-        return bits;
+    // readW13 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readW13(W13 value, byte[] data, int numBits) {
+        return readW13Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W17
     public static final class W17 {
         // wire [0, 131071]
-        public final int[] items = new int[9];
+        public final long[] items = new long[9];
         public int itemsCount;
     }
 
-    // w17MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // w17MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int w17MaxBits = 157;
-    public static final int w17MaxBytes = 24;
+    // W17_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // W17_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int W17_MAX_BITS = 157;
+    public static final int W17_MAX_BYTES = 24;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW17(W17 value) {
-        java.util.Arrays.fill(value.items, 0);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW17(W17 value) {
-        java.util.Arrays.fill(value.items, 0);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
-    // checkWriteW17 is writeW17's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteW17 is the contract walk of writeW17Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteW17(W17 value, byte[] data) {
+    private static boolean checkWriteW17(W17 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= w17MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + W17_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 9;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            assert (value.items[i0] & 0xffffffffL) >= 0;
-            assert (value.items[i0] & 0xffffffffL) <= 131071;
+            assert value.items[i0] >= 0;
+            assert value.items[i0] <= 131071;
         }
         return true;
     }
 
-    // writeW17 packs value into data — the trusted writer (contracts in the
-    // checkWriteW17 predicate, one dormant assert call without -ea). The buffer
-    // must hold w17MaxBytes. Returns the bytes written.
-    public static int writeW17(W17 value, byte[] data) {
-        assert checkWriteW17(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.itemsCount) & 0xfL;
-        scratch |= v << scratchBits;
-        scratchBits += 4;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (4 - scratchBits);
-        }
+    // writeW17Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteW17
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + W17_MAX_BITS.
+    public static int writeW17Bits(W17 value, byte[] data, int bitOffset) {
+        assert checkWriteW17(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0xfL, 4);
+        pos += 4;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            v = ((value.items[i0] & 0xffffffffL)) & 0x1ffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 17;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (17 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, (value.items[i0]) & 0x1ffffL, 17);
+            pos += 17;
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readW17 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readW17(W17 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeW17 packs value into data from its start and returns the bytes written;
+    // data must hold W17_MAX_BYTES.
+    public static int writeW17(W17 value, byte[] data) {
+        return (writeW17Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readW17Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readW17Bits(W17 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 4 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
         bitsRead += 4;
         if (v > 9) {
-            return false; // the count guards the loop — reject, never clamp
+            return -1; // the count guards the loop — reject, never clamp
         }
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 17L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1ffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffL;
             bitsRead += 17;
-            value.items[i0] = (int) v;
+            value.items[i0] = v;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureW17 is the exact wire bits writeW17 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureW17(W17 value) {
-        int bits = 0;
-        bits += 4;
-        bits += value.itemsCount * 17;
-        return bits;
+    // readW17 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readW17(W17 value, byte[] data, int numBits) {
+        return readW17Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W26
     public static final class W26 {
         // wire [0, 67108863]
-        public final int[] items = new int[6];
+        public final long[] items = new long[6];
         public int itemsCount;
     }
 
-    // w26MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // w26MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int w26MaxBits = 159;
-    public static final int w26MaxBytes = 24;
+    // W26_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // W26_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int W26_MAX_BITS = 159;
+    public static final int W26_MAX_BYTES = 24;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW26(W26 value) {
-        java.util.Arrays.fill(value.items, 0);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW26(W26 value) {
-        java.util.Arrays.fill(value.items, 0);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
-    // checkWriteW26 is writeW26's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteW26 is the contract walk of writeW26Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteW26(W26 value, byte[] data) {
+    private static boolean checkWriteW26(W26 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= w26MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + W26_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 6;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            assert (value.items[i0] & 0xffffffffL) >= 0;
-            assert (value.items[i0] & 0xffffffffL) <= 67108863;
+            assert value.items[i0] >= 0;
+            assert value.items[i0] <= 67108863;
         }
         return true;
     }
 
-    // writeW26 packs value into data — the trusted writer (contracts in the
-    // checkWriteW26 predicate, one dormant assert call without -ea). The buffer
-    // must hold w26MaxBytes. Returns the bytes written.
-    public static int writeW26(W26 value, byte[] data) {
-        assert checkWriteW26(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.itemsCount) & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
+    // writeW26Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteW26
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + W26_MAX_BITS.
+    public static int writeW26Bits(W26 value, byte[] data, int bitOffset) {
+        assert checkWriteW26(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0x7L, 3);
+        pos += 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            v = ((value.items[i0] & 0xffffffffL)) & 0x3ffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 26;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (26 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, (value.items[i0]) & 0x3ffffffL, 26);
+            pos += 26;
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readW26 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readW26(W26 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeW26 packs value into data from its start and returns the bytes written;
+    // data must hold W26_MAX_BYTES.
+    public static int writeW26(W26 value, byte[] data) {
+        return (writeW26Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readW26Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readW26Bits(W26 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 3 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         if (v > 6) {
-            return false; // the count guards the loop — reject, never clamp
+            return -1; // the count guards the loop — reject, never clamp
         }
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 26L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x3ffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffffffL;
             bitsRead += 26;
-            value.items[i0] = (int) v;
+            value.items[i0] = v;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureW26 is the exact wire bits writeW26 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureW26(W26 value) {
-        int bits = 0;
-        bits += 3;
-        bits += value.itemsCount * 26;
-        return bits;
+    // readW26 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readW26(W26 value, byte[] data, int numBits) {
+        return readW26Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W1
@@ -451,31 +428,32 @@ public final class Clauses {
         public int itemsCount;
     }
 
-    // w1MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // w1MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int w1MaxBits = 25;
-    public static final int w1MaxBytes = 8;
+    // W1_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // W1_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int W1_MAX_BITS = 25;
+    public static final int W1_MAX_BYTES = 8;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW1(W1 value) {
-        java.util.Arrays.fill(value.items, (byte) 0);
+        Arrays.fill(value.items, (byte) 0);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW1(W1 value) {
-        java.util.Arrays.fill(value.items, (byte) 0);
+        Arrays.fill(value.items, (byte) 0);
         value.itemsCount = 0;
     }
 
-    // checkWriteW1 is writeW1's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteW1 is the contract walk of writeW1Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteW1(W1 value, byte[] data) {
+    private static boolean checkWriteW1(W1 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= w1MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + W1_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 20;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -485,105 +463,69 @@ public final class Clauses {
         return true;
     }
 
-    // writeW1 packs value into data — the trusted writer (contracts in the
-    // checkWriteW1 predicate, one dormant assert call without -ea). The buffer
-    // must hold w1MaxBytes. Returns the bytes written.
-    public static int writeW1(W1 value, byte[] data) {
-        assert checkWriteW1(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.itemsCount) & 0x1fL;
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
+    // writeW1Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteW1
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + W1_MAX_BITS.
+    public static int writeW1Bits(W1 value, byte[] data, int bitOffset) {
+        assert checkWriteW1(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0x1fL, 5);
+        pos += 5;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            v = ((value.items[i0] & 0xffL)) & 0x1L;
-            scratch |= v << scratchBits;
-            scratchBits += 1;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (1 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, ((value.items[i0] & 0xffL)) & 0x1L, 1);
+            pos += 1;
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readW1 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readW1(W1 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeW1 packs value into data from its start and returns the bytes written;
+    // data must hold W1_MAX_BYTES.
+    public static int writeW1(W1 value, byte[] data) {
+        return (writeW1Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readW1Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readW1Bits(W1 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 5 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         if (v > 20) {
-            return false; // the count guards the loop — reject, never clamp
+            return -1; // the count guards the loop — reject, never clamp
         }
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 1L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1L;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
             bitsRead += 1;
             value.items[i0] = (byte) v;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureW1 is the exact wire bits writeW1 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureW1(W1 value) {
-        int bits = 0;
-        bits += 5;
-        bits += value.itemsCount * 1;
-        return bits;
+    // readW1 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readW1(W1 value, byte[] data, int numBits) {
+        return readW1Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W52
@@ -593,31 +535,32 @@ public final class Clauses {
         public int itemsCount;
     }
 
-    // w52MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // w52MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int w52MaxBits = 158;
-    public static final int w52MaxBytes = 24;
+    // W52_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // W52_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int W52_MAX_BITS = 158;
+    public static final int W52_MAX_BYTES = 24;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW52(W52 value) {
-        java.util.Arrays.fill(value.items, 0L);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW52(W52 value) {
-        java.util.Arrays.fill(value.items, 0L);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
-    // checkWriteW52 is writeW52's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteW52 is the contract walk of writeW52Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteW52(W52 value, byte[] data) {
+    private static boolean checkWriteW52(W52 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= w52MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + W52_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -627,123 +570,73 @@ public final class Clauses {
         return true;
     }
 
-    // writeW52 packs value into data — the trusted writer (contracts in the
-    // checkWriteW52 predicate, one dormant assert call without -ea). The buffer
-    // must hold w52MaxBytes. Returns the bytes written.
-    public static int writeW52(W52 value, byte[] data) {
-        assert checkWriteW52(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.itemsCount) & 0x3L;
-        scratch |= v << scratchBits;
-        scratchBits += 2;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (2 - scratchBits);
-        }
+    // writeW52Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteW52
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + W52_MAX_BITS.
+    public static int writeW52Bits(W52 value, byte[] data, int bitOffset) {
+        assert checkWriteW52(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0x3L, 2);
+        pos += 2;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            v = value.items[i0] & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (value.items[i0] >>> 32) & 0xfffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 20;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (20 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, value.items[i0] & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (value.items[i0] >>> 32) & 0xfffffL, 20);
+            pos += 20;
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readW52 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readW52(W52 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeW52 packs value into data from its start and returns the bytes written;
+    // data must hold W52_MAX_BYTES.
+    public static int writeW52(W52 value, byte[] data) {
+        return (writeW52Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readW52Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readW52Bits(W52 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
-        long lo = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
+        long lo;
         if (bitsRead + 2 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 52L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo = v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xfffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffffL;
             bitsRead += 20;
             lo |= v << 32;
             value.items[i0] = lo;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureW52 is the exact wire bits writeW52 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureW52(W52 value) {
-        int bits = 0;
-        bits += 2;
-        bits += value.itemsCount * 52;
-        return bits;
+    // readW52 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readW52(W52 value, byte[] data, int numBits) {
+        return readW52Bits(value, data, 0, numBits) >= 0;
     }
 
     // type W50
@@ -753,31 +646,32 @@ public final class Clauses {
         public int itemsCount;
     }
 
-    // w50MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // w50MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int w50MaxBits = 152;
-    public static final int w50MaxBytes = 24;
+    // W50_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // W50_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int W50_MAX_BITS = 152;
+    public static final int W50_MAX_BYTES = 24;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroW50(W50 value) {
-        java.util.Arrays.fill(value.items, 0L);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initW50(W50 value) {
-        java.util.Arrays.fill(value.items, 0L);
+        Arrays.fill(value.items, 0L);
         value.itemsCount = 0;
     }
 
-    // checkWriteW50 is writeW50's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteW50 is the contract walk of writeW50Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteW50(W50 value, byte[] data) {
+    private static boolean checkWriteW50(W50 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= w50MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + W50_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 3;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -787,244 +681,176 @@ public final class Clauses {
         return true;
     }
 
-    // writeW50 packs value into data — the trusted writer (contracts in the
-    // checkWriteW50 predicate, one dormant assert call without -ea). The buffer
-    // must hold w50MaxBytes. Returns the bytes written.
-    public static int writeW50(W50 value, byte[] data) {
-        assert checkWriteW50(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.itemsCount) & 0x3L;
-        scratch |= v << scratchBits;
-        scratchBits += 2;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (2 - scratchBits);
-        }
+    // writeW50Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteW50
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + W50_MAX_BITS.
+    public static int writeW50Bits(W50 value, byte[] data, int bitOffset) {
+        assert checkWriteW50(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0x3L, 2);
+        pos += 2;
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            v = value.items[i0] & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (value.items[i0] >>> 32) & 0x3ffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 18;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (18 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, value.items[i0] & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (value.items[i0] >>> 32) & 0x3ffffL, 18);
+            pos += 18;
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readW50 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readW50(W50 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeW50 packs value into data from its start and returns the bytes written;
+    // data must hold W50_MAX_BYTES.
+    public static int writeW50(W50 value, byte[] data) {
+        return (writeW50Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readW50Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readW50Bits(W50 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
-        long lo = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
+        long lo;
         if (bitsRead + 2 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 50L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo = v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x3ffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffffL;
             bitsRead += 18;
             lo |= v << 32;
             value.items[i0] = lo;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureW50 is the exact wire bits writeW50 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureW50(W50 value) {
-        int bits = 0;
-        bits += 2;
-        bits += value.itemsCount * 50;
-        return bits;
+    // readW50 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readW50(W50 value, byte[] data, int numBits) {
+        return readW50Bits(value, data, 0, numBits) >= 0;
     }
 
     // type F13
     public static final class F13 {
         // wire [0, 8191]
-        public final short[] items = new short[7];
+        public final int[] items = new int[7];
     }
 
-    // f13MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // f13MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int f13MaxBits = 91;
-    public static final int f13MaxBytes = 16;
+    // F13_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // F13_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int F13_MAX_BITS = 91;
+    public static final int F13_MAX_BYTES = 16;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroF13(F13 value) {
-        java.util.Arrays.fill(value.items, (short) 0);
+        Arrays.fill(value.items, 0);
     }
 
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initF13(F13 value) {
-        java.util.Arrays.fill(value.items, (short) 0);
+        Arrays.fill(value.items, 0);
     }
 
-    // checkWriteF13 is writeF13's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteF13 is the contract walk of writeF13Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteF13(F13 value, byte[] data) {
+    private static boolean checkWriteF13(F13 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= f13MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + F13_MAX_BITS;
         for (int i0 = 0; i0 < 7; i0++) {
-            assert (value.items[i0] & 0xffffL) >= 0;
-            assert (value.items[i0] & 0xffffL) <= 8191;
+            assert value.items[i0] >= 0;
+            assert value.items[i0] <= 8191;
         }
         return true;
     }
 
-    // writeF13 packs value into data — the trusted writer (contracts in the
-    // checkWriteF13 predicate, one dormant assert call without -ea). The buffer
-    // must hold f13MaxBytes. Returns the bytes written.
-    public static int writeF13(F13 value, byte[] data) {
-        assert checkWriteF13(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
+    // writeF13Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteF13
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + F13_MAX_BITS.
+    public static int writeF13Bits(F13 value, byte[] data, int bitOffset) {
+        assert checkWriteF13(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
         for (int i0 = 0; i0 < 7; i0++) {
-            v = ((value.items[i0] & 0xffffL)) & 0x1fffL;
-            scratch |= v << scratchBits;
-            scratchBits += 13;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (13 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, (value.items[i0]) & 0x1fffL, 13);
+            pos += 13;
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readF13 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readF13(F13 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeF13 packs value into data from its start and returns the bytes written;
+    // data must hold F13_MAX_BYTES.
+    public static int writeF13(F13 value, byte[] data) {
+        return (writeF13Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readF13Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readF13Bits(F13 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 91 > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < 7; i0++) {
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1fffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffL;
             bitsRead += 13;
-            value.items[i0] = (short) v;
+            value.items[i0] = (int) v;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureF13 is the exact wire bits writeF13 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureF13(F13 value) {
-        return 91;
+    // readF13 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readF13(F13 value, byte[] data, int numBits) {
+        return readF13Bits(value, data, 0, numBits) >= 0;
     }
 
     // type Tri3
     public static final class Tri3 {
-        public int a;
-        public int b;
+        public long a;
+        public long b;
     }
 
-    // tri3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // tri3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int tri3MaxBits = 3;
-    public static final int tri3MaxBytes = 8;
+    // TRI3_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // TRI3_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int TRI3_MAX_BITS = 3;
+    public static final int TRI3_MAX_BYTES = 8;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -1039,102 +865,70 @@ public final class Clauses {
         value.b = 0;
     }
 
-    // checkWriteTri3 is writeTri3's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteTri3 is the contract walk of writeTri3Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteTri3(Tri3 value, byte[] data) {
+    private static boolean checkWriteTri3(Tri3 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= tri3MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + TRI3_MAX_BITS;
         return true;
     }
 
-    // writeTri3 packs value into data — the trusted writer (contracts in the
-    // checkWriteTri3 predicate, one dormant assert call without -ea). The buffer
-    // must hold tri3MaxBytes. Returns the bytes written.
-    public static int writeTri3(Tri3 value, byte[] data) {
-        assert checkWriteTri3(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.a & 0x1L;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = value.b & 0x3L;
-        scratch |= v << scratchBits;
-        scratchBits += 2;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (2 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    // writeTri3Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteTri3
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + TRI3_MAX_BITS.
+    public static int writeTri3Bits(Tri3 value, byte[] data, int bitOffset) {
+        assert checkWriteTri3(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.a & 0x1L, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, value.b & 0x3L, 2);
+        pos += 2;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readTri3 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readTri3(Tri3 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeTri3 packs value into data from its start and returns the bytes written;
+    // data must hold TRI3_MAX_BYTES.
+    public static int writeTri3(Tri3 value, byte[] data) {
+        return (writeTri3Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readTri3Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readTri3Bits(Tri3 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 3 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
-        value.a = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3L;
+        value.a = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
-        value.b = (int) v;
-        return true;
+        value.b = v;
+        return bitsRead;
     }
 
-    // measureTri3 is the exact wire bits writeTri3 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureTri3(Tri3 value) {
-        return 3;
+    // readTri3 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readTri3(Tri3 value, byte[] data, int numBits) {
+        return readTri3Bits(value, data, 0, numBits) >= 0;
     }
 
     // type ArrTri3
@@ -1151,10 +945,10 @@ public final class Clauses {
         }
     }
 
-    // arrTri3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // arrTri3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int arrTri3MaxBits = 34;
-    public static final int arrTri3MaxBytes = 8;
+    // ARR_TRI3_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // ARR_TRI3_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int ARR_TRI3_MAX_BITS = 34;
+    public static final int ARR_TRI3_MAX_BYTES = 8;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -1173,150 +967,94 @@ public final class Clauses {
         value.itemsCount = 0;
     }
 
-    // checkWriteArrTri3 is writeArrTri3's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteArrTri3 is the contract walk of writeArrTri3Bits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteArrTri3(ArrTri3 value, byte[] data) {
+    private static boolean checkWriteArrTri3(ArrTri3 value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= arrTri3MaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + ARR_TRI3_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 10;
         return true;
     }
 
-    // writeArrTri3 packs value into data — the trusted writer (contracts in the
-    // checkWriteArrTri3 predicate, one dormant assert call without -ea). The buffer
-    // must hold arrTri3MaxBytes. Returns the bytes written.
-    public static int writeArrTri3(ArrTri3 value, byte[] data) {
-        assert checkWriteArrTri3(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.itemsCount) & 0xfL;
-        scratch |= v << scratchBits;
-        scratchBits += 4;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (4 - scratchBits);
-        }
+    // writeArrTri3Bits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteArrTri3
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + ARR_TRI3_MAX_BITS.
+    public static int writeArrTri3Bits(ArrTri3 value, byte[] data, int bitOffset) {
+        assert checkWriteArrTri3(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0xfL, 4);
+        pos += 4;
+        flushBits(data, pos, scratch);
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            final Tri3 e0 = value.items[i0];
-            v = e0.a & 0x1L;
-            scratch |= v << scratchBits;
-            scratchBits += 1;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (1 - scratchBits);
-            }
-            v = e0.b & 0x3L;
-            scratch |= v << scratchBits;
-            scratchBits += 2;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (2 - scratchBits);
-            }
+            pos = writeTri3Bits(value.items[i0], data, pos);
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        return pos;
     }
 
-    // readArrTri3 decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readArrTri3(ArrTri3 value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeArrTri3 packs value into data from its start and returns the bytes written;
+    // data must hold ARR_TRI3_MAX_BYTES.
+    public static int writeArrTri3(ArrTri3 value, byte[] data) {
+        return (writeArrTri3Bits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readArrTri3Bits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readArrTri3Bits(ArrTri3 value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 4 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
         bitsRead += 4;
         if (v > 10) {
-            return false; // the count guards the loop — reject, never clamp
+            return -1; // the count guards the loop — reject, never clamp
         }
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 3L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            final Tri3 e0 = value.items[i0];
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
+            bitsRead = readTri3Bits(value.items[i0], data, bitsRead, numBits);
+            if (bitsRead < 0) {
+                return -1;
             }
-            v = (window >>> shift) & 0x1L;
-            bitsRead += 1;
-            e0.a = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x3L;
-            bitsRead += 2;
-            e0.b = (int) v;
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureArrTri3 is the exact wire bits writeArrTri3 would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureArrTri3(ArrTri3 value) {
-        int bits = 0;
-        bits += 4;
-        bits += value.itemsCount * 3;
-        return bits;
+    // readArrTri3 decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readArrTri3(ArrTri3 value, byte[] data, int numBits) {
+        return readArrTri3Bits(value, data, 0, numBits) >= 0;
     }
 
     // type Eleven
     public static final class Eleven {
-        public int a;
-        public int b;
+        public long a;
+        public long b;
     }
 
-    // elevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // elevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int elevenMaxBits = 11;
-    public static final int elevenMaxBytes = 8;
+    // ELEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // ELEVEN_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int ELEVEN_MAX_BITS = 11;
+    public static final int ELEVEN_MAX_BYTES = 8;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -1331,102 +1069,70 @@ public final class Clauses {
         value.b = 0;
     }
 
-    // checkWriteEleven is writeEleven's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteEleven is the contract walk of writeElevenBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteEleven(Eleven value, byte[] data) {
+    private static boolean checkWriteEleven(Eleven value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= elevenMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + ELEVEN_MAX_BITS;
         return true;
     }
 
-    // writeEleven packs value into data — the trusted writer (contracts in the
-    // checkWriteEleven predicate, one dormant assert call without -ea). The buffer
-    // must hold elevenMaxBytes. Returns the bytes written.
-    public static int writeEleven(Eleven value, byte[] data) {
-        assert checkWriteEleven(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.a & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        v = value.b & 0xffL;
-        scratch |= v << scratchBits;
-        scratchBits += 8;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (8 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    // writeElevenBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteEleven
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + ELEVEN_MAX_BITS.
+    public static int writeElevenBits(Eleven value, byte[] data, int bitOffset) {
+        assert checkWriteEleven(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.a & 0x7L, 3);
+        pos += 3;
+        scratch = putBits(data, pos, scratch, value.b & 0xffL, 8);
+        pos += 8;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readEleven decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readEleven(Eleven value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeEleven packs value into data from its start and returns the bytes written;
+    // data must hold ELEVEN_MAX_BYTES.
+    public static int writeEleven(Eleven value, byte[] data) {
+        return (writeElevenBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readElevenBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readElevenBits(Eleven value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 11 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
-        value.a = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffL;
+        value.a = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;
-        value.b = (int) v;
-        return true;
+        value.b = v;
+        return bitsRead;
     }
 
-    // measureEleven is the exact wire bits writeEleven would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureEleven(Eleven value) {
-        return 11;
+    // readEleven decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readEleven(Eleven value, byte[] data, int numBits) {
+        return readElevenBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArrEleven
@@ -1442,10 +1148,10 @@ public final class Clauses {
         }
     }
 
-    // arrElevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // arrElevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int arrElevenMaxBits = 99;
-    public static final int arrElevenMaxBytes = 16;
+    // ARR_ELEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // ARR_ELEVEN_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int ARR_ELEVEN_MAX_BITS = 99;
+    public static final int ARR_ELEVEN_MAX_BYTES = 16;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -1462,108 +1168,61 @@ public final class Clauses {
         }
     }
 
-    // checkWriteArrEleven is writeArrEleven's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteArrEleven is the contract walk of writeArrElevenBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteArrEleven(ArrEleven value, byte[] data) {
+    private static boolean checkWriteArrEleven(ArrEleven value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= arrElevenMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + ARR_ELEVEN_MAX_BITS;
         return true;
     }
 
-    // writeArrEleven packs value into data — the trusted writer (contracts in the
-    // checkWriteArrEleven predicate, one dormant assert call without -ea). The buffer
-    // must hold arrElevenMaxBytes. Returns the bytes written.
-    public static int writeArrEleven(ArrEleven value, byte[] data) {
-        assert checkWriteArrEleven(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
+    // writeArrElevenBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteArrEleven
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + ARR_ELEVEN_MAX_BITS.
+    public static int writeArrElevenBits(ArrEleven value, byte[] data, int bitOffset) {
+        assert checkWriteArrEleven(value, data, bitOffset);
+        int pos = bitOffset;
         for (int i0 = 0; i0 < 9; i0++) {
-            final Eleven e0 = value.items[i0];
-            v = e0.a & 0x7L;
-            scratch |= v << scratchBits;
-            scratchBits += 3;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (3 - scratchBits);
-            }
-            v = e0.b & 0xffL;
-            scratch |= v << scratchBits;
-            scratchBits += 8;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (8 - scratchBits);
+            pos = writeElevenBits(value.items[i0], data, pos);
+        }
+        return pos;
+    }
+
+    // writeArrEleven packs value into data from its start and returns the bytes written;
+    // data must hold ARR_ELEVEN_MAX_BYTES.
+    public static int writeArrEleven(ArrEleven value, byte[] data) {
+        return (writeArrElevenBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readArrElevenBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readArrElevenBits(ArrEleven value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
+        }
+        int bitsRead = bitOffset;
+        if (bitsRead + 99 > numBits) {
+            return -1;
+        }
+        for (int i0 = 0; i0 < 9; i0++) {
+            bitsRead = readElevenBits(value.items[i0], data, bitsRead, numBits);
+            if (bitsRead < 0) {
+                return -1;
             }
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        return bitsRead;
     }
 
     // readArrEleven decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
+    // verdict: false refuses the wire.
     public static boolean readArrEleven(ArrEleven value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
-        }
-        // the final 64-bit window, assembled once so every load stays inside
-        // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
-        if (bitsRead + 99 > numBits) {
-            return false;
-        }
-        for (int i0 = 0; i0 < 9; i0++) {
-            final Eleven e0 = value.items[i0];
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x7L;
-            bitsRead += 3;
-            e0.a = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffL;
-            bitsRead += 8;
-            e0.b = (int) v;
-        }
-        return true;
-    }
-
-    // measureArrEleven is the exact wire bits writeArrEleven would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureArrEleven(ArrEleven value) {
-        return 99;
+        return readArrElevenBits(value, data, 0, numBits) >= 0;
     }
 
     // type EmptyA
@@ -1571,10 +1230,10 @@ public final class Clauses {
         // empty body — presence is the payload (SPEC §4.6)
     }
 
-    // emptyAMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // emptyAMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int emptyAMaxBits = 0;
-    public static final int emptyAMaxBytes = 0;
+    // EMPTY_A_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // EMPTY_A_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int EMPTY_A_MAX_BITS = 0;
+    public static final int EMPTY_A_MAX_BYTES = 0;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -1587,42 +1246,45 @@ public final class Clauses {
         // empty body — nothing to initialize
     }
 
-    // checkWriteEmptyA is writeEmptyA's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteEmptyA is the contract walk of writeEmptyABits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteEmptyA(EmptyA value, byte[] data) {
+    private static boolean checkWriteEmptyA(EmptyA value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= emptyAMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + EMPTY_A_MAX_BITS;
         return true;
     }
 
-    // writeEmptyA packs value into data — the trusted writer (contracts in the
-    // checkWriteEmptyA predicate, one dormant assert call without -ea). The buffer
-    // must hold emptyAMaxBytes. Returns the bytes written.
-    public static int writeEmptyA(EmptyA value, byte[] data) {
-        assert checkWriteEmptyA(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
+    // writeEmptyABits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteEmptyA
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + EMPTY_A_MAX_BITS.
+    public static int writeEmptyABits(EmptyA value, byte[] data, int bitOffset) {
+        assert checkWriteEmptyA(value, data, bitOffset);
         // empty body — presence is the payload (SPEC §4.6)
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        return bitOffset;
+    }
+
+    // writeEmptyA packs value into data from its start and returns the bytes written;
+    // data must hold EMPTY_A_MAX_BYTES.
+    public static int writeEmptyA(EmptyA value, byte[] data) {
+        return (writeEmptyABits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readEmptyABits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readEmptyABits(EmptyA value, byte[] data, int bitOffset, int numBits) {
+        return bitOffset;
     }
 
     // readEmptyA decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
+    // verdict: false refuses the wire.
     public static boolean readEmptyA(EmptyA value, byte[] data, int numBits) {
-        return true;
-    }
-
-    // measureEmptyA is the exact wire bits writeEmptyA would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureEmptyA(EmptyA value) {
-        return 0;
+        return readEmptyABits(value, data, 0, numBits) >= 0;
     }
 
     // type EmptyB
@@ -1630,10 +1292,10 @@ public final class Clauses {
         // empty body — presence is the payload (SPEC §4.6)
     }
 
-    // emptyBMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // emptyBMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int emptyBMaxBits = 0;
-    public static final int emptyBMaxBytes = 0;
+    // EMPTY_B_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // EMPTY_B_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int EMPTY_B_MAX_BITS = 0;
+    public static final int EMPTY_B_MAX_BYTES = 0;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -1646,42 +1308,45 @@ public final class Clauses {
         // empty body — nothing to initialize
     }
 
-    // checkWriteEmptyB is writeEmptyB's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteEmptyB is the contract walk of writeEmptyBBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteEmptyB(EmptyB value, byte[] data) {
+    private static boolean checkWriteEmptyB(EmptyB value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= emptyBMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + EMPTY_B_MAX_BITS;
         return true;
     }
 
-    // writeEmptyB packs value into data — the trusted writer (contracts in the
-    // checkWriteEmptyB predicate, one dormant assert call without -ea). The buffer
-    // must hold emptyBMaxBytes. Returns the bytes written.
-    public static int writeEmptyB(EmptyB value, byte[] data) {
-        assert checkWriteEmptyB(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
+    // writeEmptyBBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteEmptyB
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + EMPTY_B_MAX_BITS.
+    public static int writeEmptyBBits(EmptyB value, byte[] data, int bitOffset) {
+        assert checkWriteEmptyB(value, data, bitOffset);
         // empty body — presence is the payload (SPEC §4.6)
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        return bitOffset;
+    }
+
+    // writeEmptyB packs value into data from its start and returns the bytes written;
+    // data must hold EMPTY_B_MAX_BYTES.
+    public static int writeEmptyB(EmptyB value, byte[] data) {
+        return (writeEmptyBBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readEmptyBBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readEmptyBBits(EmptyB value, byte[] data, int bitOffset, int numBits) {
+        return bitOffset;
     }
 
     // readEmptyB decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
+    // verdict: false refuses the wire.
     public static boolean readEmptyB(EmptyB value, byte[] data, int numBits) {
-        return true;
-    }
-
-    // measureEmptyB is the exact wire bits writeEmptyB would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureEmptyB(EmptyB value) {
-        return 0;
+        return readEmptyBBits(value, data, 0, numBits) >= 0;
     }
 
     // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC
@@ -1689,25 +1354,25 @@ public final class Clauses {
     public static final class EmptyUnionType {
         private EmptyUnionType() {}
 
-        public static final byte none = 0;
-        public static final byte a = 1;
-        public static final byte b = 2;
+        public static final byte NONE = 0;
+        public static final byte A = 1;
+        public static final byte B = 2;
         // the declared variant count (SPEC §4.2)
-        public static final byte count = 2;
+        public static final byte COUNT = 2;
         // the exported extent (SPEC §4.2)
-        public static final byte max = 2;
+        public static final byte MAX = 2;
     }
 
     // enumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNameEmptyUnionType(long value) {
-        if (value == EmptyUnionType.none) {
+        if (value == EmptyUnionType.NONE) {
             return "None";
         }
-        if (value == EmptyUnionType.a) {
+        if (value == EmptyUnionType.A) {
             return "A";
         }
-        if (value == EmptyUnionType.b) {
+        if (value == EmptyUnionType.B) {
             return "B";
         }
         return "???";
@@ -1718,102 +1383,85 @@ public final class Clauses {
     // construction defaults; unselected arms keep what they last held — the
     // reused-storage discipline. Consumers read the selected arm only.
     public static final class EmptyUnion {
-        public byte type = EmptyUnionType.none;
+        public byte type = EmptyUnionType.NONE;
         public final EmptyA a = new EmptyA();
         public final EmptyB b = new EmptyB();
     }
 
-    // emptyUnionMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-    // emptyUnionMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int emptyUnionMaxBits = 2;
-    public static final int emptyUnionMaxBytes = 8;
+    // EMPTY_UNION_MAX_BITS is the tag plus the largest arm; None costs the tag only (SPEC §6.1).
+    // EMPTY_UNION_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int EMPTY_UNION_MAX_BITS = 2;
+    public static final int EMPTY_UNION_MAX_BYTES = 8;
 
     // zeroEmptyUnion resets value to the §5 zero form — the empty union. The tag alone
     // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
     // is unselected at None; an arm initializes at its next selection.
     public static void zeroEmptyUnion(EmptyUnion value) {
-        value.type = EmptyUnionType.none;
+        value.type = EmptyUnionType.NONE;
     }
 
-    // checkWriteEmptyUnion is writeEmptyUnion's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteEmptyUnion is the contract walk of writeEmptyUnionBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteEmptyUnion(EmptyUnion value, byte[] data) {
+    private static boolean checkWriteEmptyUnion(EmptyUnion value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= emptyUnionMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + EMPTY_UNION_MAX_BITS;
         assert (value.type & 0xffL) >= 0;
         assert (value.type & 0xffL) <= 2;
         return true;
     }
 
-    // writeEmptyUnion packs value into data — the trusted writer (contracts in the
-    // checkWriteEmptyUnion predicate, one dormant assert call without -ea). The buffer
-    // must hold emptyUnionMaxBytes. Returns the bytes written.
-    public static int writeEmptyUnion(EmptyUnion value, byte[] data) {
-        assert checkWriteEmptyUnion(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.type & 0x3L;
-        scratch |= v << scratchBits;
-        scratchBits += 2;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (2 - scratchBits);
-        }
+    // writeEmptyUnionBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteEmptyUnion
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + EMPTY_UNION_MAX_BITS.
+    public static int writeEmptyUnionBits(EmptyUnion value, byte[] data, int bitOffset) {
+        assert checkWriteEmptyUnion(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.type & 0x3L, 2);
+        pos += 2;
+        flushBits(data, pos, scratch);
         switch (value.type) {
             case 1:
                 break; // empty arm — presence is the payload (SPEC §4.6)
             case 2:
                 break; // empty arm — presence is the payload (SPEC §4.6)
         }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        return pos;
     }
 
-    // readEmptyUnion decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readEmptyUnion(EmptyUnion value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeEmptyUnion packs value into data from its start and returns the bytes written;
+    // data must hold EMPTY_UNION_MAX_BYTES.
+    public static int writeEmptyUnion(EmptyUnion value, byte[] data) {
+        return (writeEmptyUnionBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readEmptyUnionBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readEmptyUnionBits(
+            EmptyUnion value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 2 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
         if (v > 2) {
-            return false; // not a wire-legal tag (SPEC §4.8)
+            return -1; // not a wire-legal tag (SPEC §4.8)
         }
         value.type = (byte) v;
         switch (value.type) {
@@ -1822,34 +1470,26 @@ public final class Clauses {
             case 2:
                 break; // empty arm — presence is the payload (SPEC §4.6)
         }
-        return true;
+        return bitsRead;
     }
 
-    // measureEmptyUnion is the exact wire bits writeEmptyUnion would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureEmptyUnion(EmptyUnion value) {
-        int bits = 0;
-        bits += 2;
-        switch (value.type) {
-            case 1:
-                break; // empty arm — presence is the payload (SPEC §4.6)
-            case 2:
-                break; // empty arm — presence is the payload (SPEC §4.6)
-        }
-        return bits;
+    // readEmptyUnion decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readEmptyUnion(EmptyUnion value, byte[] data, int numBits) {
+        return readEmptyUnionBits(value, data, 0, numBits) >= 0;
     }
 
     // type HoldsEmptyUnion
     public static final class HoldsEmptyUnion {
-        public int lead;
+        public long lead;
         public final EmptyUnion u = new EmptyUnion();
-        public int tail;
+        public long tail;
     }
 
-    // holdsEmptyUnionMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // holdsEmptyUnionMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int holdsEmptyUnionMaxBits = 14;
-    public static final int holdsEmptyUnionMaxBytes = 8;
+    // HOLDS_EMPTY_UNION_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // HOLDS_EMPTY_UNION_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int HOLDS_EMPTY_UNION_MAX_BITS = 14;
+    public static final int HOLDS_EMPTY_UNION_MAX_BYTES = 8;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -1866,181 +1506,108 @@ public final class Clauses {
         value.tail = 0;
     }
 
-    // checkWriteHoldsEmptyUnion is writeHoldsEmptyUnion's contract walk, called once through assert
-    // —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteHoldsEmptyUnion is the contract walk of writeHoldsEmptyUnionBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteHoldsEmptyUnion(HoldsEmptyUnion value, byte[] data) {
+    private static boolean checkWriteHoldsEmptyUnion(
+            HoldsEmptyUnion value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= holdsEmptyUnionMaxBytes;
-        assert (value.u.type & 0xffL) >= 0;
-        assert (value.u.type & 0xffL) <= 2;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + HOLDS_EMPTY_UNION_MAX_BITS;
         return true;
     }
 
-    // writeHoldsEmptyUnion packs value into data — the trusted writer (contracts in the
-    // checkWriteHoldsEmptyUnion predicate, one dormant assert call without -ea). The buffer
-    // must hold holdsEmptyUnionMaxBytes. Returns the bytes written.
-    public static int writeHoldsEmptyUnion(HoldsEmptyUnion value, byte[] data) {
-        assert checkWriteHoldsEmptyUnion(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.lead & 0x1fL;
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
-        v = value.u.type & 0x3L;
-        scratch |= v << scratchBits;
-        scratchBits += 2;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (2 - scratchBits);
-        }
-        switch (value.u.type) {
-            case 1:
-                break; // empty arm — presence is the payload (SPEC §4.6)
-            case 2:
-                break; // empty arm — presence is the payload (SPEC §4.6)
-        }
-        v = value.tail & 0x7fL;
-        scratch |= v << scratchBits;
-        scratchBits += 7;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (7 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    // writeHoldsEmptyUnionBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteHoldsEmptyUnion
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + HOLDS_EMPTY_UNION_MAX_BITS.
+    public static int writeHoldsEmptyUnionBits(HoldsEmptyUnion value, byte[] data, int bitOffset) {
+        assert checkWriteHoldsEmptyUnion(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.lead & 0x1fL, 5);
+        pos += 5;
+        flushBits(data, pos, scratch);
+        pos = writeEmptyUnionBits(value.u, data, pos);
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.tail & 0x7fL, 7);
+        pos += 7;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readHoldsEmptyUnion decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readHoldsEmptyUnion(HoldsEmptyUnion value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeHoldsEmptyUnion packs value into data from its start and returns the bytes written;
+    // data must hold HOLDS_EMPTY_UNION_MAX_BYTES.
+    public static int writeHoldsEmptyUnion(HoldsEmptyUnion value, byte[] data) {
+        return (writeHoldsEmptyUnionBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readHoldsEmptyUnionBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readHoldsEmptyUnionBits(
+            HoldsEmptyUnion value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 5 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
-        value.lead = (int) v;
-        if (bitsRead + 2 > numBits) {
-            return false;
-        }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3L;
-        bitsRead += 2;
-        if (v > 2) {
-            return false; // not a wire-legal tag (SPEC §4.8)
-        }
-        value.u.type = (byte) v;
-        switch (value.u.type) {
-            case 1:
-                break; // empty arm — presence is the payload (SPEC §4.6)
-            case 2:
-                break; // empty arm — presence is the payload (SPEC §4.6)
+        value.lead = v;
+        bitsRead = readEmptyUnionBits(value.u, data, bitsRead, numBits);
+        if (bitsRead < 0) {
+            return -1;
         }
         if (bitsRead + 7 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
         bitsRead += 7;
-        value.tail = (int) v;
-        return true;
+        value.tail = v;
+        return bitsRead;
     }
 
-    // measureHoldsEmptyUnion is the exact wire bits writeHoldsEmptyUnion would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureHoldsEmptyUnion(HoldsEmptyUnion value) {
-        int bits = 0;
-        bits += 5;
-        bits += 2;
-        switch (value.u.type) {
-            case 1:
-                break; // empty arm — presence is the payload (SPEC §4.6)
-            case 2:
-                break; // empty arm — presence is the payload (SPEC §4.6)
-        }
-        bits += 7;
-        return bits;
+    // readHoldsEmptyUnion decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readHoldsEmptyUnion(HoldsEmptyUnion value, byte[] data, int numBits) {
+        return readHoldsEmptyUnionBits(value, data, 0, numBits) >= 0;
     }
 
     // type Strs
     public static final class Strs {
-        public int lead;
+        public long lead;
         // string(8): max length, used length beside it (SPEC §4.7)
         public final byte[] s = new byte[8];
         public int sLength;
         // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
         public final byte[] b = new byte[8];
         public int bLength;
-        public int tail;
+        public long tail;
     }
 
-    // strsMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // strsMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int strsMaxBits = 158;
-    public static final int strsMaxBytes = 24;
+    // STRS_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // STRS_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int STRS_MAX_BITS = 158;
+    public static final int STRS_MAX_BYTES = 24;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
     public static void zeroStrs(Strs value) {
         value.lead = 0;
-        java.util.Arrays.fill(value.s, (byte) 0);
+        Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
-        java.util.Arrays.fill(value.b, (byte) 0);
+        Arrays.fill(value.b, (byte) 0);
         value.bLength = 0;
         value.tail = 0;
     }
@@ -2048,20 +1615,21 @@ public final class Clauses {
     // Restore construction defaults in place; buffers and objects are retained.
     public static void initStrs(Strs value) {
         value.lead = 0;
-        java.util.Arrays.fill(value.s, (byte) 0);
+        Arrays.fill(value.s, (byte) 0);
         value.sLength = 0;
-        java.util.Arrays.fill(value.b, (byte) 0);
+        Arrays.fill(value.b, (byte) 0);
         value.bLength = 0;
         value.tail = 0;
     }
 
-    // checkWriteStrs is writeStrs's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteStrs is the contract walk of writeStrsBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteStrs(Strs value, byte[] data) {
+    private static boolean checkWriteStrs(Strs value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= strsMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + STRS_MAX_BITS;
         assert value.sLength >= 0;
         assert value.sLength <= 8;
         assert value.bLength >= 0;
@@ -2069,175 +1637,84 @@ public final class Clauses {
         return true;
     }
 
-    // writeStrs packs value into data — the trusted writer (contracts in the
-    // checkWriteStrs predicate, one dormant assert call without -ea). The buffer
-    // must hold strsMaxBytes. Returns the bytes written.
-    public static int writeStrs(Strs value, byte[] data) {
-        assert checkWriteStrs(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.lead & 0x1fL;
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
-        v = (value.sLength) & 0xfL;
-        scratch |= v << scratchBits;
-        scratchBits += 4;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (4 - scratchBits);
-        }
-        {
-            final int pad = scratchBits & 7;
-            if (pad != 0) {
-                scratchBits += 8 - pad;
-                if (scratchBits >= 64) {
-                    LONG_LE.set(data, wordIndex * 8, scratch);
-                    wordIndex++;
-                    scratchBits -= 64;
-                    scratch = 0;
-                }
-            }
-        }
+    // writeStrsBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteStrs
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + STRS_MAX_BITS.
+    public static int writeStrsBits(Strs value, byte[] data, int bitOffset) {
+        assert checkWriteStrs(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.lead & 0x1fL, 5);
+        pos += 5;
+        scratch = putBits(data, pos, scratch, (value.sLength) & 0xfL, 4);
+        pos += 4;
+        scratch = alignBits(data, pos, scratch);
+        pos = (pos + 7) & -8;
         // byte-aligned payload — the fused bulk copy (flush, copy, reload),
         // wire-identical to the per-byte merge
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        System.arraycopy(value.s, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.sLength);
-        scratchBits += value.sLength * 8;
-        wordIndex += scratchBits >>> 6;
-        scratchBits &= 63;
-        if (scratchBits != 0) {
-            scratch = (long) LONG_LE.get(data, wordIndex * 8) & ((1L << scratchBits) - 1);
-        } else {
-            scratch = 0;
-        }
-        v = (value.bLength) & 0xfL;
-        scratch |= v << scratchBits;
-        scratchBits += 4;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (4 - scratchBits);
-        }
-        {
-            final int pad = scratchBits & 7;
-            if (pad != 0) {
-                scratchBits += 8 - pad;
-                if (scratchBits >= 64) {
-                    LONG_LE.set(data, wordIndex * 8, scratch);
-                    wordIndex++;
-                    scratchBits -= 64;
-                    scratch = 0;
-                }
-            }
-        }
+        flushBits(data, pos, scratch);
+        System.arraycopy(value.s, 0, data, pos >>> 3, value.sLength);
+        pos += value.sLength * 8;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.bLength) & 0xfL, 4);
+        pos += 4;
+        scratch = alignBits(data, pos, scratch);
+        pos = (pos + 7) & -8;
         // byte-aligned payload — the fused bulk copy (flush, copy, reload),
         // wire-identical to the per-byte merge
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        System.arraycopy(value.b, 0, data, wordIndex * 8 + (scratchBits >>> 3), value.bLength);
-        scratchBits += value.bLength * 8;
-        wordIndex += scratchBits >>> 6;
-        scratchBits &= 63;
-        if (scratchBits != 0) {
-            scratch = (long) LONG_LE.get(data, wordIndex * 8) & ((1L << scratchBits) - 1);
-        } else {
-            scratch = 0;
-        }
-        v = value.tail & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        flushBits(data, pos, scratch);
+        System.arraycopy(value.b, 0, data, pos >>> 3, value.bLength);
+        pos += value.bLength * 8;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.tail & 0x7L, 3);
+        pos += 3;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readStrs decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readStrs(Strs value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeStrs packs value into data from its start and returns the bytes written;
+    // data must hold STRS_MAX_BYTES.
+    public static int writeStrs(Strs value, byte[] data) {
+        return (writeStrsBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readStrsBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readStrsBits(Strs value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 5 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
-        value.lead = (int) v;
+        value.lead = v;
         if (bitsRead + 4 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
         bitsRead += 4;
         if (v > 8) {
-            return false; // the length guards the copy — reject, never clamp
+            return -1; // the length guards the copy — reject, never clamp
         }
         value.sLength = (int) v;
-        {
-            final int pad = bitsRead & 7;
-            if (pad != 0) {
-                if (bitsRead + (8 - pad) > numBits) {
-                    return false;
-                }
-                if ((data[bitsRead >>> 3] & 0xff) >>> pad != 0) {
-                    return false; // nonzero padding is refused (SPEC §4.3)
-                }
-                bitsRead += 8 - pad;
-            }
+        bitsRead = alignRead(data, bitsRead, numBits);
+        if (bitsRead < 0) {
+            return -1;
         }
         if (bitsRead + value.sLength * 8L > numBits) {
-            return false;
+            return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
         bitsRead += value.sLength * 8;
@@ -2254,93 +1731,63 @@ public final class Clauses {
             } else if ((utf8Lead & 0xF8) == 0xF0) {
                 utf8Remaining = 3;
                 utf8Point = utf8Lead & 0x07;
-            } else return false; // malformed UTF-8 lead (SPEC §4.7)
-            if (utf8Remaining > value.sLength - utf8Index) return false;
+            } else return -1; // malformed UTF-8 lead (SPEC §4.7)
+            if (utf8Remaining > value.sLength - utf8Index) return -1;
             for (int utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
                 int utf8Byte = value.s[utf8Index++] & 0xFF;
-                if ((utf8Byte & 0xC0) != 0x80) return false;
+                if ((utf8Byte & 0xC0) != 0x80) return -1;
                 utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
             }
-            if (utf8Remaining == 1 && utf8Point < 0x80) return false;
+            if (utf8Remaining == 1 && utf8Point < 0x80) return -1;
             if (utf8Remaining == 2
                     && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF)))
-                return false;
-            if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+                return -1;
+            if (utf8Remaining == 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return -1;
         }
         for (int i0 = 0; i0 < value.sLength; i0++) {
             if (value.s[i0] == 0) {
-                return false; // an interior null is content the read refuses (SPEC §4.7)
+                return -1; // an interior null is content the read refuses (SPEC §4.7)
             }
         }
         if (bitsRead + 4 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
         bitsRead += 4;
         if (v > 8) {
-            return false; // the length guards the copy — reject, never clamp
+            return -1; // the length guards the copy — reject, never clamp
         }
         value.bLength = (int) v;
-        {
-            final int pad = bitsRead & 7;
-            if (pad != 0) {
-                if (bitsRead + (8 - pad) > numBits) {
-                    return false;
-                }
-                if ((data[bitsRead >>> 3] & 0xff) >>> pad != 0) {
-                    return false; // nonzero padding is refused (SPEC §4.3)
-                }
-                bitsRead += 8 - pad;
-            }
+        bitsRead = alignRead(data, bitsRead, numBits);
+        if (bitsRead < 0) {
+            return -1;
         }
         if (bitsRead + value.bLength * 8L > numBits) {
-            return false;
+            return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.b, 0, value.bLength);
         bitsRead += value.bLength * 8;
         if (bitsRead + 3 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
-        value.tail = (int) v;
-        return true;
+        value.tail = v;
+        return bitsRead;
     }
 
-    // measureStrs is the exact wire bits writeStrs would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureStrs(Strs value) {
-        int bits = 0;
-        bits += 9;
-        bits += (8 - (bits & 7)) & 7;
-        bits += value.sLength * 8;
-        bits += 4;
-        bits += (8 - (bits & 7)) & 7;
-        bits += value.bLength * 8;
-        bits += 3;
-        return bits;
+    // readStrs decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readStrs(Strs value, byte[] data, int numBits) {
+        return readStrsBits(value, data, 0, numBits) >= 0;
     }
 
     // type ArrNested
     public static final class ArrNested {
-        public int lead;
+        public long lead;
         public final Eleven[] items = new Eleven[4];
         public int itemsCount;
-        public int tail;
+        public long tail;
 
         // pre-allocated element instances — the storage principle (SPEC §6.1):
         // every buffer exists at construction
@@ -2351,10 +1798,10 @@ public final class Clauses {
         }
     }
 
-    // arrNestedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // arrNestedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int arrNestedMaxBits = 55;
-    public static final int arrNestedMaxBytes = 8;
+    // ARR_NESTED_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // ARR_NESTED_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int ARR_NESTED_MAX_BITS = 55;
+    public static final int ARR_NESTED_MAX_BYTES = 8;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -2377,194 +1824,111 @@ public final class Clauses {
         value.tail = 0;
     }
 
-    // checkWriteArrNested is writeArrNested's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteArrNested is the contract walk of writeArrNestedBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteArrNested(ArrNested value, byte[] data) {
+    private static boolean checkWriteArrNested(ArrNested value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= arrNestedMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + ARR_NESTED_MAX_BITS;
         assert value.itemsCount >= 0;
         assert value.itemsCount <= 4;
         return true;
     }
 
-    // writeArrNested packs value into data — the trusted writer (contracts in the
-    // checkWriteArrNested predicate, one dormant assert call without -ea). The buffer
-    // must hold arrNestedMaxBytes. Returns the bytes written.
-    public static int writeArrNested(ArrNested value, byte[] data) {
-        assert checkWriteArrNested(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.lead & 0x1fL;
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
-        v = (value.itemsCount) & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
+    // writeArrNestedBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteArrNested
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + ARR_NESTED_MAX_BITS.
+    public static int writeArrNestedBits(ArrNested value, byte[] data, int bitOffset) {
+        assert checkWriteArrNested(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.lead & 0x1fL, 5);
+        pos += 5;
+        scratch = putBits(data, pos, scratch, (value.itemsCount) & 0x7L, 3);
+        pos += 3;
+        flushBits(data, pos, scratch);
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            final Eleven e0 = value.items[i0];
-            v = e0.a & 0x7L;
-            scratch |= v << scratchBits;
-            scratchBits += 3;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (3 - scratchBits);
-            }
-            v = e0.b & 0xffL;
-            scratch |= v << scratchBits;
-            scratchBits += 8;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (8 - scratchBits);
-            }
+            pos = writeElevenBits(value.items[i0], data, pos);
         }
-        v = value.tail & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.tail & 0x7L, 3);
+        pos += 3;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readArrNested decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readArrNested(ArrNested value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeArrNested packs value into data from its start and returns the bytes written;
+    // data must hold ARR_NESTED_MAX_BYTES.
+    public static int writeArrNested(ArrNested value, byte[] data) {
+        return (writeArrNestedBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readArrNestedBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readArrNestedBits(ArrNested value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 5 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
-        value.lead = (int) v;
+        value.lead = v;
         if (bitsRead + 3 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         if (v > 4) {
-            return false; // the count guards the loop — reject, never clamp
+            return -1; // the count guards the loop — reject, never clamp
         }
         value.itemsCount = (int) v;
         if (bitsRead + value.itemsCount * 11L > numBits) {
-            return false;
+            return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
-            final Eleven e0 = value.items[i0];
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
+            bitsRead = readElevenBits(value.items[i0], data, bitsRead, numBits);
+            if (bitsRead < 0) {
+                return -1;
             }
-            v = (window >>> shift) & 0x7L;
-            bitsRead += 3;
-            e0.a = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffL;
-            bitsRead += 8;
-            e0.b = (int) v;
         }
         if (bitsRead + 3 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
-        value.tail = (int) v;
-        return true;
+        value.tail = v;
+        return bitsRead;
     }
 
-    // measureArrNested is the exact wire bits writeArrNested would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureArrNested(ArrNested value) {
-        int bits = 0;
-        bits += 8;
-        bits += value.itemsCount * 11;
-        bits += 3;
-        return bits;
+    // readArrNested decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readArrNested(ArrNested value, byte[] data, int numBits) {
+        return readArrNestedBits(value, data, 0, numBits) >= 0;
     }
 
     // type Sole
     public static final class Sole {
-        public int only;
+        public long only;
     }
 
-    // soleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // soleMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int soleMaxBits = 13;
-    public static final int soleMaxBytes = 8;
+    // SOLE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // SOLE_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int SOLE_MAX_BITS = 13;
+    public static final int SOLE_MAX_BYTES = 8;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -2577,82 +1941,64 @@ public final class Clauses {
         value.only = 0;
     }
 
-    // checkWriteSole is writeSole's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteSole is the contract walk of writeSoleBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteSole(Sole value, byte[] data) {
+    private static boolean checkWriteSole(Sole value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= soleMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + SOLE_MAX_BITS;
         return true;
     }
 
-    // writeSole packs value into data — the trusted writer (contracts in the
-    // checkWriteSole predicate, one dormant assert call without -ea). The buffer
-    // must hold soleMaxBytes. Returns the bytes written.
-    public static int writeSole(Sole value, byte[] data) {
-        assert checkWriteSole(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = value.only & 0x1fffL;
-        scratch |= v << scratchBits;
-        scratchBits += 13;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (13 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+    // writeSoleBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteSole
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + SOLE_MAX_BITS.
+    public static int writeSoleBits(Sole value, byte[] data, int bitOffset) {
+        assert checkWriteSole(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, value.only & 0x1fffL, 13);
+        pos += 13;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readSole decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readSole(Sole value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeSole packs value into data from its start and returns the bytes written;
+    // data must hold SOLE_MAX_BYTES.
+    public static int writeSole(Sole value, byte[] data) {
+        return (writeSoleBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readSoleBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readSoleBits(Sole value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
         if (bitsRead + 13 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffL;
         bitsRead += 13;
-        value.only = (int) v;
-        return true;
+        value.only = v;
+        return bitsRead;
     }
 
-    // measureSole is the exact wire bits writeSole would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureSole(Sole value) {
-        return 13;
+    // readSole decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readSole(Sole value, byte[] data, int numBits) {
+        return readSoleBits(value, data, 0, numBits) >= 0;
     }
 }
