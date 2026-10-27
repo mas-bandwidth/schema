@@ -401,18 +401,15 @@ jobs:
       # make/rust.mk is a homebrew keg that does not exist here, and prepending a
       # directory that is not there costs nothing and resolves the image's cargo.
       #
-      # THE ../serialize.rs CHECKOUT IS THIS STEP'S OWN. Every probe crate depends
-      # on `serialize-official` by path, and the job's checkout block above clones
-      # the C, C++, C# and Go runtimes only — so the clone lives here, beside the
-      # one target that needs it, under the same pinned tag the rest of this file
-      # uses. Without it the suite fails by name on the missing sibling rather
-      # than skipping, which is the behaviour this whole gate is for.
+      # THE ../serialize.rs CHECKOUT comes from the job's checkout block above,
+      # at the same pinned tag the rest of this file uses (it moved there when
+      # unit-rest's compiler.TestRustEverySchemaNameIsReachable needed it too).
+      # Every probe crate depends on `serialize-official` by path; without it the
+      # suite fails by name on the missing sibling rather than skipping, which is
+      # the behaviour this whole gate is for.
       - name: the fixed form's versioning suite on the Rust leg
         if: matrix.group == 'versioning'
-        run: |
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
-            https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
-          make tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")"
+        run: make tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
       # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
       # it is here rather than in a Java job for the reason the Go step above is:
