@@ -1815,7 +1815,7 @@ union Value
   | go | `EnumNameWeaponFireType(uint64)` |
   | java | `enumNameWeaponFireType(long)` |
   | js | `EnumNameWeaponFireType(value)` |
-  | rust | `enum_name_weapon_fire_type` |
+  | rust | `enum_name_weapon_fire_type`; `as_str()` and `Display` too |
 
 - **A TABLE-CLOSURE union's tag shape carries the same surface.** It is a
   different emitter, written beside the tables rather than among the packet
@@ -2861,6 +2861,15 @@ is spelled `SCHEMA_WRITE_INLINE`/`SCHEMA_READ_INLINE`, an unconditional
 always-inline demand (plain `inline` where a compiler has no spelling for
 it), because a fallible read chain otherwise decays below the inliner's
 cold-callsite threshold.
+
+"Sequential field operations" is the C and C++ shape, not every port's.
+Rust, Go, C#, Dart, Elixir, Java and the JavaScript flat form fold each
+maximal run of fixed-width fields into whole words at generation time:
+values are packed with literal shifts and masks and handed over a word at a
+time, and a read unpacks them the same way behind one bounds check per word.
+The wire is bit-identical to the per-field form; the source shows packed
+words instead of one call per field, and Rust names each word's field bit
+spans in a comment beside it.
 
 What this buys: generated source stays small and reviewable, count ranges
 need no cap, and the backends stay simple enough to verify against each

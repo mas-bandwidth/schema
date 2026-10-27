@@ -10,27 +10,15 @@ use serialize::{ReadStream, Stream, WriteStream};
 pub const RENDER_BLOCK_MAX_SPRITES: i64 = 64;
 
 // type RenderSprite
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct RenderSprite {
     pub sort_key: u64,
     pub mesh_id: u32,
     pub material_id: u32,
     pub layer: u8,
     pub team: Team,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for RenderSprite {
-    fn default() -> Self {
-        RenderSprite {
-            sort_key: 0,
-            mesh_id: 0,
-            material_id: 0,
-            layer: 0,
-            team: Team::NONE,
-        }
-    }
 }
 
 // RENDER_SPRITE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -46,30 +34,35 @@ pub fn write_render_sprite(stream: &mut WriteStream<'_>, value: &RenderSprite) -
     let f2: u64 = u64::from(value.material_id);
     let f3: u64 = u64::from(value.layer);
     let f4: u64 = u64::from(value.team.0);
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = f2 as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = (f3 | (f4 << 8)) as u32;
-    stream.serialize_bits(&mut w4, 10)?;
+    // word 0, 32 bits: sort_key[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: sort_key[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: mesh_id[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 32 bits: material_id[0..32]
+    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    // word 4, 10 bits: layer[0..8], team[0..2]
+    stream.serialize_bits(&mut ((f3 | (f4 << 8)) as u32), 10)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_render_sprite(stream: &mut ReadStream<'_>, value: &mut RenderSprite) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: sort_key[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: sort_key[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: mesh_id[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: material_id[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 10 bits: layer[0..8], team[0..2]
     stream.serialize_bits(&mut c, 10)?;
     let c4 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -90,7 +83,7 @@ pub fn read_render_sprite(stream: &mut ReadStream<'_>, value: &mut RenderSprite)
 
 // type RenderBlock
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct RenderBlock {
     pub worker_index: u32,
     pub sprite_count_hint: u32,
@@ -119,10 +112,10 @@ pub const RENDER_BLOCK_MAX_BYTES: usize = 1120;
 pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> Result {
     let f0: u64 = u64::from(value.worker_index);
     let f1: u64 = u64::from(value.sprite_count_hint);
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = f1 as u32;
-    stream.serialize_bits(&mut w1, 32)?;
+    // word 0, 32 bits: worker_index[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: sprite_count_hint[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
     debug_assert!(value.sprites_count >= 0 && value.sprites_count <= 64, "sprites_count out of range [0, 64]");
     {
         let mut offset_value = value.sprites_count as u32;
@@ -137,8 +130,10 @@ pub fn write_render_block(stream: &mut WriteStream<'_>, value: &RenderBlock) -> 
 #[inline]
 pub fn read_render_block(stream: &mut ReadStream<'_>, value: &mut RenderBlock) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: worker_index[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: sprite_count_hint[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;

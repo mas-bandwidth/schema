@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -374,6 +375,38 @@ func fieldDefault(f *ir.Field) string {
 	return scalarDefault(f)
 }
 
+// zeroLiteral matches a numeric zero in any of fieldDefault's spellings
+// (`0`, `0i32`, `0u64`, `0.0f32`, `0.0`).
+var zeroLiteral = regexp.MustCompile(`^0(\.0)?_?([iu](8|16|32|64|128|size)|f32|f64)?$`)
+
+// defaultIsDerived reports whether a field's declared default (fieldDefault)
+// is the value its type's own Default produces, so a derive can stand in for
+// the hand-written impl. Table enums and unions derive Default as None
+// (emitVariableEnums, the union emitters), and a nested table's Default is
+// its own.
+func defaultIsDerived(f *ir.Field) bool {
+	d := fieldDefault(f)
+	switch d {
+	case "None", "String::new()", "Vec::new()", "false":
+		return true
+	}
+	if zeroLiteral.MatchString(d) {
+		return true
+	}
+	if f.Type.Optional || f.KeyEnum != "" || f.Array != ir.ArrayNone {
+		return false
+	}
+	switch classOf(f) {
+	case vTable:
+		return d == f.Type.Name+"::default()"
+	case vEnum:
+		return d == f.Type.Name+"::None"
+	case vUnion:
+		return d == f.Type.Ref.(*ir.Union).Name+"::None"
+	}
+	return false
+}
+
 func (g *gen) collectVariableEnums(names []string) []*ir.Enum {
 	seen := map[string]bool{}
 	var out []*ir.Enum
@@ -428,14 +461,29 @@ func (g *gen) emitVariableEnums(b *strings.Builder, names []string) {
 // emitVariableStruct emits one table's storage struct and its Default, which
 // is the DECLARED defaults (SPEC §5) — the value a fresh table holds, an absent
 // field reads, and the writer elides against (docs/SPEC-TABLES.md §3).
+//
+// When every declared default is its type's own Default, the impl is derived
+// rather than hand-written: the two are the same value, and clippy's
+// derivable_impls says so.
 func (g *gen) emitVariableStruct(b *strings.Builder, st *ir.Struct) {
+	derived := true
+	for _, f := range st.Fields {
+		derived = derived && defaultIsDerived(f)
+	}
 	fmt.Fprintf(b, "/// %s — a variable-table storage struct (docs/SPEC-TABLES.md §3).\n", st.Name)
-	fmt.Fprintf(b, "#[derive(Clone, Debug)]\n")
+	if derived {
+		fmt.Fprintf(b, "#[derive(Clone, Debug, Default)]\n")
+	} else {
+		fmt.Fprintf(b, "#[derive(Clone, Debug)]\n")
+	}
 	fmt.Fprintf(b, "pub struct %s {\n", st.Name)
 	for _, f := range st.Fields {
 		fmt.Fprintf(b, "    pub %s: %s,\n", ir.RustSnake(f.Name), variableFieldType(f))
 	}
 	b.WriteString("}\n\n")
+	if derived {
+		return
+	}
 	fmt.Fprintf(b, "impl Default for %s {\n", st.Name)
 	fmt.Fprintf(b, "    fn default() -> Self {\n")
 	fmt.Fprintf(b, "        %s {\n", st.Name)

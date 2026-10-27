@@ -35,8 +35,9 @@ impl From<core::convert::Infallible> for Error {
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 // type BenchPacket
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct BenchPacket {
     pub a: i32, // wire [-100, 100]
     pub b: i32, // wire [0, 65535]
@@ -50,26 +51,6 @@ pub struct BenchPacket {
     pub z: f32,
     pub big: u64,
     pub blob: [u8; 17],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for BenchPacket {
-    fn default() -> Self {
-        BenchPacket {
-            a: 0,
-            b: 0,
-            c: 0,
-            bits7: 0,
-            bits13: 0,
-            bits23: 0,
-            flag: false,
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            big: 0,
-            blob: [0; 17],
-        }
-    }
 }
 
 // BENCH_PACKET_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -96,22 +77,22 @@ pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> 
     let f8: u64 = u64::from(value.y.to_bits());
     let f9: u64 = u64::from(value.z.to_bits());
     let f10: u64 = value.big;
-    let mut w0 = (f0 | (f1 << 8) | (f2 << 24)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 8) | (f3 << 13) | (f4 << 20)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f4 >> 12) | (f5 << 1) | (f6 << 24) | (f7 << 25)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f7 >> 7) | (f8 << 25)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f8 >> 7) | (f9 << 25)) as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = ((f9 >> 7) | (f10 << 25)) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = (f10 >> 7) as u32;
-    stream.serialize_bits(&mut w6, 32)?;
-    let mut w7 = (f10 >> 39) as u32;
-    stream.serialize_bits(&mut w7, 25)?;
+    // word 0, 32 bits: a[0..8], b[0..16], c[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 24)) as u32), 32)?;
+    // word 1, 32 bits: c[8..21], bits7[0..7], bits13[0..12]
+    stream.serialize_bits(&mut (((f2 >> 8) | (f3 << 13) | (f4 << 20)) as u32), 32)?;
+    // word 2, 32 bits: bits13[12..13], bits23[0..23], flag[0..1], x[0..7]
+    stream.serialize_bits(&mut (((f4 >> 12) | (f5 << 1) | (f6 << 24) | (f7 << 25)) as u32), 32)?;
+    // word 3, 32 bits: x[7..32], y[0..7]
+    stream.serialize_bits(&mut (((f7 >> 7) | (f8 << 25)) as u32), 32)?;
+    // word 4, 32 bits: y[7..32], z[0..7]
+    stream.serialize_bits(&mut (((f8 >> 7) | (f9 << 25)) as u32), 32)?;
+    // word 5, 32 bits: z[7..32], big[0..7]
+    stream.serialize_bits(&mut (((f9 >> 7) | (f10 << 25)) as u32), 32)?;
+    // word 6, 32 bits: big[7..39]
+    stream.serialize_bits(&mut ((f10 >> 7) as u32), 32)?;
+    // word 7, 25 bits: big[39..64]
+    stream.serialize_bits(&mut ((f10 >> 39) as u32), 25)?;
     stream.serialize_align()?;
     stream.write_bytes(&value.blob); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
@@ -120,20 +101,28 @@ pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> 
 #[inline]
 pub fn read_bench_packet(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: a[0..8], b[0..16], c[0..8]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: c[8..21], bits7[0..7], bits13[0..12]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: bits13[12..13], bits23[0..23], flag[0..1], x[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: x[7..32], y[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: y[7..32], z[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: z[7..32], big[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 32 bits: big[7..39]
     stream.serialize_bits(&mut c, 32)?;
     let c6 = u64::from(c);
+    // word 7, 25 bits: big[39..64]
     stream.serialize_bits(&mut c, 25)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 & 0xff;
@@ -170,8 +159,9 @@ pub fn read_bench_packet(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -
 }
 
 // type BenchInts
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct BenchInts {
     pub f0: i32, // wire [-100, 100]
     pub f1: i32, // wire [0, 65535]
@@ -183,24 +173,6 @@ pub struct BenchInts {
     pub f7: i32, // wire [0, 255]
     pub f8: i32, // wire [-600000, 600000]
     pub f9: i32, // wire [0, 100]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for BenchInts {
-    fn default() -> Self {
-        BenchInts {
-            f0: 0,
-            f1: 0,
-            f2: 0,
-            f3: 0,
-            f4: 0,
-            f5: 0,
-            f6: 0,
-            f7: 0,
-            f8: 0,
-            f9: 0,
-        }
-    }
 }
 
 // BENCH_INTS_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -230,26 +202,30 @@ pub fn write_bench_ints(stream: &mut WriteStream<'_>, value: &BenchInts) -> Resu
     let f7: u64 = u64::from(value.f7 as u32);
     let f8: u64 = u64::from((value.f8 as u32).wrapping_sub((-600000_i32) as u32));
     let f9: u64 = u64::from(value.f9 as u32);
-    let mut w0 = (f0 | (f1 << 8) | (f2 << 24)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 8) | (f3 << 13) | (f4 << 15) | (f5 << 20) | (f6 << 30)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f6 >> 2) | (f7 << 10) | (f8 << 18)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f8 >> 14) | (f9 << 7)) as u32;
-    stream.serialize_bits(&mut w3, 14)?;
+    // word 0, 32 bits: f0[0..8], f1[0..16], f2[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 24)) as u32), 32)?;
+    // word 1, 32 bits: f2[8..21], f3[0..2], f4[0..5], f5[0..10], f6[0..2]
+    stream.serialize_bits(&mut (((f2 >> 8) | (f3 << 13) | (f4 << 15) | (f5 << 20) | (f6 << 30)) as u32), 32)?;
+    // word 2, 32 bits: f6[2..12], f7[0..8], f8[0..14]
+    stream.serialize_bits(&mut (((f6 >> 2) | (f7 << 10) | (f8 << 18)) as u32), 32)?;
+    // word 3, 14 bits: f8[14..21], f9[0..7]
+    stream.serialize_bits(&mut (((f8 >> 14) | (f9 << 7)) as u32), 14)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_bench_ints(stream: &mut ReadStream<'_>, value: &mut BenchInts) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: f0[0..8], f1[0..16], f2[0..8]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f2[8..21], f3[0..2], f4[0..5], f5[0..10], f6[0..2]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: f6[2..12], f7[0..8], f8[0..14]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 14 bits: f8[14..21], f9[0..7]
     stream.serialize_bits(&mut c, 14)?;
     let c3 = u64::from(c);
     let v0: u64 = c0 & 0xff;
@@ -294,8 +270,9 @@ pub fn read_bench_ints(stream: &mut ReadStream<'_>, value: &mut BenchInts) -> Re
 }
 
 // type BenchBits
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct BenchBits {
     pub b7: u32,
     pub b13: u32,
@@ -305,22 +282,6 @@ pub struct BenchBits {
     pub b11: u32,
     pub b19: u32,
     pub b48: u64,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for BenchBits {
-    fn default() -> Self {
-        BenchBits {
-            b7: 0,
-            b13: 0,
-            b23: 0,
-            b3: 0,
-            b32: 0,
-            b11: 0,
-            b19: 0,
-            b48: 0,
-        }
-    }
 }
 
 // BENCH_BITS_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -345,30 +306,35 @@ pub fn write_bench_bits(stream: &mut WriteStream<'_>, value: &BenchBits) -> Resu
     let f5: u64 = u64::from(value.b11);
     let f6: u64 = u64::from(value.b19);
     let f7: u64 = value.b48;
-    let mut w0 = (f0 | (f1 << 7) | (f2 << 20)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 12) | (f3 << 11) | (f4 << 14)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f4 >> 18) | (f5 << 14) | (f6 << 25)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f6 >> 7) | (f7 << 12)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = (f7 >> 20) as u32;
-    stream.serialize_bits(&mut w4, 28)?;
+    // word 0, 32 bits: b7[0..7], b13[0..13], b23[0..12]
+    stream.serialize_bits(&mut ((f0 | (f1 << 7) | (f2 << 20)) as u32), 32)?;
+    // word 1, 32 bits: b23[12..23], b3[0..3], b32[0..18]
+    stream.serialize_bits(&mut (((f2 >> 12) | (f3 << 11) | (f4 << 14)) as u32), 32)?;
+    // word 2, 32 bits: b32[18..32], b11[0..11], b19[0..7]
+    stream.serialize_bits(&mut (((f4 >> 18) | (f5 << 14) | (f6 << 25)) as u32), 32)?;
+    // word 3, 32 bits: b19[7..19], b48[0..20]
+    stream.serialize_bits(&mut (((f6 >> 7) | (f7 << 12)) as u32), 32)?;
+    // word 4, 28 bits: b48[20..48]
+    stream.serialize_bits(&mut ((f7 >> 20) as u32), 28)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_bench_bits(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: b7[0..7], b13[0..13], b23[0..12]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: b23[12..23], b3[0..3], b32[0..18]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: b32[18..32], b11[0..11], b19[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: b19[7..19], b48[0..20]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 28 bits: b48[20..48]
     stream.serialize_bits(&mut c, 28)?;
     let c4 = u64::from(c);
     let v0: u64 = c0 & 0x7f;
@@ -393,7 +359,7 @@ pub fn read_bench_bits(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Re
 // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MixedWeapon(pub u8);
 
 impl MixedWeapon {
@@ -415,6 +381,17 @@ impl MixedWeapon {
     pub const REPAIR: MixedWeapon = MixedWeapon(15);
     pub const COUNT: MixedWeapon = MixedWeapon(15); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedWeapon = MixedWeapon(15); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_mixed_weapon(self)
+    }
+}
+
+impl core::fmt::Display for MixedWeapon {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `MixedWeapon` value, out-of-set included.
@@ -534,8 +511,9 @@ pub fn flag_names_mixed_damage(value: MixedDamage) -> String {
 }
 
 // type MixedEntity
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MixedEntity {
     pub entity_id: u32,
     pub pos_x: i32, // wire [-16383, 16383]
@@ -551,28 +529,6 @@ pub struct MixedEntity {
     pub damage: MixedDamage,
     pub moving: bool,
     pub firing: bool,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for MixedEntity {
-    fn default() -> Self {
-        MixedEntity {
-            entity_id: 0,
-            pos_x: 0,
-            pos_y: 0,
-            pos_z: 0,
-            yaw: 0,
-            pitch: 0,
-            vel_x: 0,
-            vel_y: 0,
-            vel_z: 0,
-            health: 0,
-            weapon: MixedWeapon::NONE,
-            damage: 0,
-            moving: false,
-            firing: false,
-        }
-    }
 }
 
 // MIXED_ENTITY_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -608,30 +564,35 @@ pub fn write_mixed_entity(stream: &mut WriteStream<'_>, value: &MixedEntity) -> 
     let f11: u64 = value.damage;
     let f12: u64 = u64::from(value.moving);
     let f13: u64 = u64::from(value.firing);
-    let mut w0 = (f0 | (f1 << 12) | (f2 << 27)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 5) | (f3 << 10) | (f4 << 25)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f4 >> 7) | (f5 << 2) | (f6 << 11) | (f7 << 23)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f7 >> 9) | (f8 << 3) | (f9 << 15) | (f10 << 25) | (f11 << 29)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f11 >> 3) | (f12 << 5) | (f13 << 6)) as u32;
-    stream.serialize_bits(&mut w4, 7)?;
+    // word 0, 32 bits: entity_id[0..12], pos_x[0..15], pos_y[0..5]
+    stream.serialize_bits(&mut ((f0 | (f1 << 12) | (f2 << 27)) as u32), 32)?;
+    // word 1, 32 bits: pos_y[5..15], pos_z[0..15], yaw[0..7]
+    stream.serialize_bits(&mut (((f2 >> 5) | (f3 << 10) | (f4 << 25)) as u32), 32)?;
+    // word 2, 32 bits: yaw[7..9], pitch[0..9], vel_x[0..12], vel_y[0..9]
+    stream.serialize_bits(&mut (((f4 >> 7) | (f5 << 2) | (f6 << 11) | (f7 << 23)) as u32), 32)?;
+    // word 3, 32 bits: vel_y[9..12], vel_z[0..12], health[0..10], weapon[0..4], damage[0..3]
+    stream.serialize_bits(&mut (((f7 >> 9) | (f8 << 3) | (f9 << 15) | (f10 << 25) | (f11 << 29)) as u32), 32)?;
+    // word 4, 7 bits: damage[3..8], moving[0..1], firing[0..1]
+    stream.serialize_bits(&mut (((f11 >> 3) | (f12 << 5) | (f13 << 6)) as u32), 7)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_mixed_entity(stream: &mut ReadStream<'_>, value: &mut MixedEntity) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: entity_id[0..12], pos_x[0..15], pos_y[0..5]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: pos_y[5..15], pos_z[0..15], yaw[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: yaw[7..9], pitch[0..9], vel_x[0..12], vel_y[0..9]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: vel_y[9..12], vel_z[0..12], health[0..10], weapon[0..4], damage[0..3]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 7 bits: damage[3..8], moving[0..1], firing[0..1]
     stream.serialize_bits(&mut c, 7)?;
     let c4 = u64::from(c);
     let v0: u64 = c0 & 0xfff;
@@ -678,21 +639,12 @@ pub fn read_mixed_entity(stream: &mut ReadStream<'_>, value: &mut MixedEntity) -
 }
 
 // type MixedStat
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MixedStat {
     pub stat_id: u32,
     pub delta: i32, // wire [-512, 511]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for MixedStat {
-    fn default() -> Self {
-        MixedStat {
-            stat_id: 0,
-            delta: 0,
-        }
-    }
 }
 
 // MIXED_STAT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -706,14 +658,15 @@ pub fn write_mixed_stat(stream: &mut WriteStream<'_>, value: &MixedStat) -> Resu
     debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
     let f0: u64 = u64::from(value.stat_id);
     let f1: u64 = u64::from((value.delta as u32).wrapping_sub((-512_i32) as u32));
-    let mut w0 = (f0 | (f1 << 8)) as u32;
-    stream.serialize_bits(&mut w0, 18)?;
+    // word 0, 18 bits: stat_id[0..8], delta[0..10]
+    stream.serialize_bits(&mut ((f0 | (f1 << 8)) as u32), 18)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_mixed_stat(stream: &mut ReadStream<'_>, value: &mut MixedStat) -> Result {
     let mut c: u32 = 0;
+    // word 0, 18 bits: stat_id[0..8], delta[0..10]
     stream.serialize_bits(&mut c, 18)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0xff;
@@ -724,25 +677,14 @@ pub fn read_mixed_stat(stream: &mut ReadStream<'_>, value: &mut MixedStat) -> Re
 }
 
 // type MixedHitEvent
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MixedHitEvent {
     pub target_id: u32,
     pub damage: i32, // wire [0, 4095]
     pub hit_kind: i32, // wire [0, 7]
     pub crit: bool,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for MixedHitEvent {
-    fn default() -> Self {
-        MixedHitEvent {
-            target_id: 0,
-            damage: 0,
-            hit_kind: 0,
-            crit: false,
-        }
-    }
 }
 
 // MIXED_HIT_EVENT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -759,14 +701,15 @@ pub fn write_mixed_hit_event(stream: &mut WriteStream<'_>, value: &MixedHitEvent
     let f1: u64 = u64::from(value.damage as u32);
     let f2: u64 = u64::from(value.hit_kind as u32);
     let f3: u64 = u64::from(value.crit);
-    let mut w0 = (f0 | (f1 << 12) | (f2 << 24) | (f3 << 27)) as u32;
-    stream.serialize_bits(&mut w0, 28)?;
+    // word 0, 28 bits: target_id[0..12], damage[0..12], hit_kind[0..3], crit[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 12) | (f2 << 24) | (f3 << 27)) as u32), 28)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_mixed_hit_event(stream: &mut ReadStream<'_>, value: &mut MixedHitEvent) -> Result {
     let mut c: u32 = 0;
+    // word 0, 28 bits: target_id[0..12], damage[0..12], hit_kind[0..3], crit[0..1]
     stream.serialize_bits(&mut c, 28)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0xfff;
@@ -781,21 +724,12 @@ pub fn read_mixed_hit_event(stream: &mut ReadStream<'_>, value: &mut MixedHitEve
 }
 
 // type MixedChatEvent
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MixedChatEvent {
     pub channel: i32, // wire [0, 3]
     pub speaker: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for MixedChatEvent {
-    fn default() -> Self {
-        MixedChatEvent {
-            channel: 0,
-            speaker: 0,
-        }
-    }
 }
 
 // MIXED_CHAT_EVENT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -809,14 +743,15 @@ pub fn write_mixed_chat_event(stream: &mut WriteStream<'_>, value: &MixedChatEve
     debug_assert!(value.speaker < 1 << 12, "speaker above the bits(12) wire width");
     let f0: u64 = u64::from(value.channel as u32);
     let f1: u64 = u64::from(value.speaker);
-    let mut w0 = (f0 | (f1 << 2)) as u32;
-    stream.serialize_bits(&mut w0, 14)?;
+    // word 0, 14 bits: channel[0..2], speaker[0..12]
+    stream.serialize_bits(&mut ((f0 | (f1 << 2)) as u32), 14)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_mixed_chat_event(stream: &mut ReadStream<'_>, value: &mut MixedChatEvent) -> Result {
     let mut c: u32 = 0;
+    // word 0, 14 bits: channel[0..2], speaker[0..12]
     stream.serialize_bits(&mut c, 14)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x3;
@@ -827,21 +762,12 @@ pub fn read_mixed_chat_event(stream: &mut ReadStream<'_>, value: &mut MixedChatE
 }
 
 // type MixedPickupEvent
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MixedPickupEvent {
     pub item_id: u32,
     pub amount: i32, // wire [0, 255]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for MixedPickupEvent {
-    fn default() -> Self {
-        MixedPickupEvent {
-            item_id: 0,
-            amount: 0,
-        }
-    }
 }
 
 // MIXED_PICKUP_EVENT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -855,14 +781,15 @@ pub fn write_mixed_pickup_event(stream: &mut WriteStream<'_>, value: &MixedPicku
     debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
     let f0: u64 = u64::from(value.item_id);
     let f1: u64 = u64::from(value.amount as u32);
-    let mut w0 = (f0 | (f1 << 10)) as u32;
-    stream.serialize_bits(&mut w0, 18)?;
+    // word 0, 18 bits: item_id[0..10], amount[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 10)) as u32), 18)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_mixed_pickup_event(stream: &mut ReadStream<'_>, value: &mut MixedPickupEvent) -> Result {
     let mut c: u32 = 0;
+    // word 0, 18 bits: item_id[0..10], amount[0..8]
     stream.serialize_bits(&mut c, 18)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x3ff;
@@ -874,7 +801,7 @@ pub fn read_mixed_pickup_event(stream: &mut ReadStream<'_>, value: &mut MixedPic
 
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MixedEventType(pub u8);
 
 impl MixedEventType {
@@ -884,6 +811,17 @@ impl MixedEventType {
     pub const PICKUP: MixedEventType = MixedEventType(3);
     pub const COUNT: MixedEventType = MixedEventType(3); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedEventType = MixedEventType(3); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_mixed_event_type(self)
+    }
+}
+
+impl core::fmt::Display for MixedEventType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `MixedEventType` value, out-of-set included.
@@ -900,7 +838,7 @@ pub fn enum_name_mixed_event_type(value: MixedEventType) -> &'static str {
 // MixedEvent — at most one of the arms. The default is None (the empty union);
 // every read reconstructs the selected payload with its declared initial
 // values, even at the same tag, and replaces the whole value on success.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum MixedEvent {
     #[default]
     None,
@@ -1044,10 +982,11 @@ impl BenchMixed {
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = BenchMixed::default();
-        value.entities_count = 1;
-        value.has_extra = true;
-        value
+        BenchMixed {
+            entities_count: 1,
+            has_extra: true,
+            ..BenchMixed::default()
+        }
     }
 }
 
@@ -1067,32 +1006,32 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     let f4: u64 = value.session_id;
     let f5: u64 = u64::from(value.client_id);
     let f6: u64 = value.nonce;
-    let mut w0 = (f0 | (f1 << 16)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f2 | (f3 << 16)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f3 >> 16) | (f4 << 16)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f4 >> 16) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f4 >> 48) | (f5 << 16)) as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = ((f5 >> 16) | (f6 << 16)) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = (f6 >> 16) as u32;
-    stream.serialize_bits(&mut w6, 32)?;
-    let mut w7 = (f6 >> 48) as u32;
-    stream.serialize_bits(&mut w7, 16)?;
+    // word 0, 32 bits: const(49374)[0..16], sequence[0..16]
+    stream.serialize_bits(&mut ((f0 | (f1 << 16)) as u32), 32)?;
+    // word 1, 32 bits: ack_sequence[0..16], ack_bits[0..16]
+    stream.serialize_bits(&mut ((f2 | (f3 << 16)) as u32), 32)?;
+    // word 2, 32 bits: ack_bits[16..32], session_id[0..16]
+    stream.serialize_bits(&mut (((f3 >> 16) | (f4 << 16)) as u32), 32)?;
+    // word 3, 32 bits: session_id[16..48]
+    stream.serialize_bits(&mut ((f4 >> 16) as u32), 32)?;
+    // word 4, 32 bits: session_id[48..64], client_id[0..16]
+    stream.serialize_bits(&mut (((f4 >> 48) | (f5 << 16)) as u32), 32)?;
+    // word 5, 32 bits: client_id[16..32], nonce[0..16]
+    stream.serialize_bits(&mut (((f5 >> 16) | (f6 << 16)) as u32), 32)?;
+    // word 6, 32 bits: nonce[16..48]
+    stream.serialize_bits(&mut ((f6 >> 16) as u32), 32)?;
+    // word 7, 16 bits: nonce[48..64]
+    stream.serialize_bits(&mut ((f6 >> 48) as u32), 16)?;
     debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
     debug_assert!(value.frame_tick < 1 << 48, "frame_tick above the bits(48) wire width");
     let f0: u64 = (value.world_time as u64).wrapping_sub((-1000000000000_i64) as u64);
     let f1: u64 = value.frame_tick;
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f0 >> 32) | (f1 << 9)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f1 >> 23) as u32;
-    stream.serialize_bits(&mut w2, 25)?;
+    // word 0, 32 bits: world_time[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: world_time[32..41], frame_tick[0..23]
+    stream.serialize_bits(&mut (((f0 >> 32) | (f1 << 9)) as u32), 32)?;
+    // word 2, 25 bits: frame_tick[23..48]
+    stream.serialize_bits(&mut ((f1 >> 23) as u32), 25)?;
     debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
     {
         let mut fixed_value = value.server_time;
@@ -1147,12 +1086,12 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     }
     let f0: u64 = u64::from(value.recoil.to_bits());
     let f1: u64 = value.drift.to_bits();
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = f1 as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
+    // word 0, 32 bits: recoil[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: drift[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 2, 32 bits: drift[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
     {
         let mut raw_value = value.wide_key;
         stream.serialize_u128(&mut raw_value)?;
@@ -1179,30 +1118,38 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     let f1: u64 = u64::from(value.has_extra);
     let f2: u64 = u64::from(value.extra as u32);
     let f3: u64 = u64::from(value.idle_ticks as u32);
-    let mut w0 = (f0 | (f1 << 24) | (f2 << 25)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 7) | (f3 << 1)) as u32;
-    stream.serialize_bits(&mut w1, 5)?;
+    // word 0, 32 bits: crc_hint[0..24], has_extra[0..1], extra[0..7]
+    stream.serialize_bits(&mut ((f0 | (f1 << 24) | (f2 << 25)) as u32), 32)?;
+    // word 1, 5 bits: extra[7..8], idle_ticks[0..4]
+    stream.serialize_bits(&mut (((f2 >> 7) | (f3 << 1)) as u32), 5)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: const(49374)[0..16], sequence[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: ack_sequence[0..16], ack_bits[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: ack_bits[16..32], session_id[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: session_id[16..48]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: session_id[48..64], client_id[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: client_id[16..32], nonce[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 32 bits: nonce[16..48]
     stream.serialize_bits(&mut c, 32)?;
     let c6 = u64::from(c);
+    // word 7, 16 bits: nonce[48..64]
     stream.serialize_bits(&mut c, 16)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 & 0xffff;
@@ -1223,10 +1170,13 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     let v6: u64 = (c5 >> 16) | (c6 << 16) | (c7 << 48);
     value.nonce = v6;
     let mut c: u32 = 0;
+    // word 0, 32 bits: world_time[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: world_time[32..41], frame_tick[0..23]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 25 bits: frame_tick[23..48]
     stream.serialize_bits(&mut c, 25)?;
     let c2 = u64::from(c);
     let v0: u64 = (c0 | (c1 << 32)) & 0x1ffffffffff;
@@ -1269,10 +1219,13 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     stream.serialize_compressed_float_precomputed(&mut value.aim_y, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     stream.serialize_compressed_float_precomputed(&mut value.aim_z, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 32 bits: recoil[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: drift[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: drift[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
@@ -1292,8 +1245,10 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     }
     stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
     let mut c: u32 = 0;
+    // word 0, 32 bits: crc_hint[0..24], has_extra[0..1], extra[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 5 bits: extra[7..8], idle_ticks[0..4]
     stream.serialize_bits(&mut c, 5)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0xffffff;

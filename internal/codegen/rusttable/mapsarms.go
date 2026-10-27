@@ -66,9 +66,9 @@ func (g *gen) walkFieldUnions(f *ir.Field, walk func(*ir.Union)) {
 
 func (g *gen) emitOneUnion(b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "/// %s — a union on the variable wire (docs/SPEC-TABLES.md §2.6, §3).\n", un.Name)
-	fmt.Fprintf(b, "#[derive(Clone, Debug)]\n")
+	fmt.Fprintf(b, "#[derive(Clone, Debug, Default)]\n")
 	fmt.Fprintf(b, "pub enum %s {\n", un.Name)
-	fmt.Fprintf(b, "    None,\n")
+	fmt.Fprintf(b, "    #[default]\n    None,\n")
 	for _, v := range un.Variants {
 		if v.Void() {
 			fmt.Fprintf(b, "    %s,\n", rustVariant(v.Name))
@@ -77,7 +77,6 @@ func (g *gen) emitOneUnion(b *strings.Builder, un *ir.Union) {
 		fmt.Fprintf(b, "    %s(%s),\n", rustVariant(v.Name), variableFieldType(v.F))
 	}
 	b.WriteString("}\n\n")
-	fmt.Fprintf(b, "impl Default for %s {\n    fn default() -> Self { %s::None }\n}\n\n", un.Name, un.Name)
 }
 
 // structHoldsUnion reports a table whose storage names a union, so the union

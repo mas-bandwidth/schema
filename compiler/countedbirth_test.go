@@ -66,7 +66,7 @@ var bornAtMinimum = map[string]string{
 	"go":     "value.WindowCount = 2",
 	"java":   "public int windowCount = 2;",
 	"js":     "this.WindowCount = 2;",
-	"rust":   "value.window_count = 2;",
+	"rust":   "window_count: 2,",
 }
 
 // refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the

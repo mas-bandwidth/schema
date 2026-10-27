@@ -41,23 +41,14 @@ pub enum MixedWeapon {
 }
 
 /// MixedChatEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedChatEvent {
     pub channel: i32,
     pub speaker: u16,
 }
 
-impl Default for MixedChatEvent {
-    fn default() -> Self {
-        MixedChatEvent {
-            channel: 0i32,
-            speaker: 0u16,
-        }
-    }
-}
-
 /// MixedEntity — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedEntity {
     pub entity_id: u16,
     pub pos_x: i32,
@@ -75,29 +66,8 @@ pub struct MixedEntity {
     pub firing: bool,
 }
 
-impl Default for MixedEntity {
-    fn default() -> Self {
-        MixedEntity {
-            entity_id: 0u16,
-            pos_x: 0i32,
-            pos_y: 0i32,
-            pos_z: 0i32,
-            yaw: 0u16,
-            pitch: 0u16,
-            vel_x: 0i32,
-            vel_y: 0i32,
-            vel_z: 0i32,
-            health: 0i32,
-            weapon: MixedWeapon::None,
-            damage: 0u64,
-            moving: false,
-            firing: false,
-        }
-    }
-}
-
 /// MixedHitEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedHitEvent {
     pub target_id: u16,
     pub damage: i32,
@@ -105,47 +75,18 @@ pub struct MixedHitEvent {
     pub crit: bool,
 }
 
-impl Default for MixedHitEvent {
-    fn default() -> Self {
-        MixedHitEvent {
-            target_id: 0u16,
-            damage: 0i32,
-            hit_kind: 0i32,
-            crit: false,
-        }
-    }
-}
-
 /// MixedPickupEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedPickupEvent {
     pub item_id: u16,
     pub amount: i32,
 }
 
-impl Default for MixedPickupEvent {
-    fn default() -> Self {
-        MixedPickupEvent {
-            item_id: 0u16,
-            amount: 0i32,
-        }
-    }
-}
-
 /// MixedStat — a variable-table storage struct (docs/SPEC-TABLES.md §3).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MixedStat {
     pub stat_id: u8,
     pub delta: i32,
-}
-
-impl Default for MixedStat {
-    fn default() -> Self {
-        MixedStat {
-            stat_id: 0u8,
-            delta: 0i32,
-        }
-    }
 }
 
 /// mixed_chat_event_number — the numbering walk over one MixedChatEvent body (docs/SPEC-TABLES.md §3.1).

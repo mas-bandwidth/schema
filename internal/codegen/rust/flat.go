@@ -140,16 +140,17 @@ func (g *gen) emitFlatWriteRun(r *flatRun, ind string) {
 	}
 
 	// one local per bit-carrying field, then the chunks
-	offsets := make([]int64, len(r.pieces))
-	var at int64
+	offsets := r.offsets()
 	for i, p := range r.pieces {
-		offsets[i] = at
 		if p.bits > 0 {
 			g.pf("%slet f%d: u64 = %s;%s\n", ind, i, p.value, p.note)
-			at += p.bits
 		}
 	}
 
+	// Each chunk is an rvalue handed straight to the stream: `&mut (expr)`
+	// borrows a temporary, so no named mutable local exists only to satisfy
+	// the unified serialize_bits(&mut u32, ..) signature (serialize.rs has no
+	// by-value bit write on WriteStream).
 	for j, width := range chunkWidths(r.bits) {
 		lo := int64(j) * 32
 		hi := lo + width
@@ -171,11 +172,55 @@ func (g *gen) emitFlatWriteRun(r *flatRun, ind string) {
 		}
 		packed := strings.Join(terms, " | ")
 		if len(terms) > 1 {
-			packed = "(" + packed + ")"
+			packed = "(" + packed + ")" // `as` binds tighter than `|`
 		}
-		g.pf("%slet mut w%d = %s as u32;\n", ind, j, packed)
-		g.pf("%sstream.serialize_bits(&mut w%d, %d)?;\n", ind, j, width)
+		g.pf("%s// %s\n", ind, r.wordNote(offsets, j, width))
+		g.pf("%sstream.serialize_bits(&mut (%s as u32), %d)?;\n", ind, packed, width)
 	}
+}
+
+// wordNote names what one chunk carries, low bits first: each field's slice
+// as `name[a..b]` in that field's own bit numbering, so a field straddling two
+// words shows as two spans. The write and the read print the same note for the
+// same chunk.
+func (r *flatRun) wordNote(offsets []int64, j int, width int64) string {
+	lo := int64(j) * 32
+	hi := lo + width
+	var parts []string
+	for i, p := range r.pieces {
+		if p.bits == 0 {
+			continue
+		}
+		o := offsets[i]
+		if o >= hi || o+p.bits <= lo {
+			continue
+		}
+		a, b := max(lo, o)-o, min(hi, o+p.bits)-o
+		parts = append(parts, fmt.Sprintf("%s[%d..%d]", p.label(), a, b))
+	}
+	return fmt.Sprintf("word %d, %d bits: %s", j, width, strings.Join(parts, ", "))
+}
+
+// offsets returns each piece's bit offset inside the run.
+func (r *flatRun) offsets() []int64 {
+	out := make([]int64, len(r.pieces))
+	var at int64
+	for i, p := range r.pieces {
+		out[i] = at
+		at += p.bits
+	}
+	return out
+}
+
+// label names a piece in a word note: the field, or the const/reserved item.
+func (p flatPiece) label() string {
+	switch it := p.item.(type) {
+	case *ir.FieldItem:
+		return it.F.Name
+	case *ir.ConstItem:
+		return fmt.Sprintf("const(%s)", it.Value.String())
+	}
+	return "reserved"
 }
 
 // shiftLeft renders `expr << n`, dropping the shift at zero.
@@ -195,8 +240,10 @@ func (g *gen) emitFlatReadRun(r *flatRun, ind string) {
 	g.needsStreamTrait = true
 
 	widths := chunkWidths(r.bits)
+	offsets := r.offsets()
 	g.pf("%slet mut c: u32 = 0;\n", ind)
 	for j, width := range widths {
+		g.pf("%s// %s\n", ind, r.wordNote(offsets, j, width))
 		g.pf("%sstream.serialize_bits(&mut c, %d)?;\n", ind, width)
 		g.pf("%slet c%d = u64::from(c);\n", ind, j)
 	}
@@ -366,7 +413,7 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 				// headroom storage can exceed the wire range: caller error,
 				// asserted in debug and trusted in release
 				guard = func(ind string) {
-					g.writeAssert(ind, fmt.Sprintf("%s.0 <= %d", name, ref.Max),
+					g.writeAssert(ind, enumMaxCond(name, ref.Max),
 						fmt.Sprintf("%s above the %s wire range [0, %d]", assertLabel(name), f.Type.Name, ref.Max))
 				}
 			}
@@ -383,6 +430,11 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 					if !rangeIsFull(big.NewInt(0), big.NewInt(max), bits) {
 						g.pf("%sif %s > %d {\n", ind, src, max)
 						g.pf("%s    return Err(Error::Stream(serialize::Error::ValueOutOfRange));\n%s}\n", ind, ind)
+					}
+					if src == "0" {
+						// a zero-bit tag (max = 0): the literal needs no cast
+						g.pf("%s%s = %s(0);\n", ind, name, typeName)
+						return
 					}
 					g.pf("%s%s = %s(%s as %s);\n", ind, name, typeName, src, storage)
 				},
@@ -411,6 +463,16 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 		return g.flatIntPiece(item, f)
 	}
 	return flatPiece{}, false
+}
+
+// enumMaxCond is the write-side contract for an enum tag with storage
+// headroom: at most max, spelled as equality when max is zero (an unsigned
+// `<= 0` is clippy's deny-by-default absurd_extreme_comparisons).
+func enumMaxCond(name string, max int64) string {
+	if max == 0 {
+		return fmt.Sprintf("%s.0 == 0", name)
+	}
+	return fmt.Sprintf("%s.0 <= %d", name, max)
 }
 
 // rangeIsFull reports whether [min,max] covers every value the wire's bit
