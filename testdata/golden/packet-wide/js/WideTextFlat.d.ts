@@ -8,7 +8,7 @@
 
 import type { NarrowFifteen, WideFour, WideInterop, WideSeven } from "./WideText.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteWideSevenFlat(view: DataView, value: WideSeven): number;
 export declare function ReadWideSevenFlat(view: DataView, numBits: number, value: WideSeven): boolean;

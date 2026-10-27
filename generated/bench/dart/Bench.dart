@@ -774,7 +774,6 @@ extension type const MixedWeapon(int _value) implements int {
   static const MixedWeapon turret = MixedWeapon(13);
   static const MixedWeapon drone = MixedWeapon(14);
   static const MixedWeapon repair = MixedWeapon(15);
-  static const int count = 15; // the declared variant count (SPEC §4.2)
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
 
@@ -1490,7 +1489,6 @@ extension type const MixedEventType(int _value) implements int {
   static const MixedEventType hit = MixedEventType(1);
   static const MixedEventType chat = MixedEventType(2);
   static const MixedEventType pickup = MixedEventType(3);
-  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
 

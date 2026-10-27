@@ -298,7 +298,6 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.pf("%s", ir.DocComment(docs[i], "    ", "//"))
 		g.pf("    %s = %d,\n", m, i+1)
 	}
-	g.pf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(members))
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", len(members))
 	g.pf("};\n\n")
 	// the tag enum's name surface is a declared enum's, member for member: a
@@ -460,7 +459,6 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
 		g.pf("    %s = %d,\n", v, i+1)
 	}
-	g.pf("    Count = %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	g.pf("    Max = %d, // the exported extent (SPEC §4.2)\n", d.Max)
 	g.pf("};\n\n")
 	g.pf("// EnumName: debug/log name for any %s value, out-of-set included\n", d.Name)

@@ -158,7 +158,6 @@ typedef uint8_t example_empty_union_type_t;
 #define EXAMPLE_EMPTY_UNION_TYPE_NONE 0
 #define EXAMPLE_EMPTY_UNION_TYPE_A 1
 #define EXAMPLE_EMPTY_UNION_TYPE_B 2
-#define EXAMPLE_EMPTY_UNION_TYPE_COUNT 2
 #define EXAMPLE_EMPTY_UNION_TYPE_MAX 2
 
 /* Debug/log name for any EmptyUnionType value, out-of-set included. */

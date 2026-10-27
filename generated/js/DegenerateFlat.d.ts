@@ -8,7 +8,7 @@
 
 import type { SpanChunk, SpanF64, SpanI64, SpanOne, SpanTail, SpanTwice, SpanU64, Trio, TrioFirst, TrioSole, TrioStraddle, Vec2, Vec3Sole } from "./Degenerate.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteVec2Flat(view: DataView, value: Vec2): number;
 export declare function ReadVec2Flat(view: DataView, numBits: number, value: Vec2): boolean;

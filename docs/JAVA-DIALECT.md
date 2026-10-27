@@ -143,7 +143,7 @@ failure in their tree and not only in ours.
 - **Packet constants are UPPER_SNAKE**, Java's `static final` convention and
   the Rust target's mapping (`ir.RustConstName`): schema consts
   (`MAX_HEALTH`), enum variants and the extent (`Weapon.LASER`,
-  `Weapon.COUNT`, `Weapon.MAX`), union tags (`ShapeType.NONE`), flag masks
+  `Weapon.MAX`), union tags (`ShapeType.NONE`), flag masks
   and counts (`PROBE_FLAGS_ARMED`, `PROBE_FLAGS_COUNT`), the bounds
   (`PROBE_SAMPLE_MAX_BITS`, `PROBE_SAMPLE_MAX_BYTES`) and `PROTOCOL_ID`.
 - **Unsigned storage is one size up**: uint8 and uint16 store `int`, uint32

@@ -127,7 +127,6 @@ enum class EmptyUnionType : uint8_t {
     None = 0,
     A = 1,
     B = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 

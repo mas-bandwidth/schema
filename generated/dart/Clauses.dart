@@ -1971,7 +1971,6 @@ extension type const EmptyUnionType(int _value) implements int {
   static const EmptyUnionType none = EmptyUnionType(0);
   static const EmptyUnionType a = EmptyUnionType(1);
   static const EmptyUnionType b = EmptyUnionType(2);
-  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
 

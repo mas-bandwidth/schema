@@ -7595,7 +7595,6 @@ enum class CarryType : uint8_t {
     None = 0,
     Leaf = 1,
     Plain = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 

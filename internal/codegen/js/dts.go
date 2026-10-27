@@ -294,7 +294,7 @@ func (g *dgen) emitUnion(un *ir.Union, packet bool) {
 // emitFlat declares BaseFlat.js: the read slack and one codec pair per type
 // and union, over the classes the runtime-tier module declares.
 func (g *dgen) emitFlat() {
-	g.pf("export declare const FLAT_READ_SLACK: 8;\n\n")
+	g.pf("export declare const FlatReadSlack: 8;\n\n")
 	for _, d := range ir.EmissionOrder(g.file) {
 		var name string
 		switch d := d.(type) {

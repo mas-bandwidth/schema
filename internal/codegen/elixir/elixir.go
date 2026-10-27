@@ -533,8 +533,8 @@ func (g *gen) emitEnumModule(d *ir.Enum) {
 	g.bpf("end\n\n")
 }
 
-// emitEnumSurface writes an enum surface's type and its four functions: the
-// two wire conversions, the variant count and the exported extent.
+// emitEnumSurface writes an enum surface's type and its three functions: the
+// two wire conversions and the exported extent.
 func (g *gen) emitEnumSurface(name string, variants []string, max int64) {
 	g.bpf("\n")
 	g.emitTypeAlts(enumSpec(variants, max))
@@ -567,9 +567,6 @@ func (g *gen) emitEnumSurface(name string, variants []string, max int64) {
 		g.bpf("  def from_int(v) when is_integer(v) and v > %s and v <= %s, do: {:ok, v}\n", intLit64(n), intLit64(max))
 	}
 	g.bpf("  def from_int(_), do: :error\n\n")
-	g.emitDoc("The declared variant count (SPEC §4.2).")
-	g.emitSpec("count()", "non_neg_integer()")
-	g.bpf("  def count, do: %s\n\n", intLit64(n))
 	g.emitDoc("The exported extent: the highest wire-legal value (SPEC §4.2).")
 	g.emitSpec("max()", "non_neg_integer()")
 	g.bpf("  def max, do: %s\n", intLit64(max))

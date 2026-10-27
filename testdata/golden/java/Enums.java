@@ -22,8 +22,6 @@ public final class Enums {
         public static final byte NONE = 0;
         public static final byte RED = 1;
         public static final byte BLUE = 2;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 2;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 2;
     }
@@ -56,8 +54,6 @@ public final class Enums {
         public static final byte BOMBER = 3;
         public static final byte DESTROYER = 4;
         public static final byte CARRIER = 5;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 5;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 5;
     }
@@ -97,8 +93,6 @@ public final class Enums {
         public static final byte HEATSEEKER = 1;
         public static final byte TORPEDO = 2;
         public static final byte NUKE = 3;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 3;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 3;
     }
@@ -135,8 +129,6 @@ public final class Enums {
         public static final byte SPHERE = 4;
         public static final byte BLACK_HOLE = 5;
         public static final byte DYSON_PANEL = 6;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 6;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 6;
     }
@@ -176,8 +168,6 @@ public final class Enums {
         private Pending() {}
 
         public static final byte NONE = 0;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 0;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 0;
     }

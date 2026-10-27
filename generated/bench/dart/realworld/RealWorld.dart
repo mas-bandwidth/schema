@@ -41,7 +41,6 @@ extension type const PacketMode(int _value) implements int {
   static const PacketMode combat = PacketMode(3);
   static const PacketMode docked = PacketMode(4);
   static const PacketMode warping = PacketMode(5);
-  static const int count = 5; // the declared variant count (SPEC §4.2)
   static const int max = 5; // the exported extent (SPEC §4.2)
 }
 

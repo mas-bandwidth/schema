@@ -8,7 +8,7 @@
 
 import type { RealPacket } from "./RealWorld.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteRealPacketFlat(view: DataView, value: RealPacket): number;
 export declare function ReadRealPacketFlat(view: DataView, numBits: number, value: RealPacket): boolean;

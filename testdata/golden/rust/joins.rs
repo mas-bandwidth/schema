@@ -557,7 +557,6 @@ impl UnevenType {
     pub const NONE: UnevenType = UnevenType(0);
     pub const NARROW: UnevenType = UnevenType(1);
     pub const WIDE: UnevenType = UnevenType(2);
-    pub const COUNT: UnevenType = UnevenType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: UnevenType = UnevenType(2); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.

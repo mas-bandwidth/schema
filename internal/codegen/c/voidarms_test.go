@@ -38,12 +38,16 @@ union Empty {}
 	}
 	for _, want := range []string{
 		"#define CHOICE_TYPE_PING 1", "#define CHOICE_TYPE_PAYLOAD 2", "#define CHOICE_TYPE_PONG 3",
-		"#define CHOICE_TYPE_COUNT 3", "#define CHOICE_TYPE_MAX 3", "Payload payload;",
+		"#define CHOICE_TYPE_MAX 3", "Payload payload;",
 		"#define SIGNALS_MAX_BITS 2", "#define SIGNAL_MAX_BITS 1", "#define EMPTY_MAX_BITS 0",
 	} {
 		if !strings.Contains(header, want) {
 			t.Errorf("Arms.h lost a tag, payload or tag-only bound: %q", want)
 		}
+	}
+	// a tag enum exports Max and no Count (SPEC §4.2)
+	if strings.Contains(header, "CHOICE_TYPE_COUNT") {
+		t.Errorf("Arms.h tag enum exports a Count: SPEC §4.2 gives it Max only")
 	}
 	for _, absent := range []string{" ping;", " pong;", "as.ping", "as.pong"} {
 		if strings.Contains(header+wire, absent) {

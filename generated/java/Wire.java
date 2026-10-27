@@ -119,8 +119,6 @@ public final class Wire {
         public static final byte LASER = 1;
         public static final byte MISSILE = 2;
         public static final byte RAILGUN = 3;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 3;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 15;
     }
@@ -891,8 +889,6 @@ public final class Wire {
         public static final byte NONE = 0;
         public static final byte RING = 1;
         public static final byte SLAB = 2;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 2;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 2;
     }

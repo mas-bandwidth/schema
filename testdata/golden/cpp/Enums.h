@@ -15,7 +15,6 @@ enum class Team : uint8_t {
     None = 0,
     Red = 1,
     Blue = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 
@@ -39,7 +38,6 @@ enum class ShipType : uint8_t {
     Bomber = 3,
     Destroyer = 4,
     Carrier = 5,
-    Count = 5, // the declared variant count (SPEC §4.2)
     Max = 5, // the exported extent (SPEC §4.2)
 };
 
@@ -64,7 +62,6 @@ enum class MissileType : uint8_t {
     Heatseeker = 1,
     Torpedo = 2,
     Nuke = 3,
-    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
 
@@ -90,7 +87,6 @@ enum class PropType : uint8_t {
     Sphere = 4,
     BlackHole = 5,
     DysonPanel = 6,
-    Count = 6, // the declared variant count (SPEC §4.2)
     Max = 6, // the exported extent (SPEC §4.2)
 };
 
@@ -113,7 +109,6 @@ inline const char * EnumName( PropType value )
 // enum Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2)
 enum class Pending : uint8_t {
     None = 0,
-    Count = 0, // the declared variant count (SPEC §4.2)
     Max = 0, // the exported extent (SPEC §4.2)
 };
 

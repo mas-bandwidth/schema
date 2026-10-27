@@ -19,7 +19,7 @@
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
-// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load
+// FlatReadSlack = 8 bytes past the payload — 64-bit windows load
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
 
@@ -34,7 +34,7 @@ const SC = new DataView(new ArrayBuffer(8));
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // ---- type FixedProbe: the flat codec ----
 
@@ -129,7 +129,7 @@ function writeFixedProbeFlatChecked(view, value) {
 export const WriteFixedProbeFlat = PRODUCTION ? writeFixedProbeFlatProduction : writeFixedProbeFlatChecked;
 
 // ReadFixedProbeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadFixedProbeFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -302,7 +302,7 @@ function writeUnsignedProbeFlatChecked(view, value) {
 export const WriteUnsignedProbeFlat = PRODUCTION ? writeUnsignedProbeFlatProduction : writeUnsignedProbeFlatChecked;
 
 // ReadUnsignedProbeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadUnsignedProbeFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -494,7 +494,7 @@ function writeWideProbeFlatChecked(view, value) {
 export const WriteWideProbeFlat = PRODUCTION ? writeWideProbeFlatProduction : writeWideProbeFlatChecked;
 
 // ReadWideProbeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadWideProbeFlat(view, numBits, value) {
   let v = 0, out = 0, nw = 0, nl = 0;
   let bg = 0n;
@@ -1172,7 +1172,7 @@ function writeLudicrousStateFlatChecked(view, value) {
 export const WriteLudicrousStateFlat = PRODUCTION ? writeLudicrousStateFlatProduction : writeLudicrousStateFlatChecked;
 
 // ReadLudicrousStateFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadLudicrousStateFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0, br = 0;
   let bg = 0n;
@@ -1503,7 +1503,7 @@ function writeDegenerateProbeFlatChecked(view, value) {
 export const WriteDegenerateProbeFlat = PRODUCTION ? writeDegenerateProbeFlatProduction : writeDegenerateProbeFlatChecked;
 
 // ReadDegenerateProbeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadDegenerateProbeFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (8 > numBits) {
@@ -1581,7 +1581,7 @@ function writeFixedVecFlatChecked(view, value) {
 export const WriteFixedVecFlat = PRODUCTION ? writeFixedVecFlatProduction : writeFixedVecFlatChecked;
 
 // ReadFixedVecFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadFixedVecFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -1660,7 +1660,7 @@ function writeFixedQuatFlatChecked(view, value) {
 export const WriteFixedQuatFlat = PRODUCTION ? writeFixedQuatFlatProduction : writeFixedQuatFlatChecked;
 
 // ReadFixedQuatFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadFixedQuatFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (128 > numBits) {

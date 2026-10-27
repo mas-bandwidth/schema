@@ -2580,15 +2580,18 @@ Per `type`, per target:
    every serialize runtime requires.**
 5. **`ProtocolId`** — one constant per unit (§3).
 6. **For a `union` declaration (§4.8):** the `<Union>Type` tag enum
-   (`None = 0`, then the variants in declared order, then `Max`)
-   with its debug-name function, the value
+   (`None = 0`, then the variants in declared order) with its `Max`
+   extent in the §4.2 spelling — a member of the enum's own scope in C++,
+   Rust, Dart, Java and Elixir, a separate constant beside it in C#, Go,
+   JS and C — and its debug-name function, the value
    representation in each language's own idiom, and
    `Write<Union>`/`Read<Union>` with the tag framing — representation per
    target, behavior identical.
 
 **Generated symbol naming:** functions attach per target idiom — C:
-lower_snake free functions `write_ship_create(stream, value)`, with
-`schema_`-prefixed internal helpers; C++: free
+lower_snake free functions carrying the package prefix,
+`example_write_ship_create(stream, value)` for `package example`, with
+`schema_<package>_`-prefixed internal helpers; C++: free
 functions `WriteShip(...)` in `namespace <package>`; C#: `static class
 Schema` members in `namespace <Package>`; Go: free functions
 `WriteShip(stream, &ship)` in package `<package>` (no overloading — the type

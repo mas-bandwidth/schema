@@ -6897,7 +6897,6 @@ enum class FrameType : uint8_t {
     Chunk = 2,
     Link = 3,
     Tag = 4,
-    Count = 4, // the declared variant count (SPEC §4.2)
     Max = 4, // the exported extent (SPEC §4.2)
 };
 

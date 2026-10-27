@@ -86,7 +86,6 @@ enum class MixedWeapon : uint8_t {
     Turret = 13,
     Drone = 14,
     Repair = 15,
-    Count = 15, // the declared variant count (SPEC §4.2)
     Max = 15, // the exported extent (SPEC §4.2)
 };
 
@@ -298,7 +297,6 @@ enum class MixedEventType : uint8_t {
     Hit = 1,
     Chat = 2,
     Pickup = 3,
-    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
 

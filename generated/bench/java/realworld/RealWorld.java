@@ -113,8 +113,6 @@ public final class RealWorld {
         public static final byte COMBAT = 3;
         public static final byte DOCKED = 4;
         public static final byte WARPING = 5;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 5;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 5;
     }

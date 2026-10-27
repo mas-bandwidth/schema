@@ -103,7 +103,6 @@ typedef uint8_t bench_mixed_weapon_t;
 #define BENCH_MIXED_WEAPON_TURRET 13
 #define BENCH_MIXED_WEAPON_DRONE 14
 #define BENCH_MIXED_WEAPON_REPAIR 15
-#define BENCH_MIXED_WEAPON_COUNT 15
 #define BENCH_MIXED_WEAPON_MAX 15
 
 /* Debug/log name for any MixedWeapon value, out-of-set included. */
@@ -293,7 +292,6 @@ typedef uint8_t bench_mixed_event_type_t;
 #define BENCH_MIXED_EVENT_TYPE_HIT 1
 #define BENCH_MIXED_EVENT_TYPE_CHAT 2
 #define BENCH_MIXED_EVENT_TYPE_PICKUP 3
-#define BENCH_MIXED_EVENT_TYPE_COUNT 3
 #define BENCH_MIXED_EVENT_TYPE_MAX 3
 
 /* Debug/log name for any MixedEventType value, out-of-set included. */

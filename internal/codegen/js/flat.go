@@ -36,7 +36,7 @@
 //     (already rounded to the 8-byte write-buffer granularity — the final
 //     whole-word flush is covered exactly). Batch: the packets' total bytes
 //     plus <Name>MaxBytes for the packet being written.
-//   - Read: the buffer must extend at least FLAT_READ_SLACK = 8 bytes past
+//   - Read: the buffer must extend at least FlatReadSlack = 8 bytes past
 //     the payload — 64-bit windows load unconditionally. Exactly-sized
 //     receive buffers copy into a persistent MaxBytes + 8 scratch first.
 //
@@ -274,7 +274,7 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("//\n")
 		h.WriteString("// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes\n")
 		h.WriteString("// (the constants live in the runtime-tier module). Read buffers: at least\n")
-		h.WriteString("// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load\n")
+		h.WriteString("// FlatReadSlack = 8 bytes past the payload — 64-bit windows load\n")
 		h.WriteString("// unconditionally; copy exactly-sized receive buffers into a persistent\n")
 		h.WriteString("// MaxBytes + 8 scratch first.\n")
 	}
@@ -316,7 +316,7 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("const PRODUCTION = typeof process !== \"undefined\" && !!process.env && process.env.NODE_ENV === \"production\";\n\n")
 	}
 	h.WriteString("// Read buffers must extend at least this many bytes past the payload.\n")
-	h.WriteString("export const FLAT_READ_SLACK = 8;\n\n")
+	h.WriteString("export const FlatReadSlack = 8;\n\n")
 	if g.needText {
 		h.WriteString(emitTextHelper())
 	}
@@ -732,7 +732,7 @@ func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	g.fn.Reset()
 
 	g.bpf("// Read%sFlat(view, numBits, value) -> bool. The buffer behind view must\n", name)
-	g.bpf("// extend FLAT_READ_SLACK bytes past the payload.\n")
+	g.bpf("// extend FlatReadSlack bytes past the payload.\n")
 	// a parameter nothing reads is not declared (eslint no-unused-vars) — an
 	// empty type reads none; a caller's arguments are accepted and ignored
 	g.bpf("export function Read%sFlat(%s) {\n%s  return true;\n}\n\n", name, usedParams(body, "view", "numBits", "value"), body)

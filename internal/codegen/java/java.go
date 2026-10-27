@@ -558,8 +558,6 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 		g.bpf("%s", ir.DocComment(docs[i], "        ", "//"))
 		g.bpf("        public static final %s %s = %s;\n", typ, constName(m), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
-	g.bpf("        // the declared variant count (SPEC §4.2)\n")
-	g.bpf("        public static final %s COUNT = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(members)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
 	g.bpf("        public static final %s MAX = %s;\n", typ, narrowLit(typ, big.NewInt(max)))
 	g.bpf("    }\n\n")
@@ -591,8 +589,6 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "        ", "//"))
 		g.bpf("        public static final %s %s = %s;\n", typ, constName(v), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
-	g.bpf("        // the declared variant count (SPEC §4.2)\n")
-	g.bpf("        public static final %s COUNT = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(d.Variants)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
 	g.bpf("        public static final %s MAX = %s;\n", typ, narrowLit(typ, big.NewInt(d.Max)))
 	g.bpf("    }\n\n")

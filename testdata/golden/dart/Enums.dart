@@ -14,7 +14,6 @@ extension type const Team(int _value) implements int {
   static const Team none = Team(0);
   static const Team red = Team(1);
   static const Team blue = Team(2);
-  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
 
@@ -44,7 +43,6 @@ extension type const ShipType(int _value) implements int {
   static const ShipType bomber = ShipType(3);
   static const ShipType destroyer = ShipType(4);
   static const ShipType carrier = ShipType(5);
-  static const int count = 5; // the declared variant count (SPEC §4.2)
   static const int max = 5; // the exported extent (SPEC §4.2)
 }
 
@@ -78,7 +76,6 @@ extension type const MissileType(int _value) implements int {
   static const MissileType heatseeker = MissileType(1);
   static const MissileType torpedo = MissileType(2);
   static const MissileType nuke = MissileType(3);
-  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
 
@@ -111,7 +108,6 @@ extension type const PropType(int _value) implements int {
   static const PropType sphere = PropType(4);
   static const PropType blackHole = PropType(5);
   static const PropType dysonPanel = PropType(6);
-  static const int count = 6; // the declared variant count (SPEC §4.2)
   static const int max = 6; // the exported extent (SPEC §4.2)
 }
 
@@ -144,7 +140,6 @@ String enumNamePropType(int value) {
 // headroom included (Pending(n)), at no runtime cost over a bare int
 extension type const Pending(int _value) implements int {
   static const Pending none = Pending(0);
-  static const int count = 0; // the declared variant count (SPEC §4.2)
   static const int max = 0; // the exported extent (SPEC §4.2)
 }
 

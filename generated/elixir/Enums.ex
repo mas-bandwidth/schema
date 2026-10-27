@@ -30,10 +30,6 @@ defmodule Example.Team do
   def from_int(2), do: {:ok, :blue}
   def from_int(_), do: :error
 
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 2
-
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()
   def max, do: 2
@@ -71,10 +67,6 @@ defmodule Example.ShipType do
   def from_int(5), do: {:ok, :carrier}
   def from_int(_), do: :error
 
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 5
-
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()
   def max, do: 5
@@ -107,10 +99,6 @@ defmodule Example.MissileType do
   def from_int(2), do: {:ok, :torpedo}
   def from_int(3), do: {:ok, :nuke}
   def from_int(_), do: :error
-
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 3
 
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()
@@ -151,10 +139,6 @@ defmodule Example.PropType do
   def from_int(6), do: {:ok, :dyson_panel}
   def from_int(_), do: :error
 
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 6
-
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()
   def max, do: 6
@@ -181,10 +165,6 @@ defmodule Example.Pending do
   @spec from_int(integer()) :: {:ok, t()} | :error
   def from_int(0), do: {:ok, :none}
   def from_int(_), do: :error
-
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 0
 
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()

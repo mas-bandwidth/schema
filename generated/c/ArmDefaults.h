@@ -55,7 +55,6 @@ typedef uint8_t example_default_choice_type_t;
 #define EXAMPLE_DEFAULT_CHOICE_TYPE_NONE 0
 #define EXAMPLE_DEFAULT_CHOICE_TYPE_FIRST 1
 #define EXAMPLE_DEFAULT_CHOICE_TYPE_SECOND 2
-#define EXAMPLE_DEFAULT_CHOICE_TYPE_COUNT 2
 #define EXAMPLE_DEFAULT_CHOICE_TYPE_MAX 2
 
 /* Debug/log name for any DefaultChoiceType value, out-of-set included. */
@@ -140,7 +139,6 @@ typedef uint8_t example_default_bulk_choice_type_t;
 #define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_NONE 0
 #define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_FIRST 1
 #define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_SECOND 2
-#define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_COUNT 2
 #define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_MAX 2
 
 /* Debug/log name for any DefaultBulkChoiceType value, out-of-set included. */

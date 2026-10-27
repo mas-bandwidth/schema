@@ -22,8 +22,8 @@ int main(int argc, char **argv)
     packetvoid_batch_t batch;
     int repeat;
     CHECK(argc == 1 || read_only || write_only, "packet-void test mode");
-    CHECK(PACKETVOID_MIXED_TYPE_COUNT == 2 && PACKETVOID_MIXED_TYPE_MAX == 2, "mixed tag extent");
-    CHECK(PACKETVOID_TAGS_TYPE_COUNT == 2 && PACKETVOID_SINGLE_TYPE_COUNT == 1 && PACKETVOID_EMPTY_TYPE_COUNT == 0, "void tag counts");
+    CHECK(PACKETVOID_MIXED_TYPE_MAX == 2, "mixed tag extent");
+    CHECK(PACKETVOID_TAGS_TYPE_MAX == 2 && PACKETVOID_SINGLE_TYPE_MAX == 1 && PACKETVOID_EMPTY_TYPE_MAX == 0, "void tag extents");
     CHECK(strcmp(packetvoid_enum_name_mixed_type(PACKETVOID_MIXED_TYPE_PING), "Ping") == 0 &&
           strcmp(packetvoid_enum_name_tags_type(PACKETVOID_TAGS_TYPE_PONG), "Pong") == 0, "void debug names");
     CHECK(PACKETVOID_MIXED_MAX_BITS == 23 && PACKETVOID_TAGS_MAX_BITS == 2 && PACKETVOID_SINGLE_MAX_BITS == 1 && PACKETVOID_EMPTY_MAX_BITS == 0, "void maximum bits");

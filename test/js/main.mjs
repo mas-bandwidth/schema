@@ -866,7 +866,7 @@ function flatCross(name, mod, flatMod, shape, inp, golden) {
   const rtOut = new mod[shape]();
   check(mod[`Read${shape}`](new ReadStream(rtBytes), rtOut), `${name}: runtime read`);
   const flOut = new mod[shape]();
-  const rbuf = new Uint8Array(rtBytes.length + 8); // FLAT_READ_SLACK
+  const rbuf = new Uint8Array(rtBytes.length + 8); // FlatReadSlack
   rbuf.set(rtBytes);
   check(flatMod[`Read${shape}Flat`](new DataView(rbuf.buffer), rtBytes.length * 8, flOut), `${name}: flat read verdict`);
   check(deepEqual(flOut, rtOut), `${name}: flat read fields === runtime read fields`);

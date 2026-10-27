@@ -459,7 +459,6 @@ func (g *gen) emitTagEnum(name string, members, docs []string, max int64, commen
 		g.bpf("%s", ir.DocComment(docs[i], "  ", "///"))
 		g.bpf("  static const %s %s = %s(%d);\n", name, dartName(m), name, i+1)
 	}
-	g.bpf("  static const int count = %d; // the declared variant count (SPEC §4.2)\n", len(members))
 	g.bpf("  static const int max = %d; // the exported extent (SPEC §4.2)\n", max)
 	g.bpf("}\n\n")
 
@@ -498,7 +497,6 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "  ", "///"))
 		g.bpf("  static const %s %s = %s(%d);\n", d.Name, dartName(v), d.Name, i+1)
 	}
-	g.bpf("  static const int count = %d; // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	g.bpf("  static const int max = %d; // the exported extent (SPEC §4.2)\n", d.Max)
 	g.bpf("}\n\n")
 

@@ -504,7 +504,6 @@ impl EmptyUnionType {
     pub const NONE: EmptyUnionType = EmptyUnionType(0);
     pub const A: EmptyUnionType = EmptyUnionType(1);
     pub const B: EmptyUnionType = EmptyUnionType(2);
-    pub const COUNT: EmptyUnionType = EmptyUnionType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: EmptyUnionType = EmptyUnionType(2); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.

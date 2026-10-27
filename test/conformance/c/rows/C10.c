@@ -34,7 +34,7 @@
      grade = Gold (3), raw = 7 both times — and LOCATES the ordinal byte by
      diffing the two files, which must differ in exactly that one byte. The
      law's forge is then exactly one byte: the ordinal, set one past the
-     WRITER's own variant count — 4, with GRADE_COUNT 3. Writing the base
+     WRITER's own variant count — 4, with GRADE_MAX 3. Writing the base
      through the build's own writer is what §5.9 #10's fixture is, and the
      diff-locator is the versioning probes' needle discipline (asserted to
      locate exactly one byte), carried in the test itself.
@@ -124,7 +124,7 @@ int main( void )
 
     /* --- THE FORGE: the ordinal one past the WRITER's own variant count --- */
 
-    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) ( GRADE_COUNT + 1 ); } /* 4: one past the top variant */
+    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) ( GRADE_MAX + 1 ); } /* 4: one past the top variant */
 
     memset( &report, 0, sizeof( report ) );
     root_reset( &values[0] );

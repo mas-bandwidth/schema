@@ -8,7 +8,7 @@
 
 import type { BenchBits, BenchInts, BenchMixed, BenchPacket, MixedChatEvent, MixedEntity, MixedEvent, MixedHitEvent, MixedPickupEvent, MixedStat } from "./Bench.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteBenchPacketFlat(view: DataView, value: BenchPacket): number;
 export declare function ReadBenchPacketFlat(view: DataView, numBits: number, value: BenchPacket): boolean;

@@ -26,7 +26,6 @@ typedef uint8_t example_team_t;
 #define EXAMPLE_TEAM_NONE 0
 #define EXAMPLE_TEAM_RED 1
 #define EXAMPLE_TEAM_BLUE 2
-#define EXAMPLE_TEAM_COUNT 2
 #define EXAMPLE_TEAM_MAX 2
 
 /* Debug/log name for any Team value, out-of-set included. */
@@ -53,7 +52,6 @@ typedef uint8_t example_ship_type_t;
 #define EXAMPLE_SHIP_TYPE_BOMBER 3
 #define EXAMPLE_SHIP_TYPE_DESTROYER 4
 #define EXAMPLE_SHIP_TYPE_CARRIER 5
-#define EXAMPLE_SHIP_TYPE_COUNT 5
 #define EXAMPLE_SHIP_TYPE_MAX 5
 
 /* Debug/log name for any ShipType value, out-of-set included. */
@@ -81,7 +79,6 @@ typedef uint8_t example_missile_type_t;
 #define EXAMPLE_MISSILE_TYPE_HEATSEEKER 1
 #define EXAMPLE_MISSILE_TYPE_TORPEDO 2
 #define EXAMPLE_MISSILE_TYPE_NUKE 3
-#define EXAMPLE_MISSILE_TYPE_COUNT 3
 #define EXAMPLE_MISSILE_TYPE_MAX 3
 
 /* Debug/log name for any MissileType value, out-of-set included. */
@@ -110,7 +107,6 @@ typedef uint8_t example_prop_type_t;
 #define EXAMPLE_PROP_TYPE_SPHERE 4
 #define EXAMPLE_PROP_TYPE_BLACK_HOLE 5
 #define EXAMPLE_PROP_TYPE_DYSON_PANEL 6
-#define EXAMPLE_PROP_TYPE_COUNT 6
 #define EXAMPLE_PROP_TYPE_MAX 6
 
 /* Debug/log name for any PropType value, out-of-set included. */
@@ -136,7 +132,6 @@ static SCHEMA_UNUSED const char * example_enum_name_prop_type( example_prop_type
    values wire-legal, which a C enum cannot hold honestly. */
 typedef uint8_t example_pending_t;
 #define EXAMPLE_PENDING_NONE 0
-#define EXAMPLE_PENDING_COUNT 0
 #define EXAMPLE_PENDING_MAX 0
 
 /* Debug/log name for any Pending value, out-of-set included. */

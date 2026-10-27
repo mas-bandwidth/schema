@@ -15,7 +15,7 @@ const SC = new DataView(new ArrayBuffer(8));
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // ---- type RenderSprite: the flat codec ----
 
@@ -56,7 +56,7 @@ function writeRenderSpriteFlatChecked(view, value) {
 export const WriteRenderSpriteFlat = PRODUCTION ? writeRenderSpriteFlatProduction : writeRenderSpriteFlatChecked;
 
 // ReadRenderSpriteFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadRenderSpriteFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -226,7 +226,7 @@ function writeRenderBlockFlatChecked(view, value) {
 export const WriteRenderBlockFlat = PRODUCTION ? writeRenderBlockFlatProduction : writeRenderBlockFlatChecked;
 
 // ReadRenderBlockFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadRenderBlockFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;

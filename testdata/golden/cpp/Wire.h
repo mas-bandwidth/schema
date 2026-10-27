@@ -23,7 +23,6 @@ enum class Weapon : uint8_t {
     Laser = 1,
     Missile = 2,
     Railgun = 3,
-    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 15, // the exported extent (SPEC §4.2)
 };
 
@@ -198,7 +197,6 @@ enum class ProbeShapeType : uint8_t {
     None = 0,
     Ring = 1,
     Slab = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 

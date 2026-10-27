@@ -35,7 +35,6 @@ typedef uint8_t realworld_packet_mode_t;
 #define REALWORLD_PACKET_MODE_COMBAT 3
 #define REALWORLD_PACKET_MODE_DOCKED 4
 #define REALWORLD_PACKET_MODE_WARPING 5
-#define REALWORLD_PACKET_MODE_COUNT 5
 #define REALWORLD_PACKET_MODE_MAX 5
 
 /* Debug/log name for any PacketMode value, out-of-set included. */

@@ -1244,7 +1244,6 @@ extension type const UnevenType(int _value) implements int {
   static const UnevenType none = UnevenType(0);
   static const UnevenType narrow = UnevenType(1);
   static const UnevenType wide = UnevenType(2);
-  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
 

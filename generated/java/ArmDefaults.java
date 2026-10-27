@@ -239,8 +239,6 @@ public final class ArmDefaults {
         public static final byte NONE = 0;
         public static final byte FIRST = 1;
         public static final byte SECOND = 2;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 2;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 2;
     }
@@ -566,8 +564,6 @@ public final class ArmDefaults {
         public static final byte NONE = 0;
         public static final byte FIRST = 1;
         public static final byte SECOND = 2;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 2;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 2;
     }

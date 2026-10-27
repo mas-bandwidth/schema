@@ -158,7 +158,6 @@ extension type const DefaultChoiceType(int _value) implements int {
   static const DefaultChoiceType none = DefaultChoiceType(0);
   static const DefaultChoiceType first = DefaultChoiceType(1);
   static const DefaultChoiceType second = DefaultChoiceType(2);
-  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
 
@@ -904,7 +903,6 @@ extension type const DefaultBulkChoiceType(int _value) implements int {
   static const DefaultBulkChoiceType none = DefaultBulkChoiceType(0);
   static const DefaultBulkChoiceType first = DefaultBulkChoiceType(1);
   static const DefaultBulkChoiceType second = DefaultBulkChoiceType(2);
-  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
 

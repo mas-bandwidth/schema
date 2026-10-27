@@ -26,7 +26,6 @@ impl Weapon {
     pub const LASER: Weapon = Weapon(1);
     pub const MISSILE: Weapon = Weapon(2);
     pub const RAILGUN: Weapon = Weapon(3);
-    pub const COUNT: Weapon = Weapon(3); // the declared variant count (SPEC §4.2)
     pub const MAX: Weapon = Weapon(15); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.
@@ -468,7 +467,6 @@ impl ProbeShapeType {
     pub const NONE: ProbeShapeType = ProbeShapeType(0);
     pub const RING: ProbeShapeType = ProbeShapeType(1);
     pub const SLAB: ProbeShapeType = ProbeShapeType(2);
-    pub const COUNT: ProbeShapeType = ProbeShapeType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: ProbeShapeType = ProbeShapeType(2); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.

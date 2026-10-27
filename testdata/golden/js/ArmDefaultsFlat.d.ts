@@ -8,7 +8,7 @@
 
 import type { DefaultArm, DefaultBulkArm, DefaultBulkChoice, DefaultChoice, DefaultChoicePacket } from "./ArmDefaults.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteDefaultArmFlat(view: DataView, value: DefaultArm): number;
 export declare function ReadDefaultArmFlat(view: DataView, numBits: number, value: DefaultArm): boolean;

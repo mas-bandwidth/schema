@@ -305,7 +305,6 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
 		g.pf("#define %s_%s %d\n", screaming(d.Name), screaming(v), i+1)
 	}
-	g.pf("#define %s_COUNT %d\n", screaming(d.Name), len(d.Variants))
 	g.pf("#define %s_MAX %d\n", screaming(d.Name), d.Max)
 
 	// the debug/log name, the counterpart of C++'s and Go's EnumName
@@ -419,7 +418,6 @@ func (g *gen) emitUnion(d *ir.Union) {
 		g.pf("%s", ir.DocComment(v.Doc, "", "//"))
 		g.pf("#define %s_%s %d\n", screaming(tag), screaming(v.Name), i+1)
 	}
-	g.pf("#define %s_COUNT %d\n", screaming(tag), len(d.Variants))
 	g.pf("#define %s_MAX %d\n", screaming(tag), d.Max)
 
 	g.pf("\n/* Debug/log name for any %s value, out-of-set included. */\n", tag)
@@ -642,8 +640,12 @@ func (g *gen) emitWireHeader() {
 	if g.fileEmitsWire() {
 		// the calling convention, once per wire header — the per-function
 		// comments below it stay one line each
-		g.pf("/* Every write_x/read_x returns 1 on success, 0 on failure — the stream\n")
-		g.pf("   latches the error, so a caller may check once at the end of a message.\n")
+		// (comments pass cqualify untouched, so the prefixed spelling is
+		// written here: the one a caller actually calls)
+		pkg := strings.ToLower(g.unit.Package)
+		g.pf("/* Every %s_write_x/%s_read_x returns 1 on success, 0 on failure — the\n", pkg, pkg)
+		g.pf("   stream latches the error, so a caller may check once at the end of a\n")
+		g.pf("   message.\n")
 		g.pf("   Reads REFUSE out-of-range values, never clamp, in every build. A tag on\n")
 		g.pf("   WRITE is asserted before it rides — caller error, gone under NDEBUG — and\n")
 		g.pf("   every read reconstructs the selected arm with its declared initial values\n")

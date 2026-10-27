@@ -379,7 +379,6 @@ impl MixedWeapon {
     pub const TURRET: MixedWeapon = MixedWeapon(13);
     pub const DRONE: MixedWeapon = MixedWeapon(14);
     pub const REPAIR: MixedWeapon = MixedWeapon(15);
-    pub const COUNT: MixedWeapon = MixedWeapon(15); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedWeapon = MixedWeapon(15); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.
@@ -809,7 +808,6 @@ impl MixedEventType {
     pub const HIT: MixedEventType = MixedEventType(1);
     pub const CHAT: MixedEventType = MixedEventType(2);
     pub const PICKUP: MixedEventType = MixedEventType(3);
-    pub const COUNT: MixedEventType = MixedEventType(3); // the declared variant count (SPEC §4.2)
     pub const MAX: MixedEventType = MixedEventType(3); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.
