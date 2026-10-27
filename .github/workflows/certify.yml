@@ -55,7 +55,7 @@ env:
   SERIALIZE_GO_TAG: v1.15.1
   SERIALIZE_RS_TAG: v3.1.0
   SERIALIZE_CS_TAG: v1.9.1
-  SERIALIZE_JS_TAG: v1.4.2
+  SERIALIZE_JS_TAG: v2.0.1
 
 jobs:
   # THE FULL CHAIN. `make test` builds the corpus in every language and
