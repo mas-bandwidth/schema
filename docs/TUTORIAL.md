@@ -87,7 +87,7 @@ repository. Clone them beside it, at the tags this build is pinned to:
 
 ```
 $ cd ..
-$ git clone --branch v1.16.2 https://github.com/mas-bandwidth/serialize.git
+$ git clone --branch v2.1.0 https://github.com/mas-bandwidth/serialize.git
 $ git clone --branch v1.10.0 https://github.com/mas-bandwidth/serialize.c.git
 ```
 

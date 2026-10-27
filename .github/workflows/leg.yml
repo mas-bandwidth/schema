@@ -28,7 +28,7 @@ on:
 # them: a sibling merging mid-day must not change what a certify run proves.
 # The three files move together; bumping a pin here is the same edit as there.
 env:
-  SERIALIZE_TAG: v1.16.2
+  SERIALIZE_TAG: v2.1.0
   SERIALIZE_C_TAG: v1.10.0
   SERIALIZE_GO_TAG: v1.15.1
   SERIALIZE_RS_TAG: v2.4.0
