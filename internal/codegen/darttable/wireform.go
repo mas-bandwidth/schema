@@ -301,8 +301,9 @@ func generateWireFiles(u *ir.Unit) (map[string][]byte, error) {
 	}
 	closure := wireClosure(u)
 	home := runtimeHome(u)
-	g := &wireGen{unit: u, home: home, closure: closure, roots: roots}
+	g := &wireGen{unit: u, home: home, closure: closure, roots: roots, enums: map[string]bool{}}
 	g.emit()
+	g.insertEnumImports()
 	// The per-table code is written with tab indentation for brevity; the
 	// leg's format gate (tables-dart-clean) holds the generated file to `dart
 	// format`, which indents with two spaces, so the tabs become spaces here.
@@ -317,6 +318,75 @@ type wireGen struct {
 	roots   []*ir.Struct
 	body    strings.Builder
 	cur     *ir.Struct // the table whose load body is being emitted
+	// enums are the packet enums this library spells by name: their
+	// extension types are imported, with `show`, from the declaring library
+	enums map[string]bool
+}
+
+// enumType records and returns an enum's Dart type: the packet emitter's
+// extension type over int, which this library imports.
+func (g *wireGen) enumType(e *ir.Enum) string {
+	g.enums[e.Name] = true
+	return e.Name
+}
+
+// enumConst is an enum's named constant for ordinal i — None at 0, the
+// i-th declared variant past it — through the imported extension type.
+func (g *wireGen) enumConst(e *ir.Enum, i int) string {
+	name := g.enumType(e)
+	if i == 0 {
+		return name + ".none"
+	}
+	return name + "." + dartName(e.Variants[i-1])
+}
+
+// listElemType is dartListElemType, recording an enum element's import.
+func (g *wireGen) listElemType(f *ir.Field) string {
+	if e, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+		g.enumType(e)
+	}
+	return dartListElemType(f)
+}
+
+// insertEnumImports adds the enum imports below the dart: imports, once the
+// body has named every enum it uses.
+func (g *wireGen) insertEnumImports() {
+	if len(g.enums) == 0 {
+		return
+	}
+	byFile := map[string][]string{}
+	for name := range g.enums {
+		file := fixedDeclaringFile(g.unit, name)
+		byFile[file] = append(byFile[file], name)
+	}
+	files := make([]string, 0, len(byFile))
+	for f := range byFile {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+	var imports strings.Builder
+	for _, f := range files {
+		names := byFile[f]
+		sort.Strings(names)
+		one := fmt.Sprintf("import '%s.dart' show %s;\n", f, strings.Join(names, ", "))
+		if len(one) <= 81 {
+			imports.WriteString(one)
+			continue
+		}
+		fmt.Fprintf(&imports, "import '%s.dart'\n    show\n", f)
+		for i, n := range names {
+			sep := ","
+			if i == len(names)-1 {
+				sep = ";"
+			}
+			fmt.Fprintf(&imports, "        %s%s\n", n, sep)
+		}
+	}
+	const anchor = "import 'dart:typed_data';\n\n"
+	src := g.body.String()
+	at := strings.Index(src, anchor) + len(anchor)
+	g.body.Reset()
+	g.body.WriteString(src[:at] + imports.String() + "\n" + src[at:])
 }
 
 func (g *wireGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
@@ -368,8 +438,8 @@ func dartListElemType(f *ir.Field) string {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return "String"
 	case f.Type.Kind == ir.TNamed:
-		if _, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
-			return "int"
+		if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
+			return e.Name // the packet extension type, imported by the wire library
 		}
 		if f.Type.Pointer && tableRef(f) != nil {
 			return f.Type.Name + "?"
@@ -1520,15 +1590,16 @@ func (g *wireGen) floatDefault(f *ir.Field) string {
 }
 
 func (g *wireGen) enumDefault(f *ir.Field) string {
+	e := enumRef(f)
+	name := g.enumType(e)
 	if f.HasDefault && f.DefVariant != "" {
-		e := enumRef(f)
-		for i, v := range e.Variants {
+		for _, v := range e.Variants {
 			if v == f.DefVariant {
-				return fmt.Sprintf("%d", i+1)
+				return name + "." + dartName(v)
 			}
 		}
 	}
-	return "0"
+	return name + ".none"
 }
 
 // emitSaveBody emits <name>WireSaveBodyFields (the field sequence, no
@@ -1949,7 +2020,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
-		et := dartListElemType(f)
+		et := g.listElemType(f)
 		g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
 		// THE ARRAY'S HEADER IS READ AGAINST THE PARENT BUFFER, not against the
 		// body's own L: a count LEB128 spelled wide enough leaves the cursor past
@@ -2214,15 +2285,15 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal ref2 = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (ref2 == null) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tif (ref2 == 0) { v.%s = 0; break; }\n", ind, name)
+		g.pf("%s\t\tif (ref2 == 0) { v.%s = %s; break; }\n", ind, name, g.enumConst(e, 0))
 		g.pf("%s\t\tfinal vid = r.refToId[ref2];\n", ind)
 		g.pf("%s\t\tif (vid == null) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))
-			g.pf("%s\t\t\tcase %s: v.%s = %d;\n", ind, dartU64Literal(vid), name, i+1)
+			g.pf("%s\t\t\tcase %s: v.%s = %s;\n", ind, dartU64Literal(vid), name, g.enumConst(e, i+1))
 		}
-		g.pf("%s\t\t\tdefault: v.%s = 0; r.report.unknown++; if (r.retain != null) r.report.retainLost++;\n", ind, name)
+		g.pf("%s\t\t\tdefault: v.%s = %s; r.report.unknown++; if (r.retain != null) r.report.retainLost++;\n", ind, name, g.enumConst(e, 0))
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -2250,16 +2321,16 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\tfinal vref = %s.readLeb();\n", ind, arr)
 		g.pf("%s\t\t\tif (vref == null) { r.report.malformed = true; break; }\n", ind)
 		g.pf("%s\t\t\tif (vref == 0) {\n", ind)
-		g.pf("%s\t\t\t\t%s.add(0);\n", ind, dest)
+		g.pf("%s\t\t\t\t%s.add(%s);\n", ind, dest, g.enumConst(e, 0))
 		g.pf("%s\t\t\t} else {\n", ind)
 		g.pf("%s\t\t\tfinal vid = %s.refToId[vref];\n", ind, arr)
 		g.pf("%s\t\t\tif (vid == null) { r.report.malformed = true; break; }\n", ind)
 		g.pf("%s\t\t\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))
-			g.pf("%s\t\t\t\tcase %s: %s.add(%d);\n", ind, dartU64Literal(vid), dest, i+1)
+			g.pf("%s\t\t\t\tcase %s: %s.add(%s);\n", ind, dartU64Literal(vid), dest, g.enumConst(e, i+1))
 		}
-		g.pf("%s\t\t\t\tdefault: %s.add(0); r.report.unknown++;\n", ind, dest)
+		g.pf("%s\t\t\t\tdefault: %s.add(%s); r.report.unknown++;\n", ind, dest, g.enumConst(e, 0))
 		g.pf("%s\t\t\t}\n", ind)
 		g.pf("%s\t\t\t}\n", ind)
 	case wireKindBool:

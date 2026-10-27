@@ -136,7 +136,7 @@ func t06C9(t *testing.T) {
 	src := t06Generated(t, "VNEW_union_append")
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
 	t02Has(t, body, "default:", "C9 a tag past the last arm takes the switch default")
-	t02Has(t, body, "value.pick.type = 0;", "C9 a tag past the arms lands None (0)")
+	t02Has(t, body, "value.pick.type = PickType.none;", "C9 a tag past the arms lands None (0)")
 	if !strings.Contains(body, "report.clamped++;") {
 		t.Errorf("C9 a forged tag counts its clamp")
 	}
@@ -152,9 +152,9 @@ func t06C9(t *testing.T) {
 func t06C10(t *testing.T) {
 	src := t06Generated(t, "VNEW_enum_append")
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
-	t02Has(t, body, "value.tier = view.getUint8(at);", "C10 the ordinal loads at its declared width")
+	t02Has(t, body, "value.tier = Tier(view.getUint8(at));", "C10 the ordinal loads at its declared width")
 	t02Has(t, body, "if (value.tier > 4) {", "C10 an ordinal past the last variant is refused")
-	t02Has(t, body, "value.tier = 0;", "C10 an ordinal past the top lands None (0)")
+	t02Has(t, body, "value.tier = Tier.none;", "C10 an ordinal past the top lands None (0)")
 	// THE COMPILED PLAN'S ordinal op makes the same landing and count.
 	t02Has(t, src, "if (raw < 0 || raw > remap[remapAt]) {",
 		"C10 the compiled ordinal op refuses past the writer's variant count")
@@ -189,7 +189,7 @@ func t06R31(t *testing.T) {
 	// (5) THE WIDTH ITSELF: VNEW_enum_width crosses 255 -> 256, so the ordinal
 	// rides in TWO bytes.
 	body := t02Block(t, src, "void lineageFixedDecode(", "\n}\n")
-	t02Has(t, body, "value.tier = view.getUint16(at, Endian.little);",
+	t02Has(t, body, "value.tier = Wide(view.getUint16(at, Endian.little));",
 		"R31 a 256-variant enum's ordinal rides at two bytes")
 }
 

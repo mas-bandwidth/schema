@@ -865,6 +865,14 @@ func (g *blockGen) sublist(ind, head, args string) {
 // so the payload survives (SPEC-TABLES §3; float32_cells_test.go is the
 // law); the bits are a NaN exactly when their magnitude exceeds infinity's.
 func (g *blockGen) scalarGetter(ind string, f *ir.Field, head, at string) {
+	if e, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+		// an enum reads as the packet emitter's extension type over int:
+		// the same bits, typed (erased at compile time, so free)
+		g.need(g.unit.DeclFile[e.Name]+".dart", e.Name)
+		head = e.Name + strings.TrimPrefix(head, "int")
+		g.arrow(ind, head, e.Name+"("+g.readAt(f, at)+")")
+		return
+	}
 	if f.Type.Kind != ir.TFloat32 {
 		g.arrow(ind, head, g.readAt(f, at))
 		return

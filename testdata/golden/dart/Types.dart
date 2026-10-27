@@ -1938,7 +1938,7 @@ bool readInputPacket(InputPacket value, ByteData view, int numBits) {
 
 // type ShipCreate
 final class ShipCreate {
-  int shipType = ShipType.none;
+  ShipType shipType = ShipType.none;
   final QuantizedPosition position = QuantizedPosition();
   final QuantizedRotation rotation = QuantizedRotation();
   final QuantizedVelocity linearVelocity = QuantizedVelocity();
@@ -1949,12 +1949,12 @@ final class ShipCreate {
   // ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
   int flags = 0;
 
-  int team = Team.none;
+  Team team = Team.none;
   // wire [0, 1000]
   int health = 0;
   // wire [0, 100]
   int thrust = 0;
-  int pending = Pending.none;
+  Pending pending = Pending.none;
 }
 
 // shipCreateMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -1965,30 +1965,30 @@ const int shipCreateMaxBytes = 32;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroShipCreate(ShipCreate value) {
-  value.shipType = 0;
+  value.shipType = ShipType.none;
   zeroQuantizedPosition(value.position);
   zeroQuantizedRotation(value.rotation);
   zeroQuantizedVelocity(value.linearVelocity);
   value.hasFlags = false;
   value.flags = 0;
-  value.team = 0;
+  value.team = Team.none;
   value.health = 0;
   value.thrust = 0;
-  value.pending = 0;
+  value.pending = Pending.none;
 }
 
 // Restore construction defaults in place; buffers and objects are retained.
 void initShipCreate(ShipCreate value) {
-  value.shipType = 0;
+  value.shipType = ShipType.none;
   initQuantizedPosition(value.position);
   initQuantizedRotation(value.rotation);
   initQuantizedVelocity(value.linearVelocity);
   value.hasFlags = false;
   value.flags = 0;
-  value.team = 0;
+  value.team = Team.none;
   value.health = 0;
   value.thrust = 0;
-  value.pending = 0;
+  value.pending = Pending.none;
 }
 
 // writeShipCreate packs value into view — the trusted writer (contracts asserted,
@@ -2138,7 +2138,7 @@ bool readShipCreate(ShipCreate value, ByteData view, int numBits) {
   if (v > 5) {
     return false; // headroom above the wire range is refused
   }
-  value.shipType = v;
+  value.shipType = ShipType(v);
   v = (window >>> 3) & 0x1ffffff;
   bitsRead += 25;
   if (v > 16777216) {
@@ -2245,7 +2245,7 @@ bool readShipCreate(ShipCreate value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // headroom above the wire range is refused
   }
-  value.team = v;
+  value.team = Team(v);
   v = (window >>> 2) & 0x3ff;
   bitsRead += 10;
   if (v > 1000) {
@@ -2258,7 +2258,7 @@ bool readShipCreate(ShipCreate value, ByteData view, int numBits) {
     return false; // a smuggled offset is refused
   }
   value.thrust = v;
-  value.pending = 0;
+  value.pending = Pending.none;
   return true;
 }
 

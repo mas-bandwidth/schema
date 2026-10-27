@@ -137,7 +137,7 @@ bool readDefaultArm(DefaultArm value, ByteData view, int numBits) {
     e0.retries = (v << 32) >> 32;
     v = (window >>> 32) & 0xf;
     bitsRead += 4;
-    e0.preferred = v;
+    e0.preferred = Weapon(v);
   }
   if (bitsRead + 3 > numBits) {
     return false;
@@ -154,10 +154,10 @@ bool readDefaultArm(DefaultArm value, ByteData view, int numBits) {
 }
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-abstract final class DefaultChoiceType {
-  static const int none = 0;
-  static const int first = 1;
-  static const int second = 2;
+extension type const DefaultChoiceType(int _value) implements int {
+  static const DefaultChoiceType none = DefaultChoiceType(0);
+  static const DefaultChoiceType first = DefaultChoiceType(1);
+  static const DefaultChoiceType second = DefaultChoiceType(2);
   static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
@@ -182,7 +182,7 @@ String enumNameDefaultChoiceType(int value) {
 // construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class DefaultChoice {
-  int type = DefaultChoiceType.none;
+  DefaultChoiceType type = DefaultChoiceType.none;
   final DefaultArm first = DefaultArm();
   final DefaultArm second = DefaultArm();
 }
@@ -319,7 +319,7 @@ bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.type = v;
+  value.type = DefaultChoiceType(v);
   switch (value.type) {
     case DefaultChoiceType.first:
       for (var i0 = 0; i0 < 2; i0++) {
@@ -359,7 +359,7 @@ bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
         e0.retries = (v << 32) >> 32;
         v = (window >>> 32) & 0xf;
         bitsRead += 4;
-        e0.preferred = v;
+        e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
         return false;
@@ -411,7 +411,7 @@ bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
         e0.retries = (v << 32) >> 32;
         v = (window >>> 32) & 0xf;
         bitsRead += 4;
-        e0.preferred = v;
+        e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
         return false;
@@ -442,12 +442,12 @@ const int defaultChoicePacketMaxBytes = 16;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroDefaultChoicePacket(DefaultChoicePacket value) {
-  value.choice.type = 0;
+  value.choice.type = DefaultChoiceType.none;
 }
 
 // Restore construction defaults in place; buffers and objects are retained.
 void initDefaultChoicePacket(DefaultChoicePacket value) {
-  value.choice.type = 0;
+  value.choice.type = DefaultChoiceType.none;
 }
 
 // writeDefaultChoicePacket packs value into view — the trusted writer (contracts asserted,
@@ -574,7 +574,7 @@ bool readDefaultChoicePacket(
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.choice.type = v;
+  value.choice.type = DefaultChoiceType(v);
   switch (value.choice.type) {
     case DefaultChoiceType.first:
       for (var i0 = 0; i0 < 2; i0++) {
@@ -614,7 +614,7 @@ bool readDefaultChoicePacket(
         e0.retries = (v << 32) >> 32;
         v = (window >>> 32) & 0xf;
         bitsRead += 4;
-        e0.preferred = v;
+        e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
         return false;
@@ -666,7 +666,7 @@ bool readDefaultChoicePacket(
         e0.retries = (v << 32) >> 32;
         v = (window >>> 32) & 0xf;
         bitsRead += 4;
-        e0.preferred = v;
+        e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
         return false;
@@ -852,7 +852,7 @@ bool readDefaultBulkArm(DefaultBulkArm value, ByteData view, int numBits) {
     e0.retries = (v << 32) >> 32;
     v = (window >>> 32) & 0xf;
     bitsRead += 4;
-    e0.preferred = v;
+    e0.preferred = Weapon(v);
   }
   if (bitsRead + 3 > numBits) {
     return false;
@@ -900,10 +900,10 @@ bool readDefaultBulkArm(DefaultBulkArm value, ByteData view, int numBits) {
 }
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-abstract final class DefaultBulkChoiceType {
-  static const int none = 0;
-  static const int first = 1;
-  static const int second = 2;
+extension type const DefaultBulkChoiceType(int _value) implements int {
+  static const DefaultBulkChoiceType none = DefaultBulkChoiceType(0);
+  static const DefaultBulkChoiceType first = DefaultBulkChoiceType(1);
+  static const DefaultBulkChoiceType second = DefaultBulkChoiceType(2);
   static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
@@ -928,7 +928,7 @@ String enumNameDefaultBulkChoiceType(int value) {
 // construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class DefaultBulkChoice {
-  int type = DefaultBulkChoiceType.none;
+  DefaultBulkChoiceType type = DefaultBulkChoiceType.none;
   final DefaultBulkArm first = DefaultBulkArm();
   final DefaultBulkArm second = DefaultBulkArm();
 }
@@ -1159,7 +1159,7 @@ bool readDefaultBulkChoice(
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.type = v;
+  value.type = DefaultBulkChoiceType(v);
   switch (value.type) {
     case DefaultBulkChoiceType.first:
       for (var i0 = 0; i0 < 2; i0++) {
@@ -1202,7 +1202,7 @@ bool readDefaultBulkChoice(
         e0.retries = (v << 32) >> 32;
         v = (window >>> 32) & 0xf;
         bitsRead += 4;
-        e0.preferred = v;
+        e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
         return false;
@@ -1288,7 +1288,7 @@ bool readDefaultBulkChoice(
         e0.retries = (v << 32) >> 32;
         v = (window >>> 32) & 0xf;
         bitsRead += 4;
-        e0.preferred = v;
+        e0.preferred = Weapon(v);
       }
       if (bitsRead + 3 > numBits) {
         return false;

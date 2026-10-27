@@ -803,11 +803,12 @@ func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
 	g.pf("%s{\n", ind)
 	g.pf("%s  final ref = r.bits.get(tableMessageRefBits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
-	g.pf("%s  if (ref == 0) { %s = 0; } else {\n", ind, expr)
+	g.gen.need(e.Name)
+	g.pf("%s  if (ref == 0) { %s = %s.none; } else {\n", ind, expr, e.Name)
 	g.pf("%s    switch (ref) {\n", ind)
-	for i := range e.Variants {
+	for i, v := range e.Variants {
 		slot := g.messageNameSlot(ir.TableWireId(e.VariantWireName(i)))
-		g.pf("%s      case %d: %s = %d; break;\n", ind, slot, expr, i+1)
+		g.pf("%s      case %d: %s = %s.%s; break;\n", ind, slot, expr, e.Name, dartName(v))
 	}
 	g.pf("%s      default:\n", ind)
 	// A reference that names no kind-0 entry — one above the announcement's
@@ -821,7 +822,7 @@ func (g *fixedModule) emitMessageReadEnum(e *ir.Enum, expr, ind string) {
 	g.pf("%s          r.report.Damage();\n", ind)
 	g.pf("%s          return false;\n", ind)
 	g.pf("%s        }\n", ind)
-	g.pf("%s        %s = 0; r.report.unknown++;\n", ind, expr)
+	g.pf("%s        %s = %s.none; r.report.unknown++;\n", ind, expr, e.Name)
 	g.pf("%s        break;\n", ind)
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
@@ -830,12 +831,17 @@ func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
 	g.pf("%s{\n", ind)
 	g.pf("%s  final ref = r.bits.get(tableMessageRefBits);\n", ind)
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
-	g.pf("%s  if (ref == 0) { %s.type = 0; } else {\n", ind, expr)
+	tagType, tagNone := g.gen.unionTagType(un)
+	g.pf("%s  if (ref == 0) { %s.type = %s; } else {\n", ind, expr, tagNone)
 	g.pf("%s    switch (ref) {\n", ind)
 	for i, v := range un.Variants {
 		slot := g.messageSlot(ir.TableArmEntry(v))
+		arm := fmt.Sprint(i + 1)
+		if tagType != "" {
+			arm = tagType + "." + dartName(ir.GoExportName(v.Name))
+		}
 		g.pf("%s      case %d:\n", ind, slot)
-		g.pf("%s        %s.type = %d;\n", ind, expr, i+1)
+		g.pf("%s        %s.type = %s;\n", ind, expr, arm)
 		if !v.Void() {
 			g.emitMessageReadValue(v.F, ir.TableArmEntry(v), expr+"."+dartName(v.Name), ind+"        ")
 		}
@@ -855,7 +861,7 @@ func (g *fixedModule) emitMessageReadUnion(un *ir.Union, expr, ind string) {
 	// AND ITS PAYLOAD IS STEPPED OVER by the announcement's own kind and
 	// shape, as the reference does (internal/tablewire/messagedecode.go
 	// union: `Unknown++`, `return d.skip(entry)`; docs/SPEC-TABLES.md §3.3).
-	g.pf("%s        %s.type = 0; r.report.unknown++;\n", ind, expr)
+	g.pf("%s        %s.type = %s; r.report.unknown++;\n", ind, expr, tagNone)
 	g.pf("%s        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {\n", ind)
 	g.pf("%s          r.report.Damage();\n", ind)
 	g.pf("%s          return false;\n", ind)

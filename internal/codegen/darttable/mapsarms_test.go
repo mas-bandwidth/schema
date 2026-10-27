@@ -8,6 +8,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestMapsAndUnionArmsOnTheTableWireDart is the maps-and-arms card's red-first
@@ -71,7 +74,7 @@ func TestMapsAndUnionArmsOnTheTableWireDart(t *testing.T) {
 			if !ok || len(wire) == 0 {
 				t.Fatalf("Generate emitted no %s for %s — the form-1 codec is not carried yet", c.wire, c.unit)
 			}
-			resaveOracleRows(t, c.wire, wire, repo, c.rows)
+			resaveOracleRows(t, c.wire, wire, repo, c.rows, packetFiles(t, u))
 		})
 	}
 }
@@ -111,9 +114,10 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 // resaveOracleRows writes the generated library and one probe that loads every
 // row's oracle wire through <root>WireLoad, saves it through <root>WireSave,
 // and requires the bytes to be identical, naming every row that is not.
-func resaveOracleRows(t *testing.T, wireName string, wire []byte, repo string, rows []oracleRow) {
+func resaveOracleRows(t *testing.T, wireName string, wire []byte, repo string, rows []oracleRow, packet map[string][]byte) {
 	t.Helper()
 	dir := t.TempDir()
+	writeFiles(t, dir, packet)
 	if err := os.WriteFile(filepath.Join(dir, wireName), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -192,5 +196,27 @@ void main(List<String> args) {
 	}
 	if !strings.Contains(string(out), "ok") {
 		t.Fatalf("probe did not report ok: %s", out)
+	}
+}
+
+// packetFiles is the unit's packet libraries (internal/codegen/dart): the
+// table libraries import the packet emitter's enum extension types, so a
+// probe directory carries them beside the table library under test.
+func packetFiles(t *testing.T, u *ir.Unit) map[string][]byte {
+	t.Helper()
+	files, err := dart.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+// writeFiles writes every file of files into dir.
+func writeFiles(t *testing.T, dir string, files map[string][]byte) {
+	t.Helper()
+	for name, src := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), src, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

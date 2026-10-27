@@ -36,7 +36,7 @@ func TestFixedClassOnTableWireDart(t *testing.T) {
 			if len(wire) == 0 {
 				t.Fatalf("no %s form-1 codec", wireName)
 			}
-			resaveOracleRows(t, wireName, wire, repo, rows)
+			resaveOracleRows(t, wireName, wire, repo, rows, packetFiles(t, u))
 		})
 	}
 }

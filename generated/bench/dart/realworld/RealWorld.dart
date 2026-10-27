@@ -31,16 +31,16 @@ import 'Schema.dart' show Schema;
 const int protocolId = 0x1922430092518648;
 
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class PacketMode {
-  static const int none = 0;
-  static const int idle = 1;
-  static const int active = 2;
-  static const int combat = 3;
-  static const int docked = 4;
-  static const int warping = 5;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (PacketMode(n)), at no runtime cost over a bare int
+extension type const PacketMode(int _value) implements int {
+  static const PacketMode none = PacketMode(0);
+  static const PacketMode idle = PacketMode(1);
+  static const PacketMode active = PacketMode(2);
+  static const PacketMode combat = PacketMode(3);
+  static const PacketMode docked = PacketMode(4);
+  static const PacketMode warping = PacketMode(5);
   static const int count = 5; // the declared variant count (SPEC §4.2)
   static const int max = 5; // the exported extent (SPEC §4.2)
 }
@@ -180,7 +180,7 @@ final class RealPacket {
   // wire [0, 14149]
   int f034Uint = 0;
   int f035Bits = 0;
-  int f036Enum = PacketMode.none;
+  PacketMode f036Enum = PacketMode.none;
   bool f037Bool = false;
   bool f038Bool = false;
   int f039Bits = 0;
@@ -265,7 +265,7 @@ final class RealPacket {
   bool f080Bool = false;
   int f081Bits = 0;
   int f082Bits = 0;
-  int f083Enum = PacketMode.none;
+  PacketMode f083Enum = PacketMode.none;
   // wire [0, 1]
   int f084Ufixed = 0;
   int f085Bits = 0;
@@ -331,7 +331,7 @@ void zeroRealPacket(RealPacket value) {
   value.f033Uint = 0;
   value.f034Uint = 0;
   value.f035Bits = 0;
-  value.f036Enum = 0;
+  value.f036Enum = PacketMode.none;
   value.f037Bool = false;
   value.f038Bool = false;
   value.f039Bits = 0;
@@ -378,7 +378,7 @@ void zeroRealPacket(RealPacket value) {
   value.f080Bool = false;
   value.f081Bits = 0;
   value.f082Bits = 0;
-  value.f083Enum = 0;
+  value.f083Enum = PacketMode.none;
   value.f084Ufixed = 0;
   value.f085Bits = 0;
   value.f086Uint = 0;
@@ -432,7 +432,7 @@ void initRealPacket(RealPacket value) {
   value.f033Uint = 0;
   value.f034Uint = 0;
   value.f035Bits = 0;
-  value.f036Enum = 0;
+  value.f036Enum = PacketMode.none;
   value.f037Bool = false;
   value.f038Bool = false;
   value.f039Bits = 0;
@@ -479,7 +479,7 @@ void initRealPacket(RealPacket value) {
   value.f080Bool = false;
   value.f081Bits = 0;
   value.f082Bits = 0;
-  value.f083Enum = 0;
+  value.f083Enum = PacketMode.none;
   value.f084Ufixed = 0;
   value.f085Bits = 0;
   value.f086Uint = 0;
@@ -1720,7 +1720,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   if (v > 5) {
     return false; // headroom above the wire range is refused
   }
-  value.f036Enum = v;
+  value.f036Enum = PacketMode(v);
   v = (window >>> 26) & 0x1;
   bitsRead += 1;
   value.f037Bool = v != 0;
@@ -2118,7 +2118,7 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   if (v > 5) {
     return false; // headroom above the wire range is refused
   }
-  value.f083Enum = v;
+  value.f083Enum = PacketMode(v);
   v = (window >>> 3) & 0xff;
   bitsRead += 8;
   if (v > 128) {

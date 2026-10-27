@@ -256,7 +256,7 @@ func TestCardWireFuzzMutantMatchesGoOracle(t *testing.T) {
 		t.Fatalf("Go Encode: %v", err)
 	}
 
-	got := cardWireProbe(t, wire, mutantHex)
+	got := cardWireProbe(t, wire, mutantHex, packetFiles(t, u))
 	if got.measure != wantMeasure {
 		t.Errorf("Dart cardWireMeasure = %d, tablewire.FileRegionMeasure = %d", got.measure, wantMeasure)
 	}
@@ -277,9 +277,10 @@ func TestCardWireFuzzMutantMatchesGoOracle(t *testing.T) {
 	}
 }
 
-func cardWireProbe(t *testing.T, wire []byte, mutantHex string) feedChainAnswer {
+func cardWireProbe(t *testing.T, wire []byte, mutantHex string, packet map[string][]byte) feedChainAnswer {
 	t.Helper()
 	dir := t.TempDir()
+	writeFiles(t, dir, packet)
 	if err := os.WriteFile(filepath.Join(dir, "CardsWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}

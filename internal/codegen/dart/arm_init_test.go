@@ -126,12 +126,12 @@ func TestUnionSelectionInitializesConstructionDefaults(t *testing.T) {
 	leaf := armInitBody(t, source, "void initLeaf(")
 	armInitContains(t, leaf, "value.active = true;", "value.kind = Mode.two;", "1073741824")
 	zero := armInitBody(t, source, "void zeroLeaf(")
-	armInitContains(t, zero, "value.active = false;", "value.kind = 0;", "value.q = 0;")
+	armInitContains(t, zero, "value.active = false;", "value.kind = Mode.none;", "value.q = 0;")
 
 	init := armInitBody(t, source, "void initPayload(")
 	armInitContains(t, init, "initLeaf(value.current);", "initLeaf(value.fixedValues[i0]);",
 		"i0 < 3", "initLeaf(value.live[i0]);", "value.liveCount = 1;",
-		"value.nested.type = 0;", "value.nestedValues[i0].type = 0;",
+		"value.nested.type = NestedType.none;", "value.nestedValues[i0].type = NestedType.none;",
 		"value.raw.fillRange(0, value.raw.length, 0);", "value.rawLength = 0;", "initLeaf(value.branch);")
 	armInitExcludes(t, init, "Payload()", "Leaf()", "initNested(", "value.nested.leaf", "value.liveCount = 0;")
 	zero = armInitBody(t, source, "void zeroPayload(")
@@ -143,6 +143,6 @@ func TestUnionSelectionInitializesConstructionDefaults(t *testing.T) {
 	// a field the arm's read always assigns (a nested union's tag, a bare
 	// scalar) takes no initial store: the read overwrites it unconditionally
 	armInitExcludes(t, read, "Payload()", "Leaf()", "value.empty",
-		"value.selected.nested.type = 0;", "value.selected.enabled = false;")
+		"value.selected.nested.type = NestedType.none;", "value.selected.enabled = false;")
 	armInitContains(t, source, "final Payload selected = Payload();")
 }

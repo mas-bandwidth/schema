@@ -92,6 +92,7 @@ func measureWireMeasure(t *testing.T, dart string, c measureRootCase, files map[
 		t.Fatalf("Generate emitted no %s", c.lib)
 	}
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, c.unit))
 	if err := os.WriteFile(filepath.Join(dir, c.lib), lib, 0o600); err != nil {
 		t.Fatal(err)
 	}

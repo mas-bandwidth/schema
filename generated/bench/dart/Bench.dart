@@ -754,26 +754,26 @@ bool readBenchBits(BenchBits value, ByteData view, int numBits) {
 }
 
 // MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class MixedWeapon {
-  static const int none = 0;
-  static const int fists = 1;
-  static const int pistol = 2;
-  static const int shotgun = 3;
-  static const int rifle = 4;
-  static const int sniper = 5;
-  static const int smg = 6;
-  static const int rocket = 7;
-  static const int grenade = 8;
-  static const int plasma = 9;
-  static const int railgun = 10;
-  static const int flamer = 11;
-  static const int mine = 12;
-  static const int turret = 13;
-  static const int drone = 14;
-  static const int repair = 15;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (MixedWeapon(n)), at no runtime cost over a bare int
+extension type const MixedWeapon(int _value) implements int {
+  static const MixedWeapon none = MixedWeapon(0);
+  static const MixedWeapon fists = MixedWeapon(1);
+  static const MixedWeapon pistol = MixedWeapon(2);
+  static const MixedWeapon shotgun = MixedWeapon(3);
+  static const MixedWeapon rifle = MixedWeapon(4);
+  static const MixedWeapon sniper = MixedWeapon(5);
+  static const MixedWeapon smg = MixedWeapon(6);
+  static const MixedWeapon rocket = MixedWeapon(7);
+  static const MixedWeapon grenade = MixedWeapon(8);
+  static const MixedWeapon plasma = MixedWeapon(9);
+  static const MixedWeapon railgun = MixedWeapon(10);
+  static const MixedWeapon flamer = MixedWeapon(11);
+  static const MixedWeapon mine = MixedWeapon(12);
+  static const MixedWeapon turret = MixedWeapon(13);
+  static const MixedWeapon drone = MixedWeapon(14);
+  static const MixedWeapon repair = MixedWeapon(15);
   static const int count = 15; // the declared variant count (SPEC §4.2)
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
@@ -911,7 +911,7 @@ final class MixedEntity {
   int velZ = 0;
   // wire [0, 1000]
   int health = 0;
-  int weapon = MixedWeapon.none;
+  MixedWeapon weapon = MixedWeapon.none;
   // MixedDamage — consumed as masks, uint64 storage (SPEC §4.2)
   int damage = 0;
   bool moving = false;
@@ -936,7 +936,7 @@ void zeroMixedEntity(MixedEntity value) {
   value.velY = 0;
   value.velZ = 0;
   value.health = 0;
-  value.weapon = 0;
+  value.weapon = MixedWeapon.none;
   value.damage = 0;
   value.moving = false;
   value.firing = false;
@@ -954,7 +954,7 @@ void initMixedEntity(MixedEntity value) {
   value.velY = 0;
   value.velZ = 0;
   value.health = 0;
-  value.weapon = 0;
+  value.weapon = MixedWeapon.none;
   value.damage = 0;
   value.moving = false;
   value.firing = false;
@@ -1112,7 +1112,7 @@ bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
   value.health = v;
   v = (window >>> 10) & 0xf;
   bitsRead += 4;
-  value.weapon = v;
+  value.weapon = MixedWeapon(v);
   v = (window >>> 14) & 0xff;
   bitsRead += 8;
   value.damage = v;
@@ -1485,11 +1485,11 @@ bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
 }
 
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
-abstract final class MixedEventType {
-  static const int none = 0;
-  static const int hit = 1;
-  static const int chat = 2;
-  static const int pickup = 3;
+extension type const MixedEventType(int _value) implements int {
+  static const MixedEventType none = MixedEventType(0);
+  static const MixedEventType hit = MixedEventType(1);
+  static const MixedEventType chat = MixedEventType(2);
+  static const MixedEventType pickup = MixedEventType(3);
   static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
@@ -1516,7 +1516,7 @@ String enumNameMixedEventType(int value) {
 // construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class MixedEvent {
-  int type = MixedEventType.none;
+  MixedEventType type = MixedEventType.none;
   final MixedHitEvent hit = MixedHitEvent();
   final MixedChatEvent chat = MixedChatEvent();
   final MixedPickupEvent pickup = MixedPickupEvent();
@@ -1613,7 +1613,7 @@ bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
   }
   v = window & 0x3;
   bitsRead += 2;
-  value.type = v;
+  value.type = MixedEventType(v);
   switch (value.type) {
     case MixedEventType.hit:
       if (bitsRead + 28 > numBits) {
@@ -1747,7 +1747,7 @@ void zeroBenchMixed(BenchMixed value) {
     zeroMixedStat(value.stats[i0]);
   }
   value.statsCount = 0;
-  value.gameEvent.type = 0;
+  value.gameEvent.type = MixedEventType.none;
   value.loadout.fillRange(0, value.loadout.length, 0);
   value.playerName.fillRange(0, value.playerName.length, 0);
   value.playerNameLength = 0;
@@ -1786,7 +1786,7 @@ void initBenchMixed(BenchMixed value) {
     initMixedStat(value.stats[i0]);
   }
   value.statsCount = 0;
-  value.gameEvent.type = 0;
+  value.gameEvent.type = MixedEventType.none;
   value.loadout.fillRange(0, value.loadout.length, 0);
   value.playerName.fillRange(0, value.playerName.length, 0);
   value.playerNameLength = 0;
@@ -2546,7 +2546,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
     e0.health = v;
     v = (window >>> 10) & 0xf;
     bitsRead += 4;
-    e0.weapon = v;
+    e0.weapon = MixedWeapon(v);
     v = (window >>> 14) & 0xff;
     bitsRead += 8;
     e0.damage = v;
@@ -2631,7 +2631,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   }
   v = window & 0x3;
   bitsRead += 2;
-  value.gameEvent.type = v;
+  value.gameEvent.type = MixedEventType(v);
   switch (value.gameEvent.type) {
     case MixedEventType.hit:
       if (bitsRead + 28 > numBits) {

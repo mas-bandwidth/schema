@@ -1130,6 +1130,13 @@ func readAssigned(items []ir.Item) map[*ir.Field]bool {
 	return out
 }
 
+// tagNone is a union's None tag constant, imported where the union lives in
+// another library.
+func (g *gen) tagNone(union string) string {
+	g.addRef(union, union+"Type")
+	return union + "Type.none"
+}
+
 // armTag is the named tag constant a union switch cases on —
 // <Union>Type.<arm>, imported when the union lives in another library —
 // never the bare integer it stands for.
@@ -1584,15 +1591,18 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
+			g.addRef(ref.Name, ref.Name)
 			if bits == 0 {
-				g.pf("%s%s = 0;\n", ind, name)
+				g.pf("%s%s = %s.none;\n", ind, name, ref.Name)
 				return
 			}
 			g.readR(bits, ind)
 			if ref.Max != (int64(1)<<bits)-1 {
 				g.pf("%sif (v > %d) {\n%s  return false; // headroom above the wire range is refused\n%s}\n", ind, ref.Max, ind, ind)
 			}
-			g.pf("%s%s = v;\n", ind, name)
+			// the extension type wraps the wire value as is: a headroom
+			// value up to the declared max is a value of the enum too
+			g.pf("%s%s = %s(v);\n", ind, name, ref.Name)
 		case *ir.Flags:
 			wb := int64(ref.WireBits)
 			if wb <= 32 {
@@ -1822,7 +1832,7 @@ func (g *gen) emitAssign128(assign string, signed bool, min *big.Int, hiExpr, lo
 // starts from construction defaults, then its items inline.
 func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 	if u.Max == 0 {
-		g.pf("%s%s.type = 0; // zero wire bits — only None exists (SPEC §4.8)\n", ind, expr)
+		g.pf("%s%s.type = %s; // zero wire bits — only None exists (SPEC §4.8)\n", ind, expr, g.tagNone(u.Name))
 		return
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
@@ -1833,7 +1843,7 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 	if u.Max != (int64(1)<<bits)-1 {
 		g.pf("%sif (v > %d) {\n%s  return false; // not a wire-legal tag (SPEC §4.8)\n%s}\n", ind, u.Max, ind, ind)
 	}
-	g.pf("%s%s.type = v;\n", ind, expr)
+	g.pf("%s%s.type = %sType(v);\n", ind, expr, u.Name)
 	g.pf("%sswitch (%s.type) {\n", ind, expr)
 	for _, vr := range u.Variants {
 		arm := expr + "." + dartName(vr.Name)
@@ -1933,7 +1943,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 			iv := fmt.Sprintf("i%d", g.loopDepth)
 			g.loopDepth++
 			g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-			g.pf("%s  %s[%s].type = 0;\n", ind, name, iv)
+			g.pf("%s  %s[%s].type = %s;\n", ind, name, iv, g.tagNone(f.Type.Name))
 			g.pf("%s}\n", ind)
 			g.loopDepth--
 		default:
@@ -1970,7 +1980,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 		case *ir.Union:
 			if f.Type.Kind == ir.TNamed {
 				// zero IS None: the tag resets; arms are unspecified at None
-				g.pf("%s%s.type = 0;\n", ind, name)
+				g.pf("%s%s.type = %s;\n", ind, name, g.tagNone(f.Type.Name))
 				return
 			}
 		}
@@ -1995,6 +2005,10 @@ func zeroElem(t ir.FieldType) string {
 // zeroScalar is the §5 zero form of a scalar storage slot (enum references
 // fold to 0 — wire bodies import nothing for zeroing).
 func zeroScalar(t ir.FieldType, g *gen) string {
+	if e, ok := t.Ref.(*ir.Enum); ok && t.Kind == ir.TNamed {
+		g.addRef(e.Name, e.Name)
+		return e.Name + ".none"
+	}
 	switch {
 	case t.Kind == ir.TBool:
 		return "false"

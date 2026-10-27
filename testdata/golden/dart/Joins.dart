@@ -1240,10 +1240,10 @@ bool readWide(Wide value, ByteData view, int numBits) {
 }
 
 // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
-abstract final class UnevenType {
-  static const int none = 0;
-  static const int narrow = 1;
-  static const int wide = 2;
+extension type const UnevenType(int _value) implements int {
+  static const UnevenType none = UnevenType(0);
+  static const UnevenType narrow = UnevenType(1);
+  static const UnevenType wide = UnevenType(2);
   static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
@@ -1268,7 +1268,7 @@ String enumNameUnevenType(int value) {
 // construction defaults; unselected arms keep what they last held — the
 // reused-storage discipline. Consumers read the selected arm only.
 final class Uneven {
-  int type = UnevenType.none;
+  UnevenType type = UnevenType.none;
   final Narrow narrow = Narrow();
   final Wide wide = Wide();
 }
@@ -1352,7 +1352,7 @@ bool readUneven(Uneven value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.type = v;
+  value.type = UnevenType(v);
   switch (value.type) {
     case UnevenType.narrow:
       if (bitsRead + 3 > numBits) {
@@ -1400,14 +1400,14 @@ const int holdsUnevenMaxBytes = 8;
 // construction.
 void zeroHoldsUneven(HoldsUneven value) {
   value.lead = 0;
-  value.u.type = 0;
+  value.u.type = UnevenType.none;
   value.tail = 0;
 }
 
 // Restore construction defaults in place; buffers and objects are retained.
 void initHoldsUneven(HoldsUneven value) {
   value.lead = 0;
-  value.u.type = 0;
+  value.u.type = UnevenType.none;
   value.tail = 0;
 }
 
@@ -1487,7 +1487,7 @@ bool readHoldsUneven(HoldsUneven value, ByteData view, int numBits) {
   if (v > 2) {
     return false; // not a wire-legal tag (SPEC §4.8)
   }
-  value.u.type = v;
+  value.u.type = UnevenType(v);
   switch (value.u.type) {
     case UnevenType.narrow:
       if (bitsRead + 3 > numBits) {
@@ -1548,7 +1548,7 @@ const int arrUnevenMaxBytes = 16;
 void zeroArrUneven(ArrUneven value) {
   value.lead = 0;
   for (var i0 = 0; i0 < 3; i0++) {
-    value.items[i0].type = 0;
+    value.items[i0].type = UnevenType.none;
   }
   value.itemsCount = 0;
   value.tail = 0;
@@ -1558,7 +1558,7 @@ void zeroArrUneven(ArrUneven value) {
 void initArrUneven(ArrUneven value) {
   value.lead = 0;
   for (var i0 = 0; i0 < 3; i0++) {
-    value.items[i0].type = 0;
+    value.items[i0].type = UnevenType.none;
   }
   value.itemsCount = 0;
   value.tail = 0;
@@ -1685,7 +1685,7 @@ bool readArrUneven(ArrUneven value, ByteData view, int numBits) {
     if (v > 2) {
       return false; // not a wire-legal tag (SPEC §4.8)
     }
-    e0.type = v;
+    e0.type = UnevenType(v);
     switch (e0.type) {
       case UnevenType.narrow:
         if (bitsRead + 3 > numBits) {

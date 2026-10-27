@@ -101,6 +101,14 @@ func newFixedModule(u *ir.Unit, f *ir.File, base string, home bool, homeBase str
 		wide: wide, mine: mine, lineage: lineage, imports: map[string]map[string]bool{}}
 	g.gen.unit = u
 	g.gen.need = g.needClass
+	g.gen.needTag = func(union string) {
+		if g.mine[union] {
+			return
+		}
+		if base := fixedDeclaringFile(g.unit, union); base != "" {
+			g.need(base, union+"Type")
+		}
+	}
 	return g
 }
 
@@ -211,6 +219,36 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 // fixedLocalUnions finds unions with direct field-line, payload-free or TABLE arms.
 // Their fixed form owns its storage, including a tag-only union with no arm
 // members (SPEC-TABLES §2.6, §3.4).
+// unionStorageIsLocal reports a union whose storage class the fixed form
+// emits itself because internal/codegen/dart declares none for it; such a
+// class keeps its tag in a plain int. Every other union is the packet
+// emitter's class, whose tag is the <Union>Type extension type.
+func unionStorageIsLocal(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F == nil {
+			return true // §2.6: fixed storage owns the tag-only arm, with no member.
+		}
+		if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
+			return true
+		}
+		// A UNION WHOSE ARM IS A UNION is a table union (SPEC-TABLES §2.6):
+		// internal/codegen/dart never declares it, so its storage is this
+		// emitter's, and its arms answer to the OUTER tag through the guard
+		// chain (docs/FIXED-FORM-ALGORITHM.md §4.1).
+		if _, ok := v.F.Type.Ref.(*ir.Union); ok {
+			return true
+		}
+		// §2.6: a union with a TABLE arm is a table-closure construct
+		// (ir.Unit.TableUnions, beside Decls), so the packet emitter never
+		// emits its class. The fixed form is its only home and owns its
+		// storage, one pre-allocated table per arm (§3.4).
+		if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed && s.IsTable {
+			return true
+		}
+	}
+	return false
+}
+
 func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 	seen := map[string]bool{}
 	var out []*ir.Union
@@ -220,30 +258,7 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 		if un == nil || seen[un.Name] {
 			return
 		}
-		local := false
-		for _, v := range un.Variants {
-			if v.F == nil {
-				local = true // §2.6: fixed storage owns the tag-only arm, with no member.
-				continue
-			}
-			if v.F.Array != ir.ArrayNone || v.F.KeyEnum != "" || v.F.Type.Kind != ir.TNamed {
-				local = true
-			}
-			// A UNION WHOSE ARM IS A UNION is a table union (SPEC-TABLES §2.6):
-			// internal/codegen/dart never declares it, so its storage is this
-			// emitter's, and its arms answer to the OUTER tag through the guard
-			// chain (docs/FIXED-FORM-ALGORITHM.md §4.1).
-			if _, ok := v.F.Type.Ref.(*ir.Union); ok {
-				local = true
-			}
-			// §2.6: a union with a TABLE arm is a table-closure construct
-			// (ir.Unit.TableUnions, beside Decls), so the packet emitter never
-			// emits its class. The fixed form is its only home and owns its
-			// storage, one pre-allocated table per arm (§3.4).
-			if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed && s.IsTable {
-				local = true
-			}
-		}
+		local := unionStorageIsLocal(un)
 		if local {
 			seen[un.Name] = true
 			out = append(out, un)

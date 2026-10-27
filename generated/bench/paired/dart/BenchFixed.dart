@@ -31,6 +31,7 @@ import 'Bench.dart'
         BenchMixed,
         MixedChatEvent,
         MixedEntity,
+        MixedEventType,
         MixedHitEvent,
         MixedPickupEvent,
         MixedStat,
@@ -3339,29 +3340,29 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
         {
           final ref = r.bits.get(tableMessageRefBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
-          if (ref == 0) { value.weapon = 0; } else {
+          if (ref == 0) { value.weapon = MixedWeapon.none; } else {
             switch (ref) {
-              case 53: value.weapon = 1; break;
-              case 54: value.weapon = 2; break;
-              case 55: value.weapon = 3; break;
-              case 56: value.weapon = 4; break;
-              case 57: value.weapon = 5; break;
-              case 58: value.weapon = 6; break;
-              case 59: value.weapon = 7; break;
-              case 60: value.weapon = 8; break;
-              case 61: value.weapon = 9; break;
-              case 62: value.weapon = 10; break;
-              case 63: value.weapon = 11; break;
-              case 64: value.weapon = 12; break;
-              case 65: value.weapon = 13; break;
-              case 66: value.weapon = 14; break;
-              case 67: value.weapon = 15; break;
+              case 53: value.weapon = MixedWeapon.fists; break;
+              case 54: value.weapon = MixedWeapon.pistol; break;
+              case 55: value.weapon = MixedWeapon.shotgun; break;
+              case 56: value.weapon = MixedWeapon.rifle; break;
+              case 57: value.weapon = MixedWeapon.sniper; break;
+              case 58: value.weapon = MixedWeapon.smg; break;
+              case 59: value.weapon = MixedWeapon.rocket; break;
+              case 60: value.weapon = MixedWeapon.grenade; break;
+              case 61: value.weapon = MixedWeapon.plasma; break;
+              case 62: value.weapon = MixedWeapon.railgun; break;
+              case 63: value.weapon = MixedWeapon.flamer; break;
+              case 64: value.weapon = MixedWeapon.mine; break;
+              case 65: value.weapon = MixedWeapon.turret; break;
+              case 66: value.weapon = MixedWeapon.drone; break;
+              case 67: value.weapon = MixedWeapon.repair; break;
               default:
                 if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind != 0) {
                   r.report.Damage();
                   return false;
                 }
-                value.weapon = 0; r.report.unknown++;
+                value.weapon = MixedWeapon.none; r.report.unknown++;
                 break;
             }
           }
@@ -4020,18 +4021,18 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         {
           final ref = r.bits.get(tableMessageRefBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
-          if (ref == 0) { value.gameEvent.type = 0; } else {
+          if (ref == 0) { value.gameEvent.type = MixedEventType.none; } else {
             switch (ref) {
               case 68:
-                value.gameEvent.type = 1;
+                value.gameEvent.type = MixedEventType.hit;
                 if (!mixedHitEventLoadMessageBody(r, value.gameEvent.hit)) return false;
                 break;
               case 69:
-                value.gameEvent.type = 2;
+                value.gameEvent.type = MixedEventType.chat;
                 if (!mixedChatEventLoadMessageBody(r, value.gameEvent.chat)) return false;
                 break;
               case 70:
-                value.gameEvent.type = 3;
+                value.gameEvent.type = MixedEventType.pickup;
                 if (!mixedPickupEventLoadMessageBody(r, value.gameEvent.pickup)) return false;
                 break;
               default:
@@ -4039,7 +4040,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
                   r.report.Damage();
                   return false;
                 }
-                value.gameEvent.type = 0; r.report.unknown++;
+                value.gameEvent.type = MixedEventType.none; r.report.unknown++;
                 if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {
                   r.report.Damage();
                   return false;
@@ -4414,9 +4415,9 @@ void mixedEntityFixedDecode(
     value.health = 1000;
     report.clamped++;
   }
-  value.weapon = view.getUint8(at + 40);
+  value.weapon = MixedWeapon(view.getUint8(at + 40));
   if (value.weapon > 15) {
-    value.weapon = 0;
+    value.weapon = MixedWeapon.none;
     report.clamped++;
   }
   value.damage = view.getUint64(at + 41, Endian.little);
@@ -4781,7 +4782,7 @@ void benchMixedFixedDecode(
   for (var i = 0; i < value.statsCount; i++) {
     mixedStatFixedDecode(value.stats[i], image, view, at + 468 + i * 8, report);
   }
-  value.gameEvent.type = view.getUint8(at + 1108);
+  value.gameEvent.type = MixedEventType(view.getUint8(at + 1108));
   switch (value.gameEvent.type) {
     case 0:
       break; // None, which is a tag this reader holds
@@ -4813,7 +4814,7 @@ void benchMixedFixedDecode(
       );
       break;
     default:
-      value.gameEvent.type = 0;
+      value.gameEvent.type = MixedEventType.none;
       report.clamped++;
       break;
   }

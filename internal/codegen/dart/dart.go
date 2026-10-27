@@ -453,11 +453,11 @@ func (g *gen) foldComment(e ast.Expr) string {
 // of its own.
 func (g *gen) emitTagEnum(name string, members, docs []string, max int64, comment string) {
 	g.bpf("// %s: %s\n", name, comment)
-	g.bpf("abstract final class %s {\n", name)
-	g.bpf("  static const int none = 0;\n")
+	g.emitEnumType(name)
+	g.bpf("  static const %s none = %s(0);\n", name, name)
 	for i, m := range members {
 		g.bpf("%s", ir.DocComment(docs[i], "  ", "///"))
-		g.bpf("  static const int %s = %d;\n", dartName(m), i+1)
+		g.bpf("  static const %s %s = %s(%d);\n", name, dartName(m), name, i+1)
 	}
 	g.bpf("  static const int count = %d; // the declared variant count (SPEC §4.2)\n", len(members))
 	g.bpf("  static const int max = %d; // the exported extent (SPEC §4.2)\n", max)
@@ -477,17 +477,26 @@ func (g *gen) emitTagEnum(name string, members, docs []string, max int64, commen
 	g.bpf("    default:\n      return '???';\n  }\n}\n\n")
 }
 
+// emitEnumType opens an enum's (or a union tag's) extension type. It is
+// erased at compile time — a value IS its int, so a field, a typed list and a
+// switch cost what they cost on int — and it implements int, so every int
+// operation reads it unwrapped. The representation is private to the type
+// (a member, not a library-scope name), so no variant can collide with it.
+func (g *gen) emitEnumType(name string) {
+	g.bpf("extension type const %s(int _value) implements int {\n", name)
+}
+
 func (g *gen) emitEnum(d *ir.Enum) {
 	g.bpf("%s", ir.DocComment(d.Doc, "", "///"))
 	g.bpf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
-	g.bpf("// an int-constant namespace — the Dart translation of the family's integer-\n")
-	g.bpf("// backed enums: storage must hold every wire-legal value, and | max = ...\n")
-	g.bpf("// headroom values have no Dart enum member to be\n")
-	g.bpf("abstract final class %s {\n", d.Name)
-	g.bpf("  static const int none = 0;\n")
+	g.bpf("// an extension type over int — the Dart translation of the family's\n")
+	g.bpf("// integer-backed enums: storage holds every wire-legal value, | max = ...\n")
+	g.bpf("// headroom included (%s(n)), at no runtime cost over a bare int\n", d.Name)
+	g.emitEnumType(d.Name)
+	g.bpf("  static const %s none = %s(0);\n", d.Name, d.Name)
 	for i, v := range d.Variants {
 		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "  ", "///"))
-		g.bpf("  static const int %s = %d;\n", dartName(v), i+1)
+		g.bpf("  static const %s %s = %s(%d);\n", d.Name, dartName(v), d.Name, i+1)
 	}
 	g.bpf("  static const int count = %d; // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	g.bpf("  static const int max = %d; // the exported extent (SPEC §4.2)\n", d.Max)
@@ -699,9 +708,9 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 		case *ir.Enum:
 			g.addRef(t.Name, t.Name)
 			if f.DefVariant != "" {
-				return "int", t.Name + "." + dartName(f.DefVariant)
+				return t.Name, t.Name + "." + dartName(f.DefVariant)
 			}
-			return "int", t.Name + ".none"
+			return t.Name, t.Name + ".none"
 		case *ir.Flags:
 			if f.HasDefault {
 				return "int", dartIntLit(f.DefInt)
@@ -816,7 +825,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.bpf("// construction defaults; unselected arms keep what they last held — the\n")
 	g.bpf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.bpf("final class %s {\n", d.Name)
-	g.bpf("  int type = %sType.none;\n", d.Name)
+	g.bpf("  %sType type = %sType.none;\n", d.Name, d.Name)
 	for _, v := range d.Variants {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)

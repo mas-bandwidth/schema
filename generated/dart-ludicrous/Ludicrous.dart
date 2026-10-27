@@ -34,14 +34,14 @@ const int protocolId = 0xf4a226f4166d919b;
 const int maxWorldUnits = 30000;
 
 // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class DriveMode {
-  static const int none = 0;
-  static const int cruise = 1;
-  static const int warp = 2;
-  static const int ludicrous = 3;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (DriveMode(n)), at no runtime cost over a bare int
+extension type const DriveMode(int _value) implements int {
+  static const DriveMode none = DriveMode(0);
+  static const DriveMode cruise = DriveMode(1);
+  static const DriveMode warp = DriveMode(2);
+  static const DriveMode ludicrous = DriveMode(3);
   static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
@@ -766,7 +766,7 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
 
 // type LudicrousState
 final class LudicrousState {
-  int mode = DriveMode.none;
+  DriveMode mode = DriveMode.none;
   final FixedProbe probe = FixedProbe();
   final WideProbe wide = WideProbe();
   final List<UInt128> keys = List.filled(4, UInt128.zero);
@@ -786,7 +786,7 @@ const int ludicrousStateMaxBytes = 152;
 // The §5 zero form: all-zero storage; specified defaults live only in
 // construction.
 void zeroLudicrousState(LudicrousState value) {
-  value.mode = 0;
+  value.mode = DriveMode.none;
   zeroFixedProbe(value.probe);
   zeroWideProbe(value.wide);
   value.keys.fillRange(0, value.keys.length, UInt128.zero);
@@ -797,7 +797,7 @@ void zeroLudicrousState(LudicrousState value) {
 
 // Restore construction defaults in place; buffers and objects are retained.
 void initLudicrousState(LudicrousState value) {
-  value.mode = 0;
+  value.mode = DriveMode.none;
   initFixedProbe(value.probe);
   initWideProbe(value.wide);
   value.keys.fillRange(0, value.keys.length, UInt128.zero);
@@ -1061,7 +1061,7 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
   }
   v = window & 0x3;
   bitsRead += 2;
-  value.mode = v;
+  value.mode = DriveMode(v);
   v = (window >>> 2) & 0x1ffffff;
   bitsRead += 25;
   if (v > 23592960) {

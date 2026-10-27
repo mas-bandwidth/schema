@@ -7,13 +7,13 @@
 import 'Schema.dart' show Schema;
 
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class Team {
-  static const int none = 0;
-  static const int red = 1;
-  static const int blue = 2;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (Team(n)), at no runtime cost over a bare int
+extension type const Team(int _value) implements int {
+  static const Team none = Team(0);
+  static const Team red = Team(1);
+  static const Team blue = Team(2);
   static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
@@ -34,16 +34,16 @@ String enumNameTeam(int value) {
 }
 
 // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class ShipType {
-  static const int none = 0;
-  static const int fighter = 1;
-  static const int corvette = 2;
-  static const int bomber = 3;
-  static const int destroyer = 4;
-  static const int carrier = 5;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (ShipType(n)), at no runtime cost over a bare int
+extension type const ShipType(int _value) implements int {
+  static const ShipType none = ShipType(0);
+  static const ShipType fighter = ShipType(1);
+  static const ShipType corvette = ShipType(2);
+  static const ShipType bomber = ShipType(3);
+  static const ShipType destroyer = ShipType(4);
+  static const ShipType carrier = ShipType(5);
   static const int count = 5; // the declared variant count (SPEC §4.2)
   static const int max = 5; // the exported extent (SPEC §4.2)
 }
@@ -70,14 +70,14 @@ String enumNameShipType(int value) {
 }
 
 // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class MissileType {
-  static const int none = 0;
-  static const int heatseeker = 1;
-  static const int torpedo = 2;
-  static const int nuke = 3;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (MissileType(n)), at no runtime cost over a bare int
+extension type const MissileType(int _value) implements int {
+  static const MissileType none = MissileType(0);
+  static const MissileType heatseeker = MissileType(1);
+  static const MissileType torpedo = MissileType(2);
+  static const MissileType nuke = MissileType(3);
   static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
@@ -100,17 +100,17 @@ String enumNameMissileType(int value) {
 }
 
 // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class PropType {
-  static const int none = 0;
-  static const int asteroid = 1;
-  static const int chunk = 2;
-  static const int fragment = 3;
-  static const int sphere = 4;
-  static const int blackHole = 5;
-  static const int dysonPanel = 6;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (PropType(n)), at no runtime cost over a bare int
+extension type const PropType(int _value) implements int {
+  static const PropType none = PropType(0);
+  static const PropType asteroid = PropType(1);
+  static const PropType chunk = PropType(2);
+  static const PropType fragment = PropType(3);
+  static const PropType sphere = PropType(4);
+  static const PropType blackHole = PropType(5);
+  static const PropType dysonPanel = PropType(6);
   static const int count = 6; // the declared variant count (SPEC §4.2)
   static const int max = 6; // the exported extent (SPEC §4.2)
 }
@@ -139,11 +139,11 @@ String enumNamePropType(int value) {
 }
 
 // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
-// an int-constant namespace — the Dart translation of the family's integer-
-// backed enums: storage must hold every wire-legal value, and | max = ...
-// headroom values have no Dart enum member to be
-abstract final class Pending {
-  static const int none = 0;
+// an extension type over int — the Dart translation of the family's
+// integer-backed enums: storage holds every wire-legal value, | max = ...
+// headroom included (Pending(n)), at no runtime cost over a bare int
+extension type const Pending(int _value) implements int {
+  static const Pending none = Pending(0);
   static const int count = 0; // the declared variant count (SPEC §4.2)
   static const int max = 0; // the exported extent (SPEC §4.2)
 }

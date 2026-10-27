@@ -86,6 +86,7 @@ func TestWireMixedListDecodedValueDart(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	writeFiles(t, dir, packetFiles(t, u))
 	if err := os.WriteFile(filepath.Join(dir, "ListdemoWire.dart"), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}

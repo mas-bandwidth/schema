@@ -553,7 +553,7 @@ void main() {
     // the write side validates the tag BEFORE it rides (checked twin)
     expectAssert(() {
       final rogue = ProbeShape();
-      rogue.type = 3;
+      rogue.type = ProbeShapeType(3); // any int wraps: a tag past the arms
       writeProbeShape(rogue, writeView);
     }, 'an out-of-set union tag must trip the writer contract');
   }
@@ -798,7 +798,7 @@ void main() {
 
     expectAssert(() {
       final bad = ShipCreate();
-      bad.shipType = 99; // enum headroom above the wire range
+      bad.shipType = ShipType(99); // enum headroom above the wire range
       writeShipCreate(bad, writeView);
     }, 'enum headroom above the wire range must trip the writer contract');
   }
@@ -916,7 +916,7 @@ void main() {
       e.velY = 2047 - i * 512;
       e.velZ = -1024 + i * 256;
       e.health = 1000 - i * 100;
-      e.weapon = 1 + i;
+      e.weapon = bench.MixedWeapon(1 + i);
       e.damage = 0x5a + i;
       e.moving = (i % 2) == 0;
       e.firing = (i % 3) == 0;
@@ -1602,7 +1602,7 @@ void main() {
       }
     }
     // lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
-    final unevenArms = <int>[
+    final unevenArms = <UnevenType>[
       UnevenType.none,
       UnevenType.narrow,
       UnevenType.wide,
