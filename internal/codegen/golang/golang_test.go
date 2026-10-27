@@ -158,11 +158,10 @@ func TestEnumExtentEmitted(t *testing.T) {
 }
 
 // An enum has no Count (SPEC §4.2, the 2026-09-13 ruling): its declared
-// variant count is its Max, and Go emits no <E>Count. The other targets below
-// still emit their Count, which the owner has parked; the Go expectation is
-// the inverse of what this test used to pin. Without headroom the two numbers
-// coincide; under | max = K they part, so both enums are pinned here and
-// Count < Max is asserted on the widened one.
+// variant count is its Max, and no target emits an enum Count: every
+// expectation below pins the Count spelling at zero and the Max at one. Both
+// enums are pinned, the widened one (| max = K) asserting Max past its
+// variants.
 func TestEnumDeclaredCountEmitted(t *testing.T) {
 	src := "package t\n\n" +
 		"enum Weapon | max = 15\n{ Laser, Missile }\n\n" +
@@ -208,8 +207,7 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 		expectation{"WeaponMax Weapon = 15\n", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
-		expectation{"pub const COUNT: Weapon = Weapon(2);", 1},
-		expectation{"pub const COUNT: Team = Team(3);", 1},
+		expectation{"pub const COUNT:", 0},
 		expectation{"pub const MAX: Weapon = Weapon(15);", 1})
 	csFiles, csErr := csharp.Generate(u)
 	// C# exports no enum Count (SPEC §4.2: an enum's one number is its Max),
@@ -226,28 +224,24 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 		expectation{"export const WeaponMax = 15;", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
-		expectation{"#define WEAPON_COUNT 2", 1},
-		expectation{"#define TEAM_COUNT 3", 1},
+		expectation{"WEAPON_COUNT", 0},
+		expectation{"TEAM_COUNT", 0},
 		expectation{"#define WEAPON_MAX 15", 1})
 	cppFiles, cppErr := cpp.Generate(u)
 	addTarget("C++", cppFiles, cppErr,
-		expectation{"Count = 2,", 1},
-		expectation{"Count = 3,", 1},
+		expectation{"Count = ", 0},
 		expectation{"Max = 15,", 1})
 	dartFiles, dartErr := dart.Generate(u)
 	addTarget("Dart", dartFiles, dartErr,
-		expectation{"static const int count = 2;", 1},
-		expectation{"static const int count = 3;", 1},
+		expectation{"static const int count", 0},
 		expectation{"static const int max = 15;", 1})
 	javaFiles, javaErr := java.Generate(u)
 	addTarget("Java", javaFiles, javaErr,
-		expectation{"public static final byte COUNT = 2;", 1},
-		expectation{"public static final byte COUNT = 3;", 1},
+		expectation{" COUNT = ", 0},
 		expectation{"public static final byte MAX = 15;", 1})
 	elixirFiles, elixirErr := elixir.Generate(u)
 	addTarget("Elixir", elixirFiles, elixirErr,
-		expectation{"def count, do: 2", 1},
-		expectation{"def count, do: 3", 1},
+		expectation{"def count", 0},
 		expectation{"def max, do: 15", 1})
 
 	for _, tgt := range targets {
