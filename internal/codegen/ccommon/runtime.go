@@ -26,6 +26,11 @@ const RuntimeVersionMacro = "SCHEMA_RUNTIME_VERSION"
 const runtimeBody = `#include <stdint.h>
 #include <string.h> /* memcpy — the interior-null scan */
 
+/* The feature tests below are spelled the way the serialize runtime spells
+   its own, tight inside the preprocessor's parentheses, so the formatter is
+   kept off them. */
+/* clang-format off */
+
 /* SCHEMA_UNUSED guards the header-static functions: a translation unit that
    includes a header but calls only some of its functions would otherwise warn
    on every one it did not use, and generated headers are compiled with
@@ -107,6 +112,8 @@ const runtimeBody = `#include <stdint.h>
 #else
 #define SCHEMA_TABLE_RESTRICT
 #endif
+
+/* clang-format on */
 
 #ifdef __cplusplus
 extern "C" {

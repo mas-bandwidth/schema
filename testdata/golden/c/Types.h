@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -24,7 +24,8 @@ extern "C" {
 
 
 /* type Vec3 */
-typedef struct example_vec3_t {
+typedef struct example_vec3_t
+{
     double x;
     double y;
     double z;
@@ -35,7 +36,8 @@ typedef struct example_vec3_t {
 
 
 /* type Quat */
-typedef struct example_quat_t {
+typedef struct example_quat_t
+{
     double x;
     double y;
     double z;
@@ -47,7 +49,8 @@ typedef struct example_quat_t {
 
 
 /* type Handle */
-typedef struct example_handle_t {
+typedef struct example_handle_t
+{
     int32_t object_id;
     uint8_t object_sequence;
 } example_handle_t;
@@ -57,7 +60,8 @@ typedef struct example_handle_t {
 
 
 /* type QuantizedPosition */
-typedef struct example_quantized_position_t {
+typedef struct example_quantized_position_t
+{
     int32_t x;
     int32_t y;
     int32_t z;
@@ -68,7 +72,8 @@ typedef struct example_quantized_position_t {
 
 
 /* type QuantizedVelocity */
-typedef struct example_quantized_velocity_t {
+typedef struct example_quantized_velocity_t
+{
     int32_t x;
     int32_t y;
     int32_t z;
@@ -79,7 +84,8 @@ typedef struct example_quantized_velocity_t {
 
 
 /* type QuantizedRotation */
-typedef struct example_quantized_rotation_t {
+typedef struct example_quantized_rotation_t
+{
     int16_t x;
     int16_t y;
     int16_t z;
@@ -91,7 +97,8 @@ typedef struct example_quantized_rotation_t {
 
 
 /* type RigidBody */
-typedef struct example_rigid_body_t {
+typedef struct example_rigid_body_t
+{
     example_vec3_t position;
     example_quat_t orientation;
     bool at_rest;
@@ -104,7 +111,8 @@ typedef struct example_rigid_body_t {
 
 
 /* type Input */
-typedef struct example_input_t {
+typedef struct example_input_t
+{
     float stick_x;
     float stick_y;
     float throttle;
@@ -125,7 +133,8 @@ typedef struct example_input_t {
 
 
 /* type InputPacket */
-typedef struct example_input_packet_t {
+typedef struct example_input_packet_t
+{
     uint16_t synchronize_sequence;
     uint64_t current_frame;
     uint64_t start_frame;
@@ -138,7 +147,8 @@ typedef struct example_input_packet_t {
 
 
 /* type ShipCreate */
-typedef struct example_ship_create_t {
+typedef struct example_ship_create_t
+{
     example_ship_type_t ship_type;
     example_quantized_position_t position;
     example_quantized_rotation_t rotation;
@@ -156,7 +166,8 @@ typedef struct example_ship_create_t {
 
 
 /* type ExpressionProbe */
-typedef struct example_expression_probe_t {
+typedef struct example_expression_probe_t
+{
     int32_t hardpoint_index;
     int32_t spin_rate;
 } example_expression_probe_t;
@@ -176,10 +187,11 @@ static SCHEMA_UNUSED example_expression_probe_t example_new_expression_probe( vo
 }
 
 #define EXAMPLE_FLOOR_LIMIT ( -9223372036854775807LL - 1 )
-#define EXAMPLE_CEILING_COUNT (18446744073709551615ULL)
+#define EXAMPLE_CEILING_COUNT ( 18446744073709551615ULL )
 
 /* type ExtremeProbe */
-typedef struct example_extreme_probe_t {
+typedef struct example_extreme_probe_t
+{
     int64_t floor_bound;
     int64_t doubled_floor;
     uint64_t ceiling_range;
@@ -205,7 +217,8 @@ static SCHEMA_UNUSED example_extreme_probe_t example_new_extreme_probe( void )
 
 
 /* type ExtremeRow */
-typedef struct example_extreme_row_t {
+typedef struct example_extreme_row_t
+{
     int64_t clamped_floor;
     uint64_t clamped_ceiling;
     int64_t floor_def;

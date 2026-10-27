@@ -1162,21 +1162,52 @@ CONFORMANCE_LEGS  += $(call unless_skipped,c,build/conformance-c)
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp
 GOLDENS_LEGS      += update-goldens-c
 
-# THE C TABLE SOURCES ARE FORMAT-CANONICAL (issue #424). `clang-format` is the
-# language's formatting authority, so an emitter that has to be hand-reflowed is
-# an emitter that drifts. The gate holds every generated C table unit to what
-# the formatter would write, and SKIPS cleanly where clang-format is not on PATH.
+# THE GENERATED C IS FORMAT-CANONICAL (issue #424). `clang-format` is the
+# language's formatting authority, and the style is the repo's .clang-format,
+# written from what the emitters write and from the serialize runtime beside
+# them (Glenn's style: four spaces, Allman braces, `( x )` inside parentheses,
+# `type * name`, no reflow). The gate holds every generated C file of the table
+# corpus and of the committed generated/ C trees to what the formatter writes.
+#
+# THE VERSION IS PINNED (CLANG_FORMAT_MAJOR) because formatters move between
+# majors: CI installs clang-format $(CLANG_FORMAT_PIN) and a different major
+# fails by name rather than reporting drift that is the tool's. Where no
+# clang-format is installed the gate SKIPS, except where
+# SCHEMA_REQUIRE_CLANG_FORMAT=1 (CI sets it): a gate that always skips is no
+# gate.
+#
+# THE TABLE EMITTER IS NOT CLEAN YET, and its files ride a SHRINK-ONLY RATCHET,
+# make/c-format-allow.txt: a drifting file not listed fails, and a listed file
+# that has become clean (or is gone) fails until its line is removed. The
+# packet emitter's files are not listed and never may be. The plan that empties
+# the list is working/schema-fix-briefs/CTABLE-FORMAT.md's, layer by layer.
+CLANG_FORMAT_PIN   ?= 23.1.3
+CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
+C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
 .PHONY: tables-c-clean
-tables-c-clean: build/tables-generated-c/.stamp
+tables-c-clean: build/tables-generated-c/.stamp generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
+		if [ "$(SCHEMA_REQUIRE_CLANG_FORMAT)" = 1 ]; then echo "tables-c-clean: $(CLANG_FORMAT) is not installed and SCHEMA_REQUIRE_CLANG_FORMAT=1"; exit 1; fi; \
 		echo "SKIP tables-c-clean: $(CLANG_FORMAT) is not installed"; exit 0; \
 	fi; \
-	drift=0; \
-	for f in $$(find build/tables-generated-c -name '*.h' -o -name '*.c'); do \
-		$(CLANG_FORMAT) "$$f" | cmp -s "$$f" - || { echo "clang-format drift in $$f"; drift=1; }; \
+	v=$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p'); \
+	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
+		echo "tables-c-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
+	fi; \
+	bad=0; allow=make/c-format-allow.txt; seen=build/c-format-seen.txt; : > $$seen; \
+	for f in $$(find $(C_FORMAT_TREES) \( -name '*.h' -o -name '*.c' \) | sort); do \
+		if $(CLANG_FORMAT) --style=file:$(CURDIR)/.clang-format "$$f" | cmp -s "$$f" -; then \
+			if grep -Fxq "$$f" $$allow; then echo "tables-c-clean: $$f is clean now — remove its line from $$allow"; bad=1; fi; \
+		else \
+			echo "$$f" >> $$seen; \
+			grep -Fxq "$$f" $$allow || { echo "tables-c-clean: clang-format drift in $$f, which $$allow does not list (the list only shrinks)"; bad=1; }; \
+		fi; \
 	done; \
-	[ $$drift -eq 0 ] || exit 1; \
-	echo "tables C: clang-format clean over the generated table units"
+	for f in $$(grep -v '^#' $$allow | grep .); do \
+		[ -f "$$f" ] || { echo "tables-c-clean: $$f is listed in $$allow but no longer generated — remove its line"; bad=1; }; \
+	done; \
+	[ $$bad -eq 0 ] || exit 1; \
+	echo "C: clang-format $(CLANG_FORMAT_MAJOR) clean over $(C_FORMAT_TREES), $$(wc -l < $$seen | tr -d ' ') table-emitter files still on the ratchet"
 test-c: tables-c-clean
 
 # The file-wire differential: the compiler's independent engine owns every

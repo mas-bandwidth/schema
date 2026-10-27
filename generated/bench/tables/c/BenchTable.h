@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -77,14 +77,14 @@ static SCHEMA_UNUSED const char * benchtable_enum_name_table_weapon( benchtable_
 /* flags TableDamage — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 8 bits (SPEC §4.2) */
 typedef uint64_t benchtable_table_damage_t;
-#define BENCHTABLE_TABLE_DAMAGE_BLEEDING (1ULL << 0)
-#define BENCHTABLE_TABLE_DAMAGE_BURNING (1ULL << 1)
-#define BENCHTABLE_TABLE_DAMAGE_STUNNED (1ULL << 2)
-#define BENCHTABLE_TABLE_DAMAGE_SLOWED (1ULL << 3)
-#define BENCHTABLE_TABLE_DAMAGE_POISONED (1ULL << 4)
-#define BENCHTABLE_TABLE_DAMAGE_SHIELDED (1ULL << 5)
-#define BENCHTABLE_TABLE_DAMAGE_AIRBORNE (1ULL << 6)
-#define BENCHTABLE_TABLE_DAMAGE_DOWNED (1ULL << 7)
+#define BENCHTABLE_TABLE_DAMAGE_BLEEDING ( 1ULL << 0 )
+#define BENCHTABLE_TABLE_DAMAGE_BURNING ( 1ULL << 1 )
+#define BENCHTABLE_TABLE_DAMAGE_STUNNED ( 1ULL << 2 )
+#define BENCHTABLE_TABLE_DAMAGE_SLOWED ( 1ULL << 3 )
+#define BENCHTABLE_TABLE_DAMAGE_POISONED ( 1ULL << 4 )
+#define BENCHTABLE_TABLE_DAMAGE_SHIELDED ( 1ULL << 5 )
+#define BENCHTABLE_TABLE_DAMAGE_AIRBORNE ( 1ULL << 6 )
+#define BENCHTABLE_TABLE_DAMAGE_DOWNED ( 1ULL << 7 )
 #define BENCHTABLE_TABLE_DAMAGE_COUNT 8 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of TableDamage — out-of-range bits name as "???". */
@@ -160,7 +160,8 @@ static SCHEMA_UNUSED const char * benchtable_flag_names_table_damage( uint64_t v
 
 
 /* type TableHitEvent */
-typedef struct benchtable_table_hit_event_t {
+typedef struct benchtable_table_hit_event_t
+{
     uint32_t target_id;
     int32_t damage;
     int32_t hit_kind;
@@ -172,7 +173,8 @@ typedef struct benchtable_table_hit_event_t {
 
 
 /* type TableChatEvent */
-typedef struct benchtable_table_chat_event_t {
+typedef struct benchtable_table_chat_event_t
+{
     int32_t channel;
     uint32_t speaker;
 } benchtable_table_chat_event_t;
@@ -182,7 +184,8 @@ typedef struct benchtable_table_chat_event_t {
 
 
 /* type TablePickupEvent */
-typedef struct benchtable_table_pickup_event_t {
+typedef struct benchtable_table_pickup_event_t
+{
     uint32_t item_id;
     int32_t amount;
 } benchtable_table_pickup_event_t;
@@ -214,9 +217,11 @@ static SCHEMA_UNUSED const char * benchtable_enum_name_table_event_type( benchta
     }
 }
 
-typedef struct benchtable_table_event_t {
+typedef struct benchtable_table_event_t
+{
     benchtable_table_event_type_t type;
-    union {
+    union
+    {
         benchtable_table_hit_event_t hit;
         benchtable_table_chat_event_t chat;
         benchtable_table_pickup_event_t pickup;

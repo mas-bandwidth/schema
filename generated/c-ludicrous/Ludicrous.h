@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -24,7 +24,7 @@ extern "C" {
    sides at the same id speak identical bits; there is no other versioning. */
 #define LUDICROUS_PROTOCOL_ID 0xf4a226f4166d919bULL
 
-#define LUDICROUS_MAX_WORLD_UNITS (30000)
+#define LUDICROUS_MAX_WORLD_UNITS ( 30000 )
 
 /* enum DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
@@ -53,7 +53,8 @@ static SCHEMA_UNUSED const char * ludicrous_enum_name_drive_mode( ludicrous_driv
 
 
 /* type FixedProbe */
-typedef struct ludicrous_fixed_probe_t {
+typedef struct ludicrous_fixed_probe_t
+{
     int32_t angle;
     int64_t position;
     serialize_int128_t reach;
@@ -66,7 +67,8 @@ typedef struct ludicrous_fixed_probe_t {
 
 
 /* type UnsignedProbe */
-typedef struct ludicrous_unsigned_probe_t {
+typedef struct ludicrous_unsigned_probe_t
+{
     uint32_t angle;
     uint64_t span;
     serialize_uint128_t reach;
@@ -92,7 +94,8 @@ static SCHEMA_UNUSED ludicrous_unsigned_probe_t ludicrous_new_unsigned_probe( vo
 
 
 /* type WideProbe */
-typedef struct ludicrous_wide_probe_t {
+typedef struct ludicrous_wide_probe_t
+{
     serialize_uint128_t entity_id;
     serialize_int128_t energy;
     serialize_int128_t flux;
@@ -117,7 +120,8 @@ static SCHEMA_UNUSED ludicrous_wide_probe_t ludicrous_new_wide_probe( void )
 
 
 /* type LudicrousState */
-typedef struct ludicrous_ludicrous_state_t {
+typedef struct ludicrous_ludicrous_state_t
+{
     ludicrous_drive_mode_t mode;
     ludicrous_fixed_probe_t probe;
     ludicrous_wide_probe_t wide;
@@ -143,7 +147,8 @@ static SCHEMA_UNUSED ludicrous_ludicrous_state_t ludicrous_new_ludicrous_state( 
 
 
 /* type DegenerateProbe */
-typedef struct ludicrous_degenerate_probe_t {
+typedef struct ludicrous_degenerate_probe_t
+{
     int32_t locked_fixed;
     int32_t locked_int;
     serialize_int128_t locked_wide;
@@ -168,7 +173,8 @@ static SCHEMA_UNUSED ludicrous_degenerate_probe_t ludicrous_new_degenerate_probe
 
 
 /* type FixedVec */
-typedef struct ludicrous_fixed_vec_t {
+typedef struct ludicrous_fixed_vec_t
+{
     int64_t x;
     int64_t y;
     int64_t z;
@@ -179,7 +185,8 @@ typedef struct ludicrous_fixed_vec_t {
 
 
 /* type FixedQuat */
-typedef struct ludicrous_fixed_quat_t {
+typedef struct ludicrous_fixed_quat_t
+{
     int32_t x;
     int32_t y;
     int32_t z;

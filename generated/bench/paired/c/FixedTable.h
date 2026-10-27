@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 

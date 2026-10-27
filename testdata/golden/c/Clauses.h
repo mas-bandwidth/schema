@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -20,7 +20,8 @@ extern "C" {
 
 
 /* type W13 */
-typedef struct EXAMPLE_W13 {
+typedef struct EXAMPLE_W13
+{
     uint16_t items[12];
     int32_t items_count;
 } EXAMPLE_W13;
@@ -30,7 +31,8 @@ typedef struct EXAMPLE_W13 {
 
 
 /* type W17 */
-typedef struct EXAMPLE_W17 {
+typedef struct EXAMPLE_W17
+{
     uint32_t items[9];
     int32_t items_count;
 } EXAMPLE_W17;
@@ -40,7 +42,8 @@ typedef struct EXAMPLE_W17 {
 
 
 /* type W26 */
-typedef struct EXAMPLE_W26 {
+typedef struct EXAMPLE_W26
+{
     uint32_t items[6];
     int32_t items_count;
 } EXAMPLE_W26;
@@ -50,7 +53,8 @@ typedef struct EXAMPLE_W26 {
 
 
 /* type W1 */
-typedef struct EXAMPLE_W1 {
+typedef struct EXAMPLE_W1
+{
     uint8_t items[20];
     int32_t items_count;
 } EXAMPLE_W1;
@@ -60,7 +64,8 @@ typedef struct EXAMPLE_W1 {
 
 
 /* type W52 */
-typedef struct EXAMPLE_W52 {
+typedef struct EXAMPLE_W52
+{
     uint64_t items[3];
     int32_t items_count;
 } EXAMPLE_W52;
@@ -70,7 +75,8 @@ typedef struct EXAMPLE_W52 {
 
 
 /* type W50 */
-typedef struct EXAMPLE_W50 {
+typedef struct EXAMPLE_W50
+{
     uint64_t items[3];
     int32_t items_count;
 } EXAMPLE_W50;
@@ -80,7 +86,8 @@ typedef struct EXAMPLE_W50 {
 
 
 /* type F13 */
-typedef struct EXAMPLE_F13 {
+typedef struct EXAMPLE_F13
+{
     uint16_t items[7];
 } EXAMPLE_F13;
 
@@ -89,7 +96,8 @@ typedef struct EXAMPLE_F13 {
 
 
 /* type Tri3 */
-typedef struct example_tri3_t {
+typedef struct example_tri3_t
+{
     uint32_t a;
     uint32_t b;
 } example_tri3_t;
@@ -99,7 +107,8 @@ typedef struct example_tri3_t {
 
 
 /* type ArrTri3 */
-typedef struct example_arr_tri3_t {
+typedef struct example_arr_tri3_t
+{
     example_tri3_t items[10];
     int32_t items_count;
 } example_arr_tri3_t;
@@ -109,7 +118,8 @@ typedef struct example_arr_tri3_t {
 
 
 /* type Eleven */
-typedef struct example_eleven_t {
+typedef struct example_eleven_t
+{
     uint32_t a;
     uint32_t b;
 } example_eleven_t;
@@ -119,7 +129,8 @@ typedef struct example_eleven_t {
 
 
 /* type ArrEleven */
-typedef struct example_arr_eleven_t {
+typedef struct example_arr_eleven_t
+{
     example_eleven_t items[9];
 } example_arr_eleven_t;
 
@@ -128,13 +139,15 @@ typedef struct example_arr_eleven_t {
 
 
 /* type EmptyA */
-typedef struct example_empty_a_t {
+typedef struct example_empty_a_t
+{
     char unused_; /* C has no empty struct; carries no wire bits */
 } example_empty_a_t;
 
 
 /* type EmptyB */
-typedef struct example_empty_b_t {
+typedef struct example_empty_b_t
+{
     char unused_; /* C has no empty struct; carries no wire bits */
 } example_empty_b_t;
 
@@ -160,9 +173,11 @@ static SCHEMA_UNUSED const char * example_enum_name_empty_union_type( example_em
     }
 }
 
-typedef struct example_empty_union_t {
+typedef struct example_empty_union_t
+{
     example_empty_union_type_t type;
-    union {
+    union
+    {
         example_empty_a_t a;
         example_empty_b_t b;
     } as;
@@ -190,7 +205,8 @@ static SCHEMA_UNUSED example_empty_b_t * example_empty_union_select_b( example_e
 
 
 /* type HoldsEmptyUnion */
-typedef struct example_holds_empty_union_t {
+typedef struct example_holds_empty_union_t
+{
     uint32_t lead;
     example_empty_union_t u;
     uint32_t tail;
@@ -201,7 +217,8 @@ typedef struct example_holds_empty_union_t {
 
 
 /* type Strs */
-typedef struct example_strs_t {
+typedef struct example_strs_t
+{
     uint32_t lead;
     char s[8 + 1]; /* string(8): N + 1 for the terminator the wire does not carry */
     int32_t s_length;
@@ -215,7 +232,8 @@ typedef struct example_strs_t {
 
 
 /* type ArrNested */
-typedef struct example_arr_nested_t {
+typedef struct example_arr_nested_t
+{
     uint32_t lead;
     example_eleven_t items[4];
     int32_t items_count;
@@ -227,7 +245,8 @@ typedef struct example_arr_nested_t {
 
 
 /* type Sole */
-typedef struct example_sole_t {
+typedef struct example_sole_t
+{
     uint32_t only;
 } example_sole_t;
 

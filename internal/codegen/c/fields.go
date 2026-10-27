@@ -395,7 +395,7 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 
 	bits := ir.BitsRequired(f.IntMin, f.IntMax)
 	if bits == 0 {
-		g.pf("%s%s = (%s) (%s);\n", ind, expr, g.storageType(f), g.renderInt(f.IntMinExpr, f.IntMin))
+		g.pf("%s%s = (%s) %s;\n", ind, expr, g.storageType(f), paren(g.renderInt(f.IntMinExpr, f.IntMin)))
 		return
 	}
 	span := new(big.Int).Sub(f.IntMax, f.IntMin)

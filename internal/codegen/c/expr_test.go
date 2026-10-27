@@ -54,17 +54,17 @@ func TestExprConstDefines(t *testing.T) {
 	data, _ := generateExprCorpus(t)
 	for _, want := range []string{
 		// a reference chain renders as the author's expression
-		"#define PRODUCT (MAX_OBJECTS * MAX_UNITS)\n",
+		"#define PRODUCT ( MAX_OBJECTS * MAX_UNITS )\n",
 		// int carrier would overflow on the way to the value: 2000000000 * 3
 		// is an int * int in C — the fold is the only correct spelling
-		"#define INT_OVERFLOW (6000000000)\n",
+		"#define INT_OVERFLOW ( 6000000000 )\n",
 		// a wide leaf (3000000000 self-promotes past int) makes the subtree
 		// long long, so the symbolic form is safe
-		"#define WIDE_PLUS (WIDE + 1)\n",
+		"#define WIDE_PLUS ( WIDE + 1 )\n",
 		// hex source spelling survives
-		"#define HEX_ID (0xDEADBEEF)\n",
+		"#define HEX_ID ( 0xDEADBEEF )\n",
 		// E.Max has no C twin: fold, schema spelling in the comment
-		"#define NUM_TEAMS (2) /* = Team.Max */\n",
+		"#define NUM_TEAMS ( 2 ) /* = Team.Max */\n",
 	} {
 		if !strings.Contains(data, want) {
 			t.Errorf("generated data header must contain %q:\n%s", want, data)
@@ -82,7 +82,7 @@ func TestExprBounds(t *testing.T) {
 		// (the write-side bound is a serialize_assert — see emitRangeAssertWrite)
 		"(serialize_int64_t) value->object_id <= MAX_OBJECTS - 1",
 		// doubled minus parenthesizes — "--MAX_UNITS" would be a decrement
-		"(serialize_int64_t) value->doubled >= -(-MAX_UNITS)",
+		"(serialize_int64_t) value->doubled >= -( -MAX_UNITS )",
 		"(serialize_int64_t) value->doubled <= MAX_UNITS * 2",
 		// hex bound keeps its source spelling
 		"(serialize_int64_t) value->hexed <= 0x10",
@@ -217,7 +217,7 @@ func TestExtremeLiterals(t *testing.T) {
 	for _, want := range []string{
 		// #define bodies: the C twin of C++'s emitConst guards
 		"#define FLOOR_LIMIT ( -9223372036854775807LL - 1 )\n",
-		"#define CEILING_COUNT (18446744073709551615ULL)",
+		"#define CEILING_COUNT ( 18446744073709551615ULL )",
 		// defaults fold through the same guard
 		"value.floor_default = ( -9223372036854775807LL - 1 );",
 		"value.ceiling_default = 18446744073709551615ULL;",

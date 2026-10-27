@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include "Types.h"
@@ -20,7 +20,8 @@ extern "C" {
 
 
 /* type Vec2 */
-typedef struct example_vec2_t {
+typedef struct example_vec2_t
+{
     double x;
     double y;
 } example_vec2_t;
@@ -30,7 +31,8 @@ typedef struct example_vec2_t {
 
 
 /* type SpanF64 */
-typedef struct example_span_f64_t {
+typedef struct example_span_f64_t
+{
     double values[2];
 } example_span_f64_t;
 
@@ -39,7 +41,8 @@ typedef struct example_span_f64_t {
 
 
 /* type SpanU64 */
-typedef struct example_span_u64_t {
+typedef struct example_span_u64_t
+{
     uint64_t values[2];
 } example_span_u64_t;
 
@@ -48,7 +51,8 @@ typedef struct example_span_u64_t {
 
 
 /* type SpanI64 */
-typedef struct example_span_i64_t {
+typedef struct example_span_i64_t
+{
     int64_t values[2];
 } example_span_i64_t;
 
@@ -57,7 +61,8 @@ typedef struct example_span_i64_t {
 
 
 /* type SpanOne */
-typedef struct example_span_one_t {
+typedef struct example_span_one_t
+{
     uint64_t values[1];
 } example_span_one_t;
 
@@ -66,7 +71,8 @@ typedef struct example_span_one_t {
 
 
 /* type SpanChunk */
-typedef struct example_span_chunk_t {
+typedef struct example_span_chunk_t
+{
     uint16_t values[4];
 } example_span_chunk_t;
 
@@ -75,7 +81,8 @@ typedef struct example_span_chunk_t {
 
 
 /* type SpanTail */
-typedef struct example_span_tail_t {
+typedef struct example_span_tail_t
+{
     double values[2];
     uint32_t tail;
 } example_span_tail_t;
@@ -85,7 +92,8 @@ typedef struct example_span_tail_t {
 
 
 /* type SpanTwice */
-typedef struct example_span_twice_t {
+typedef struct example_span_twice_t
+{
     double a[2];
     double b[2];
 } example_span_twice_t;
@@ -95,7 +103,8 @@ typedef struct example_span_twice_t {
 
 
 /* type Trio */
-typedef struct example_trio_t {
+typedef struct example_trio_t
+{
     uint32_t a;
     uint32_t b;
     uint32_t c;
@@ -106,7 +115,8 @@ typedef struct example_trio_t {
 
 
 /* type TrioSole */
-typedef struct example_trio_sole_t {
+typedef struct example_trio_sole_t
+{
     example_trio_t inner;
 } example_trio_sole_t;
 
@@ -115,7 +125,8 @@ typedef struct example_trio_sole_t {
 
 
 /* type Vec3Sole */
-typedef struct example_vec3_sole_t {
+typedef struct example_vec3_sole_t
+{
     example_vec3_t v;
 } example_vec3_sole_t;
 
@@ -124,7 +135,8 @@ typedef struct example_vec3_sole_t {
 
 
 /* type TrioFirst */
-typedef struct example_trio_first_t {
+typedef struct example_trio_first_t
+{
     example_trio_t inner;
     uint32_t trailer;
 } example_trio_first_t;
@@ -134,7 +146,8 @@ typedef struct example_trio_first_t {
 
 
 /* type TrioStraddle */
-typedef struct example_trio_straddle_t {
+typedef struct example_trio_straddle_t
+{
     uint64_t pad0;
     uint64_t pad1;
     uint64_t pad2;

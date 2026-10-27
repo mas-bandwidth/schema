@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define EXAMPLE_PROBE_ID (0xDEADBEEFCAFE)
+#define EXAMPLE_PROBE_ID ( 0xDEADBEEFCAFE )
 #define EXAMPLE_HALF_TURN 180.0
 #define EXAMPLE_TICK_RATE 60.0
 #define EXAMPLE_SPIN_RATE 1.5
@@ -54,9 +54,9 @@ static SCHEMA_UNUSED const char * example_enum_name_weapon( example_weapon_t val
 /* flags ProbeFlags — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 8 bits (SPEC §4.2) */
 typedef uint64_t example_probe_flags_t;
-#define EXAMPLE_PROBE_FLAGS_ARMED (1ULL << 0)
-#define EXAMPLE_PROBE_FLAGS_CLOAKED (1ULL << 1)
-#define EXAMPLE_PROBE_FLAGS_DAMAGED (1ULL << 2)
+#define EXAMPLE_PROBE_FLAGS_ARMED ( 1ULL << 0 )
+#define EXAMPLE_PROBE_FLAGS_CLOAKED ( 1ULL << 1 )
+#define EXAMPLE_PROBE_FLAGS_DAMAGED ( 1ULL << 2 )
 #define EXAMPLE_PROBE_FLAGS_COUNT 3 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of ProbeFlags — out-of-range bits name as "???". */
@@ -107,7 +107,8 @@ static SCHEMA_UNUSED const char * example_flag_names_probe_flags( uint64_t value
 
 
 /* type ProbeHeader */
-typedef struct example_probe_header_t {
+typedef struct example_probe_header_t
+{
     uint32_t version;
     uint64_t probe_id;
 } example_probe_header_t;
@@ -117,7 +118,8 @@ typedef struct example_probe_header_t {
 
 
 /* type ProbeBits */
-typedef struct example_probe_bits_t {
+typedef struct example_probe_bits_t
+{
     uint32_t small;
     uint64_t boundary;
     uint64_t wide;
@@ -130,7 +132,8 @@ typedef struct example_probe_bits_t {
 
 
 /* type ProbeSample */
-typedef struct example_probe_sample_t {
+typedef struct example_probe_sample_t
+{
     bool active;
     float orientation;
     int32_t raw_delta;
@@ -160,7 +163,8 @@ static SCHEMA_UNUSED example_probe_sample_t example_new_probe_sample( void )
 
 
 /* type ProbeRing */
-typedef struct example_probe_ring_t {
+typedef struct example_probe_ring_t
+{
     uint16_t radius;
 } example_probe_ring_t;
 
@@ -169,7 +173,8 @@ typedef struct example_probe_ring_t {
 
 
 /* type ProbeSlab */
-typedef struct example_probe_slab_t {
+typedef struct example_probe_slab_t
+{
     uint8_t width;
     uint8_t height;
 } example_probe_slab_t;
@@ -199,9 +204,11 @@ static SCHEMA_UNUSED const char * example_enum_name_probe_shape_type( example_pr
     }
 }
 
-typedef struct example_probe_shape_t {
+typedef struct example_probe_shape_t
+{
     example_probe_shape_type_t type;
-    union {
+    union
+    {
         example_probe_ring_t ring;
         example_probe_slab_t slab;
     } as;
@@ -229,7 +236,8 @@ static SCHEMA_UNUSED example_probe_slab_t * example_probe_shape_select_slab( exa
 
 
 /* type ProbeCollider */
-typedef struct example_probe_collider_t {
+typedef struct example_probe_collider_t
+{
     uint8_t armor;
     example_probe_shape_t shape;
     example_probe_shape_t backup;
@@ -242,7 +250,8 @@ typedef struct example_probe_collider_t {
 
 
 /* type ProbeConfig */
-typedef struct example_probe_config_t {
+typedef struct example_probe_config_t
+{
     int32_t retries;
     example_weapon_t preferred;
 } example_probe_config_t;
@@ -264,7 +273,8 @@ static SCHEMA_UNUSED example_probe_config_t example_new_probe_config( void )
 
 
 /* type ProbeArray */
-typedef struct example_probe_array_t {
+typedef struct example_probe_array_t
+{
     example_probe_sample_t samples[2];
     example_probe_config_t config;
 } example_probe_array_t;
@@ -292,13 +302,15 @@ static SCHEMA_UNUSED example_probe_array_t example_new_probe_array( void )
 
 
 /* type Heartbeat */
-typedef struct example_heartbeat_t {
+typedef struct example_heartbeat_t
+{
     char unused_; /* C has no empty struct; carries no wire bits */
 } example_heartbeat_t;
 
 
 /* type Test */
-typedef struct example_test_t {
+typedef struct example_test_t
+{
     uint16_t test_a;
     int16_t test_b;
     int16_t test_c;
@@ -310,7 +322,8 @@ typedef struct example_test_t {
 
 
 /* type Block */
-typedef struct example_block_t {
+typedef struct example_block_t
+{
     uint8_t data[EXAMPLE_MAX_BLOCK_SIZE];
     int32_t data_length;
 } example_block_t;
@@ -320,7 +333,8 @@ typedef struct example_block_t {
 
 
 /* type Chat */
-typedef struct example_chat_t {
+typedef struct example_chat_t
+{
     char text[EXAMPLE_MAX_CHAT_LENGTH + 1]; /* string(MaxChatLength): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
 } example_chat_t;
@@ -330,7 +344,8 @@ typedef struct example_chat_t {
 
 
 /* type ProbeReport */
-typedef struct example_probe_report_t {
+typedef struct example_probe_report_t
+{
     example_probe_header_t header;
     example_probe_flags_t flags;
     example_test_t echo;
@@ -341,7 +356,8 @@ typedef struct example_probe_report_t {
 
 
 /* type TestData */
-typedef struct example_test_data_t {
+typedef struct example_test_data_t
+{
     int32_t a;
     int32_t b;
     int32_t c;
@@ -372,7 +388,8 @@ typedef struct example_test_data_t {
 
 
 /* type CompressedProbe */
-typedef struct example_compressed_probe_t {
+typedef struct example_compressed_probe_t
+{
     float boundary;
     float offset;
 } example_compressed_probe_t;

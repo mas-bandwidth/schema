@@ -623,6 +623,19 @@ jobs:
           otp-version: '27'
           elixir-version: '1.18'
 
+      # THE C FORMAT GATE's formatter, pinned: clang-format from PyPI at the
+      # version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
+      # runner's temp so a self-hosted runner keeps nothing between runs.
+      - name: the pinned clang-format (C leg)
+        if: matrix.leg == 'c'
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
+
       # C# runs Debug here; full CI keeps both Debug and Release.
       # THE TWO GATES. The target names are the tree's own — the same ones
       # `make test` and ci-full.yml run — so a leg that renames a gate renames
@@ -633,7 +646,8 @@ jobs:
           case "${{ matrix.leg }}" in
             cpp)    make tables-fixedform ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
-            c)      make tables-c-fixedform tables-c-versioning ;;
+            c)      make tables-c-fixedform tables-c-versioning
+                    make tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
             js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
             cs)     make tables-cs-leg-debug tables-cs-versioning ;;

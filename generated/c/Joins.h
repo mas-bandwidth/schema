@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -21,7 +21,8 @@ extern "C" {
 
 
 /* type ArmsAgree */
-typedef struct example_arms_agree_t {
+typedef struct example_arms_agree_t
+{
     uint32_t lead;
     bool flag;
     uint32_t a;
@@ -34,7 +35,8 @@ typedef struct example_arms_agree_t {
 
 
 /* type ArmsDisagree */
-typedef struct example_arms_disagree_t {
+typedef struct example_arms_disagree_t
+{
     uint32_t lead;
     bool flag;
     uint32_t a;
@@ -47,7 +49,8 @@ typedef struct example_arms_disagree_t {
 
 
 /* type ArmEmpty */
-typedef struct example_arm_empty_t {
+typedef struct example_arm_empty_t
+{
     uint32_t lead;
     bool flag;
     uint32_t a;
@@ -59,7 +62,8 @@ typedef struct example_arm_empty_t {
 
 
 /* type ArmsNested */
-typedef struct example_arms_nested_t {
+typedef struct example_arms_nested_t
+{
     uint32_t lead;
     bool outer;
     bool inner;
@@ -74,7 +78,8 @@ typedef struct example_arms_nested_t {
 
 
 /* type ArmAlign */
-typedef struct example_arm_align_t {
+typedef struct example_arm_align_t
+{
     uint32_t lead;
     bool flag;
     char s[4 + 1]; /* string(4): N + 1 for the terminator the wire does not carry */
@@ -88,7 +93,8 @@ typedef struct example_arm_align_t {
 
 
 /* type ArmArray */
-typedef struct example_arm_array_t {
+typedef struct example_arm_array_t
+{
     uint32_t lead;
     bool flag;
     uint16_t items[3];
@@ -102,7 +108,8 @@ typedef struct example_arm_array_t {
 
 
 /* type Narrow */
-typedef struct example_narrow_t {
+typedef struct example_narrow_t
+{
     uint32_t n;
 } example_narrow_t;
 
@@ -111,7 +118,8 @@ typedef struct example_narrow_t {
 
 
 /* type Wide */
-typedef struct example_wide_t {
+typedef struct example_wide_t
+{
     uint64_t w;
 } example_wide_t;
 
@@ -140,9 +148,11 @@ static SCHEMA_UNUSED const char * example_enum_name_uneven_type( example_uneven_
     }
 }
 
-typedef struct example_uneven_t {
+typedef struct example_uneven_t
+{
     example_uneven_type_t type;
-    union {
+    union
+    {
         example_narrow_t narrow;
         example_wide_t wide;
     } as;
@@ -170,7 +180,8 @@ static SCHEMA_UNUSED example_wide_t * example_uneven_select_wide( example_uneven
 
 
 /* type HoldsUneven */
-typedef struct example_holds_uneven_t {
+typedef struct example_holds_uneven_t
+{
     uint32_t lead;
     example_uneven_t u;
     uint32_t tail;
@@ -181,7 +192,8 @@ typedef struct example_holds_uneven_t {
 
 
 /* type ArrUneven */
-typedef struct example_arr_uneven_t {
+typedef struct example_arr_uneven_t
+{
     uint32_t lead;
     example_uneven_t items[3];
     int32_t items_count;
@@ -193,7 +205,8 @@ typedef struct example_arr_uneven_t {
 
 
 /* type RegainAfterAlign */
-typedef struct example_regain_after_align_t {
+typedef struct example_regain_after_align_t
+{
     uint32_t lead;
     uint16_t items[3];
     int32_t items_count;
