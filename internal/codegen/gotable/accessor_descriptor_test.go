@@ -45,17 +45,17 @@ func TestAccessorDescriptorAgreement(t *testing.T) {
     if !BlockBlockBegin(&blk, &storage, BlockCounts{}, nil) {
         t.Fatal("block begin")
     }
-    blk.Projection.Id = 0x11223344
+    blk.Projection.ID = 0x11223344
     blk.Projection.Flag = true
 
     for i := range blk.Type().Fields {
         f := &blk.Type().Fields[i]
         switch f.Name {
         case "id":
-            if unsafe.Offsetof(BlockBlockProjection{}.Id) != uintptr(f.Offset) {
+            if unsafe.Offsetof(BlockBlockProjection{}.ID) != uintptr(f.Offset) {
                 t.Fatalf("block.%s: the accessor's offset is not the descriptor's", f.Name)
             }
-            if via := *(*uint32)(unsafe.Add(blk.Base, uintptr(f.Offset))); blk.Projection.Id != via {
+            if via := *(*uint32)(unsafe.Add(blk.Base, uintptr(f.Offset))); blk.Projection.ID != via {
                 t.Fatalf("block.%s: the accessor and the descriptor disagree about the value", f.Name)
             }
         case "flag":

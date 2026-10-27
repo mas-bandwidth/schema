@@ -15,6 +15,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"slices"
 	"strconv"
 )
 
@@ -87,17 +88,9 @@ func declares(id *ast.Ident) bool {
 			}
 		}
 	case *ast.ValueSpec:
-		for _, n := range d.Names {
-			if n == id {
-				return true
-			}
-		}
+		return slices.Contains(d.Names, id)
 	case *ast.Field:
-		for _, n := range d.Names {
-			if n == id {
-				return true
-			}
-		}
+		return slices.Contains(d.Names, id)
 	}
 	return false
 }

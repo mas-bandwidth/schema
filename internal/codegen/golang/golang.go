@@ -168,7 +168,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 // (SPEC §4.1) as a second paragraph when it has one.
 func (g *gen) docComment(indent, summary, doc string) {
 	line := indent + "//"
-	for _, w := range strings.Fields(summary) {
+	for w := range strings.FieldsSeq(summary) {
 		if len(line) > len(indent)+2 && len(line)+1+len(w) > 80 {
 			g.pf("%s\n", line)
 			line = indent + "//"

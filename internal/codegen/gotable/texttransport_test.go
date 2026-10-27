@@ -95,7 +95,7 @@ const textTransportClampProbe = `package probe
 import("errors";"testing")
 func TestTableWireOverATextTransport(t *testing.T) {
 	var w Wide
-	w.Id = 7
+	w.ID = 7
 	copy(w.Name[:], "0123456789ab")
 	w.NameLength = 12
 	text, err := WideSaveText(&w)
@@ -132,7 +132,7 @@ const textTransportFixedProbe = `package probe
 import("bytes";"testing";"encoding/base64")
 func TestTableWireOverATextTransport(t *testing.T) {
 	var v Root
-	v.Id = 7
+	v.ID = 7
 	copy(v.Name[:], "hi")
 	v.NameLength = 2
 	wire := make([]byte, RootMeasure(&v))
@@ -146,7 +146,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 		t.Fatalf("save text is not base64 of the wire")
 	}
 	got, err := RootLoadText(text, nil)
-	if err != nil || got == nil || got.Id != 7 || string(got.Name[:got.NameLength]) != "hi" {
+	if err != nil || got == nil || got.ID != 7 || string(got.Name[:got.NameLength]) != "hi" {
 		t.Fatalf("base64 round trip: %+v %v", got, err)
 	}
 	again := make([]byte, RootMeasure(got))
@@ -158,7 +158,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	jsonText := make([]byte, RootToJsonMeasure(&v))
 	if RootToJson(&v, jsonText) != int64(len(jsonText)) { t.Fatal("json write") }
 	var j Root
-	if !RootFromJsonTolerant(&j, jsonText, nil) || j.Id != 7 || string(j.Name[:j.NameLength]) != "hi" {
+	if !RootFromJsonTolerant(&j, jsonText, nil) || j.ID != 7 || string(j.Name[:j.NameLength]) != "hi" {
 		t.Fatalf("json round trip: %+v", j)
 	}
 	again = make([]byte, RootMeasure(&j))
@@ -228,7 +228,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 		t.Fatalf("save text is not base64 of the wire")
 	}
 	got, err := NodeLoadText(text, nil)
-	if err != nil || got == nil || got.Id != 7 || string(got.Name[:got.NameLength]) != "hi" {
+	if err != nil || got == nil || got.ID != 7 || string(got.Name[:got.NameLength]) != "hi" {
 		t.Fatalf("base64 round trip: %+v %v", got, err)
 	}
 	again := make([]byte, NodeMeasure(got))
