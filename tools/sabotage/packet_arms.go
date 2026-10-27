@@ -36,8 +36,8 @@ var packetArmSabotages = map[string][]edit{
 		new: `				g.sf("            Zero%s(%svalue.%s); // SABOTAGED: zero instead of construction defaults\n", v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))`,
 	}},
 	"packet-arm-zero-java": {{
-		old: `			g.emitInitializeField(nf, arm, ind+"        ", false, true)`,
-		new: `			g.emitInitializeField(nf, arm, ind+"        ", false, false) // SABOTAGED: selected storage loses its defaults`,
+		old: `		g.pf("%s        %s(%s);\n", ind, g.qualify(vr.Type, "init"+vr.Type), arm)`,
+		new: `		g.pf("%s        %s(%s);\n", ind, g.qualify(vr.Type, "zero"+vr.Type), arm) // SABOTAGED: selected storage loses its defaults`,
 	}},
 	"packet-arm-zero-dart": {{
 		old: `			g.emitInitializeField(nf, arm, ind+"    ", false, true)`,
