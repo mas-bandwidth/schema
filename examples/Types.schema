@@ -1,17 +1,18 @@
-// Types.schema — all plain types for the unit.
-// Aspect-oriented layout (SPEC §2): one aspect per file.
-// The language pre-defines NO composite types (SPEC §4.2): these are ours,
-// minimal for this protocol's needs.
+// Types.schema — the plain types of the example protocol.
+// One aspect per file (SPEC §2): every `type` lives here, and the other files
+// refer to them by name. The language predefines no composite types
+// (SPEC §4.2), so the vectors and quaternions below are declared like any
+// other type, sized to what this protocol needs.
 
 package example
 
-// Continuous vector — float64 components, the deep wire.
-// cpp_native/cpp_include (SPEC §4.2, Native type mapping): generated C++
-// declares Vec3 storage as ::VecMath — a hand math type deriving from the
-// generated basis struct (same layout, plus operators) — and every header
-// referencing it includes the mapped header. The mapping is off inside this
-// file's own headers (the hand type derives from them), so it rides at
-// Degenerate.schema's Vec3Sole. Other targets ignore the pair.
+// A continuous vector with float64 components.
+// cpp_native/cpp_include (SPEC §4.2, Native type mapping) let generated C++
+// store Vec3 as your own math type, VecMath, which derives from the
+// generated struct and adds operators without changing its layout. Headers
+// generated from other files include vec_math.h and store VecMath (see
+// Vec3Sole in Degenerate.schema); this file's own header keeps the generated
+// struct, because VecMath derives from it. Other targets ignore the pair.
 type Vec3 | cpp_native = VecMath, cpp_include = "vec_math.h"
 {
     x float64
@@ -31,7 +32,7 @@ type Quat
 }
 
 // A handle to another object: id + generation sequence.
-// object_id 0 doubles as the null sentinel (the surveyed NULL_OBJECT convention).
+// object_id 0 doubles as the null handle.
 type Handle
 {
     object_id       int32 | min = 0, max = MaxObjects - 1
@@ -62,16 +63,13 @@ type QuantizedRotation
     w int16 | min = -RotationUnits, max = RotationUnits
 }
 
-// ---- the back-reference worked example (SPEC §4.4, §4.5, §5) ----
+// ---- a branch on an earlier field (SPEC §4.4, §4.5, §5) ----
 
-// The serialize README's own RigidBody example, schema-specified — field for
-// field, the generated serialize function IS that hand-written one. The group
-// of velocity fields rides the wire only when !at_rest; when the at-rest side
-// is taken, the hand-written version zeroes both velocities under
-// `else if ( Stream::IsReading )` — here that is SPEC §5's
-// zero-on-untaken-branch rule, the language's contract rather than a
-// convention the caller remembers. The branch costs no wire bits beyond the
-// bool already paid for (back-referencing, SPEC §4.5).
+// A rigid body whose velocities ride the wire only while it is moving. The
+// `if` reads `at_rest`, a field already written above it, so the branch
+// costs no wire bits beyond that bool (SPEC §4.5). When the body is at rest
+// the velocity fields are not sent, and a read sets both to zero (SPEC §5),
+// so a receiver never sees stale velocities on a resting body.
 type RigidBody
 {
     position    Vec3
@@ -118,10 +116,9 @@ type InputPacket
 
 type ShipCreate
 {
-    // ship_type is a plain enum: wire [0, ShipType.Max], None wire-legal. The
-    // hand-written create path writes [1, MAX] — that index form (enum_index)
-    // was designed and cut for now (SPEC §9 q11); one unused wire value is the
-    // recorded v1 cost.
+    // ship_type is a plain enum: its wire range is [0, ShipType.Max], and
+    // None (0) is a legal value on the wire even though a create always
+    // names a real ship type.
     ship_type ShipType
 
     position        QuantizedPosition
@@ -139,43 +136,32 @@ type ShipCreate
     health int16 | min = 0, max = MaxHealth
     thrust int8  | min = 0, max = 100
 
-    // an empty enum: the degenerate [0, 0] wire range, ZERO BITS. It rides
-    // here to keep the no-variant path in the cross-language corpus rather
-    // than only in a unit test.
+    // an empty enum: its wire range is [0, 0], so the field costs zero bits
+    // until the enum gains its first variant.
     pending Pending
 }
 
-// ---- the #22 parenthesization class, pinned end-to-end (issue #91) ----
+// ---- bounds written as expressions ----
 
-// The two source spellings whose rendering regressions no golden caught
-// before this type existed: an author-parenthesized bound, and a doubled
-// unary minus (issue #22's class — "--" is a decrement in the C family and a
-// parse error in Go and Rust, so the target form must parenthesize). Every
-// symbolic backend renders these bounds as source text, so the golden trees
-// themselves refuse a paren regression: dropping the author's parens or the
-// doubled-minus parenthesization changes no wire bit and no folded value —
-// only these goldens go red.
+// Bounds may be any constant expression, including parenthesized
+// subexpressions and a doubled unary minus. Generated code writes these
+// bounds as source text in each target language, keeping your parentheses
+// and adding any a target needs (`--` is a decrement in C, not two minuses).
 type ExpressionProbe
 {
     hardpoint_index int32                 | min = 0, max = (ShipMaxLasers + ShipMaxMissiles) - 1
     spin_rate       int32 = RotationUnits | min = --RotationUnits, max = RotationUnits * 2
 }
 
-// ---- issue #95: the integer extremes, pinned end-to-end ----
+// ---- the 64-bit integer extremes ----
 
-// The two values with no direct decimal spelling in the C family:
-// INT64_MIN's literal half overflows long long before the unary minus
-// applies, and a value past INT64_MAX has no signed rung of the decimal
-// ladder to land on. Every fold of these must reach the compiler in a
-// guarded spelling — ( -9223372036854775807LL - 1 ), the ULL suffix — so
-// this type keeps them in every -Werror leg, bounds and constants and
-// defaults alike. The doubled-minus-AT-the-extreme
-// interaction — an intermediate -(-9223372036854775808) that overflows the
-// 64-bit carrier though the final value fits — rides here as doubled_floor:
-// every symbolic backend must fold it (C and C# through carrierEval, Rust
-// through renderArg's i64 gate) or evaluate it in arbitrary precision (Go's
-// untyped constants, JS's BigInt), because a symbolic -(-FLOOR_LIMIT) is a
-// compile error wherever the carrier is 64-bit.
+// The full int64 and uint64 ranges are usable everywhere a value is: as
+// constants, as bounds and as defaults. INT64_MIN and UINT64_MAX are the two
+// values a C-family compiler cannot read as a plain decimal literal, so
+// generated code spells them safely in every target. doubled_floor folds to
+// INT64_MIN through an intermediate that does not fit in 64 bits; the
+// compiler evaluates constant expressions in arbitrary precision, so that
+// is fine too.
 
 const FloorLimit          = -9223372036854775808
 const CeilingCount uint64 = 18446744073709551615

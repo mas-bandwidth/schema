@@ -430,8 +430,8 @@ from this projection rather than carried in it.
   variant, or a union arm. **A `//` block above the same item stays an
   ordinary comment and never reaches a descriptor**, and that is the whole
   reason the marker exists: a schema tree is full of working notes written
-  directly above things — 166 such lines, above a declaration, a field, a
-  variant or an arm, in 40 of this repo's 47 corpus files — and under an
+  directly above things — above a declaration, a field, a variant or an
+  arm, throughout this repo's own corpus — and under an
   implicit rule every one of them would become a descriptor string, a comment
   in nine generated languages, and read-only data in the binary of every game
   that links the table headers (SPEC-TABLES.md §8.1). What a build carries is
@@ -481,7 +481,8 @@ from this projection rather than carried in it.
   `UpperCamelCase`, enum variants `UpperCamelCase`, fields
   `lower_snake_case`, constants `UpperCamelCase`. The compiler does not
   enforce case; the corpus and all documentation follow it.
-- **The register is Go-inspired.** Types are declared with `type`, not
+- **The register borrows Go's declaration order and scalar names; the brace
+  style and layout are the language's own (below).** Types are declared with `type`, not
   `struct`; declarations put the name first, then the type; scalar names are
   Go's (`float32` and `float64`, never `float`/`double`); `if` and `switch`
   take no parentheses; array bounds are a prefix (`[..MaxObjects]ObjectState`);
@@ -1277,10 +1278,10 @@ and the UTF-16 well-formedness rules of §4.12), which can be stricter than a
 hand-written classic reader; acceptance is uniform across the targets, which
 is what the conformance gates check.
 
-**The count-range cap is lifted.** serialize.modern caps `array_n`'s count
+**The count-range cap is lifted: `[..N]T` is bounded only by what the
+count's integer range can express.** serialize.modern caps `array_n`'s count
 range at 16 because each possible count is a separately spliced compile-time
-path. schema's generated code uses an honest loop (§6.2), so `[..N]T` is
-bounded only by what the count's integer range can express.
+path; schema's generated code uses an honest loop (§6.2), so it needs no cap.
 
 ### 4.4 Decisions: `if` — and `switch` is not in v1
 
@@ -1404,7 +1405,18 @@ All compile errors with positions:
   must reach zero.
 
   **A count outside [A, B] on the WRITE is caller error, and it is a
-  write-side contract like every other (§5).** That is not a compile error
+  write-side contract like every other (§5).** The count asserts in DEBUG
+  ONLY in each target
+  whose language has that idiom — `serialize_assert` in C++ and C,
+  `debug_assert!` in Rust, `Debug.Assert` in C#, `assert` in Java and Dart,
+  and the checked side of JavaScript's checked/production fork — and is
+  refused in every build only where the language has no such idiom: Go
+  returns `serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`.
+  The READ is untouched: a decoded count outside [A, B] fails the read in
+  every build, in all nine. What such a write leaves on the wire, where it
+  completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
+  may accept some other message.
+  The write-side contract is not a compile error
   but the other half of the same rule, and it is stated here because it is
   the rule generated code cites. The count guards the element loop and the
   pack subtracts the low bound, so a count below A wraps to a large unsigned
@@ -1416,19 +1428,10 @@ All compile errors with positions:
   past its bound already carries, and it is the ruling's intent rather than
   an oversight of it — the debug build's assert is where a bad count is meant
   to be caught, which is why every target catches it there and why no target
-  catches it in release. What such a write leaves on the wire, where it
-  completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
-  may accept some other message.
+  catches it in release.
   Settled 2026-09-07: "consistency matters. writing packets
   correctness is the caller's responsibility, and it is our duty to catch it
-  with asserts in debug." So the count asserts in DEBUG ONLY in each target
-  whose language has that idiom — `serialize_assert` in C++ and C,
-  `debug_assert!` in Rust, `Debug.Assert` in C#, `assert` in Java and Dart,
-  and the checked side of JavaScript's checked/production fork — and is
-  refused in every build only where the language has no such idiom: Go
-  returns `serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`.
-  The READ is untouched: a decoded count outside [A, B] fails the read in
-  every build, in all nine.
+  with asserts in debug."
 - **Attribute discipline:** an unknown attribute key, a key repeated, an
   attribute on a type that does not take it, `min` without `max`, and
   `resolution` without both bounds are compile errors, each naming the field
@@ -1642,11 +1645,12 @@ rule.
 For every legal write the wire bits are identical to `serialize_string` over
 a buffer of N + 1.
 
-**Generated-code consequence, stated so no backend discovers it late:** the
-runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
-necessarily the emitted call. **All nine backends compose the framing from
+**All nine backends compose the framing from
 primitives** — length over [0, N], then align, then raw bytes — and none
-emits a runtime string call. C# and Rust have no alternative: the §6.1
+emits a runtime string call. This is a generated-code consequence, stated so
+no backend discovers it late: the
+runtimes' `serialize_string` is the **wire oracle** for `string(N)`, not
+necessarily the emitted call. C# and Rust have no alternative: the §6.1
 storage rules make the runtime string method unusable there — C# stores a
 byte buffer but `SerializeString` takes `ref string`; Rust stores a byte
 buffer but `serialize_string` takes `&mut String`, which allocates.
