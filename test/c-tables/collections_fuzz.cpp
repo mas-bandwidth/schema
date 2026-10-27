@@ -24,13 +24,19 @@
 #include "arms/NestTable.h"
 #include "arms/RingTable.h"
 
+/* THE REFERENCE READ IS THE TOLERANT ONE. C's plain <name>_load keeps the
+   recovered root and its report (docs/SPEC-TABLES.md §6.5: a target keeps its
+   plain read tolerant until its emitter takes the strict rule), and C++ has
+   taken it: its plain Load refuses any non-silent report and hands back no
+   root. Comparing the two plain names compared two contracts; the C++ read
+   that answers C's question is LoadTolerant, the same signature. */
 #define REFERENCE_CODEC(NS,TYPE) \
 static const NS::TYPE * reference_##NS##_##TYPE; \
 static void * reference_storage_##NS##_##TYPE() { free((void *)reference_##NS##_##TYPE); reference_##NS##_##TYPE=NULL; return &reference_##NS##_##TYPE; } \
 static int reference_load_##NS##_##TYPE(void * value,const uint8_t * wire,int64_t bytes,ConformanceReport * out) { \
  NS::TableReport report; int64_t need=NS::TYPE##LoadMeasure(wire,bytes); \
  uint8_t * region=(uint8_t *)malloc(need>0 ? (size_t)need : 1); \
- const NS::TYPE * root=NS::TYPE##Load(region,need,wire,bytes,&report); \
+ const NS::TYPE * root=NS::TYPE##LoadTolerant(region,need,wire,bytes,&report); \
  *(const NS::TYPE **)value=root; if(root==NULL) { free(region); } \
  out->unknown=report.unknown;out->kind_mismatch=report.kind_mismatch;out->widened=report.widened;out->clamped=report.clamped; \
  out->duplicate=report.duplicate;out->malformed=report.malformed;out->refused=report.refused;return root!=NULL; } \
