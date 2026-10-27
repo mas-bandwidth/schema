@@ -928,11 +928,11 @@ contracts are documented in [C# tables](CS-TABLES.md).
 
 ### M21 — A float crosses two widths by bit surgery, never by conversion
 
-**Method.** A TABLE float rides as its IEEE-754 BIT PATTERN with no
-canonicalisation (docs/SPEC-TABLES.md §3). The packet wire is finite only
-since serialize format 2.0 (SPEC.md §4.3), so there a NaN never reaches a
-cell; this method is for the table forms, and for a packet target still on
-a format 1.1 runtime. A backend that holds a `float32` in
+**Retiring (2026-10-27).** Floats are finite only on both wires (SPEC.md
+§4.3, docs/SPEC-TABLES.md §3.3), so a NaN never reaches a cell and the
+ordinary conversion is exact for every finite value. This method stays only
+until each target lands the finite rule. **Method.** A float rode as its
+IEEE-754 BIT PATTERN with no canonicalisation, so a backend that holds a `float32` in
 a WIDER cell moves the pattern BIT FOR BIT and never through a float
 conversion. The hardware conversion sets the QUIET BIT on a signalling NaN and
 drops a payload the narrower cell would have kept, so a port that models a

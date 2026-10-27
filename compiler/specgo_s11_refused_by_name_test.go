@@ -65,7 +65,7 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 		},
 		{
 			name: "default read refusals",
-			want: []string{"`blob_shared`", "`non_finite`", "a blob shared by two slots (§2.5, `blob_shared`)"},
+			want: []string{"`blob_shared`", "`non_finite_float`", "a blob shared by two slots (§2.5, `blob_shared`)"},
 		},
 		{
 			name: "compile-time refusals with no line",
