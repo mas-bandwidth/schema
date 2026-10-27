@@ -157,7 +157,7 @@ concurrency:
 # sibling merging to main mid-day must not change what a schema commit proves.
 # The three files move together.
 env:
-  SERIALIZE_TAG: v1.16.2
+  SERIALIZE_TAG: v2.1.0
   SERIALIZE_C_TAG: v1.10.0
   SERIALIZE_GO_TAG: v1.15.1
   SERIALIZE_RS_TAG: v2.4.0
