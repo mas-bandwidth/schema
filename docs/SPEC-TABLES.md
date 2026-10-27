@@ -18678,7 +18678,10 @@ suffix — and a row is a CURSOR of `(view, at)` rather than a struct, because
 Dart has no struct: `<field>At(int index, <Name>Row into)` moves the cursor the
 caller lends, `<field>Cursor()` makes the one to lend, and there is NO
 ALLOCATING TWIN — the obvious per-frame loop must not have an obvious call
-that allocates a row object per step. **The array is ITERATED** as this
+that allocates a row object per step. A field whose accessors would take one
+of the cursor's own names (`view`, `at`, `rowSize`, `rowAlign`) spells them
+from `<field>$` instead (`at$(CursorRow into)`): a schema name never holds a
+`$`, so the escape collides with nothing. **The array is ITERATED** as this
 clause asks: `for (final row in block.<field>)` yields ONE cursor, moved to
 each row at the pitch the instance gives, so a row does not outlive its step
 and the idiomatic loop is the allocation-free one; the iteration costs one

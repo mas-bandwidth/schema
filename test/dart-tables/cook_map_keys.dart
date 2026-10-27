@@ -59,5 +59,5 @@ void main(List<String> args) {
         ? 'ORACLE big find ${u64(key)} none'
         : 'ORACLE big find ${u64(key)} ${hit.value}');
   }
-  print('ORACLE after ${keys.after}');
+  print('ORACLE trailer ${keys.trailer}');
 }

@@ -420,7 +420,7 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			continue // the triple, emitted with its array
 		}
 		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, bl != nil)
-		name := dartName(f.Name)
+		name := accessorName(f, bl != nil)
 		switch {
 		case f.IsMap():
 			// a MAP slot is a delta and a count, never a scalar (§2.8, §7.2):
@@ -460,11 +460,11 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			g.scalarGetter(ind, f, fmt.Sprintf("%s %sAt(int index)", dartScalarType(f.Type), name),
 				fmt.Sprintf("%s + %d + index * %d", origin, fl.Offset, facts.ElemSize))
 		case f.Type.Kind == ir.TNamed && isStructRef(f.Type):
-			g.pf("%s%sRow %s(%sRow into) {\n", ind, f.Type.Name, fieldMember(f), f.Type.Name)
+			g.pf("%s%sRow %s(%sRow into) {\n", ind, f.Type.Name, bareAccessor(f, bl != nil), f.Type.Name)
 			g.pf("%s  into.at = %s + %d;\n%s  return into;\n%s}\n\n", ind, origin, fl.Offset, ind, ind)
 			g.needRow(f.Type.Name)
 		default:
-			g.scalarGetter(ind, f, fmt.Sprintf("%s get %s", dartScalarType(f.Type), fieldMember(f)),
+			g.scalarGetter(ind, f, fmt.Sprintf("%s get %s", dartScalarType(f.Type), bareAccessor(f, bl != nil)),
 				fmt.Sprintf("%s + %d", origin, fl.Offset))
 		}
 		if facts.Optional {
@@ -472,6 +472,47 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 				ind, name, origin, facts.PresentOffset)
 		}
 	}
+}
+
+// rowMembers and blockMembers are the names a row cursor and a block class
+// declare for themselves; a field accessor may not take one (a field named
+// `at` would redeclare the cursor's offset).
+var (
+	rowMembers   = map[string]bool{"view": true, "at": true, "rowSize": true, "rowAlign": true}
+	blockMembers = map[string]bool{"bytes": true, "view": true, "base": true, "length": true,
+		"blockMaxBytes": true, "projectionSize": true}
+	// accessorSuffixes are every spelling a field's accessors derive from its
+	// name (emitInlineAccessors, emitCookMapAccessors)
+	accessorSuffixes = []string{"", "Length", "Bytes", "Bound", "At", "Present", "Count"}
+)
+
+// accessorName is the name a field's accessors in a row cursor (block false)
+// or a block class (block true) derive from: the field's lowerCamel name,
+// or that name followed by `$` when any accessor spelled from it would
+// collide with one of the class's own members. A schema name never holds a
+// `$`, so the escaped spelling collides with nothing.
+func accessorName(f *ir.Field, block bool) string {
+	name := dartName(f.Name)
+	members := rowMembers
+	if block {
+		members = blockMembers
+	}
+	for _, suffix := range accessorSuffixes {
+		if members[name+suffix] {
+			return name + "$"
+		}
+	}
+	return name
+}
+
+// bareAccessor is the accessor spelled by the field's name alone: the
+// escaped name when accessorName escaped it, the reserved-word-safe member
+// name (fieldMember) otherwise.
+func bareAccessor(f *ir.Field, block bool) string {
+	if name := accessorName(f, block); name != dartName(f.Name) {
+		return name
+	}
+	return fieldMember(f)
 }
 
 func isStructRef(t ir.FieldType) bool {
