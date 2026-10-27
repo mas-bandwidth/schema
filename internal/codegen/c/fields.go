@@ -284,11 +284,11 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, (serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 		g.pf("%sif ( !schema_utf8_valid_( (const uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)
-		g.pf("%s    return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
+		g.pf("%s    return serialize_read_fail( stream, SERIALIZE_REFUSAL_INVALID_UTF8 ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
 		// the interior-null rule is generated-code validation (SPEC §4.7);
 		// the word-wise scan lives in schema_interior_null_ (SchemaRuntime.h)
 		g.pf("%sif ( schema_interior_null_( (const uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)
-		g.pf("%s    return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
+		g.pf("%s    return serialize_read_fail( stream, SERIALIZE_REFUSAL_EMBEDDED_NUL ); /* an interior null is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
 		// the terminator is not transmitted; the reader supplies it
 		g.pf("%svalue->%s[value->%s_length] = 0;\n", ind, f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
@@ -354,7 +354,7 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 			g.pf("%s{\n%s    serialize_uint32_t enum_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &enum_value, %d )", bits))
 			if uint64(ref.Max) < uint64(1)<<uint(bits)-1 {
-				g.pf("%s    if ( enum_value > %s_MAX )\n%s    {\n%s        return serialize_read_fail( stream ); /* not a wire-legal value */\n%s    }\n", ind, screaming(f.Type.Name), ind, ind, ind)
+				g.pf("%s    if ( enum_value > %s_MAX )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal value */\n%s    }\n", ind, screaming(f.Type.Name), ind, ind, ind)
 			}
 			g.pf("%s    %s = (%s) enum_value;\n%s}\n", ind, expr, f.Type.Name, ind)
 		case *ir.Flags:
@@ -417,7 +417,7 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 	// buffer that ran out.
 	maxOffset := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 	if span.Cmp(maxOffset) < 0 {
-		g.pf("%s    if ( offset_value > %s )\n%s    {\n%s        return serialize_read_fail( stream );\n%s    }\n", ind, g.spanBound(f, span), ind, ind, ind)
+		g.pf("%s    if ( offset_value > %s )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n", ind, g.spanBound(f, span), ind, ind, ind)
 	}
 	if f.IntMin.Sign() == 0 {
 		g.pf("%s    %s = (%s) offset_value;\n%s}\n", ind, expr, g.storageType(f), ind)

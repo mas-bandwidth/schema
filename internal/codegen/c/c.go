@@ -707,7 +707,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	}
 	g.pf("    {\n        serialize_uint32_t tag_value = 0;\n")
 	g.call("        ", fmt.Sprintf("serialize_read_bits( stream, &tag_value, %d )", bits))
-	g.pf("        if ( tag_value > %s_MAX )\n        {\n            return serialize_read_fail( stream ); /* not a wire-legal tag */\n        }\n", screaming(tag))
+	g.pf("        if ( tag_value > %s_MAX )\n        {\n            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */\n        }\n", screaming(tag))
 	g.pf("        value->type = (%s) tag_value;\n    }\n", tag)
 	g.pf("    switch ( value->type )\n    {\n")
 	for i, v := range d.Variants {
@@ -790,7 +790,7 @@ func (g *gen) emitReadFunc(st *ir.Struct) {
 	// no guard: it reads nothing, so there is nothing to prove.
 	if bits, fixed := ir.FixedWireBits(st); fixed && bits > 0 {
 		g.pf("    /* fixed %d-bit wire: one guard, and every per-field past-end test below folds into it */\n", bits)
-		g.pf("    if ( serialize_read_bits_remaining( stream ) < %d )\n    {\n        return serialize_read_fail( stream );\n    }\n\n", bits)
+		g.pf("    if ( serialize_read_bits_remaining( stream ) < %d )\n    {\n        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );\n    }\n\n", bits)
 	}
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; /* items only — reserved/const/align carry no storage */\n")
@@ -840,12 +840,12 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 			// a desynchronized stream, refused rather than ignored
 			g.pf("%s{\n%s    serialize_uint32_t const_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &const_value, %d )", n.Bits))
-			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return serialize_read_fail( stream );\n%s    }\n%s}\n",
+			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n",
 				ind, n.Value.String(), ind, ind, ind, ind)
 		case *ir.ReservedItem:
 			g.pf("%s{\n%s    serialize_uint32_t reserved_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &reserved_value, %d )", n.Bits))
-			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return serialize_read_fail( stream );\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
+			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
 		case *ir.AlignItem:
 			g.call(ind, "serialize_read_align( stream )")
 		case *ir.Branch:

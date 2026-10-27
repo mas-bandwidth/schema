@@ -88,7 +88,7 @@ repository. Clone them beside it, at the tags this build is pinned to:
 ```
 $ cd ..
 $ git clone --branch v2.1.0 https://github.com/mas-bandwidth/serialize.git
-$ git clone --branch v1.10.0 https://github.com/mas-bandwidth/serialize.c.git
+$ git clone --branch v2.0.2 https://github.com/mas-bandwidth/serialize.c.git
 ```
 
 Nothing to build in either. Part 3 adds `-I ../serialize` to a compile line and

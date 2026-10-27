@@ -108,7 +108,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice( seria
         }
         if ( tag_value > EXAMPLE_DEFAULT_CHOICE_TYPE_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal tag */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */
         }
         value->type = (example_default_choice_type_t) tag_value;
     }
@@ -211,7 +211,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_choice( 
         }
         if ( tag_value > EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal tag */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */
         }
         value->type = (example_default_bulk_choice_type_t) tag_value;
     }

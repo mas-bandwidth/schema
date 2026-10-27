@@ -55,7 +55,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_sprite( serial
     /* fixed 138-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 138 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -98,7 +98,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_sprite( serial
         }
         if ( enum_value > EXAMPLE_TEAM_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal value */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal value */
         }
         value->team = (example_team_t) enum_value;
     }
