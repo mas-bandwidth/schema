@@ -38,7 +38,7 @@ static void golden_wire( const char * name, const unsigned char * data, int byte
     size_t n;
     int i;
 
-    sprintf( path, "../../testdata/wire/%s.bin", name );
+    snprintf( path, sizeof( path ), "../../testdata/wire/%s.bin", name );
     file = fopen( path, "rb" );
     if ( !file )
     {
@@ -1205,6 +1205,66 @@ int main( void )
 
 #undef EMIT
 #undef CONSUME
+    }
+
+    /* ---- ExtremeProbe / ExtremeRow: an INT64_MIN floor with values >= 0 ----
+       The offset value - min is taken in unsigned 64-bit arithmetic. In int64
+       it overflows (undefined behaviour) for every value >= 0, so these are
+       exactly the values that matter; the sanitizer build of this file is
+       what calls the old form out. */
+    {
+        ExtremeProbe in, out;
+        ExtremeRow row_in, row_out;
+        in = new_extreme_probe();
+        in.floor_bound = 100;
+        in.doubled_floor = 0;
+        in.ceiling_range = 18446744073709551615ULL;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_extreme_probe( &w, &in ), "write ExtremeProbe at the top of an INT64_MIN range" );
+        serialize_write_flush( &w );
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_extreme_probe( &r, &out ), "read ExtremeProbe" );
+        check( out.floor_bound == 100 && out.doubled_floor == 0, "an INT64_MIN-floored range round-trips values >= 0" );
+        check( out.ceiling_range == 18446744073709551615ULL, "a UINT64_MAX-capped range round-trips its ceiling" );
+
+        in.floor_bound = ( -9223372036854775807LL - 1 );
+        in.doubled_floor = ( -9223372036854775807LL - 1 );
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_extreme_probe( &w, &in ), "write ExtremeProbe at the floor" );
+        serialize_write_flush( &w );
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_extreme_probe( &r, &out ), "read ExtremeProbe at the floor" );
+        check( out.floor_bound == ( -9223372036854775807LL - 1 ) && out.doubled_floor == ( -9223372036854775807LL - 1 ),
+               "an INT64_MIN-floored range round-trips the floor itself" );
+
+        row_in = new_extreme_row();
+        row_in.clamped_floor = 100;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( write_extreme_row( &w, &row_in ), "write ExtremeRow" );
+        serialize_write_flush( &w );
+        memset( &row_out, 0, sizeof( row_out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( read_extreme_row( &r, &row_out ), "read ExtremeRow" );
+        check( row_out.clamped_floor == 100, "ExtremeRow round-trips a value >= 0 over an INT64_MIN floor" );
+    }
+
+    /* ---- a range refusal LATCHES the stream ----
+       The wire header promises "a caller may check once at the end of a
+       message": a value the read refuses (object_id past MAX_OBJECTS - 1,
+       carried in 14 bits that can hold up to 16383) must leave the stream
+       failed, not just return 0. */
+    {
+        Handle out;
+        serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
+        check( serialize_write_bits( &w, 16383, 14 ), "write an out-of-range object_id" );
+        check( serialize_write_bits( &w, 7, 8 ), "write object_sequence" );
+        serialize_write_flush( &w );
+        memset( &out, 0, sizeof( out ) );
+        serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
+        check( !read_handle( &r, &out ), "an object_id past MAX_OBJECTS - 1 is refused" );
+        check( serialize_read_error( &r ), "the refusal latches the stream error (check once at the end)" );
     }
 
     if ( failed )

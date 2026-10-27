@@ -7,6 +7,7 @@
 #ifndef SCHEMA_BENCHTABLE_BENCH_TABLE_H
 #define SCHEMA_BENCHTABLE_BENCH_TABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
@@ -201,11 +202,11 @@ typedef struct TableHitEvent {
     uint32_t target_id;
     int32_t damage;
     int32_t hit_kind;
-    uint8_t crit;
+    bool crit;
 } TableHitEvent;
 
 #define TABLE_HIT_EVENT_MAX_BITS 28   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TABLE_HIT_EVENT_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define TABLE_HIT_EVENT_MAX_BYTES 8  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type TableChatEvent */
@@ -215,7 +216,7 @@ typedef struct TableChatEvent {
 } TableChatEvent;
 
 #define TABLE_CHAT_EVENT_MAX_BITS 14   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TABLE_CHAT_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define TABLE_CHAT_EVENT_MAX_BYTES 8
 
 
 /* type TablePickupEvent */
@@ -225,7 +226,7 @@ typedef struct TablePickupEvent {
 } TablePickupEvent;
 
 #define TABLE_PICKUP_EVENT_MAX_BITS 18   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TABLE_PICKUP_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define TABLE_PICKUP_EVENT_MAX_BYTES 8
 
 
 /* union TableEvent — first-class one-of (SPEC §4.8): the tag says which arm is
@@ -261,7 +262,7 @@ typedef struct TableEvent {
 } TableEvent;
 
 #define TABLE_EVENT_MAX_BITS 30   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define TABLE_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define TABLE_EVENT_MAX_BYTES 8
 
 /* Selectors for TableEvent: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns

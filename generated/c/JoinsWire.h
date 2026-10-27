@@ -212,7 +212,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_agree( serialize_read_st
         {
             return 0;
         }
-        value->flag = (uint8_t) bool_value;
+        value->flag = bool_value != 0;
     }
     if ( value->flag )
     {
@@ -298,7 +298,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_disagree( serialize_read
         {
             return 0;
         }
-        value->flag = (uint8_t) bool_value;
+        value->flag = bool_value != 0;
     }
     if ( value->flag )
     {
@@ -377,7 +377,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_empty( serialize_read_str
         {
             return 0;
         }
-        value->flag = (uint8_t) bool_value;
+        value->flag = bool_value != 0;
     }
     if ( value->flag )
     {
@@ -468,7 +468,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_nested( serialize_read_s
         {
             return 0;
         }
-        value->outer = (uint8_t) bool_value;
+        value->outer = bool_value != 0;
     }
     if ( value->outer )
     {
@@ -478,7 +478,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_nested( serialize_read_s
             {
                 return 0;
             }
-            value->inner = (uint8_t) bool_value;
+            value->inner = bool_value != 0;
         }
         if ( value->inner )
         {
@@ -591,7 +591,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_align( serialize_read_str
         {
             return 0;
         }
-        value->flag = (uint8_t) bool_value;
+        value->flag = bool_value != 0;
     }
     if ( value->flag )
     {
@@ -605,11 +605,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_align( serialize_read_str
         }
         if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->s, value->s_length ) )
         {
-            return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+            return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
         }
         if ( schema_interior_null_( (const serialize_uint8_t *) value->s, value->s_length ) )
         {
-            return 0; /* an interior null is content the read refuses (SPEC §4.7) */
+            return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
         }
         value->s[value->s_length] = 0;
         value->b = 0;
@@ -699,7 +699,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_array( serialize_read_str
         {
             return 0;
         }
-        value->flag = (uint8_t) bool_value;
+        value->flag = bool_value != 0;
     }
     if ( value->flag )
     {
@@ -851,7 +851,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_uneven( serialize_read_stream
         }
         if ( tag_value > UNEVEN_TYPE_MAX )
         {
-            return 0; /* not a wire-legal tag */
+            return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
         value->type = (UnevenType) tag_value;
     }
@@ -1075,11 +1075,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_regain_after_align( serialize
     }
     if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->s, value->s_length ) )
     {
-        return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const serialize_uint8_t *) value->s, value->s_length ) )
     {
-        return 0; /* an interior null is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
     value->s[value->s_length] = 0;
     {

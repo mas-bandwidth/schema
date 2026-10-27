@@ -16,6 +16,7 @@
 #ifndef SCHEMA_BENCH_FIXEDTABLEBLOCK_H
 #define SCHEMA_BENCH_FIXEDTABLEBLOCK_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, and ptrdiff_t for the row pitch */
 #include <string.h>

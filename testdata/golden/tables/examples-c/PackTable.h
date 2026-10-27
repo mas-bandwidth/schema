@@ -10,6 +10,7 @@
 #ifndef SCHEMA_TABLEDEMO_PACKTABLE_H
 #define SCHEMA_TABLEDEMO_PACKTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
@@ -4811,7 +4812,7 @@ static SCHEMA_UNUSED int64_t table_retain_graph_save(const void * root,const Tab
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct GunnerSettings {
     float reaction;
-    uint8_t tracking;
+    bool tracking;
     char callsign[24 + 1]; /* string(24): N + 1 for the terminator the wire does not carry */
     int32_t callsign_length;
 } GunnerSettings;

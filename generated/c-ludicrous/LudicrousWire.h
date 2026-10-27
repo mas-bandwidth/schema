@@ -342,7 +342,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_st
 /* Writes LudicrousState. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_write_stream_t * stream, const LudicrousState * value )
 {
-    serialize_assert( value->mode <= 3 );
+    serialize_assert( value->mode <= DRIVE_MODE_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->mode, 2 ) )
     {
         return 0;
@@ -393,10 +393,6 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_re
         {
             return 0;
         }
-        if ( enum_value > 3 )
-        {
-            return 0; /* not a wire-legal value */
-        }
         value->mode = (DriveMode) enum_value;
     }
     if ( !read_fixed_probe( stream, &value->probe ) )
@@ -427,7 +423,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_re
         {
             return 0;
         }
-        value->has_target = (uint8_t) bool_value;
+        value->has_target = bool_value != 0;
     }
     if ( value->has_target )
     {

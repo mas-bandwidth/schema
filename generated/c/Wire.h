@@ -7,6 +7,7 @@
 #ifndef SCHEMA_EXAMPLE_WIRE_H
 #define SCHEMA_EXAMPLE_WIRE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
@@ -150,7 +151,7 @@ typedef struct ProbeHeader {
 } ProbeHeader;
 
 #define PROBE_HEADER_MAX_BITS 87   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_HEADER_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define PROBE_HEADER_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ProbeBits */
@@ -163,17 +164,17 @@ typedef struct ProbeBits {
 } ProbeBits;
 
 #define PROBE_BITS_MAX_BITS 202   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_BITS_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_BITS_MAX_BYTES 32
 
 
 /* type ProbeSample */
 typedef struct ProbeSample {
-    uint8_t active;
+    bool active;
     float orientation;
     int32_t raw_delta;
     int64_t big_delta;
     Weapon weapon;
-    uint8_t has_target;
+    bool has_target;
     uint16_t target_id;
     uint32_t idle_ticks;
     uint16_t samples[8];
@@ -181,16 +182,16 @@ typedef struct ProbeSample {
 } ProbeSample;
 
 #define PROBE_SAMPLE_MAX_BITS 276   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_SAMPLE_MAX_BYTES 40  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_SAMPLE_MAX_BYTES 40
 
-/* Returns a ProbeSample with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new ProbeSample with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED ProbeSample new_probe_sample( void )
 {
     ProbeSample value;
     memset( &value, 0, sizeof( value ) );
-    value.active = 1;
+    value.active = true;
     value.samples_count = 1;
     return value;
 }
@@ -202,7 +203,7 @@ typedef struct ProbeRing {
 } ProbeRing;
 
 #define PROBE_RING_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_RING_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_RING_MAX_BYTES 8
 
 
 /* type ProbeSlab */
@@ -212,7 +213,7 @@ typedef struct ProbeSlab {
 } ProbeSlab;
 
 #define PROBE_SLAB_MAX_BITS 15   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_SLAB_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_SLAB_MAX_BYTES 8
 
 
 /* union ProbeShape — first-class one-of (SPEC §4.8): the tag says which arm is
@@ -245,7 +246,7 @@ typedef struct ProbeShape {
 } ProbeShape;
 
 #define PROBE_SHAPE_MAX_BITS 18   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define PROBE_SHAPE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_SHAPE_MAX_BYTES 8
 
 /* Selectors for ProbeShape: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
@@ -275,7 +276,7 @@ typedef struct ProbeCollider {
 } ProbeCollider;
 
 #define PROBE_COLLIDER_MAX_BITS 82   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_COLLIDER_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_COLLIDER_MAX_BYTES 16
 
 
 /* type ProbeConfig */
@@ -285,9 +286,9 @@ typedef struct ProbeConfig {
 } ProbeConfig;
 
 #define PROBE_CONFIG_MAX_BITS 36   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_CONFIG_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_CONFIG_MAX_BYTES 8
 
-/* Returns a ProbeConfig with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new ProbeConfig with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED ProbeConfig new_probe_config( void )
@@ -307,9 +308,9 @@ typedef struct ProbeArray {
 } ProbeArray;
 
 #define PROBE_ARRAY_MAX_BITS 588   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_ARRAY_MAX_BYTES 80  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_ARRAY_MAX_BYTES 80
 
-/* Returns a ProbeArray with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new ProbeArray with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED ProbeArray new_probe_array( void )
@@ -343,7 +344,7 @@ typedef struct Test {
 } Test;
 
 #define TEST_MAX_BITS 46   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TEST_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define TEST_MAX_BYTES 8
 
 
 /* type Block */
@@ -353,7 +354,7 @@ typedef struct Block {
 } Block;
 
 #define BLOCK_MAX_BITS 16018   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BLOCK_MAX_BYTES 2008  /* 8-byte write granularity; read slack per the contract above */
+#define BLOCK_MAX_BYTES 2008
 
 
 /* type Chat */
@@ -363,7 +364,7 @@ typedef struct Chat {
 } Chat;
 
 #define CHAT_MAX_BITS 2064   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define CHAT_MAX_BYTES 264  /* 8-byte write granularity; read slack per the contract above */
+#define CHAT_MAX_BYTES 264
 
 
 /* type ProbeReport */
@@ -374,7 +375,7 @@ typedef struct ProbeReport {
 } ProbeReport;
 
 #define PROBE_REPORT_MAX_BITS 141   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_REPORT_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define PROBE_REPORT_MAX_BYTES 24
 
 
 /* type TestData */
@@ -385,7 +386,7 @@ typedef struct TestData {
     uint32_t d;
     uint32_t e;
     uint32_t f;
-    uint8_t g;
+    bool g;
     int32_t items[16];
     int32_t items_count;
     float float_value;
@@ -405,7 +406,7 @@ typedef struct TestData {
 } TestData;
 
 #define TEST_DATA_MAX_BITS 2735   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TEST_DATA_MAX_BYTES 344  /* 8-byte write granularity; read slack per the contract above */
+#define TEST_DATA_MAX_BYTES 344
 
 
 /* type CompressedProbe */
@@ -415,7 +416,7 @@ typedef struct CompressedProbe {
 } CompressedProbe;
 
 #define COMPRESSED_PROBE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define COMPRESSED_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define COMPRESSED_PROBE_MAX_BYTES 8
 
 #ifdef __cplusplus
 }

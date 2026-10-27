@@ -32,9 +32,9 @@ typedef struct DefaultArm {
 } DefaultArm;
 
 #define DEFAULT_ARM_MAX_BITS 77   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEFAULT_ARM_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define DEFAULT_ARM_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
-/* Returns a DefaultArm with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new DefaultArm with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED DefaultArm new_default_arm( void )
@@ -82,7 +82,7 @@ typedef struct DefaultChoice {
 } DefaultChoice;
 
 #define DEFAULT_CHOICE_MAX_BITS 79   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define DEFAULT_CHOICE_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define DEFAULT_CHOICE_MAX_BYTES 16
 
 /* Selectors for DefaultChoice: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
@@ -108,7 +108,7 @@ typedef struct DefaultChoicePacket {
 } DefaultChoicePacket;
 
 #define DEFAULT_CHOICE_PACKET_MAX_BITS 79   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEFAULT_CHOICE_PACKET_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define DEFAULT_CHOICE_PACKET_MAX_BYTES 16
 
 
 /* type DefaultBulkArm */
@@ -119,9 +119,9 @@ typedef struct DefaultBulkArm {
 } DefaultBulkArm;
 
 #define DEFAULT_BULK_ARM_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEFAULT_BULK_ARM_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define DEFAULT_BULK_ARM_MAX_BYTES 16
 
-/* Returns a DefaultBulkArm with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new DefaultBulkArm with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED DefaultBulkArm new_default_bulk_arm( void )
@@ -163,7 +163,7 @@ typedef struct DefaultBulkChoice {
 } DefaultBulkChoice;
 
 #define DEFAULT_BULK_CHOICE_MAX_BITS 104   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define DEFAULT_BULK_CHOICE_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define DEFAULT_BULK_CHOICE_MAX_BYTES 16
 
 /* Selectors for DefaultBulkChoice: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns

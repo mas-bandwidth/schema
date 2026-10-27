@@ -10,6 +10,7 @@
 #ifndef SCHEMA_BENCHTABLE_BENCHTABLETABLE_H
 #define SCHEMA_BENCHTABLE_BENCHTABLETABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
@@ -3194,8 +3195,8 @@ typedef struct TableEntity {
     int32_t health;
     TableWeapon weapon;
     TableDamage damage;
-    uint8_t moving;
-    uint8_t firing;
+    bool moving;
+    bool firing;
 } TableEntity;
 
 /* table TableStat — TABLE-wire storage: relocatable, bounded. C has no member
@@ -3239,7 +3240,7 @@ typedef struct TableMixed {
     int64_t flux;
     float ping;
     uint32_t crc_hint;
-    uint8_t has_extra;
+    bool has_extra;
     int32_t extra;
     int32_t idle_ticks;
 } TableMixed;

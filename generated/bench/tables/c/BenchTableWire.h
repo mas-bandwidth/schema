@@ -119,7 +119,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_re
         {
             return 0;
         }
-        value->crit = (uint8_t) bool_value;
+        value->crit = bool_value != 0;
     }
     return 1;
 }
@@ -246,7 +246,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_event( serialize_read_s
         }
         if ( tag_value > TABLE_EVENT_TYPE_MAX )
         {
-            return 0; /* not a wire-legal tag */
+            return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
         value->type = (TableEventType) tag_value;
     }

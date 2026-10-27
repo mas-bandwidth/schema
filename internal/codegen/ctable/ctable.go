@@ -795,7 +795,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("   beside this header to use descriptors or JSON. 128-bit storage uses\n")
 	h.WriteString("   the lane types from serialize.h. */\n\n")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
-	h.WriteString("#include <stdint.h>\n#include <stddef.h> /* offsetof, for the reflection descriptors */\n#include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */\n")
+	h.WriteString("#include <stdbool.h>\n#include <stdint.h>\n#include <stddef.h> /* offsetof, for the reflection descriptors */\n#include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */\n")
 	if g.anyKeyed {
 		// ENUM-KEYED arrays only: indexing one by None is a program error in
 		// EVERY configuration, and the accessor is where a runtime key can

@@ -7,6 +7,7 @@
 #ifndef SCHEMA_EXAMPLE_JOINS_H
 #define SCHEMA_EXAMPLE_JOINS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
@@ -26,46 +27,46 @@ extern "C" {
 /* type ArmsAgree */
 typedef struct ArmsAgree {
     uint32_t lead;
-    uint8_t flag;
+    bool flag;
     uint32_t a;
     uint32_t b;
     uint32_t tail;
 } ArmsAgree;
 
 #define ARMS_AGREE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARMS_AGREE_MAX_BYTES 8  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define ARMS_AGREE_MAX_BYTES 8  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ArmsDisagree */
 typedef struct ArmsDisagree {
     uint32_t lead;
-    uint8_t flag;
+    bool flag;
     uint32_t a;
     uint32_t b;
     uint32_t tail;
 } ArmsDisagree;
 
 #define ARMS_DISAGREE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARMS_DISAGREE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ARMS_DISAGREE_MAX_BYTES 8
 
 
 /* type ArmEmpty */
 typedef struct ArmEmpty {
     uint32_t lead;
-    uint8_t flag;
+    bool flag;
     uint32_t a;
     uint32_t tail;
 } ArmEmpty;
 
 #define ARM_EMPTY_MAX_BITS 32   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARM_EMPTY_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ARM_EMPTY_MAX_BYTES 8
 
 
 /* type ArmsNested */
 typedef struct ArmsNested {
     uint32_t lead;
-    uint8_t outer;
-    uint8_t inner;
+    bool outer;
+    bool inner;
     uint32_t x;
     uint32_t y;
     uint32_t z;
@@ -73,13 +74,13 @@ typedef struct ArmsNested {
 } ArmsNested;
 
 #define ARMS_NESTED_MAX_BITS 40   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARMS_NESTED_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ARMS_NESTED_MAX_BYTES 8
 
 
 /* type ArmAlign */
 typedef struct ArmAlign {
     uint32_t lead;
-    uint8_t flag;
+    bool flag;
     char s[4 + 1]; /* string(4): N + 1 for the terminator the wire does not carry */
     int32_t s_length;
     uint32_t b;
@@ -87,13 +88,13 @@ typedef struct ArmAlign {
 } ArmAlign;
 
 #define ARM_ALIGN_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARM_ALIGN_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ARM_ALIGN_MAX_BYTES 8
 
 
 /* type ArmArray */
 typedef struct ArmArray {
     uint32_t lead;
-    uint8_t flag;
+    bool flag;
     uint16_t items[3];
     int32_t items_count;
     uint32_t b;
@@ -101,7 +102,7 @@ typedef struct ArmArray {
 } ArmArray;
 
 #define ARM_ARRAY_MAX_BITS 54   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARM_ARRAY_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ARM_ARRAY_MAX_BYTES 8
 
 
 /* type Narrow */
@@ -110,7 +111,7 @@ typedef struct Narrow {
 } Narrow;
 
 #define NARROW_MAX_BITS 3   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define NARROW_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define NARROW_MAX_BYTES 8
 
 
 /* type Wide */
@@ -119,7 +120,7 @@ typedef struct Wide {
 } Wide;
 
 #define WIDE_MAX_BITS 37   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define WIDE_MAX_BYTES 8
 
 
 /* union Uneven — first-class one-of (SPEC §4.8): the tag says which arm is
@@ -152,7 +153,7 @@ typedef struct Uneven {
 } Uneven;
 
 #define UNEVEN_MAX_BITS 39   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define UNEVEN_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define UNEVEN_MAX_BYTES 8
 
 /* Selectors for Uneven: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
@@ -180,7 +181,7 @@ typedef struct HoldsUneven {
 } HoldsUneven;
 
 #define HOLDS_UNEVEN_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HOLDS_UNEVEN_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define HOLDS_UNEVEN_MAX_BYTES 8
 
 
 /* type ArrUneven */
@@ -192,7 +193,7 @@ typedef struct ArrUneven {
 } ArrUneven;
 
 #define ARR_UNEVEN_MAX_BITS 127   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_UNEVEN_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define ARR_UNEVEN_MAX_BYTES 16
 
 
 /* type RegainAfterAlign */
@@ -209,7 +210,7 @@ typedef struct RegainAfterAlign {
 } RegainAfterAlign;
 
 #define REGAIN_AFTER_ALIGN_MAX_BITS 172   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define REGAIN_AFTER_ALIGN_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define REGAIN_AFTER_ALIGN_MAX_BYTES 24
 
 #ifdef __cplusplus
 }

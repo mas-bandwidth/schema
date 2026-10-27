@@ -369,7 +369,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w52( serialize_write_stream
         {
             serialize_assert( (serialize_uint64_t) value->items[i] <= 4503599627370495 );
             {
-                serialize_uint64_t offset_value = (serialize_uint64_t) ( value->items[i] );
+                serialize_uint64_t offset_value = (serialize_uint64_t) value->items[i];
                 if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
                 {
                     return 0;
@@ -429,7 +429,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_w50( serialize_write_stream
         {
             serialize_assert( (serialize_uint64_t) value->items[i] <= 1125899906842623 );
             {
-                serialize_uint64_t offset_value = (serialize_uint64_t) ( value->items[i] );
+                serialize_uint64_t offset_value = (serialize_uint64_t) value->items[i];
                 if ( !serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 ) )
                 {
                     return 0;
@@ -745,7 +745,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_empty_union( serialize_read_s
         }
         if ( tag_value > EMPTY_UNION_TYPE_MAX )
         {
-            return 0; /* not a wire-legal tag */
+            return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
         value->type = (EmptyUnionType) tag_value;
     }
@@ -864,11 +864,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_strs( serialize_read_stream_t
     }
     if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->s, value->s_length ) )
     {
-        return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const serialize_uint8_t *) value->s, value->s_length ) )
     {
-        return 0; /* an interior null is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
     value->s[value->s_length] = 0;
     if ( !serialize_read_int( stream, &value->b_length, 0, 8 ) )

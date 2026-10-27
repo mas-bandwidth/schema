@@ -10,6 +10,7 @@
 #ifndef SCHEMA_TABLEDEMO_TABLESTABLE_H
 #define SCHEMA_TABLEDEMO_TABLESTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
@@ -4819,7 +4820,7 @@ typedef struct WeaponConfig {
     float speed;
     int32_t penetration;
     uint32_t channel;
-    uint8_t homing;
+    bool homing;
     Effect effect;
 } WeaponConfig;
 
@@ -4855,7 +4856,7 @@ typedef struct ProfileConfig {
     uint64_t epoch;
     double precision;
     float ratings[4];
-    uint8_t has_loadout;
+    bool has_loadout;
     LoadoutConfig loadout;
 } ProfileConfig;
 

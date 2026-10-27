@@ -10,6 +10,7 @@
 #ifndef SCHEMA_TABLEDEMO_GUARDEDTABLE_H
 #define SCHEMA_TABLEDEMO_GUARDEDTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
@@ -4810,12 +4811,12 @@ static SCHEMA_UNUSED int64_t table_retain_graph_save(const void * root,const Tab
    initializers, so the declared defaults live in patrol_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct Patrol {
-    uint8_t active;
+    bool active;
 
     /* active — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */
     float speed;
-    uint8_t has_target;
+    bool has_target;
 
     /* active && has_target — guarded fields stay off the wire when the guard says so;
        a read's prefilled defaults stand in for the untaken side */

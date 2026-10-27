@@ -25,7 +25,7 @@ typedef struct WideSeven {
 } WideSeven;
 
 #define WIDE_SEVEN_MAX_BITS 227   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_SEVEN_MAX_BYTES 32  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define WIDE_SEVEN_MAX_BYTES 32  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type WideFour */
@@ -35,7 +35,7 @@ typedef struct WideFour {
 } WideFour;
 
 #define WIDE_FOUR_MAX_BITS 131   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_FOUR_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define WIDE_FOUR_MAX_BYTES 24
 
 
 /* type NarrowFifteen */
@@ -45,7 +45,7 @@ typedef struct NarrowFifteen {
 } NarrowFifteen;
 
 #define NARROW_FIFTEEN_MAX_BITS 131   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define NARROW_FIFTEEN_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define NARROW_FIFTEEN_MAX_BYTES 24
 
 
 /* type WideInterop */
@@ -55,7 +55,7 @@ typedef struct WideInterop {
 } WideInterop;
 
 #define WIDE_INTEROP_MAX_BITS 227   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_INTEROP_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define WIDE_INTEROP_MAX_BYTES 32
 
 #ifdef __cplusplus
 }

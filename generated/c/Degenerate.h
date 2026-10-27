@@ -22,7 +22,7 @@ typedef struct Vec2 {
 } Vec2;
 
 #define VEC2_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC2_MAX_BYTES 16  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define VEC2_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type SpanF64 */
@@ -31,7 +31,7 @@ typedef struct SpanF64 {
 } SpanF64;
 
 #define SPAN_F64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_F64_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define SPAN_F64_MAX_BYTES 16
 
 
 /* type SpanU64 */
@@ -40,7 +40,7 @@ typedef struct SpanU64 {
 } SpanU64;
 
 #define SPAN_U64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_U64_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define SPAN_U64_MAX_BYTES 16
 
 
 /* type SpanI64 */
@@ -49,7 +49,7 @@ typedef struct SpanI64 {
 } SpanI64;
 
 #define SPAN_I64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_I64_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define SPAN_I64_MAX_BYTES 16
 
 
 /* type SpanOne */
@@ -58,7 +58,7 @@ typedef struct SpanOne {
 } SpanOne;
 
 #define SPAN_ONE_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_ONE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define SPAN_ONE_MAX_BYTES 8
 
 
 /* type SpanChunk */
@@ -67,7 +67,7 @@ typedef struct SpanChunk {
 } SpanChunk;
 
 #define SPAN_CHUNK_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_CHUNK_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define SPAN_CHUNK_MAX_BYTES 8
 
 
 /* type SpanTail */
@@ -77,7 +77,7 @@ typedef struct SpanTail {
 } SpanTail;
 
 #define SPAN_TAIL_MAX_BITS 160   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_TAIL_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define SPAN_TAIL_MAX_BYTES 24
 
 
 /* type SpanTwice */
@@ -87,7 +87,7 @@ typedef struct SpanTwice {
 } SpanTwice;
 
 #define SPAN_TWICE_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_TWICE_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define SPAN_TWICE_MAX_BYTES 32
 
 
 /* type Trio */
@@ -98,7 +98,7 @@ typedef struct Trio {
 } Trio;
 
 #define TRIO_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define TRIO_MAX_BYTES 8
 
 
 /* type TrioSole */
@@ -107,7 +107,7 @@ typedef struct TrioSole {
 } TrioSole;
 
 #define TRIO_SOLE_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_SOLE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define TRIO_SOLE_MAX_BYTES 8
 
 
 /* type Vec3Sole */
@@ -116,7 +116,7 @@ typedef struct Vec3Sole {
 } Vec3Sole;
 
 #define VEC3_SOLE_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC3_SOLE_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define VEC3_SOLE_MAX_BYTES 24
 
 
 /* type TrioFirst */
@@ -126,7 +126,7 @@ typedef struct TrioFirst {
 } TrioFirst;
 
 #define TRIO_FIRST_MAX_BITS 80   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_FIRST_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define TRIO_FIRST_MAX_BYTES 16
 
 
 /* type TrioStraddle */
@@ -141,7 +141,7 @@ typedef struct TrioStraddle {
 } TrioStraddle;
 
 #define TRIO_STRADDLE_MAX_BITS 408   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_STRADDLE_MAX_BYTES 56  /* 8-byte write granularity; read slack per the contract above */
+#define TRIO_STRADDLE_MAX_BYTES 56
 
 #ifdef __cplusplus
 }

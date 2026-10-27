@@ -55,7 +55,7 @@ extern "C" {
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_write_stream_t * stream, const RealPacket * value )
 {
     serialize_assert( (serialize_int64_t) value->f001_int >= -805495 && (serialize_int64_t) value->f001_int <= 805495 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f001_int) - (-805495) ), 21 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f001_int - (serialize_uint32_t) ( -805495 ), 21 ) )
     {
         return 0;
     }
@@ -64,7 +64,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f003_int >= -835897 && (serialize_int64_t) value->f003_int <= 835897 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f003_int) - (-835897) ), 21 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f003_int - (serialize_uint32_t) ( -835897 ), 21 ) )
     {
         return 0;
     }
@@ -78,7 +78,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f006_int >= -1513 && (serialize_int64_t) value->f006_int <= 1513 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f006_int) - (-1513) ), 12 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f006_int - (serialize_uint32_t) ( -1513 ), 12 ) )
     {
         return 0;
     }
@@ -91,7 +91,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f009_int >= -22 && (serialize_int64_t) value->f009_int <= 22 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f009_int) - (-22) ), 6 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f009_int - (serialize_uint32_t) ( -22 ), 6 ) )
     {
         return 0;
     }
@@ -119,7 +119,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
         serialize_assert( (serialize_int64_t) value->f015_int >= -21 && (serialize_int64_t) value->f015_int <= 21 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f015_int) - (-21) ), 6 ) )
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f015_int - (serialize_uint32_t) ( -21 ), 6 ) )
         {
             return 0;
         }
@@ -137,7 +137,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         }
     }
     serialize_assert( (serialize_int64_t) value->f018_int >= -834 && (serialize_int64_t) value->f018_int <= 834 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f018_int) - (-834) ), 11 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f018_int - (serialize_uint32_t) ( -834 ), 11 ) )
     {
         return 0;
     }
@@ -200,7 +200,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f032_int >= -3 && (serialize_int64_t) value->f032_int <= 3 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f032_int) - (-3) ), 3 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f032_int - (serialize_uint32_t) ( -3 ), 3 ) )
     {
         return 0;
     }
@@ -218,7 +218,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    serialize_assert( value->f036_enum <= 5 );
+    serialize_assert( value->f036_enum <= PACKET_MODE_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f036_enum, 3 ) )
     {
         return 0;
@@ -243,7 +243,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         }
     }
     serialize_assert( (serialize_int64_t) value->f041_int >= -55 && (serialize_int64_t) value->f041_int <= 55 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f041_int) - (-55) ), 7 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f041_int - (serialize_uint32_t) ( -55 ), 7 ) )
     {
         return 0;
     }
@@ -271,7 +271,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
         serialize_assert( (serialize_int64_t) value->f047_int >= -430976 && (serialize_int64_t) value->f047_int <= 430976 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f047_int) - (-430976) ), 20 ) )
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f047_int - (serialize_uint32_t) ( -430976 ), 20 ) )
         {
             return 0;
         }
@@ -298,7 +298,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
         serialize_assert( (serialize_int64_t) value->f052_int >= -57 && (serialize_int64_t) value->f052_int <= 57 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f052_int) - (-57) ), 7 ) )
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f052_int - (serialize_uint32_t) ( -57 ), 7 ) )
         {
             return 0;
         }
@@ -307,7 +307,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
         serialize_assert( (serialize_int64_t) value->f054_int >= -35 && (serialize_int64_t) value->f054_int <= 35 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f054_int) - (-35) ), 7 ) )
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f054_int - (serialize_uint32_t) ( -35 ), 7 ) )
         {
             return 0;
         }
@@ -317,12 +317,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f056_int >= -13 && (serialize_int64_t) value->f056_int <= 13 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f056_int) - (-13) ), 5 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f056_int - (serialize_uint32_t) ( -13 ), 5 ) )
     {
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f057_int >= -15 && (serialize_int64_t) value->f057_int <= 15 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f057_int) - (-15) ), 5 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f057_int - (serialize_uint32_t) ( -15 ), 5 ) )
     {
         return 0;
     }
@@ -393,7 +393,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f073_int >= -4 && (serialize_int64_t) value->f073_int <= 4 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f073_int) - (-4) ), 4 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f073_int - (serialize_uint32_t) ( -4 ), 4 ) )
     {
         return 0;
     }
@@ -408,12 +408,12 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
             return 0;
         }
         serialize_assert( (serialize_int64_t) value->f076_int >= -26218 && (serialize_int64_t) value->f076_int <= 26218 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f076_int) - (-26218) ), 16 ) )
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f076_int - (serialize_uint32_t) ( -26218 ), 16 ) )
         {
             return 0;
         }
         serialize_assert( (serialize_int64_t) value->f077_int >= -17 && (serialize_int64_t) value->f077_int <= 17 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f077_int) - (-17) ), 6 ) )
+        if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f077_int - (serialize_uint32_t) ( -17 ), 6 ) )
         {
             return 0;
         }
@@ -439,7 +439,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    serialize_assert( value->f083_enum <= 5 );
+    serialize_assert( value->f083_enum <= PACKET_MODE_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f083_enum, 3 ) )
     {
         return 0;
@@ -465,7 +465,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
         return 0;
     }
     serialize_assert( (serialize_int64_t) value->f088_int >= -694 && (serialize_int64_t) value->f088_int <= 694 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( (value->f088_int) - (-694) ), 11 ) )
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f088_int - (serialize_uint32_t) ( -694 ), 11 ) )
     {
         return 0;
     }
@@ -538,11 +538,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 1610990ULL )
+        if ( offset_value > (serialize_uint64_t) 805495 - (serialize_uint64_t) ( -805495 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f001_int = (int32_t) ( offset_value + (-805495) );
+        value->f001_int = (int32_t) ( offset_value + (serialize_uint64_t) ( -805495 ) );
     }
     if ( !serialize_read_double( stream, &value->f002_f64 ) )
     {
@@ -556,11 +556,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 1671794ULL )
+        if ( offset_value > (serialize_uint64_t) 835897 - (serialize_uint64_t) ( -835897 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f003_int = (int32_t) ( offset_value + (-835897) );
+        value->f003_int = (int32_t) ( offset_value + (serialize_uint64_t) ( -835897 ) );
     }
     if ( !serialize_read_compressed_float_precomputed( stream, &value->f004_cf32, 20000u, 15, 2000.0f, 0.0f ) )
     {
@@ -574,9 +574,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 7316ULL )
+        if ( offset_value > (serialize_uint64_t) 7316 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f005_uint = (uint16_t) offset_value;
     }
@@ -588,11 +588,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 3026ULL )
+        if ( offset_value > (serialize_uint64_t) 1513 - (serialize_uint64_t) ( -1513 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f006_int = (int16_t) ( offset_value + (-1513) );
+        value->f006_int = (int16_t) ( offset_value + (serialize_uint64_t) ( -1513 ) );
     }
     if ( !serialize_read_float( stream, &value->f007_f32 ) )
     {
@@ -614,11 +614,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 44ULL )
+        if ( offset_value > (serialize_uint64_t) 22 - (serialize_uint64_t) ( -22 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f009_int = (int8_t) ( offset_value + (-22) );
+        value->f009_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -22 ) );
     }
     if ( !serialize_read_float( stream, &value->f010_f32 ) )
     {
@@ -638,7 +638,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f012_bool = (uint8_t) bool_value;
+        value->f012_bool = bool_value != 0;
     }
     if ( value->f012_bool )
     {
@@ -654,9 +654,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 775ULL )
+            if ( offset_value > (serialize_uint64_t) 775 )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
             value->f014_uint = (uint16_t) offset_value;
         }
@@ -668,11 +668,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 42ULL )
+            if ( offset_value > (serialize_uint64_t) 21 - (serialize_uint64_t) ( -21 ) )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
-            value->f015_int = (int8_t) ( offset_value + (-21) );
+            value->f015_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -21 ) );
         }
         {
             serialize_int32_t fixed_value;
@@ -691,9 +691,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 4606ULL )
+            if ( offset_value > (serialize_uint64_t) 4606 )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
             value->f017_uint = (uint16_t) offset_value;
         }
@@ -714,11 +714,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 1668ULL )
+        if ( offset_value > (serialize_uint64_t) 834 - (serialize_uint64_t) ( -834 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f018_int = (int16_t) ( offset_value + (-834) );
+        value->f018_int = (int16_t) ( offset_value + (serialize_uint64_t) ( -834 ) );
     }
     if ( !serialize_read_double( stream, &value->f019_f64 ) )
     {
@@ -809,11 +809,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 6ULL )
+        if ( offset_value > (serialize_uint64_t) 3 - (serialize_uint64_t) ( -3 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f032_int = (int8_t) ( offset_value + (-3) );
+        value->f032_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -3 ) );
     }
     {
         serialize_uint64_t offset_value = 0;
@@ -823,9 +823,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 142780ULL )
+        if ( offset_value > (serialize_uint64_t) 142780 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f033_uint = (uint32_t) offset_value;
     }
@@ -837,9 +837,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 14149ULL )
+        if ( offset_value > (serialize_uint64_t) 14149 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f034_uint = (uint16_t) offset_value;
     }
@@ -857,9 +857,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        if ( enum_value > 5 )
+        if ( enum_value > PACKET_MODE_MAX )
         {
-            return 0; /* not a wire-legal value */
+            return serialize_read_fail( stream ); /* not a wire-legal value */
         }
         value->f036_enum = (PacketMode) enum_value;
     }
@@ -869,7 +869,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f037_bool = (uint8_t) bool_value;
+        value->f037_bool = bool_value != 0;
     }
     {
         int bool_value = 0;
@@ -877,7 +877,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f038_bool = (uint8_t) bool_value;
+        value->f038_bool = bool_value != 0;
     }
     {
         serialize_uint32_t raw = 0;
@@ -904,11 +904,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 110ULL )
+        if ( offset_value > (serialize_uint64_t) 55 - (serialize_uint64_t) ( -55 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f041_int = (int8_t) ( offset_value + (-55) );
+        value->f041_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -55 ) );
     }
     {
         serialize_uint32_t raw = 0;
@@ -924,7 +924,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f043_bool = (uint8_t) bool_value;
+        value->f043_bool = bool_value != 0;
     }
     if ( value->f043_bool )
     {
@@ -948,9 +948,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 76063ULL )
+            if ( offset_value > (serialize_uint64_t) 76063 )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
             value->f046_uint = (uint32_t) offset_value;
         }
@@ -962,11 +962,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 861952ULL )
+            if ( offset_value > (serialize_uint64_t) 430976 - (serialize_uint64_t) ( -430976 ) )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
-            value->f047_int = (int32_t) ( offset_value + (-430976) );
+            value->f047_int = (int32_t) ( offset_value + (serialize_uint64_t) ( -430976 ) );
         }
     }
     else
@@ -994,7 +994,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f050_bool = (uint8_t) bool_value;
+        value->f050_bool = bool_value != 0;
     }
     if ( value->f050_bool )
     {
@@ -1004,7 +1004,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             {
                 return 0;
             }
-            value->f051_bool = (uint8_t) bool_value;
+            value->f051_bool = bool_value != 0;
         }
         {
             serialize_uint64_t offset_value = 0;
@@ -1014,11 +1014,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 114ULL )
+            if ( offset_value > (serialize_uint64_t) 57 - (serialize_uint64_t) ( -57 ) )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
-            value->f052_int = (int8_t) ( offset_value + (-57) );
+            value->f052_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -57 ) );
         }
         if ( !serialize_read_float( stream, &value->f053_f32 ) )
         {
@@ -1032,11 +1032,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 70ULL )
+            if ( offset_value > (serialize_uint64_t) 35 - (serialize_uint64_t) ( -35 ) )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
-            value->f054_int = (int8_t) ( offset_value + (-35) );
+            value->f054_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -35 ) );
         }
     }
     else
@@ -1052,7 +1052,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f055_bool = (uint8_t) bool_value;
+        value->f055_bool = bool_value != 0;
     }
     {
         serialize_uint64_t offset_value = 0;
@@ -1062,11 +1062,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 26ULL )
+        if ( offset_value > (serialize_uint64_t) 13 - (serialize_uint64_t) ( -13 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f056_int = (int8_t) ( offset_value + (-13) );
+        value->f056_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -13 ) );
     }
     {
         serialize_uint64_t offset_value = 0;
@@ -1076,11 +1076,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 30ULL )
+        if ( offset_value > (serialize_uint64_t) 15 - (serialize_uint64_t) ( -15 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f057_int = (int8_t) ( offset_value + (-15) );
+        value->f057_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -15 ) );
     }
     if ( !serialize_read_float( stream, &value->f058_f32 ) )
     {
@@ -1110,9 +1110,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 503ULL )
+        if ( offset_value > (serialize_uint64_t) 503 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f062_uint = (uint16_t) offset_value;
     }
@@ -1132,9 +1132,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 299ULL )
+        if ( offset_value > (serialize_uint64_t) 299 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f064_uint = (uint16_t) offset_value;
     }
@@ -1174,9 +1174,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 2ULL )
+        if ( offset_value > (serialize_uint64_t) 2 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f070_uint = (uint8_t) offset_value;
     }
@@ -1196,11 +1196,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 8ULL )
+        if ( offset_value > (serialize_uint64_t) 4 - (serialize_uint64_t) ( -4 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f073_int = (int8_t) ( offset_value + (-4) );
+        value->f073_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -4 ) );
     }
     {
         int bool_value = 0;
@@ -1208,7 +1208,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f074_bool = (uint8_t) bool_value;
+        value->f074_bool = bool_value != 0;
     }
     if ( value->f074_bool )
     {
@@ -1228,11 +1228,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 52436ULL )
+            if ( offset_value > (serialize_uint64_t) 26218 - (serialize_uint64_t) ( -26218 ) )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
-            value->f076_int = (int16_t) ( offset_value + (-26218) );
+            value->f076_int = (int16_t) ( offset_value + (serialize_uint64_t) ( -26218 ) );
         }
         {
             serialize_uint64_t offset_value = 0;
@@ -1242,11 +1242,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 34ULL )
+            if ( offset_value > (serialize_uint64_t) 17 - (serialize_uint64_t) ( -17 ) )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
-            value->f077_int = (int8_t) ( offset_value + (-17) );
+            value->f077_int = (int8_t) ( offset_value + (serialize_uint64_t) ( -17 ) );
         }
         {
             serialize_uint32_t raw = 0;
@@ -1264,9 +1264,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
                 return 0;
             }
             offset_value = raw;
-            if ( offset_value > 17ULL )
+            if ( offset_value > (serialize_uint64_t) 17 )
             {
-                return 0;
+                return serialize_read_fail( stream );
             }
             value->f079_uint = (uint8_t) offset_value;
         }
@@ -1285,7 +1285,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f080_bool = (uint8_t) bool_value;
+        value->f080_bool = bool_value != 0;
     }
     {
         serialize_uint32_t raw = 0;
@@ -1309,9 +1309,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        if ( enum_value > 5 )
+        if ( enum_value > PACKET_MODE_MAX )
         {
-            return 0; /* not a wire-legal value */
+            return serialize_read_fail( stream ); /* not a wire-legal value */
         }
         value->f083_enum = (PacketMode) enum_value;
     }
@@ -1339,9 +1339,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 399ULL )
+        if ( offset_value > (serialize_uint64_t) 399 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f086_uint = (uint16_t) offset_value;
     }
@@ -1357,11 +1357,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 1388ULL )
+        if ( offset_value > (serialize_uint64_t) 694 - (serialize_uint64_t) ( -694 ) )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
-        value->f088_int = (int16_t) ( offset_value + (-694) );
+        value->f088_int = (int16_t) ( offset_value + (serialize_uint64_t) ( -694 ) );
     }
     {
         serialize_uint32_t lo = 0;
@@ -1384,9 +1384,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > 214ULL )
+        if ( offset_value > (serialize_uint64_t) 214 )
         {
-            return 0;
+            return serialize_read_fail( stream );
         }
         value->f090_uint = (uint8_t) offset_value;
     }
@@ -1404,7 +1404,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f092_bool = (uint8_t) bool_value;
+        value->f092_bool = bool_value != 0;
     }
     {
         serialize_uint32_t lo = 0;
@@ -1425,7 +1425,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f094_bool = (uint8_t) bool_value;
+        value->f094_bool = bool_value != 0;
     }
     {
         serialize_int32_t fixed_value;

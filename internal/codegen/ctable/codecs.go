@@ -35,10 +35,11 @@ func (g *tableGen) cFieldType(t ir.FieldType) string {
 		}
 		return "uint64_t"
 	case ir.TBool:
-		// C has no bool in C99 without <stdbool.h>, and the block form's
-		// layout contract pins a bool in a row to ONE byte (§19.3). uint8_t
-		// is that byte, spelled the way every other width in this family is.
-		return "uint8_t"
+		// C99's bool from <stdbool.h>, as the packet emitter spells it: one
+		// byte, alignment one on every ABI this family builds for, which is
+		// what the block form's layout contract pins a bool in a row to
+		// (§19.3) — and the layout asserts refuse a compiler that disagrees.
+		return "bool"
 	case ir.TFloat32:
 		return "float"
 	case ir.TFloat64:

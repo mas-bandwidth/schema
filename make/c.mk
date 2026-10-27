@@ -48,6 +48,17 @@ build/schema_test_c: generated/c/.stamp test/c/main.c
 		-O2 -ffp-contract=off -Igenerated/c -I$(SERIALIZE_C) \
 		test/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
+# The same corpus test under ASan + UBSan. The packet emitter's arithmetic is
+# what this one holds: a ranged offset taken in the field's signed type
+# overflowed int64 for every value >= 0 over an INT64_MIN floor, compiled clean,
+# and wrote the right bytes on every compiler this repo uses — only a sanitizer
+# says it was undefined.
+build/schema_test_c_asan: generated/c/.stamp test/c/main.c
+	@mkdir -p build
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O1 -ffp-contract=off $(C_SANITIZE) -Igenerated/c -I$(SERIALIZE_C) \
+		test/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
 generated/c-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang c --out generated/c-ludicrous examples128
 	@touch $@
@@ -1114,7 +1125,7 @@ tables-c-versioning: tables-fixedform-corpus
 	@echo 'tables C corpus: ctable checks the C++ reference bytes, including §5 and fixed roadmap framing'
 
 .PHONY: test-c
-test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
+test-c: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
 	$(MAKE) tables-c-zero-cost
 	$(MAKE) tables-c-json-walk
@@ -1138,6 +1149,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) conformance-negative-control-c
 	$(MAKE) conformance-negative-control-c-foreign
 	cd test/c && ../../build/schema_test_c
+	cd test/c && ../../build/schema_test_c_asan
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	./build/schema_test_bench_c
 

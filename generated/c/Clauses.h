@@ -30,7 +30,7 @@ typedef struct W13 {
 } W13;
 
 #define W13_MAX_BITS 160   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W13_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define W13_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type W17 */
@@ -40,7 +40,7 @@ typedef struct W17 {
 } W17;
 
 #define W17_MAX_BITS 157   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W17_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define W17_MAX_BYTES 24
 
 
 /* type W26 */
@@ -50,7 +50,7 @@ typedef struct W26 {
 } W26;
 
 #define W26_MAX_BITS 159   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W26_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define W26_MAX_BYTES 24
 
 
 /* type W1 */
@@ -60,7 +60,7 @@ typedef struct W1 {
 } W1;
 
 #define W1_MAX_BITS 25   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W1_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define W1_MAX_BYTES 8
 
 
 /* type W52 */
@@ -70,7 +70,7 @@ typedef struct W52 {
 } W52;
 
 #define W52_MAX_BITS 158   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W52_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define W52_MAX_BYTES 24
 
 
 /* type W50 */
@@ -80,7 +80,7 @@ typedef struct W50 {
 } W50;
 
 #define W50_MAX_BITS 152   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W50_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define W50_MAX_BYTES 24
 
 
 /* type F13 */
@@ -89,7 +89,7 @@ typedef struct F13 {
 } F13;
 
 #define F13_MAX_BITS 91   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define F13_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define F13_MAX_BYTES 16
 
 
 /* type Tri3 */
@@ -99,7 +99,7 @@ typedef struct Tri3 {
 } Tri3;
 
 #define TRI3_MAX_BITS 3   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRI3_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define TRI3_MAX_BYTES 8
 
 
 /* type ArrTri3 */
@@ -109,7 +109,7 @@ typedef struct ArrTri3 {
 } ArrTri3;
 
 #define ARR_TRI3_MAX_BITS 34   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_TRI3_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ARR_TRI3_MAX_BYTES 8
 
 
 /* type Eleven */
@@ -119,7 +119,7 @@ typedef struct Eleven {
 } Eleven;
 
 #define ELEVEN_MAX_BITS 11   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ELEVEN_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ELEVEN_MAX_BYTES 8
 
 
 /* type ArrEleven */
@@ -128,7 +128,7 @@ typedef struct ArrEleven {
 } ArrEleven;
 
 #define ARR_ELEVEN_MAX_BITS 99   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_ELEVEN_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define ARR_ELEVEN_MAX_BYTES 16
 
 
 /* type EmptyA */
@@ -173,7 +173,7 @@ typedef struct EmptyUnion {
 } EmptyUnion;
 
 #define EMPTY_UNION_MAX_BITS 2   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define EMPTY_UNION_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define EMPTY_UNION_MAX_BYTES 8
 
 /* Selectors for EmptyUnion: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
@@ -201,7 +201,7 @@ typedef struct HoldsEmptyUnion {
 } HoldsEmptyUnion;
 
 #define HOLDS_EMPTY_UNION_MAX_BITS 14   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HOLDS_EMPTY_UNION_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define HOLDS_EMPTY_UNION_MAX_BYTES 8
 
 
 /* type Strs */
@@ -215,7 +215,7 @@ typedef struct Strs {
 } Strs;
 
 #define STRS_MAX_BITS 158   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define STRS_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define STRS_MAX_BYTES 24
 
 
 /* type ArrNested */
@@ -227,7 +227,7 @@ typedef struct ArrNested {
 } ArrNested;
 
 #define ARR_NESTED_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_NESTED_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define ARR_NESTED_MAX_BYTES 8
 
 
 /* type Sole */
@@ -236,7 +236,7 @@ typedef struct Sole {
 } Sole;
 
 #define SOLE_MAX_BITS 13   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SOLE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define SOLE_MAX_BYTES 8
 
 #ifdef __cplusplus
 }

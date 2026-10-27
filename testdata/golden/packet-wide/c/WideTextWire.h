@@ -202,14 +202,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_seven( serialize_read_st
             {
                 return 0;
             }
-            if ( group == 0 || group > 0xFFFF ) { return 0; }
+            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream ); }
             high = group >= 0xD800 && group <= 0xDBFF;
             low = group >= 0xDC00 && group <= 0xDFFF;
-            if ( low != expect_low ) { return 0; } /* unpaired surrogate (SPEC §4.12) */
+            if ( low != expect_low ) { return serialize_read_fail( stream ); } /* unpaired surrogate (SPEC §4.12) */
             expect_low = high;
             value->text[i] = (uint16_t) group;
         }
-        if ( expect_low ) { return 0; } /* final high surrogate */
+        if ( expect_low ) { return serialize_read_fail( stream ); } /* final high surrogate */
     }
     value->text[value->text_length] = 0;
     return 1;
@@ -255,14 +255,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_four( serialize_read_str
             {
                 return 0;
             }
-            if ( group == 0 || group > 0xFFFF ) { return 0; }
+            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream ); }
             high = group >= 0xD800 && group <= 0xDBFF;
             low = group >= 0xDC00 && group <= 0xDFFF;
-            if ( low != expect_low ) { return 0; } /* unpaired surrogate (SPEC §4.12) */
+            if ( low != expect_low ) { return serialize_read_fail( stream ); } /* unpaired surrogate (SPEC §4.12) */
             expect_low = high;
             value->text[i] = (uint16_t) group;
         }
-        if ( expect_low ) { return 0; } /* final high surrogate */
+        if ( expect_low ) { return serialize_read_fail( stream ); } /* final high surrogate */
     }
     value->text[value->text_length] = 0;
     return 1;
@@ -302,11 +302,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow_fifteen( serialize_rea
     }
     if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) )
     {
-        return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const serialize_uint8_t *) value->text, value->text_length ) )
     {
-        return 0; /* an interior null is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
     value->text[value->text_length] = 0;
     return 1;
@@ -352,14 +352,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_interop( serialize_read_
             {
                 return 0;
             }
-            if ( group == 0 || group > 0xFFFF ) { return 0; }
+            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream ); }
             high = group >= 0xD800 && group <= 0xDBFF;
             low = group >= 0xDC00 && group <= 0xDFFF;
-            if ( low != expect_low ) { return 0; } /* unpaired surrogate (SPEC §4.12) */
+            if ( low != expect_low ) { return serialize_read_fail( stream ); } /* unpaired surrogate (SPEC §4.12) */
             expect_low = high;
             value->caption[i] = (uint16_t) group;
         }
-        if ( expect_low ) { return 0; } /* final high surrogate */
+        if ( expect_low ) { return serialize_read_fail( stream ); } /* final high surrogate */
     }
     value->caption[value->caption_length] = 0;
     return 1;
