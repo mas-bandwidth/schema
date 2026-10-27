@@ -716,11 +716,11 @@ Record buildOn(ParsedCard p, String body) {
   final card = Card();
   card.id = p.id;
   card.sha = p.sha;
-  card.tier = p.tier;
+  card.tier = Tier(p.tier);
   card.repo = p.repo;
   card.base = p.base;
   card.kind = p.kind;
-  card.priority = p.priority;
+  card.priority = Priority(p.priority);
   card.stream = p.stream;
   card.paths = p.paths.map((e) => PathText()..s = e).toList();
   card.new_ = p.news.map((e) => PathText()..s = e).toList();
@@ -1068,7 +1068,7 @@ void setTier(Record r, int tier) {
   if (tier < 0 || tier > Tier.max) {
     throw CardException('cards: tier $tier is not a declared variant');
   }
-  _edit(r, (c) => c.tier = tier);
+  _edit(r, (c) => c.tier = Tier(tier));
 }
 
 // setPriority changes the priority atomically (§8).
@@ -1076,7 +1076,7 @@ void setPriority(Record r, int priority) {
   if (priority < 0 || priority > Priority.max) {
     throw CardException('cards: priority $priority is not a declared variant');
   }
-  _edit(r, (c) => c.priority = priority);
+  _edit(r, (c) => c.priority = Priority(priority));
 }
 
 // setColumn changes the column atomically (§8).
@@ -1084,7 +1084,7 @@ void setColumn(Record r, int column) {
   if (column < 0 || column > Column.max) {
     throw CardException('cards: column $column is not a declared variant');
   }
-  _edit(r, (c) => c.column = column);
+  _edit(r, (c) => c.column = Column(column));
 }
 
 // setHolder changes the holder atomically (§6.1).

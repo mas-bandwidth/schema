@@ -690,13 +690,6 @@ func declareLocals(body, ind string, locals ...string) string {
 	return b.String()
 }
 
-func variantName(checked bool) string {
-	if checked {
-		return "Checked"
-	}
-	return "Production"
-}
-
 // writeVariantBody renders one write variant's function body (the text between
 // the braces), so the caller can see whether the two builds differ at all.
 func (g *fgen) writeVariantBody(emit func(), checked bool) string {

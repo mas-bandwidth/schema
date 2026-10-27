@@ -14,7 +14,7 @@ wire)
     ' "$source" > "$out/source.gotext"
     ;;
 walk)
-    source=$(grep -l 'func (in \*tableJsonIn) scanString' build/tables-generated-go/examples/*TableJson.go)
+    source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)
     sed 's/in.report.Clamped++/in.report.Clamped += 0/g' "$source" > "$out/source.gotext"
     ;;
 leb)

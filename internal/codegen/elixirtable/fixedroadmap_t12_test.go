@@ -150,7 +150,7 @@ func t12R27(t *testing.T) {
 
 // t12UnionFieldArms holds union-field-arms/elixir/valid-data to §2.6 and §3.4:
 // a union arm holding a scalar, a string(N), a bytes(N), a counted array or a
-// fixed array directly lowers to its field storage on the Elixir union struct
+// fixed array directly lowers to its field storage as the Elixir union value ({:arm, payload})
 // and round-trips through the fixed form's writer, identity plan and compiled
 // plan at non-default and boundary values.
 func t12UnionFieldArms(t *testing.T) {
@@ -197,23 +197,23 @@ fixed table Root
 
 	uNew := unitFrom(t, newSchema)
 	body := strings.ReplaceAll(`  v0 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.amount(), amount: -2_147_483_648},
+    pick: {:amount, -2_147_483_648},
     tail: 1
   }
   v1 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.label(), label: "hello"},
+    pick: {:label, "hello"},
     tail: 2
   }
   v2 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.blob(), blob: <<0, 1, 2, 3>>},
+    pick: {:blob, <<0, 1, 2, 3>>},
     tail: 3
   }
   v3 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.cells(), cells: [-2_147_483_648, 0, 2_147_483_647]},
+    pick: {:cells, [-2_147_483_648, 0, 2_147_483_647]},
     tail: 4
   }
   v4 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.pair(), pair: [-5, 5]},
+    pick: {:pair, [-5, 5]},
     tail: 5
   }
   saved = @@SAVE@@([v0, v1, v2, v3, v4])
@@ -244,7 +244,7 @@ fixed table Root
 
 // t12PayloadFreeArms holds payload-free-arms/elixir/valid-data to §2.6 and
 // FIXED-FORM-ALGORITHM.md §1/§3.1: a payload-free arm has no storage in the
-// union struct, writes its tag ordinal with zero-filled widest-arm slack, and
+// union value (a bare atom), writes its tag ordinal with zero-filled widest-arm slack, and
 // reads back with its tag ordinal intact and `clamped == 0` (never falling into
 // the out-of-range `_ ->` clamp clause).
 func t12PayloadFreeArms(t *testing.T) {
@@ -264,17 +264,17 @@ fixed table Root
 }
 `)
 	t09Probe(t, u, "Root", `  v0 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.ping()},
+    pick: :ping,
     tail: 5
   }
   v1 = %Probe.Root{
-    pick: %Probe.Pick{type: Probe.PickType.amount(), amount: 2_147_483_647},
+    pick: {:amount, 2_147_483_647},
     tail: 6
   }
   saved = @@SAVE@@([v0, v1])
   {:ok, [b0, b1], rep} = @@LOAD@@(saved)
   check(rep.malformed == false and rep.clamped == 0, "payload-free-arms load report: #{inspect(rep)}")
-  check(b0.pick.type == Probe.PickType.ping() and b0.tail == 5,
+  check(b0.pick == :ping and b0.tail == 5,
     "payload-free arm ping did not round-trip: #{inspect(b0)}")
   check(b1 == v1, "scalar arm beside payload-free arm did not round-trip: #{inspect(b1)}")`)
 }

@@ -81,7 +81,7 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 	// ask about its own package's runtime, never another unit's
 	for _, name := range names {
 		for _, t := range tokenize(string(files[name])) {
-			if t.kind != tIdent || !(strings.HasPrefix(t.text, "SCHEMA_") || strings.HasPrefix(t.text, "schema_")) {
+			if t.kind != tIdent || !strings.HasPrefix(t.text, "SCHEMA_") && !strings.HasPrefix(t.text, "schema_") {
 				continue
 			}
 			if _, ok := decls.kind[t.text]; !ok {
@@ -105,10 +105,10 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 			continue
 		}
 		if prev, dup := from[q]; dup {
-			return nil, fmt.Errorf("C backend: %s and %s both qualify to %s in package %s; rename one at the source", prev, n, q, pkg)
+			return nil, fmt.Errorf("the C backend qualifies both %s and %s to %s in package %s; rename one at the source", prev, n, q, pkg)
 		}
 		if _, clash := decls.kind[q]; clash && q != n {
-			return nil, fmt.Errorf("C backend: %s qualifies to %s, which the unit already declares; rename one at the source", n, q)
+			return nil, fmt.Errorf("the C backend qualifies %s to %s, which the unit already declares; rename one at the source", n, q)
 		}
 		from[q] = n
 		rename[n] = q
@@ -188,7 +188,7 @@ func Rewrite(src string, rename map[string]string) string {
 		}
 		if t.kind == tIdent && !params[t.text] {
 			inRecord := t.directive < 0 && len(braces) > 0 && braces[len(braces)-1]
-			if q, ok := rename[t.text]; ok && !afterMember(toks, i) && !(inRecord && declaresMember(toks, i)) {
+			if q, ok := rename[t.text]; ok && !afterMember(toks, i) && (!inRecord || !declaresMember(toks, i)) {
 				b.WriteString(q)
 				continue
 			}
@@ -666,7 +666,7 @@ func tokenize(src string) []token {
 		switch {
 		case c == '\n':
 			// a directive ends at a newline not escaped by a backslash
-			if directive >= 0 && !(i > 0 && src[i-1] == '\\') {
+			if directive >= 0 && (i == 0 || src[i-1] != '\\') {
 				directive = -1
 			}
 			lineStart = true

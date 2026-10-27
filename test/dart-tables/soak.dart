@@ -341,6 +341,15 @@ void _runPhase(int passes) {
     }
   }
   stderr.writeln('soak: steady phase ends');
+  // The driver reads this process's RSS from /proc at each sample line, so the
+  // worker must still be alive when the last one is read: the sixteenth sample
+  // is the last pass, and a worker that exited at once raced the driver to it
+  // (rss_kb=? on main's CI, 2026-10-27). Under the driver, hold here until it
+  // closes stdin after the end marker; this is past the steady phase, so what
+  // the wait allocates is never counted.
+  if (Platform.environment['SOAK_HOLD_FOR_DRIVER'] == '1') {
+    stdin.readLineSync();
+  }
   stdout.writeln('soak: passes=$passes checksum=$checksum');
 }
 
@@ -381,6 +390,7 @@ Future<int> _drive(List<String> args) async {
 
   final env = Map<String, String>.from(Platform.environment);
   env['DART_VM_OPTIONS'] = vmFlagsCsv;
+  env['SOAK_HOLD_FOR_DRIVER'] = '1';
   // The worker's main reads args[0] as the mode and args[1] as the passes,
   // so the driver passes both; passing the count alone would leave the worker
   // on its default whatever TABLES_DART_SOAK_ITERATIONS said.
@@ -422,6 +432,9 @@ Future<int> _drive(List<String> args) async {
     }
     if (line.contains('soak: steady phase ends')) {
       started = false;
+      // every sample line precedes this one, so every sample is taken: let
+      // the held worker exit
+      await proc.stdin.close();
       continue;
     }
     if (line.startsWith('soak: sample ')) {

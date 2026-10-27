@@ -15,24 +15,27 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"slices"
+	"go/types"
+	"path"
 	"strconv"
+	"strings"
 )
 
 // tidy parses one generated file, flattens the bare blocks of every function
 // body, drops redundant parentheses and prints the result gofmt-clean.
 func tidy(src []byte) ([]byte, error) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "", src, parser.ParseComments)
+	file, err := parser.ParseFile(fset, "", src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		return nil, err
 	}
+	info := resolve(fset, file)
 	for _, d := range file.Decls {
 		fn, ok := d.(*ast.FuncDecl)
 		if !ok || fn.Body == nil {
 			continue
 		}
-		flattenFunc(fset, fn)
+		flattenFunc(fset, info, fn)
 		simplifyStmts(fn.Body.List)
 	}
 	var out bytes.Buffer
@@ -42,11 +45,61 @@ func tidy(src []byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+// resolve binds every identifier of file to the object it declares or uses,
+// with go/types: the flatten needs to know which spellings are one local, and
+// a type checker answers that exactly where go/parser's syntactic resolution
+// only guessed. The file is one of several in its package and imports the
+// runtime, so the check runs without the rest: imports resolve to empty
+// packages, and the errors that leaves (names from sibling files and imported
+// packages) are expected and ignored. Function-local objects, the only ones
+// the flatten renames, never depend on them.
+func resolve(fset *token.FileSet, file *ast.File) *types.Info {
+	info := &types.Info{Defs: map[*ast.Ident]types.Object{}, Uses: map[*ast.Ident]types.Object{}}
+	conf := types.Config{
+		Importer: emptyImporter{},
+		Error:    func(error) {},
+	}
+	_, _ = conf.Check(file.Name.Name, fset, []*ast.File{file}, info)
+	return info
+}
+
+// emptyImporter hands the checker an empty, complete package for every import.
+type emptyImporter struct{}
+
+func (emptyImporter) Import(p string) (*types.Package, error) {
+	name := path.Base(p)
+	if i := strings.IndexFunc(name, func(r rune) bool { return r == '.' || r == '-' }); i > 0 {
+		name = name[:i]
+	}
+	pkg := types.NewPackage(p, name)
+	pkg.MarkComplete()
+	return pkg, nil
+}
+
+// localVar is the function-local variable id declares or uses, or nil: a
+// blank identifier, a struct field and anything that is not a variable are
+// never renamed.
+func localVar(info *types.Info, id *ast.Ident) *types.Var {
+	if id.Name == "_" {
+		return nil
+	}
+	obj := info.Defs[id]
+	if obj == nil {
+		obj = info.Uses[id]
+	}
+	v, ok := obj.(*types.Var)
+	if !ok || v.IsField() {
+		return nil
+	}
+	return v
+}
+
 // ---- bare blocks -----------------------------------------------------------
 
 // flattener hoists the bare blocks of one function body.
 type flattener struct {
 	fset *token.FileSet
+	info *types.Info
 	// taken holds every identifier name the function spells, and every name
 	// handed out so far: a hoisted local takes a name in none of them, so it
 	// can neither collide with nor shadow anything
@@ -56,10 +109,13 @@ type flattener struct {
 	fixed map[string]bool
 	// kept holds the names a hoisted local already kept
 	kept map[string]bool
+	// names holds a hoisted local's name once it is renamed: a types.Object's
+	// name is fixed, so the rename is recorded here
+	names map[*types.Var]string
 }
 
-func flattenFunc(fset *token.FileSet, fn *ast.FuncDecl) {
-	f := &flattener{fset: fset, taken: map[string]bool{}, fixed: map[string]bool{}, kept: map[string]bool{}}
+func flattenFunc(fset *token.FileSet, info *types.Info, fn *ast.FuncDecl) {
+	f := &flattener{fset: fset, info: info, taken: map[string]bool{}, fixed: map[string]bool{}, kept: map[string]bool{}, names: map[*types.Var]string{}}
 	ast.Inspect(fn, func(n ast.Node) bool {
 		if id, ok := n.(*ast.Ident); ok {
 			f.taken[id.Name] = true
@@ -67,60 +123,56 @@ func flattenFunc(fset *token.FileSet, fn *ast.FuncDecl) {
 		return true
 	})
 	// every object declared outside a bare block is fixed
-	hoisted := map[*ast.Object]bool{}
-	collectBare(fn.Body.List, hoisted)
+	hoisted := map[*types.Var]bool{}
+	f.collectBare(fn.Body.List, hoisted)
 	ast.Inspect(fn, func(n ast.Node) bool {
-		if id, ok := n.(*ast.Ident); ok && id.Obj != nil && id.Obj.Kind == ast.Var && !hoisted[id.Obj] && declares(id) {
-			f.fixed[id.Name] = true
+		switch n := n.(type) {
+		case *ast.Ident:
+			if v := localVar(info, n); v != nil && info.Defs[n] == v && !hoisted[v] {
+				f.fixed[n.Name] = true
+			}
+		case *ast.TypeSwitchStmt:
+			// the symbolic variable of `switch x := v.(type)` declares no
+			// object of its own (each clause gets an implicit one)
+			if a, ok := n.Assign.(*ast.AssignStmt); ok {
+				for _, l := range a.Lhs {
+					if id, ok := l.(*ast.Ident); ok && id.Name != "_" {
+						f.fixed[id.Name] = true
+					}
+				}
+			}
 		}
 		return true
 	})
 	fn.Body.List = f.list(fn.Body.List)
 }
 
-// declares reports whether id is the declaring occurrence of its object.
-func declares(id *ast.Ident) bool {
-	switch d := id.Obj.Decl.(type) {
-	case *ast.AssignStmt:
-		for _, l := range d.Lhs {
-			if l == id {
-				return true
-			}
-		}
-	case *ast.ValueSpec:
-		return slices.Contains(d.Names, id)
-	case *ast.Field:
-		return slices.Contains(d.Names, id)
-	}
-	return false
-}
-
 // collectBare records every object declared directly in a bare block
 // anywhere under list: those are the objects a flatten hoists. It walks the
 // statement lists flattener.list and flattener.nested walk.
-func collectBare(list []ast.Stmt, hoisted map[*ast.Object]bool) {
+func (f *flattener) collectBare(list []ast.Stmt, hoisted map[*types.Var]bool) {
 	for _, s := range list {
 		switch s := s.(type) {
 		case *ast.BlockStmt:
-			for _, obj := range directObjects(s.List) {
-				hoisted[obj] = true
+			for _, v := range f.directObjects(s.List) {
+				hoisted[v] = true
 			}
-			collectBare(s.List, hoisted)
+			f.collectBare(s.List, hoisted)
 		case *ast.IfStmt:
-			collectBare(s.Body.List, hoisted)
+			f.collectBare(s.Body.List, hoisted)
 			switch e := s.Else.(type) {
 			case *ast.BlockStmt: // an else body, not a bare block
-				collectBare(e.List, hoisted)
+				f.collectBare(e.List, hoisted)
 			case *ast.IfStmt:
-				collectBare([]ast.Stmt{e}, hoisted)
+				f.collectBare([]ast.Stmt{e}, hoisted)
 			}
 		case *ast.ForStmt:
-			collectBare(s.Body.List, hoisted)
+			f.collectBare(s.Body.List, hoisted)
 		case *ast.RangeStmt:
-			collectBare(s.Body.List, hoisted)
+			f.collectBare(s.Body.List, hoisted)
 		case *ast.SwitchStmt:
 			for _, c := range s.Body.List {
-				collectBare(c.(*ast.CaseClause).Body, hoisted)
+				f.collectBare(c.(*ast.CaseClause).Body, hoisted)
 			}
 		}
 	}
@@ -128,8 +180,8 @@ func collectBare(list []ast.Stmt, hoisted map[*ast.Object]bool) {
 
 // directObjects returns the objects declared by the statements of list
 // themselves (`x := …`, `var x …`), not by anything nested in them.
-func directObjects(list []ast.Stmt) []*ast.Object {
-	var out []*ast.Object
+func (f *flattener) directObjects(list []ast.Stmt) []*types.Var {
+	var out []*types.Var
 	for _, s := range list {
 		switch s := s.(type) {
 		case *ast.AssignStmt:
@@ -137,8 +189,10 @@ func directObjects(list []ast.Stmt) []*ast.Object {
 				continue
 			}
 			for _, l := range s.Lhs {
-				if id, ok := l.(*ast.Ident); ok && id.Obj != nil && id.Obj.Decl == s {
-					out = append(out, id.Obj)
+				if id, ok := l.(*ast.Ident); ok {
+					if v := localVar(f.info, id); v != nil && f.info.Defs[id] == v {
+						out = append(out, v)
+					}
 				}
 			}
 		case *ast.DeclStmt:
@@ -149,8 +203,8 @@ func directObjects(list []ast.Stmt) []*ast.Object {
 			for _, spec := range gd.Specs {
 				if vs, ok := spec.(*ast.ValueSpec); ok {
 					for _, id := range vs.Names {
-						if id.Obj != nil {
-							out = append(out, id.Obj)
+						if v := localVar(f.info, id); v != nil {
+							out = append(out, v)
 						}
 					}
 				}
@@ -167,8 +221,8 @@ func (f *flattener) list(in []ast.Stmt) []ast.Stmt {
 	var out []ast.Stmt
 	for _, s := range in {
 		if b, ok := s.(*ast.BlockStmt); ok {
-			for _, obj := range directObjects(b.List) {
-				f.hoist(b, obj)
+			for _, v := range f.directObjects(b.List) {
+				f.hoist(b, v)
 			}
 			f.closeBraces(b)
 			out = append(out, f.list(b.List)...)
@@ -227,8 +281,12 @@ func (f *flattener) nested(s ast.Stmt) {
 // hoist gives a hoisted object its final name: its own, unless a fixed object
 // or an earlier hoisted one already spells it, and then the next free name in
 // its family (f0 -> f5 for a numbered local, offsetValue -> offsetValue2).
-func (f *flattener) hoist(b *ast.BlockStmt, obj *ast.Object) {
-	name := obj.Name
+func (f *flattener) hoist(b *ast.BlockStmt, obj *types.Var) {
+	old := f.names[obj]
+	if old == "" {
+		old = obj.Name()
+	}
+	name := old
 	if !f.fixed[name] && !f.kept[name] {
 		f.kept[name] = true
 		return
@@ -244,14 +302,13 @@ func (f *flattener) hoist(b *ast.BlockStmt, obj *ast.Object) {
 	}
 	f.taken[name] = true
 	f.kept[name] = true
-	old := obj.Name
 	ast.Inspect(b, func(node ast.Node) bool {
-		if id, ok := node.(*ast.Ident); ok && id.Obj == obj && id.Name == old {
+		if id, ok := node.(*ast.Ident); ok && id.Name == old && localVar(f.info, id) == obj {
 			id.Name = name
 		}
 		return true
 	})
-	obj.Name = name
+	f.names[obj] = name
 }
 
 // splitNumber splits a trailing decimal off a name: f0 -> (f, 0), and a name

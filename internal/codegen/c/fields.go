@@ -454,7 +454,7 @@ func paren(s string) string {
 	}
 	bare := true
 	for _, r := range s {
-		if !(r == '_' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+		if r != '_' && (r < '0' || r > '9') && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') {
 			bare = false
 			break
 		}

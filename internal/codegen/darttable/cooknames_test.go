@@ -117,7 +117,7 @@ func TestCookLibrariesDefineEveryClassTheyName(t *testing.T) {
 // classRe is a library-scope TYPE declaration: a class, or an enum such as the
 // accelerators' TableRefuseReason (docs/SPEC-TABLES.md §7, §19.2).
 // an extension type (the packet emitter's enums and union tags) declares a
-// type exactly as a class does
+// type exactly as a class does.
 var classRe = regexp.MustCompile(`\b(?:class|enum|extension type(?: const)?)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 
 func declaredClasses(src string) map[string]bool {
