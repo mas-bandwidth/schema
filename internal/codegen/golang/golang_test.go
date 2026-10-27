@@ -131,8 +131,8 @@ func TestEnumExtentEmitted(t *testing.T) {
 		expectation{"pub const MAX: ShapeType = ShapeType(2);", 1})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
-		expectation{"Max = 15,", 1}, // Weapon
-		expectation{"Max = 2,", 1})  // ShapeType
+		expectation{"public const Weapon WeaponMax = (Weapon)15;", 1},
+		expectation{"public const ShapeType ShapeTypeMax = (ShapeType)2;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
 		expectation{"Max: 15,", 1},
@@ -214,10 +214,11 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 		expectation{"pub const COUNT: Team = Team(3);", 1},
 		expectation{"pub const MAX: Weapon = Weapon(15);", 1})
 	csFiles, csErr := csharp.Generate(u)
+	// C# exports no enum Count (SPEC §4.2: an enum's one number is its Max),
+	// and Max is a typed constant beside the enum, never an aliasing member
 	addTarget("C#", csFiles, csErr,
-		expectation{"Count = 2,", 1},
-		expectation{"Count = 3,", 1},
-		expectation{"Max = 15,", 1})
+		expectation{"Count = ", 0},
+		expectation{"public const Weapon WeaponMax = (Weapon)15;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
 		expectation{"Count: 2,", 1},
@@ -323,7 +324,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"public static bool WriteShape(WriteStream stream, Shape value)", 1},
 		expectation{"public static bool ReadShape(ReadStream stream, Shape value)", 1},
 		expectation{"public static void ZeroShape(Shape value)", 1},
-		expectation{"public const long ShapeMaxBits = 18;", 1})
+		expectation{"public const int ShapeMaxBits = 18;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
 		expectation{"export const ShapeType = Object.freeze({", 1},

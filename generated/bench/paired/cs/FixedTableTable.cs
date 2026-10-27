@@ -395,7 +395,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[0].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[0].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[0].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[0].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Damage = v, reset: (t) => { t.Value.Entities[0].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[0].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Moving = v != 0, reset: (t) => { t.Value.Entities[0].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Firing = v != 0, reset: (t) => { t.Value.Entities[0].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].EntityId = (uint)v, reset: (t) => { t.Value.Entities[1].EntityId = 0; }),
@@ -409,7 +409,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[1].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[1].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[1].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[1].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Damage = v, reset: (t) => { t.Value.Entities[1].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[1].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Moving = v != 0, reset: (t) => { t.Value.Entities[1].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Firing = v != 0, reset: (t) => { t.Value.Entities[1].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].EntityId = (uint)v, reset: (t) => { t.Value.Entities[2].EntityId = 0; }),
@@ -423,7 +423,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[2].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[2].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[2].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[2].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Damage = v, reset: (t) => { t.Value.Entities[2].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[2].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Moving = v != 0, reset: (t) => { t.Value.Entities[2].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Firing = v != 0, reset: (t) => { t.Value.Entities[2].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].EntityId = (uint)v, reset: (t) => { t.Value.Entities[3].EntityId = 0; }),
@@ -437,7 +437,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[3].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[3].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[3].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[3].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Damage = v, reset: (t) => { t.Value.Entities[3].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[3].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Moving = v != 0, reset: (t) => { t.Value.Entities[3].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Firing = v != 0, reset: (t) => { t.Value.Entities[3].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].EntityId = (uint)v, reset: (t) => { t.Value.Entities[4].EntityId = 0; }),
@@ -451,7 +451,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[4].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[4].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[4].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[4].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Damage = v, reset: (t) => { t.Value.Entities[4].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[4].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Moving = v != 0, reset: (t) => { t.Value.Entities[4].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Firing = v != 0, reset: (t) => { t.Value.Entities[4].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].EntityId = (uint)v, reset: (t) => { t.Value.Entities[5].EntityId = 0; }),
@@ -465,7 +465,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[5].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[5].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[5].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[5].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Damage = v, reset: (t) => { t.Value.Entities[5].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[5].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Moving = v != 0, reset: (t) => { t.Value.Entities[5].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Firing = v != 0, reset: (t) => { t.Value.Entities[5].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].EntityId = (uint)v, reset: (t) => { t.Value.Entities[6].EntityId = 0; }),
@@ -479,7 +479,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[6].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[6].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[6].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[6].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Damage = v, reset: (t) => { t.Value.Entities[6].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[6].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Moving = v != 0, reset: (t) => { t.Value.Entities[6].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Firing = v != 0, reset: (t) => { t.Value.Entities[6].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].EntityId = (uint)v, reset: (t) => { t.Value.Entities[7].EntityId = 0; }),
@@ -493,7 +493,7 @@ namespace Bench
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[7].VelZ = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[7].Health = 0; }),
             new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { t.Value.Entities[7].Weapon = (MixedWeapon)v; }, reset: (t) => { t.Value.Entities[7].Weapon = global::Bench.MixedWeapon.None; }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Damage = v, reset: (t) => { t.Value.Entities[7].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Damage = (global::Bench.MixedDamage)v, reset: (t) => { t.Value.Entities[7].Damage = 0; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Moving = v != 0, reset: (t) => { t.Value.Entities[7].Moving = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Firing = v != 0, reset: (t) => { t.Value.Entities[7].Firing = false; }),
             new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.StatsCount = (int)v, reset: (t) => { t.Value.StatsCount = 0; }),
@@ -710,7 +710,7 @@ namespace Bench
                 case 18: t.Value.Entities[0].VelZ = unchecked((int)v); break;
                 case 19: t.Value.Entities[0].Health = unchecked((int)v); break;
                 case 20: { t.Value.Entities[0].Weapon = (MixedWeapon)v; } break;
-                case 21: t.Value.Entities[0].Damage = v; break;
+                case 21: t.Value.Entities[0].Damage = (global::Bench.MixedDamage)v; break;
                 case 22: t.Value.Entities[0].Moving = v != 0; break;
                 case 23: t.Value.Entities[0].Firing = v != 0; break;
                 case 24: t.Value.Entities[1].EntityId = (uint)v; break;
@@ -724,7 +724,7 @@ namespace Bench
                 case 32: t.Value.Entities[1].VelZ = unchecked((int)v); break;
                 case 33: t.Value.Entities[1].Health = unchecked((int)v); break;
                 case 34: { t.Value.Entities[1].Weapon = (MixedWeapon)v; } break;
-                case 35: t.Value.Entities[1].Damage = v; break;
+                case 35: t.Value.Entities[1].Damage = (global::Bench.MixedDamage)v; break;
                 case 36: t.Value.Entities[1].Moving = v != 0; break;
                 case 37: t.Value.Entities[1].Firing = v != 0; break;
                 case 38: t.Value.Entities[2].EntityId = (uint)v; break;
@@ -738,7 +738,7 @@ namespace Bench
                 case 46: t.Value.Entities[2].VelZ = unchecked((int)v); break;
                 case 47: t.Value.Entities[2].Health = unchecked((int)v); break;
                 case 48: { t.Value.Entities[2].Weapon = (MixedWeapon)v; } break;
-                case 49: t.Value.Entities[2].Damage = v; break;
+                case 49: t.Value.Entities[2].Damage = (global::Bench.MixedDamage)v; break;
                 case 50: t.Value.Entities[2].Moving = v != 0; break;
                 case 51: t.Value.Entities[2].Firing = v != 0; break;
                 case 52: t.Value.Entities[3].EntityId = (uint)v; break;
@@ -752,7 +752,7 @@ namespace Bench
                 case 60: t.Value.Entities[3].VelZ = unchecked((int)v); break;
                 case 61: t.Value.Entities[3].Health = unchecked((int)v); break;
                 case 62: { t.Value.Entities[3].Weapon = (MixedWeapon)v; } break;
-                case 63: t.Value.Entities[3].Damage = v; break;
+                case 63: t.Value.Entities[3].Damage = (global::Bench.MixedDamage)v; break;
                 case 64: t.Value.Entities[3].Moving = v != 0; break;
                 case 65: t.Value.Entities[3].Firing = v != 0; break;
                 case 66: t.Value.Entities[4].EntityId = (uint)v; break;
@@ -766,7 +766,7 @@ namespace Bench
                 case 74: t.Value.Entities[4].VelZ = unchecked((int)v); break;
                 case 75: t.Value.Entities[4].Health = unchecked((int)v); break;
                 case 76: { t.Value.Entities[4].Weapon = (MixedWeapon)v; } break;
-                case 77: t.Value.Entities[4].Damage = v; break;
+                case 77: t.Value.Entities[4].Damage = (global::Bench.MixedDamage)v; break;
                 case 78: t.Value.Entities[4].Moving = v != 0; break;
                 case 79: t.Value.Entities[4].Firing = v != 0; break;
                 case 80: t.Value.Entities[5].EntityId = (uint)v; break;
@@ -780,7 +780,7 @@ namespace Bench
                 case 88: t.Value.Entities[5].VelZ = unchecked((int)v); break;
                 case 89: t.Value.Entities[5].Health = unchecked((int)v); break;
                 case 90: { t.Value.Entities[5].Weapon = (MixedWeapon)v; } break;
-                case 91: t.Value.Entities[5].Damage = v; break;
+                case 91: t.Value.Entities[5].Damage = (global::Bench.MixedDamage)v; break;
                 case 92: t.Value.Entities[5].Moving = v != 0; break;
                 case 93: t.Value.Entities[5].Firing = v != 0; break;
                 case 94: t.Value.Entities[6].EntityId = (uint)v; break;
@@ -794,7 +794,7 @@ namespace Bench
                 case 102: t.Value.Entities[6].VelZ = unchecked((int)v); break;
                 case 103: t.Value.Entities[6].Health = unchecked((int)v); break;
                 case 104: { t.Value.Entities[6].Weapon = (MixedWeapon)v; } break;
-                case 105: t.Value.Entities[6].Damage = v; break;
+                case 105: t.Value.Entities[6].Damage = (global::Bench.MixedDamage)v; break;
                 case 106: t.Value.Entities[6].Moving = v != 0; break;
                 case 107: t.Value.Entities[6].Firing = v != 0; break;
                 case 108: t.Value.Entities[7].EntityId = (uint)v; break;
@@ -808,7 +808,7 @@ namespace Bench
                 case 116: t.Value.Entities[7].VelZ = unchecked((int)v); break;
                 case 117: t.Value.Entities[7].Health = unchecked((int)v); break;
                 case 118: { t.Value.Entities[7].Weapon = (MixedWeapon)v; } break;
-                case 119: t.Value.Entities[7].Damage = v; break;
+                case 119: t.Value.Entities[7].Damage = (global::Bench.MixedDamage)v; break;
                 case 120: t.Value.Entities[7].Moving = v != 0; break;
                 case 121: t.Value.Entities[7].Firing = v != 0; break;
                 case 122: t.Value.StatsCount = (int)v; break;

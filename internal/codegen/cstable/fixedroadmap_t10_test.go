@@ -503,7 +503,7 @@ const t10TextBytesFlagsDefaultsBody = `
             if (n != buf.Length || m != 1) { bad += ProbeLog.Fail(@NAME@, "save/load did not roundtrip: n=" + n + " m=" + m); }
             if (r.NameLength != 8 || r.Name[0] != 0x75 || r.Name[7] != 0x64) { bad += ProbeLog.Fail(@NAME@, "the string default did not land"); }
             if (r.TagLength != 2 || r.Tag[0] != 0x61 || r.Tag[1] != 0x62) { bad += ProbeLog.Fail(@NAME@, "the byte-buffer default did not land"); }
-            if (r.Caps != 3) { bad += ProbeLog.Fail(@NAME@, "the flags default did not land: " + r.Caps); }
+            if ((ulong)r.Caps != 3) { bad += ProbeLog.Fail(@NAME@, "the flags default did not land: " + r.Caps); }
 
             var o = new @NS@.T();
             o.Name[0] = 0x78;
@@ -511,7 +511,7 @@ const t10TextBytesFlagsDefaultsBody = `
             o.Tag[0] = 0x7a;
             o.Tag[1] = 0x79;
             o.TagLength = 2;
-            o.Caps = @NS@.Schema.CapsJump;
+            o.Caps = @NS@.Caps.Jump;
             byte[] ob = new byte[@NS@.Schema.TFixedBodyBytes];
             @NS@.Schema.TFixedWriteBody(ob, o);
             if (BinaryPrimitives.ReadInt32LittleEndian(ob.AsSpan(0)) != 1 || ob[4] != 0x78) { bad += ProbeLog.Fail(@NAME@, "a shortened string did not override the default"); }
@@ -521,7 +521,7 @@ const t10TextBytesFlagsDefaultsBody = `
             @NS@.Schema.TFixedSave(o, obuf);
             var or = new @NS@.T();
             long om = @NS@.Schema.TFixedLoad(or, obuf, new @NS@.TableFixedEntry[8192], new @NS@.TableReport());
-            if (om != 1 || or.NameLength != 1 || or.Name[0] != 0x78 || or.TagLength != 2 || or.Tag[0] != 0x7a || or.Tag[1] != 0x79 || or.Caps != 1) { bad += ProbeLog.Fail(@NAME@, "the overrides did not land"); }
+            if (om != 1 || or.NameLength != 1 || or.Name[0] != 0x78 || or.TagLength != 2 || or.Tag[0] != 0x7a || or.Tag[1] != 0x79 || (ulong)or.Caps != 1) { bad += ProbeLog.Fail(@NAME@, "the overrides did not land"); }
 `
 
 // t10OptionalScalarsRow: optional-scalars [capability] "Optional scalar and enum
@@ -652,8 +652,8 @@ func t10TextBytesFlagsDefaultsRow(t *testing.T) {
 		t02Has(t, reset, want, "text-bytes-flags-defaults: the byte-buffer prefill")
 	}
 	// Caps { Jump, Crouch }: bitsets ride as the mask, so Jump|Crouch is 3.
-	t02Has(t, reset, "value.Caps = 3ul;", "text-bytes-flags-defaults: the flags prefill is the bitset")
-	t02Has(t, src, "public ulong Caps = 3ul;", "text-bytes-flags-defaults: the flags storage is born at its bitset")
+	t02Has(t, reset, "value.Caps = (Caps)3ul;", "text-bytes-flags-defaults: the flags prefill is the bitset")
+	t02Has(t, src, "public Caps Caps = (Caps)3ul;", "text-bytes-flags-defaults: the flags storage is born at its bitset")
 	n := t02Norm(src)
 	t02Has(t, n, "value.Name.AsSpan(0, len_name).CopyTo(b.Slice(4));",
 		"text-bytes-flags-defaults: the write body copies the string bytes")
@@ -673,7 +673,7 @@ func t10TextBytesFlagsDefaultsRow(t *testing.T) {
 		"text-bytes-flags-defaults: the byte-buffer length's read slot restores its default")
 	t02Has(t, slots, "reset: (t) => { if (t.Tag != null) { Array.Clear(t.Tag, 0, t.Tag.Length); t.Tag[0] = 0x61; t.Tag[1] = 0x62; } }",
 		"text-bytes-flags-defaults: the byte-buffer bytes' read slot restores its default")
-	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.Caps = v, reset: (t) => { t.Caps = 3ul; }),",
+	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.Caps = (global::Probe.Caps)v, reset: (t) => { t.Caps = (global::Probe.Caps)3ul; }),",
 		"text-bytes-flags-defaults: the flags read slot restores its default")
 }
 

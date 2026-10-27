@@ -190,7 +190,7 @@ static partial class Program
         p.Loadout.Grades[1] = Demo.Grade.Gold;
         p.Loadout.Podium[0] = Demo.Grade.Gold;
         p.Loadout.Podium[2] = Demo.Grade.Silver;
-        p.Loadout.Perks = Demo.Schema.PerksCloaked | Demo.Schema.PerksTurbo;
+        p.Loadout.Perks = Demo.Perks.Cloaked | Demo.Perks.Turbo;
         p.Loadout.Primary.Penetration = 7;
         p.Loadout.Backups[0].Damage = 1.0f;
         p.Loadout.AttachmentsCount = 2;
@@ -207,7 +207,7 @@ static partial class Program
         loadout.Grades[1] = Demo.Grade.Silver;
         loadout.Grades[2] = Demo.Grade.Bronze;
         loadout.Podium[1] = Demo.Grade.Bronze;
-        loadout.Perks = Demo.Schema.PerksShielded;
+        loadout.Perks = Demo.Perks.Shielded;
         loadout.Primary.Damage = 12.5f;
         loadout.Primary.Homing = true;
         loadout.Primary.Effect.Type = Demo.EffectType.Buff;
@@ -363,7 +363,7 @@ static partial class Program
             Check(p.Loadout.GradesCount == 2 && p.Loadout.Grades[1] == Demo.Grade.Gold, "root_full loadout grades");
             Check(p.Loadout.Podium[0] == Demo.Grade.Gold && p.Loadout.Podium[2] == Demo.Grade.Silver,
                 "root_full loadout podium");
-            Check(p.Loadout.Perks == (Demo.Schema.PerksCloaked | Demo.Schema.PerksTurbo), "root_full loadout perks");
+            Check(p.Loadout.Perks == (Demo.Perks.Cloaked | Demo.Perks.Turbo), "root_full loadout perks");
             Check(p.Loadout.AttachmentsCount == 2 && p.Loadout.Attachments[1].Slot == 5, "root_full attachments");
         }
         {
@@ -961,7 +961,7 @@ static partial class Program
         Check(perks.EnumName(2) == "Turbo", "flags: bit 2");
 
         Demo.LoadoutConfig loadout = new Demo.LoadoutConfig();
-        loadout.Perks = Demo.Schema.PerksCloaked; // bit 1
+        loadout.Perks = Demo.Perks.Cloaked; // bit 1
         byte[] buffer = new byte[1024];
         long wrote = Demo.Schema.LoadoutConfigSave(loadout, buffer);
         Check(wrote > 0, "flags: saved");
@@ -1609,14 +1609,14 @@ static partial class Program
     static void TestKeyedIndexerRefusesNone()
     {
         CheckKeyedRefuses(0, "keyed indexer: None");
-        CheckKeyedRefuses((int)Demo.Team.Max + 1, "keyed indexer: past Max");
+        CheckKeyedRefuses((int)Demo.Schema.TeamMax + 1, "keyed indexer: past Max");
         CheckKeyedRefuses(-1, "keyed indexer: minus one");
         CheckKeyedRefuses(int.MinValue, "keyed indexer: int min");
         CheckKeyedRefuses(int.MaxValue, "keyed indexer: int max");
 
         Demo.KeyedConfig cfg = new Demo.KeyedConfig();
         Check(cfg.Teams[(int)Demo.Team.Blue] != null, "keyed indexer: a named slot reads");
-        Check(cfg.Teams[(int)Demo.Team.Max] != null, "keyed indexer: Max is the last named slot");
+        Check(cfg.Teams[(int)Demo.Schema.TeamMax] != null, "keyed indexer: Max is the last named slot");
     }
 
     // ---- iteration over the VALID slots (§2.4) ----

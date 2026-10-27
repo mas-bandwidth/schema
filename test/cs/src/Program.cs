@@ -401,11 +401,40 @@ static class Program
         }
     }
 
+    // An enum's extent rides beside it as a typed constant, never as a member:
+    // a member valued like a variant aliases it, and which name ToString()
+    // then returns for that value is unspecified (SPEC §4.2).
+    static void TestEnumSurface()
+    {
+        Check(Weapon.Railgun.ToString() == "Railgun", "Weapon.Railgun names itself, not an alias");
+        Check(ProbeShapeType.Slab.ToString() == "Slab", "a union tag's last arm names itself, not an alias");
+        Check(EnumNameWeapon(Weapon.Railgun) == "Railgun", "EnumName takes the enum");
+        Check(EnumNameWeapon(WeaponMax) == "???", "headroom past the last variant names as ???");
+        Check((int)WeaponMax == 15 && (int)ProbeShapeTypeMax == 2 && (int)TeamMax == 2, "the exported extent");
+        int enums = 0;
+        foreach (Type t in typeof(Weapon).Assembly.GetTypes())
+        {
+            if (!t.IsEnum || t.Namespace != "Example")
+            {
+                continue;
+            }
+            enums++;
+            Array values = Enum.GetValuesAsUnderlyingType(t);
+            var seen = new System.Collections.Generic.HashSet<object>();
+            foreach (object v in values)
+            {
+                Check(seen.Add(v), t.Name + " has no two members with one value (" + v + ")");
+            }
+        }
+        Check(enums > 0, "the duplicate-value walk saw the generated enums");
+    }
+
     static int Main()
     {
         wireDir = FindTestDataDir("wire");
         TestSelectedArmDefaults();
         TestSelectedArmDefaultsStream();
+        TestEnumSurface();
 
         // ---- ShipCreate: the bool-gated flags branch, both ways ----
         {
@@ -415,7 +444,7 @@ static class Program
             input.Position.Y = -2000;
             input.Position.Z = 3000;
             input.HasFlags = true;
-            input.Flags = ShipFlagsBoosting | ShipFlagsAiming;
+            input.Flags = ShipFlags.Boosting | ShipFlags.Aiming;
             input.Team = Team.Blue;
             input.Health = 750;
             input.Thrust = 55;
@@ -770,7 +799,7 @@ static class Program
             ProbeReport input = new ProbeReport();
             input.Header.Version = 3;
             input.Header.ProbeId = 0xCAFEBABE;
-            input.Flags = ProbeFlagsArmed | ProbeFlagsDamaged;
+            input.Flags = ProbeFlags.Armed | ProbeFlags.Damaged;
             input.Echo.TestA = 555;
             input.Echo.TestB = 1000;
 
@@ -789,13 +818,13 @@ static class Program
             // release build along with the call. This leg runs Debug (`dotnet
             // run`, no -c), where the assertion would FailFast the process, so
             // the violation is only exercised in a release build.
-            input.Flags = 1ul << 9;
+            input.Flags = (ProbeFlags)(1ul << 9);
 #if !DEBUG
             WriteStream ws2 = NewWriteStream();
             Check(WriteProbeReport(ws2, input), "release: the flags contract is compiled out — the write is not refused");
             Check(ws2.Error == SerializeError.None, "release: nothing latches on the write side");
 #endif
-            input.Flags = ProbeFlagsArmed; // back inside the contract for anything after
+            input.Flags = ProbeFlags.Armed; // back inside the contract for anything after
         }
 
         // ---- Block: the bytes(N) framing ----
@@ -901,8 +930,8 @@ static class Program
             Check(FlagNameShipFlags(0) == "FiringLaser", "FlagName names bit 0");
             Check(FlagNameShipFlags(9) == "???", "FlagName is out-of-range safe");
             Check(FlagNamesShipFlags(0) == "0", "FlagNames renders the empty set as 0");
-            Check(FlagNamesShipFlags(ShipFlagsFiringLaser | ShipFlagsBraking) == "FiringLaser|Braking", "FlagNames renders the set bits");
-            Check(FlagNamesShipFlags(ShipFlagsAiming | (1ul << 63)) == "Aiming|0x8000000000000000", "FlagNames renders unknown high bits as hex");
+            Check(FlagNamesShipFlags(ShipFlags.FiringLaser | ShipFlags.Braking) == "FiringLaser|Braking", "FlagNames renders the set bits");
+            Check(FlagNamesShipFlags(ShipFlags.Aiming | (ShipFlags)(1ul << 63)) == "Aiming|0x8000000000000000", "FlagNames renders unknown high bits as hex");
         }
 
         // ---- Degenerate.schema: the degenerate arrangements (issue #203) ----

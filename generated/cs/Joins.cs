@@ -138,8 +138,6 @@ namespace Example
         None = 0,
         Narrow = 1,
         Wide = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // Uneven — at most one of the arms; Type says which. Construction is the empty
@@ -199,21 +197,11 @@ namespace Example
     {
         // ArmsAgreeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArmsAgreeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArmsAgreeMaxBits = 24;
-        public const long ArmsAgreeMaxBytes = 8;
+        public const int ArmsAgreeMaxBits = 24;
+        public const int ArmsAgreeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmsAgree(ArmsAgree value)
-        {
-            value.Lead = 0;
-            value.Flag = false;
-            value.A = 0;
-            value.B = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArmsAgree(ArmsAgree value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -318,21 +306,11 @@ namespace Example
 
         // ArmsDisagreeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArmsDisagreeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArmsDisagreeMaxBits = 24;
-        public const long ArmsDisagreeMaxBytes = 8;
+        public const int ArmsDisagreeMaxBits = 24;
+        public const int ArmsDisagreeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmsDisagree(ArmsDisagree value)
-        {
-            value.Lead = 0;
-            value.Flag = false;
-            value.A = 0;
-            value.B = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArmsDisagree(ArmsDisagree value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -437,20 +415,11 @@ namespace Example
 
         // ArmEmptyMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArmEmptyMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArmEmptyMaxBits = 32;
-        public const long ArmEmptyMaxBytes = 8;
+        public const int ArmEmptyMaxBits = 32;
+        public const int ArmEmptyMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmEmpty(ArmEmpty value)
-        {
-            value.Lead = 0;
-            value.Flag = false;
-            value.A = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArmEmpty(ArmEmpty value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -542,23 +511,11 @@ namespace Example
 
         // ArmsNestedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArmsNestedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArmsNestedMaxBits = 40;
-        public const long ArmsNestedMaxBytes = 8;
+        public const int ArmsNestedMaxBits = 40;
+        public const int ArmsNestedMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmsNested(ArmsNested value)
-        {
-            value.Lead = 0;
-            value.Outer = false;
-            value.Inner = false;
-            value.X = 0;
-            value.Y = 0;
-            value.Z = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArmsNested(ArmsNested value)
         {
             value.Lead = 0;
             value.Outer = false;
@@ -697,22 +654,11 @@ namespace Example
 
         // ArmAlignMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArmAlignMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArmAlignMaxBits = 55;
-        public const long ArmAlignMaxBytes = 8;
+        public const int ArmAlignMaxBits = 55;
+        public const int ArmAlignMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmAlign(ArmAlign value)
-        {
-            value.Lead = 0;
-            value.Flag = false;
-            Array.Clear(value.S, 0, 4);
-            value.SLength = 0;
-            value.B = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArmAlign(ArmAlign value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -836,22 +782,11 @@ namespace Example
 
         // ArmArrayMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArmArrayMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArmArrayMaxBits = 54;
-        public const long ArmArrayMaxBytes = 8;
+        public const int ArmArrayMaxBits = 54;
+        public const int ArmArrayMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArmArray(ArmArray value)
-        {
-            value.Lead = 0;
-            value.Flag = false;
-            Array.Clear(value.Items, 0, 3);
-            value.ItemsCount = 0;
-            value.B = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArmArray(ArmArray value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -984,17 +919,11 @@ namespace Example
 
         // NarrowMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // NarrowMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long NarrowMaxBits = 3;
-        public const long NarrowMaxBytes = 8;
+        public const int NarrowMaxBits = 3;
+        public const int NarrowMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroNarrow(Narrow value)
-        {
-            value.N = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitNarrow(Narrow value)
         {
             value.N = 0;
         }
@@ -1041,17 +970,11 @@ namespace Example
 
         // WideMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // WideMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long WideMaxBits = 37;
-        public const long WideMaxBytes = 8;
+        public const int WideMaxBits = 37;
+        public const int WideMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroWide(Wide value)
-        {
-            value.W = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitWide(Wide value)
         {
             value.W = 0;
         }
@@ -1096,17 +1019,19 @@ namespace Example
             return true;
         }
 
-        // EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameUnevenType(ulong value)
+        public const UnevenType UnevenTypeMax = (UnevenType)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameUnevenType: debug/log/tooling name for any UnevenType value —
+        // out-of-set values name as "???"
+        public static string EnumNameUnevenType(UnevenType value)
         {
             switch (value)
             {
-                case (ulong)UnevenType.None:
+                case UnevenType.None:
                     return "None";
-                case (ulong)UnevenType.Narrow:
+                case UnevenType.Narrow:
                     return "Narrow";
-                case (ulong)UnevenType.Wide:
+                case UnevenType.Wide:
                     return "Wide";
                 default:
                     return "???";
@@ -1115,8 +1040,8 @@ namespace Example
 
         // UnevenMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // UnevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long UnevenMaxBits = 39;
-        public const long UnevenMaxBytes = 8;
+        public const int UnevenMaxBits = 39;
+        public const int UnevenMaxBytes = 8;
 
         // ZeroUneven resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
@@ -1177,10 +1102,10 @@ namespace Example
             switch (value.Type)
             {
                 case UnevenType.Narrow:
-                    InitNarrow(value.Narrow); // every selection starts from construction defaults
+                    ZeroNarrow(value.Narrow); // every selection starts from construction defaults
                     return ReadNarrowBatch(ref batch, value.Narrow);
                 case UnevenType.Wide:
-                    InitWide(value.Wide); // every selection starts from construction defaults
+                    ZeroWide(value.Wide); // every selection starts from construction defaults
                     return ReadWideBatch(ref batch, value.Wide);
             }
             return true; // None
@@ -1188,19 +1113,11 @@ namespace Example
 
         // HoldsUnevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // HoldsUnevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long HoldsUnevenMaxBits = 55;
-        public const long HoldsUnevenMaxBytes = 8;
+        public const int HoldsUnevenMaxBits = 55;
+        public const int HoldsUnevenMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroHoldsUneven(HoldsUneven value)
-        {
-            value.Lead = 0;
-            ZeroUneven(value.U);
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitHoldsUneven(HoldsUneven value)
         {
             value.Lead = 0;
             ZeroUneven(value.U);
@@ -1265,23 +1182,11 @@ namespace Example
 
         // ArrUnevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArrUnevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArrUnevenMaxBits = 127;
-        public const long ArrUnevenMaxBytes = 16;
+        public const int ArrUnevenMaxBits = 127;
+        public const int ArrUnevenMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArrUneven(ArrUneven value)
-        {
-            value.Lead = 0;
-            for (int i = 0; i < 3; i++)
-            {
-                ZeroUneven(value.Items[i]);
-            }
-            value.ItemsCount = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArrUneven(ArrUneven value)
         {
             value.Lead = 0;
             for (int i = 0; i < 3; i++)
@@ -1368,25 +1273,11 @@ namespace Example
 
         // RegainAfterAlignMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // RegainAfterAlignMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long RegainAfterAlignMaxBits = 172;
-        public const long RegainAfterAlignMaxBytes = 24;
+        public const int RegainAfterAlignMaxBits = 172;
+        public const int RegainAfterAlignMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRegainAfterAlign(RegainAfterAlign value)
-        {
-            value.Lead = 0;
-            Array.Clear(value.Items, 0, 3);
-            value.ItemsCount = 0;
-            Array.Clear(value.S, 0, 4);
-            value.SLength = 0;
-            value.P = 0;
-            value.Q = 0;
-            value.R = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitRegainAfterAlign(RegainAfterAlign value)
         {
             value.Lead = 0;
             Array.Clear(value.Items, 0, 3);

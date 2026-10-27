@@ -31,19 +31,19 @@ static class Program
     static D.Sample Sample()
     {
         D.Sample s = Zero(); s.Name = new byte[] { 195, 169, 240, 144, 128, 128 }; s.NameLength = 6;
-        s.Token = new byte[] { 92, 110, 92, 116 }; s.TokenLength = 4; s.Caps = 5; return s;
+        s.Token = new byte[] { 92, 110, 92, 116 }; s.TokenLength = 4; s.Caps = (D.Caps)5; return s;
     }
     static D.Sample Short()
     {
         D.Sample s = Zero(); s.Name[0] = 65; s.NameLength = 1;
-        s.Token[1] = 255; s.TokenLength = 2; s.Caps = 2; return s;
+        s.Token[1] = 255; s.TokenLength = 2; s.Caps = D.Caps.Crouch; return s;
     }
     static D.Sample Dirty()
     {
         D.Sample s = Zero(); s.Name.AsSpan().Fill(100); s.NameLength = 6;
-        s.Token.AsSpan().Fill(161); s.TokenLength = 4; s.Caps = 7;
+        s.Token.AsSpan().Fill(161); s.TokenLength = 4; s.Caps = (D.Caps)7;
         s.EmptyName.AsSpan().Fill(111); s.EmptyNameLength = 3;
-        s.EmptyToken.AsSpan().Fill(177); s.EmptyTokenLength = 2; s.EmptyCaps = 7; return s;
+        s.EmptyToken.AsSpan().Fill(177); s.EmptyTokenLength = 2; s.EmptyCaps = (D.Caps)7; return s;
     }
     static (byte[], long) Write<T>(T value, Func<WriteStream, T, bool> encode)
     {
@@ -92,16 +92,16 @@ static class Program
         prefix.Name.AsSpan().Fill(255); prefix.Token.AsSpan().Fill(255); D.Schema.InitPrefix(prefix);
         Check(Equal(prefix, new D.Prefix()), "Init clears stale short-literal tails");
         D.WideMask wide = new D.WideMask();
-        Check(wide.High == 1UL << 63 && wide.All == ulong.MaxValue, "unsigned 64-bit default masks");
+        Check((ulong)wide.High == 1UL << 63 && (ulong)wide.All == ulong.MaxValue, "unsigned 64-bit default masks");
         byte[] wideBytes = new byte[16]; wideBytes[7] = 128; wideBytes.AsSpan(8).Fill(255);
         var wideWire = Write(wide, D.Schema.WriteWideMask);
         Check(wideWire.Item2 == 128 && Equal(wideWire.Item1, wideBytes), "independent 64-bit wire");
         Read(wideBytes, 128, new D.WideMask { High = 0, All = 0 }, wide, D.Schema.ReadWideMask);
-        var split = new D.SplitMask { Lead = 5, Mask = 1UL << 32, Tail = 2 };
+        var split = new D.SplitMask { Lead = 5, Mask = (D.SplitCaps)(1UL << 32), Tail = 2 };
         var splitWire = Write(split, D.Schema.WriteSplitMask);
         Check(splitWire.Item2 == 38 && Equal(splitWire.Item1, new byte[] { 5, 0, 0, 0, 40 }), "independent 33-bit wire");
         Read(new byte[] { 5, 0, 0, 0, 40 }, 38, new D.SplitMask(), split, D.Schema.ReadSplitMask);
-        P.Sample plain = new P.Sample { Name = Sample().Name, NameLength = 6, Token = Sample().Token, TokenLength = 4, Caps = 5 };
+        P.Sample plain = new P.Sample { Name = Sample().Name, NameLength = 6, Token = Sample().Token, TokenLength = 4, Caps = (P.Caps)5 };
         var plainWire = Write(plain, P.Schema.WriteSample); var defaultWire = Write(new D.Sample(), D.Schema.WriteSample);
         Check(plainWire.Item2 == defaultWire.Item2 && Equal(plainWire.Item1, defaultWire.Item1), "defaultless twin has identical wire");
         Golden(dir, "sample-defaults", new D.Sample(), Zero(), Sample(), D.Schema.WriteSample, D.Schema.ReadSample);

@@ -473,7 +473,7 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[0].Loadout.GradesCount = 0; }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Grades != null) Array.Clear(t.Root.Profiles[0].Loadout.Grades, 0, t.Root.Profiles[0].Loadout.Grades.Length); }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Podium != null) Array.Clear(t.Root.Profiles[0].Loadout.Podium, 0, t.Root.Profiles[0].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[0].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[0].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Penetration = 1; }),
@@ -533,7 +533,7 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[1].Loadout.GradesCount = 0; }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Grades != null) Array.Clear(t.Root.Profiles[1].Loadout.Grades, 0, t.Root.Profiles[1].Loadout.Grades.Length); }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Podium != null) Array.Clear(t.Root.Profiles[1].Loadout.Podium, 0, t.Root.Profiles[1].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[1].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[1].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Penetration = 1; }),
@@ -593,7 +593,7 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[2].Loadout.GradesCount = 0; }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Grades != null) Array.Clear(t.Root.Profiles[2].Loadout.Grades, 0, t.Root.Profiles[2].Loadout.Grades.Length); }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Podium != null) Array.Clear(t.Root.Profiles[2].Loadout.Podium, 0, t.Root.Profiles[2].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[2].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[2].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Penetration = 1; }),
@@ -653,7 +653,7 @@ namespace Tabledemo
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[3].Loadout.GradesCount = 0; }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Grades != null) Array.Clear(t.Root.Profiles[3].Loadout.Grades, 0, t.Root.Profiles[3].Loadout.Grades.Length); }),
             new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Podium != null) Array.Clear(t.Root.Profiles[3].Loadout.Podium, 0, t.Root.Profiles[3].Loadout.Podium.Length); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[3].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Perks = (global::Tabledemo.Perks)v, reset: (t) => { t.Root.Profiles[3].Loadout.Perks = 0; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Damage = 21.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Speed = 500.0f; }),
             new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Penetration = 1; }),
@@ -782,7 +782,7 @@ namespace Tabledemo
                 case 81: t.Root.Profiles[0].HasLoadout = v != 0; break;
                 case 82: { t.Root.Profiles[0].Loadout.Grade = (Grade)v; } break;
                 case 83: t.Root.Profiles[0].Loadout.GradesCount = (int)v; break;
-                case 86: t.Root.Profiles[0].Loadout.Perks = v; break;
+                case 86: t.Root.Profiles[0].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 87: t.Root.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 88: t.Root.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 89: t.Root.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v); break;
@@ -837,7 +837,7 @@ namespace Tabledemo
                 case 141: t.Root.Profiles[1].HasLoadout = v != 0; break;
                 case 142: { t.Root.Profiles[1].Loadout.Grade = (Grade)v; } break;
                 case 143: t.Root.Profiles[1].Loadout.GradesCount = (int)v; break;
-                case 146: t.Root.Profiles[1].Loadout.Perks = v; break;
+                case 146: t.Root.Profiles[1].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 147: t.Root.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 148: t.Root.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 149: t.Root.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v); break;
@@ -892,7 +892,7 @@ namespace Tabledemo
                 case 201: t.Root.Profiles[2].HasLoadout = v != 0; break;
                 case 202: { t.Root.Profiles[2].Loadout.Grade = (Grade)v; } break;
                 case 203: t.Root.Profiles[2].Loadout.GradesCount = (int)v; break;
-                case 206: t.Root.Profiles[2].Loadout.Perks = v; break;
+                case 206: t.Root.Profiles[2].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 207: t.Root.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 208: t.Root.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 209: t.Root.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v); break;
@@ -947,7 +947,7 @@ namespace Tabledemo
                 case 261: t.Root.Profiles[3].HasLoadout = v != 0; break;
                 case 262: { t.Root.Profiles[3].Loadout.Grade = (Grade)v; } break;
                 case 263: t.Root.Profiles[3].Loadout.GradesCount = (int)v; break;
-                case 266: t.Root.Profiles[3].Loadout.Perks = v; break;
+                case 266: t.Root.Profiles[3].Loadout.Perks = (global::Tabledemo.Perks)v; break;
                 case 267: t.Root.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 268: t.Root.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v); break;
                 case 269: t.Root.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v); break;

@@ -486,7 +486,7 @@ namespace Cards
         // §8; tables/cards/edit.go: SetTier).
         public void SetTier(Tier tier)
         {
-            if ((byte)tier > (byte)Tier.Max)
+            if ((byte)tier > (byte)Schema.TierMax)
             {
                 throw new CardException("cards: tier " + (byte)tier
                     + " is not a declared variant (docs/SPEC-TABLES.md §8)");
@@ -499,7 +499,7 @@ namespace Cards
         // SetPriority).
         public void SetPriority(Priority priority)
         {
-            if ((byte)priority > (byte)Priority.Max)
+            if ((byte)priority > (byte)Schema.PriorityMax)
             {
                 throw new CardException("cards: priority " + (byte)priority
                     + " is not a declared variant (docs/SPEC-TABLES.md §8)");
@@ -512,7 +512,7 @@ namespace Cards
         // SetColumn).
         public void SetColumn(Column column)
         {
-            if ((byte)column > (byte)Column.Max)
+            if ((byte)column > (byte)Schema.ColumnMax)
             {
                 throw new CardException("cards: column " + (byte)column
                     + " is not a declared variant (docs/SPEC-TABLES.md §8)");

@@ -34,8 +34,6 @@ namespace Example
         None = 0,
         First = 1,
         Second = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // DefaultChoice — at most one of the arms; Type says which. Construction is the empty
@@ -69,8 +67,6 @@ namespace Example
         None = 0,
         First = 1,
         Second = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // DefaultBulkChoice — at most one of the arms; Type says which. Construction is the empty
@@ -91,8 +87,8 @@ namespace Example
     {
         // DefaultArmMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // DefaultArmMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultArmMaxBits = 77;
-        public const long DefaultArmMaxBytes = 16;
+        public const int DefaultArmMaxBits = 77;
+        public const int DefaultArmMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroDefaultArm(DefaultArm value)
@@ -190,17 +186,19 @@ namespace Example
             return true;
         }
 
-        // EnumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameDefaultChoiceType(ulong value)
+        public const DefaultChoiceType DefaultChoiceTypeMax = (DefaultChoiceType)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType value —
+        // out-of-set values name as "???"
+        public static string EnumNameDefaultChoiceType(DefaultChoiceType value)
         {
             switch (value)
             {
-                case (ulong)DefaultChoiceType.None:
+                case DefaultChoiceType.None:
                     return "None";
-                case (ulong)DefaultChoiceType.First:
+                case DefaultChoiceType.First:
                     return "First";
-                case (ulong)DefaultChoiceType.Second:
+                case DefaultChoiceType.Second:
                     return "Second";
                 default:
                     return "???";
@@ -209,8 +207,8 @@ namespace Example
 
         // DefaultChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // DefaultChoiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultChoiceMaxBits = 79;
-        public const long DefaultChoiceMaxBytes = 16;
+        public const int DefaultChoiceMaxBits = 79;
+        public const int DefaultChoiceMaxBytes = 16;
 
         // ZeroDefaultChoice resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
@@ -282,17 +280,11 @@ namespace Example
 
         // DefaultChoicePacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // DefaultChoicePacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultChoicePacketMaxBits = 79;
-        public const long DefaultChoicePacketMaxBytes = 16;
+        public const int DefaultChoicePacketMaxBits = 79;
+        public const int DefaultChoicePacketMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroDefaultChoicePacket(DefaultChoicePacket value)
-        {
-            ZeroDefaultChoice(value.Choice);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitDefaultChoicePacket(DefaultChoicePacket value)
         {
             ZeroDefaultChoice(value.Choice);
         }
@@ -339,8 +331,8 @@ namespace Example
 
         // DefaultBulkArmMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // DefaultBulkArmMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultBulkArmMaxBits = 102;
-        public const long DefaultBulkArmMaxBytes = 16;
+        public const int DefaultBulkArmMaxBits = 102;
+        public const int DefaultBulkArmMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroDefaultBulkArm(DefaultBulkArm value)
@@ -408,17 +400,19 @@ namespace Example
             return true;
         }
 
-        // EnumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameDefaultBulkChoiceType(ulong value)
+        public const DefaultBulkChoiceType DefaultBulkChoiceTypeMax = (DefaultBulkChoiceType)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType value —
+        // out-of-set values name as "???"
+        public static string EnumNameDefaultBulkChoiceType(DefaultBulkChoiceType value)
         {
             switch (value)
             {
-                case (ulong)DefaultBulkChoiceType.None:
+                case DefaultBulkChoiceType.None:
                     return "None";
-                case (ulong)DefaultBulkChoiceType.First:
+                case DefaultBulkChoiceType.First:
                     return "First";
-                case (ulong)DefaultBulkChoiceType.Second:
+                case DefaultBulkChoiceType.Second:
                     return "Second";
                 default:
                     return "???";
@@ -427,8 +421,8 @@ namespace Example
 
         // DefaultBulkChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // DefaultBulkChoiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DefaultBulkChoiceMaxBits = 104;
-        public const long DefaultBulkChoiceMaxBytes = 16;
+        public const int DefaultBulkChoiceMaxBits = 104;
+        public const int DefaultBulkChoiceMaxBytes = 16;
 
         // ZeroDefaultBulkChoice resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm

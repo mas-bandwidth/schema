@@ -48,8 +48,8 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	maxBits := ir.MaxBitsStruct(st)
 	g.sf("// %sMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).\n", st.Name)
 	g.sf("// %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", st.Name)
-	g.sf("public const long %sMaxBits = %d;\n", st.Name, maxBits)
-	g.sf("public const long %sMaxBytes = %d;\n\n", st.Name, ir.MaxBytes(maxBits))
+	g.sf("public const %s %sMaxBits = %d;\n", csSizeType(maxBits), st.Name, maxBits)
+	g.sf("public const %s %sMaxBytes = %d;\n\n", csSizeType(ir.MaxBytes(maxBits)), st.Name, ir.MaxBytes(maxBits))
 
 	g.emitZeroFunction(st)
 	g.emitInitFunction(st)
@@ -222,8 +222,13 @@ func (g *gen) emitZeroFunction(st *ir.Struct) {
 }
 
 // emitInitFunction restores the construction form in existing storage. It is
-// also the application entry point for reusing a selected union payload.
+// also the application entry point for reusing a selected union payload. A
+// type with no specified default anywhere in its closure is constructed in
+// the zero form, so Zero is its Init and none is emitted — Go's NewX rule.
 func (g *gen) emitInitFunction(st *ir.Struct) {
+	if !hasDefaults(st) {
+		return
+	}
 	g.sf("// Restore construction defaults in place; buffers and objects are retained.\n")
 	g.sf("public static void Init%s(%s value)\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
@@ -383,8 +388,8 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	maxBits := ir.MaxBitsUnion(d)
 	g.sf("// %sMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", d.Name)
 	g.sf("// %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", d.Name)
-	g.sf("public const long %sMaxBits = %d;\n", d.Name, maxBits)
-	g.sf("public const long %sMaxBytes = %d;\n\n", d.Name, ir.MaxBytes(maxBits))
+	g.sf("public const %s %sMaxBits = %d;\n", csSizeType(maxBits), d.Name, maxBits)
+	g.sf("public const %s %sMaxBytes = %d;\n\n", csSizeType(ir.MaxBytes(maxBits)), d.Name, ir.MaxBytes(maxBits))
 
 	g.sf("// Zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
 	g.sf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
@@ -440,7 +445,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 					g.sf("            return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n")
 					continue
 				}
-				g.sf("            Init%s(value.%s); // every selection starts from construction defaults\n", v.Type, ir.GoExportName(v.Name))
+				g.sf("            %s%s(value.%s); // every selection starts from construction defaults\n", initFor(v.Ref), v.Type, ir.GoExportName(v.Name))
 				g.sf("            return %s;\n", g.armCall("Read", v))
 			}
 			g.sf("    }\n    return true; // None\n")
@@ -547,10 +552,6 @@ func (g *gen) emitZeroField(f *ir.Field, ind string) {
 // emitInitializeField is the common storage walk for Zero and Init. Only
 // construction initialization reapplies scalar defaults and born counts.
 func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
-	structInit := "Zero"
-	if defaults {
-		structInit = "Init"
-	}
 	base := g.fieldBase(f)
 	name := "value." + base
 	switch {
@@ -564,9 +565,9 @@ func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
 		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
 			// clearing a class array would null the pre-allocated elements —
 			// zero through them instead (the SCHEMA bound, like the wire loops)
-			init := structInit
-			if _, union := f.Type.Ref.(*ir.Union); union {
-				init = "Zero"
+			init := "Zero"
+			if inner, ok := f.Type.Ref.(*ir.Struct); ok && defaults {
+				init = initFor(inner)
 			}
 			g.sf("%sfor (int i = 0; i < %s; i++)\n%s{\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "int", false), ind)
 			g.sf("%s    %s%s(%s[i]);\n%s}\n", ind, init, f.Type.Name, name, ind)
@@ -594,14 +595,18 @@ func (g *gen) emitInitializeField(f *ir.Field, ind string, defaults bool) {
 		case ir.TFloat64:
 			g.sf("%s%s = 0.0;\n", ind, name)
 		case ir.TNamed:
-			switch f.Type.Ref.(type) {
+			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
 				g.sf("%s%s = %s.None;\n", ind, name, f.Type.Name)
 			case *ir.Flags:
 				g.sf("%s%s = 0;\n", ind, name)
 			case *ir.Struct:
 				// Initialize the existing object in the same mode as its parent.
-				g.sf("%s%s%s(%s);\n", ind, structInit, f.Type.Name, name)
+				init := "Zero"
+				if defaults {
+					init = initFor(ref)
+				}
+				g.sf("%s%s%s(%s);\n", ind, init, f.Type.Name, name)
 			case *ir.Union:
 				// through Zero<Union> — the tag resets to None; arms are
 				// initialized at their next selection (SPEC §4.8)
@@ -1180,7 +1185,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt(ref enumValue, 0, %d)", g.rv(), ref.Max), "")
 			g.sf("%s    %s = (%s)enumValue;\n%s}\n", ind, name, f.Type.Name, ind)
 		case *ir.Flags:
-			g.emitReadFlags(name, ref.WireBits, ind)
+			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
 		case *ir.Struct:
 			if g.inBatch {
 				g.call(ind, fmt.Sprintf("Read%sBatch(ref batch, %s)", f.Type.Name, name), "")
@@ -1222,16 +1227,16 @@ func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 	g.sf("%s    %s = (%s)rawValue;\n%s}\n", ind, name, g.csFieldType(f.Type), ind)
 }
 
-// emitReadFlags reads a flags value through an unsigned temp; past 32 wire
-// bits the ulong storage takes the read directly.
-func (g *gen) emitReadFlags(name string, wireBits int, ind string) {
-	if wireBits <= 32 {
-		g.sf("%s{\n%s    uint flagsValue = 0;\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits(ref flagsValue, %d)", g.rv(), wireBits), "")
-		g.sf("%s    %s = flagsValue;\n%s}\n", ind, name, ind)
-		return
+// emitReadFlags reads a flags value through an unsigned temp — a ulong past
+// 32 wire bits — and stores it as the [Flags] enum typ.
+func (g *gen) emitReadFlags(name, typ string, wireBits int, ind string) {
+	temp, call := "uint", "SerializeBits"
+	if wireBits > 32 {
+		temp, call = "ulong", "SerializeBits64"
 	}
-	g.call(ind, fmt.Sprintf("%s.SerializeBits64(ref %s, %d)", g.rv(), name, wireBits), "")
+	g.sf("%s{\n%s    %s flagsValue = 0;\n", ind, ind, temp)
+	g.call(ind+"    ", fmt.Sprintf("%s.%s(ref flagsValue, %d)", g.rv(), call, wireBits), "")
+	g.sf("%s    %s = (%s)flagsValue;\n%s}\n", ind, name, typ, ind)
 }
 
 // emitWriteFlagsValue is the write half used by emitWriteScalar. Storage is
@@ -1241,7 +1246,7 @@ func (g *gen) emitReadFlags(name string, wireBits int, ind string) {
 // assertion (§5: write-side checks are caller error, DEBUG ONLY).
 func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 	if wireBits < 64 {
-		g.writeAssert(ind, fmt.Sprintf("%s < 1ul << %d", name, wireBits),
+		g.writeAssert(ind, fmt.Sprintf("(ulong)%s < 1ul << %d", name, wireBits),
 			fmt.Sprintf("%s has a mask bit above the %d-bit wire width", name, wireBits),
 			" // a mask bit above the wire width cannot ride")
 	}
@@ -1251,7 +1256,51 @@ func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 		g.sf("%s}\n", ind)
 		return
 	}
-	g.sf("%s{\n%s    ulong flagsValue = %s;\n", ind, ind, name)
+	g.sf("%s{\n%s    ulong flagsValue = (ulong)%s;\n", ind, ind, name)
 	g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits64(ref flagsValue, %d)", g.rv(), wireBits), "")
 	g.sf("%s}\n", ind)
+}
+
+// initFor names the helper that restores st's construction form: Init when
+// st carries a specified default, Zero otherwise (emitInitFunction).
+func initFor(st *ir.Struct) string {
+	if st != nil && hasDefaults(st) {
+		return "Init"
+	}
+	return "Zero"
+}
+
+// hasDefaults reports whether a struct transitively carries a specified
+// default or a born count — the Go target's NewX rule exactly. A union field
+// is constructed at None either way, so it never counts.
+func hasDefaults(d *ir.Struct) bool {
+	seen := map[*ir.Struct]bool{}
+	var walk func(st *ir.Struct) bool
+	walk = func(st *ir.Struct) bool {
+		if seen[st] {
+			return false
+		}
+		seen[st] = true
+		for _, f := range st.Fields {
+			if f.HasDefault || f.BornCount() > 0 {
+				return true
+			}
+			if f.Type.Kind == ir.TNamed {
+				if inner, ok := f.Type.Ref.(*ir.Struct); ok && walk(inner) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(d)
+}
+
+// csSizeType is the type of a MaxBits/MaxBytes constant: int, the type C#
+// sizes buffers and indexes spans with, wherever the value fits; long past it.
+func csSizeType(v int64) string {
+	if v <= math.MaxInt32 {
+		return "int"
+	}
+	return "long"
 }

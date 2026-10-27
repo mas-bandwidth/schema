@@ -27,7 +27,7 @@ namespace Tabledemo
     // key k at index k-1 — the storage SHIFTS LEFT and nothing is stored for None.
     //
     // NOTHING OUTSIDE THE ARRAY NAMES ITS SIZE: the extent comes from the key
-    // enum's own Max member, read once per closed generic type and cached, so
+    // enum's largest declared member, read once per closed generic type and cached, so
     // there is no constructor argument and no constant a consumer could put one
     // out of step with.
     //
@@ -52,10 +52,20 @@ namespace Tabledemo
     public sealed class TableKeyed<T, E> where E : struct, System.Enum
     {
         // the extent is the enum's, derived here and named nowhere else. C# has no
-        // compile-time enum arithmetic, so this reads the generated Max member
-        // once, at type initialization — never on a per-value path.
-        public static readonly int SlotCount =
-            (int)System.Convert.ToInt64(System.Enum.Parse(typeof(E), "Max"));
+        // compile-time enum arithmetic, so this reads the largest declared member
+        // once, at type initialization — never on a per-value path. A key enum
+        // takes no headroom, so that member's value IS its Max.
+        public static readonly int SlotCount = MaxDeclared();
+
+        static int MaxDeclared()
+        {
+            long max = 0;
+            foreach (object v in System.Enum.GetValuesAsUnderlyingType(typeof(E)))
+            {
+                max = Math.Max(max, System.Convert.ToInt64(v, System.Globalization.CultureInfo.InvariantCulture));
+            }
+            return (int)max;
+        }
 
         public readonly T[] Slots;
 

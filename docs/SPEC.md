@@ -1169,7 +1169,8 @@ a language rule — the language does not enforce entry 0's meaning.
 **The extent is exported.** Every generated enum surface — each declared
 enum and the generated `<Union>Type` tag enums — carries its
 extent as a member named `Max` in the target's own convention: `E::Max`
-(C++), `E.Max` (C#), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
+(C++), `Schema.EMax` (C#, a typed constant beside the enum, never a member
+a variant's value could alias), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
 (C), `E.max` (Dart and Java), `E.max/0` (Elixir). Its value is the enum's
 max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
@@ -2394,9 +2395,12 @@ deliberate, not an oversight — "For each language, do not force this in. If
 the language simply doesn't have this concept (Golang) then it is not
 something we can do. ... The bottom line is that a user of schema/serialize
 in that languages should feel that the implementation is native to their
-language and how it is used in best practice." (2026-09-07). **No target
-panics and none throws**: Elixir's raise is the only unwinding path in the
-nine, and it is the BEAM's own.
+language and how it is used in best practice." (2026-09-07). **No contract
+check panics or throws**: Elixir's raise is the only unwinding path a check
+takes in the nine, and it is the BEAM's own. A contract a release build no
+longer checks is still the caller's to keep, and breaking it is not defined
+to be quiet: in C#, a count past an array's capacity reaches the indexer, and
+the CLR's bounds check throws `IndexOutOfRangeException`.
 
 **There is no exception to the tier split.** Settled 2026-09-07: "No runtime
 should ever promise to keep checks in writing packets (asserts) in release

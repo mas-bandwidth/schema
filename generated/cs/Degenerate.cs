@@ -108,18 +108,11 @@ namespace Example
     {
         // Vec2MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // Vec2MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long Vec2MaxBits = 128;
-        public const long Vec2MaxBytes = 16;
+        public const int Vec2MaxBits = 128;
+        public const int Vec2MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroVec2(Vec2 value)
-        {
-            value.X = 0.0;
-            value.Y = 0.0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitVec2(Vec2 value)
         {
             value.X = 0.0;
             value.Y = 0.0;
@@ -175,17 +168,11 @@ namespace Example
 
         // SpanF64MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SpanF64MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SpanF64MaxBits = 128;
-        public const long SpanF64MaxBytes = 16;
+        public const int SpanF64MaxBits = 128;
+        public const int SpanF64MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanF64(SpanF64 value)
-        {
-            Array.Clear(value.Values, 0, 2);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSpanF64(SpanF64 value)
         {
             Array.Clear(value.Values, 0, 2);
         }
@@ -238,17 +225,11 @@ namespace Example
 
         // SpanU64MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SpanU64MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SpanU64MaxBits = 128;
-        public const long SpanU64MaxBytes = 16;
+        public const int SpanU64MaxBits = 128;
+        public const int SpanU64MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanU64(SpanU64 value)
-        {
-            Array.Clear(value.Values, 0, 2);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSpanU64(SpanU64 value)
         {
             Array.Clear(value.Values, 0, 2);
         }
@@ -301,17 +282,11 @@ namespace Example
 
         // SpanI64MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SpanI64MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SpanI64MaxBits = 128;
-        public const long SpanI64MaxBytes = 16;
+        public const int SpanI64MaxBits = 128;
+        public const int SpanI64MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanI64(SpanI64 value)
-        {
-            Array.Clear(value.Values, 0, 2);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSpanI64(SpanI64 value)
         {
             Array.Clear(value.Values, 0, 2);
         }
@@ -371,17 +346,11 @@ namespace Example
 
         // SpanOneMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SpanOneMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SpanOneMaxBits = 64;
-        public const long SpanOneMaxBytes = 8;
+        public const int SpanOneMaxBits = 64;
+        public const int SpanOneMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanOne(SpanOne value)
-        {
-            Array.Clear(value.Values, 0, 1);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSpanOne(SpanOne value)
         {
             Array.Clear(value.Values, 0, 1);
         }
@@ -412,17 +381,11 @@ namespace Example
 
         // SpanChunkMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SpanChunkMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SpanChunkMaxBits = 64;
-        public const long SpanChunkMaxBytes = 8;
+        public const int SpanChunkMaxBits = 64;
+        public const int SpanChunkMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanChunk(SpanChunk value)
-        {
-            Array.Clear(value.Values, 0, 4);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSpanChunk(SpanChunk value)
         {
             Array.Clear(value.Values, 0, 4);
         }
@@ -482,18 +445,11 @@ namespace Example
 
         // SpanTailMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SpanTailMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SpanTailMaxBits = 160;
-        public const long SpanTailMaxBytes = 24;
+        public const int SpanTailMaxBits = 160;
+        public const int SpanTailMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanTail(SpanTail value)
-        {
-            Array.Clear(value.Values, 0, 2);
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSpanTail(SpanTail value)
         {
             Array.Clear(value.Values, 0, 2);
             value.Tail = 0;
@@ -555,18 +511,11 @@ namespace Example
 
         // SpanTwiceMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SpanTwiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SpanTwiceMaxBits = 256;
-        public const long SpanTwiceMaxBytes = 32;
+        public const int SpanTwiceMaxBits = 256;
+        public const int SpanTwiceMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSpanTwice(SpanTwice value)
-        {
-            Array.Clear(value.A, 0, 2);
-            Array.Clear(value.B, 0, 2);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSpanTwice(SpanTwice value)
         {
             Array.Clear(value.A, 0, 2);
             Array.Clear(value.B, 0, 2);
@@ -634,19 +583,11 @@ namespace Example
 
         // TrioMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TrioMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TrioMaxBits = 64;
-        public const long TrioMaxBytes = 8;
+        public const int TrioMaxBits = 64;
+        public const int TrioMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTrio(Trio value)
-        {
-            value.A = 0;
-            value.B = 0;
-            value.C = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTrio(Trio value)
         {
             value.A = 0;
             value.B = 0;
@@ -714,19 +655,13 @@ namespace Example
 
         // TrioSoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TrioSoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TrioSoleMaxBits = 64;
-        public const long TrioSoleMaxBytes = 8;
+        public const int TrioSoleMaxBits = 64;
+        public const int TrioSoleMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTrioSole(TrioSole value)
         {
             ZeroTrio(value.Inner);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTrioSole(TrioSole value)
-        {
-            InitTrio(value.Inner);
         }
 
         // batch form: stream state stays in registers across the body and End
@@ -771,19 +706,13 @@ namespace Example
 
         // Vec3SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // Vec3SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long Vec3SoleMaxBits = 192;
-        public const long Vec3SoleMaxBytes = 24;
+        public const int Vec3SoleMaxBits = 192;
+        public const int Vec3SoleMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroVec3Sole(Vec3Sole value)
         {
             ZeroVec3(value.V);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitVec3Sole(Vec3Sole value)
-        {
-            InitVec3(value.V);
         }
 
         // batch form: stream state stays in registers across the body and End
@@ -828,20 +757,13 @@ namespace Example
 
         // TrioFirstMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TrioFirstMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TrioFirstMaxBits = 80;
-        public const long TrioFirstMaxBytes = 16;
+        public const int TrioFirstMaxBits = 80;
+        public const int TrioFirstMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTrioFirst(TrioFirst value)
         {
             ZeroTrio(value.Inner);
-            value.Trailer = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTrioFirst(TrioFirst value)
-        {
-            InitTrio(value.Inner);
             value.Trailer = 0;
         }
 
@@ -895,8 +817,8 @@ namespace Example
 
         // TrioStraddleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TrioStraddleMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TrioStraddleMaxBits = 408;
-        public const long TrioStraddleMaxBytes = 56;
+        public const int TrioStraddleMaxBits = 408;
+        public const int TrioStraddleMaxBytes = 56;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTrioStraddle(TrioStraddle value)
@@ -908,18 +830,6 @@ namespace Example
             value.Pad4 = 0;
             value.Pad5 = 0;
             ZeroTrio(value.Inner);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTrioStraddle(TrioStraddle value)
-        {
-            value.Pad0 = 0;
-            value.Pad1 = 0;
-            value.Pad2 = 0;
-            value.Pad3 = 0;
-            value.Pad4 = 0;
-            value.Pad5 = 0;
-            InitTrio(value.Inner);
         }
 
         // batch form: stream state stays in registers across the body and End
