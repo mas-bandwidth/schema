@@ -28,6 +28,9 @@ func init() {
 		// beside the other two on this list's own rule — a name free today is a
 		// collision the day a table in that unit becomes a fixed root.
 		Name{Name: "FixedRuntime", What: "the FIXED FORM's shared runtime module: the layout's validation, the plan compiler and the one read loop (docs/SPEC-TABLES.md §3.4)"},
+		// THE PACKET codecs' shared support module (internal/codegen/elixir):
+		// one per unit that declares a type or a union, <Package>.PacketRuntime.
+		Name{Name: "PacketRuntime", What: "the packet codecs' shared support module: window decodes, float conversions, compressed-float arithmetic (docs/SPEC.md §6.1)"},
 		Name{Name: "CookRuntime", What: "the COOKED form's shared runtime module (docs/SPEC-TABLES.md §7)"},
 		Name{Name: "TableRuntime", What: "the id-table wire's shared framing runtime module (docs/SPEC-TABLES.md §3, §5)"},
 		// THE MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3):

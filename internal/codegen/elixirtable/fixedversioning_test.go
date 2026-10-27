@@ -190,10 +190,10 @@ var versionRows = []versionRow{
 	// NONZERO, so only the prefill can put it there. With no `check` at all this
 	// row stayed GREEN with the prefill destroyed.
 	{row: "union_arm_payload_widen", check: `
-  check(v.pick.type == 1, "pick.type is the writer's alpha arm (1), not #{inspect(v.pick.type)}")
-  check(v.pick.alpha.x == 21, "the old writer's arm payload did not land: #{inspect(v.pick.alpha.x)}")
+  check(elem(v.pick, 0) == :alpha, "pick is the writer's alpha arm, not #{inspect(v.pick)}")
+  check(elem(v.pick, 1).x == 21, "the old writer's arm payload did not land: #{inspect(elem(v.pick, 1).x)}")
   check(v.seq == 18, "the scalar after the union moved: #{inspect(v.seq)}")
-  check(v.pick.alpha.y == 55, "the field appended to the SELECTED arm's payload is not its declared default: #{inspect(v.pick.alpha.y)}")`},
+  check(elem(v.pick, 1).y == 55, "the field appended to the SELECTED arm's payload is not its declared default: #{inspect(elem(v.pick, 1).y)}")`},
 	{row: "wstring_grow"},
 }
 
@@ -516,7 +516,7 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
     T.ut_root_fixed_save([
       %%Tblut1.UtRoot{
         head: 81,
-        pick: %%Tblut1.Pick{type: 2, b: %%Tblut1.ArmB{label: "back", m: -12}},
+        pick: {:b, %%Tblut1.ArmB{label: "back", m: -12}},
         tail: 88
       }
     ])
@@ -525,7 +525,7 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
   {tag, values, report} = load(data)
   check(tag == :ok, "UT1 reads its own arm-b record: #{inspect(tag)} #{why(report)}")
   v = hd(values)
-  check(v.pick.type == 2 and v.pick.b.label == "back" and v.pick.b.m == -12,
+  check(elem(v.pick, 0) == :b and elem(v.pick, 1).label == "back" and elem(v.pick, 1).m == -12,
     "UT1's identity read of the arm: #{inspect(v.pick)}")`, elixirString(file))
 	if out, err := runVersionProbe(t, elixirBin, "UT1", nil, 0, file, write); err != nil {
 		t.Fatalf("union_arm_text, UT1's own save: %v\n%s", err, out)
@@ -540,12 +540,12 @@ func TestFixedVersioningUnionArmText(t *testing.T) {
   v = hd(values)
   # THE TAG LANDS MY ORDINAL: arm b is arm 3 here and arm 2 there, and the entry
   # ran under THEIR guard.
-  check(v.pick.type == 3, "the arm's tag did not slide to MY ordinal: #{inspect(v.pick.type)}")
-  check(v.pick.b.label == "back",
-    "the text under the slid arm: #{inspect(v.pick.b.label)} — a shared guard/flavour lane " <>
+  check(elem(v.pick, 0) == :b, "the arm's tag did not slide to MY ordinal: #{inspect(v.pick)}")
+  check(elem(v.pick, 1).label == "back",
+    "the text under the slid arm: #{inspect(elem(v.pick, 1).label)} — a shared guard/flavour lane " <>
       "reads a byte string as a WIDE one and lands \"\"")
-  check(byte_size(v.pick.b.label) == 4, "the text's length: #{byte_size(v.pick.b.label)}")
-  check(v.pick.b.m == -12, "the int32 beside the text: #{inspect(v.pick.b.m)}")
+  check(byte_size(elem(v.pick, 1).label) == 4, "the text's length: #{byte_size(elem(v.pick, 1).label)}")
+  check(elem(v.pick, 1).m == -12, "the int32 beside the text: #{inspect(elem(v.pick, 1).m)}")
   check(v.head == 81 and v.tail == 88, "the fields either side of the union: #{inspect({v.head, v.tail})}")
   check(report.clamped == 0 and report.unknown == 0,
     "an arm that MOVED is not an event: #{why(report)}")`
@@ -970,7 +970,7 @@ func sortedRuntimeFirst(names []string) []string {
 	var first, packet, fixed []string
 	for _, n := range names {
 		switch {
-		case n == "FixedRuntime.ex" || n == "BuildVersion.ex":
+		case n == "FixedRuntime.ex" || n == "BuildVersion.ex" || n == "PacketRuntime.ex":
 			first = append(first, n)
 		case strings.HasSuffix(n, FixedModuleSuffix+".ex"):
 			fixed = append(fixed, n)

@@ -19,6 +19,7 @@
 # files load in dependency order (a defstruct default holding %Other{} needs
 # Other compiled first).
 for f <- [
+      "PacketRuntime.ex",
       "Constants.ex",
       "Enums.ex",
       "Types.ex",
@@ -32,6 +33,13 @@ for f <- [
   Code.require_file(f, Path.join(__DIR__, "../../generated/elixir"))
 end
 
+Code.require_file("PacketRuntime.ex", Path.join(__DIR__, "../../generated/bench/elixir"))
 Code.require_file("Bench.ex", Path.join(__DIR__, "../../generated/bench/elixir"))
+
+Code.require_file(
+  "PacketRuntime.ex",
+  Path.join(__DIR__, "../../generated/bench/elixir/realworld")
+)
+
 Code.require_file("RealWorld.ex", Path.join(__DIR__, "../../generated/bench/elixir/realworld"))
 Code.require_file("suite.exs", __DIR__)

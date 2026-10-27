@@ -679,8 +679,8 @@ packet-wide-elixir: build/packet-wide/elixir/.stamp build/packet-wide/cpp/driver
 
 packet-wide-elixir-negative-control: packet-wide-elixir
 	@mkdir -p build/packet-wide/elixir-negative/beam
-	go run ./tools/sabotage -name packet-wide-elixir-pairing -out build/packet-wide/elixir-negative/wstring.gotext internal/codegen/elixir/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/elixir/wstring.go":"%s/build/packet-wide/elixir-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/elixir-negative/overlay.json
+	go run ./tools/sabotage -name packet-wide-elixir-pairing -out build/packet-wide/elixir-negative/runtime.gotext internal/codegen/elixir/runtime.go
+	@printf '{"Replace":{"%s/internal/codegen/elixir/runtime.go":"%s/build/packet-wide/elixir-negative/runtime.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/elixir-negative/overlay.json
 	go run -overlay=build/packet-wide/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-wide/elixir-negative build/packet-wide/source/WideText.schema
 	$(ELIXIRC_STRICT) -o build/packet-wide/elixir-negative/beam build/packet-wide/elixir-negative/*.ex
 	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only env $(ELIXIR) test/packet-wide/elixir/main.exs "$(CURDIR)/build/packet-wide/elixir-negative" > build/packet-wide/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir wide pairing removal passed'; exit 1; fi

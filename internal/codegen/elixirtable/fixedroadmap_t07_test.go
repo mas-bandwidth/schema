@@ -218,7 +218,7 @@ func t07W3(t *testing.T) {
 		t.Fatalf("W3: Generate: %v", err)
 	}
 	body := t07Filter(t, out)
-	if !strings.Contains(body, "1 -> <<acc::binary, R.fits(value.a, 32, true)::little-signed-32, 0::size(4)-unit(8)>>") {
+	if !strings.Contains(body, "{:a, v_a} -> <<acc::binary, R.fits(v_a, 32, true)::little-signed-32, 0::size(4)-unit(8)>>") {
 		t.Error("W3: the narrower arm `a int32` leaves the four bytes behind it unzeroed")
 	}
 }
@@ -321,7 +321,7 @@ fixed table Root
 		t.Fatalf("W16: Generate: %v", err)
 	}
 	body := t07Filter(t, out)
-	if !strings.Contains(body, "1 -> inner_fixed_write_into(value.c, acc)") {
+	if !strings.Contains(body, "{:c, v_c} -> inner_fixed_write_into(v_c, acc)") {
 		t.Error("W16: the nested union arm is not written through its own union writer")
 	}
 	if !strings.Contains(body, "{v, c, m} = inner_fixed_decode(arm, c, m)") {
@@ -372,7 +372,7 @@ type B { v int64 }
 	}
 	xaBody := t07Module(t, cross, "xa")
 	xbBody := t07Module(t, cross, "xb")
-	t07Has(t, xaBody, "Probe.XbFixed.inner_fixed_write_into(value.c, acc)", "W16 the cross-file caller reaches the nested union through its own module")
+	t07Has(t, xaBody, "Probe.XbFixed.inner_fixed_write_into(v_c, acc)", "W16 the cross-file caller reaches the nested union through its own module")
 	t07Has(t, xbBody, "def inner_fixed_write_into(value, acc) do", "W16 the nested union's own writer is emitted in the arm's own module")
 	t07Has(t, xbBody, "def inner_fixed_decode(<<tag::little-unsigned-8, arm::binary>>, c, m", "W16 the nested union's own projection is emitted in the arm's own module")
 	t07Has(t, xbBody, "def a_fixed_write_into(value, acc) do", "W16 the cross-file inner arm `a`'s writer is emitted")

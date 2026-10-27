@@ -6,6 +6,13 @@
 
 # type DefaultArm
 defmodule Example.DefaultArm do
+  @moduledoc """
+  The type DefaultArm. Construction carries its specified defaults; the
+  codecs are in Example.ArmDefaults.
+  """
+
+  @type t :: %__MODULE__{entries: [Example.ProbeConfig.t()], marker: 0..7}
+
   # entries: counted array — a list of up to 2 elements
   # marker: wire [0, 7]
   defstruct entries: [], marker: 0
@@ -13,76 +20,153 @@ end
 
 # DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.DefaultChoiceType do
-  def none, do: 0
-  def first, do: 1
-  def second, do: 2
-  # the declared variant count (SPEC §4.2)
+  @moduledoc "The tag of union DefaultChoice: :none, then one atom per arm in declared order."
+
+  @type t :: :none | :first | :second
+
+  @doc "The wire value of a DefaultChoiceType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..2
+  def to_int(:none), do: 0
+  def to_int(:first), do: 1
+  def to_int(:second), do: 2
+
+  def to_int(v) do
+    raise ArgumentError, "not a DefaultChoiceType value: #{inspect(v)}"
+  end
+
+  @doc "The DefaultChoiceType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :first}
+  def from_int(2), do: {:ok, :second}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 2
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 2
 end
 
-# DefaultChoice — at most one of the arms; type says which. Construction is the empty
-# union (None). A read builds the selected arm from the wire; unselected
-# arms hold their construction form (SPEC §4.8 leaves them unspecified).
-# Consumers read the selected arm only.
+# DefaultChoice — nil (None), {:arm, payload}, or a payload-free arm's bare atom (SPEC §4.8)
 defmodule Example.DefaultChoice do
-  defstruct type: 0, first: %Example.DefaultArm{}, second: %Example.DefaultArm{}
+  @moduledoc """
+  The union DefaultChoice: `nil` is None, an arm with a payload is
+  `{:arm, payload}`, and a payload-free arm is its bare atom.
+  """
+
+  @type t :: nil | {:first, Example.DefaultArm.t()} | {:second, Example.DefaultArm.t()}
 end
 
 # type DefaultChoicePacket
 defmodule Example.DefaultChoicePacket do
-  defstruct choice: %Example.DefaultChoice{}
+  @moduledoc """
+  The type DefaultChoicePacket. Construction carries its specified defaults; the
+  codecs are in Example.ArmDefaults.
+  """
+
+  @type t :: %__MODULE__{choice: Example.DefaultChoice.t()}
+
+  defstruct choice: nil
 end
 
 # type DefaultBulkArm
 defmodule Example.DefaultBulkArm do
+  @moduledoc """
+  The type DefaultBulkArm. Construction carries its specified defaults; the
+  codecs are in Example.ArmDefaults.
+  """
+
+  @type t :: %__MODULE__{payload: Example.DefaultArm.t(), data: binary()}
+
   # data: bytes(2) — a binary; byte_size is the used length (SPEC §4.7)
   defstruct payload: %Example.DefaultArm{}, data: <<>>
 end
 
 # DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.DefaultBulkChoiceType do
-  def none, do: 0
-  def first, do: 1
-  def second, do: 2
-  # the declared variant count (SPEC §4.2)
+  @moduledoc "The tag of union DefaultBulkChoice: :none, then one atom per arm in declared order."
+
+  @type t :: :none | :first | :second
+
+  @doc "The wire value of a DefaultBulkChoiceType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..2
+  def to_int(:none), do: 0
+  def to_int(:first), do: 1
+  def to_int(:second), do: 2
+
+  def to_int(v) do
+    raise ArgumentError, "not a DefaultBulkChoiceType value: #{inspect(v)}"
+  end
+
+  @doc """
+  The DefaultBulkChoiceType value of a wire value: `{:ok, value}`, or `:error` past the max.
+  """
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :first}
+  def from_int(2), do: {:ok, :second}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 2
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 2
 end
 
-# DefaultBulkChoice — at most one of the arms; type says which. Construction is the empty
-# union (None). A read builds the selected arm from the wire; unselected
-# arms hold their construction form (SPEC §4.8 leaves them unspecified).
-# Consumers read the selected arm only.
+# DefaultBulkChoice — nil (None), {:arm, payload}, or a payload-free arm's bare atom (SPEC §4.8)
 defmodule Example.DefaultBulkChoice do
-  defstruct type: 0, first: %Example.DefaultBulkArm{}, second: %Example.DefaultBulkArm{}
+  @moduledoc """
+  The union DefaultBulkChoice: `nil` is None, an arm with a payload is
+  `{:arm, payload}`, and a payload-free arm is its bare atom.
+  """
+
+  @type t :: nil | {:first, Example.DefaultBulkArm.t()} | {:second, Example.DefaultBulkArm.t()}
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in ArmDefaults.schema.
 defmodule Example.ArmDefaults do
+  @moduledoc """
+  The file-scope surface of ArmDefaults.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
+  import Example.PacketRuntime, only: [rd: 3, rdw: 3]
 
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
-  # default_arm_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # default_arm_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a DefaultArm can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec default_arm_max_bits() :: pos_integer()
   def default_arm_max_bits, do: 77
+
+  @doc """
+  default_arm_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec default_arm_max_bytes() :: pos_integer()
   def default_arm_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.DefaultArm{}).
+  @doc """
+  The §5 zero form of DefaultArm: all-zero storage. Specified defaults live
+  only in construction (`%Example.DefaultArm{}`).
+  """
+  @spec zero_default_arm() :: Example.DefaultArm.t()
   def zero_default_arm, do: %Example.DefaultArm{entries: [], marker: 0}
 
-  # write_default_arm packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_default_arm(value) do
-    data = <<>>
+  @doc """
+  Packs a DefaultArm into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_default_arm!(Example.DefaultArm.t()) :: binary()
+  def write_default_arm!(value) do
     %{entries: value_entries, marker: value_marker} = value
     n = length(value_entries)
 
@@ -95,7 +179,7 @@ defmodule Example.ArmDefaults do
     scratch_bits = 2
 
     {data, scratch, scratch_bits} =
-      w_default_arm_entries(value_entries, data, scratch, scratch_bits)
+      w_default_arm_entries(value_entries, <<>>, scratch, scratch_bits)
 
     if value_marker < 0 do
       raise ArgumentError, "value.marker is below the wire minimum"
@@ -115,11 +199,26 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_arm_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_default_arm!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_default_arm(Example.DefaultArm.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_default_arm(value) do
+    {:ok, write_default_arm!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a DefaultArm from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_default_arm_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultArm.t(), non_neg_integer()} | :error
   def read_default_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -127,30 +226,30 @@ defmodule Example.ArmDefaults do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # the count guards the loop — reject, never clamp
       if v > 2, do: throw(:invalid)
       n = v
-      if bits_read + n * 36 > num_bits, do: throw(:invalid)
-      {bits_read, v_entries} = r_default_arm_entries(n, [], data, num_bits, bits_read)
+      if 2 + n * 36 > num_bits, do: throw(:invalid)
+      {bits_read, v_entries} = r_default_arm_entries(n, [], data, num_bits, 2)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
-      bits_read = bits_read + 3
       v_marker = v
       value = %Example.DefaultArm{entries: v_entries, marker: v_marker}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 3}
     catch
       :invalid -> :error
     end
   end
 
-  # read_default_arm is read_default_arm_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a DefaultArm from the first num_bits of data: read_default_arm_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_default_arm(binary(), non_neg_integer()) :: {:ok, Example.DefaultArm.t()} | :error
   def read_default_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_arm_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -158,57 +257,67 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # measure_default_arm is the exact wire bits write_default_arm would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_default_arm(value) do
-    bits = 0
-    bits = bits + 2
-    bits = bits + length(value.entries) * 36
-    bits + 3
-  end
-
-  # default_choice_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-  # default_choice_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc "The most wire bits a DefaultChoice can take: the tag plus the largest arm (SPEC §4.8)."
+  @spec default_choice_max_bits() :: pos_integer()
   def default_choice_max_bits, do: 79
+
+  @doc """
+  default_choice_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec default_choice_max_bytes() :: pos_integer()
   def default_choice_max_bytes, do: 16
 
-  # enum_name_default_choice_type: debug/log/tooling name for any DefaultChoiceType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a DefaultChoiceType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_default_choice_type(Example.DefaultChoiceType.t() | integer()) :: String.t()
   def enum_name_default_choice_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :first -> "First"
       1 -> "First"
+      :second -> "Second"
       2 -> "Second"
       _ -> "???"
     end
   end
 
-  # The §5 zero form — the empty union (None). Arms hold their construction
-  # form: every arm is unselected at None, and unselected arms are
-  # unspecified by rule (SPEC §4.8).
-  def zero_default_choice, do: %Example.DefaultChoice{}
+  @doc "The §5 zero form of DefaultChoice: the empty union, None."
+  @spec zero_default_choice() :: Example.DefaultChoice.t()
+  def zero_default_choice, do: nil
 
-  # write_default_choice packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_default_choice(value) do
+  @doc """
+  Packs a DefaultChoice into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_default_choice!(Example.DefaultChoice.t()) :: binary()
+  def write_default_choice!(value) do
+    v =
+      case value do
+        nil ->
+          0
+
+        {:first, _} ->
+          1
+
+        {:second, _} ->
+          2
+
+        value_other ->
+          raise ArgumentError, "value is not a DefaultChoice value: #{inspect(value_other)}"
+      end
+
+    scratch = v
     data = <<>>
 
-    if value.type < 0 do
-      raise ArgumentError, "value.type is below the wire minimum"
-    end
-
-    if value.type > 2 do
-      raise ArgumentError, "value.type is above the wire maximum"
-    end
-
-    v = value.type
-    scratch = v
-
     {data, scratch, scratch_bits} =
-      case value.type do
-        1 ->
-          %{entries: value_first_entries, marker: value_first_marker} = value.first
+      case value do
+        {:first, value_first} ->
+          %{entries: value_first_entries, marker: value_first_marker} = value_first
           n = length(value_first_entries)
 
           if n > 2 do
@@ -239,8 +348,8 @@ defmodule Example.ArmDefaults do
           scratch_bits = scratch_bits &&& 7
           {data, scratch, scratch_bits}
 
-        2 ->
-          %{entries: value_second_entries, marker: value_second_marker} = value.second
+        {:second, value_second} ->
+          %{entries: value_second_entries, marker: value_second_marker} = value_second
           n = length(value_second_entries)
 
           if n > 2 do
@@ -272,7 +381,7 @@ defmodule Example.ArmDefaults do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 2
           {data, scratch, scratch_bits}
       end
@@ -280,11 +389,26 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_choice_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_default_choice!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_default_choice(Example.DefaultChoice.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_default_choice(value) do
+    {:ok, write_default_choice!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a DefaultChoice from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_default_choice_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultChoice.t(), non_neg_integer()} | :error
   def read_default_choice_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -292,60 +416,52 @@ defmodule Example.ArmDefaults do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 2
 
       {bits_read, v} =
         case v do
           1 ->
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if 4 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 2, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the count guards the loop — reject, never clamp
             if v > 2, do: throw(:invalid)
             n = v
-            if bits_read + n * 36 > num_bits, do: throw(:invalid)
-            {bits_read, v_first_entries} = r_default_arm_entries(n, [], data, num_bits, bits_read)
+            if 4 + n * 36 > num_bits, do: throw(:invalid)
+            {bits_read, v_first_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
-            bits_read = bits_read + 3
             v_first_marker = v
             v_first = %Example.DefaultArm{entries: v_first_entries, marker: v_first_marker}
-            u = %Example.DefaultChoice{type: 1, first: v_first}
-            {bits_read, u}
+            bits_read = bits_read + 3
+            {bits_read, {:first, v_first}}
 
           2 ->
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if 4 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 2, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the count guards the loop — reject, never clamp
             if v > 2, do: throw(:invalid)
             n = v
-            if bits_read + n * 36 > num_bits, do: throw(:invalid)
-
-            {bits_read, v_second_entries} =
-              r_default_arm_entries(n, [], data, num_bits, bits_read)
-
+            if 4 + n * 36 > num_bits, do: throw(:invalid)
+            {bits_read, v_second_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
-            bits_read = bits_read + 3
             v_second_marker = v
             v_second = %Example.DefaultArm{entries: v_second_entries, marker: v_second_marker}
-            u = %Example.DefaultChoice{type: 2, second: v_second}
-            {bits_read, u}
+            bits_read = bits_read + 3
+            {bits_read, {:second, v_second}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.DefaultChoice{}}
+            {bits_read, nil}
         end
 
       {:ok, v, bits_read}
@@ -354,8 +470,12 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # read_default_choice is read_default_choice_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a DefaultChoice from the first num_bits of data: read_default_choice_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_default_choice(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultChoice.t()} | :error
   def read_default_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_choice_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -363,67 +483,59 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # measure_default_choice is the exact wire bits write_default_choice would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_default_choice(value) do
-    bits = 0
-    bits = bits + 2
-
-    bits =
-      case value.type do
-        1 ->
-          bits = bits + 2
-          bits = bits + length(value.first.entries) * 36
-          bits + 3
-
-        2 ->
-          bits = bits + 2
-          bits = bits + length(value.second.entries) * 36
-          bits + 3
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits
-  end
-
-  # default_choice_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # default_choice_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a DefaultChoicePacket can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec default_choice_packet_max_bits() :: pos_integer()
   def default_choice_packet_max_bits, do: 79
+
+  @doc """
+  default_choice_packet_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec default_choice_packet_max_bytes() :: pos_integer()
   def default_choice_packet_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.DefaultChoicePacket{}).
-  def zero_default_choice_packet do
-    %Example.DefaultChoicePacket{choice: %Example.DefaultChoice{}}
-  end
+  @doc """
+  The §5 zero form of DefaultChoicePacket: all-zero storage. Specified defaults live
+  only in construction (`%Example.DefaultChoicePacket{}`).
+  """
+  @spec zero_default_choice_packet() :: Example.DefaultChoicePacket.t()
+  def zero_default_choice_packet, do: %Example.DefaultChoicePacket{choice: nil}
 
-  # write_default_choice_packet packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_default_choice_packet(value) do
+  @doc """
+  Packs a DefaultChoicePacket into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_default_choice_packet!(Example.DefaultChoicePacket.t()) :: binary()
+  def write_default_choice_packet!(value) do
+    v =
+      case value.choice do
+        nil ->
+          0
+
+        {:first, _} ->
+          1
+
+        {:second, _} ->
+          2
+
+        value_choice_other ->
+          raise ArgumentError,
+                "value.choice is not a DefaultChoice value: #{inspect(value_choice_other)}"
+      end
+
+    scratch = v
     data = <<>>
 
-    if value.choice.type < 0 do
-      raise ArgumentError, "value.choice.type is below the wire minimum"
-    end
-
-    if value.choice.type > 2 do
-      raise ArgumentError, "value.choice.type is above the wire maximum"
-    end
-
-    v = value.choice.type
-    scratch = v
-
     {data, scratch, scratch_bits} =
-      case value.choice.type do
-        1 ->
+      case value.choice do
+        {:first, value_choice_first} ->
           %{
             entries: value_choice_first_entries,
             marker: value_choice_first_marker
-          } = value.choice.first
+          } = value_choice_first
 
           n = length(value_choice_first_entries)
 
@@ -455,11 +567,11 @@ defmodule Example.ArmDefaults do
           scratch_bits = scratch_bits &&& 7
           {data, scratch, scratch_bits}
 
-        2 ->
+        {:second, value_choice_second} ->
           %{
             entries: value_choice_second_entries,
             marker: value_choice_second_marker
-          } = value.choice.second
+          } = value_choice_second
 
           n = length(value_choice_second_entries)
 
@@ -492,7 +604,7 @@ defmodule Example.ArmDefaults do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 2
           {data, scratch, scratch_bits}
       end
@@ -500,11 +612,27 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_choice_packet_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_default_choice_packet!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_default_choice_packet(Example.DefaultChoicePacket.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_default_choice_packet(value) do
+    {:ok, write_default_choice_packet!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a DefaultChoicePacket from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_default_choice_packet_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultChoicePacket.t(), non_neg_integer()} | :error
   def read_default_choice_packet_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
@@ -513,33 +641,27 @@ defmodule Example.ArmDefaults do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 2
 
       {bits_read, v_choice} =
         case v do
           1 ->
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if 4 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 2, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the count guards the loop — reject, never clamp
             if v > 2, do: throw(:invalid)
             n = v
-            if bits_read + n * 36 > num_bits, do: throw(:invalid)
-
-            {bits_read, v_choice_first_entries} =
-              r_default_arm_entries(n, [], data, num_bits, bits_read)
-
+            if 4 + n * 36 > num_bits, do: throw(:invalid)
+            {bits_read, v_choice_first_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
-            bits_read = bits_read + 3
             v_choice_first_marker = v
 
             v_choice_first = %Example.DefaultArm{
@@ -547,26 +669,21 @@ defmodule Example.ArmDefaults do
               marker: v_choice_first_marker
             }
 
-            u = %Example.DefaultChoice{type: 1, first: v_choice_first}
-            {bits_read, u}
+            bits_read = bits_read + 3
+            {bits_read, {:first, v_choice_first}}
 
           2 ->
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if 4 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 2, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the count guards the loop — reject, never clamp
             if v > 2, do: throw(:invalid)
             n = v
-            if bits_read + n * 36 > num_bits, do: throw(:invalid)
-
-            {bits_read, v_choice_second_entries} =
-              r_default_arm_entries(n, [], data, num_bits, bits_read)
-
+            if 4 + n * 36 > num_bits, do: throw(:invalid)
+            {bits_read, v_choice_second_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
-            bits_read = bits_read + 3
             v_choice_second_marker = v
 
             v_choice_second = %Example.DefaultArm{
@@ -574,12 +691,12 @@ defmodule Example.ArmDefaults do
               marker: v_choice_second_marker
             }
 
-            u = %Example.DefaultChoice{type: 2, second: v_choice_second}
-            {bits_read, u}
+            bits_read = bits_read + 3
+            {bits_read, {:second, v_choice_second}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.DefaultChoice{}}
+            {bits_read, nil}
         end
 
       value = %Example.DefaultChoicePacket{choice: v_choice}
@@ -589,8 +706,12 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # read_default_choice_packet is read_default_choice_packet_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a DefaultChoicePacket from the first num_bits of data: read_default_choice_packet_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_default_choice_packet(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultChoicePacket.t()} | :error
   def read_default_choice_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_choice_packet_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -598,46 +719,33 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # measure_default_choice_packet is the exact wire bits write_default_choice_packet would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_default_choice_packet(value) do
-    bits = 0
-    bits = bits + 2
-
-    bits =
-      case value.choice.type do
-        1 ->
-          bits = bits + 2
-          bits = bits + length(value.choice.first.entries) * 36
-          bits + 3
-
-        2 ->
-          bits = bits + 2
-          bits = bits + length(value.choice.second.entries) * 36
-          bits + 3
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits
-  end
-
-  # default_bulk_arm_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # default_bulk_arm_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a DefaultBulkArm can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec default_bulk_arm_max_bits() :: pos_integer()
   def default_bulk_arm_max_bits, do: 102
+
+  @doc """
+  default_bulk_arm_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec default_bulk_arm_max_bytes() :: pos_integer()
   def default_bulk_arm_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.DefaultBulkArm{}).
+  @doc """
+  The §5 zero form of DefaultBulkArm: all-zero storage. Specified defaults live
+  only in construction (`%Example.DefaultBulkArm{}`).
+  """
+  @spec zero_default_bulk_arm() :: Example.DefaultBulkArm.t()
   def zero_default_bulk_arm, do: %Example.DefaultBulkArm{payload: zero_default_arm(), data: <<>>}
 
-  # write_default_bulk_arm packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_default_bulk_arm(value) do
-    data = <<>>
+  @doc """
+  Packs a DefaultBulkArm into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_default_bulk_arm!(Example.DefaultBulkArm.t()) :: binary()
+  def write_default_bulk_arm!(value) do
     %{payload: value_payload, data: value_data} = value
     %{entries: value_payload_entries, marker: value_payload_marker} = value_payload
     n = length(value_payload_entries)
@@ -651,7 +759,7 @@ defmodule Example.ArmDefaults do
     scratch_bits = 2
 
     {data, scratch, scratch_bits} =
-      w_default_arm_entries(value_payload_entries, data, scratch, scratch_bits)
+      w_default_arm_entries(value_payload_entries, <<>>, scratch, scratch_bits)
 
     if value_payload_marker < 0 do
       raise ArgumentError, "value.payload.marker is below the wire minimum"
@@ -683,11 +791,27 @@ defmodule Example.ArmDefaults do
     data
   end
 
-  # read_default_bulk_arm_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_default_bulk_arm!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_default_bulk_arm(Example.DefaultBulkArm.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_default_bulk_arm(value) do
+    {:ok, write_default_bulk_arm!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a DefaultBulkArm from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_default_bulk_arm_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultBulkArm.t(), non_neg_integer()} | :error
   def read_default_bulk_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -695,29 +819,26 @@ defmodule Example.ArmDefaults do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # the count guards the loop — reject, never clamp
       if v > 2, do: throw(:invalid)
       n = v
-      if bits_read + n * 36 > num_bits, do: throw(:invalid)
-      {bits_read, v_payload_entries} = r_default_arm_entries(n, [], data, num_bits, bits_read)
+      if 2 + n * 36 > num_bits, do: throw(:invalid)
+      {bits_read, v_payload_entries} = r_default_arm_entries(n, [], data, num_bits, 2)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
-      bits_read = bits_read + 3
       v_payload_marker = v
       v_payload = %Example.DefaultArm{entries: v_payload_entries, marker: v_payload_marker}
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if bits_read + 5 > num_bits, do: throw(:invalid)
+      rv = rdw(data, bits_read + 3, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # the length guards the slice — reject, never clamp
       if v > 2, do: throw(:invalid)
       len = v
+      bits_read = bits_read + 5
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -742,8 +863,12 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # read_default_bulk_arm is read_default_bulk_arm_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a DefaultBulkArm from the first num_bits of data: read_default_bulk_arm_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_default_bulk_arm(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultBulkArm.t()} | :error
   def read_default_bulk_arm(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_bulk_arm_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -751,60 +876,70 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # measure_default_bulk_arm is the exact wire bits write_default_bulk_arm would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_default_bulk_arm(value) do
-    bits = 0
-    bits = bits + 2
-    bits = bits + length(value.payload.entries) * 36
-    bits = bits + 5
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.data) * 8
-    bits
-  end
-
-  # default_bulk_choice_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-  # default_bulk_choice_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a DefaultBulkChoice can take: the tag plus the largest arm (SPEC §4.8).
+  """
+  @spec default_bulk_choice_max_bits() :: pos_integer()
   def default_bulk_choice_max_bits, do: 104
+
+  @doc """
+  default_bulk_choice_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec default_bulk_choice_max_bytes() :: pos_integer()
   def default_bulk_choice_max_bytes, do: 16
 
-  # enum_name_default_bulk_choice_type: debug/log/tooling name for any DefaultBulkChoiceType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a DefaultBulkChoiceType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_default_bulk_choice_type(Example.DefaultBulkChoiceType.t() | integer()) ::
+          String.t()
   def enum_name_default_bulk_choice_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :first -> "First"
       1 -> "First"
+      :second -> "Second"
       2 -> "Second"
       _ -> "???"
     end
   end
 
-  # The §5 zero form — the empty union (None). Arms hold their construction
-  # form: every arm is unselected at None, and unselected arms are
-  # unspecified by rule (SPEC §4.8).
-  def zero_default_bulk_choice, do: %Example.DefaultBulkChoice{}
+  @doc "The §5 zero form of DefaultBulkChoice: the empty union, None."
+  @spec zero_default_bulk_choice() :: Example.DefaultBulkChoice.t()
+  def zero_default_bulk_choice, do: nil
 
-  # write_default_bulk_choice packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_default_bulk_choice(value) do
+  @doc """
+  Packs a DefaultBulkChoice into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_default_bulk_choice!(Example.DefaultBulkChoice.t()) :: binary()
+  def write_default_bulk_choice!(value) do
+    v =
+      case value do
+        nil ->
+          0
+
+        {:first, _} ->
+          1
+
+        {:second, _} ->
+          2
+
+        value_other ->
+          raise ArgumentError, "value is not a DefaultBulkChoice value: #{inspect(value_other)}"
+      end
+
+    scratch = v
     data = <<>>
 
-    if value.type < 0 do
-      raise ArgumentError, "value.type is below the wire minimum"
-    end
-
-    if value.type > 2 do
-      raise ArgumentError, "value.type is above the wire maximum"
-    end
-
-    v = value.type
-    scratch = v
-
     {data, scratch, scratch_bits} =
-      case value.type do
-        1 ->
-          %{payload: value_first_payload, data: value_first_data} = value.first
+      case value do
+        {:first, value_first} ->
+          %{payload: value_first_payload, data: value_first_data} = value_first
 
           %{
             entries: value_first_payload_entries,
@@ -855,8 +990,8 @@ defmodule Example.ArmDefaults do
           scratch = 0
           {data, scratch, scratch_bits}
 
-        2 ->
-          %{payload: value_second_payload, data: value_second_data} = value.second
+        {:second, value_second} ->
+          %{payload: value_second_payload, data: value_second_data} = value_second
 
           %{
             entries: value_second_payload_entries,
@@ -908,7 +1043,7 @@ defmodule Example.ArmDefaults do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 2
           {data, scratch, scratch_bits}
       end
@@ -916,11 +1051,27 @@ defmodule Example.ArmDefaults do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_default_bulk_choice_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_default_bulk_choice!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_default_bulk_choice(Example.DefaultBulkChoice.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_default_bulk_choice(value) do
+    {:ok, write_default_bulk_choice!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a DefaultBulkChoice from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_default_bulk_choice_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultBulkChoice.t(), non_neg_integer()} | :error
   def read_default_bulk_choice_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
@@ -929,33 +1080,27 @@ defmodule Example.ArmDefaults do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 2
 
       {bits_read, v} =
         case v do
           1 ->
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if 4 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 2, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the count guards the loop — reject, never clamp
             if v > 2, do: throw(:invalid)
             n = v
-            if bits_read + n * 36 > num_bits, do: throw(:invalid)
-
-            {bits_read, v_first_payload_entries} =
-              r_default_arm_entries(n, [], data, num_bits, bits_read)
-
+            if 4 + n * 36 > num_bits, do: throw(:invalid)
+            {bits_read, v_first_payload_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
-            bits_read = bits_read + 3
             v_first_payload_marker = v
 
             v_first_payload = %Example.DefaultArm{
@@ -963,13 +1108,13 @@ defmodule Example.ArmDefaults do
               marker: v_first_payload_marker
             }
 
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if bits_read + 5 > num_bits, do: throw(:invalid)
+            rv = rdw(data, bits_read + 3, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the length guards the slice — reject, never clamp
             if v > 2, do: throw(:invalid)
             len = v
+            bits_read = bits_read + 5
             pad = 8 - (bits_read &&& 7) &&& 7
 
             if pad != 0 do
@@ -988,26 +1133,23 @@ defmodule Example.ArmDefaults do
             v_first_data = binary_part(data, bits_read >>> 3, len)
             bits_read = bits_read + len * 8
             v_first = %Example.DefaultBulkArm{payload: v_first_payload, data: v_first_data}
-            u = %Example.DefaultBulkChoice{type: 1, first: v_first}
-            {bits_read, u}
+            {bits_read, {:first, v_first}}
 
           2 ->
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if 4 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 2, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the count guards the loop — reject, never clamp
             if v > 2, do: throw(:invalid)
             n = v
-            if bits_read + n * 36 > num_bits, do: throw(:invalid)
+            if 4 + n * 36 > num_bits, do: throw(:invalid)
 
             {bits_read, v_second_payload_entries} =
-              r_default_arm_entries(n, [], data, num_bits, bits_read)
+              r_default_arm_entries(n, [], data, num_bits, 4)
 
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
-            bits_read = bits_read + 3
             v_second_payload_marker = v
 
             v_second_payload = %Example.DefaultArm{
@@ -1015,13 +1157,13 @@ defmodule Example.ArmDefaults do
               marker: v_second_payload_marker
             }
 
-            if bits_read + 2 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 49)
+            if bits_read + 5 > num_bits, do: throw(:invalid)
+            rv = rdw(data, bits_read + 3, 49)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             # the length guards the slice — reject, never clamp
             if v > 2, do: throw(:invalid)
             len = v
+            bits_read = bits_read + 5
             pad = 8 - (bits_read &&& 7) &&& 7
 
             if pad != 0 do
@@ -1040,12 +1182,11 @@ defmodule Example.ArmDefaults do
             v_second_data = binary_part(data, bits_read >>> 3, len)
             bits_read = bits_read + len * 8
             v_second = %Example.DefaultBulkArm{payload: v_second_payload, data: v_second_data}
-            u = %Example.DefaultBulkChoice{type: 2, second: v_second}
-            {bits_read, u}
+            {bits_read, {:second, v_second}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.DefaultBulkChoice{}}
+            {bits_read, nil}
         end
 
       {:ok, v, bits_read}
@@ -1054,45 +1195,17 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  # read_default_bulk_choice is read_default_bulk_choice_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a DefaultBulkChoice from the first num_bits of data: read_default_bulk_choice_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_default_bulk_choice(binary(), non_neg_integer()) ::
+          {:ok, Example.DefaultBulkChoice.t()} | :error
   def read_default_bulk_choice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_default_bulk_choice_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
-  end
-
-  # measure_default_bulk_choice is the exact wire bits write_default_bulk_choice would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_default_bulk_choice(value) do
-    bits = 0
-    bits = bits + 2
-
-    bits =
-      case value.type do
-        1 ->
-          bits = bits + 2
-          bits = bits + length(value.first.payload.entries) * 36
-          bits = bits + 5
-          bits = bits + (8 - (bits &&& 7) &&& 7)
-          bits = bits + byte_size(value.first.data) * 8
-          bits
-
-        2 ->
-          bits = bits + 2
-          bits = bits + length(value.second.payload.entries) * 36
-          bits = bits + 5
-          bits = bits + (8 - (bits &&& 7) &&& 7)
-          bits = bits + byte_size(value.second.data) * 8
-          bits
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits
   end
 
   defp w_default_arm_entries([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1102,16 +1215,7 @@ defmodule Example.ArmDefaults do
     v = e1_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-
-    if e1_preferred < 0 do
-      raise ArgumentError, "e.preferred is below the wire minimum"
-    end
-
-    if e1_preferred > 15 do
-      raise ArgumentError, "e.preferred is above the wire maximum"
-    end
-
-    v = e1_preferred
+    v = Example.Weapon.to_int(e1_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e2_retries, preferred: e2_preferred} = e2
@@ -1122,16 +1226,7 @@ defmodule Example.ArmDefaults do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-
-    if e2_preferred < 0 do
-      raise ArgumentError, "e.preferred is below the wire minimum"
-    end
-
-    if e2_preferred > 15 do
-      raise ArgumentError, "e.preferred is above the wire maximum"
-    end
-
-    v = e2_preferred
+    v = Example.Weapon.to_int(e2_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e3_retries, preferred: e3_preferred} = e3
@@ -1142,16 +1237,7 @@ defmodule Example.ArmDefaults do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-
-    if e3_preferred < 0 do
-      raise ArgumentError, "e.preferred is below the wire minimum"
-    end
-
-    if e3_preferred > 15 do
-      raise ArgumentError, "e.preferred is above the wire maximum"
-    end
-
-    v = e3_preferred
+    v = Example.Weapon.to_int(e3_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     %{retries: e4_retries, preferred: e4_preferred} = e4
@@ -1162,16 +1248,7 @@ defmodule Example.ArmDefaults do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-
-    if e4_preferred < 0 do
-      raise ArgumentError, "e.preferred is below the wire minimum"
-    end
-
-    if e4_preferred > 15 do
-      raise ArgumentError, "e.preferred is above the wire maximum"
-    end
-
-    v = e4_preferred
+    v = Example.Weapon.to_int(e4_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     flush = scratch_bits >>> 3
@@ -1190,16 +1267,7 @@ defmodule Example.ArmDefaults do
     v = e_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-
-    if e_preferred < 0 do
-      raise ArgumentError, "e.preferred is below the wire minimum"
-    end
-
-    if e_preferred > 15 do
-      raise ArgumentError, "e.preferred is above the wire maximum"
-    end
-
-    v = e_preferred
+    v = Example.Weapon.to_int(e_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     flush = scratch_bits >>> 3
@@ -1215,44 +1283,10 @@ defmodule Example.ArmDefaults do
   defp r_default_arm_entries(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 36)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_retries = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
     v = rv >>> 32
-    bits_read = bits_read + 4
-    e_preferred = v
+    {:ok, e_preferred} = Example.Weapon.from_int(v)
     e = %Example.ProbeConfig{retries: e_retries, preferred: e_preferred}
-    r_default_arm_entries(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+    r_default_arm_entries(remaining - 1, [e | acc], data, num_bits, bits_read + 36)
   end
 end

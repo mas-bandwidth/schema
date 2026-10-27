@@ -129,8 +129,8 @@ func t06C7(t *testing.T) {
 func t06C9(t *testing.T) {
 	module, _ := t06Emit(t)
 	t06Has(t, module, "  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`", "C9 the union projection names the rule")
-	t06Has(t, module, "{%Probe.Pick{}, c + 1, m}", "C9 a tag past the arms lands None and counts one clamp")
-	t06Has(t, module, "{%Probe.Pick{}, c, m}", "C9 tag 0 is None and is not a clamp")
+	t06Has(t, module, "{nil, c + 1, m}", "C9 a tag past the arms lands None and counts one clamp")
+	t06Has(t, module, "{nil, c, m}", "C9 tag 0 is None and is not a clamp")
 }
 
 // ---- elixir/C10 -------------------------------------------------------------

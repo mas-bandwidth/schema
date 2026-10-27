@@ -45,11 +45,17 @@ func writeModuleDir(t *testing.T, dir string, files map[string][]byte) []string 
 	// build_version at COMPILE time through a module attribute, and `elixir -r`
 	// loads files in the order given, so a sorted order that put <Base>Cook.ex
 	// before BuildVersion.ex would fail to compile the corpus.
+	// The packet codecs' support module loads first for the same reason: every
+	// file module imports from it at COMPILE time.
 	sort.Strings(names)
 	first := []string{BuildVersionModule + ".ex"}
 	rest := make([]string, 0, len(names))
 	for _, n := range names {
-		if n != BuildVersionModule+".ex" {
+		switch n {
+		case BuildVersionModule + ".ex":
+		case "PacketRuntime.ex":
+			first = append(first, n)
+		default:
 			rest = append(rest, n)
 		}
 	}

@@ -1915,9 +1915,11 @@ union Value
   SPEC-TABLES.md §2.6's**, which states the companion an arm may need and
   the payload-free arm, whose whole surface is its tag value.
   C mirrors it with its named `as` union. Both omit that storage union when
-  no arm has a payload. Go, C#, JS, Dart, Java and Elixir lay the tag beside
+  no arm has a payload. Go, C#, JS, Dart and Java lay the tag beside
   one pre-allocated arm per payload-bearing variant —
-  nothing heap-allocates per value. Rust holds the value as a real
+  nothing heap-allocates per value. Elixir, where no term is mutable and
+  pre-allocated storage buys nothing, holds the value as `nil` (None),
+  `{:arm, payload}`, or a payload-free arm's bare atom. Rust holds the value as a real
   `enum <Union> { None, Box(BoxCollider), ... }`, `None` the default — and
   STILL emits the `<Union>Type` tag newtype beside it: the tag surface
   (constants, `Max`) is uniform across targets whatever the value
@@ -2533,12 +2535,14 @@ Per `type`, per target:
    buffer is fixed at its declared capacity with a used length/count beside
    it — no Go slices as storage, no Rust `Vec`, no growing containers.
 
-   An enum's representation is the target's choice — today an integer-backed
-   named type in every target (a Rust newtype, C#'s `enum E : uint`, Dart's
+   An enum's representation is the target's choice — an integer-backed named
+   type in every target but Elixir (a Rust newtype, C#'s `enum E : uint`, Dart's
    `extension type const E(int _value) implements int`, which is erased to
    the int and so costs nothing, holds every wire-legal value including `| max`
    headroom as `E(n)`, and types the fields, union tags and table accessors
-   that store it). Nothing
+   that store it). In Elixir a value is an ATOM (`:none` for 0, the variant's
+   snake_case otherwise, an unnamed `| max = K` headroom value the integer
+   itself) and `E.to_int/1` / `E.from_int/1` convert at the wire. Nothing
    on the wire requires it: a wire value above max is refused on read (§4.2),
    so no unnamed enum value is ever representable on the read side.
 
@@ -2814,7 +2818,9 @@ or a file per declaration where the language demands one.
   wire to Java. A table-free unit grows none of it.
 - **Elixir:** one `.ex` file per schema file, carrying one `defmodule` per
   declaration under the unit's own namespace plus the file-scope module
-  `<Ns>.<Base>` for constants, flags masks and the file's codecs. When a
+  `<Ns>.<Base>` for constants, flags masks and the file's codecs, and one
+  per-UNIT support module `<Ns>.PacketRuntime` (`PacketRuntime.ex`, a claimed
+  name) holding the helpers every file's codecs import. When a
   declaration (type, enum, union or union tag module) of the unit already takes
   `<Ns>.<Base>`, the file-scope module steps aside to `<Ns>.<Base>File`; a
   fixed table whose value struct the table backend emits as `<Ns>.<Base>`
@@ -2959,7 +2965,7 @@ object to emit against; the bit reader and writer live in the generated code:
 |---|---|---|---|
 | emits against | free functions over a caller-owned `ByteData` view | `static` methods on the file's class over a caller-owned `byte[]` | module functions over a binary; read and write thread the output, scratch and bit position as rebound accumulators — no stream struct |
 | error idiom | `bool` early-out | `boolean` early-out | `{:ok, value}` or `:error`; the body throws `:invalid` to a catch at the surface |
-| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | the writer returns the binary; read buffers need NO slack past the payload |
+| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | `write_<name>!/1` returns the binary and raises `ArgumentError` on a contract violation, `write_<name>/1` returns `{:ok, binary}` or `{:error, message}`; read buffers need NO slack past the payload |
 
 **Dart runs on the VM, AOT and dart2wasm, not on dart2js.** The generated
 Dart holds 64-bit values bit-transparently in `int` and moves them through

@@ -479,7 +479,7 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
 			// THE ORDINAL IS THE VARIANT'S POSITION, from 1, and 0 is None.
-			return fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits)
+			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, r.Name, name, r.StorageBits)
 		case *ir.Flags:
 			return fmt.Sprintf("%s::little-unsigned-64", name)
 		}
@@ -995,8 +995,9 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		case *ir.Enum:
 			n := len(r.Variants)
 			return leafDec{
-				spec:  fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits),
-				wrap:  rawf("if(%s <= %d, do: %s, else: 0)", name, n, name),
+				spec: fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits),
+				wrap: call("elem", call(g.ns+"."+r.Name+".from_int",
+					rawf("if(%s <= %d, do: %s, else: 0)", name, n, name)), raw("1")),
 				count: rawf("R.past(c, %s, %d)", name, n),
 			}
 		case *ir.Flags:
@@ -1392,15 +1393,33 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	g.pf("  # union %s: the TAG ORDINAL at its own storage width, then the WIDEST ARM,\n", u.Name)
 	g.pf("  # the slack behind a narrower arm zero-filled. TAG 0 IS None.\n")
 	g.emitShortDef(fmt.Sprintf("def %s_fixed_write_arm(value)", snake), fmt.Sprintf("%s_fixed_write_into(value, <<>>)", snake))
+	// THE VALUE IS THE PACKET PORT'S: nil for None, {:arm, payload}, or a
+	// payload-free arm's bare atom. The first case is the tag and the
+	// contract check; the second writes the arm it names.
 	g.pf("  def %s_fixed_write_into(value, acc) do\n", snake)
-	g.pf("    acc = <<acc::binary, value.type::little-unsigned-%d>>\n\n", tag*8)
-	g.pf("    case value.type do\n")
-	arms := make([]caseArm, 0, len(u.Variants)+1)
+	g.pf("    tag =\n")
+	g.pf("      case value do\n")
+	g.pf("        nil ->\n          0\n\n")
 	for i, v := range u.Variants {
+		if v.F == nil {
+			g.pf("        %s ->\n          %d\n\n", elixir.EnumAtom(v.Name), i+1)
+			continue
+		}
+		g.pf("        {%s, _} ->\n          %d\n\n", elixir.EnumAtom(v.Name), i+1)
+	}
+	g.pf("        other ->\n")
+	g.pf("          raise ArgumentError, \"not a value of union %s: #{inspect(other)}\"\n", u.Name)
+	g.pf("      end\n\n")
+	g.pf("    acc = <<acc::binary, tag::little-unsigned-%d>>\n\n", tag*8)
+	g.pf("    case value do\n")
+	arms := make([]caseArm, 0, len(u.Variants)+1)
+	for _, v := range u.Variants {
 		if v.F == nil {
 			continue
 		}
-		arms = append(arms, caseArm{label: fmt.Sprintf("%d", i+1), body: g.armWriter(u, v.F, "value."+v.Name, widest-fixedFieldBytes(v.F))})
+		local := "v_" + v.Name
+		arms = append(arms, caseArm{label: fmt.Sprintf("{%s, %s}", elixir.EnumAtom(v.Name), local),
+			body: g.armWriter(u, v.F, local, v.Name, widest-fixedFieldBytes(v.F))})
 	}
 	arms = append(arms, caseArm{label: "_", body: rawf("<<acc::binary, 0::size(%d)-unit(8)>>", widest)})
 	g.emitArms(arms, 6)
@@ -1434,15 +1453,15 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 		first = false
 		g.pf("      %d ->\n", i+1)
 		if v.F == nil {
-			g.pf("        {%%%s.%s{type: %d}, c, m}\n", g.ns, u.Name, i+1)
+			g.pf("        {%s, c, m}\n", elixir.EnumAtom(v.Name))
 			continue
 		}
 		for _, l := range g.armDecode(v.F, u, v.Name, i+1) {
 			g.pf("        %s\n", l)
 		}
 	}
-	g.pf("\n      0 ->\n        {%%%s.%s{}, c, m}\n", g.ns, u.Name)
-	g.pf("\n      _ ->\n        {%%%s.%s{}, c + 1, m}\n", g.ns, u.Name)
+	g.pf("\n      0 ->\n        {nil, c, m}\n")
+	g.pf("\n      _ ->\n        {nil, c + 1, m}\n")
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
@@ -1526,9 +1545,8 @@ func (g *fixedGen) emitArms(arms []caseArm, col int) {
 
 // armWriter is ONE arm's bytes appended to `acc`, then the slack out to the
 // widest arm as a zero segment.
-func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name string, slack int64) node {
+func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name, armName string, slack int64) node {
 	if f.Array != ir.ArrayNone {
-		armName := strings.TrimPrefix(name, "value.")
 		into := fmt.Sprintf("%s_fixed_write_%s(%s, acc)", ir.RustSnake(u.Name), ir.RustSnake(armName), name)
 		if slack == 0 {
 			return raw(into)
@@ -1589,18 +1607,18 @@ func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name string, slack int64)
 // armDecode is one arm's lines: the arm's value out of `arm`, and the union
 // struct naming it, with the count moved by whatever the arm bounds.
 func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []string {
-	mod := g.ns + "." + u.Name
+	arm := elixir.EnumAtom(field)
 	if unionArmNeedsDecodeHelper(f) {
 		return []string{
 			fmt.Sprintf("{v, c, m} = %s_fixed_decode_%s(arm, c, m)", ir.RustSnake(u.Name), ir.RustSnake(field)),
-			fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+			fmt.Sprintf("{{%s, v}, c, m}", arm),
 		}
 	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
 			return []string{
 				fmt.Sprintf("{v, c, m} = %s(arm, c, m)", g.decodeName(r)),
-				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+				fmt.Sprintf("{{%s, v}, c, m}", arm),
 			}
 		}
 		// AN ARM THAT IS ITSELF A UNION DECODES THROUGH THAT UNION'S OWN
@@ -1610,7 +1628,7 @@ func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []
 		if r, ok := f.Type.Ref.(*ir.Union); ok {
 			return []string{
 				fmt.Sprintf("{v, c, m} = %s%s_fixed_decode(arm, c, m)", g.unionModule(r), ir.RustSnake(r.Name)),
-				fmt.Sprintf("{%%%s{type: %d, %s: v}, c, m}", mod, tag, field),
+				fmt.Sprintf("{{%s, v}, c, m}", arm),
 			}
 		}
 	}
@@ -1619,7 +1637,7 @@ func (g *fixedGen) armDecode(f *ir.Field, u *ir.Union, field string, tag int) []
 	if d.count != nil {
 		lines = append(lines, "c = "+d.count.flat())
 	}
-	return append(lines, fmt.Sprintf("{%%%s{type: %d, %s: %s}, c, m}", mod, tag, field, d.wrap.flat()))
+	return append(lines, fmt.Sprintf("{{%s, %s}, c, m}", arm, d.wrap.flat()))
 }
 
 // ---------------------------------------------------------------------------

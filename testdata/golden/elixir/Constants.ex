@@ -4,16 +4,16 @@
 # AGPL-3.0, its output is not.
 # package example — protocol id 0xeb26c970fde3fd71
 #
-# The shipped Elixir wire path (issue #167): the serialize.elixir port's
-# measured shapes — byte-granular 32-bit-group packing and 40-bit read
-# windows (every intermediate a BEAM small integer), single accumulator-
-# threaded read/write functions per type (no stream struct, no per-field
-# tuple), function-head loops — with literal widths, zero dependencies.
+# The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
+# read windows (every intermediate a BEAM small integer), single
+# accumulator-threaded read/write functions per type (no stream struct, no
+# per-field tuple), function-head loops — with literal widths, zero
+# dependencies. The shared helpers live in PacketRuntime.ex.
 #
-# write_<name>(value) -> the wire binary. The writer TRUSTS the caller
+# write_<name>!(value) -> the wire binary. The writer TRUSTS the caller
 # (the C++ stance) up to the O(1) contract checks, which raise
 # ArgumentError — the BEAM has no compile-out assert, so they are always
-# on, matching the port.
+# on. write_<name>(value) -> {:ok, binary} | {:error, message} beside it.
 #
 # read_<name>(data, num_bits) -> {:ok, value} | :error, the family read
 # verdict. The wire is a trust boundary: reads validate everything —
@@ -22,48 +22,85 @@
 # No slack past the payload is required: the windows price themselves
 # inside the binary.
 #
-# measure_<name>(value) -> exact wire bits for that value (trusted, like
-# the writer). zero_<name>() -> the §5 zero form; construction
-# (%Struct{}) carries the specified defaults instead. Floats travel
-# bit-transparently: a non-finite IEEE-754 pattern — which no BEAM float
-# term can hold — reads back as {:nonfinite, bits} and writes from the
-# same form, the serialize.elixir convention.
+# zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the
+# specified defaults instead. Enum values are atoms, union values are nil,
+# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:
+# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads
+# back as {:nonfinite, bits} and writes from the same form.
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Constants.schema.
 defmodule Example.Constants do
-  # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
-  # sides at the same id speak identical bits; there is no other versioning.
+  @moduledoc """
+  The file-scope surface of Constants.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
+  @doc """
+  The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
+  sides at the same id speak identical bits; there is no other versioning.
+  """
+  @spec protocol_id() :: non_neg_integer()
   def protocol_id, do: 0xEB26C970FDE3FD71
 
+  @doc "The constant PositionUnits."
+  @spec position_units() :: integer()
   def position_units, do: 1024
 
+  @doc "The constant VelocityUnits."
+  @spec velocity_units() :: integer()
   def velocity_units, do: 1024
 
+  @doc "The constant RotationUnits."
+  @spec rotation_units() :: integer()
   def rotation_units, do: 1024
 
+  @doc "The constant MaxWorldMeters."
+  @spec max_world_meters() :: integer()
   def max_world_meters, do: 8192
 
+  @doc "The constant MaxPositionUnits."
+  @spec max_position_units() :: integer()
   def max_position_units, do: max_world_meters() * position_units()
 
+  @doc "The constant MaxSpeedMeters."
+  @spec max_speed_meters() :: integer()
   def max_speed_meters, do: 2048
 
+  @doc "The constant MaxVelocityUnits."
+  @spec max_velocity_units() :: integer()
   def max_velocity_units, do: max_speed_meters() * velocity_units()
 
+  @doc "The constant MaxHealth."
+  @spec max_health() :: integer()
   def max_health, do: 1000
 
+  @doc "The constant MaxObjects."
+  @spec max_objects() :: integer()
   def max_objects, do: 10000
 
+  @doc "The constant ShipMaxLasers."
+  @spec ship_max_lasers() :: integer()
   def ship_max_lasers, do: 16
 
+  @doc "The constant ShipMaxMissiles."
+  @spec ship_max_missiles() :: integer()
   def ship_max_missiles, do: 16
 
   # = Team.Max
+  @doc "The constant NumTeams."
+  @spec num_teams() :: integer()
   def num_teams, do: 2
 
+  @doc "The constant MaxInputsPerPacket."
+  @spec max_inputs_per_packet() :: integer()
   def max_inputs_per_packet, do: 16
 
+  @doc "The constant MaxBlockSize."
+  @spec max_block_size() :: integer()
   def max_block_size, do: 2000
 
+  @doc "The constant MaxChatLength."
+  @spec max_chat_length() :: integer()
   def max_chat_length, do: 256
 end

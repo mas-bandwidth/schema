@@ -6,8 +6,9 @@
 protocol_id = Armdemo.CarryFile.protocol_id()
 true = is_integer(protocol_id)
 
-carry = %Armdemo.Carry{type: 0}
-true = is_struct(carry) and carry.type == 0
+# the union's own module holds its type; its tag module is CarryType
+true = Armdemo.CarryType.from_int(0) == {:ok, :none}
+true = Code.ensure_loaded?(Armdemo.Carry)
 
 # the two are DISTINCT: the union's own module must not carry the file-scope
 # codecs that stepped aside to CarryFile
@@ -18,4 +19,4 @@ rescue
   _ in UndefinedFunctionError -> :ok
 end
 
-IO.puts("tables-elixir-file-module: CarryFile.protocol_id()=#{protocol_id} and %Carry{} both resolve, and Carry has no protocol_id/0 (two distinct modules)")
+IO.puts("tables-elixir-file-module: CarryFile.protocol_id()=#{protocol_id} and the Carry module both resolve, and Carry has no protocol_id/0 (two distinct modules)")

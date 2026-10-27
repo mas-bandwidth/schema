@@ -4,143 +4,295 @@
 # AGPL-3.0, its output is not.
 # package example — protocol id 0xeb26c970fde3fd71
 
-# Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2)
 defmodule Example.Team do
-  def none, do: 0
-  def red, do: 1
-  def blue, do: 2
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum Team: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none | :red | :blue
+
+  @doc "The wire value of a Team value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..2
+  def to_int(:none), do: 0
+  def to_int(:red), do: 1
+  def to_int(:blue), do: 2
+
+  def to_int(v) do
+    raise ArgumentError, "not a Team value: #{inspect(v)}"
+  end
+
+  @doc "The Team value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :red}
+  def from_int(2), do: {:ok, :blue}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 2
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 2
 end
 
-# ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
 defmodule Example.ShipType do
-  def none, do: 0
-  def fighter, do: 1
-  def corvette, do: 2
-  def bomber, do: 3
-  def destroyer, do: 4
-  def carrier, do: 5
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum ShipType: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none | :fighter | :corvette | :bomber | :destroyer | :carrier
+
+  @doc "The wire value of a ShipType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..5
+  def to_int(:none), do: 0
+  def to_int(:fighter), do: 1
+  def to_int(:corvette), do: 2
+  def to_int(:bomber), do: 3
+  def to_int(:destroyer), do: 4
+  def to_int(:carrier), do: 5
+
+  def to_int(v) do
+    raise ArgumentError, "not a ShipType value: #{inspect(v)}"
+  end
+
+  @doc "The ShipType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :fighter}
+  def from_int(2), do: {:ok, :corvette}
+  def from_int(3), do: {:ok, :bomber}
+  def from_int(4), do: {:ok, :destroyer}
+  def from_int(5), do: {:ok, :carrier}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 5
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 5
 end
 
-# MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
 defmodule Example.MissileType do
-  def none, do: 0
-  def heatseeker, do: 1
-  def torpedo, do: 2
-  def nuke, do: 3
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum MissileType: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none | :heatseeker | :torpedo | :nuke
+
+  @doc "The wire value of a MissileType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..3
+  def to_int(:none), do: 0
+  def to_int(:heatseeker), do: 1
+  def to_int(:torpedo), do: 2
+  def to_int(:nuke), do: 3
+
+  def to_int(v) do
+    raise ArgumentError, "not a MissileType value: #{inspect(v)}"
+  end
+
+  @doc "The MissileType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :heatseeker}
+  def from_int(2), do: {:ok, :torpedo}
+  def from_int(3), do: {:ok, :nuke}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 3
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 3
 end
 
-# PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2)
 defmodule Example.PropType do
-  def none, do: 0
-  def asteroid, do: 1
-  def chunk, do: 2
-  def fragment, do: 3
-  def sphere, do: 4
-  def black_hole, do: 5
-  def dyson_panel, do: 6
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum PropType: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none | :asteroid | :chunk | :fragment | :sphere | :black_hole | :dyson_panel
+
+  @doc "The wire value of a PropType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..6
+  def to_int(:none), do: 0
+  def to_int(:asteroid), do: 1
+  def to_int(:chunk), do: 2
+  def to_int(:fragment), do: 3
+  def to_int(:sphere), do: 4
+  def to_int(:black_hole), do: 5
+  def to_int(:dyson_panel), do: 6
+
+  def to_int(v) do
+    raise ArgumentError, "not a PropType value: #{inspect(v)}"
+  end
+
+  @doc "The PropType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :asteroid}
+  def from_int(2), do: {:ok, :chunk}
+  def from_int(3), do: {:ok, :fragment}
+  def from_int(4), do: {:ok, :sphere}
+  def from_int(5), do: {:ok, :black_hole}
+  def from_int(6), do: {:ok, :dyson_panel}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 6
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 6
 end
 
-# Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2)
 defmodule Example.Pending do
-  def none, do: 0
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum Pending: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none
+
+  @doc "The wire value of a Pending value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0
+  def to_int(:none), do: 0
+
+  def to_int(v) do
+    raise ArgumentError, "not a Pending value: #{inspect(v)}"
+  end
+
+  @doc "The Pending value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 0
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 0
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Enums.schema.
 defmodule Example.Enums do
+  @moduledoc """
+  The file-scope surface of Enums.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
 
-  # enum_name_team: debug/log/tooling name for any Team wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a Team value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_team(Example.Team.t() | integer()) :: String.t()
   def enum_name_team(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :red -> "Red"
       1 -> "Red"
+      :blue -> "Blue"
       2 -> "Blue"
       _ -> "???"
     end
   end
 
-  # enum_name_ship_type: debug/log/tooling name for any ShipType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a ShipType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_ship_type(Example.ShipType.t() | integer()) :: String.t()
   def enum_name_ship_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :fighter -> "Fighter"
       1 -> "Fighter"
+      :corvette -> "Corvette"
       2 -> "Corvette"
+      :bomber -> "Bomber"
       3 -> "Bomber"
+      :destroyer -> "Destroyer"
       4 -> "Destroyer"
+      :carrier -> "Carrier"
       5 -> "Carrier"
       _ -> "???"
     end
   end
 
-  # enum_name_missile_type: debug/log/tooling name for any MissileType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a MissileType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_missile_type(Example.MissileType.t() | integer()) :: String.t()
   def enum_name_missile_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :heatseeker -> "Heatseeker"
       1 -> "Heatseeker"
+      :torpedo -> "Torpedo"
       2 -> "Torpedo"
+      :nuke -> "Nuke"
       3 -> "Nuke"
       _ -> "???"
     end
   end
 
-  # enum_name_prop_type: debug/log/tooling name for any PropType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a PropType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_prop_type(Example.PropType.t() | integer()) :: String.t()
   def enum_name_prop_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :asteroid -> "Asteroid"
       1 -> "Asteroid"
+      :chunk -> "Chunk"
       2 -> "Chunk"
+      :fragment -> "Fragment"
       3 -> "Fragment"
+      :sphere -> "Sphere"
       4 -> "Sphere"
+      :black_hole -> "BlackHole"
       5 -> "BlackHole"
+      :dyson_panel -> "DysonPanel"
       6 -> "DysonPanel"
       _ -> "???"
     end
   end
 
-  # enum_name_pending: debug/log/tooling name for any Pending wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a Pending value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_pending(Example.Pending.t() | integer()) :: String.t()
   def enum_name_pending(value) do
     case value do
+      :none -> "None"
       0 -> "None"
       _ -> "???"
     end
@@ -149,15 +301,31 @@ defmodule Example.Enums do
   # ShipFlags — one bit per variant, consumed as masks; flags-typed fields store
   # the uint64 mask pattern in every target — a plain integer here — wire
   # 4 bits (SPEC §4.2). Mask names are the family's flat spelling.
+  @doc "The FiringLaser mask of ShipFlags (bit 0)."
+  @spec ship_flags_firing_laser() :: non_neg_integer()
   def ship_flags_firing_laser, do: 1 <<< 0
+
+  @doc "The Boosting mask of ShipFlags (bit 1)."
+  @spec ship_flags_boosting() :: non_neg_integer()
   def ship_flags_boosting, do: 1 <<< 1
+
+  @doc "The Braking mask of ShipFlags (bit 2)."
+  @spec ship_flags_braking() :: non_neg_integer()
   def ship_flags_braking, do: 1 <<< 2
+
+  @doc "The Aiming mask of ShipFlags (bit 3)."
+  @spec ship_flags_aiming() :: non_neg_integer()
   def ship_flags_aiming, do: 1 <<< 3
-  # the declared variant count (SPEC §4.2)
+
+  @doc "The declared variant count of ShipFlags (SPEC §4.2)."
+  @spec ship_flags_count() :: non_neg_integer()
   def ship_flags_count, do: 4
 
-  # flag_name_ship_flags: debug/log/tooling name for bit i of ShipFlags —
-  # out-of-range bits name as "???"
+  @doc """
+  The debug/log/tooling name of bit i of ShipFlags; out-of-range bits
+  name as "???".
+  """
+  @spec flag_name_ship_flags(integer()) :: String.t()
   def flag_name_ship_flags(bit) do
     case bit do
       0 -> "FiringLaser"
@@ -168,8 +336,11 @@ defmodule Example.Enums do
     end
   end
 
-  # flag_names_ship_flags renders the set bits of value as "A|B" — "0" for the
-  # empty set, bits past the declared variants as hex
+  @doc """
+  Renders the set bits of a ShipFlags value as "A|B": "0" for the empty
+  set, bits past the declared variants as hex.
+  """
+  @spec flag_names_ship_flags(non_neg_integer()) :: String.t()
   def flag_names_ship_flags(value) do
     names =
       Enum.filter(0..3, fn bit -> (value >>> bit &&& 1) != 0 end)

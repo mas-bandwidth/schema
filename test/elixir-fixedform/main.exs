@@ -366,7 +366,7 @@ Leg.eq(
 Leg.eq("pack[0].version", p0.version, 7)
 Leg.eq("pack[0].global.tick_rate", p0.global.tick_rate, 120)
 # THE ORDINAL IS THE VARIANT'S POSITION IN THE LAYOUT, from 1, and 0 is None.
-Leg.eq("pack[0].global.difficulty = Hard", p0.global.difficulty, 3)
+Leg.eq("pack[0].global.difficulty = Hard", p0.global.difficulty, :hard)
 Leg.eq("pack[0].global.build_note", p0.global.build_note, "first build")
 Leg.eq("pack[0].global.spawn_delays", p0.global.spawn_delays, [0.5, 1.0, 1.5])
 Leg.eq("pack[0].ships[0].display_name", Enum.at(p0.ships, 0).display_name, "fighter")
@@ -376,7 +376,7 @@ Leg.eq("pack[0].ships[2].gunner.callsign", Enum.at(p0.ships, 2).gunner.callsign,
 Leg.eq("pack[0].thresholds", p0.thresholds, [100, 200, 300])
 Leg.eq("pack[0].reserves", length(p0.reserves), 2)
 Leg.eq("pack[0].reserves[1].display_name", Enum.at(p0.reserves, 1).display_name, "spare-b")
-Leg.eq("pack[1].global.difficulty = Easy", p1v.global.difficulty, 1)
+Leg.eq("pack[1].global.difficulty = Easy", p1v.global.difficulty, :easy)
 
 # ---------------------------------------------------------------------------
 # THE READ: ANOTHER WRITER'S LAYOUT, through a plan compiled from it
@@ -865,29 +865,29 @@ ordinal_slide = fn ->
   slide =
     Tblfe1.FE1Fixed.fe_root_fixed_save([
       %Tblfe1.FeRoot{
-        grade: 3,
-        effect: %Tblfe1.Effect{type: 2, ward: %Tblfe1.Ward{charge: 41}},
+        grade: :gold,
+        effect: {:ward, %Tblfe1.Ward{charge: 41}},
         tail: 99
       },
       %Tblfe1.FeRoot{
-        grade: 1,
-        effect: %Tblfe1.Effect{type: 1, boost: %Tblfe1.Boost{power: 17}},
+        grade: :bronze,
+        effect: {:boost, %Tblfe1.Boost{power: 17}},
         tail: 100
       }
     ])
 
   {:ok, [s0, s1], slide_report} = Tblfe2.FE2Fixed.fe_root_fixed_load(slide)
-  Leg.eq("the enum's Gold slid 3 -> 4 and was REMAPPED", s0.grade, 4)
-  Leg.eq("the union's ward tag slid 2 -> 3", s0.effect.type, 3)
-  Leg.eq("and the arm behind the slid tag landed", s0.effect.ward.charge, 41)
+  Leg.eq("the enum's Gold slid 3 -> 4 and was REMAPPED", s0.grade, :gold)
+  Leg.eq("the union's ward tag slid 2 -> 3", elem(s0.effect, 0), :ward)
+  Leg.eq("and the arm behind the slid tag landed", elem(s0.effect, 1).charge, 41)
 
   Leg.eq(
     "Bronze did not slide, and neither did the boost arm",
-    {s1.grade, s1.effect.type},
-    {1, 1}
+    {s1.grade, elem(s1.effect, 0)},
+    {:bronze, :boost}
   )
 
-  Leg.eq("the arm's payload", s1.effect.boost.power, 17)
+  Leg.eq("the arm's payload", elem(s1.effect, 1).power, 17)
   Leg.eq("the tail past the union is undisturbed", {s0.tail, s1.tail}, {99, 100})
   Leg.eq("a slide is not a `kind_mismatch`", slide_report.kind_mismatch, 0)
 
@@ -904,15 +904,15 @@ ordinal_slide = fn ->
   back =
     Tblfe2.FE2Fixed.fe_root_fixed_save([
       %Tblfe2.FeRoot{
-        grade: 2,
-        effect: %Tblfe2.Effect{type: 2, shield: %Tblfe2.Shield{plating: 5}},
+        grade: :electrum,
+        effect: {:shield, %Tblfe2.Shield{plating: 5}},
         tail: 8
       }
     ])
 
   {:ok, [b0], back_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(back)
-  Leg.eq("a variant this reader cannot name resolves to None", b0.grade, 0)
-  Leg.eq("an arm this reader cannot name leaves the tag at None", b0.effect.type, 0)
+  Leg.eq("a variant this reader cannot name resolves to None", b0.grade, :none)
+  Leg.eq("an arm this reader cannot name leaves the tag at None", b0.effect, nil)
   Leg.eq("and the tail past it still lands", b0.tail, 8)
   Leg.eq("nothing was damaged coming back", back_report.malformed, false)
 end
@@ -945,10 +945,7 @@ Leg.section("text under a union arm: the identity read and the compiled read agr
 fu =
   Tblfu1.FU1Fixed.fu_root_fixed_save([
     %Tblfu1.FuRoot{
-      pick: %Tblfu1.Pick{
-        type: 2,
-        labelled: %Tblfu1.Labelled{lead: 5, label: "hello", trail: 9}
-      },
+      pick: {:labelled, %Tblfu1.Labelled{lead: 5, label: "hello", trail: 9}},
       tail: 3,
       mark: -12_345,
       # A SIGNALLING NaN: exponent all ones, payload 1, and the QUIET BIT CLEAR.
@@ -956,7 +953,7 @@ fu =
       heat: {:nonfinite, 0x7F800001}
     },
     %Tblfu1.FuRoot{
-      pick: %Tblfu1.Pick{type: 1, plain: %Tblfu1.Plain{n: 7}},
+      pick: {:plain, %Tblfu1.Plain{n: 7}},
       tail: 4,
       mark: 12_345,
       heat: 1.5
@@ -973,16 +970,16 @@ fu =
 
 # THE SECOND ARM, field by field. `lead` and `trail` sit either side of the
 # text on purpose: a mislaid length or a mislaid guard moves a neighbour too.
-Leg.eq("arm 2, identity: the tag", i_arm2.pick.type, 2)
-Leg.eq("arm 2, identity: lead before the text", i_arm2.pick.labelled.lead, 5)
-Leg.eq("arm 2, identity: the text's length", byte_size(i_arm2.pick.labelled.label), 5)
-Leg.eq("arm 2, identity: the text", i_arm2.pick.labelled.label, "hello")
-Leg.eq("arm 2, identity: trail after the text", i_arm2.pick.labelled.trail, 9)
+Leg.eq("arm 2, identity: the tag", elem(i_arm2.pick, 0), :labelled)
+Leg.eq("arm 2, identity: lead before the text", elem(i_arm2.pick, 1).lead, 5)
+Leg.eq("arm 2, identity: the text's length", byte_size(elem(i_arm2.pick, 1).label), 5)
+Leg.eq("arm 2, identity: the text", elem(i_arm2.pick, 1).label, "hello")
+Leg.eq("arm 2, identity: trail after the text", elem(i_arm2.pick, 1).trail, 9)
 Leg.eq("arm 2, identity: the tail past the union", i_arm2.tail, 3)
 
 # AND THE FIRST ARM, which is right by accident wherever the second is wrong:
 # an arm ordinal of 1 survives being confused with a utf8 flavour of 1.
-Leg.eq("arm 1, identity", {i_arm1.pick.type, i_arm1.pick.plain.n, i_arm1.tail}, {1, 7, 4})
+Leg.eq("arm 1, identity", {i_arm1.pick, i_arm1.tail}, {{:plain, %Tblfu1.Plain{n: 7}}, 4})
 
 Leg.eq("text under an arm moves no counter, identity", fu_ident.clamped, 0)
 Leg.eq("nothing was damaged on the identity read", fu_ident.malformed, false)
@@ -1012,16 +1009,16 @@ Leg.eq("the identity read widens nothing", fu_ident.widened, 0)
 union_arm_text_compiled = fn fu ->
   {:ok, [c_arm2, c_arm1], fu_comp} = Tblfu2.FU2Fixed.fu_root_fixed_load(fu)
 
-  Leg.eq("arm 2, compiled: the tag", c_arm2.pick.type, 2)
-  Leg.eq("arm 2, compiled: lead before the text", c_arm2.pick.labelled.lead, 5)
-  Leg.eq("arm 2, compiled: the text's length", byte_size(c_arm2.pick.labelled.label), 5)
-  Leg.eq("arm 2, compiled: the text", c_arm2.pick.labelled.label, "hello")
-  Leg.eq("arm 2, compiled: trail after the text", c_arm2.pick.labelled.trail, 9)
+  Leg.eq("arm 2, compiled: the tag", elem(c_arm2.pick, 0), :labelled)
+  Leg.eq("arm 2, compiled: lead before the text", elem(c_arm2.pick, 1).lead, 5)
+  Leg.eq("arm 2, compiled: the text's length", byte_size(elem(c_arm2.pick, 1).label), 5)
+  Leg.eq("arm 2, compiled: the text", elem(c_arm2.pick, 1).label, "hello")
+  Leg.eq("arm 2, compiled: trail after the text", elem(c_arm2.pick, 1).trail, 9)
   Leg.eq("arm 2, compiled: the tail past the union", c_arm2.tail, 3)
   # a field the writer does not carry has no plan entry, so the PREFILL lands it
   Leg.eq("arm 2, compiled: `extra` takes its declared default", c_arm2.extra, 11)
 
-  Leg.eq("arm 1, compiled", {c_arm1.pick.type, c_arm1.pick.plain.n, c_arm1.tail}, {1, 7, 4})
+  Leg.eq("arm 1, compiled", {c_arm1.pick, c_arm1.tail}, {{:plain, %Tblfu1.Plain{n: 7}}, 4})
   Leg.eq("arm 1, compiled: `extra` takes its declared default", c_arm1.extra, 11)
 
   Leg.eq("text under an arm moves no counter, compiled", fu_comp.clamped, 0)
@@ -1090,7 +1087,7 @@ end
 # A UNION TAG BEYOND THE DECLARED ARM COUNT lands None and counts one `clamped`
 # on the identity path: the tag is an ordinal like any other and 0 is None.
 {:ok, [t0], tag_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
-Leg.eq("a tag past the last arm lands None", t0.effect.type, 0)
+Leg.eq("a tag past the last arm lands None", t0.effect, nil)
 Leg.eq("and COUNTS one clamped", tag_report.clamped, 1)
 Leg.eq("the tail past the union still lands", t0.tail, 99)
 Leg.eq("a held tag is not damage", tag_report.malformed, false)
@@ -1102,7 +1099,7 @@ Leg.eq("a held tag is not damage", tag_report.malformed, false)
 # `union_append` row, where the lock hands the older entry in.
 compiled_tag_past_the_last_arm = fn ->
   {:ok, [t1], compiled_tag} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
-  Leg.eq("compiled: a tag matching no arm of the writer's lands None", t1.effect.type, 0)
+  Leg.eq("compiled: a tag matching no arm of the writer's lands None", t1.effect, nil)
   Leg.eq("compiled: and fires no entry, so nothing is counted", compiled_tag.clamped, 0)
 end
 
@@ -1117,9 +1114,9 @@ _ = compiled_tag_past_the_last_arm
 # `clamped`, on BOTH paths — the identity plan holds it against the variant
 # count it was built from, a compiled plan against the writer's own table.
 {:ok, [e0], enum_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
-Leg.eq("identity: an ordinal past the last variant lands None", e0.grade, 0)
+Leg.eq("identity: an ordinal past the last variant lands None", e0.grade, :none)
 Leg.eq("identity: and COUNTS one clamped", enum_report.clamped, 1)
-Leg.eq("identity: the arm behind a good tag is undisturbed", e0.effect.ward.charge, 41)
+Leg.eq("identity: the arm behind a good tag is undisturbed", elem(e0.effect, 1).charge, 41)
 
 # AND THE SAME SPLIT FOR THE ENUM (§5.6): the identity half above holds the
 # ordinal against the variant count the plan was built from and RUNS; the
@@ -1128,7 +1125,7 @@ Leg.eq("identity: the arm behind a good tag is undisturbed", e0.effect.ward.char
 # `enum_append` and `enum_width` rows.
 compiled_enum_past_the_last_variant = fn ->
   {:ok, [e1], compiled_enum} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
-  Leg.eq("compiled: an ordinal past the last variant lands None", e1.grade, 0)
+  Leg.eq("compiled: an ordinal past the last variant lands None", e1.grade, :none)
   Leg.eq("compiled: and COUNTS one clamped", compiled_enum.clamped, 1)
 end
 
@@ -1141,7 +1138,7 @@ _ = compiled_enum_past_the_last_variant
 
 # ORDINAL 0 IS None AND IS NOT A CLAMP, which is what keeps the counter honest.
 {:ok, [z0], none_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(0, 0)))
-Leg.eq("None is a value and not a clamp", {z0.grade, z0.effect.type}, {0, 0})
+Leg.eq("None is a value and not a clamp", {z0.grade, z0.effect}, {:none, nil})
 Leg.eq("so nothing is counted", none_report.clamped, 0)
 
 # THE 64-BIT TEMPORARY (schema#876 C6): a width-8 ordinal is read WHOLE through
@@ -1864,7 +1861,7 @@ Leg.check(
         Tblfu1.FixedRuntime.report()
       )
 
-    elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick.labelled.label
+    elem(elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick, 1).label
   catch
     :throw, {:refuse, :text_ill_formed} -> :refused
   end != "hello"
@@ -1893,7 +1890,7 @@ unchecked =
 
 Leg.check(
   "an ordinal riding as a plain copy is held by the PROJECTION, not the plan",
-  loose.grade == 0 and loose_report.clamped == 0 and loose_count == 1
+  loose.grade == :none and loose_report.clamped == 0 and loose_count == 1
 )
 
 # ---------------------------------------------------------------------------

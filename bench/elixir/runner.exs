@@ -398,7 +398,7 @@ defmodule SchemaBenchElixir do
         opts,
         "bench_mixed",
         "bench_mixed",
-        &Bench.Bench.write_bench_mixed/1,
+        &Bench.Bench.write_bench_mixed!/1,
         &Bench.Bench.read_bench_mixed/2
       )
 
@@ -425,7 +425,7 @@ defmodule SchemaBenchElixir do
         gated_mixed,
         iters,
         num_runs,
-        &Bench.Bench.write_bench_mixed/1,
+        &Bench.Bench.write_bench_mixed!/1,
         &Bench.Bench.read_bench_mixed/2
       )
 

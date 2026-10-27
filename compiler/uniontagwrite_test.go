@@ -72,7 +72,7 @@ var tagGoneFromRelease = map[string][]string{
 // a language with no dormant-assert idiom keeps the form native to it. They
 // are the only two left.
 var tagRefusesEveryBuild = map[string][]string{
-	"elixir": {`raise ArgumentError, "value.type is above the wire maximum"`},
+	"elixir": {`raise ArgumentError, "value.shot is not a Shot value: #{inspect(value_shot_other)}"`},
 	"go":     {"if value.Type > ShotTypeMax {"},
 }
 

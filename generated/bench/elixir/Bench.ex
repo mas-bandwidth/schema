@@ -4,16 +4,16 @@
 # AGPL-3.0, its output is not.
 # package bench — protocol id 0xc93127c82f083edf
 #
-# The shipped Elixir wire path (issue #167): the serialize.elixir port's
-# measured shapes — byte-granular 32-bit-group packing and 40-bit read
-# windows (every intermediate a BEAM small integer), single accumulator-
-# threaded read/write functions per type (no stream struct, no per-field
-# tuple), function-head loops — with literal widths, zero dependencies.
+# The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
+# read windows (every intermediate a BEAM small integer), single
+# accumulator-threaded read/write functions per type (no stream struct, no
+# per-field tuple), function-head loops — with literal widths, zero
+# dependencies. The shared helpers live in PacketRuntime.ex.
 #
-# write_<name>(value) -> the wire binary. The writer TRUSTS the caller
+# write_<name>!(value) -> the wire binary. The writer TRUSTS the caller
 # (the C++ stance) up to the O(1) contract checks, which raise
 # ArgumentError — the BEAM has no compile-out assert, so they are always
-# on, matching the port.
+# on. write_<name>(value) -> {:ok, binary} | {:error, message} beside it.
 #
 # read_<name>(data, num_bits) -> {:ok, value} | :error, the family read
 # verdict. The wire is a trust boundary: reads validate everything —
@@ -22,15 +22,34 @@
 # No slack past the payload is required: the windows price themselves
 # inside the binary.
 #
-# measure_<name>(value) -> exact wire bits for that value (trusted, like
-# the writer). zero_<name>() -> the §5 zero form; construction
-# (%Struct{}) carries the specified defaults instead. Floats travel
-# bit-transparently: a non-finite IEEE-754 pattern — which no BEAM float
-# term can hold — reads back as {:nonfinite, bits} and writes from the
-# same form, the serialize.elixir convention.
+# zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the
+# specified defaults instead. Enum values are atoms, union values are nil,
+# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:
+# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads
+# back as {:nonfinite, bits} and writes from the same form.
 
 # type BenchPacket
 defmodule Bench.BenchPacket do
+  @moduledoc """
+  The type BenchPacket. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{
+          a: -100..100,
+          b: 0..65535,
+          c: -1_000_000..1_000_000,
+          bits7: 0..127,
+          bits13: 0..8191,
+          bits23: 0..8_388_607,
+          flag: boolean(),
+          x: Bench.PacketRuntime.float32(),
+          y: Bench.PacketRuntime.float32(),
+          z: Bench.PacketRuntime.float32(),
+          big: 0..18_446_744_073_709_551_615,
+          blob: [0..255]
+        }
+
   # a: wire [-100, 100]
   # b: wire [0, 65535]
   # c: wire [-1000000, 1000000]
@@ -50,6 +69,24 @@ end
 
 # type BenchInts
 defmodule Bench.BenchInts do
+  @moduledoc """
+  The type BenchInts. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{
+          f0: -100..100,
+          f1: 0..65535,
+          f2: -1_000_000..1_000_000,
+          f3: 0..3,
+          f4: -15..15,
+          f5: 0..1000,
+          f6: -2048..2047,
+          f7: 0..255,
+          f8: -600_000..600_000,
+          f9: 0..100
+        }
+
   # f0: wire [-100, 100]
   # f1: wire [0, 65535]
   # f2: wire [-1000000, 1000000]
@@ -65,38 +102,126 @@ end
 
 # type BenchBits
 defmodule Bench.BenchBits do
+  @moduledoc """
+  The type BenchBits. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{
+          b7: 0..127,
+          b13: 0..8191,
+          b23: 0..8_388_607,
+          b3: 0..7,
+          b32: 0..4_294_967_295,
+          b11: 0..2047,
+          b19: 0..524_287,
+          b48: 0..281_474_976_710_655
+        }
+
   defstruct b7: 0, b13: 0, b23: 0, b3: 0, b32: 0, b11: 0, b19: 0, b48: 0
 end
 
-# MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 defmodule Bench.MixedWeapon do
-  def none, do: 0
-  def fists, do: 1
-  def pistol, do: 2
-  def shotgun, do: 3
-  def rifle, do: 4
-  def sniper, do: 5
-  def smg, do: 6
-  def rocket, do: 7
-  def grenade, do: 8
-  def plasma, do: 9
-  def railgun, do: 10
-  def flamer, do: 11
-  def mine, do: 12
-  def turret, do: 13
-  def drone, do: 14
-  def repair, do: 15
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum MixedWeapon: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t ::
+          :none
+          | :fists
+          | :pistol
+          | :shotgun
+          | :rifle
+          | :sniper
+          | :smg
+          | :rocket
+          | :grenade
+          | :plasma
+          | :railgun
+          | :flamer
+          | :mine
+          | :turret
+          | :drone
+          | :repair
+
+  @doc "The wire value of a MixedWeapon value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..15
+  def to_int(:none), do: 0
+  def to_int(:fists), do: 1
+  def to_int(:pistol), do: 2
+  def to_int(:shotgun), do: 3
+  def to_int(:rifle), do: 4
+  def to_int(:sniper), do: 5
+  def to_int(:smg), do: 6
+  def to_int(:rocket), do: 7
+  def to_int(:grenade), do: 8
+  def to_int(:plasma), do: 9
+  def to_int(:railgun), do: 10
+  def to_int(:flamer), do: 11
+  def to_int(:mine), do: 12
+  def to_int(:turret), do: 13
+  def to_int(:drone), do: 14
+  def to_int(:repair), do: 15
+
+  def to_int(v) do
+    raise ArgumentError, "not a MixedWeapon value: #{inspect(v)}"
+  end
+
+  @doc "The MixedWeapon value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :fists}
+  def from_int(2), do: {:ok, :pistol}
+  def from_int(3), do: {:ok, :shotgun}
+  def from_int(4), do: {:ok, :rifle}
+  def from_int(5), do: {:ok, :sniper}
+  def from_int(6), do: {:ok, :smg}
+  def from_int(7), do: {:ok, :rocket}
+  def from_int(8), do: {:ok, :grenade}
+  def from_int(9), do: {:ok, :plasma}
+  def from_int(10), do: {:ok, :railgun}
+  def from_int(11), do: {:ok, :flamer}
+  def from_int(12), do: {:ok, :mine}
+  def from_int(13), do: {:ok, :turret}
+  def from_int(14), do: {:ok, :drone}
+  def from_int(15), do: {:ok, :repair}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 15
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 15
 end
 
 # type MixedEntity
 defmodule Bench.MixedEntity do
+  @moduledoc """
+  The type MixedEntity. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{
+          entity_id: 0..4095,
+          pos_x: -16383..16383,
+          pos_y: -16383..16383,
+          pos_z: -16383..16383,
+          yaw: 0..511,
+          pitch: 0..511,
+          vel_x: -2048..2047,
+          vel_y: -2048..2047,
+          vel_z: -2048..2047,
+          health: 0..1000,
+          weapon: Bench.MixedWeapon.t(),
+          damage: 0..18_446_744_073_709_551_615,
+          moving: boolean(),
+          firing: boolean()
+        }
+
   # pos_x: wire [-16383, 16383]
   # pos_y: wire [-16383, 16383]
   # pos_z: wire [-16383, 16383]
@@ -115,7 +240,7 @@ defmodule Bench.MixedEntity do
             vel_y: 0,
             vel_z: 0,
             health: 0,
-            weapon: 0,
+            weapon: :none,
             damage: 0,
             moving: false,
             firing: false
@@ -123,12 +248,26 @@ end
 
 # type MixedStat
 defmodule Bench.MixedStat do
+  @moduledoc """
+  The type MixedStat. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{stat_id: 0..255, delta: -512..511}
+
   # delta: wire [-512, 511]
   defstruct stat_id: 0, delta: 0
 end
 
 # type MixedHitEvent
 defmodule Bench.MixedHitEvent do
+  @moduledoc """
+  The type MixedHitEvent. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{target_id: 0..4095, damage: 0..4095, hit_kind: 0..7, crit: boolean()}
+
   # damage: wire [0, 4095]
   # hit_kind: wire [0, 7]
   defstruct target_id: 0, damage: 0, hit_kind: 0, crit: false
@@ -136,41 +275,116 @@ end
 
 # type MixedChatEvent
 defmodule Bench.MixedChatEvent do
+  @moduledoc """
+  The type MixedChatEvent. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{channel: 0..3, speaker: 0..4095}
+
   # channel: wire [0, 3]
   defstruct channel: 0, speaker: 0
 end
 
 # type MixedPickupEvent
 defmodule Bench.MixedPickupEvent do
+  @moduledoc """
+  The type MixedPickupEvent. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{item_id: 0..1023, amount: 0..255}
+
   # amount: wire [0, 255]
   defstruct item_id: 0, amount: 0
 end
 
 # MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Bench.MixedEventType do
-  def none, do: 0
-  def hit, do: 1
-  def chat, do: 2
-  def pickup, do: 3
-  # the declared variant count (SPEC §4.2)
+  @moduledoc "The tag of union MixedEvent: :none, then one atom per arm in declared order."
+
+  @type t :: :none | :hit | :chat | :pickup
+
+  @doc "The wire value of a MixedEventType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..3
+  def to_int(:none), do: 0
+  def to_int(:hit), do: 1
+  def to_int(:chat), do: 2
+  def to_int(:pickup), do: 3
+
+  def to_int(v) do
+    raise ArgumentError, "not a MixedEventType value: #{inspect(v)}"
+  end
+
+  @doc "The MixedEventType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :hit}
+  def from_int(2), do: {:ok, :chat}
+  def from_int(3), do: {:ok, :pickup}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 3
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 3
 end
 
-# MixedEvent — at most one of the arms; type says which. Construction is the empty
-# union (None). A read builds the selected arm from the wire; unselected
-# arms hold their construction form (SPEC §4.8 leaves them unspecified).
-# Consumers read the selected arm only.
+# MixedEvent — nil (None), {:arm, payload}, or a payload-free arm's bare atom (SPEC §4.8)
 defmodule Bench.MixedEvent do
-  defstruct type: 0,
-            hit: %Bench.MixedHitEvent{},
-            chat: %Bench.MixedChatEvent{},
-            pickup: %Bench.MixedPickupEvent{}
+  @moduledoc """
+  The union MixedEvent: `nil` is None, an arm with a payload is
+  `{:arm, payload}`, and a payload-free arm is its bare atom.
+  """
+
+  @type t ::
+          nil
+          | {:hit, Bench.MixedHitEvent.t()}
+          | {:chat, Bench.MixedChatEvent.t()}
+          | {:pickup, Bench.MixedPickupEvent.t()}
 end
 
 # type BenchMixed
 defmodule Bench.BenchMixed do
+  @moduledoc """
+  The type BenchMixed. Construction carries its specified defaults; the
+  codecs are in Bench.Bench.
+  """
+
+  @type t :: %__MODULE__{
+          sequence: 0..65535,
+          ack_sequence: 0..65535,
+          ack_bits: 0..4_294_967_295,
+          session_id: 0..18_446_744_073_709_551_615,
+          client_id: 0..4_294_967_295,
+          nonce: 0..18_446_744_073_709_551_615,
+          world_time: -1_000_000_000_000..1_000_000_000_000,
+          frame_tick: 0..281_474_976_710_655,
+          server_time: 0..16_776_960,
+          entities: [Bench.MixedEntity.t()],
+          stats: [Bench.MixedStat.t()],
+          game_event: Bench.MixedEvent.t(),
+          loadout: [0..255],
+          player_name: String.t(),
+          payload: binary(),
+          aim_x: float(),
+          aim_y: float(),
+          aim_z: float(),
+          recoil: Bench.PacketRuntime.float32(),
+          drift: Bench.PacketRuntime.float64(),
+          wide_key: 0..340_282_366_920_938_463_463_374_607_431_768_211_455,
+          flux:
+            -1_267_650_600_228_229_401_496_703_205_376..1_267_650_600_228_229_401_496_703_205_376,
+          ping: 0..64000,
+          crc_hint: 0..16_777_215,
+          has_extra: boolean(),
+          extra: 0..255,
+          idle_ticks: 0..15
+        }
+
   # ack_sequence: wire [0, 65535]
   # nonce: wire [0, 18446744073709551615]
   # world_time: wire [-1000000000000, 1000000000000]
@@ -198,7 +412,7 @@ defmodule Bench.BenchMixed do
             server_time: 0,
             entities: List.duplicate(%Bench.MixedEntity{}, 1),
             stats: [],
-            game_event: %Bench.MixedEvent{},
+            game_event: nil,
             loadout: List.duplicate(0, 4),
             player_name: <<>>,
             payload: <<>>,
@@ -219,52 +433,52 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Bench.schema.
 defmodule Bench.Bench do
+  @moduledoc """
+  The file-scope surface of Bench.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
 
-  @cf_tab_0 (fn ->
-               fr = fn value ->
-                 ax = abs(value)
+  import Bench.PacketRuntime,
+    only: [
+      rd: 3,
+      rdw: 3,
+      f32_bits: 1,
+      f32_value: 1,
+      put_f64: 2,
+      get_f64: 2,
+      cf_quantize: 5,
+      cf_table: 4
+    ]
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-                   y = value * 536_870_913.0
-                   y - (y - value)
-                 else
-                   case <<value::float-32-little>> do
-                     <<rounded::float-32-little>> -> rounded
-                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-                   end
-                 end
-               end
+  @cf_tab_0 cf_table(200, 200.0, 2.0, -1.0)
 
-               List.to_tuple(
-                 for integer <- 0..200 do
-                   quotient = fr.(fr.(integer * 1.0) / 200.0)
-                   scaled = fr.(quotient * 2.0)
-
-                   case fr.(scaled + -1.0) do
-                     :pos_inf -> {:nonfinite, 0x7F800000}
-                     :neg_inf -> {:nonfinite, 0xFF800000}
-                     value -> value
-                   end
-                 end
-               )
-             end).()
-
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
-  # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
-  # sides at the same id speak identical bits; there is no other versioning.
+  @doc """
+  The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
+  sides at the same id speak identical bits; there is no other versioning.
+  """
+  @spec protocol_id() :: non_neg_integer()
   def protocol_id, do: 0xC93127C82F083EDF
 
-  # bench_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # bench_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a BenchPacket can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec bench_packet_max_bits() :: pos_integer()
   def bench_packet_max_bits, do: 392
+
+  @doc """
+  bench_packet_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec bench_packet_max_bytes() :: pos_integer()
   def bench_packet_max_bytes, do: 56
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.BenchPacket{}).
+  @doc """
+  The §5 zero form of BenchPacket: all-zero storage. Specified defaults live
+  only in construction (`%Bench.BenchPacket{}`).
+  """
+  @spec zero_bench_packet() :: Bench.BenchPacket.t()
   def zero_bench_packet do
     %Bench.BenchPacket{
       a: 0,
@@ -282,12 +496,13 @@ defmodule Bench.Bench do
     }
   end
 
-  # write_bench_packet packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_bench_packet(value) do
-    data = <<>>
-
+  @doc """
+  Packs a BenchPacket into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_bench_packet!(Bench.BenchPacket.t()) :: binary()
+  def write_bench_packet!(value) do
     %{
       a: value_a,
       b: value_b,
@@ -367,9 +582,9 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 1
 
     data =
-      <<data::binary, sc0::little-size(6)-unit(8), sc1::little-size(5)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+      <<sc0::little-size(6)-unit(8), sc1::little-size(5)-unit(8), sc2::little-size(4)-unit(8),
+        sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8), sc5::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
 
     scratch = scratch >>> 32
     # align: zero-pad to the byte boundary (SPEC §4.3)
@@ -385,11 +600,26 @@ defmodule Bench.Bench do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_bench_packet_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_bench_packet!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_bench_packet(Bench.BenchPacket.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_bench_packet(value) do
+    {:ok, write_bench_packet!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a BenchPacket from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_bench_packet_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.BenchPacket.t(), non_neg_integer()} | :error
   def read_bench_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -397,72 +627,48 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 249 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 249 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_a = v - 100
       v = rv >>> 8 &&& 0xFFFF
-      bits_read = bits_read + 16
       v_b = v
       v = rv >>> 24 &&& 0x1FFFFF
-      bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 2_000_000, do: throw(:invalid)
       v_c = v - 1_000_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 45, 49)
       v = rv &&& 0x7F
-      bits_read = bits_read + 7
       v_bits7 = v
       v = rv >>> 7 &&& 0x1FFF
-      bits_read = bits_read + 13
       v_bits13 = v
       v = rv >>> 20 &&& 0x7FFFFF
-      bits_read = bits_read + 23
       v_bits23 = v
       v = rv >>> 43 &&& 0x1
-      bits_read = bits_read + 1
       v_flag = v == 1
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 89, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_x = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 121, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_y = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 153, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_z = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 185, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 217, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_big = w
-      pad = 8 - (bits_read &&& 7) &&& 7
-
-      if pad != 0 do
-        if bits_read + pad > num_bits do
-          throw(:invalid)
-        end
-
-        if rd(data, bits_read, pad) != 0 do
-          # nonzero padding is refused (SPEC §4.3)
-          throw(:invalid)
-        end
-      end
-
-      bits_read = bits_read + pad
-      if bits_read + 136 > num_bits, do: throw(:invalid)
-      {bits_read, v_blob} = r_bench_packet_blob_align(17, [], data, num_bits, bits_read)
+      if 256 > num_bits, do: throw(:invalid)
+      # nonzero padding is refused (SPEC §4.3)
+      if rd(data, 249, 7) != 0, do: throw(:invalid)
+      if 392 > num_bits, do: throw(:invalid)
+      {bits_read, v_blob} = r_bench_packet_blob_align(17, [], data, num_bits, 256)
 
       value = %Bench.BenchPacket{
         a: v_a,
@@ -485,8 +691,11 @@ defmodule Bench.Bench do
     end
   end
 
-  # read_bench_packet is read_bench_packet_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a BenchPacket from the first num_bits of data: read_bench_packet_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_bench_packet(binary(), non_neg_integer()) :: {:ok, Bench.BenchPacket.t()} | :error
   def read_bench_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_packet_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -494,32 +703,35 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_bench_packet is the exact wire bits write_bench_packet would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_bench_packet(_value) do
-    bits = 0
-    bits = bits + 249
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits + 136
-  end
-
-  # bench_ints_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # bench_ints_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a BenchInts can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec bench_ints_max_bits() :: pos_integer()
   def bench_ints_max_bits, do: 110
+
+  @doc """
+  bench_ints_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec bench_ints_max_bytes() :: pos_integer()
   def bench_ints_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.BenchInts{}).
+  @doc """
+  The §5 zero form of BenchInts: all-zero storage. Specified defaults live
+  only in construction (`%Bench.BenchInts{}`).
+  """
+  @spec zero_bench_ints() :: Bench.BenchInts.t()
   def zero_bench_ints do
     %Bench.BenchInts{f0: 0, f1: 0, f2: 0, f3: 0, f4: 0, f5: 0, f6: 0, f7: 0, f8: 0, f9: 0}
   end
 
-  # write_bench_ints packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_bench_ints(value) do
-    data = <<>>
-
+  @doc """
+  Packs a BenchInts into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_bench_ints!(Bench.BenchInts.t()) :: binary()
+  def write_bench_ints!(value) do
     %{
       f0: value_f0,
       f1: value_f1,
@@ -648,7 +860,7 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 7
 
     data =
-      <<data::binary, sc0::little-size(6)-unit(8), sc1::little-size(6)-unit(8),
+      <<sc0::little-size(6)-unit(8), sc1::little-size(6)-unit(8),
         scratch::little-size(1)-unit(8)>>
 
     scratch = scratch >>> 8
@@ -656,11 +868,26 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_bench_ints_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_bench_ints!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_bench_ints(Bench.BenchInts.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_bench_ints(value) do
+    {:ok, write_bench_ints!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a BenchInts from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_bench_ints_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.BenchInts.t(), non_neg_integer()} | :error
   def read_bench_ints_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -668,50 +895,39 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 110 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 110 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_f0 = v - 100
       v = rv >>> 8 &&& 0xFFFF
-      bits_read = bits_read + 16
       v_f1 = v
       v = rv >>> 24 &&& 0x1FFFFF
-      bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 2_000_000, do: throw(:invalid)
       v_f2 = v - 1_000_000
       v = rv >>> 45 &&& 0x3
-      bits_read = bits_read + 2
       v_f3 = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 47, 49)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 30, do: throw(:invalid)
       v_f4 = v - 15
       v = rv >>> 5 &&& 0x3FF
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_f5 = v
       v = rv >>> 15 &&& 0xFFF
-      bits_read = bits_read + 12
       v_f6 = v - 2048
       v = rv >>> 27 &&& 0xFF
-      bits_read = bits_read + 8
       v_f7 = v
-      rv = rd(data, bits_read, 28)
+      rv = rd(data, 82, 28)
       v = rv &&& 0x1FFFFF
-      bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_200_000, do: throw(:invalid)
       v_f8 = v - 600_000
       v = rv >>> 21
-      bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 100, do: throw(:invalid)
       v_f9 = v
@@ -729,14 +945,17 @@ defmodule Bench.Bench do
         f9: v_f9
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 110}
     catch
       :invalid -> :error
     end
   end
 
-  # read_bench_ints is read_bench_ints_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a BenchInts from the first num_bits of data: read_bench_ints_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_bench_ints(binary(), non_neg_integer()) :: {:ok, Bench.BenchInts.t()} | :error
   def read_bench_ints(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_ints_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -744,27 +963,35 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_bench_ints is the exact wire bits write_bench_ints would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_bench_ints(_value), do: 110
-
-  # bench_bits_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # bench_bits_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a BenchBits can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec bench_bits_max_bits() :: pos_integer()
   def bench_bits_max_bits, do: 156
+
+  @doc """
+  bench_bits_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec bench_bits_max_bytes() :: pos_integer()
   def bench_bits_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.BenchBits{}).
+  @doc """
+  The §5 zero form of BenchBits: all-zero storage. Specified defaults live
+  only in construction (`%Bench.BenchBits{}`).
+  """
+  @spec zero_bench_bits() :: Bench.BenchBits.t()
   def zero_bench_bits do
     %Bench.BenchBits{b7: 0, b13: 0, b23: 0, b3: 0, b32: 0, b11: 0, b19: 0, b48: 0}
   end
 
-  # write_bench_bits packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_bench_bits(value) do
-    data = <<>>
-
+  @doc """
+  Packs a BenchBits into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_bench_bits!(Bench.BenchBits.t()) :: binary()
+  def write_bench_bits!(value) do
     %{
       b7: value_b7,
       b13: value_b13,
@@ -802,19 +1029,34 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 4
 
     data =
-      <<data::binary, sc0::little-size(5)-unit(8), sc1::little-size(6)-unit(8),
-        sc2::little-size(6)-unit(8), scratch::little-size(2)-unit(8)>>
+      <<sc0::little-size(5)-unit(8), sc1::little-size(6)-unit(8), sc2::little-size(6)-unit(8),
+        scratch::little-size(2)-unit(8)>>
 
     scratch = scratch >>> 16
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_bench_bits_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_bench_bits!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_bench_bits(Bench.BenchBits.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_bench_bits(value) do
+    {:ok, write_bench_bits!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a BenchBits from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_bench_bits_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.BenchBits.t(), non_neg_integer()} | :error
   def read_bench_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -822,38 +1064,28 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 156 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 156 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7F
-      bits_read = bits_read + 7
       v_b7 = v
       v = rv >>> 7 &&& 0x1FFF
-      bits_read = bits_read + 13
       v_b13 = v
       v = rv >>> 20 &&& 0x7FFFFF
-      bits_read = bits_read + 23
       v_b23 = v
       v = rv >>> 43 &&& 0x7
-      bits_read = bits_read + 3
       v_b3 = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 46, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_b32 = v
       v = rv >>> 32 &&& 0x7FF
-      bits_read = bits_read + 11
       v_b11 = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 89, 49)
       v = rv &&& 0x7FFFF
-      bits_read = bits_read + 19
       v_b19 = v
-      rv = rdw(data, bits_read, 48)
+      rv = rdw(data, 108, 48)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32
-      bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_b48 = w
 
@@ -868,14 +1100,17 @@ defmodule Bench.Bench do
         b48: v_b48
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 156}
     catch
       :invalid -> :error
     end
   end
 
-  # read_bench_bits is read_bench_bits_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a BenchBits from the first num_bits of data: read_bench_bits_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_bench_bits(binary(), non_neg_integer()) :: {:ok, Bench.BenchBits.t()} | :error
   def read_bench_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_bits_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -883,29 +1118,44 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_bench_bits is the exact wire bits write_bench_bits would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_bench_bits(_value), do: 156
-
-  # enum_name_mixed_weapon: debug/log/tooling name for any MixedWeapon wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a MixedWeapon value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_mixed_weapon(Bench.MixedWeapon.t() | integer()) :: String.t()
   def enum_name_mixed_weapon(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :fists -> "Fists"
       1 -> "Fists"
+      :pistol -> "Pistol"
       2 -> "Pistol"
+      :shotgun -> "Shotgun"
       3 -> "Shotgun"
+      :rifle -> "Rifle"
       4 -> "Rifle"
+      :sniper -> "Sniper"
       5 -> "Sniper"
+      :smg -> "Smg"
       6 -> "Smg"
+      :rocket -> "Rocket"
       7 -> "Rocket"
+      :grenade -> "Grenade"
       8 -> "Grenade"
+      :plasma -> "Plasma"
       9 -> "Plasma"
+      :railgun -> "Railgun"
       10 -> "Railgun"
+      :flamer -> "Flamer"
       11 -> "Flamer"
+      :mine -> "Mine"
       12 -> "Mine"
+      :turret -> "Turret"
       13 -> "Turret"
+      :drone -> "Drone"
       14 -> "Drone"
+      :repair -> "Repair"
       15 -> "Repair"
       _ -> "???"
     end
@@ -914,19 +1164,47 @@ defmodule Bench.Bench do
   # MixedDamage — one bit per variant, consumed as masks; flags-typed fields store
   # the uint64 mask pattern in every target — a plain integer here — wire
   # 8 bits (SPEC §4.2). Mask names are the family's flat spelling.
+  @doc "The Bleeding mask of MixedDamage (bit 0)."
+  @spec mixed_damage_bleeding() :: non_neg_integer()
   def mixed_damage_bleeding, do: 1 <<< 0
+
+  @doc "The Burning mask of MixedDamage (bit 1)."
+  @spec mixed_damage_burning() :: non_neg_integer()
   def mixed_damage_burning, do: 1 <<< 1
+
+  @doc "The Stunned mask of MixedDamage (bit 2)."
+  @spec mixed_damage_stunned() :: non_neg_integer()
   def mixed_damage_stunned, do: 1 <<< 2
+
+  @doc "The Slowed mask of MixedDamage (bit 3)."
+  @spec mixed_damage_slowed() :: non_neg_integer()
   def mixed_damage_slowed, do: 1 <<< 3
+
+  @doc "The Poisoned mask of MixedDamage (bit 4)."
+  @spec mixed_damage_poisoned() :: non_neg_integer()
   def mixed_damage_poisoned, do: 1 <<< 4
+
+  @doc "The Shielded mask of MixedDamage (bit 5)."
+  @spec mixed_damage_shielded() :: non_neg_integer()
   def mixed_damage_shielded, do: 1 <<< 5
+
+  @doc "The Airborne mask of MixedDamage (bit 6)."
+  @spec mixed_damage_airborne() :: non_neg_integer()
   def mixed_damage_airborne, do: 1 <<< 6
+
+  @doc "The Downed mask of MixedDamage (bit 7)."
+  @spec mixed_damage_downed() :: non_neg_integer()
   def mixed_damage_downed, do: 1 <<< 7
-  # the declared variant count (SPEC §4.2)
+
+  @doc "The declared variant count of MixedDamage (SPEC §4.2)."
+  @spec mixed_damage_count() :: non_neg_integer()
   def mixed_damage_count, do: 8
 
-  # flag_name_mixed_damage: debug/log/tooling name for bit i of MixedDamage —
-  # out-of-range bits name as "???"
+  @doc """
+  The debug/log/tooling name of bit i of MixedDamage; out-of-range bits
+  name as "???".
+  """
+  @spec flag_name_mixed_damage(integer()) :: String.t()
   def flag_name_mixed_damage(bit) do
     case bit do
       0 -> "Bleeding"
@@ -941,8 +1219,11 @@ defmodule Bench.Bench do
     end
   end
 
-  # flag_names_mixed_damage renders the set bits of value as "A|B" — "0" for the
-  # empty set, bits past the declared variants as hex
+  @doc """
+  Renders the set bits of a MixedDamage value as "A|B": "0" for the empty
+  set, bits past the declared variants as hex.
+  """
+  @spec flag_names_mixed_damage(non_neg_integer()) :: String.t()
   def flag_names_mixed_damage(value) do
     names =
       Enum.filter(0..7, fn bit -> (value >>> bit &&& 1) != 0 end)
@@ -959,13 +1240,24 @@ defmodule Bench.Bench do
     if names == [], do: "0", else: Enum.join(names, "|")
   end
 
-  # mixed_entity_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # mixed_entity_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a MixedEntity can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec mixed_entity_max_bits() :: pos_integer()
   def mixed_entity_max_bits, do: 135
+
+  @doc """
+  mixed_entity_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec mixed_entity_max_bytes() :: pos_integer()
   def mixed_entity_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.MixedEntity{}).
+  @doc """
+  The §5 zero form of MixedEntity: all-zero storage. Specified defaults live
+  only in construction (`%Bench.MixedEntity{}`).
+  """
+  @spec zero_mixed_entity() :: Bench.MixedEntity.t()
   def zero_mixed_entity do
     %Bench.MixedEntity{
       entity_id: 0,
@@ -978,19 +1270,20 @@ defmodule Bench.Bench do
       vel_y: 0,
       vel_z: 0,
       health: 0,
-      weapon: 0,
+      weapon: :none,
       damage: 0,
       moving: false,
       firing: false
     }
   end
 
-  # write_mixed_entity packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_mixed_entity(value) do
-    data = <<>>
-
+  @doc """
+  Packs a MixedEntity into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_mixed_entity!(Bench.MixedEntity.t()) :: binary()
+  def write_mixed_entity!(value) do
     %{
       entity_id: value_entity_id,
       pos_x: value_pos_x,
@@ -1095,16 +1388,7 @@ defmodule Bench.Bench do
 
     v = value_health
     scratch = scratch ||| v <<< 31
-
-    if value_weapon < 0 do
-      raise ArgumentError, "value.weapon is below the wire minimum"
-    end
-
-    if value_weapon > 15 do
-      raise ArgumentError, "value.weapon is above the wire maximum"
-    end
-
-    v = value_weapon
+    v = Bench.MixedWeapon.to_int(value_weapon)
     scratch = scratch ||| v <<< 41
 
     if value_damage >>> 8 != 0 do
@@ -1119,7 +1403,7 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 54
 
     data =
-      <<data::binary, sc0::little-size(5)-unit(8), sc1::little-size(5)-unit(8),
+      <<sc0::little-size(5)-unit(8), sc1::little-size(5)-unit(8),
         scratch::little-size(6)-unit(8)>>
 
     scratch = scratch >>> 48
@@ -1127,11 +1411,26 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_mixed_entity_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_mixed_entity!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_mixed_entity(Bench.MixedEntity.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_mixed_entity(value) do
+    {:ok, write_mixed_entity!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a MixedEntity from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_mixed_entity_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedEntity.t(), non_neg_integer()} | :error
   def read_mixed_entity_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1139,60 +1438,45 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 135 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 135 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFF
-      bits_read = bits_read + 12
       v_entity_id = v
       v = rv >>> 12 &&& 0x7FFF
-      bits_read = bits_read + 15
       # a smuggled offset is refused
       if v > 32766, do: throw(:invalid)
       v_pos_x = v - 16383
       v = rv >>> 27 &&& 0x7FFF
-      bits_read = bits_read + 15
       # a smuggled offset is refused
       if v > 32766, do: throw(:invalid)
       v_pos_y = v - 16383
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 42, 49)
       v = rv &&& 0x7FFF
-      bits_read = bits_read + 15
       # a smuggled offset is refused
       if v > 32766, do: throw(:invalid)
       v_pos_z = v - 16383
       v = rv >>> 15 &&& 0x1FF
-      bits_read = bits_read + 9
       v_yaw = v
       v = rv >>> 24 &&& 0x1FF
-      bits_read = bits_read + 9
       v_pitch = v
       v = rv >>> 33 &&& 0xFFF
-      bits_read = bits_read + 12
       v_vel_x = v - 2048
-      rv = rdw(data, bits_read, 48)
+      rv = rdw(data, 87, 48)
       v = rv &&& 0xFFF
-      bits_read = bits_read + 12
       v_vel_y = v - 2048
       v = rv >>> 12 &&& 0xFFF
-      bits_read = bits_read + 12
       v_vel_z = v - 2048
       v = rv >>> 24 &&& 0x3FF
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_health = v
       v = rv >>> 34 &&& 0xF
-      bits_read = bits_read + 4
-      v_weapon = v
+      {:ok, v_weapon} = Bench.MixedWeapon.from_int(v)
       v = rv >>> 38 &&& 0xFF
-      bits_read = bits_read + 8
       v_damage = v
       v = rv >>> 46 &&& 0x1
-      bits_read = bits_read + 1
       v_moving = v == 1
       v = rv >>> 47
-      bits_read = bits_read + 1
       v_firing = v == 1
 
       value = %Bench.MixedEntity{
@@ -1212,14 +1496,17 @@ defmodule Bench.Bench do
         firing: v_firing
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 135}
     catch
       :invalid -> :error
     end
   end
 
-  # read_mixed_entity is read_mixed_entity_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a MixedEntity from the first num_bits of data: read_mixed_entity_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_mixed_entity(binary(), non_neg_integer()) :: {:ok, Bench.MixedEntity.t()} | :error
   def read_mixed_entity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_entity_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1227,24 +1514,33 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_mixed_entity is the exact wire bits write_mixed_entity would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_mixed_entity(_value), do: 135
-
-  # mixed_stat_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # mixed_stat_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a MixedStat can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec mixed_stat_max_bits() :: pos_integer()
   def mixed_stat_max_bits, do: 18
+
+  @doc """
+  mixed_stat_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec mixed_stat_max_bytes() :: pos_integer()
   def mixed_stat_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.MixedStat{}).
+  @doc """
+  The §5 zero form of MixedStat: all-zero storage. Specified defaults live
+  only in construction (`%Bench.MixedStat{}`).
+  """
+  @spec zero_mixed_stat() :: Bench.MixedStat.t()
   def zero_mixed_stat, do: %Bench.MixedStat{stat_id: 0, delta: 0}
 
-  # write_mixed_stat packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_mixed_stat(value) do
-    data = <<>>
+  @doc """
+  Packs a MixedStat into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_mixed_stat!(Bench.MixedStat.t()) :: binary()
+  def write_mixed_stat!(value) do
     %{stat_id: value_stat_id, delta: value_delta} = value
     v = value_stat_id &&& 0xFF
     scratch = v
@@ -1259,17 +1555,32 @@ defmodule Bench.Bench do
 
     v = value_delta + 512
     scratch = scratch ||| v <<< 8
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    data = <<scratch::little-size(2)-unit(8)>>
     scratch = scratch >>> 16
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_mixed_stat_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_mixed_stat!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_mixed_stat(Bench.MixedStat.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_mixed_stat(value) do
+    {:ok, write_mixed_stat!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a MixedStat from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_mixed_stat_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedStat.t(), non_neg_integer()} | :error
   def read_mixed_stat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1277,24 +1588,24 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 18 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 18)
+      if 18 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 18)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       v_stat_id = v
       v = rv >>> 8
-      bits_read = bits_read + 10
       v_delta = v - 512
       value = %Bench.MixedStat{stat_id: v_stat_id, delta: v_delta}
-      {:ok, value, bits_read}
+      {:ok, value, 18}
     catch
       :invalid -> :error
     end
   end
 
-  # read_mixed_stat is read_mixed_stat_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a MixedStat from the first num_bits of data: read_mixed_stat_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_mixed_stat(binary(), non_neg_integer()) :: {:ok, Bench.MixedStat.t()} | :error
   def read_mixed_stat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_stat_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1302,27 +1613,35 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_mixed_stat is the exact wire bits write_mixed_stat would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_mixed_stat(_value), do: 18
-
-  # mixed_hit_event_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # mixed_hit_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a MixedHitEvent can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec mixed_hit_event_max_bits() :: pos_integer()
   def mixed_hit_event_max_bits, do: 28
+
+  @doc """
+  mixed_hit_event_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec mixed_hit_event_max_bytes() :: pos_integer()
   def mixed_hit_event_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.MixedHitEvent{}).
+  @doc """
+  The §5 zero form of MixedHitEvent: all-zero storage. Specified defaults live
+  only in construction (`%Bench.MixedHitEvent{}`).
+  """
+  @spec zero_mixed_hit_event() :: Bench.MixedHitEvent.t()
   def zero_mixed_hit_event do
     %Bench.MixedHitEvent{target_id: 0, damage: 0, hit_kind: 0, crit: false}
   end
 
-  # write_mixed_hit_event packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_mixed_hit_event(value) do
-    data = <<>>
-
+  @doc """
+  Packs a MixedHitEvent into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_mixed_hit_event!(Bench.MixedHitEvent.t()) :: binary()
+  def write_mixed_hit_event!(value) do
     %{
       target_id: value_target_id,
       damage: value_damage,
@@ -1356,17 +1675,32 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 24
     v = if value_crit, do: 1, else: 0
     scratch = scratch ||| v <<< 27
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data = <<scratch::little-size(3)-unit(8)>>
     scratch = scratch >>> 24
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_mixed_hit_event_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_mixed_hit_event!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_mixed_hit_event(Bench.MixedHitEvent.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_mixed_hit_event(value) do
+    {:ok, write_mixed_hit_event!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a MixedHitEvent from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_mixed_hit_event_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedHitEvent.t(), non_neg_integer()} | :error
   def read_mixed_hit_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1374,20 +1708,15 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 28 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 28)
+      if 28 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 28)
       v = rv &&& 0xFFF
-      bits_read = bits_read + 12
       v_target_id = v
       v = rv >>> 12 &&& 0xFFF
-      bits_read = bits_read + 12
       v_damage = v
       v = rv >>> 24 &&& 0x7
-      bits_read = bits_read + 3
       v_hit_kind = v
       v = rv >>> 27
-      bits_read = bits_read + 1
       v_crit = v == 1
 
       value = %Bench.MixedHitEvent{
@@ -1397,14 +1726,18 @@ defmodule Bench.Bench do
         crit: v_crit
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 28}
     catch
       :invalid -> :error
     end
   end
 
-  # read_mixed_hit_event is read_mixed_hit_event_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a MixedHitEvent from the first num_bits of data: read_mixed_hit_event_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_mixed_hit_event(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedHitEvent.t()} | :error
   def read_mixed_hit_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_hit_event_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1412,24 +1745,33 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_mixed_hit_event is the exact wire bits write_mixed_hit_event would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_mixed_hit_event(_value), do: 28
-
-  # mixed_chat_event_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # mixed_chat_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a MixedChatEvent can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec mixed_chat_event_max_bits() :: pos_integer()
   def mixed_chat_event_max_bits, do: 14
+
+  @doc """
+  mixed_chat_event_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec mixed_chat_event_max_bytes() :: pos_integer()
   def mixed_chat_event_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.MixedChatEvent{}).
+  @doc """
+  The §5 zero form of MixedChatEvent: all-zero storage. Specified defaults live
+  only in construction (`%Bench.MixedChatEvent{}`).
+  """
+  @spec zero_mixed_chat_event() :: Bench.MixedChatEvent.t()
   def zero_mixed_chat_event, do: %Bench.MixedChatEvent{channel: 0, speaker: 0}
 
-  # write_mixed_chat_event packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_mixed_chat_event(value) do
-    data = <<>>
+  @doc """
+  Packs a MixedChatEvent into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_mixed_chat_event!(Bench.MixedChatEvent.t()) :: binary()
+  def write_mixed_chat_event!(value) do
     %{channel: value_channel, speaker: value_speaker} = value
 
     if value_channel < 0 do
@@ -1444,17 +1786,32 @@ defmodule Bench.Bench do
     scratch = v
     v = value_speaker &&& 0xFFF
     scratch = scratch ||| v <<< 2
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_mixed_chat_event_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_mixed_chat_event!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_mixed_chat_event(Bench.MixedChatEvent.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_mixed_chat_event(value) do
+    {:ok, write_mixed_chat_event!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a MixedChatEvent from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_mixed_chat_event_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedChatEvent.t(), non_neg_integer()} | :error
   def read_mixed_chat_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1462,24 +1819,25 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 14 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 14)
+      if 14 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 14)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       v_channel = v
       v = rv >>> 2
-      bits_read = bits_read + 12
       v_speaker = v
       value = %Bench.MixedChatEvent{channel: v_channel, speaker: v_speaker}
-      {:ok, value, bits_read}
+      {:ok, value, 14}
     catch
       :invalid -> :error
     end
   end
 
-  # read_mixed_chat_event is read_mixed_chat_event_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a MixedChatEvent from the first num_bits of data: read_mixed_chat_event_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_mixed_chat_event(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedChatEvent.t()} | :error
   def read_mixed_chat_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_chat_event_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1487,24 +1845,33 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_mixed_chat_event is the exact wire bits write_mixed_chat_event would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_mixed_chat_event(_value), do: 14
-
-  # mixed_pickup_event_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # mixed_pickup_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a MixedPickupEvent can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec mixed_pickup_event_max_bits() :: pos_integer()
   def mixed_pickup_event_max_bits, do: 18
+
+  @doc """
+  mixed_pickup_event_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec mixed_pickup_event_max_bytes() :: pos_integer()
   def mixed_pickup_event_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.MixedPickupEvent{}).
+  @doc """
+  The §5 zero form of MixedPickupEvent: all-zero storage. Specified defaults live
+  only in construction (`%Bench.MixedPickupEvent{}`).
+  """
+  @spec zero_mixed_pickup_event() :: Bench.MixedPickupEvent.t()
   def zero_mixed_pickup_event, do: %Bench.MixedPickupEvent{item_id: 0, amount: 0}
 
-  # write_mixed_pickup_event packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_mixed_pickup_event(value) do
-    data = <<>>
+  @doc """
+  Packs a MixedPickupEvent into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_mixed_pickup_event!(Bench.MixedPickupEvent.t()) :: binary()
+  def write_mixed_pickup_event!(value) do
     %{item_id: value_item_id, amount: value_amount} = value
     v = value_item_id &&& 0x3FF
     scratch = v
@@ -1519,17 +1886,33 @@ defmodule Bench.Bench do
 
     v = value_amount
     scratch = scratch ||| v <<< 10
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    data = <<scratch::little-size(2)-unit(8)>>
     scratch = scratch >>> 16
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_mixed_pickup_event_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_mixed_pickup_event!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_mixed_pickup_event(Bench.MixedPickupEvent.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_mixed_pickup_event(value) do
+    {:ok, write_mixed_pickup_event!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a MixedPickupEvent from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_mixed_pickup_event_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedPickupEvent.t(), non_neg_integer()} | :error
   def read_mixed_pickup_event_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
@@ -1538,24 +1921,25 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 18 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 18)
+      if 18 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 18)
       v = rv &&& 0x3FF
-      bits_read = bits_read + 10
       v_item_id = v
       v = rv >>> 10
-      bits_read = bits_read + 8
       v_amount = v
       value = %Bench.MixedPickupEvent{item_id: v_item_id, amount: v_amount}
-      {:ok, value, bits_read}
+      {:ok, value, 18}
     catch
       :invalid -> :error
     end
   end
 
-  # read_mixed_pickup_event is read_mixed_pickup_event_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a MixedPickupEvent from the first num_bits of data: read_mixed_pickup_event_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_mixed_pickup_event(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedPickupEvent.t()} | :error
   def read_mixed_pickup_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_pickup_event_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1563,58 +1947,77 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_mixed_pickup_event is the exact wire bits write_mixed_pickup_event would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_mixed_pickup_event(_value), do: 18
-
-  # mixed_event_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-  # mixed_event_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc "The most wire bits a MixedEvent can take: the tag plus the largest arm (SPEC §4.8)."
+  @spec mixed_event_max_bits() :: pos_integer()
   def mixed_event_max_bits, do: 30
+
+  @doc """
+  mixed_event_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec mixed_event_max_bytes() :: pos_integer()
   def mixed_event_max_bytes, do: 8
 
-  # enum_name_mixed_event_type: debug/log/tooling name for any MixedEventType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a MixedEventType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_mixed_event_type(Bench.MixedEventType.t() | integer()) :: String.t()
   def enum_name_mixed_event_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :hit -> "Hit"
       1 -> "Hit"
+      :chat -> "Chat"
       2 -> "Chat"
+      :pickup -> "Pickup"
       3 -> "Pickup"
       _ -> "???"
     end
   end
 
-  # The §5 zero form — the empty union (None). Arms hold their construction
-  # form: every arm is unselected at None, and unselected arms are
-  # unspecified by rule (SPEC §4.8).
-  def zero_mixed_event, do: %Bench.MixedEvent{}
+  @doc "The §5 zero form of MixedEvent: the empty union, None."
+  @spec zero_mixed_event() :: Bench.MixedEvent.t()
+  def zero_mixed_event, do: nil
 
-  # write_mixed_event packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_mixed_event(value) do
+  @doc """
+  Packs a MixedEvent into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_mixed_event!(Bench.MixedEvent.t()) :: binary()
+  def write_mixed_event!(value) do
+    v =
+      case value do
+        nil ->
+          0
+
+        {:hit, _} ->
+          1
+
+        {:chat, _} ->
+          2
+
+        {:pickup, _} ->
+          3
+
+        value_other ->
+          raise ArgumentError, "value is not a MixedEvent value: #{inspect(value_other)}"
+      end
+
+    scratch = v
     data = <<>>
 
-    if value.type < 0 do
-      raise ArgumentError, "value.type is below the wire minimum"
-    end
-
-    if value.type > 3 do
-      raise ArgumentError, "value.type is above the wire maximum"
-    end
-
-    v = value.type
-    scratch = v
-
     {data, scratch, scratch_bits} =
-      case value.type do
-        1 ->
+      case value do
+        {:hit, value_hit} ->
           %{
             target_id: value_hit_target_id,
             damage: value_hit_damage,
             hit_kind: value_hit_hit_kind,
             crit: value_hit_crit
-          } = value.hit
+          } = value_hit
 
           v = value_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< 2
@@ -1647,8 +2050,8 @@ defmodule Bench.Bench do
           scratch_bits = 6
           {data, scratch, scratch_bits}
 
-        2 ->
-          %{channel: value_chat_channel, speaker: value_chat_speaker} = value.chat
+        {:chat, value_chat} ->
+          %{channel: value_chat_channel, speaker: value_chat_speaker} = value_chat
 
           if value_chat_channel < 0 do
             raise ArgumentError, "value.chat.channel is below the wire minimum"
@@ -1667,8 +2070,8 @@ defmodule Bench.Bench do
           scratch = 0
           {data, scratch, scratch_bits}
 
-        3 ->
-          %{item_id: value_pickup_item_id, amount: value_pickup_amount} = value.pickup
+        {:pickup, value_pickup} ->
+          %{item_id: value_pickup_item_id, amount: value_pickup_amount} = value_pickup
           v = value_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< 2
 
@@ -1688,7 +2091,7 @@ defmodule Bench.Bench do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 2
           {data, scratch, scratch_bits}
       end
@@ -1696,11 +2099,26 @@ defmodule Bench.Bench do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_mixed_event_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_mixed_event!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_mixed_event(Bench.MixedEvent.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_mixed_event(value) do
+    {:ok, write_mixed_event!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a MixedEvent from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_mixed_event_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.MixedEvent.t(), non_neg_integer()} | :error
   def read_mixed_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1708,28 +2126,23 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
+      bits_read = 2
 
       {bits_read, v} =
         case v do
           1 ->
-            if bits_read + 28 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 28)
+            if 30 > num_bits, do: throw(:invalid)
+            rv = rd(data, 2, 28)
             v = rv &&& 0xFFF
-            bits_read = bits_read + 12
             v_hit_target_id = v
             v = rv >>> 12 &&& 0xFFF
-            bits_read = bits_read + 12
             v_hit_damage = v
             v = rv >>> 24 &&& 0x7
-            bits_read = bits_read + 3
             v_hit_hit_kind = v
             v = rv >>> 27
-            bits_read = bits_read + 1
             v_hit_crit = v == 1
 
             v_hit = %Bench.MixedHitEvent{
@@ -1739,38 +2152,34 @@ defmodule Bench.Bench do
               crit: v_hit_crit
             }
 
-            u = %Bench.MixedEvent{type: 1, hit: v_hit}
-            {bits_read, u}
+            bits_read = 30
+            {bits_read, {:hit, v_hit}}
 
           2 ->
-            if bits_read + 14 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 14)
+            if 16 > num_bits, do: throw(:invalid)
+            rv = rd(data, 2, 14)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             v_chat_channel = v
             v = rv >>> 2
-            bits_read = bits_read + 12
             v_chat_speaker = v
             v_chat = %Bench.MixedChatEvent{channel: v_chat_channel, speaker: v_chat_speaker}
-            u = %Bench.MixedEvent{type: 2, chat: v_chat}
-            {bits_read, u}
+            bits_read = 16
+            {bits_read, {:chat, v_chat}}
 
           3 ->
-            if bits_read + 18 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 18)
+            if 20 > num_bits, do: throw(:invalid)
+            rv = rd(data, 2, 18)
             v = rv &&& 0x3FF
-            bits_read = bits_read + 10
             v_pickup_item_id = v
             v = rv >>> 10
-            bits_read = bits_read + 8
             v_pickup_amount = v
             v_pickup = %Bench.MixedPickupEvent{item_id: v_pickup_item_id, amount: v_pickup_amount}
-            u = %Bench.MixedEvent{type: 3, pickup: v_pickup}
-            {bits_read, u}
+            bits_read = 20
+            {bits_read, {:pickup, v_pickup}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Bench.MixedEvent{}}
+            {bits_read, nil}
         end
 
       {:ok, v, bits_read}
@@ -1779,8 +2188,11 @@ defmodule Bench.Bench do
     end
   end
 
-  # read_mixed_event is read_mixed_event_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a MixedEvent from the first num_bits of data: read_mixed_event_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_mixed_event(binary(), non_neg_integer()) :: {:ok, Bench.MixedEvent.t()} | :error
   def read_mixed_event(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_mixed_event_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1788,38 +2200,24 @@ defmodule Bench.Bench do
     end
   end
 
-  # measure_mixed_event is the exact wire bits write_mixed_event would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_mixed_event(value) do
-    bits = 0
-    bits = bits + 2
-
-    bits =
-      case value.type do
-        1 ->
-          bits + 28
-
-        2 ->
-          bits + 14
-
-        3 ->
-          bits + 18
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits
-  end
-
-  # bench_mixed_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # bench_mixed_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a BenchMixed can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec bench_mixed_max_bits() :: pos_integer()
   def bench_mixed_max_bits, do: 3630
+
+  @doc """
+  bench_mixed_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec bench_mixed_max_bytes() :: pos_integer()
   def bench_mixed_max_bytes, do: 456
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Bench.BenchMixed{}).
+  @doc """
+  The §5 zero form of BenchMixed: all-zero storage. Specified defaults live
+  only in construction (`%Bench.BenchMixed{}`).
+  """
+  @spec zero_bench_mixed() :: Bench.BenchMixed.t()
   def zero_bench_mixed do
     %Bench.BenchMixed{
       sequence: 0,
@@ -1833,7 +2231,7 @@ defmodule Bench.Bench do
       server_time: 0,
       entities: [],
       stats: [],
-      game_event: %Bench.MixedEvent{},
+      game_event: nil,
       loadout: List.duplicate(0, 4),
       player_name: <<>>,
       payload: <<>>,
@@ -1852,12 +2250,13 @@ defmodule Bench.Bench do
     }
   end
 
-  # write_bench_mixed packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_bench_mixed(value) do
-    data = <<>>
-
+  @doc """
+  Packs a BenchMixed into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_bench_mixed!(Bench.BenchMixed.t()) :: binary()
+  def write_bench_mixed!(value) do
     %{
       sequence: value_sequence,
       ack_sequence: value_ack_sequence,
@@ -1979,10 +2378,10 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 25
 
     data =
-      <<data::binary, sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(5)-unit(8),
-        sc8::little-size(6)-unit(8), scratch::little-size(3)-unit(8)>>
+      <<sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8), sc5::little-size(4)-unit(8),
+        sc6::little-size(4)-unit(8), sc7::little-size(5)-unit(8), sc8::little-size(6)-unit(8),
+        scratch::little-size(3)-unit(8)>>
 
     scratch = scratch >>> 24
     scratch_bits = 4
@@ -2005,15 +2404,25 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits &&& 7
     {data, scratch, scratch_bits} = w_bench_mixed_stats(value_stats, data, scratch, scratch_bits)
 
-    if value_game_event.type < 0 do
-      raise ArgumentError, "value.game_event.type is below the wire minimum"
-    end
+    v =
+      case value_game_event do
+        nil ->
+          0
 
-    if value_game_event.type > 3 do
-      raise ArgumentError, "value.game_event.type is above the wire maximum"
-    end
+        {:hit, _} ->
+          1
 
-    v = value_game_event.type
+        {:chat, _} ->
+          2
+
+        {:pickup, _} ->
+          3
+
+        value_game_event_other ->
+          raise ArgumentError,
+                "value.game_event is not a MixedEvent value: #{inspect(value_game_event_other)}"
+      end
+
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -2022,14 +2431,14 @@ defmodule Bench.Bench do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      case value_game_event.type do
-        1 ->
+      case value_game_event do
+        {:hit, value_game_event_hit} ->
           %{
             target_id: value_game_event_hit_target_id,
             damage: value_game_event_hit_damage,
             hit_kind: value_game_event_hit_hit_kind,
             crit: value_game_event_hit_crit
-          } = value_game_event.hit
+          } = value_game_event_hit
 
           v = value_game_event_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< scratch_bits
@@ -2067,11 +2476,11 @@ defmodule Bench.Bench do
           scratch_bits = scratch_bits &&& 7
           {data, scratch, scratch_bits}
 
-        2 ->
+        {:chat, value_game_event_chat} ->
           %{
             channel: value_game_event_chat_channel,
             speaker: value_game_event_chat_speaker
-          } = value_game_event.chat
+          } = value_game_event_chat
 
           if value_game_event_chat_channel < 0 do
             raise ArgumentError, "value.game_event.chat.channel is below the wire minimum"
@@ -2093,11 +2502,11 @@ defmodule Bench.Bench do
           scratch_bits = scratch_bits &&& 7
           {data, scratch, scratch_bits}
 
-        3 ->
+        {:pickup, value_game_event_pickup} ->
           %{
             item_id: value_game_event_pickup_item_id,
             amount: value_game_event_pickup_amount
-          } = value_game_event.pickup
+          } = value_game_event_pickup
 
           v = value_game_event_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< scratch_bits
@@ -2121,7 +2530,7 @@ defmodule Bench.Bench do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           {data, scratch, scratch_bits}
       end
 
@@ -2167,24 +2576,18 @@ defmodule Bench.Bench do
     v = f32_bits(value_recoil)
     sc9 = scratch
     scratch = v
-    w = f64_bits(value_drift)
-    v = w &&& 0xFFFFFFFF
-    sc10 = scratch
-    scratch = v
-    v = w >>> 32
-    sc11 = scratch
-    scratch = v
+    data = <<data::binary, sc9::little-size(3)-unit(8), scratch::little-size(4)-unit(8)>>
+    data = put_f64(data, value_drift)
     v = value_wide_key &&& 0xFFFFFFFF
-    sc12 = scratch
     scratch = v
     v = value_wide_key >>> 32 &&& 0xFFFFFFFF
-    sc13 = scratch
+    sc10 = scratch
     scratch = v
     v = value_wide_key >>> 64 &&& 0xFFFFFFFF
-    sc14 = scratch
+    sc11 = scratch
     scratch = v
     v = value_wide_key >>> 96 &&& 0xFFFFFFFF
-    sc15 = scratch
+    sc12 = scratch
     scratch = v
 
     if value_flux < -1_267_650_600_228_229_401_496_703_205_376 do
@@ -2197,13 +2600,13 @@ defmodule Bench.Bench do
 
     w = value_flux + 1_267_650_600_228_229_401_496_703_205_376
     v = w &&& 0xFFFFFFFF
-    sc16 = scratch
+    sc13 = scratch
     scratch = v
     v = w >>> 32 &&& 0xFFFFFFFF
-    sc17 = scratch
+    sc14 = scratch
     scratch = v
     v = w >>> 64 &&& 0xFFFFFFFF
-    sc18 = scratch
+    sc15 = scratch
     scratch = v
     v = w >>> 96
     scratch = scratch ||| v <<< 32
@@ -2217,7 +2620,7 @@ defmodule Bench.Bench do
     end
 
     v = value_ping
-    sc19 = scratch
+    sc16 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 6
     # reserved bits ride as zeros (SPEC §4.3)
@@ -2225,10 +2628,9 @@ defmodule Bench.Bench do
     scratch = scratch ||| v <<< 22
 
     data =
-      <<data::binary, sc9::little-size(3)-unit(8), sc10::little-size(4)-unit(8),
-        sc11::little-size(4)-unit(8), sc12::little-size(4)-unit(8), sc13::little-size(4)-unit(8),
-        sc14::little-size(4)-unit(8), sc15::little-size(4)-unit(8), sc16::little-size(4)-unit(8),
-        sc17::little-size(4)-unit(8), sc18::little-size(4)-unit(8), sc19::little-size(4)-unit(8),
+      <<data::binary, sc10::little-size(4)-unit(8), sc11::little-size(4)-unit(8),
+        sc12::little-size(4)-unit(8), sc13::little-size(4)-unit(8), sc14::little-size(4)-unit(8),
+        sc15::little-size(4)-unit(8), sc16::little-size(4)-unit(8),
         scratch::little-size(3)-unit(8)>>
 
     scratch = scratch >>> 24
@@ -2266,11 +2668,26 @@ defmodule Bench.Bench do
     <<data::binary, scratch>>
   end
 
-  # read_bench_mixed_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_bench_mixed!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_bench_mixed(Bench.BenchMixed.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_bench_mixed(value) do
+    {:ok, write_bench_mixed!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a BenchMixed from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_bench_mixed_bits(binary(), non_neg_integer()) ::
+          {:ok, Bench.BenchMixed.t(), non_neg_integer()} | :error
   def read_bench_mixed_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -2278,85 +2695,68 @@ defmodule Bench.Bench do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 353 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 353 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFF
-      bits_read = bits_read + 16
       # a read rejects any other value (SPEC §4.3)
       if v != 49374, do: throw(:invalid)
       v = rv >>> 16 &&& 0xFFFF
-      bits_read = bits_read + 16
       v_sequence = v
       v = rv >>> 32 &&& 0xFFFF
-      bits_read = bits_read + 16
       v_ack_sequence = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 48, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_ack_bits = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 80, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 112, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_session_id = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 144, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_client_id = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 176, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 208, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_nonce = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 240, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x1FF
-      bits_read = bits_read + 9
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 2_000_000_000_000, do: throw(:invalid)
       v_world_time = w - 1_000_000_000_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 281, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0xFFFF
-      bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_frame_tick = w
-      rv = rd(data, bits_read, 24)
+      rv = rd(data, 329, 24)
       v = rv
-      bits_read = bits_read + 24
       # a smuggled offset is refused
       if v > 16_776_960, do: throw(:invalid)
       v_server_time = v
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 356 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 353, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       n = v + 1
-      if bits_read + n * 135 > num_bits, do: throw(:invalid)
-      {bits_read, v_entities} = r_bench_mixed_entities(n, [], data, num_bits, bits_read)
+      if 356 + n * 135 > num_bits, do: throw(:invalid)
+      {bits_read, v_entities} = r_bench_mixed_entities(n, [], data, num_bits, 356)
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7F
-      bits_read = bits_read + 7
       # the count guards the loop — reject, never clamp
       if v > 80, do: throw(:invalid)
       n = v
-      if bits_read + n * 18 > num_bits, do: throw(:invalid)
-      {bits_read, v_stats} = r_bench_mixed_stats_align(n, [], data, num_bits, bits_read)
+      if bits_read + 7 + n * 18 > num_bits, do: throw(:invalid)
+      {bits_read, v_stats} = r_bench_mixed_stats_align(n, [], data, num_bits, bits_read + 7)
       if bits_read + 2 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x3
@@ -2368,16 +2768,12 @@ defmodule Bench.Bench do
             if bits_read + 28 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 28)
             v = rv &&& 0xFFF
-            bits_read = bits_read + 12
             v_game_event_hit_target_id = v
             v = rv >>> 12 &&& 0xFFF
-            bits_read = bits_read + 12
             v_game_event_hit_damage = v
             v = rv >>> 24 &&& 0x7
-            bits_read = bits_read + 3
             v_game_event_hit_hit_kind = v
             v = rv >>> 27
-            bits_read = bits_read + 1
             v_game_event_hit_crit = v == 1
 
             v_game_event_hit = %Bench.MixedHitEvent{
@@ -2387,17 +2783,15 @@ defmodule Bench.Bench do
               crit: v_game_event_hit_crit
             }
 
-            u = %Bench.MixedEvent{type: 1, hit: v_game_event_hit}
-            {bits_read, u}
+            bits_read = bits_read + 28
+            {bits_read, {:hit, v_game_event_hit}}
 
           2 ->
             if bits_read + 14 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 14)
             v = rv &&& 0x3
-            bits_read = bits_read + 2
             v_game_event_chat_channel = v
             v = rv >>> 2
-            bits_read = bits_read + 12
             v_game_event_chat_speaker = v
 
             v_game_event_chat = %Bench.MixedChatEvent{
@@ -2405,17 +2799,15 @@ defmodule Bench.Bench do
               speaker: v_game_event_chat_speaker
             }
 
-            u = %Bench.MixedEvent{type: 2, chat: v_game_event_chat}
-            {bits_read, u}
+            bits_read = bits_read + 14
+            {bits_read, {:chat, v_game_event_chat}}
 
           3 ->
             if bits_read + 18 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 18)
             v = rv &&& 0x3FF
-            bits_read = bits_read + 10
             v_game_event_pickup_item_id = v
             v = rv >>> 10
-            bits_read = bits_read + 8
             v_game_event_pickup_amount = v
 
             v_game_event_pickup = %Bench.MixedPickupEvent{
@@ -2423,12 +2815,12 @@ defmodule Bench.Bench do
               amount: v_game_event_pickup_amount
             }
 
-            u = %Bench.MixedEvent{type: 3, pickup: v_game_event_pickup}
-            {bits_read, u}
+            bits_read = bits_read + 18
+            {bits_read, {:pickup, v_game_event_pickup}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Bench.MixedEvent{}}
+            {bits_read, nil}
         end
 
       if bits_read + 32 > num_bits, do: throw(:invalid)
@@ -2436,8 +2828,8 @@ defmodule Bench.Bench do
       if bits_read + 4 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xF
-      bits_read = bits_read + 4
       len = v
+      bits_read = bits_read + 4
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -2462,10 +2854,10 @@ defmodule Bench.Bench do
       if bits_read + 5 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       # the length guards the slice — reject, never clamp
       if v > 16, do: throw(:invalid)
       len = v
+      bits_read = bits_read + 5
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -2486,78 +2878,57 @@ defmodule Bench.Bench do
       if bits_read + 370 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
       v_aim_x = elem(@cf_tab_0, v)
       v = rv >>> 8 &&& 0xFF
-      bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
       v_aim_y = elem(@cf_tab_0, v)
       v = rv >>> 16 &&& 0xFF
-      bits_read = bits_read + 8
       # headroom above the quantum count is refused
       if v > 200, do: throw(:invalid)
       v_aim_z = elem(@cf_tab_0, v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 24, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_recoil = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      v_drift = get_f64(data, bits_read + 56)
+      rv = rdw(data, bits_read + 120, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 152, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      v_drift = f64_value(w)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 184, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 216, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_key = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 248, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 280, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 312, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
       v = rv >>> 32 &&& 0x3F
-      bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_flux = w - 1_267_650_600_228_229_401_496_703_205_376
-      rv = rd(data, bits_read, 20)
+      rv = rdw(data, bits_read + 350, 49)
       v = rv &&& 0xFFFF
-      bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 64000, do: throw(:invalid)
       v_ping = v
-      v = rv >>> 16
-      bits_read = bits_read + 4
+      v = rv >>> 16 &&& 0xF
       # reserved bits must read zero (SPEC §4.3)
       if v != 0, do: throw(:invalid)
+      bits_read = bits_read + 370
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -2575,16 +2946,12 @@ defmodule Bench.Bench do
       if bits_read + 37 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 37)
       v = rv &&& 0xFFFFFF
-      bits_read = bits_read + 24
       v_crc_hint = v
       v = rv >>> 24 &&& 0x1
-      bits_read = bits_read + 1
       v_has_extra = v == 1
       v = rv >>> 25 &&& 0xFF
-      bits_read = bits_read + 8
       v_extra = v
       v = rv >>> 33
-      bits_read = bits_read + 4
       v_idle_ticks = v
 
       value = %Bench.BenchMixed{
@@ -2617,56 +2984,22 @@ defmodule Bench.Bench do
         idle_ticks: v_idle_ticks
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 37}
     catch
       :invalid -> :error
     end
   end
 
-  # read_bench_mixed is read_bench_mixed_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a BenchMixed from the first num_bits of data: read_bench_mixed_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_bench_mixed(binary(), non_neg_integer()) :: {:ok, Bench.BenchMixed.t()} | :error
   def read_bench_mixed(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_bench_mixed_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
-  end
-
-  # measure_bench_mixed is the exact wire bits write_bench_mixed would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_bench_mixed(value) do
-    bits = 0
-    bits = bits + 356
-    bits = bits + length(value.entities) * 135
-    bits = bits + 7
-    bits = bits + length(value.stats) * 18
-    bits = bits + 2
-
-    bits =
-      case value.game_event.type do
-        1 ->
-          bits + 28
-
-        2 ->
-          bits + 14
-
-        3 ->
-          bits + 18
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits = bits + 36
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.player_name) * 8
-    bits = bits + 5
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.payload) * 8
-    bits = bits + 370
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits + 37
   end
 
   defp w_bench_packet_blob([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -2709,26 +3042,21 @@ defmodule Bench.Bench do
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
-    bits_read = bits_read + 8
     e1 = v
     v = rv >>> 8 &&& 0xFF
-    bits_read = bits_read + 8
     e2 = v
     v = rv >>> 16 &&& 0xFF
-    bits_read = bits_read + 8
     e3 = v
     v = rv >>> 24
-    bits_read = bits_read + 8
     e4 = v
-    r_bench_packet_blob(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_bench_packet_blob(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
   defp r_bench_packet_blob(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
-    bits_read = bits_read + 8
     e = v
-    r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_bench_packet_blob(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
   defp r_bench_packet_blob_align(remaining, acc, data, num_bits, bits_read)
@@ -2938,16 +3266,7 @@ defmodule Bench.Bench do
     v = e_health
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 10
-
-    if e_weapon < 0 do
-      raise ArgumentError, "e.weapon is below the wire minimum"
-    end
-
-    if e_weapon > 15 do
-      raise ArgumentError, "e.weapon is above the wire maximum"
-    end
-
-    v = e_weapon
+    v = Bench.MixedWeapon.to_int(e_weapon)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
 
@@ -3116,56 +3435,42 @@ defmodule Bench.Bench do
   defp r_bench_mixed_entities(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFF
-    bits_read = bits_read + 12
     e_entity_id = v
     v = rv >>> 12 &&& 0x7FFF
-    bits_read = bits_read + 15
     # a smuggled offset is refused
     if v > 32766, do: throw(:invalid)
     e_pos_x = v - 16383
     v = rv >>> 27 &&& 0x7FFF
-    bits_read = bits_read + 15
     # a smuggled offset is refused
     if v > 32766, do: throw(:invalid)
     e_pos_y = v - 16383
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 42, 49)
     v = rv &&& 0x7FFF
-    bits_read = bits_read + 15
     # a smuggled offset is refused
     if v > 32766, do: throw(:invalid)
     e_pos_z = v - 16383
     v = rv >>> 15 &&& 0x1FF
-    bits_read = bits_read + 9
     e_yaw = v
     v = rv >>> 24 &&& 0x1FF
-    bits_read = bits_read + 9
     e_pitch = v
     v = rv >>> 33 &&& 0xFFF
-    bits_read = bits_read + 12
     e_vel_x = v - 2048
-    rv = rdw(data, bits_read, 48)
+    rv = rdw(data, bits_read + 87, 48)
     v = rv &&& 0xFFF
-    bits_read = bits_read + 12
     e_vel_y = v - 2048
     v = rv >>> 12 &&& 0xFFF
-    bits_read = bits_read + 12
     e_vel_z = v - 2048
     v = rv >>> 24 &&& 0x3FF
-    bits_read = bits_read + 10
     # a smuggled offset is refused
     if v > 1000, do: throw(:invalid)
     e_health = v
     v = rv >>> 34 &&& 0xF
-    bits_read = bits_read + 4
-    e_weapon = v
+    {:ok, e_weapon} = Bench.MixedWeapon.from_int(v)
     v = rv >>> 38 &&& 0xFF
-    bits_read = bits_read + 8
     e_damage = v
     v = rv >>> 46 &&& 0x1
-    bits_read = bits_read + 1
     e_moving = v == 1
     v = rv >>> 47
-    bits_read = bits_read + 1
     e_firing = v == 1
 
     e = %Bench.MixedEntity{
@@ -3185,7 +3490,7 @@ defmodule Bench.Bench do
       firing: e_firing
     }
 
-    r_bench_mixed_entities(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_bench_mixed_entities(remaining - 1, [e | acc], data, num_bits, bits_read + 135)
   end
 
   defp r_bench_mixed_stats(0, acc, _data, _num_bits, bits_read),
@@ -3195,32 +3500,26 @@ defmodule Bench.Bench do
        when remaining >= 2 do
     rv = rdw(data, bits_read, 36)
     v = rv &&& 0xFF
-    bits_read = bits_read + 8
     e1_stat_id = v
     v = rv >>> 8 &&& 0x3FF
-    bits_read = bits_read + 10
     e1_delta = v - 512
     e1 = %Bench.MixedStat{stat_id: e1_stat_id, delta: e1_delta}
     v = rv >>> 18 &&& 0xFF
-    bits_read = bits_read + 8
     e2_stat_id = v
     v = rv >>> 26
-    bits_read = bits_read + 10
     e2_delta = v - 512
     e2 = %Bench.MixedStat{stat_id: e2_stat_id, delta: e2_delta}
-    r_bench_mixed_stats(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read)
+    r_bench_mixed_stats(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 36)
   end
 
   defp r_bench_mixed_stats(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 18)
     v = rv &&& 0xFF
-    bits_read = bits_read + 8
     e_stat_id = v
     v = rv >>> 8
-    bits_read = bits_read + 10
     e_delta = v - 512
     e = %Bench.MixedStat{stat_id: e_stat_id, delta: e_delta}
-    r_bench_mixed_stats(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_bench_mixed_stats(remaining - 1, [e | acc], data, num_bits, bits_read + 18)
   end
 
   defp r_bench_mixed_stats_align(remaining, acc, data, num_bits, bits_read)
@@ -3318,26 +3617,21 @@ defmodule Bench.Bench do
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
-    bits_read = bits_read + 8
     e1 = v
     v = rv >>> 8 &&& 0xFF
-    bits_read = bits_read + 8
     e2 = v
     v = rv >>> 16 &&& 0xFF
-    bits_read = bits_read + 8
     e3 = v
     v = rv >>> 24
-    bits_read = bits_read + 8
     e4 = v
-    r_bench_mixed_loadout(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_bench_mixed_loadout(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
   defp r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
-    bits_read = bits_read + 8
     e = v
-    r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_bench_mixed_loadout(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
   defp r_bench_mixed_loadout_align(remaining, acc, data, num_bits, bits_read)
@@ -3414,167 +3708,4 @@ defmodule Bench.Bench do
 
   defp r_bench_mixed_loadout_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
     do: r_bench_mixed_loadout(remaining, acc, data, num_bits, bits_read)
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The 32-bit IEEE-754 pattern of a float value for the write path — a
-  # non-finite pattern travels as {:nonfinite, bits}, since no BEAM float
-  # term can hold it (the serialize.elixir convention). Caller errors raise;
-  # the checks are O(1).
-  defp f32_bits(value) when is_float(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) == 0xFF do
-      raise ArgumentError, "float overflows float32; write {:nonfinite, bits} instead"
-    end
-
-    bits
-  end
-
-  defp f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
-    end
-
-    bits
-  end
-
-  # The value of a 32-bit pattern for the read path: the float for a finite
-  # pattern, {:nonfinite, bits} otherwise. Never raises — the bits are
-  # untrusted.
-  defp f32_value(bits) do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<value::float-32-little>> = <<bits::little-32>>
-      value
-    else
-      {:nonfinite, bits}
-    end
-  end
-
-  # The 64-bit IEEE-754 pattern of a double value and its inverse — the
-  # same bit-transparent contract as f32, at width 64.
-  defp f64_bits(value) when is_float(value) do
-    <<bits::little-64>> = <<value::float-64-little>>
-    bits
-  end
-
-  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
-
-    bits
-  end
-
-  defp f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
-    end
-  end
-
-  # A number rounded to its nearest float32 — one emulated float32 step
-  # (exact: the double result carries 2x24+2 significant bits, so the second
-  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
-  # compressed-float clamps can resolve it the way the reference's float
-  # arithmetic does.
-  #
-  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):
-  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the
-  # float32 normal range, below the smallest magnitude that rounds to
-  # infinity — y = value * C; y - (y - value) IS the value rounded to 24
-  # significant bits, round-to-nearest-even, in three flops with nothing
-  # allocated beyond the result. Outside that range (the subnormal grid,
-  # overflow to the atoms, zero with its sign) fr_slow keeps the exact
-  # semantics the construct/match pair defines.
-  defp fr(value) do
-    ax = abs(value)
-
-    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-      y = value * 536_870_913.0
-      y - (y - value)
-    else
-      fr_slow(value)
-    end
-  end
-
-  # The slow path's refusal IS the test: a float segment does not match a
-  # non-finite pattern, so a finite value costs one construction and one
-  # match and never touches the exponent field, while the second clause
-  # reads the sign of exactly the patterns the first one refused.
-  defp fr_slow(value) do
-    case <<value::float-32-little>> do
-      <<rounded::float-32-little>> -> rounded
-      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-    end
-  end
-
-  defp cf_clamp01(:pos_inf), do: 1.0
-  defp cf_clamp01(:neg_inf), do: 0.0
-  defp cf_clamp01(n) when n < 0.0, do: 0.0
-  defp cf_clamp01(n) when n > 1.0, do: 1.0
-  defp cf_clamp01(n), do: n
-
-  # The family's two-rounding float32 quantization (SPEC §4.3), the port's
-  # own steps: normalize with every step rounding, clamp to [0, 1] (which
-  # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
-  # and the normative integer clamp to the step count.
-  # miv32 is the float32 of the step count, folded at generation time: it
-  # is a declaration constant, and recomputing its rounding per call was
-  # one of the six float32 steps.
-  defp cf_quantize(value, min32, delta, miv, miv32) do
-    if not is_number(value) do
-      raise ArgumentError, "a compressed float writes a finite number"
-    end
-
-    difference =
-      case fr(value * 1.0) do
-        :pos_inf -> :pos_inf
-        :neg_inf -> :neg_inf
-        v32 -> fr(v32 - min32)
-      end
-
-    normalized =
-      case difference do
-        :pos_inf -> 1.0
-        :neg_inf -> 0.0
-        d -> cf_clamp01(fr(d / delta))
-      end
-
-    scaled = fr(normalized * miv32)
-    integer = floor(fr(scaled + 0.5))
-    min(integer, miv)
-  end
 end
