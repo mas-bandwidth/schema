@@ -6,11 +6,35 @@
 
 # type RenderSprite
 defmodule Example.RenderSprite do
-  defstruct sort_key: 0, mesh_id: 0, material_id: 0, layer: 0, team: 0
+  @moduledoc """
+  The type RenderSprite. Construction carries its specified defaults; the
+  codecs are in Example.Render.
+  """
+
+  @type t :: %__MODULE__{
+          sort_key: 0..18_446_744_073_709_551_615,
+          mesh_id: 0..4_294_967_295,
+          material_id: 0..4_294_967_295,
+          layer: 0..255,
+          team: Example.Team.t()
+        }
+
+  defstruct sort_key: 0, mesh_id: 0, material_id: 0, layer: 0, team: :none
 end
 
 # type RenderBlock
 defmodule Example.RenderBlock do
+  @moduledoc """
+  The type RenderBlock. Construction carries its specified defaults; the
+  codecs are in Example.Render.
+  """
+
+  @type t :: %__MODULE__{
+          worker_index: 0..4_294_967_295,
+          sprite_count_hint: 0..4_294_967_295,
+          sprites: [Example.RenderSprite.t()]
+        }
+
   # sprites: counted array — a list of up to RenderBlockMaxSprites elements
   defstruct worker_index: 0, sprite_count_hint: 0, sprites: []
 end
@@ -18,31 +42,47 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Render.schema.
 defmodule Example.Render do
+  @moduledoc """
+  The file-scope surface of Render.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
+  import Example.PacketRuntime, only: [rd: 3, rdw: 3]
 
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
+  @doc "The constant RenderBlockMaxSprites."
+  @spec render_block_max_sprites() :: integer()
   def render_block_max_sprites, do: 64
 
-  # render_sprite_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # render_sprite_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a RenderSprite can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec render_sprite_max_bits() :: pos_integer()
   def render_sprite_max_bits, do: 138
+
+  @doc """
+  render_sprite_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec render_sprite_max_bytes() :: pos_integer()
   def render_sprite_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.RenderSprite{}).
+  @doc """
+  The §5 zero form of RenderSprite: all-zero storage. Specified defaults live
+  only in construction (`%Example.RenderSprite{}`).
+  """
+  @spec zero_render_sprite() :: Example.RenderSprite.t()
   def zero_render_sprite do
-    %Example.RenderSprite{sort_key: 0, mesh_id: 0, material_id: 0, layer: 0, team: 0}
+    %Example.RenderSprite{sort_key: 0, mesh_id: 0, material_id: 0, layer: 0, team: :none}
   end
 
-  # write_render_sprite packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_render_sprite(value) do
-    data = <<>>
-
+  @doc """
+  Packs a RenderSprite into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_render_sprite!(Example.RenderSprite.t()) :: binary()
+  def write_render_sprite!(value) do
     %{
       sort_key: value_sort_key,
       mesh_id: value_mesh_id,
@@ -64,32 +104,38 @@ defmodule Example.Render do
     scratch = v
     v = value_layer &&& 0xFF
     scratch = scratch ||| v <<< 32
-
-    if value_team < 0 do
-      raise ArgumentError, "value.team is below the wire minimum"
-    end
-
-    if value_team > 2 do
-      raise ArgumentError, "value.team is above the wire maximum"
-    end
-
-    v = value_team
+    v = Example.Team.to_int(value_team)
     scratch = scratch ||| v <<< 40
 
     data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), scratch::little-size(5)-unit(8)>>
+      <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        scratch::little-size(5)-unit(8)>>
 
     scratch = scratch >>> 40
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_render_sprite_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_render_sprite!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_render_sprite(Example.RenderSprite.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_render_sprite(value) do
+    {:ok, write_render_sprite!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a RenderSprite from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_render_sprite_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.RenderSprite.t(), non_neg_integer()} | :error
   def read_render_sprite_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -97,33 +143,26 @@ defmodule Example.Render do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 138 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 138 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_sort_key = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_mesh_id = v
-      rv = rdw(data, bits_read, 42)
+      rv = rdw(data, 96, 42)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_material_id = v
       v = rv >>> 32 &&& 0xFF
-      bits_read = bits_read + 8
       v_layer = v
       v = rv >>> 40
-      bits_read = bits_read + 2
       # headroom above the wire range is refused
       if v > 2, do: throw(:invalid)
-      v_team = v
+      {:ok, v_team} = Example.Team.from_int(v)
 
       value = %Example.RenderSprite{
         sort_key: v_sort_key,
@@ -133,14 +172,18 @@ defmodule Example.Render do
         team: v_team
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 138}
     catch
       :invalid -> :error
     end
   end
 
-  # read_render_sprite is read_render_sprite_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a RenderSprite from the first num_bits of data: read_render_sprite_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_render_sprite(binary(), non_neg_integer()) ::
+          {:ok, Example.RenderSprite.t()} | :error
   def read_render_sprite(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_render_sprite_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -148,27 +191,35 @@ defmodule Example.Render do
     end
   end
 
-  # measure_render_sprite is the exact wire bits write_render_sprite would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_render_sprite(_value), do: 138
-
-  # render_block_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # render_block_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a RenderBlock can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec render_block_max_bits() :: pos_integer()
   def render_block_max_bits, do: 8903
+
+  @doc """
+  render_block_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec render_block_max_bytes() :: pos_integer()
   def render_block_max_bytes, do: 1120
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.RenderBlock{}).
+  @doc """
+  The §5 zero form of RenderBlock: all-zero storage. Specified defaults live
+  only in construction (`%Example.RenderBlock{}`).
+  """
+  @spec zero_render_block() :: Example.RenderBlock.t()
   def zero_render_block do
     %Example.RenderBlock{worker_index: 0, sprite_count_hint: 0, sprites: []}
   end
 
-  # write_render_block packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_render_block(value) do
-    data = <<>>
-
+  @doc """
+  Packs a RenderBlock into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_render_block!(Example.RenderBlock.t()) :: binary()
+  def write_render_block!(value) do
     %{
       worker_index: value_worker_index,
       sprite_count_hint: value_sprite_count_hint,
@@ -188,7 +239,7 @@ defmodule Example.Render do
 
     v = n
     scratch = scratch ||| v <<< 32
-    data = <<data::binary, sc0::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+    data = <<sc0::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
     scratch = scratch >>> 32
     scratch_bits = 7
 
@@ -198,11 +249,26 @@ defmodule Example.Render do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_render_block_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_render_block!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_render_block(Example.RenderBlock.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_render_block(value) do
+    {:ok, write_render_block!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a RenderBlock from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_render_block_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.RenderBlock.t(), non_neg_integer()} | :error
   def read_render_block_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -210,25 +276,21 @@ defmodule Example.Render do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 64 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 64 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_worker_index = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 32, 32)
       v = rv
-      bits_read = bits_read + 32
       v_sprite_count_hint = v
-      if bits_read + 7 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 71 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0x7F
-      bits_read = bits_read + 7
       # the count guards the loop — reject, never clamp
       if v > 64, do: throw(:invalid)
       n = v
-      if bits_read + n * 138 > num_bits, do: throw(:invalid)
-      {bits_read, v_sprites} = r_render_block_sprites(n, [], data, num_bits, bits_read)
+      if 71 + n * 138 > num_bits, do: throw(:invalid)
+      {bits_read, v_sprites} = r_render_block_sprites(n, [], data, num_bits, 71)
 
       value = %Example.RenderBlock{
         worker_index: v_worker_index,
@@ -242,22 +304,16 @@ defmodule Example.Render do
     end
   end
 
-  # read_render_block is read_render_block_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a RenderBlock from the first num_bits of data: read_render_block_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_render_block(binary(), non_neg_integer()) :: {:ok, Example.RenderBlock.t()} | :error
   def read_render_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_render_block_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
-  end
-
-  # measure_render_block is the exact wire bits write_render_block would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_render_block(value) do
-    bits = 0
-    bits = bits + 71
-    bits = bits + length(value.sprites) * 138
-    bits
   end
 
   defp w_render_block_sprites([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -298,16 +354,7 @@ defmodule Example.Render do
     v = e_layer &&& 0xFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
-
-    if e_team < 0 do
-      raise ArgumentError, "e.team is below the wire minimum"
-    end
-
-    if e_team > 2 do
-      raise ArgumentError, "e.team is above the wire maximum"
-    end
-
-    v = e_team
+    v = Example.Team.to_int(e_team)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -327,29 +374,23 @@ defmodule Example.Render do
   defp r_render_block_sprites(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 32, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e_sort_key = w
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 64, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_mesh_id = v
-    rv = rdw(data, bits_read, 42)
+    rv = rdw(data, bits_read + 96, 42)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_material_id = v
     v = rv >>> 32 &&& 0xFF
-    bits_read = bits_read + 8
     e_layer = v
     v = rv >>> 40
-    bits_read = bits_read + 2
     # headroom above the wire range is refused
     if v > 2, do: throw(:invalid)
-    e_team = v
+    {:ok, e_team} = Example.Team.from_int(v)
 
     e = %Example.RenderSprite{
       sort_key: e_sort_key,
@@ -359,38 +400,6 @@ defmodule Example.Render do
       team: e_team
     }
 
-    r_render_block_sprites(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+    r_render_block_sprites(remaining - 1, [e | acc], data, num_bits, bits_read + 138)
   end
 end

@@ -166,13 +166,13 @@ KeyedCheck.check(Team.max() == 3 and Hull.max() == 3 and Weapon.max() == 3, "enu
 # 1-based get/put on table struct fields (teams, hulls, turrets) and type struct field (ScoreBoard.per_team)
 cfg =
   cfg
-  |> KeyedConfig.put_teams_at(Team.red(), %TeamConfig{spawn_count: 10, banner: "red"})
-  |> KeyedConfig.put_teams_at(Team.blue(), %TeamConfig{spawn_count: 20, banner: "blue"})
-  |> KeyedConfig.put_teams_at(Team.green(), %TeamConfig{spawn_count: 30, banner: "green"})
+  |> KeyedConfig.put_teams_at(Team.to_int(:red), %TeamConfig{spawn_count: 10, banner: "red"})
+  |> KeyedConfig.put_teams_at(Team.to_int(:blue), %TeamConfig{spawn_count: 20, banner: "blue"})
+  |> KeyedConfig.put_teams_at(Team.to_int(:green), %TeamConfig{spawn_count: 30, banner: "green"})
 
-KeyedCheck.check(KeyedConfig.teams_at(cfg, Team.red()).spawn_count == 10, "teams_at Red")
-KeyedCheck.check(KeyedConfig.teams_at(cfg, Team.blue()).spawn_count == 20, "teams_at Blue")
-KeyedCheck.check(KeyedConfig.teams_at(cfg, Team.green()).spawn_count == 30, "teams_at Green")
+KeyedCheck.check(KeyedConfig.teams_at(cfg, Team.to_int(:red)).spawn_count == 10, "teams_at Red")
+KeyedCheck.check(KeyedConfig.teams_at(cfg, Team.to_int(:blue)).spawn_count == 20, "teams_at Blue")
+KeyedCheck.check(KeyedConfig.teams_at(cfg, Team.to_int(:green)).spawn_count == 30, "teams_at Green")
 KeyedCheck.check(
   Enum.map(KeyedConfig.teams_entries(cfg), fn {k, v} -> {k, v.spawn_count, v.banner} end) ==
     [{1, 10, "red"}, {2, 20, "blue"}, {3, 30, "green"}],
@@ -181,23 +181,23 @@ KeyedCheck.check(
 
 hull2 =
   %HullConfig{health: 250.0, mass: 5.0}
-  |> HullConfig.put_turrets_at(Weapon.cannon(), %TurretConfig{damage: 11.0, cooldown: 0.25})
-  |> HullConfig.put_turrets_at(Weapon.missile(), %TurretConfig{damage: 22.0, cooldown: 0.5})
-  |> HullConfig.put_turrets_at(Weapon.mine(), %TurretConfig{damage: 33.0, cooldown: 1.0})
+  |> HullConfig.put_turrets_at(Weapon.to_int(:cannon), %TurretConfig{damage: 11.0, cooldown: 0.25})
+  |> HullConfig.put_turrets_at(Weapon.to_int(:missile), %TurretConfig{damage: 22.0, cooldown: 0.5})
+  |> HullConfig.put_turrets_at(Weapon.to_int(:mine), %TurretConfig{damage: 33.0, cooldown: 1.0})
 
-KeyedCheck.check(HullConfig.turrets_at(hull2, Weapon.cannon()).damage == 11.0, "turrets_at Cannon")
-KeyedCheck.check(HullConfig.turrets_at(hull2, Weapon.missile()).damage == 22.0, "turrets_at Missile")
-KeyedCheck.check(HullConfig.turrets_at(hull2, Weapon.mine()).damage == 33.0, "turrets_at Mine")
+KeyedCheck.check(HullConfig.turrets_at(hull2, Weapon.to_int(:cannon)).damage == 11.0, "turrets_at Cannon")
+KeyedCheck.check(HullConfig.turrets_at(hull2, Weapon.to_int(:missile)).damage == 22.0, "turrets_at Missile")
+KeyedCheck.check(HullConfig.turrets_at(hull2, Weapon.to_int(:mine)).damage == 33.0, "turrets_at Mine")
 KeyedCheck.check(
   Enum.map(HullConfig.turrets_entries(hull2), fn {k, t} -> {k, t.damage} end) ==
     [{1, 11.0}, {2, 22.0}, {3, 33.0}],
   "turrets_entries yields 1-based {key, element} pairs"
 )
 
-cfg = KeyedConfig.put_hulls_at(cfg, Hull.gunship(), hull2)
-KeyedCheck.check(KeyedConfig.hulls_at(cfg, Hull.interceptor()).health == 100.0, "hulls_at Interceptor untouched")
-KeyedCheck.check(KeyedConfig.hulls_at(cfg, Hull.gunship()).health == 250.0, "hulls_at Gunship updated")
-KeyedCheck.check(KeyedConfig.hulls_at(cfg, Hull.freighter()).health == 100.0, "hulls_at Freighter untouched")
+cfg = KeyedConfig.put_hulls_at(cfg, Hull.to_int(:gunship), hull2)
+KeyedCheck.check(KeyedConfig.hulls_at(cfg, Hull.to_int(:interceptor)).health == 100.0, "hulls_at Interceptor untouched")
+KeyedCheck.check(KeyedConfig.hulls_at(cfg, Hull.to_int(:gunship)).health == 250.0, "hulls_at Gunship updated")
+KeyedCheck.check(KeyedConfig.hulls_at(cfg, Hull.to_int(:freighter)).health == 100.0, "hulls_at Freighter untouched")
 KeyedCheck.check(
   Enum.map(KeyedConfig.hulls_entries(cfg), fn {k, h} -> {k, h.health} end) ==
     [{1, 100.0}, {2, 250.0}, {3, 100.0}],
@@ -206,13 +206,13 @@ KeyedCheck.check(
 
 scores =
   %ScoreBoard{}
-  |> ScoreBoard.put_per_team_at(Team.red(), 1000)
-  |> ScoreBoard.put_per_team_at(Team.blue(), 2000)
-  |> ScoreBoard.put_per_team_at(Team.green(), 3000)
+  |> ScoreBoard.put_per_team_at(Team.to_int(:red), 1000)
+  |> ScoreBoard.put_per_team_at(Team.to_int(:blue), 2000)
+  |> ScoreBoard.put_per_team_at(Team.to_int(:green), 3000)
 
-KeyedCheck.check(ScoreBoard.per_team_at(scores, Team.red()) == 1000, "ScoreBoard.per_team_at Red")
-KeyedCheck.check(ScoreBoard.per_team_at(scores, Team.blue()) == 2000, "ScoreBoard.per_team_at Blue")
-KeyedCheck.check(ScoreBoard.per_team_at(scores, Team.green()) == 3000, "ScoreBoard.per_team_at Green")
+KeyedCheck.check(ScoreBoard.per_team_at(scores, Team.to_int(:red)) == 1000, "ScoreBoard.per_team_at Red")
+KeyedCheck.check(ScoreBoard.per_team_at(scores, Team.to_int(:blue)) == 2000, "ScoreBoard.per_team_at Blue")
+KeyedCheck.check(ScoreBoard.per_team_at(scores, Team.to_int(:green)) == 3000, "ScoreBoard.per_team_at Green")
 KeyedCheck.check(
   ScoreBoard.per_team_entries(scores) == [{1, 1000}, {2, 2000}, {3, 3000}],
   "ScoreBoard.per_team_entries yields 1-based {key, element} pairs"
@@ -224,8 +224,8 @@ wire = KeyedFixed.keyed_config_fixed_save([cfg])
 KeyedCheck.check(report.clamped == 0 and report.unknown == 0, "KeyedFixed round-trip report clean")
 KeyedCheck.check(
   KeyedConfig.teams_entries(loaded) == KeyedConfig.teams_entries(cfg) and
-    KeyedConfig.hulls_at(loaded, Hull.gunship()).health == 250.0 and
-    HullConfig.turrets_at(KeyedConfig.hulls_at(loaded, Hull.gunship()), Weapon.missile()).damage == 22.0 and
+    KeyedConfig.hulls_at(loaded, Hull.to_int(:gunship)).health == 250.0 and
+    HullConfig.turrets_at(KeyedConfig.hulls_at(loaded, Hull.to_int(:gunship)), Weapon.to_int(:missile)).damage == 22.0 and
     ScoreBoard.per_team_entries(loaded.scores) == [{1, 1000}, {2, 2000}, {3, 3000}],
   "KeyedFixed round-trip preserves keyed slots"
 )
@@ -239,13 +239,13 @@ KeyedCheck.check(Slot.max() == 3 and Tier.max() == 2 and Spare.max() == 4, "prob
 
 bundle =
   %SlotBundle{}
-  |> SlotBundle.put_pairs_at(Slot.alpha(), %SlotPair{a: 11, b: 12})
-  |> SlotBundle.put_pairs_at(Slot.beta(), %SlotPair{a: 21, b: 22})
-  |> SlotBundle.put_pairs_at(Slot.gamma(), %SlotPair{a: 31, b: 32})
+  |> SlotBundle.put_pairs_at(Slot.to_int(:alpha), %SlotPair{a: 11, b: 12})
+  |> SlotBundle.put_pairs_at(Slot.to_int(:beta), %SlotPair{a: 21, b: 22})
+  |> SlotBundle.put_pairs_at(Slot.to_int(:gamma), %SlotPair{a: 31, b: 32})
 
-KeyedCheck.check(SlotBundle.pairs_at(bundle, Slot.alpha()) == %SlotPair{a: 11, b: 12}, "SlotBundle.pairs_at Alpha")
-KeyedCheck.check(SlotBundle.pairs_at(bundle, Slot.beta()) == %SlotPair{a: 21, b: 22}, "SlotBundle.pairs_at Beta")
-KeyedCheck.check(SlotBundle.pairs_at(bundle, Slot.gamma()) == %SlotPair{a: 31, b: 32}, "SlotBundle.pairs_at Gamma")
+KeyedCheck.check(SlotBundle.pairs_at(bundle, Slot.to_int(:alpha)) == %SlotPair{a: 11, b: 12}, "SlotBundle.pairs_at Alpha")
+KeyedCheck.check(SlotBundle.pairs_at(bundle, Slot.to_int(:beta)) == %SlotPair{a: 21, b: 22}, "SlotBundle.pairs_at Beta")
+KeyedCheck.check(SlotBundle.pairs_at(bundle, Slot.to_int(:gamma)) == %SlotPair{a: 31, b: 32}, "SlotBundle.pairs_at Gamma")
 KeyedCheck.check(
   SlotBundle.pairs_entries(bundle) == [
     {1, %SlotPair{a: 11, b: 12}},
@@ -257,27 +257,27 @@ KeyedCheck.check(
 
 pcfg =
   %PConfig{nested: bundle}
-  |> PConfig.put_tokens_at(Slot.alpha(), 101)
-  |> PConfig.put_tokens_at(Slot.gamma(), 303)
-  |> PConfig.put_tiers_at(Tier.low(), 7)
-  |> PConfig.put_tiers_at(Tier.high(), 9)
-  |> PConfig.put_per_slot_at(Slot.beta(), %SlotPair{a: 55, b: 66})
+  |> PConfig.put_tokens_at(Slot.to_int(:alpha), 101)
+  |> PConfig.put_tokens_at(Slot.to_int(:gamma), 303)
+  |> PConfig.put_tiers_at(Tier.to_int(:low), 7)
+  |> PConfig.put_tiers_at(Tier.to_int(:high), 9)
+  |> PConfig.put_per_slot_at(Slot.to_int(:beta), %SlotPair{a: 55, b: 66})
 
 sholder =
   %SparseHolder{}
-  |> SparseHolder.put_sparse_at(Spare.one(), 111)
-  |> SparseHolder.put_sparse_at(Spare.two(), 222)
+  |> SparseHolder.put_sparse_at(Spare.to_int(:one), 111)
+  |> SparseHolder.put_sparse_at(Spare.to_int(:two), 222)
   |> SparseHolder.put_sparse_at(Spare.max(), 444)
 
 spkt =
   %SparsePacket{}
-  |> SparsePacket.put_sparse_at(Keyedpkt.Spare.one(), 111)
-  |> SparsePacket.put_sparse_at(Keyedpkt.Spare.two(), 222)
+  |> SparsePacket.put_sparse_at(Keyedpkt.Spare.to_int(:one), 111)
+  |> SparsePacket.put_sparse_at(Keyedpkt.Spare.to_int(:two), 222)
   |> SparsePacket.put_sparse_at(Keyedpkt.Spare.max(), 444)
 
-KeyedCheck.check(PConfig.tokens_at(pcfg, Slot.alpha()) == 101, "tokens_at Alpha")
-KeyedCheck.check(PConfig.tokens_at(pcfg, Slot.beta()) == 0, "tokens_at Beta untouched")
-KeyedCheck.check(PConfig.tokens_at(pcfg, Slot.gamma()) == 303, "tokens_at Gamma")
+KeyedCheck.check(PConfig.tokens_at(pcfg, Slot.to_int(:alpha)) == 101, "tokens_at Alpha")
+KeyedCheck.check(PConfig.tokens_at(pcfg, Slot.to_int(:beta)) == 0, "tokens_at Beta untouched")
+KeyedCheck.check(PConfig.tokens_at(pcfg, Slot.to_int(:gamma)) == 303, "tokens_at Gamma")
 KeyedCheck.check(PConfig.tokens_entries(pcfg) == [{1, 101}, {2, 0}, {3, 303}], "tokens_entries")
 KeyedCheck.check(PConfig.tiers_entries(pcfg) == [{1, 7}, {2, 9}], "tiers_entries")
 KeyedCheck.check(
@@ -353,7 +353,7 @@ KeyedCheck.check_raises_invalid(fn -> KeyedConfig.teams_at(cfg, :alpha) end, "te
 KeyedCheck.check_raises_invalid(fn -> ScoreBoard.per_team_at(scores, -1) end, "per_team", "Team")
 KeyedCheck.check_raises_invalid(fn -> ScoreBoard.per_team_at(scores, :alpha) end, "per_team", "Team")
 KeyedCheck.check_raises_invalid(fn -> SlotBundle.pairs_at(bundle, -1) end, "pairs", "Slot")
-KeyedCheck.check_raises_invalid(fn -> SlotBundle.pairs_at(bundle, :alpha) end, "pairs", "Slot")
+KeyedCheck.check_raises_invalid(fn -> SlotBundle.pairs_at(bundle, :omega) end, "pairs", "Slot")
 KeyedCheck.check_raises_invalid(fn -> SparseHolder.sparse_at(sholder, -1) end, "sparse", "Spare")
 KeyedCheck.check_raises_invalid(fn -> SparseHolder.sparse_at(sholder, :alpha) end, "sparse", "Spare")
 KeyedCheck.check_raises_invalid(fn -> SparsePacket.sparse_at(spkt, -1) end, "sparse", "Spare")

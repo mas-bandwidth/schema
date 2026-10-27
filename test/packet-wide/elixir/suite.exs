@@ -5,6 +5,14 @@ defmodule PacketWideTest do
   def check(true, _message), do: :ok
   def check(false, message), do: raise(message)
   def hex(bytes), do: Base.encode16(bytes, case: :lower)
+
+  # the exact wire bits of a written value: what read_<name>_bits reports
+  # consuming from it (there is no generated measure, SPEC §6.1)
+  def bits_of(wire, read_bits) do
+    {:ok, _, bits} = read_bits.(wire, bit_size(wire))
+    bits
+  end
+
   def units(<<>>), do: "-"
 
   def units(bytes) do
@@ -17,7 +25,7 @@ defmodule PacketWideTest do
     for text <- [<<1>>, <<0, 0>>, :binary.copy(<<1, 0>>, 8)] do
       refused =
         try do
-          W.write_wide_seven(%Wide.WideSeven{text: text})
+          W.write_wide_seven!(%Wide.WideSeven{text: text})
           false
         rescue
           ArgumentError -> true
@@ -26,35 +34,40 @@ defmodule PacketWideTest do
       check(refused, "writer odd/bounds/null")
     end
 
-    wire = W.write_wide_seven(%Wide.WideSeven{text: <<0xD800::little-16>>})
+    wire = W.write_wide_seven!(%Wide.WideSeven{text: <<0xD800::little-16>>})
     check(W.read_wide_seven(wire, 35) == :error, "unpaired high")
     v = %Wide.WideSeven{text: <<0xFFFF::little-16>>}
-    wire = W.write_wide_seven(v)
+    wire = W.write_wide_seven!(v)
     check(W.read_wide_seven(wire, 35) == {:ok, v}, "FFFF binary")
     c = %Wideprobe.Conditional{enabled: true, text: <<0xD800::little-16, 0xDC00::little-16>>}
-    wire = P.write_conditional(c)
+    wire = P.write_conditional!(c)
 
     check(
-      P.measure_conditional(c) == 68 and Bitwise.band(:binary.at(wire, 0), 15) == 5,
+      bits_of(P.write_conditional!(c), &P.read_conditional_bits/2) == 68 and
+        Bitwise.band(:binary.at(wire, 0), 15) == 5,
       "unaligned groups"
     )
 
     check(P.read_conditional(wire, 68) == {:ok, c}, "conditional")
-    wire = P.write_conditional(%{c | enabled: false})
+    wire = P.write_conditional!(%{c | enabled: false})
     check(P.read_conditional(wire, 1) == {:ok, %Wideprobe.Conditional{}}, "branch zero")
     text = %Wideprobe.Text{value: <<0xFFFF::little-16>>}
-    choice = %Wideprobe.Choice{type: 1, text: text}
-    wire = P.write_choice(choice)
+    choice = {:text, text}
+    wire = P.write_choice!(choice)
 
     for _ <- 1..2 do
-      check(P.read_choice(wire, P.measure_choice(choice)) == {:ok, choice}, "repeated union")
+      check(
+        P.read_choice(wire, bits_of(P.write_choice!(choice), &P.read_choice_bits/2)) ==
+          {:ok, choice},
+        "repeated union"
+      )
     end
 
     box = %Wideprobe.Box{}
     check(length(box.counted) == 1, "born count")
     box = %{box | items: [text, %Wideprobe.Text{}], counted: [text], choice: choice}
-    wire = P.write_box(box)
-    bits = P.measure_box(box)
+    wire = P.write_box!(box)
+    bits = bits_of(P.write_box!(box), &P.read_box_bits/2)
     check(P.read_box(wire, bits) == {:ok, box}, "composition")
     check(P.read_box(wire, bits - 1) == :error, "composition truncation")
   end
@@ -64,10 +77,10 @@ defmodule PacketWideTest do
       [bound, raw] = line |> String.trim() |> String.split(" ")
       wire = if raw == "-", do: <<>>, else: Base.decode16!(raw, case: :mixed)
 
-      {read, write, measure} =
+      {read, write, read_bits} =
         case bound do
-          "7" -> {&W.read_wide_seven/2, &W.write_wide_seven/1, &W.measure_wide_seven/1}
-          "4" -> {&W.read_wide_four/2, &W.write_wide_four/1, &W.measure_wide_four/1}
+          "7" -> {&W.read_wide_seven/2, &W.write_wide_seven!/1, &W.read_wide_seven_bits/2}
+          "4" -> {&W.read_wide_four/2, &W.write_wide_four!/1, &W.read_wide_four_bits/2}
         end
 
       case read.(wire, byte_size(wire) * 8) do
@@ -75,7 +88,7 @@ defmodule PacketWideTest do
           IO.puts("REFUSE")
 
         {:ok, value} ->
-          bits = measure.(value)
+          bits = bits_of(write.(value), read_bits)
 
           check(
             read.(wire, bits) == {:ok, value} and read.(wire, bits - 1) == :error,

@@ -4,16 +4,16 @@
 # AGPL-3.0, its output is not.
 # package realworld — protocol id 0x1922430092518648
 #
-# The shipped Elixir wire path (issue #167): the serialize.elixir port's
-# measured shapes — byte-granular 32-bit-group packing and 40-bit read
-# windows (every intermediate a BEAM small integer), single accumulator-
-# threaded read/write functions per type (no stream struct, no per-field
-# tuple), function-head loops — with literal widths, zero dependencies.
+# The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
+# read windows (every intermediate a BEAM small integer), single
+# accumulator-threaded read/write functions per type (no stream struct, no
+# per-field tuple), function-head loops — with literal widths, zero
+# dependencies. The shared helpers live in PacketRuntime.ex.
 #
-# write_<name>(value) -> the wire binary. The writer TRUSTS the caller
+# write_<name>!(value) -> the wire binary. The writer TRUSTS the caller
 # (the C++ stance) up to the O(1) contract checks, which raise
 # ArgumentError — the BEAM has no compile-out assert, so they are always
-# on, matching the port.
+# on. write_<name>(value) -> {:ok, binary} | {:error, message} beside it.
 #
 # read_<name>(data, num_bits) -> {:ok, value} | :error, the family read
 # verdict. The wire is a trust boundary: reads validate everything —
@@ -22,32 +22,160 @@
 # No slack past the payload is required: the windows price themselves
 # inside the binary.
 #
-# measure_<name>(value) -> exact wire bits for that value (trusted, like
-# the writer). zero_<name>() -> the §5 zero form; construction
-# (%Struct{}) carries the specified defaults instead. Floats travel
-# bit-transparently: a non-finite IEEE-754 pattern — which no BEAM float
-# term can hold — reads back as {:nonfinite, bits} and writes from the
-# same form, the serialize.elixir convention.
+# zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the
+# specified defaults instead. Enum values are atoms, union values are nil,
+# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:
+# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads
+# back as {:nonfinite, bits} and writes from the same form.
 
-# PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
 defmodule Realworld.PacketMode do
-  def none, do: 0
-  def idle, do: 1
-  def active, do: 2
-  def combat, do: 3
-  def docked, do: 4
-  def warping, do: 5
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum PacketMode: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none | :idle | :active | :combat | :docked | :warping
+
+  @doc "The wire value of a PacketMode value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..5
+  def to_int(:none), do: 0
+  def to_int(:idle), do: 1
+  def to_int(:active), do: 2
+  def to_int(:combat), do: 3
+  def to_int(:docked), do: 4
+  def to_int(:warping), do: 5
+
+  def to_int(v) do
+    raise ArgumentError, "not a PacketMode value: #{inspect(v)}"
+  end
+
+  @doc "The PacketMode value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :idle}
+  def from_int(2), do: {:ok, :active}
+  def from_int(3), do: {:ok, :combat}
+  def from_int(4), do: {:ok, :docked}
+  def from_int(5), do: {:ok, :warping}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 5
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 5
 end
 
 # type RealPacket
 defmodule Realworld.RealPacket do
+  @moduledoc """
+  The type RealPacket. Construction carries its specified defaults; the
+  codecs are in Realworld.RealWorld.
+  """
+
+  @type t :: %__MODULE__{
+          f001_int: -805_495..805_495,
+          f002f64: Realworld.PacketRuntime.float64(),
+          f003_int: -835_897..835_897,
+          f004_cf32: float(),
+          f005_uint: 0..7316,
+          f006_int: -1513..1513,
+          f007f32: Realworld.PacketRuntime.float32(),
+          f008u64: 0..18_446_744_073_709_551_615,
+          f009_int: -22..22,
+          f010f32: Realworld.PacketRuntime.float32(),
+          f011_bits: 0..1023,
+          f012_bool: boolean(),
+          f013f32: Realworld.PacketRuntime.float32(),
+          f014_uint: 0..775,
+          f015_int: -21..21,
+          f016_fixed: -37_748_736..37_748_736,
+          f017_uint: 0..4606,
+          f018_int: -834..834,
+          f019f64: Realworld.PacketRuntime.float64(),
+          f020f32: Realworld.PacketRuntime.float32(),
+          f021_ufixed: 0..102_977_536,
+          f022f32: Realworld.PacketRuntime.float32(),
+          f023_bits: 0..33_554_431,
+          f024f32: Realworld.PacketRuntime.float32(),
+          f025_fixed: -30464..30464,
+          f026_bits: 0..511,
+          f027_cf32: float(),
+          f028_bits: 0..15,
+          f029i64: -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
+          f030f32: Realworld.PacketRuntime.float32(),
+          f031_bits: 0..1,
+          f032_int: -3..3,
+          f033_uint: 0..142_780,
+          f034_uint: 0..14149,
+          f035_bits: 0..511,
+          f036_enum: Realworld.PacketMode.t(),
+          f037_bool: boolean(),
+          f038_bool: boolean(),
+          f039_bits: 0..524_287,
+          f040_fixed: -20480..20480,
+          f041_int: -55..55,
+          f042_bits: 0..1_073_741_823,
+          f043_bool: boolean(),
+          f044f32: Realworld.PacketRuntime.float32(),
+          f045_bits: 0..4095,
+          f046_uint: 0..76063,
+          f047_int: -430_976..430_976,
+          f048f64: Realworld.PacketRuntime.float64(),
+          f049_ufixed: 0..49152,
+          f050_bool: boolean(),
+          f051_bool: boolean(),
+          f052_int: -57..57,
+          f053f32: Realworld.PacketRuntime.float32(),
+          f054_int: -35..35,
+          f055_bool: boolean(),
+          f056_int: -13..13,
+          f057_int: -15..15,
+          f058f32: Realworld.PacketRuntime.float32(),
+          f059f64: Realworld.PacketRuntime.float64(),
+          f060_bits: 0..255,
+          f061_cf32: float(),
+          f062_uint: 0..503,
+          f063i64: -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
+          f064_uint: 0..299,
+          f065_cf32: float(),
+          f066_ufixed: 0..32768,
+          f067_cf32: float(),
+          f068_cf32: float(),
+          f069_bits: 0..2047,
+          f070_uint: 0..2,
+          f071_cf32: float(),
+          f072_cf32: float(),
+          f073_int: -4..4,
+          f074_bool: boolean(),
+          f075u64: 0..18_446_744_073_709_551_615,
+          f076_int: -26218..26218,
+          f077_int: -17..17,
+          f078_bits: 0..511,
+          f079_uint: 0..17,
+          f080_bool: boolean(),
+          f081_bits: 0..536_870_911,
+          f082_bits: 0..33_554_431,
+          f083_enum: Realworld.PacketMode.t(),
+          f084_ufixed: 0..128,
+          f085_bits: 0..2_097_151,
+          f086_uint: 0..399,
+          f087f64: Realworld.PacketRuntime.float64(),
+          f088_int: -694..694,
+          f089_bits: 0..281_474_976_710_655,
+          f090_uint: 0..214,
+          f091_flags: 0..18_446_744_073_709_551_615,
+          f092_bool: boolean(),
+          f093_bits: 0..18_446_744_073_709_551_615,
+          f094_bool: boolean(),
+          f095_fixed: -103_350_272..103_350_272,
+          f096_bits: 0..262_143,
+          f097_bits: 0..4095
+        }
+
   # f001_int: wire [-805495, 805495]
   # f003_int: wire [-835897, 835897]
   # f004_cf32: compressed float [0.0, 2000.0] @ 0.1
@@ -137,7 +265,7 @@ defmodule Realworld.RealPacket do
             f033_uint: 0,
             f034_uint: 0,
             f035_bits: 0,
-            f036_enum: 0,
+            f036_enum: :none,
             f037_bool: false,
             f038_bool: false,
             f039_bits: 0,
@@ -184,7 +312,7 @@ defmodule Realworld.RealPacket do
             f080_bool: false,
             f081_bits: 0,
             f082_bits: 0,
-            f083_enum: 0,
+            f083_enum: :none,
             f084_ufixed: 0,
             f085_bits: 0,
             f086_uint: 0,
@@ -204,170 +332,61 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in RealWorld.schema.
 defmodule Realworld.RealWorld do
+  @moduledoc """
+  The file-scope surface of RealWorld.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
 
-  @cf_tab_0 (fn ->
-               fr = fn value ->
-                 ax = abs(value)
+  import Realworld.PacketRuntime,
+    only: [
+      rd: 3,
+      rdw: 3,
+      f32_bits: 1,
+      f32_value: 1,
+      f64_bits: 1,
+      f64_value: 1,
+      cf_quantize: 5,
+      cf_decode: 4,
+      cf_table: 4
+    ]
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-                   y = value * 536_870_913.0
-                   y - (y - value)
-                 else
-                   case <<value::float-32-little>> do
-                     <<rounded::float-32-little>> -> rounded
-                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-                   end
-                 end
-               end
+  @cf_tab_0 cf_table(16, 16.0, 4.0, -2.0)
 
-               List.to_tuple(
-                 for integer <- 0..16 do
-                   quotient = fr.(fr.(integer * 1.0) / 16.0)
-                   scaled = fr.(quotient * 4.0)
+  @cf_tab_1 cf_table(360, 360.0, 180.0, -90.0)
 
-                   case fr.(scaled + -2.0) do
-                     :pos_inf -> {:nonfinite, 0x7F800000}
-                     :neg_inf -> {:nonfinite, 0xFF800000}
-                     value -> value
-                   end
-                 end
-               )
-             end).()
+  @cf_tab_2 cf_table(60, 60.0, 30.0, 0.0)
 
-  @cf_tab_1 (fn ->
-               fr = fn value ->
-                 ax = abs(value)
+  @cf_tab_3 cf_table(800, 800.0, 200.0, -100.0)
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-                   y = value * 536_870_913.0
-                   y - (y - value)
-                 else
-                   case <<value::float-32-little>> do
-                     <<rounded::float-32-little>> -> rounded
-                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-                   end
-                 end
-               end
+  @cf_tab_4 cf_table(500, 500.0, 10.0, 0.0)
 
-               List.to_tuple(
-                 for integer <- 0..360 do
-                   quotient = fr.(fr.(integer * 1.0) / 360.0)
-                   scaled = fr.(quotient * 180.0)
-
-                   case fr.(scaled + -90.0) do
-                     :pos_inf -> {:nonfinite, 0x7F800000}
-                     :neg_inf -> {:nonfinite, 0xFF800000}
-                     value -> value
-                   end
-                 end
-               )
-             end).()
-
-  @cf_tab_2 (fn ->
-               fr = fn value ->
-                 ax = abs(value)
-
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-                   y = value * 536_870_913.0
-                   y - (y - value)
-                 else
-                   case <<value::float-32-little>> do
-                     <<rounded::float-32-little>> -> rounded
-                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-                   end
-                 end
-               end
-
-               List.to_tuple(
-                 for integer <- 0..60 do
-                   quotient = fr.(fr.(integer * 1.0) / 60.0)
-                   scaled = fr.(quotient * 30.0)
-
-                   case fr.(scaled + 0.0) do
-                     :pos_inf -> {:nonfinite, 0x7F800000}
-                     :neg_inf -> {:nonfinite, 0xFF800000}
-                     value -> value
-                   end
-                 end
-               )
-             end).()
-
-  @cf_tab_3 (fn ->
-               fr = fn value ->
-                 ax = abs(value)
-
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-                   y = value * 536_870_913.0
-                   y - (y - value)
-                 else
-                   case <<value::float-32-little>> do
-                     <<rounded::float-32-little>> -> rounded
-                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-                   end
-                 end
-               end
-
-               List.to_tuple(
-                 for integer <- 0..800 do
-                   quotient = fr.(fr.(integer * 1.0) / 800.0)
-                   scaled = fr.(quotient * 200.0)
-
-                   case fr.(scaled + -100.0) do
-                     :pos_inf -> {:nonfinite, 0x7F800000}
-                     :neg_inf -> {:nonfinite, 0xFF800000}
-                     value -> value
-                   end
-                 end
-               )
-             end).()
-
-  @cf_tab_4 (fn ->
-               fr = fn value ->
-                 ax = abs(value)
-
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-                   y = value * 536_870_913.0
-                   y - (y - value)
-                 else
-                   case <<value::float-32-little>> do
-                     <<rounded::float-32-little>> -> rounded
-                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-                   end
-                 end
-               end
-
-               List.to_tuple(
-                 for integer <- 0..500 do
-                   quotient = fr.(fr.(integer * 1.0) / 500.0)
-                   scaled = fr.(quotient * 10.0)
-
-                   case fr.(scaled + 0.0) do
-                     :pos_inf -> {:nonfinite, 0x7F800000}
-                     :neg_inf -> {:nonfinite, 0xFF800000}
-                     value -> value
-                   end
-                 end
-               )
-             end).()
-
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
-  # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
-  # sides at the same id speak identical bits; there is no other versioning.
+  @doc """
+  The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
+  sides at the same id speak identical bits; there is no other versioning.
+  """
+  @spec protocol_id() :: non_neg_integer()
   def protocol_id, do: 0x1922430092518648
 
-  # enum_name_packet_mode: debug/log/tooling name for any PacketMode wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a PacketMode value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_packet_mode(Realworld.PacketMode.t() | integer()) :: String.t()
   def enum_name_packet_mode(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :idle -> "Idle"
       1 -> "Idle"
+      :active -> "Active"
       2 -> "Active"
+      :combat -> "Combat"
       3 -> "Combat"
+      :docked -> "Docked"
       4 -> "Docked"
+      :warping -> "Warping"
       5 -> "Warping"
       _ -> "???"
     end
@@ -376,16 +395,35 @@ defmodule Realworld.RealWorld do
   # PacketFlags — one bit per variant, consumed as masks; flags-typed fields store
   # the uint64 mask pattern in every target — a plain integer here — wire
   # 5 bits (SPEC §4.2). Mask names are the family's flat spelling.
+  @doc "The Shielded mask of PacketFlags (bit 0)."
+  @spec packet_flags_shielded() :: non_neg_integer()
   def packet_flags_shielded, do: 1 <<< 0
+
+  @doc "The Cloaked mask of PacketFlags (bit 1)."
+  @spec packet_flags_cloaked() :: non_neg_integer()
   def packet_flags_cloaked, do: 1 <<< 1
+
+  @doc "The Overheated mask of PacketFlags (bit 2)."
+  @spec packet_flags_overheated() :: non_neg_integer()
   def packet_flags_overheated, do: 1 <<< 2
+
+  @doc "The LowPower mask of PacketFlags (bit 3)."
+  @spec packet_flags_low_power() :: non_neg_integer()
   def packet_flags_low_power, do: 1 <<< 3
+
+  @doc "The Jamming mask of PacketFlags (bit 4)."
+  @spec packet_flags_jamming() :: non_neg_integer()
   def packet_flags_jamming, do: 1 <<< 4
-  # the declared variant count (SPEC §4.2)
+
+  @doc "The declared variant count of PacketFlags (SPEC §4.2)."
+  @spec packet_flags_count() :: non_neg_integer()
   def packet_flags_count, do: 5
 
-  # flag_name_packet_flags: debug/log/tooling name for bit i of PacketFlags —
-  # out-of-range bits name as "???"
+  @doc """
+  The debug/log/tooling name of bit i of PacketFlags; out-of-range bits
+  name as "???".
+  """
+  @spec flag_name_packet_flags(integer()) :: String.t()
   def flag_name_packet_flags(bit) do
     case bit do
       0 -> "Shielded"
@@ -397,8 +435,11 @@ defmodule Realworld.RealWorld do
     end
   end
 
-  # flag_names_packet_flags renders the set bits of value as "A|B" — "0" for the
-  # empty set, bits past the declared variants as hex
+  @doc """
+  Renders the set bits of a PacketFlags value as "A|B": "0" for the empty
+  set, bits past the declared variants as hex.
+  """
+  @spec flag_names_packet_flags(non_neg_integer()) :: String.t()
   def flag_names_packet_flags(value) do
     names =
       Enum.filter(0..4, fn bit -> (value >>> bit &&& 1) != 0 end)
@@ -415,13 +456,24 @@ defmodule Realworld.RealWorld do
     if names == [], do: "0", else: Enum.join(names, "|")
   end
 
-  # real_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # real_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a RealPacket can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec real_packet_max_bits() :: pos_integer()
   def real_packet_max_bits, do: 1810
+
+  @doc """
+  real_packet_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec real_packet_max_bytes() :: pos_integer()
   def real_packet_max_bytes, do: 232
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Realworld.RealPacket{}).
+  @doc """
+  The §5 zero form of RealPacket: all-zero storage. Specified defaults live
+  only in construction (`%Realworld.RealPacket{}`).
+  """
+  @spec zero_real_packet() :: Realworld.RealPacket.t()
   def zero_real_packet do
     %Realworld.RealPacket{
       f001_int: 0,
@@ -459,7 +511,7 @@ defmodule Realworld.RealWorld do
       f033_uint: 0,
       f034_uint: 0,
       f035_bits: 0,
-      f036_enum: 0,
+      f036_enum: :none,
       f037_bool: false,
       f038_bool: false,
       f039_bits: 0,
@@ -506,7 +558,7 @@ defmodule Realworld.RealWorld do
       f080_bool: false,
       f081_bits: 0,
       f082_bits: 0,
-      f083_enum: 0,
+      f083_enum: :none,
       f084_ufixed: 0,
       f085_bits: 0,
       f086_uint: 0,
@@ -524,12 +576,13 @@ defmodule Realworld.RealWorld do
     }
   end
 
-  # write_real_packet packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_real_packet(value) do
-    data = <<>>
-
+  @doc """
+  Packs a RealPacket into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_real_packet!(Realworld.RealPacket.t()) :: binary()
+  def write_real_packet!(value) do
     %{
       f001_int: value_f001_int,
       f002f64: value_f002f64,
@@ -700,10 +753,9 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< 42
 
     data =
-      <<data::binary, sc0::little-size(2)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(6)-unit(8), sc4::little-size(6)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(5)-unit(8),
-        scratch::little-size(5)-unit(8)>>
+      <<sc0::little-size(2)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        sc3::little-size(6)-unit(8), sc4::little-size(6)-unit(8), sc5::little-size(4)-unit(8),
+        sc6::little-size(5)-unit(8), scratch::little-size(5)-unit(8)>>
 
     scratch = scratch >>> 40
 
@@ -885,16 +937,7 @@ defmodule Realworld.RealWorld do
     scratch = scratch ||| v <<< 18
     v = value_f035_bits &&& 0x1FF
     scratch = scratch ||| v <<< 32
-
-    if value_f036_enum < 0 do
-      raise ArgumentError, "value.f036_enum is below the wire minimum"
-    end
-
-    if value_f036_enum > 5 do
-      raise ArgumentError, "value.f036_enum is above the wire maximum"
-    end
-
-    v = value_f036_enum
+    v = Realworld.PacketMode.to_int(value_f036_enum)
     scratch = scratch ||| v <<< 41
     v = if value_f037_bool, do: 1, else: 0
     scratch = scratch ||| v <<< 44
@@ -1320,16 +1363,7 @@ defmodule Realworld.RealWorld do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 25
-
-    if value_f083_enum < 0 do
-      raise ArgumentError, "value.f083_enum is below the wire minimum"
-    end
-
-    if value_f083_enum > 5 do
-      raise ArgumentError, "value.f083_enum is above the wire maximum"
-    end
-
-    v = value_f083_enum
+    v = Realworld.PacketMode.to_int(value_f083_enum)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
 
@@ -1480,11 +1514,26 @@ defmodule Realworld.RealWorld do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_real_packet_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_real_packet!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_real_packet(Realworld.RealPacket.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_real_packet(value) do
+    {:ok, write_real_packet!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a RealPacket from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_real_packet_bits(binary(), non_neg_integer()) ::
+          {:ok, Realworld.RealPacket.t(), non_neg_integer()} | :error
   def read_real_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1492,103 +1541,85 @@ defmodule Realworld.RealWorld do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 291 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 291 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1FFFFF
-      bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_610_990, do: throw(:invalid)
       v_f001_int = v - 805_495
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 21, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 53, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f002f64 = f64_value(w)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 85, 49)
       v = rv &&& 0x1FFFFF
-      bits_read = bits_read + 21
       # a smuggled offset is refused
       if v > 1_671_794, do: throw(:invalid)
       v_f003_int = v - 835_897
       v = rv >>> 21 &&& 0x7FFF
-      bits_read = bits_read + 15
       # headroom above the quantum count is refused
       if v > 20000, do: throw(:invalid)
       v_f004_cf32 = cf_decode(v, 20000.0, 2000.0, 0.0)
       v = rv >>> 36
-      bits_read = bits_read + 13
       # a smuggled offset is refused
       if v > 7316, do: throw(:invalid)
       v_f005_uint = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 134, 49)
       v = rv &&& 0xFFF
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 3026, do: throw(:invalid)
       v_f006_int = v - 1513
       v = rv >>> 12 &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_f007f32 = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 178, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 210, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f008u64 = w
       v = rv >>> 32 &&& 0x3F
-      bits_read = bits_read + 6
       # a smuggled offset is refused
       if v > 44, do: throw(:invalid)
       v_f009_int = v - 22
-      rv = rdw(data, bits_read, 43)
+      rv = rdw(data, 248, 43)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_f010f32 = f32_value(v)
       v = rv >>> 32 &&& 0x3FF
-      bits_read = bits_read + 10
       v_f011_bits = v
       v = rv >>> 42
-      bits_read = bits_read + 1
       v_f012_bool = v == 1
 
       {bits_read, v_f013f32, v_f014_uint, v_f015_int, v_f016_fixed, v_f017_uint} =
         if v_f012_bool do
-          if bits_read + 88 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 49)
+          if 379 > num_bits, do: throw(:invalid)
+          rv = rdw(data, 291, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           v_f013f32 = f32_value(v)
           v = rv >>> 32 &&& 0x3FF
-          bits_read = bits_read + 10
           # a smuggled offset is refused
           if v > 775, do: throw(:invalid)
           v_f014_uint = v
           v = rv >>> 42 &&& 0x3F
-          bits_read = bits_read + 6
           # a smuggled offset is refused
           if v > 42, do: throw(:invalid)
           v_f015_int = v - 21
-          rv = rdw(data, bits_read, 40)
+          rv = rdw(data, 339, 40)
           v = rv &&& 0x7FFFFFF
-          bits_read = bits_read + 27
           # a smuggled offset is refused
           if v > 75_497_472, do: throw(:invalid)
           v_f016_fixed = v - 37_748_736
           v = rv >>> 27
-          bits_read = bits_read + 13
           # a smuggled offset is refused
           if v > 4606, do: throw(:invalid)
           v_f017_uint = v
+          bits_read = 379
           {bits_read, v_f013f32, v_f014_uint, v_f015_int, v_f016_fixed, v_f017_uint}
         else
+          bits_read = 291
           v_f013f32 = 0.0
           v_f014_uint = 0
           v_f015_int = 0
@@ -1600,148 +1631,118 @@ defmodule Realworld.RealWorld do
       if bits_read + 476 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7FF
-      bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1668, do: throw(:invalid)
       v_f018_int = v - 834
       v = rv >>> 11 &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 43, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f019f64 = f64_value(w)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 75, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_f020f32 = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 107, 49)
       v = rv &&& 0x7FFFFFF
-      bits_read = bits_read + 27
       # a smuggled offset is refused
       if v > 102_977_536, do: throw(:invalid)
       v_f021_ufixed = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 134, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_f022f32 = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 166, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       v_f023_bits = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 191, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_f024f32 = f32_value(v)
       v = rv >>> 32 &&& 0xFFFF
-      bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 60928, do: throw(:invalid)
       v_f025_fixed = v - 30464
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 239, 49)
       v = rv &&& 0x1FF
-      bits_read = bits_read + 9
       v_f026_bits = v
       v = rv >>> 9 &&& 0x1F
-      bits_read = bits_read + 5
       # headroom above the quantum count is refused
       if v > 16, do: throw(:invalid)
       v_f027_cf32 = elem(@cf_tab_0, v)
       v = rv >>> 14 &&& 0xF
-      bits_read = bits_read + 4
       v_f028_bits = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 257, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 289, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f029i64 = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 321, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_f030f32 = f32_value(v)
       v = rv >>> 32 &&& 0x1
-      bits_read = bits_read + 1
       v_f031_bits = v
       v = rv >>> 33 &&& 0x7
-      bits_read = bits_read + 3
       # a smuggled offset is refused
       if v > 6, do: throw(:invalid)
       v_f032_int = v - 3
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 357, 49)
       v = rv &&& 0x3FFFF
-      bits_read = bits_read + 18
       # a smuggled offset is refused
       if v > 142_780, do: throw(:invalid)
       v_f033_uint = v
       v = rv >>> 18 &&& 0x3FFF
-      bits_read = bits_read + 14
       # a smuggled offset is refused
       if v > 14149, do: throw(:invalid)
       v_f034_uint = v
       v = rv >>> 32 &&& 0x1FF
-      bits_read = bits_read + 9
       v_f035_bits = v
       v = rv >>> 41 &&& 0x7
-      bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
-      v_f036_enum = v
+      {:ok, v_f036_enum} = Realworld.PacketMode.from_int(v)
       v = rv >>> 44 &&& 0x1
-      bits_read = bits_read + 1
       v_f037_bool = v == 1
       v = rv >>> 45 &&& 0x1
-      bits_read = bits_read + 1
       v_f038_bool = v == 1
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 403, 49)
       v = rv &&& 0x7FFFF
-      bits_read = bits_read + 19
       v_f039_bits = v
       v = rv >>> 19 &&& 0xFFFF
-      bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 40960, do: throw(:invalid)
       v_f040_fixed = v - 20480
       v = rv >>> 35 &&& 0x7F
-      bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 110, do: throw(:invalid)
       v_f041_int = v - 55
-      rv = rd(data, bits_read, 31)
+      rv = rd(data, bits_read + 445, 31)
       v = rv &&& 0x3FFFFFFF
-      bits_read = bits_read + 30
       v_f042_bits = v
       v = rv >>> 30
-      bits_read = bits_read + 1
       v_f043_bool = v == 1
 
       {bits_read, v_f044f32, v_f045_bits, v_f046_uint, v_f047_int} =
         if v_f043_bool do
-          if bits_read + 81 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 49)
+          if bits_read + 557 > num_bits, do: throw(:invalid)
+          rv = rdw(data, bits_read + 476, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           v_f044f32 = f32_value(v)
           v = rv >>> 32 &&& 0xFFF
-          bits_read = bits_read + 12
           v_f045_bits = v
-          rv = rdw(data, bits_read, 37)
+          rv = rdw(data, bits_read + 520, 37)
           v = rv &&& 0x1FFFF
-          bits_read = bits_read + 17
           # a smuggled offset is refused
           if v > 76063, do: throw(:invalid)
           v_f046_uint = v
           v = rv >>> 17
-          bits_read = bits_read + 20
           # a smuggled offset is refused
           if v > 861_952, do: throw(:invalid)
           v_f047_int = v - 430_976
+          bits_read = bits_read + 557
           {bits_read, v_f044f32, v_f045_bits, v_f046_uint, v_f047_int}
         else
+          bits_read = bits_read + 476
           v_f044f32 = 0.0
           v_f045_bits = 0
           v_f046_uint = 0
@@ -1752,44 +1753,38 @@ defmodule Realworld.RealWorld do
       if bits_read + 81 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f048f64 = f64_value(w)
       v = rv >>> 32 &&& 0xFFFF
-      bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 49152, do: throw(:invalid)
       v_f049_ufixed = v
       v = rv >>> 48
-      bits_read = bits_read + 1
       v_f050_bool = v == 1
 
       {bits_read, v_f051_bool, v_f052_int, v_f053f32, v_f054_int} =
         if v_f050_bool do
-          if bits_read + 47 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 47)
+          if bits_read + 128 > num_bits, do: throw(:invalid)
+          rv = rdw(data, bits_read + 81, 47)
           v = rv &&& 0x1
-          bits_read = bits_read + 1
           v_f051_bool = v == 1
           v = rv >>> 1 &&& 0x7F
-          bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 114, do: throw(:invalid)
           v_f052_int = v - 57
           v = rv >>> 8 &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           v_f053f32 = f32_value(v)
           v = rv >>> 40
-          bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 70, do: throw(:invalid)
           v_f054_int = v - 35
+          bits_read = bits_read + 128
           {bits_read, v_f051_bool, v_f052_int, v_f053f32, v_f054_int}
         else
+          bits_read = bits_read + 81
           v_f051_bool = false
           v_f052_int = 0
           v_f053f32 = 0.0
@@ -1800,139 +1795,113 @@ defmodule Realworld.RealWorld do
       if bits_read + 290 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x1
-      bits_read = bits_read + 1
       v_f055_bool = v == 1
       v = rv >>> 1 &&& 0x1F
-      bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 26, do: throw(:invalid)
       v_f056_int = v - 13
       v = rv >>> 6 &&& 0x1F
-      bits_read = bits_read + 5
       # a smuggled offset is refused
       if v > 30, do: throw(:invalid)
       v_f057_int = v - 15
       v = rv >>> 11 &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_f058f32 = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 43, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 75, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f059f64 = f64_value(w)
       v = rv >>> 32 &&& 0xFF
-      bits_read = bits_read + 8
       v_f060_bits = v
       v = rv >>> 40
-      bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 360, do: throw(:invalid)
       v_f061_cf32 = elem(@cf_tab_1, v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 124, 49)
       v = rv &&& 0x1FF
-      bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 503, do: throw(:invalid)
       v_f062_uint = v
       v = rv >>> 9 &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 165, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f063i64 = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
       v = rv >>> 32 &&& 0x1FF
-      bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 299, do: throw(:invalid)
       v_f064_uint = v
       v = rv >>> 41 &&& 0x3F
-      bits_read = bits_read + 6
       # headroom above the quantum count is refused
       if v > 60, do: throw(:invalid)
       v_f065_cf32 = elem(@cf_tab_2, v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 212, 49)
       v = rv &&& 0xFFFF
-      bits_read = bits_read + 16
       # a smuggled offset is refused
       if v > 32768, do: throw(:invalid)
       v_f066_ufixed = v
       v = rv >>> 16 &&& 0x3FF
-      bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 800, do: throw(:invalid)
       v_f067_cf32 = elem(@cf_tab_3, v)
       v = rv >>> 26 &&& 0x7FF
-      bits_read = bits_read + 11
       # headroom above the quantum count is refused
       if v > 2000, do: throw(:invalid)
       v_f068_cf32 = cf_decode(v, 2000.0, 2000.0, 0.0)
       v = rv >>> 37 &&& 0x7FF
-      bits_read = bits_read + 11
       v_f069_bits = v
-      rv = rd(data, bits_read, 30)
+      rv = rd(data, bits_read + 260, 30)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # a smuggled offset is refused
       if v > 2, do: throw(:invalid)
       v_f070_uint = v
       v = rv >>> 2 &&& 0x1FF
-      bits_read = bits_read + 9
       # headroom above the quantum count is refused
       if v > 500, do: throw(:invalid)
       v_f071_cf32 = elem(@cf_tab_4, v)
       v = rv >>> 11 &&& 0x3FFF
-      bits_read = bits_read + 14
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
       v_f072_cf32 = cf_decode(v, 10000.0, 100.0, 0.0)
       v = rv >>> 25 &&& 0xF
-      bits_read = bits_read + 4
       # a smuggled offset is refused
       if v > 8, do: throw(:invalid)
       v_f073_int = v - 4
       v = rv >>> 29
-      bits_read = bits_read + 1
       v_f074_bool = v == 1
 
       {bits_read, v_f075u64, v_f076_int, v_f077_int, v_f078_bits, v_f079_uint} =
         if v_f074_bool do
-          if bits_read + 100 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 49)
+          if bits_read + 390 > num_bits, do: throw(:invalid)
+          rv = rdw(data, bits_read + 290, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, bits_read + 322, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_f075u64 = w
           v = rv >>> 32 &&& 0xFFFF
-          bits_read = bits_read + 16
           # a smuggled offset is refused
           if v > 52436, do: throw(:invalid)
           v_f076_int = v - 26218
-          rv = rd(data, bits_read, 20)
+          rv = rd(data, bits_read + 370, 20)
           v = rv &&& 0x3F
-          bits_read = bits_read + 6
           # a smuggled offset is refused
           if v > 34, do: throw(:invalid)
           v_f077_int = v - 17
           v = rv >>> 6 &&& 0x1FF
-          bits_read = bits_read + 9
           v_f078_bits = v
           v = rv >>> 15
-          bits_read = bits_read + 5
           # a smuggled offset is refused
           if v > 17, do: throw(:invalid)
           v_f079_uint = v
+          bits_read = bits_read + 390
           {bits_read, v_f075u64, v_f076_int, v_f077_int, v_f078_bits, v_f079_uint}
         else
+          bits_read = bits_read + 290
           v_f075u64 = 0
           v_f076_int = 0
           v_f077_int = 0
@@ -1944,91 +1913,70 @@ defmodule Realworld.RealWorld do
       if bits_read + 356 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x1
-      bits_read = bits_read + 1
       v_f080_bool = v == 1
       v = rv >>> 1 &&& 0x1FFFFFFF
-      bits_read = bits_read + 29
       v_f081_bits = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 30, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       v_f082_bits = v
       v = rv >>> 25 &&& 0x7
-      bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
-      v_f083_enum = v
+      {:ok, v_f083_enum} = Realworld.PacketMode.from_int(v)
       v = rv >>> 28 &&& 0xFF
-      bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 128, do: throw(:invalid)
       v_f084_ufixed = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 66, 49)
       v = rv &&& 0x1FFFFF
-      bits_read = bits_read + 21
       v_f085_bits = v
       v = rv >>> 21 &&& 0x1FF
-      bits_read = bits_read + 9
       # a smuggled offset is refused
       if v > 399, do: throw(:invalid)
       v_f086_uint = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 96, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 128, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f087f64 = f64_value(w)
       v = rv >>> 32 &&& 0x7FF
-      bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1388, do: throw(:invalid)
       v_f088_int = v - 694
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 171, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0xFFFF
-      bits_read = bits_read + 16
       w = w ||| v <<< 32
       v_f089_bits = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 219, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 214, do: throw(:invalid)
       v_f090_uint = v
       v = rv >>> 8 &&& 0x1F
-      bits_read = bits_read + 5
       v_f091_flags = v
       v = rv >>> 13 &&& 0x1
-      bits_read = bits_read + 1
       v_f092_bool = v == 1
       v = rv >>> 14 &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 265, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_f093_bits = w
       v = rv >>> 32 &&& 0x1
-      bits_read = bits_read + 1
       v_f094_bool = v == 1
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 298, 49)
       v = rv &&& 0xFFFFFFF
-      bits_read = bits_read + 28
       # a smuggled offset is refused
       if v > 206_700_544, do: throw(:invalid)
       v_f095_fixed = v - 103_350_272
       v = rv >>> 28 &&& 0x3FFFF
-      bits_read = bits_read + 18
       v_f096_bits = v
-      rv = rd(data, bits_read, 12)
+      rv = rd(data, bits_read + 344, 12)
       v = rv
-      bits_read = bits_read + 12
       v_f097_bits = v
 
       value = %Realworld.RealPacket{
@@ -2131,240 +2079,21 @@ defmodule Realworld.RealWorld do
         f097_bits: v_f097_bits
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 356}
     catch
       :invalid -> :error
     end
   end
 
-  # read_real_packet is read_real_packet_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a RealPacket from the first num_bits of data: read_real_packet_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_real_packet(binary(), non_neg_integer()) :: {:ok, Realworld.RealPacket.t()} | :error
   def read_real_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_real_packet_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
-    end
-  end
-
-  # measure_real_packet is the exact wire bits write_real_packet would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_real_packet(value) do
-    bits = 0
-    bits = bits + 291
-
-    bits =
-      if value.f012_bool do
-        bits + 88
-      else
-        bits
-      end
-
-    bits = bits + 476
-
-    bits =
-      if value.f043_bool do
-        bits + 81
-      else
-        bits
-      end
-
-    bits = bits + 81
-
-    bits =
-      if value.f050_bool do
-        bits + 47
-      else
-        bits
-      end
-
-    bits = bits + 290
-
-    bits =
-      if value.f074_bool do
-        bits + 100
-      else
-        bits
-      end
-
-    bits + 356
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The 32-bit IEEE-754 pattern of a float value for the write path — a
-  # non-finite pattern travels as {:nonfinite, bits}, since no BEAM float
-  # term can hold it (the serialize.elixir convention). Caller errors raise;
-  # the checks are O(1).
-  defp f32_bits(value) when is_float(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) == 0xFF do
-      raise ArgumentError, "float overflows float32; write {:nonfinite, bits} instead"
-    end
-
-    bits
-  end
-
-  defp f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
-    end
-
-    bits
-  end
-
-  # The value of a 32-bit pattern for the read path: the float for a finite
-  # pattern, {:nonfinite, bits} otherwise. Never raises — the bits are
-  # untrusted.
-  defp f32_value(bits) do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<value::float-32-little>> = <<bits::little-32>>
-      value
-    else
-      {:nonfinite, bits}
-    end
-  end
-
-  # The 64-bit IEEE-754 pattern of a double value and its inverse — the
-  # same bit-transparent contract as f32, at width 64.
-  defp f64_bits(value) when is_float(value) do
-    <<bits::little-64>> = <<value::float-64-little>>
-    bits
-  end
-
-  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
-
-    bits
-  end
-
-  defp f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
-    end
-  end
-
-  # A number rounded to its nearest float32 — one emulated float32 step
-  # (exact: the double result carries 2x24+2 significant bits, so the second
-  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
-  # compressed-float clamps can resolve it the way the reference's float
-  # arithmetic does.
-  #
-  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):
-  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the
-  # float32 normal range, below the smallest magnitude that rounds to
-  # infinity — y = value * C; y - (y - value) IS the value rounded to 24
-  # significant bits, round-to-nearest-even, in three flops with nothing
-  # allocated beyond the result. Outside that range (the subnormal grid,
-  # overflow to the atoms, zero with its sign) fr_slow keeps the exact
-  # semantics the construct/match pair defines.
-  defp fr(value) do
-    ax = abs(value)
-
-    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-      y = value * 536_870_913.0
-      y - (y - value)
-    else
-      fr_slow(value)
-    end
-  end
-
-  # The slow path's refusal IS the test: a float segment does not match a
-  # non-finite pattern, so a finite value costs one construction and one
-  # match and never touches the exponent field, while the second clause
-  # reads the sign of exactly the patterns the first one refused.
-  defp fr_slow(value) do
-    case <<value::float-32-little>> do
-      <<rounded::float-32-little>> -> rounded
-      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-    end
-  end
-
-  defp cf_clamp01(:pos_inf), do: 1.0
-  defp cf_clamp01(:neg_inf), do: 0.0
-  defp cf_clamp01(n) when n < 0.0, do: 0.0
-  defp cf_clamp01(n) when n > 1.0, do: 1.0
-  defp cf_clamp01(n), do: n
-
-  # The family's two-rounding float32 quantization (SPEC §4.3), the port's
-  # own steps: normalize with every step rounding, clamp to [0, 1] (which
-  # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
-  # and the normative integer clamp to the step count.
-  # miv32 is the float32 of the step count, folded at generation time: it
-  # is a declaration constant, and recomputing its rounding per call was
-  # one of the six float32 steps.
-  defp cf_quantize(value, min32, delta, miv, miv32) do
-    if not is_number(value) do
-      raise ArgumentError, "a compressed float writes a finite number"
-    end
-
-    difference =
-      case fr(value * 1.0) do
-        :pos_inf -> :pos_inf
-        :neg_inf -> :neg_inf
-        v32 -> fr(v32 - min32)
-      end
-
-    normalized =
-      case difference do
-        :pos_inf -> 1.0
-        :neg_inf -> 0.0
-        d -> cf_clamp01(fr(d / delta))
-      end
-
-    scaled = fr(normalized * miv32)
-    integer = floor(fr(scaled + 0.5))
-    min(integer, miv)
-  end
-
-  # The reader's arithmetic, pinned the same way: the quotient rounds, the
-  # product rounds BEFORE min is added, and the sum rounds — float32
-  # throughout, never fused, never widened. The final add cannot overflow
-  # for a conforming declaration; the non-finite mapping keeps the
-  # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv32, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / miv32)
-    scaled = fr(quotient * delta)
-
-    case fr(scaled + min32) do
-      :pos_inf -> {:nonfinite, 0x7F800000}
-      :neg_inf -> {:nonfinite, 0xFF800000}
-      value -> value
     end
   end
 end

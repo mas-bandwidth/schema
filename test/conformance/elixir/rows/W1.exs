@@ -9,6 +9,8 @@
 
 # Load generated Wire module using path relative to repo root
 repo_root = Path.expand("../../../..", __DIR__)
+Code.require_file(Path.join(repo_root, "generated/elixir/PacketRuntime.ex"))
+Code.require_file(Path.join(repo_root, "generated/elixir/Enums.ex"))
 Code.require_file(Path.join(repo_root, "generated/elixir/Wire.ex"))
 Code.require_file(Path.join(repo_root, "generated/elixir/Render.ex"))
 
@@ -17,7 +19,7 @@ defmodule W1 do
     # Write the zero-form render_sprite
     # zero_render_sprite/0 returns the zero form
     zero = Example.Render.zero_render_sprite()
-    wire = Example.Render.write_render_sprite(zero)
+    wire = Example.Render.write_render_sprite!(zero)
 
     # Measure wire size
     bits = Example.Render.render_sprite_max_bits()
@@ -44,7 +46,7 @@ defmodule W1 do
     end
 
     # Additional check: writing the same value twice should produce identical bytes
-    wire2 = Example.Render.write_render_sprite(zero)
+    wire2 = Example.Render.write_render_sprite!(zero)
     if wire != wire2 do
       IO.puts("FAIL: non-deterministic write output")
       System.halt(1)

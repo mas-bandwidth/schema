@@ -46,8 +46,8 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
   check(report.malformed == false, "a forged ordinal is not malformed: #{why(report)}")
   check(length(values) == 1, "the forged file carries one record, not #{length(values)}")
   v = hd(values)
-  check(v.tier == 0, "a forged ordinal lands None: #{inspect(v.tier)}")
-  check(v.tier != 4, "a forged ordinal never lands Platinum: #{inspect(v.tier)}")
+  check(v.tier == :none, "a forged ordinal lands None: #{inspect(v.tier)}")
+  check(v.tier != :platinum, "a forged ordinal never lands Platinum: #{inspect(v.tier)}")
   check(v.seq == 9, "the scalar after the enum is untouched: #{inspect(v.seq)}")
   check(report.clamped == 1, "the forged ordinal is counted exactly once: #{why(report)}")
   check(report.unknown == 0 and report.kind_mismatch == 0 and report.widened == 0 and report.duplicate == 0,

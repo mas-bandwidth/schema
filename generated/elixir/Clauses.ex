@@ -6,105 +6,233 @@
 
 # type W13
 defmodule Example.W13 do
+  @moduledoc """
+  The type W13. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [0..8191]}
+
   # items: counted array — a list of up to 12 elements; wire [0, 8191]
   defstruct items: []
 end
 
 # type W17
 defmodule Example.W17 do
+  @moduledoc """
+  The type W17. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [0..131_071]}
+
   # items: counted array — a list of up to 9 elements; wire [0, 131071]
   defstruct items: []
 end
 
 # type W26
 defmodule Example.W26 do
+  @moduledoc """
+  The type W26. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [0..67_108_863]}
+
   # items: counted array — a list of up to 6 elements; wire [0, 67108863]
   defstruct items: []
 end
 
 # type W1
 defmodule Example.W1 do
+  @moduledoc """
+  The type W1. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [0..1]}
+
   # items: counted array — a list of up to 20 elements; wire [0, 1]
   defstruct items: []
 end
 
 # type W52
 defmodule Example.W52 do
+  @moduledoc """
+  The type W52. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [0..4_503_599_627_370_495]}
+
   # items: counted array — a list of up to 3 elements; wire [0, 4503599627370495]
   defstruct items: []
 end
 
 # type W50
 defmodule Example.W50 do
+  @moduledoc """
+  The type W50. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [0..1_125_899_906_842_623]}
+
   # items: counted array — a list of up to 3 elements; wire [0, 1125899906842623]
   defstruct items: []
 end
 
 # type F13
 defmodule Example.F13 do
+  @moduledoc """
+  The type F13. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [0..8191]}
+
   # items: wire [0, 8191]
   defstruct items: List.duplicate(0, 7)
 end
 
 # type Tri3
 defmodule Example.Tri3 do
+  @moduledoc """
+  The type Tri3. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{a: 0..1, b: 0..3}
+
   defstruct a: 0, b: 0
 end
 
 # type ArrTri3
 defmodule Example.ArrTri3 do
+  @moduledoc """
+  The type ArrTri3. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [Example.Tri3.t()]}
+
   # items: counted array — a list of up to 10 elements
   defstruct items: []
 end
 
 # type Eleven
 defmodule Example.Eleven do
+  @moduledoc """
+  The type Eleven. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{a: 0..7, b: 0..255}
+
   defstruct a: 0, b: 0
 end
 
 # type ArrEleven
 defmodule Example.ArrEleven do
+  @moduledoc """
+  The type ArrEleven. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{items: [Example.Eleven.t()]}
+
   defstruct items: List.duplicate(%Example.Eleven{}, 9)
 end
 
 # type EmptyA
 defmodule Example.EmptyA do
+  @moduledoc """
+  The type EmptyA. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{}
+
   # empty body — presence is the payload (SPEC §4.6)
   defstruct []
 end
 
 # type EmptyB
 defmodule Example.EmptyB do
+  @moduledoc """
+  The type EmptyB. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{}
+
   # empty body — presence is the payload (SPEC §4.6)
   defstruct []
 end
 
 # EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.EmptyUnionType do
-  def none, do: 0
-  def a, do: 1
-  def b, do: 2
-  # the declared variant count (SPEC §4.2)
+  @moduledoc "The tag of union EmptyUnion: :none, then one atom per arm in declared order."
+
+  @type t :: :none | :a | :b
+
+  @doc "The wire value of a EmptyUnionType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..2
+  def to_int(:none), do: 0
+  def to_int(:a), do: 1
+  def to_int(:b), do: 2
+
+  def to_int(v) do
+    raise ArgumentError, "not a EmptyUnionType value: #{inspect(v)}"
+  end
+
+  @doc "The EmptyUnionType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :a}
+  def from_int(2), do: {:ok, :b}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 2
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 2
 end
 
-# EmptyUnion — at most one of the arms; type says which. Construction is the empty
-# union (None). A read builds the selected arm from the wire; unselected
-# arms hold their construction form (SPEC §4.8 leaves them unspecified).
-# Consumers read the selected arm only.
+# EmptyUnion — nil (None), {:arm, payload}, or a payload-free arm's bare atom (SPEC §4.8)
 defmodule Example.EmptyUnion do
-  defstruct type: 0, a: %Example.EmptyA{}, b: %Example.EmptyB{}
+  @moduledoc """
+  The union EmptyUnion: `nil` is None, an arm with a payload is
+  `{:arm, payload}`, and a payload-free arm is its bare atom.
+  """
+
+  @type t :: nil | {:a, Example.EmptyA.t()} | {:b, Example.EmptyB.t()}
 end
 
 # type HoldsEmptyUnion
 defmodule Example.HoldsEmptyUnion do
-  defstruct lead: 0, u: %Example.EmptyUnion{}, tail: 0
+  @moduledoc """
+  The type HoldsEmptyUnion. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, u: Example.EmptyUnion.t(), tail: 0..127}
+
+  defstruct lead: 0, u: nil, tail: 0
 end
 
 # type Strs
 defmodule Example.Strs do
+  @moduledoc """
+  The type Strs. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, s: String.t(), b: binary(), tail: 0..7}
+
   # s: string(8) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   # b: bytes(8) — a binary; byte_size is the used length (SPEC §4.7)
   defstruct lead: 0, s: <<>>, b: <<>>, tail: 0
@@ -112,38 +240,67 @@ end
 
 # type ArrNested
 defmodule Example.ArrNested do
+  @moduledoc """
+  The type ArrNested. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, items: [Example.Eleven.t()], tail: 0..7}
+
   # items: counted array — a list of up to 4 elements
   defstruct lead: 0, items: [], tail: 0
 end
 
 # type Sole
 defmodule Example.Sole do
+  @moduledoc """
+  The type Sole. Construction carries its specified defaults; the
+  codecs are in Example.Clauses.
+  """
+
+  @type t :: %__MODULE__{only: 0..8191}
+
   defstruct only: 0
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Clauses.schema.
 defmodule Example.Clauses do
+  @moduledoc """
+  The file-scope surface of Clauses.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
+  import Example.PacketRuntime, only: [rd: 3, rdw: 3]
 
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
-  # w13_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # w13_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a W13 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec w13_max_bits() :: pos_integer()
   def w13_max_bits, do: 160
+
+  @doc """
+  w13_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec w13_max_bytes() :: pos_integer()
   def w13_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.W13{}).
+  @doc """
+  The §5 zero form of W13: all-zero storage. Specified defaults live
+  only in construction (`%Example.W13{}`).
+  """
+  @spec zero_w13() :: Example.W13.t()
   def zero_w13, do: %Example.W13{items: []}
 
-  # write_w13 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_w13(value) do
-    data = <<>>
+  @doc """
+  Packs a W13 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_w13!(Example.W13.t()) :: binary()
+  def write_w13!(value) do
     n = length(value.items)
 
     if n > 12 do
@@ -153,15 +310,30 @@ defmodule Example.Clauses do
     v = n
     scratch = v
     scratch_bits = 4
-    {data, scratch, scratch_bits} = w_w13_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_w13_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_w13_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_w13!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_w13(Example.W13.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_w13(value) do
+    {:ok, write_w13!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a W13 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_w13_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.W13.t(), non_neg_integer()} | :error
   def read_w13_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -169,16 +341,14 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 4 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 4 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xF
-      bits_read = bits_read + 4
       # the count guards the loop — reject, never clamp
       if v > 12, do: throw(:invalid)
       n = v
-      if bits_read + n * 13 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_w13_items(n, [], data, num_bits, bits_read)
+      if 4 + n * 13 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_w13_items(n, [], data, num_bits, 4)
       value = %Example.W13{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -186,8 +356,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_w13 is read_w13_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a W13 from the first num_bits of data: read_w13_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_w13(binary(), non_neg_integer()) :: {:ok, Example.W13.t()} | :error
   def read_w13(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w13_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -195,29 +368,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_w13 is the exact wire bits write_w13 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_w13(value) do
-    bits = 0
-    bits = bits + 4
-    bits = bits + length(value.items) * 13
-    bits
-  end
-
-  # w17_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # w17_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a W17 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec w17_max_bits() :: pos_integer()
   def w17_max_bits, do: 157
+
+  @doc """
+  w17_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec w17_max_bytes() :: pos_integer()
   def w17_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.W17{}).
+  @doc """
+  The §5 zero form of W17: all-zero storage. Specified defaults live
+  only in construction (`%Example.W17{}`).
+  """
+  @spec zero_w17() :: Example.W17.t()
   def zero_w17, do: %Example.W17{items: []}
 
-  # write_w17 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_w17(value) do
-    data = <<>>
+  @doc """
+  Packs a W17 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_w17!(Example.W17.t()) :: binary()
+  def write_w17!(value) do
     n = length(value.items)
 
     if n > 9 do
@@ -227,15 +404,30 @@ defmodule Example.Clauses do
     v = n
     scratch = v
     scratch_bits = 4
-    {data, scratch, scratch_bits} = w_w17_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_w17_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_w17_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_w17!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_w17(Example.W17.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_w17(value) do
+    {:ok, write_w17!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a W17 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_w17_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.W17.t(), non_neg_integer()} | :error
   def read_w17_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -243,16 +435,14 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 4 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 4 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xF
-      bits_read = bits_read + 4
       # the count guards the loop — reject, never clamp
       if v > 9, do: throw(:invalid)
       n = v
-      if bits_read + n * 17 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_w17_items(n, [], data, num_bits, bits_read)
+      if 4 + n * 17 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_w17_items(n, [], data, num_bits, 4)
       value = %Example.W17{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -260,8 +450,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_w17 is read_w17_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a W17 from the first num_bits of data: read_w17_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_w17(binary(), non_neg_integer()) :: {:ok, Example.W17.t()} | :error
   def read_w17(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w17_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -269,29 +462,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_w17 is the exact wire bits write_w17 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_w17(value) do
-    bits = 0
-    bits = bits + 4
-    bits = bits + length(value.items) * 17
-    bits
-  end
-
-  # w26_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # w26_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a W26 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec w26_max_bits() :: pos_integer()
   def w26_max_bits, do: 159
+
+  @doc """
+  w26_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec w26_max_bytes() :: pos_integer()
   def w26_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.W26{}).
+  @doc """
+  The §5 zero form of W26: all-zero storage. Specified defaults live
+  only in construction (`%Example.W26{}`).
+  """
+  @spec zero_w26() :: Example.W26.t()
   def zero_w26, do: %Example.W26{items: []}
 
-  # write_w26 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_w26(value) do
-    data = <<>>
+  @doc """
+  Packs a W26 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_w26!(Example.W26.t()) :: binary()
+  def write_w26!(value) do
     n = length(value.items)
 
     if n > 6 do
@@ -301,15 +498,30 @@ defmodule Example.Clauses do
     v = n
     scratch = v
     scratch_bits = 3
-    {data, scratch, scratch_bits} = w_w26_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_w26_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_w26_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_w26!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_w26(Example.W26.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_w26(value) do
+    {:ok, write_w26!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a W26 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_w26_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.W26.t(), non_neg_integer()} | :error
   def read_w26_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -317,16 +529,14 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 3 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # the count guards the loop — reject, never clamp
       if v > 6, do: throw(:invalid)
       n = v
-      if bits_read + n * 26 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_w26_items(n, [], data, num_bits, bits_read)
+      if 3 + n * 26 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_w26_items(n, [], data, num_bits, 3)
       value = %Example.W26{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -334,8 +544,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_w26 is read_w26_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a W26 from the first num_bits of data: read_w26_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_w26(binary(), non_neg_integer()) :: {:ok, Example.W26.t()} | :error
   def read_w26(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w26_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -343,29 +556,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_w26 is the exact wire bits write_w26 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_w26(value) do
-    bits = 0
-    bits = bits + 3
-    bits = bits + length(value.items) * 26
-    bits
-  end
-
-  # w1_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # w1_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a W1 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec w1_max_bits() :: pos_integer()
   def w1_max_bits, do: 25
+
+  @doc """
+  w1_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec w1_max_bytes() :: pos_integer()
   def w1_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.W1{}).
+  @doc """
+  The §5 zero form of W1: all-zero storage. Specified defaults live
+  only in construction (`%Example.W1{}`).
+  """
+  @spec zero_w1() :: Example.W1.t()
   def zero_w1, do: %Example.W1{items: []}
 
-  # write_w1 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_w1(value) do
-    data = <<>>
+  @doc """
+  Packs a W1 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_w1!(Example.W1.t()) :: binary()
+  def write_w1!(value) do
     n = length(value.items)
 
     if n > 20 do
@@ -375,15 +592,30 @@ defmodule Example.Clauses do
     v = n
     scratch = v
     scratch_bits = 5
-    {data, scratch, scratch_bits} = w_w1_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_w1_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_w1_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_w1!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_w1(Example.W1.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_w1(value) do
+    {:ok, write_w1!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a W1 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_w1_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.W1.t(), non_neg_integer()} | :error
   def read_w1_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -391,16 +623,14 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 5 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       # the count guards the loop — reject, never clamp
       if v > 20, do: throw(:invalid)
       n = v
-      if bits_read + n * 1 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_w1_items_align(n, [], data, num_bits, bits_read)
+      if 5 + n * 1 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_w1_items_align(n, [], data, num_bits, 5)
       value = %Example.W1{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -408,8 +638,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_w1 is read_w1_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a W1 from the first num_bits of data: read_w1_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_w1(binary(), non_neg_integer()) :: {:ok, Example.W1.t()} | :error
   def read_w1(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w1_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -417,29 +650,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_w1 is the exact wire bits write_w1 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_w1(value) do
-    bits = 0
-    bits = bits + 5
-    bits = bits + length(value.items) * 1
-    bits
-  end
-
-  # w52_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # w52_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a W52 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec w52_max_bits() :: pos_integer()
   def w52_max_bits, do: 158
+
+  @doc """
+  w52_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec w52_max_bytes() :: pos_integer()
   def w52_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.W52{}).
+  @doc """
+  The §5 zero form of W52: all-zero storage. Specified defaults live
+  only in construction (`%Example.W52{}`).
+  """
+  @spec zero_w52() :: Example.W52.t()
   def zero_w52, do: %Example.W52{items: []}
 
-  # write_w52 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_w52(value) do
-    data = <<>>
+  @doc """
+  Packs a W52 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_w52!(Example.W52.t()) :: binary()
+  def write_w52!(value) do
     n = length(value.items)
 
     if n > 3 do
@@ -449,15 +686,30 @@ defmodule Example.Clauses do
     v = n
     scratch = v
     scratch_bits = 2
-    {data, scratch, scratch_bits} = w_w52_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_w52_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_w52_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_w52!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_w52(Example.W52.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_w52(value) do
+    {:ok, write_w52!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a W52 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_w52_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.W52.t(), non_neg_integer()} | :error
   def read_w52_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -465,14 +717,12 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       n = v
-      if bits_read + n * 52 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_w52_items(n, [], data, num_bits, bits_read)
+      if 2 + n * 52 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_w52_items(n, [], data, num_bits, 2)
       value = %Example.W52{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -480,8 +730,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_w52 is read_w52_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a W52 from the first num_bits of data: read_w52_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_w52(binary(), non_neg_integer()) :: {:ok, Example.W52.t()} | :error
   def read_w52(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w52_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -489,29 +742,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_w52 is the exact wire bits write_w52 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_w52(value) do
-    bits = 0
-    bits = bits + 2
-    bits = bits + length(value.items) * 52
-    bits
-  end
-
-  # w50_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # w50_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a W50 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec w50_max_bits() :: pos_integer()
   def w50_max_bits, do: 152
+
+  @doc """
+  w50_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec w50_max_bytes() :: pos_integer()
   def w50_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.W50{}).
+  @doc """
+  The §5 zero form of W50: all-zero storage. Specified defaults live
+  only in construction (`%Example.W50{}`).
+  """
+  @spec zero_w50() :: Example.W50.t()
   def zero_w50, do: %Example.W50{items: []}
 
-  # write_w50 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_w50(value) do
-    data = <<>>
+  @doc """
+  Packs a W50 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_w50!(Example.W50.t()) :: binary()
+  def write_w50!(value) do
     n = length(value.items)
 
     if n > 3 do
@@ -521,15 +778,30 @@ defmodule Example.Clauses do
     v = n
     scratch = v
     scratch_bits = 2
-    {data, scratch, scratch_bits} = w_w50_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_w50_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_w50_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_w50!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_w50(Example.W50.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_w50(value) do
+    {:ok, write_w50!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a W50 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_w50_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.W50.t(), non_neg_integer()} | :error
   def read_w50_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -537,14 +809,12 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       n = v
-      if bits_read + n * 50 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_w50_items(n, [], data, num_bits, bits_read)
+      if 2 + n * 50 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_w50_items(n, [], data, num_bits, 2)
       value = %Example.W50{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -552,8 +822,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_w50 is read_w50_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a W50 from the first num_bits of data: read_w50_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_w50(binary(), non_neg_integer()) :: {:ok, Example.W50.t()} | :error
   def read_w50(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_w50_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -561,45 +834,63 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_w50 is the exact wire bits write_w50 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_w50(value) do
-    bits = 0
-    bits = bits + 2
-    bits = bits + length(value.items) * 50
-    bits
-  end
-
-  # f13_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # f13_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a F13 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec f13_max_bits() :: pos_integer()
   def f13_max_bits, do: 91
+
+  @doc """
+  f13_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec f13_max_bytes() :: pos_integer()
   def f13_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.F13{}).
+  @doc """
+  The §5 zero form of F13: all-zero storage. Specified defaults live
+  only in construction (`%Example.F13{}`).
+  """
+  @spec zero_f13() :: Example.F13.t()
   def zero_f13, do: %Example.F13{items: List.duplicate(0, 7)}
 
-  # write_f13 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_f13(value) do
-    data = <<>>
-
+  @doc """
+  Packs a F13 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_f13!(Example.F13.t()) :: binary()
+  def write_f13!(value) do
     if length(value.items) != 7 do
       raise ArgumentError, "value.items must hold exactly 7 elements"
     end
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_f13_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_f13_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_f13_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_f13!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_f13(Example.F13.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_f13(value) do
+    {:ok, write_f13!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a F13 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_f13_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.F13.t(), non_neg_integer()} | :error
   def read_f13_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -607,9 +898,8 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 91 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_f13_items(7, [], data, num_bits, bits_read)
+      if 91 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_f13_items(7, [], data, num_bits, 0)
       value = %Example.F13{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -617,8 +907,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_f13 is read_f13_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a F13 from the first num_bits of data: read_f13_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_f13(binary(), non_neg_integer()) :: {:ok, Example.F13.t()} | :error
   def read_f13(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_f13_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -626,38 +919,62 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_f13 is the exact wire bits write_f13 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_f13(_value), do: 91
-
-  # tri3_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # tri3_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Tri3 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec tri3_max_bits() :: pos_integer()
   def tri3_max_bits, do: 3
+
+  @doc """
+  tri3_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec tri3_max_bytes() :: pos_integer()
   def tri3_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Tri3{}).
+  @doc """
+  The §5 zero form of Tri3: all-zero storage. Specified defaults live
+  only in construction (`%Example.Tri3{}`).
+  """
+  @spec zero_tri3() :: Example.Tri3.t()
   def zero_tri3, do: %Example.Tri3{a: 0, b: 0}
 
-  # write_tri3 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_tri3(value) do
-    data = <<>>
+  @doc """
+  Packs a Tri3 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_tri3!(Example.Tri3.t()) :: binary()
+  def write_tri3!(value) do
     %{a: value_a, b: value_b} = value
     v = value_a &&& 0x1
     scratch = v
     v = value_b &&& 0x3
     scratch = scratch ||| v <<< 1
     # the residual byte, statically known to be there
-    <<data::binary, scratch>>
+    <<scratch>>
   end
 
-  # read_tri3_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_tri3!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_tri3(Example.Tri3.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_tri3(value) do
+    {:ok, write_tri3!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Tri3 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_tri3_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Tri3.t(), non_neg_integer()} | :error
   def read_tri3_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -665,24 +982,24 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 3)
+      if 3 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 3)
       v = rv &&& 0x1
-      bits_read = bits_read + 1
       v_a = v
       v = rv >>> 1
-      bits_read = bits_read + 2
       v_b = v
       value = %Example.Tri3{a: v_a, b: v_b}
-      {:ok, value, bits_read}
+      {:ok, value, 3}
     catch
       :invalid -> :error
     end
   end
 
-  # read_tri3 is read_tri3_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Tri3 from the first num_bits of data: read_tri3_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_tri3(binary(), non_neg_integer()) :: {:ok, Example.Tri3.t()} | :error
   def read_tri3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_tri3_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -690,24 +1007,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_tri3 is the exact wire bits write_tri3 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_tri3(_value), do: 3
-
-  # arr_tri3_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arr_tri3_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArrTri3 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arr_tri3_max_bits() :: pos_integer()
   def arr_tri3_max_bits, do: 34
+
+  @doc """
+  arr_tri3_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arr_tri3_max_bytes() :: pos_integer()
   def arr_tri3_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArrTri3{}).
+  @doc """
+  The §5 zero form of ArrTri3: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArrTri3{}`).
+  """
+  @spec zero_arr_tri3() :: Example.ArrTri3.t()
   def zero_arr_tri3, do: %Example.ArrTri3{items: []}
 
-  # write_arr_tri3 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arr_tri3(value) do
-    data = <<>>
+  @doc """
+  Packs a ArrTri3 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arr_tri3!(Example.ArrTri3.t()) :: binary()
+  def write_arr_tri3!(value) do
     n = length(value.items)
 
     if n > 10 do
@@ -717,15 +1043,30 @@ defmodule Example.Clauses do
     v = n
     scratch = v
     scratch_bits = 4
-    {data, scratch, scratch_bits} = w_arr_tri3_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_arr_tri3_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_arr_tri3_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arr_tri3!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arr_tri3(Example.ArrTri3.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arr_tri3(value) do
+    {:ok, write_arr_tri3!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArrTri3 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arr_tri3_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArrTri3.t(), non_neg_integer()} | :error
   def read_arr_tri3_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -733,16 +1074,14 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 4 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 4 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xF
-      bits_read = bits_read + 4
       # the count guards the loop — reject, never clamp
       if v > 10, do: throw(:invalid)
       n = v
-      if bits_read + n * 3 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_arr_tri3_items_align(n, [], data, num_bits, bits_read)
+      if 4 + n * 3 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_arr_tri3_items_align(n, [], data, num_bits, 4)
       value = %Example.ArrTri3{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -750,8 +1089,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_arr_tri3 is read_arr_tri3_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArrTri3 from the first num_bits of data: read_arr_tri3_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arr_tri3(binary(), non_neg_integer()) :: {:ok, Example.ArrTri3.t()} | :error
   def read_arr_tri3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_tri3_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -759,45 +1101,64 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_arr_tri3 is the exact wire bits write_arr_tri3 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arr_tri3(value) do
-    bits = 0
-    bits = bits + 4
-    bits = bits + length(value.items) * 3
-    bits
-  end
-
-  # eleven_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # eleven_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Eleven can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec eleven_max_bits() :: pos_integer()
   def eleven_max_bits, do: 11
+
+  @doc """
+  eleven_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec eleven_max_bytes() :: pos_integer()
   def eleven_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Eleven{}).
+  @doc """
+  The §5 zero form of Eleven: all-zero storage. Specified defaults live
+  only in construction (`%Example.Eleven{}`).
+  """
+  @spec zero_eleven() :: Example.Eleven.t()
   def zero_eleven, do: %Example.Eleven{a: 0, b: 0}
 
-  # write_eleven packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_eleven(value) do
-    data = <<>>
+  @doc """
+  Packs a Eleven into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_eleven!(Example.Eleven.t()) :: binary()
+  def write_eleven!(value) do
     %{a: value_a, b: value_b} = value
     v = value_a &&& 0x7
     scratch = v
     v = value_b &&& 0xFF
     scratch = scratch ||| v <<< 3
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_eleven_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_eleven!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_eleven(Example.Eleven.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_eleven(value) do
+    {:ok, write_eleven!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Eleven from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_eleven_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Eleven.t(), non_neg_integer()} | :error
   def read_eleven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -805,24 +1166,24 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 11 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 11)
+      if 11 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 11)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       v_a = v
       v = rv >>> 3
-      bits_read = bits_read + 8
       v_b = v
       value = %Example.Eleven{a: v_a, b: v_b}
-      {:ok, value, bits_read}
+      {:ok, value, 11}
     catch
       :invalid -> :error
     end
   end
 
-  # read_eleven is read_eleven_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Eleven from the first num_bits of data: read_eleven_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_eleven(binary(), non_neg_integer()) :: {:ok, Example.Eleven.t()} | :error
   def read_eleven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_eleven_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -830,40 +1191,63 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_eleven is the exact wire bits write_eleven would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_eleven(_value), do: 11
-
-  # arr_eleven_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arr_eleven_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArrEleven can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arr_eleven_max_bits() :: pos_integer()
   def arr_eleven_max_bits, do: 99
+
+  @doc """
+  arr_eleven_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arr_eleven_max_bytes() :: pos_integer()
   def arr_eleven_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArrEleven{}).
+  @doc """
+  The §5 zero form of ArrEleven: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArrEleven{}`).
+  """
+  @spec zero_arr_eleven() :: Example.ArrEleven.t()
   def zero_arr_eleven, do: %Example.ArrEleven{items: List.duplicate(zero_eleven(), 9)}
 
-  # write_arr_eleven packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arr_eleven(value) do
-    data = <<>>
-
+  @doc """
+  Packs a ArrEleven into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arr_eleven!(Example.ArrEleven.t()) :: binary()
+  def write_arr_eleven!(value) do
     if length(value.items) != 9 do
       raise ArgumentError, "value.items must hold exactly 9 elements"
     end
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_arr_eleven_items(value.items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_arr_eleven_items(value.items, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_arr_eleven_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arr_eleven!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arr_eleven(Example.ArrEleven.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arr_eleven(value) do
+    {:ok, write_arr_eleven!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArrEleven from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arr_eleven_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArrEleven.t(), non_neg_integer()} | :error
   def read_arr_eleven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -871,9 +1255,8 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 99 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_arr_eleven_items(9, [], data, num_bits, bits_read)
+      if 99 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_arr_eleven_items(9, [], data, num_bits, 0)
       value = %Example.ArrEleven{items: v_items}
       {:ok, value, bits_read}
     catch
@@ -881,8 +1264,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_arr_eleven is read_arr_eleven_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArrEleven from the first num_bits of data: read_arr_eleven_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arr_eleven(binary(), non_neg_integer()) :: {:ok, Example.ArrEleven.t()} | :error
   def read_arr_eleven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_eleven_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -890,33 +1276,57 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_arr_eleven is the exact wire bits write_arr_eleven would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arr_eleven(_value), do: 99
-
-  # empty_a_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # empty_a_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a EmptyA can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec empty_a_max_bits() :: pos_integer()
   def empty_a_max_bits, do: 0
+
+  @doc """
+  empty_a_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec empty_a_max_bytes() :: pos_integer()
   def empty_a_max_bytes, do: 0
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.EmptyA{}).
+  @doc """
+  The §5 zero form of EmptyA: all-zero storage. Specified defaults live
+  only in construction (`%Example.EmptyA{}`).
+  """
+  @spec zero_empty_a() :: Example.EmptyA.t()
   def zero_empty_a, do: %Example.EmptyA{}
 
-  # write_empty_a packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_empty_a(_value) do
-    data = <<>>
+  @doc """
+  Packs a EmptyA into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_empty_a!(Example.EmptyA.t()) :: binary()
+  def write_empty_a!(_value) do
     # empty body — presence is the payload (SPEC §4.6)
-    data
+    <<>>
   end
 
-  # read_empty_a_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_empty_a!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_empty_a(Example.EmptyA.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_empty_a(value) do
+    {:ok, write_empty_a!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a EmptyA from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_empty_a_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.EmptyA.t(), non_neg_integer()} | :error
   def read_empty_a_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -924,15 +1334,17 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      {:ok, %Example.EmptyA{}, bits_read}
+      {:ok, %Example.EmptyA{}, 0}
     catch
       :invalid -> :error
     end
   end
 
-  # read_empty_a is read_empty_a_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a EmptyA from the first num_bits of data: read_empty_a_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_empty_a(binary(), non_neg_integer()) :: {:ok, Example.EmptyA.t()} | :error
   def read_empty_a(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_a_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -940,33 +1352,57 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_empty_a is the exact wire bits write_empty_a would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_empty_a(_value), do: 0
-
-  # empty_b_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # empty_b_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a EmptyB can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec empty_b_max_bits() :: pos_integer()
   def empty_b_max_bits, do: 0
+
+  @doc """
+  empty_b_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec empty_b_max_bytes() :: pos_integer()
   def empty_b_max_bytes, do: 0
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.EmptyB{}).
+  @doc """
+  The §5 zero form of EmptyB: all-zero storage. Specified defaults live
+  only in construction (`%Example.EmptyB{}`).
+  """
+  @spec zero_empty_b() :: Example.EmptyB.t()
   def zero_empty_b, do: %Example.EmptyB{}
 
-  # write_empty_b packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_empty_b(_value) do
-    data = <<>>
+  @doc """
+  Packs a EmptyB into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_empty_b!(Example.EmptyB.t()) :: binary()
+  def write_empty_b!(_value) do
     # empty body — presence is the payload (SPEC §4.6)
-    data
+    <<>>
   end
 
-  # read_empty_b_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_empty_b!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_empty_b(Example.EmptyB.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_empty_b(value) do
+    {:ok, write_empty_b!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a EmptyB from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_empty_b_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.EmptyB.t(), non_neg_integer()} | :error
   def read_empty_b_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -974,15 +1410,17 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      {:ok, %Example.EmptyB{}, bits_read}
+      {:ok, %Example.EmptyB{}, 0}
     catch
       :invalid -> :error
     end
   end
 
-  # read_empty_b is read_empty_b_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a EmptyB from the first num_bits of data: read_empty_b_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_empty_b(binary(), non_neg_integer()) :: {:ok, Example.EmptyB.t()} | :error
   def read_empty_b(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_b_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -990,72 +1428,85 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_empty_b is the exact wire bits write_empty_b would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_empty_b(_value), do: 0
-
-  # empty_union_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-  # empty_union_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc "The most wire bits a EmptyUnion can take: the tag plus the largest arm (SPEC §4.8)."
+  @spec empty_union_max_bits() :: pos_integer()
   def empty_union_max_bits, do: 2
+
+  @doc """
+  empty_union_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec empty_union_max_bytes() :: pos_integer()
   def empty_union_max_bytes, do: 8
 
-  # enum_name_empty_union_type: debug/log/tooling name for any EmptyUnionType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a EmptyUnionType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_empty_union_type(Example.EmptyUnionType.t() | integer()) :: String.t()
   def enum_name_empty_union_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :a -> "A"
       1 -> "A"
+      :b -> "B"
       2 -> "B"
       _ -> "???"
     end
   end
 
-  # The §5 zero form — the empty union (None). Arms hold their construction
-  # form: every arm is unselected at None, and unselected arms are
-  # unspecified by rule (SPEC §4.8).
-  def zero_empty_union, do: %Example.EmptyUnion{}
+  @doc "The §5 zero form of EmptyUnion: the empty union, None."
+  @spec zero_empty_union() :: Example.EmptyUnion.t()
+  def zero_empty_union, do: nil
 
-  # write_empty_union packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_empty_union(value) do
-    data = <<>>
+  @doc """
+  Packs a EmptyUnion into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_empty_union!(Example.EmptyUnion.t()) :: binary()
+  def write_empty_union!(value) do
+    v =
+      case value do
+        nil ->
+          0
 
-    if value.type < 0 do
-      raise ArgumentError, "value.type is below the wire minimum"
-    end
+        {:a, _} ->
+          1
 
-    if value.type > 2 do
-      raise ArgumentError, "value.type is above the wire maximum"
-    end
+        {:b, _} ->
+          2
 
-    v = value.type
-    scratch = v
-
-    {data, scratch} =
-      case value.type do
-        1 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          {data, scratch}
-
-        2 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          {data, scratch}
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          {data, scratch}
+        value_other ->
+          raise ArgumentError, "value is not a EmptyUnion value: #{inspect(value_other)}"
       end
 
+    scratch = v
     # the residual byte, statically known to be there
-    <<data::binary, scratch>>
+    <<scratch>>
   end
 
-  # read_empty_union_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_empty_union!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_empty_union(Example.EmptyUnion.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_empty_union(value) do
+    {:ok, write_empty_union!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a EmptyUnion from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_empty_union_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.EmptyUnion.t(), non_neg_integer()} | :error
   def read_empty_union_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1063,31 +1514,26 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 2
 
       {bits_read, v} =
         case v do
           1 ->
             # empty arm — presence is the payload (SPEC §4.6)
-            v_a = %Example.EmptyA{}
-            u = %Example.EmptyUnion{type: 1, a: v_a}
-            {bits_read, u}
+            {bits_read, {:a, %Example.EmptyA{}}}
 
           2 ->
             # empty arm — presence is the payload (SPEC §4.6)
-            v_b = %Example.EmptyB{}
-            u = %Example.EmptyUnion{type: 2, b: v_b}
-            {bits_read, u}
+            {bits_read, {:b, %Example.EmptyB{}}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.EmptyUnion{}}
+            {bits_read, nil}
         end
 
       {:ok, v, bits_read}
@@ -1096,8 +1542,11 @@ defmodule Example.Clauses do
     end
   end
 
-  # read_empty_union is read_empty_union_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a EmptyUnion from the first num_bits of data: read_empty_union_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_empty_union(binary(), non_neg_integer()) :: {:ok, Example.EmptyUnion.t()} | :error
   def read_empty_union(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_empty_union_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1105,89 +1554,82 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_empty_union is the exact wire bits write_empty_union would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_empty_union(value) do
-    bits = 0
-    bits = bits + 2
-
-    bits =
-      case value.type do
-        1 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          bits
-
-        2 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          bits
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits
-  end
-
-  # holds_empty_union_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # holds_empty_union_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a HoldsEmptyUnion can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec holds_empty_union_max_bits() :: pos_integer()
   def holds_empty_union_max_bits, do: 14
+
+  @doc """
+  holds_empty_union_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec holds_empty_union_max_bytes() :: pos_integer()
   def holds_empty_union_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.HoldsEmptyUnion{}).
-  def zero_holds_empty_union do
-    %Example.HoldsEmptyUnion{lead: 0, u: %Example.EmptyUnion{}, tail: 0}
-  end
+  @doc """
+  The §5 zero form of HoldsEmptyUnion: all-zero storage. Specified defaults live
+  only in construction (`%Example.HoldsEmptyUnion{}`).
+  """
+  @spec zero_holds_empty_union() :: Example.HoldsEmptyUnion.t()
+  def zero_holds_empty_union, do: %Example.HoldsEmptyUnion{lead: 0, u: nil, tail: 0}
 
-  # write_holds_empty_union packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_holds_empty_union(value) do
-    data = <<>>
+  @doc """
+  Packs a HoldsEmptyUnion into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_holds_empty_union!(Example.HoldsEmptyUnion.t()) :: binary()
+  def write_holds_empty_union!(value) do
     %{lead: value_lead, u: value_u, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
 
-    if value_u.type < 0 do
-      raise ArgumentError, "value.u.type is below the wire minimum"
-    end
+    v =
+      case value_u do
+        nil ->
+          0
 
-    if value_u.type > 2 do
-      raise ArgumentError, "value.u.type is above the wire maximum"
-    end
+        {:a, _} ->
+          1
 
-    v = value_u.type
-    scratch = scratch ||| v <<< 5
+        {:b, _} ->
+          2
 
-    {data, scratch} =
-      case value_u.type do
-        1 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          {data, scratch}
-
-        2 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          {data, scratch}
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          {data, scratch}
+        value_u_other ->
+          raise ArgumentError, "value.u is not a EmptyUnion value: #{inspect(value_u_other)}"
       end
 
+    scratch = scratch ||| v <<< 5
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< 7
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_holds_empty_union_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_holds_empty_union!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_holds_empty_union(Example.HoldsEmptyUnion.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_holds_empty_union(value) do
+    {:ok, write_holds_empty_union!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a HoldsEmptyUnion from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_holds_empty_union_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.HoldsEmptyUnion.t(), non_neg_integer()} | :error
   def read_holds_empty_union_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1195,52 +1637,49 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 5)
+      if 5 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 5)
       v = rv
-      bits_read = bits_read + 5
       v_lead = v
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 7 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 5, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 7
 
       {bits_read, v_u} =
         case v do
           1 ->
             # empty arm — presence is the payload (SPEC §4.6)
-            v_u_a = %Example.EmptyA{}
-            u = %Example.EmptyUnion{type: 1, a: v_u_a}
-            {bits_read, u}
+            {bits_read, {:a, %Example.EmptyA{}}}
 
           2 ->
             # empty arm — presence is the payload (SPEC §4.6)
-            v_u_b = %Example.EmptyB{}
-            u = %Example.EmptyUnion{type: 2, b: v_u_b}
-            {bits_read, u}
+            {bits_read, {:b, %Example.EmptyB{}}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.EmptyUnion{}}
+            {bits_read, nil}
         end
 
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 7)
       v = rv
-      bits_read = bits_read + 7
       v_tail = v
       value = %Example.HoldsEmptyUnion{lead: v_lead, u: v_u, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 7}
     catch
       :invalid -> :error
     end
   end
 
-  # read_holds_empty_union is read_holds_empty_union_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a HoldsEmptyUnion from the first num_bits of data: read_holds_empty_union_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_holds_empty_union(binary(), non_neg_integer()) ::
+          {:ok, Example.HoldsEmptyUnion.t()} | :error
   def read_holds_empty_union(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_holds_empty_union_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1248,45 +1687,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_holds_empty_union is the exact wire bits write_holds_empty_union would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_holds_empty_union(value) do
-    bits = 0
-    bits = bits + 5
-    bits = bits + 2
-
-    bits =
-      case value.u.type do
-        1 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          bits
-
-        2 ->
-          # empty arm — presence is the payload (SPEC §4.6)
-          bits
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits + 7
-  end
-
-  # strs_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # strs_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Strs can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec strs_max_bits() :: pos_integer()
   def strs_max_bits, do: 158
+
+  @doc """
+  strs_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec strs_max_bytes() :: pos_integer()
   def strs_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Strs{}).
+  @doc """
+  The §5 zero form of Strs: all-zero storage. Specified defaults live
+  only in construction (`%Example.Strs{}`).
+  """
+  @spec zero_strs() :: Example.Strs.t()
   def zero_strs, do: %Example.Strs{lead: 0, s: <<>>, b: <<>>, tail: 0}
 
-  # write_strs packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_strs(value) do
-    data = <<>>
+  @doc """
+  Packs a Strs into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_strs!(Example.Strs.t()) :: binary()
+  def write_strs!(value) do
     %{lead: value_lead, s: value_s, b: value_b, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
@@ -1297,7 +1724,7 @@ defmodule Example.Clauses do
 
     v = byte_size(value_s)
     scratch = scratch ||| v <<< 5
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = <<data::binary, scratch>>
@@ -1320,11 +1747,26 @@ defmodule Example.Clauses do
     <<data::binary, scratch>>
   end
 
-  # read_strs_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_strs!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_strs(Example.Strs.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_strs(value) do
+    {:ok, write_strs!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Strs from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_strs_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Strs.t(), non_neg_integer()} | :error
   def read_strs_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1332,36 +1774,22 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 5)
+      if 5 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 5)
       v = rv
-      bits_read = bits_read + 5
       v_lead = v
-      if bits_read + 4 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 9 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 5, 49)
       v = rv &&& 0xF
-      bits_read = bits_read + 4
       # the length guards the slice — reject, never clamp
       if v > 8, do: throw(:invalid)
       len = v
-      pad = 8 - (bits_read &&& 7) &&& 7
-
-      if pad != 0 do
-        if bits_read + pad > num_bits do
-          throw(:invalid)
-        end
-
-        if rd(data, bits_read, pad) != 0 do
-          # nonzero padding is refused (SPEC §4.3)
-          throw(:invalid)
-        end
-      end
-
-      bits_read = bits_read + pad
-      if bits_read + len * 8 > num_bits, do: throw(:invalid)
-      v_s = binary_part(data, bits_read >>> 3, len)
-      bits_read = bits_read + len * 8
+      if 16 > num_bits, do: throw(:invalid)
+      # nonzero padding is refused (SPEC §4.3)
+      if rd(data, 9, 7) != 0, do: throw(:invalid)
+      if 16 + len * 8 > num_bits, do: throw(:invalid)
+      v_s = binary_part(data, 2, len)
+      bits_read = 16 + len * 8
       # malformed UTF-8 is content the read refuses (SPEC §4.7)
       if not String.valid?(v_s), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
@@ -1369,10 +1797,10 @@ defmodule Example.Clauses do
       if bits_read + 4 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xF
-      bits_read = bits_read + 4
       # the length guards the slice — reject, never clamp
       if v > 8, do: throw(:invalid)
       len = v
+      bits_read = bits_read + 4
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -1393,17 +1821,19 @@ defmodule Example.Clauses do
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
-      bits_read = bits_read + 3
       v_tail = v
       value = %Example.Strs{lead: v_lead, s: v_s, b: v_b, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 3}
     catch
       :invalid -> :error
     end
   end
 
-  # read_strs is read_strs_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Strs from the first num_bits of data: read_strs_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_strs(binary(), non_neg_integer()) :: {:ok, Example.Strs.t()} | :error
   def read_strs(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_strs_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1411,33 +1841,33 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_strs is the exact wire bits write_strs would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_strs(value) do
-    bits = 0
-    bits = bits + 9
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.s) * 8
-    bits = bits + 4
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.b) * 8
-    bits + 3
-  end
-
-  # arr_nested_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arr_nested_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArrNested can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arr_nested_max_bits() :: pos_integer()
   def arr_nested_max_bits, do: 55
+
+  @doc """
+  arr_nested_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arr_nested_max_bytes() :: pos_integer()
   def arr_nested_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArrNested{}).
+  @doc """
+  The §5 zero form of ArrNested: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArrNested{}`).
+  """
+  @spec zero_arr_nested() :: Example.ArrNested.t()
   def zero_arr_nested, do: %Example.ArrNested{lead: 0, items: [], tail: 0}
 
-  # write_arr_nested packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arr_nested(value) do
-    data = <<>>
+  @doc """
+  Packs a ArrNested into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arr_nested!(Example.ArrNested.t()) :: binary()
+  def write_arr_nested!(value) do
     %{lead: value_lead, items: value_items, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
@@ -1449,7 +1879,7 @@ defmodule Example.Clauses do
 
     v = n
     scratch = scratch ||| v <<< 5
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch_bits = 0
     scratch = 0
     {data, scratch, scratch_bits} = w_arr_nested_items(value_items, data, scratch, scratch_bits)
@@ -1463,11 +1893,26 @@ defmodule Example.Clauses do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_arr_nested_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arr_nested!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arr_nested(Example.ArrNested.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arr_nested(value) do
+    {:ok, write_arr_nested!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArrNested from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arr_nested_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArrNested.t(), non_neg_integer()} | :error
   def read_arr_nested_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1475,35 +1920,34 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 5)
+      if 5 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 5)
       v = rv
-      bits_read = bits_read + 5
       v_lead = v
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 8 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 5, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # the count guards the loop — reject, never clamp
       if v > 4, do: throw(:invalid)
       n = v
-      if bits_read + n * 11 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_arr_nested_items(n, [], data, num_bits, bits_read)
+      if 8 + n * 11 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_arr_nested_items(n, [], data, num_bits, 8)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
-      bits_read = bits_read + 3
       v_tail = v
       value = %Example.ArrNested{lead: v_lead, items: v_items, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 3}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arr_nested is read_arr_nested_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArrNested from the first num_bits of data: read_arr_nested_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arr_nested(binary(), non_neg_integer()) :: {:ok, Example.ArrNested.t()} | :error
   def read_arr_nested(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_nested_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1511,42 +1955,61 @@ defmodule Example.Clauses do
     end
   end
 
-  # measure_arr_nested is the exact wire bits write_arr_nested would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arr_nested(value) do
-    bits = 0
-    bits = bits + 8
-    bits = bits + length(value.items) * 11
-    bits + 3
-  end
-
-  # sole_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # sole_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Sole can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec sole_max_bits() :: pos_integer()
   def sole_max_bits, do: 13
+
+  @doc """
+  sole_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec sole_max_bytes() :: pos_integer()
   def sole_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Sole{}).
+  @doc """
+  The §5 zero form of Sole: all-zero storage. Specified defaults live
+  only in construction (`%Example.Sole{}`).
+  """
+  @spec zero_sole() :: Example.Sole.t()
   def zero_sole, do: %Example.Sole{only: 0}
 
-  # write_sole packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_sole(value) do
-    data = <<>>
+  @doc """
+  Packs a Sole into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_sole!(Example.Sole.t()) :: binary()
+  def write_sole!(value) do
     v = value.only &&& 0x1FFF
     scratch = v
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_sole_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_sole!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_sole(Example.Sole.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_sole(value) do
+    {:ok, write_sole!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Sole from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_sole_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Sole.t(), non_neg_integer()} | :error
   def read_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1554,31 +2017,28 @@ defmodule Example.Clauses do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 13 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 13)
+      if 13 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 13)
       v = rv
-      bits_read = bits_read + 13
       v_only = v
       value = %Example.Sole{only: v_only}
-      {:ok, value, bits_read}
+      {:ok, value, 13}
     catch
       :invalid -> :error
     end
   end
 
-  # read_sole is read_sole_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Sole from the first num_bits of data: read_sole_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_sole(binary(), non_neg_integer()) :: {:ok, Example.Sole.t()} | :error
   def read_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_sole_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
   end
-
-  # measure_sole is the exact wire bits write_sole would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_sole(_value), do: 13
 
   defp w_w13_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -1662,23 +2122,19 @@ defmodule Example.Clauses do
        when remaining >= 3 do
     rv = rdw(data, bits_read, 39)
     v = rv &&& 0x1FFF
-    bits_read = bits_read + 13
     e1 = v
     v = rv >>> 13 &&& 0x1FFF
-    bits_read = bits_read + 13
     e2 = v
     v = rv >>> 26
-    bits_read = bits_read + 13
     e3 = v
-    r_w13_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_w13_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
   end
 
   defp r_w13_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 13)
     v = rv
-    bits_read = bits_read + 13
     e = v
-    r_w13_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_w13_items(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
   end
 
   defp w_w17_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1767,20 +2223,17 @@ defmodule Example.Clauses do
        when remaining >= 2 do
     rv = rdw(data, bits_read, 34)
     v = rv &&& 0x1FFFF
-    bits_read = bits_read + 17
     e1 = v
     v = rv >>> 17
-    bits_read = bits_read + 17
     e2 = v
-    r_w17_items(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read)
+    r_w17_items(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 34)
   end
 
   defp r_w17_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 17)
     v = rv
-    bits_read = bits_read + 17
     e = v
-    r_w17_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_w17_items(remaining - 1, [e | acc], data, num_bits, bits_read + 17)
   end
 
   defp w_w26_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1868,9 +2321,8 @@ defmodule Example.Clauses do
   defp r_w26_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 26)
     v = rv
-    bits_read = bits_read + 26
     e = v
-    r_w26_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_w26_items(remaining - 1, [e | acc], data, num_bits, bits_read + 26)
   end
 
   defp w_w1_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1955,26 +2407,21 @@ defmodule Example.Clauses do
        when remaining >= 4 do
     rv = rd(data, bits_read, 4)
     v = rv &&& 0x1
-    bits_read = bits_read + 1
     e1 = v
     v = rv >>> 1 &&& 0x1
-    bits_read = bits_read + 1
     e2 = v
     v = rv >>> 2 &&& 0x1
-    bits_read = bits_read + 1
     e3 = v
     v = rv >>> 3
-    bits_read = bits_read + 1
     e4 = v
-    r_w1_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_w1_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 4)
   end
 
   defp r_w1_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 1)
     v = rv
-    bits_read = bits_read + 1
     e = v
-    r_w1_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_w1_items(remaining - 1, [e | acc], data, num_bits, bits_read + 1)
   end
 
   defp r_w1_items_align(remaining, acc, data, num_bits, bits_read)
@@ -2170,14 +2617,12 @@ defmodule Example.Clauses do
   defp r_w52_items(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 20)
+    rv = rd(data, bits_read + 32, 20)
     v = rv
-    bits_read = bits_read + 20
     w = w ||| v <<< 32
     e = w
-    r_w52_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_w52_items(remaining - 1, [e | acc], data, num_bits, bits_read + 52)
   end
 
   defp w_w50_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -2292,14 +2737,12 @@ defmodule Example.Clauses do
   defp r_w50_items(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 18)
+    rv = rd(data, bits_read + 32, 18)
     v = rv
-    bits_read = bits_read + 18
     w = w ||| v <<< 32
     e = w
-    r_w50_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_w50_items(remaining - 1, [e | acc], data, num_bits, bits_read + 50)
   end
 
   defp w_f13_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -2384,23 +2827,19 @@ defmodule Example.Clauses do
        when remaining >= 3 do
     rv = rdw(data, bits_read, 39)
     v = rv &&& 0x1FFF
-    bits_read = bits_read + 13
     e1 = v
     v = rv >>> 13 &&& 0x1FFF
-    bits_read = bits_read + 13
     e2 = v
     v = rv >>> 26
-    bits_read = bits_read + 13
     e3 = v
-    r_f13_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_f13_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
   end
 
   defp r_f13_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 13)
     v = rv
-    bits_read = bits_read + 13
     e = v
-    r_f13_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_f13_items(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
   end
 
   defp w_arr_tri3_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -2462,46 +2901,36 @@ defmodule Example.Clauses do
        when remaining >= 4 do
     rv = rd(data, bits_read, 12)
     v = rv &&& 0x1
-    bits_read = bits_read + 1
     e1_a = v
     v = rv >>> 1 &&& 0x3
-    bits_read = bits_read + 2
     e1_b = v
     e1 = %Example.Tri3{a: e1_a, b: e1_b}
     v = rv >>> 3 &&& 0x1
-    bits_read = bits_read + 1
     e2_a = v
     v = rv >>> 4 &&& 0x3
-    bits_read = bits_read + 2
     e2_b = v
     e2 = %Example.Tri3{a: e2_a, b: e2_b}
     v = rv >>> 6 &&& 0x1
-    bits_read = bits_read + 1
     e3_a = v
     v = rv >>> 7 &&& 0x3
-    bits_read = bits_read + 2
     e3_b = v
     e3 = %Example.Tri3{a: e3_a, b: e3_b}
     v = rv >>> 9 &&& 0x1
-    bits_read = bits_read + 1
     e4_a = v
     v = rv >>> 10
-    bits_read = bits_read + 2
     e4_b = v
     e4 = %Example.Tri3{a: e4_a, b: e4_b}
-    r_arr_tri3_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_arr_tri3_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 12)
   end
 
   defp r_arr_tri3_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 3)
     v = rv &&& 0x1
-    bits_read = bits_read + 1
     e_a = v
     v = rv >>> 1
-    bits_read = bits_read + 2
     e_b = v
     e = %Example.Tri3{a: e_a, b: e_b}
-    r_arr_tri3_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_arr_tri3_items(remaining - 1, [e | acc], data, num_bits, bits_read + 3)
   end
 
   defp r_arr_tri3_items_align(remaining, acc, data, num_bits, bits_read)
@@ -2661,46 +3090,36 @@ defmodule Example.Clauses do
        when remaining >= 4 do
     rv = rdw(data, bits_read, 44)
     v = rv &&& 0x7
-    bits_read = bits_read + 3
     e1_a = v
     v = rv >>> 3 &&& 0xFF
-    bits_read = bits_read + 8
     e1_b = v
     e1 = %Example.Eleven{a: e1_a, b: e1_b}
     v = rv >>> 11 &&& 0x7
-    bits_read = bits_read + 3
     e2_a = v
     v = rv >>> 14 &&& 0xFF
-    bits_read = bits_read + 8
     e2_b = v
     e2 = %Example.Eleven{a: e2_a, b: e2_b}
     v = rv >>> 22 &&& 0x7
-    bits_read = bits_read + 3
     e3_a = v
     v = rv >>> 25 &&& 0xFF
-    bits_read = bits_read + 8
     e3_b = v
     e3 = %Example.Eleven{a: e3_a, b: e3_b}
     v = rv >>> 33 &&& 0x7
-    bits_read = bits_read + 3
     e4_a = v
     v = rv >>> 36
-    bits_read = bits_read + 8
     e4_b = v
     e4 = %Example.Eleven{a: e4_a, b: e4_b}
-    r_arr_eleven_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_arr_eleven_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 44)
   end
 
   defp r_arr_eleven_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 11)
     v = rv &&& 0x7
-    bits_read = bits_read + 3
     e_a = v
     v = rv >>> 3
-    bits_read = bits_read + 8
     e_b = v
     e = %Example.Eleven{a: e_a, b: e_b}
-    r_arr_eleven_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_arr_eleven_items(remaining - 1, [e | acc], data, num_bits, bits_read + 11)
   end
 
   defp w_arr_nested_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -2762,77 +3181,35 @@ defmodule Example.Clauses do
        when remaining >= 4 do
     rv = rdw(data, bits_read, 44)
     v = rv &&& 0x7
-    bits_read = bits_read + 3
     e1_a = v
     v = rv >>> 3 &&& 0xFF
-    bits_read = bits_read + 8
     e1_b = v
     e1 = %Example.Eleven{a: e1_a, b: e1_b}
     v = rv >>> 11 &&& 0x7
-    bits_read = bits_read + 3
     e2_a = v
     v = rv >>> 14 &&& 0xFF
-    bits_read = bits_read + 8
     e2_b = v
     e2 = %Example.Eleven{a: e2_a, b: e2_b}
     v = rv >>> 22 &&& 0x7
-    bits_read = bits_read + 3
     e3_a = v
     v = rv >>> 25 &&& 0xFF
-    bits_read = bits_read + 8
     e3_b = v
     e3 = %Example.Eleven{a: e3_a, b: e3_b}
     v = rv >>> 33 &&& 0x7
-    bits_read = bits_read + 3
     e4_a = v
     v = rv >>> 36
-    bits_read = bits_read + 8
     e4_b = v
     e4 = %Example.Eleven{a: e4_a, b: e4_b}
-    r_arr_nested_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_arr_nested_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 44)
   end
 
   defp r_arr_nested_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 11)
     v = rv &&& 0x7
-    bits_read = bits_read + 3
     e_a = v
     v = rv >>> 3
-    bits_read = bits_read + 8
     e_b = v
     e = %Example.Eleven{a: e_a, b: e_b}
-    r_arr_nested_items(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+    r_arr_nested_items(remaining - 1, [e | acc], data, num_bits, bits_read + 11)
   end
 end

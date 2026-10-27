@@ -29,11 +29,18 @@ defmodule SchemaTestElixir do
     r
   end
 
+  # bits_of is the exact wire bits of a written value: what read_<name>_bits
+  # reports consuming from it (there is no generated measure, SPEC §6.1).
+  def bits_of(wire, read_bits) do
+    {:ok, _, bits} = read_bits.(wire, bit_size(wire))
+    bits
+  end
+
   # pin writes value, byte-compares against the C++-pinned golden, holds
-  # measure to the written wire, reads it back, and re-writes to prove
-  # byte-identical round-trip — the leg's core instrument. Returns the
-  # decoded value for further checks.
-  def pin(name, value, write, read, measure) do
+  # the bits the reader consumes to the written wire, reads it back, and
+  # re-writes to prove byte-identical round-trip — the leg's core
+  # instrument. Returns the decoded value for further checks.
+  def pin(name, value, write, read, read_bits) do
     wire = write.(value)
     g = golden(name)
 
@@ -43,11 +50,11 @@ defmodule SchemaTestElixir do
     )
 
     check(wire == g, "#{name}: Elixir bytes == the C++-pinned bytes")
-    bits = measure.(value)
+    bits = bits_of(wire, read_bits)
 
     check(
       div(bits + 7, 8) == byte_size(wire),
-      "#{name}: measure #{bits} bits vs #{byte_size(wire)} bytes written"
+      "#{name}: read consumed #{bits} bits vs #{byte_size(wire)} bytes written"
     )
 
     case read.(g, byte_size(g) * 8) do
@@ -64,11 +71,11 @@ defmodule SchemaTestElixir do
 
   def make_ship_create do
     %Example.ShipCreate{
-      ship_type: Example.ShipType.bomber(),
+      ship_type: :bomber,
       position: %Example.QuantizedPosition{x: 1000, y: -2000, z: 3000},
       has_flags: true,
       flags: Example.Enums.ship_flags_boosting() ||| Example.Enums.ship_flags_aiming(),
-      team: Example.Team.blue(),
+      team: :blue,
       health: 750,
       thrust: 55
     }
@@ -131,9 +138,9 @@ defmodule SchemaTestElixir do
       pin(
         "shipcreate_flags",
         inp,
-        &Example.Types.write_ship_create/1,
+        &Example.Types.write_ship_create!/1,
         &Example.Types.read_ship_create/2,
-        &Example.Types.measure_ship_create/1
+        &Example.Types.read_ship_create_bits/2
       )
 
     check(
@@ -144,12 +151,12 @@ defmodule SchemaTestElixir do
 
     # untaken branch: flags must read back ZERO (SPEC §5)
     inp2 = %{inp | has_flags: false}
-    wire = Example.Types.write_ship_create(inp2)
+    wire = Example.Types.write_ship_create!(inp2)
     {:ok, out2} = Example.Types.read_ship_create(wire, byte_size(wire) * 8)
     check(not out2.has_flags and out2.flags == 0, "untaken branch reads as zero (SPEC §5)")
 
     check(
-      div(Example.Types.measure_ship_create(inp2) + 7, 8) == byte_size(wire),
+      div(bits_of(Example.Types.write_ship_create!(inp2), &Example.Types.read_ship_create_bits/2) + 7, 8) == byte_size(wire),
       "measure tracks the untaken branch"
     )
 
@@ -159,9 +166,9 @@ defmodule SchemaTestElixir do
     pin(
       "rigidbody_moving",
       rb,
-      &Example.Types.write_rigid_body/1,
+      &Example.Types.write_rigid_body!/1,
       &Example.Types.read_rigid_body/2,
-      &Example.Types.measure_rigid_body/1
+      &Example.Types.read_rigid_body_bits/2
     )
 
     rb_rest = %{rb | at_rest: true}
@@ -170,9 +177,9 @@ defmodule SchemaTestElixir do
       pin(
         "rigidbody_at_rest",
         rb_rest,
-        &Example.Types.write_rigid_body/1,
+        &Example.Types.write_rigid_body!/1,
         &Example.Types.read_rigid_body/2,
-        &Example.Types.measure_rigid_body/1
+        &Example.Types.read_rigid_body_bits/2
       )
 
     check(out_rest.at_rest, "at_rest reads true")
@@ -190,25 +197,25 @@ defmodule SchemaTestElixir do
       pin(
         "chat",
         chat,
-        &Example.Wire.write_chat/1,
+        &Example.Wire.write_chat!/1,
         &Example.Wire.read_chat/2,
-        &Example.Wire.measure_chat/1
+        &Example.Wire.read_chat_bits/2
       )
 
     check(out_chat.text == "wire parity", "Chat round-trips")
 
     # ---- ProbeHeader: const/reserved/align on the wire; corruption rejected ----
     ph = %Example.ProbeHeader{version: 5, probe_id: 0x1122334455667788}
-    ph_wire = Example.Wire.write_probe_header(ph)
+    ph_wire = Example.Wire.write_probe_header!(ph)
     check(binary_part(ph_wire, 0, 1) == <<0xAB>>, "const(0xAB, 8) leads the wire")
 
     out_ph =
       pin(
         "probe_header",
         ph,
-        &Example.Wire.write_probe_header/1,
+        &Example.Wire.write_probe_header!/1,
         &Example.Wire.read_probe_header/2,
-        &Example.Wire.measure_probe_header/1
+        &Example.Wire.read_probe_header_bits/2
       )
 
     check(
@@ -227,18 +234,18 @@ defmodule SchemaTestElixir do
     pin(
       "inputpacket",
       make_input_packet(),
-      &Example.Types.write_input_packet/1,
+      &Example.Types.write_input_packet!/1,
       &Example.Types.read_input_packet/2,
-      &Example.Types.measure_input_packet/1
+      &Example.Types.read_input_packet_bits/2
     )
 
     out_td =
       pin(
         "testdata",
         test_data_instance(),
-        &Example.Wire.write_test_data/1,
+        &Example.Wire.write_test_data!/1,
         &Example.Wire.read_test_data/2,
-        &Example.Wire.measure_test_data/1
+        &Example.Wire.read_test_data_bits/2
       )
 
     check(
@@ -257,9 +264,9 @@ defmodule SchemaTestElixir do
       pin(
         "compressed_probe",
         cp,
-        &Example.Wire.write_compressed_probe/1,
+        &Example.Wire.write_compressed_probe!/1,
         &Example.Wire.read_compressed_probe/2,
-        &Example.Wire.measure_compressed_probe/1
+        &Example.Wire.read_compressed_probe_bits/2
       )
 
     check(out_cp.boundary == fround(fround(1 / 1000) * 10), "boundary reconstructs integer 1")
@@ -279,7 +286,7 @@ defmodule SchemaTestElixir do
         double_value: {:nonfinite, 0xFFF0000000000000}
     }
 
-    nf_wire = Example.Wire.write_test_data(nf)
+    nf_wire = Example.Wire.write_test_data!(nf)
     {:ok, nf_out} = Example.Wire.read_test_data(nf_wire, byte_size(nf_wire) * 8)
 
     check(
@@ -299,7 +306,7 @@ defmodule SchemaTestElixir do
     check(%Example.ProbeConfig{}.retries == -1, "ProbeConfig.retries defaults -1")
 
     check(
-      %Example.ProbeConfig{}.preferred == Example.Weapon.railgun(),
+      %Example.ProbeConfig{}.preferred == :railgun,
       "ProbeConfig.preferred defaults Railgun"
     )
 
@@ -316,9 +323,9 @@ defmodule SchemaTestElixir do
       pin(
         "probebits",
         pb,
-        &Example.Wire.write_probe_bits/1,
+        &Example.Wire.write_probe_bits!/1,
         &Example.Wire.read_probe_bits/2,
-        &Example.Wire.measure_probe_bits/1
+        &Example.Wire.read_probe_bits_bits/2
       )
 
     check(
@@ -327,21 +334,17 @@ defmodule SchemaTestElixir do
     )
 
     # The same independently specified seven-bit packet as every other port.
-    arm_choice = %Example.DefaultChoice{
-      type: Example.DefaultChoiceType.first(),
-      first: %Example.DefaultArm{marker: 5}
-    }
-    check(Example.ArmDefaults.write_default_choice(arm_choice) == <<0x51>>,
+    arm_choice = {:first, %Example.DefaultArm{marker: 5}}
+    check(Example.ArmDefaults.write_default_choice!(arm_choice) == <<0x51>>,
       "selected-arm defaults: independent byte oracle")
-    check(Example.ArmDefaults.measure_default_choice(arm_choice) == 7,
+    check(bits_of(Example.ArmDefaults.write_default_choice!(arm_choice), &Example.ArmDefaults.read_default_choice_bits/2) == 7,
       "selected-arm defaults: seven written bits")
     check(%Example.ProbeConfig{}.retries == -1 and
-      %Example.ProbeConfig{}.preferred == Example.Weapon.railgun(),
+      %Example.ProbeConfig{}.preferred == :railgun,
       "selected-arm defaults: fresh element construction")
     for _ <- 1..2 do
       {:ok, arm_out} = Example.ArmDefaults.read_default_choice(<<0x51>>, 7)
-      check(arm_out.type == Example.DefaultChoiceType.first() and
-        arm_out.first.entries == [] and arm_out.first.marker == 5,
+      check(match?({:first, %Example.DefaultArm{entries: [], marker: 5}}, arm_out),
         "selected-arm defaults: each immutable read constructs a fresh payload")
     end
 
@@ -349,7 +352,7 @@ defmodule SchemaTestElixir do
     # round trip, the None arm, an array of unions, and the refusal negative
     # controls ----
     check(
-      %Example.ProbeCollider{}.shape.type == Example.ProbeShapeType.none(),
+      %Example.ProbeCollider{}.shape == nil,
       "construction is the empty union"
     )
 
@@ -357,39 +360,30 @@ defmodule SchemaTestElixir do
 
     pc = %Example.ProbeCollider{
       armor: 7,
-      shape: %Example.ProbeShape{
-        type: Example.ProbeShapeType.slab(),
-        slab: %Example.ProbeSlab{width: 42, height: 9}
-      },
+      shape: {:slab, %Example.ProbeSlab{width: 42, height: 9}},
       # backup stays None — the empty arm costs the tag bits only
-      extras: [
-        %Example.ProbeShape{
-          type: Example.ProbeShapeType.ring(),
-          ring: %Example.ProbeRing{radius: 777}
-        }
-      ]
+      extras: [{:ring, %Example.ProbeRing{radius: 777}}]
     }
 
     out_pc =
       pin(
         "probecollider",
         pc,
-        &Example.Wire.write_probe_collider/1,
+        &Example.Wire.write_probe_collider!/1,
         &Example.Wire.read_probe_collider/2,
-        &Example.Wire.measure_probe_collider/1
+        &Example.Wire.read_probe_collider_bits/2
       )
 
     check(
-      out_pc.armor == 7 and out_pc.shape.type == Example.ProbeShapeType.slab() and
-        out_pc.shape.slab.width == 42 and out_pc.shape.slab.height == 9,
+      out_pc.armor == 7 and out_pc.shape == {:slab, %Example.ProbeSlab{width: 42, height: 9}},
       "the selected arm round-trips"
     )
 
-    check(out_pc.backup.type == Example.ProbeShapeType.none(), "the None arm reads back empty")
+    check(out_pc.backup == nil, "the None arm reads back empty")
 
     check(
       match?(
-        [%Example.ProbeShape{type: 1, ring: %Example.ProbeRing{radius: 777}}],
+        [{:ring, %Example.ProbeRing{radius: 777}}],
         out_pc.extras
       ),
       "the union array round-trips"
@@ -398,7 +392,7 @@ defmodule SchemaTestElixir do
     # the all-None shape — the wire is far shorter than MaxBits; a reader
     # whose fused bounds counted MaxBitsUnion would refuse this valid wire
     none = %Example.ProbeCollider{armor: 7}
-    none_wire = Example.Wire.write_probe_collider(none)
+    none_wire = Example.Wire.write_probe_collider!(none)
 
     check(
       match?({:ok, _}, Example.Wire.read_probe_collider(none_wire, byte_size(none_wire) * 8)),
@@ -406,7 +400,7 @@ defmodule SchemaTestElixir do
     )
 
     check(
-      div(Example.Wire.measure_probe_collider(none) + 7, 8) == byte_size(none_wire),
+      div(bits_of(Example.Wire.write_probe_collider!(none), &Example.Wire.read_probe_collider_bits/2) + 7, 8) == byte_size(none_wire),
       "measure prices the selected arm, not MaxBits"
     )
 
@@ -433,8 +427,8 @@ defmodule SchemaTestElixir do
 
     # the write side validates the tag BEFORE it rides
     expect_raise(
-      fn -> Example.Wire.write_probe_shape(%Example.ProbeShape{type: 3}) end,
-      "an out-of-set union tag must trip the writer contract"
+      fn -> Example.Wire.write_probe_shape!({:cone, %Example.ProbeRing{}}) end,
+      "an arm the union does not declare must trip the writer contract"
     )
 
     # ---- ProbeSample: the nested if/else wire, both ways, and §5 zeroing ----
@@ -442,7 +436,7 @@ defmodule SchemaTestElixir do
       orientation: 90.0,
       raw_delta: -5,
       big_delta: -1_234_567_890_123,
-      weapon: Example.Weapon.laser(),
+      weapon: :laser,
       has_target: true,
       target_id: 777,
       # untaken side on the wire — must read back ZERO
@@ -450,11 +444,11 @@ defmodule SchemaTestElixir do
       samples: [42]
     }
 
-    ps_wire = Example.Wire.write_probe_sample(ps)
+    ps_wire = Example.Wire.write_probe_sample!(ps)
     {:ok, out_ps} = Example.Wire.read_probe_sample(ps_wire, byte_size(ps_wire) * 8)
 
     check(
-      out_ps.active and out_ps.weapon == Example.Weapon.laser() and out_ps.has_target and
+      out_ps.active and out_ps.weapon == :laser and out_ps.has_target and
         out_ps.target_id == 777,
       "the taken branch round-trips, nested branch included"
     )
@@ -463,17 +457,17 @@ defmodule SchemaTestElixir do
     check(out_ps.orientation == 90.0, "compressed float round-trips exactly at its resolution")
 
     check(
-      div(Example.Wire.measure_probe_sample(ps) + 7, 8) == byte_size(ps_wire),
+      div(bits_of(Example.Wire.write_probe_sample!(ps), &Example.Wire.read_probe_sample_bits/2) + 7, 8) == byte_size(ps_wire),
       "ProbeSample measure vs written bytes"
     )
 
     ps_idle = %{ps | active: false, has_target: false}
-    idle_wire = Example.Wire.write_probe_sample(ps_idle)
+    idle_wire = Example.Wire.write_probe_sample!(ps_idle)
     {:ok, out_idle} = Example.Wire.read_probe_sample(idle_wire, byte_size(idle_wire) * 8)
     check(not out_idle.active and out_idle.idle_ticks == 12345, "the else branch round-trips")
 
     check(
-      out_idle.weapon == Example.Weapon.none() and not out_idle.has_target and
+      out_idle.weapon == :none and not out_idle.has_target and
         out_idle.target_id == 0,
       "the whole untaken then side reads as zero, nested branch included"
     )
@@ -483,7 +477,7 @@ defmodule SchemaTestElixir do
     check(Enum.all?(fresh.samples, & &1.active), "defaults reach through a fixed array")
 
     check(
-      fresh.config.retries == -1 and fresh.config.preferred == Example.Weapon.railgun(),
+      fresh.config.retries == -1 and fresh.config.preferred == :railgun,
       "defaults reach through a plain member"
     )
 
@@ -493,7 +487,7 @@ defmodule SchemaTestElixir do
           orientation: 90.0,
           raw_delta: -5,
           big_delta: -1_234_567_890_123,
-          weapon: Example.Weapon.laser(),
+          weapon: :laser,
           has_target: true,
           target_id: 777,
           samples: [42]
@@ -507,28 +501,28 @@ defmodule SchemaTestElixir do
           samples: [7, 8]
         }
       ],
-      config: %Example.ProbeConfig{retries: 3, preferred: Example.Weapon.missile()}
+      config: %Example.ProbeConfig{retries: 3, preferred: :missile}
     }
 
     out_pa =
       pin(
         "probearray",
         pa,
-        &Example.Wire.write_probe_array/1,
+        &Example.Wire.write_probe_array!/1,
         &Example.Wire.read_probe_array/2,
-        &Example.Wire.measure_probe_array/1
+        &Example.Wire.read_probe_array_bits/2
       )
 
     [_, s1] = out_pa.samples
     check(not s1.active and s1.idle_ticks == 1000, "nested else branch round-trips")
 
     check(
-      s1.weapon == Example.Weapon.none() and not s1.has_target,
+      s1.weapon == :none and not s1.has_target,
       "nested untaken side reads as zero (SPEC §5)"
     )
 
     check(
-      out_pa.config.retries == 3 and out_pa.config.preferred == Example.Weapon.missile(),
+      out_pa.config.retries == 3 and out_pa.config.preferred == :missile,
       "config round-trips"
     )
 
@@ -539,7 +533,7 @@ defmodule SchemaTestElixir do
       echo: %Example.Test{test_a: 555, test_b: 1000}
     }
 
-    pr_wire = Example.Wire.write_probe_report(pr)
+    pr_wire = Example.Wire.write_probe_report!(pr)
     {:ok, out_pr} = Example.Wire.read_probe_report(pr_wire, byte_size(pr_wire) * 8)
 
     check(
@@ -551,23 +545,23 @@ defmodule SchemaTestElixir do
 
     # a mask bit above the widened 8-bit wire is refused, not truncated
     expect_raise(
-      fn -> Example.Wire.write_probe_report(%{pr | flags: 1 <<< 9}) end,
+      fn -> Example.Wire.write_probe_report!(%{pr | flags: 1 <<< 9}) end,
       "a mask bit above the flags wire width must trip the writer contract"
     )
 
     # ---- Block: the bytes(N) framing; Heartbeat: the empty body ----
     block = %Example.Block{data: :binary.list_to_bin(Enum.to_list(0..99))}
-    block_wire = Example.Wire.write_block(block)
+    block_wire = Example.Wire.write_block!(block)
     {:ok, out_block} = Example.Wire.read_block(block_wire, byte_size(block_wire) * 8)
     check(out_block.data == block.data, "Block round-trips — bytes(N) framing")
-    check(rem(Example.Wire.measure_block(block), 8) == 0, "Block wire ends byte-aligned")
+    check(rem(bits_of(Example.Wire.write_block!(block), &Example.Wire.read_block_bits/2), 8) == 0, "Block wire ends byte-aligned")
 
     hb = %Example.Heartbeat{}
 
     check(
-      Example.Wire.write_heartbeat(hb) == <<>> and
+      Example.Wire.write_heartbeat!(hb) == <<>> and
         Example.Wire.read_heartbeat(<<>>, 0) == {:ok, hb} and
-        Example.Wire.measure_heartbeat(hb) == 0,
+        bits_of(Example.Wire.write_heartbeat!(hb), &Example.Wire.read_heartbeat_bits/2) == 0,
       "Heartbeat — presence is the payload (SPEC §4.6)"
     )
 
@@ -623,18 +617,18 @@ defmodule SchemaTestElixir do
 
     # ---- writer contracts (always on — no release twin exists) ----
     expect_raise(
-      fn -> Example.Types.write_ship_create(%{make_ship_create() | health: 5000}) end,
+      fn -> Example.Types.write_ship_create!(%{make_ship_create() | health: 5000}) end,
       "an out-of-range ranged write must trip the writer contract"
     )
 
     expect_raise(
-      fn -> Example.Wire.write_chat(%Example.Chat{text: String.duplicate("x", 999)}) end,
+      fn -> Example.Wire.write_chat!(%Example.Chat{text: String.duplicate("x", 999)}) end,
       "an out-of-range string length must trip the writer contract"
     )
 
     expect_raise(
       fn ->
-        Example.Types.write_input_packet(%Example.InputPacket{
+        Example.Types.write_input_packet!(%Example.InputPacket{
           inputs: List.duplicate(%Example.Input{}, 17)
         })
       end,
@@ -642,7 +636,7 @@ defmodule SchemaTestElixir do
     )
 
     expect_raise(
-      fn -> Example.Types.write_ship_create(%{make_ship_create() | ship_type: 99}) end,
+      fn -> Example.Types.write_ship_create!(%{make_ship_create() | ship_type: 99}) end,
       "enum headroom above the wire range must trip the writer contract"
     )
 
@@ -665,7 +659,7 @@ defmodule SchemaTestElixir do
     )
 
     check(
-      Example.Wire.enum_name_weapon(Example.Weapon.railgun()) == "Railgun",
+      Example.Wire.enum_name_weapon(:railgun) == "Railgun",
       "enum_name names a variant"
     )
 
@@ -694,12 +688,12 @@ defmodule SchemaTestElixir do
     pin(
       "bench_packet",
       packet,
-      &Bench.Bench.write_bench_packet/1,
+      &Bench.Bench.write_bench_packet!/1,
       &Bench.Bench.read_bench_packet/2,
-      &Bench.Bench.measure_bench_packet/1
+      &Bench.Bench.read_bench_packet_bits/2
     )
 
-    check(Bench.Bench.measure_bench_packet(packet) == 392, "BenchPacket is 392 bits")
+    check(bits_of(Bench.Bench.write_bench_packet!(packet), &Bench.Bench.read_bench_packet_bits/2) == 392, "BenchPacket is 392 bits")
 
     ints = %Bench.BenchInts{
       f0: -37,
@@ -717,9 +711,9 @@ defmodule SchemaTestElixir do
     pin(
       "bench_ints",
       ints,
-      &Bench.Bench.write_bench_ints/1,
+      &Bench.Bench.write_bench_ints!/1,
       &Bench.Bench.read_bench_ints/2,
-      &Bench.Bench.measure_bench_ints/1
+      &Bench.Bench.read_bench_ints_bits/2
     )
 
     bits = %Bench.BenchBits{
@@ -736,9 +730,9 @@ defmodule SchemaTestElixir do
     pin(
       "bench_bits",
       bits,
-      &Bench.Bench.write_bench_bits/1,
+      &Bench.Bench.write_bench_bits!/1,
       &Bench.Bench.read_bench_bits/2,
-      &Bench.Bench.measure_bench_bits/1
+      &Bench.Bench.read_bench_bits_bits/2
     )
 
     # BenchMixed — THE canonical benchmark shape (#184); the pin is
@@ -756,7 +750,7 @@ defmodule SchemaTestElixir do
           vel_y: 2047 - i * 512,
           vel_z: -1024 + i * 256,
           health: 1000 - i * 100,
-          weapon: 1 + i,
+          weapon: elem(Bench.MixedWeapon.from_int(1 + i), 1),
           damage: 0x5A + i,
           moving: rem(i, 2) == 0,
           firing: rem(i, 3) == 0
@@ -780,10 +774,8 @@ defmodule SchemaTestElixir do
       server_time: 12_345_678,
       entities: entities,
       stats: stats,
-      game_event: %Bench.MixedEvent{
-        type: Bench.MixedEventType.hit(),
-        hit: %Bench.MixedHitEvent{target_id: 4095, damage: 4095, hit_kind: 7, crit: true}
-      },
+      game_event:
+        {:hit, %Bench.MixedHitEvent{target_id: 4095, damage: 4095, hit_kind: 7, crit: true}},
       loadout: [0x11, 0x22, 0x33, 0x44],
       player_name: "Rowan_01",
       payload: <<0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04>>,
@@ -806,9 +798,9 @@ defmodule SchemaTestElixir do
     pin(
       "bench_mixed",
       mixed,
-      &Bench.Bench.write_bench_mixed/1,
+      &Bench.Bench.write_bench_mixed!/1,
       &Bench.Bench.read_bench_mixed/2,
-      &Bench.Bench.measure_bench_mixed/1
+      &Bench.Bench.read_bench_mixed_bits/2
     )
 
     # RealPacket pins the ALL-DEFAULTS instance: constructed and serialized
@@ -818,12 +810,12 @@ defmodule SchemaTestElixir do
     pin(
       "real_packet",
       real,
-      &Realworld.RealWorld.write_real_packet/1,
+      &Realworld.RealWorld.write_real_packet!/1,
       &Realworld.RealWorld.read_real_packet/2,
-      &Realworld.RealWorld.measure_real_packet/1
+      &Realworld.RealWorld.read_real_packet_bits/2
     )
 
-    check(Realworld.RealWorld.measure_real_packet(real) == 1629, "RealPacket is 1629 bits")
+    check(bits_of(Realworld.RealWorld.write_real_packet!(real), &Realworld.RealWorld.read_real_packet_bits/2) == 1629, "RealPacket is 1629 bits")
 
     # ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
     #
@@ -837,31 +829,31 @@ defmodule SchemaTestElixir do
     dg = Example.Degenerate
 
     degenerate_shapes = [
-      {"Vec2", %Example.Vec2{x: 1.5, y: -2.25}, 16, &dg.write_vec2/1, &dg.read_vec2/2,
-       &dg.measure_vec2/1},
-      {"SpanF64", %Example.SpanF64{values: [3.5, -4.75]}, 16, &dg.write_span_f64/1,
-       &dg.read_span_f64/2, &dg.measure_span_f64/1},
-      {"SpanU64", %Example.SpanU64{values: [0xDEADBEEFCAFEBABE, 1]}, 16, &dg.write_span_u64/1,
-       &dg.read_span_u64/2, &dg.measure_span_u64/1},
-      {"SpanI64", %Example.SpanI64{values: [-1_234_567_890_123, 42]}, 16, &dg.write_span_i64/1,
-       &dg.read_span_i64/2, &dg.measure_span_i64/1},
-      {"SpanOne", %Example.SpanOne{values: [0x0123456789ABCDEF]}, 8, &dg.write_span_one/1,
-       &dg.read_span_one/2, &dg.measure_span_one/1},
+      {"Vec2", %Example.Vec2{x: 1.5, y: -2.25}, 16, &dg.write_vec2!/1, &dg.read_vec2/2,
+       &dg.read_vec2_bits/2},
+      {"SpanF64", %Example.SpanF64{values: [3.5, -4.75]}, 16, &dg.write_span_f64!/1,
+       &dg.read_span_f64/2, &dg.read_span_f64_bits/2},
+      {"SpanU64", %Example.SpanU64{values: [0xDEADBEEFCAFEBABE, 1]}, 16, &dg.write_span_u64!/1,
+       &dg.read_span_u64/2, &dg.read_span_u64_bits/2},
+      {"SpanI64", %Example.SpanI64{values: [-1_234_567_890_123, 42]}, 16, &dg.write_span_i64!/1,
+       &dg.read_span_i64/2, &dg.read_span_i64_bits/2},
+      {"SpanOne", %Example.SpanOne{values: [0x0123456789ABCDEF]}, 8, &dg.write_span_one!/1,
+       &dg.read_span_one/2, &dg.read_span_one_bits/2},
       {"SpanChunk", %Example.SpanChunk{values: [0x1111, 0x2222, 0x3333, 0x4444]}, 8,
-       &dg.write_span_chunk/1, &dg.read_span_chunk/2, &dg.measure_span_chunk/1},
+       &dg.write_span_chunk!/1, &dg.read_span_chunk/2, &dg.read_span_chunk_bits/2},
       {"SpanTail", %Example.SpanTail{values: [6.125, -7.0], tail: 0xFEEDFACE}, 20,
-       &dg.write_span_tail/1, &dg.read_span_tail/2, &dg.measure_span_tail/1},
+       &dg.write_span_tail!/1, &dg.read_span_tail/2, &dg.read_span_tail_bits/2},
       {"SpanTwice", %Example.SpanTwice{a: [8.5, 9.5], b: [-10.5, -11.5]}, 32,
-       &dg.write_span_twice/1, &dg.read_span_twice/2, &dg.measure_span_twice/1},
-      {"Trio", %Example.Trio{a: 0xABCDE, b: 0x12345, c: 0xFFFFF}, 8, &dg.write_trio/1,
-       &dg.read_trio/2, &dg.measure_trio/1},
+       &dg.write_span_twice!/1, &dg.read_span_twice/2, &dg.read_span_twice_bits/2},
+      {"Trio", %Example.Trio{a: 0xABCDE, b: 0x12345, c: 0xFFFFF}, 8, &dg.write_trio!/1,
+       &dg.read_trio/2, &dg.read_trio_bits/2},
       {"TrioSole", %Example.TrioSole{inner: %Example.Trio{a: 1, b: 2, c: 3}}, 8,
-       &dg.write_trio_sole/1, &dg.read_trio_sole/2, &dg.measure_trio_sole/1},
+       &dg.write_trio_sole!/1, &dg.read_trio_sole/2, &dg.read_trio_sole_bits/2},
       {"TrioFirst",
        %Example.TrioFirst{
          inner: %Example.Trio{a: 0xAAAAA, b: 0x55555, c: 0xF0F0F},
          trailer: 0xBEEF
-       }, 10, &dg.write_trio_first/1, &dg.read_trio_first/2, &dg.measure_trio_first/1},
+       }, 10, &dg.write_trio_first!/1, &dg.read_trio_first/2, &dg.read_trio_first_bits/2},
       {"TrioStraddle",
        %Example.TrioStraddle{
          pad0: 0x0011223344556677,
@@ -871,12 +863,12 @@ defmodule SchemaTestElixir do
          pad4: 0x123456789ABCDEF0,
          pad5: 0xABCDEF,
          inner: %Example.Trio{a: 0x11111, b: 0x22222, c: 0x33333}
-       }, 51, &dg.write_trio_straddle/1, &dg.read_trio_straddle/2, &dg.measure_trio_straddle/1}
+       }, 51, &dg.write_trio_straddle!/1, &dg.read_trio_straddle/2, &dg.read_trio_straddle_bits/2}
     ]
 
     degenerate_wire =
       degenerate_shapes
-      |> Enum.map(fn {name, value, bytes, write, _read, measure} ->
+      |> Enum.map(fn {name, value, bytes, write, _read, read_bits} ->
         part = write.(value)
 
         check(
@@ -884,7 +876,7 @@ defmodule SchemaTestElixir do
           "#{name}: wrote #{byte_size(part)} bytes, expected #{bytes}"
         )
 
-        check(div(measure.(value) + 7, 8) == byte_size(part), "#{name}: measure vs bytes written")
+        check(div(bits_of(part, read_bits) + 7, 8) == byte_size(part), "#{name}: bits vs bytes")
         part
       end)
       |> IO.iodata_to_binary()
@@ -903,7 +895,7 @@ defmodule SchemaTestElixir do
     # and each shape reads back out of its own slice of the golden
     rest =
       Enum.reduce(degenerate_shapes, golden("degenerate"), fn {name, value, bytes, _write, read,
-                                                               _measure},
+                                                               _read_bits},
                                                               acc ->
         <<slice::binary-size(^bytes), tail::binary>> = acc
 
@@ -935,59 +927,59 @@ defmodule SchemaTestElixir do
     clause_shapes =
       Enum.map([0, 1, 3, 4, 5, 7, 12], fn c ->
         v = %Example.W13{items: Enum.map(seq.(c), &(8191 - &1 * 733))}
-        {"W13/#{c}", 4 + 13 * c, v, &cl.write_w13/1, &cl.read_w13/2, &cl.measure_w13/1, v}
+        {"W13/#{c}", 4 + 13 * c, v, &cl.write_w13!/1, &cl.read_w13/2, &cl.read_w13_bits/2, v}
       end) ++
         Enum.map([0, 1, 2, 3, 4, 9], fn c ->
           v = %Example.W17{items: Enum.map(seq.(c), &(131_071 - &1 * 11_117))}
-          {"W17/#{c}", 4 + 17 * c, v, &cl.write_w17/1, &cl.read_w17/2, &cl.measure_w17/1, v}
+          {"W17/#{c}", 4 + 17 * c, v, &cl.write_w17!/1, &cl.read_w17/2, &cl.read_w17_bits/2, v}
         end) ++
         Enum.map([0, 1, 2, 3, 6], fn c ->
           v = %Example.W26{items: Enum.map(seq.(c), &(67_108_863 - &1 * 5_555_555))}
-          {"W26/#{c}", 3 + 26 * c, v, &cl.write_w26/1, &cl.read_w26/2, &cl.measure_w26/1, v}
+          {"W26/#{c}", 3 + 26 * c, v, &cl.write_w26!/1, &cl.read_w26/2, &cl.read_w26_bits/2, v}
         end) ++
         Enum.map([0, 1, 3, 4, 5, 20], fn c ->
           v = %Example.W1{items: Enum.map(seq.(c), &rem(&1, 2))}
-          {"W1/#{c}", 5 + c, v, &cl.write_w1/1, &cl.read_w1/2, &cl.measure_w1/1, v}
+          {"W1/#{c}", 5 + c, v, &cl.write_w1!/1, &cl.read_w1/2, &cl.read_w1_bits/2, v}
         end) ++
         Enum.map(0..3, fn c ->
           v = %Example.W52{items: Enum.map(seq.(c), &(4_503_599_627_370_495 - &1 * 123_456_789))}
-          {"W52/#{c}", 2 + 52 * c, v, &cl.write_w52/1, &cl.read_w52/2, &cl.measure_w52/1, v}
+          {"W52/#{c}", 2 + 52 * c, v, &cl.write_w52!/1, &cl.read_w52/2, &cl.read_w52_bits/2, v}
         end) ++
         Enum.map(0..3, fn c ->
           v = %Example.W50{items: Enum.map(seq.(c), &(1_125_899_906_842_623 - &1 * 987_654_321))}
-          {"W50/#{c}", 2 + 50 * c, v, &cl.write_w50/1, &cl.read_w50/2, &cl.measure_w50/1, v}
+          {"W50/#{c}", 2 + 50 * c, v, &cl.write_w50!/1, &cl.read_w50/2, &cl.read_w50_bits/2, v}
         end) ++
         [
           (
             v = %Example.F13{items: Enum.map(0..6, &(8191 - &1 * 911))}
-            {"F13", 91, v, &cl.write_f13/1, &cl.read_f13/2, &cl.measure_f13/1, v}
+            {"F13", 91, v, &cl.write_f13!/1, &cl.read_f13/2, &cl.read_f13_bits/2, v}
           )
         ] ++
         Enum.map([0, 1, 3, 4, 5, 10], fn c ->
           items = Enum.map(seq.(c), &%Example.Tri3{a: rem(&1, 2), b: rem(&1, 4)})
           v = %Example.ArrTri3{items: items}
-          {"ArrTri3/#{c}", 4 + 3 * c, v, &cl.write_arr_tri3/1, &cl.read_arr_tri3/2,
-           &cl.measure_arr_tri3/1, v}
+          {"ArrTri3/#{c}", 4 + 3 * c, v, &cl.write_arr_tri3!/1, &cl.read_arr_tri3/2,
+           &cl.read_arr_tri3_bits/2, v}
         end) ++
         [
           (
             items = Enum.map(0..8, &%Example.Eleven{a: rem(&1, 8), b: 255 - &1 * 17})
             v = %Example.ArrEleven{items: items}
-            {"ArrEleven", 99, v, &cl.write_arr_eleven/1, &cl.read_arr_eleven/2,
-             &cl.measure_arr_eleven/1, v}
+            {"ArrEleven", 99, v, &cl.write_arr_eleven!/1, &cl.read_arr_eleven/2,
+             &cl.read_arr_eleven_bits/2, v}
           )
         ] ++
         # lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
         Enum.map(
           [
-            {"None", %Example.EmptyUnion{type: 0}},
-            {"A", %Example.EmptyUnion{type: 1}},
-            {"B", %Example.EmptyUnion{type: 2}}
+            {"None", nil},
+            {"A", {:a, %Example.EmptyA{}}},
+            {"B", {:b, %Example.EmptyB{}}}
           ],
           fn {arm, u} ->
             v = %Example.HoldsEmptyUnion{lead: 21, u: u, tail: 99}
-            {"HoldsEmptyUnion/#{arm}", 14, v, &cl.write_holds_empty_union/1,
-             &cl.read_holds_empty_union/2, &cl.measure_holds_empty_union/1, v}
+            {"HoldsEmptyUnion/#{arm}", 14, v, &cl.write_holds_empty_union!/1,
+             &cl.read_holds_empty_union/2, &cl.read_holds_empty_union_bits/2, v}
           end
         ) ++
         # lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
@@ -1001,19 +993,19 @@ defmodule SchemaTestElixir do
           ],
           fn {tag, bits, s, b} ->
             v = %Example.Strs{lead: 21, s: s, b: b, tail: 5}
-            {"Strs/#{tag}", bits, v, &cl.write_strs/1, &cl.read_strs/2, &cl.measure_strs/1, v}
+            {"Strs/#{tag}", bits, v, &cl.write_strs!/1, &cl.read_strs/2, &cl.read_strs_bits/2, v}
           end
         ) ++
         Enum.map(0..4, fn c ->
           items = Enum.map(seq.(c), &%Example.Eleven{a: rem(&1, 8), b: 200 - &1 * 7})
           v = %Example.ArrNested{lead: 21, items: items, tail: 5}
-          {"ArrNested/#{c}", 11 + 11 * c, v, &cl.write_arr_nested/1, &cl.read_arr_nested/2,
-           &cl.measure_arr_nested/1, v}
+          {"ArrNested/#{c}", 11 + 11 * c, v, &cl.write_arr_nested!/1, &cl.read_arr_nested/2,
+           &cl.read_arr_nested_bits/2, v}
         end) ++
         [
           (
             v = %Example.Sole{only: 5555}
-            {"Sole", 13, v, &cl.write_sole/1, &cl.read_sole/2, &cl.measure_sole/1, v}
+            {"Sole", 13, v, &cl.write_sole!/1, &cl.read_sole/2, &cl.read_sole_bits/2, v}
           )
         ]
 
@@ -1026,32 +1018,32 @@ defmodule SchemaTestElixir do
           # the arms agree on WIDTH but not on value, so a join that keeps the
           # wrong arm is a value mismatch and not just a width one
           {"ArmsAgree/#{f}", 24, %Example.ArmsAgree{lead: 21, flag: f, a: 1234, b: 1500, tail: 99},
-           &jn.write_arms_agree/1, &jn.read_arms_agree/2, &jn.measure_arms_agree/1,
+           &jn.write_arms_agree!/1, &jn.read_arms_agree/2, &jn.read_arms_agree_bits/2,
            if(f,
              do: %Example.ArmsAgree{lead: 21, flag: true, a: 1234, tail: 99},
              else: %Example.ArmsAgree{lead: 21, flag: false, b: 1500, tail: 99}
            )},
           {"ArmsDisagree/#{f}", if(f, do: 24, else: 16),
            %Example.ArmsDisagree{lead: 21, flag: f, a: 1234, b: 5, tail: 99},
-           &jn.write_arms_disagree/1, &jn.read_arms_disagree/2, &jn.measure_arms_disagree/1,
+           &jn.write_arms_disagree!/1, &jn.read_arms_disagree/2, &jn.read_arms_disagree_bits/2,
            if(f,
              do: %Example.ArmsDisagree{lead: 21, flag: true, a: 1234, tail: 99},
              else: %Example.ArmsDisagree{lead: 21, flag: false, b: 5, tail: 99}
            )},
           {"ArmEmpty/#{f}", if(f, do: 32, else: 13),
-           %Example.ArmEmpty{lead: 21, flag: f, a: 456_789, tail: 99}, &jn.write_arm_empty/1,
-           &jn.read_arm_empty/2, &jn.measure_arm_empty/1,
+           %Example.ArmEmpty{lead: 21, flag: f, a: 456_789, tail: 99}, &jn.write_arm_empty!/1,
+           &jn.read_arm_empty/2, &jn.read_arm_empty_bits/2,
            %Example.ArmEmpty{lead: 21, flag: f, a: if(f, do: 456_789, else: 0), tail: 99}},
           {"ArmAlign/#{f}", if(f, do: 55, else: 23),
            %Example.ArmAlign{lead: 21, flag: f, s: "abcd", b: 1000, tail: 99},
-           &jn.write_arm_align/1, &jn.read_arm_align/2, &jn.measure_arm_align/1,
+           &jn.write_arm_align!/1, &jn.read_arm_align/2, &jn.read_arm_align_bits/2,
            if(f,
              do: %Example.ArmAlign{lead: 21, flag: true, s: "abcd", tail: 99},
              else: %Example.ArmAlign{lead: 21, flag: false, b: 1000, tail: 99}
            )},
           {"ArmAlignEmptyStr/#{f}", 23,
            %Example.ArmAlign{lead: 21, flag: f, s: <<>>, b: 1000, tail: 99},
-           &jn.write_arm_align/1, &jn.read_arm_align/2, &jn.measure_arm_align/1,
+           &jn.write_arm_align!/1, &jn.read_arm_align/2, &jn.read_arm_align_bits/2,
            if(f,
              do: %Example.ArmAlign{lead: 21, flag: true, tail: 99},
              else: %Example.ArmAlign{lead: 21, flag: false, b: 1000, tail: 99}
@@ -1079,8 +1071,8 @@ defmodule SchemaTestElixir do
                 true -> %Example.ArmsNested{lead: 5, outer: false, z: 4000, tail: 33}
               end
 
-            {"ArmsNested/#{o}#{i}", bits, written, &jn.write_arms_nested/1,
-             &jn.read_arms_nested/2, &jn.measure_arms_nested/1, want}
+            {"ArmsNested/#{o}#{i}", bits, written, &jn.write_arms_nested!/1,
+             &jn.read_arms_nested/2, &jn.read_arms_nested_bits/2, want}
           end)
         end) ++
         Enum.flat_map([false, true], fn f ->
@@ -1094,21 +1086,21 @@ defmodule SchemaTestElixir do
                 else: %Example.ArmArray{lead: 21, flag: false, b: 300, tail: 99}
 
             {"ArmArray/#{f}/#{c}", if(f, do: 15 + 13 * c, else: 22), written,
-             &jn.write_arm_array/1, &jn.read_arm_array/2, &jn.measure_arm_array/1, want}
+             &jn.write_arm_array!/1, &jn.read_arm_array/2, &jn.read_arm_array_bits/2, want}
           end)
         end) ++
         # lead 5 + tag 2 + arm + tail 11 — the arms are 0, 3 and 37 bits
         Enum.map(
           [
-            {"None", 18, %Example.Uneven{type: 0}},
-            {"N", 21, %Example.Uneven{type: 1, narrow: %Example.Narrow{n: 5}}},
-            {"W", 55, %Example.Uneven{type: 2, wide: %Example.Wide{w: 123_456_789_012}}}
+            {"None", 18, nil},
+            {"N", 21, {:narrow, %Example.Narrow{n: 5}}},
+            {"W", 55, {:wide, %Example.Wide{w: 123_456_789_012}}}
           ],
           fn {arm, bits, u} ->
             v = %Example.HoldsUneven{lead: 21, u: u, tail: 1500}
 
-            {"HoldsUneven/#{arm}", bits, v, &jn.write_holds_uneven/1, &jn.read_holds_uneven/2,
-             &jn.measure_holds_uneven/1, v}
+            {"HoldsUneven/#{arm}", bits, v, &jn.write_holds_uneven!/1, &jn.read_holds_uneven/2,
+             &jn.read_holds_uneven_bits/2, v}
           end
         ) ++
         # alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
@@ -1116,15 +1108,15 @@ defmodule SchemaTestElixir do
           items =
             Enum.map(seq.(c), fn i ->
               if rem(i, 2) == 0,
-                do: %Example.Uneven{type: 1, narrow: %Example.Narrow{n: rem(i, 8)}},
-                else: %Example.Uneven{type: 2, wide: %Example.Wide{w: 99_887_766_554 + i}}
+                do: {:narrow, %Example.Narrow{n: rem(i, 8)}},
+                else: {:wide, %Example.Wide{w: 99_887_766_554 + i}}
             end)
 
           v = %Example.ArrUneven{lead: 21, items: items, tail: 5}
           bits = 10 + Enum.at([0, 5, 44, 49], c)
 
-          {"ArrUneven/#{c}", bits, v, &jn.write_arr_uneven/1, &jn.read_arr_uneven/2,
-           &jn.measure_arr_uneven/1, v}
+          {"ArrUneven/#{c}", bits, v, &jn.write_arr_uneven!/1, &jn.read_arr_uneven/2,
+           &jn.read_arr_uneven_bits/2, v}
         end) ++
         # lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
         # then a 32 + 29 + 19 + 4 static run after the align regains it
@@ -1145,22 +1137,22 @@ defmodule SchemaTestElixir do
 
             after_align = div(5 + 2 + 13 * c + 3 + 7, 8) * 8
 
-            {"Regain/#{c}/#{sl}", after_align + 8 * sl + 84, v, &jn.write_regain_after_align/1,
-             &jn.read_regain_after_align/2, &jn.measure_regain_after_align/1, v}
+            {"Regain/#{c}/#{sl}", after_align + 8 * sl + 84, v, &jn.write_regain_after_align!/1,
+             &jn.read_regain_after_align/2, &jn.read_regain_after_align_bits/2, v}
           end)
         end)
 
-    # write, hold measure to the width, concatenate, byte-compare, read each
+    # write, hold the consumed bits to the width, concatenate, byte-compare, read each
     # shape back out of its own slice
     pin_arrangements = fn name, shapes ->
       wire =
         shapes
-        |> Enum.map(fn {shape, bits, value, write, _read, measure, _want} ->
+        |> Enum.map(fn {shape, bits, value, write, _read, read_bits, _want} ->
           part = write.(value)
 
           check(
-            measure.(value) == bits,
-            "#{shape}: measure #{measure.(value)}, expected #{bits} bits"
+            bits_of(part, read_bits) == bits,
+            "#{shape}: read consumed #{bits_of(part, read_bits)}, expected #{bits} bits"
           )
 
           check(
@@ -1175,7 +1167,7 @@ defmodule SchemaTestElixir do
       check(wire == golden(name), "#{name}: Elixir bytes == the C++-pinned bytes")
 
       rest =
-        Enum.reduce(shapes, golden(name), fn {shape, bits, _value, _write, read, _measure, want},
+        Enum.reduce(shapes, golden(name), fn {shape, bits, _value, _write, read, _read_bits, want},
                                              acc ->
           nbytes = div(bits + 7, 8)
           <<slice::binary-size(^nbytes), tail::binary>> = acc
@@ -1211,7 +1203,7 @@ defmodule SchemaTestElixir do
 
     framed =
       two_headers
-      |> Enum.map(&Example.Wire.write_probe_header/1)
+      |> Enum.map(&Example.Wire.write_probe_header!/1)
       |> IO.iodata_to_binary()
 
     rest_headers =
@@ -1221,7 +1213,7 @@ defmodule SchemaTestElixir do
             check(got == want, "read_probe_header_bits: the object reads back")
 
             check(
-              bits_read == Example.Wire.measure_probe_header(want),
+              bits_read == bits_of(Example.Wire.write_probe_header!(want), &Example.Wire.read_probe_header_bits/2),
               "read_probe_header_bits: the count is the written bits"
             )
 

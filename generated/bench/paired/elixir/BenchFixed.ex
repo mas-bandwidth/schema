@@ -43,13 +43,38 @@ defmodule Bench.BenchFixed do
   def mixed_event_fixed_write_arm(value), do: mixed_event_fixed_write_into(value, <<>>)
 
   def mixed_event_fixed_write_into(value, acc) do
-    acc = <<acc::binary, value.type::little-unsigned-8>>
+    tag =
+      case value do
+        nil ->
+          0
 
-    case value.type do
-      1 -> mixed_hit_event_fixed_write_into(value.hit, acc)
-      2 -> <<mixed_chat_event_fixed_write_into(value.chat, acc)::binary, 0::size(5)-unit(8)>>
-      3 -> <<mixed_pickup_event_fixed_write_into(value.pickup, acc)::binary, 0::size(5)-unit(8)>>
-      _ -> <<acc::binary, 0::size(13)-unit(8)>>
+        {:hit, _} ->
+          1
+
+        {:chat, _} ->
+          2
+
+        {:pickup, _} ->
+          3
+
+        other ->
+          raise ArgumentError, "not a value of union MixedEvent: #{inspect(other)}"
+      end
+
+    acc = <<acc::binary, tag::little-unsigned-8>>
+
+    case value do
+      {:hit, v_hit} ->
+        mixed_hit_event_fixed_write_into(v_hit, acc)
+
+      {:chat, v_chat} ->
+        <<mixed_chat_event_fixed_write_into(v_chat, acc)::binary, 0::size(5)-unit(8)>>
+
+      {:pickup, v_pickup} ->
+        <<mixed_pickup_event_fixed_write_into(v_pickup, acc)::binary, 0::size(5)-unit(8)>>
+
+      _ ->
+        <<acc::binary, 0::size(13)-unit(8)>>
     end
   end
 
@@ -59,21 +84,21 @@ defmodule Bench.BenchFixed do
     case tag do
       1 ->
         {v, c, m} = mixed_hit_event_fixed_decode(arm, c, m)
-        {%Bench.MixedEvent{type: 1, hit: v}, c, m}
+        {{:hit, v}, c, m}
 
       2 ->
         {v, c, m} = mixed_chat_event_fixed_decode(arm, c, m)
-        {%Bench.MixedEvent{type: 2, chat: v}, c, m}
+        {{:chat, v}, c, m}
 
       3 ->
         {v, c, m} = mixed_pickup_event_fixed_decode(arm, c, m)
-        {%Bench.MixedEvent{type: 3, pickup: v}, c, m}
+        {{:pickup, v}, c, m}
 
       0 ->
-        {%Bench.MixedEvent{}, c, m}
+        {nil, c, m}
 
       _ ->
-        {%Bench.MixedEvent{}, c + 1, m}
+        {nil, c + 1, m}
     end
   end
 
@@ -120,9 +145,9 @@ defmodule Bench.BenchFixed do
         R.ranged(v_vel_x, @r_mixed_entity_vel_x)::little-signed-32,
         R.ranged(v_vel_y, @r_mixed_entity_vel_y)::little-signed-32,
         R.ranged(v_vel_z, @r_mixed_entity_vel_z)::little-signed-32,
-        R.ranged(v_health, @r_mixed_entity_health)::little-signed-32, v_weapon::little-unsigned-8,
-        v_damage::little-unsigned-64, if(v_moving, do: 1, else: 0)::unsigned-8,
-        if(v_firing, do: 1, else: 0)::unsigned-8>>
+        R.ranged(v_health, @r_mixed_entity_health)::little-signed-32,
+        Bench.MixedWeapon.to_int(v_weapon)::little-unsigned-8, v_damage::little-unsigned-64,
+        if(v_moving, do: 1, else: 0)::unsigned-8, if(v_firing, do: 1, else: 0)::unsigned-8>>
 
     acc
   end
@@ -160,7 +185,7 @@ defmodule Bench.BenchFixed do
        vel_y: min(max(f_vel_y, -2048), 2047),
        vel_z: min(max(f_vel_z, -2048), 2047),
        health: min(max(f_health, 0), 1000),
-       weapon: if(f_weapon <= 15, do: f_weapon, else: 0),
+       weapon: elem(Bench.MixedWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
        damage: f_damage,
        moving: f_moving != 0,
        firing: f_firing != 0
@@ -205,7 +230,7 @@ defmodule Bench.BenchFixed do
         vel_y: min(max(f_vel_y, -2048), 2047),
         vel_z: min(max(f_vel_z, -2048), 2047),
         health: min(max(f_health, 0), 1000),
-        weapon: if(f_weapon <= 15, do: f_weapon, else: 0),
+        weapon: elem(Bench.MixedWeapon.from_int(if(f_weapon <= 15, do: f_weapon, else: 0)), 1),
         damage: f_damage,
         moving: f_moving != 0,
         firing: f_firing != 0

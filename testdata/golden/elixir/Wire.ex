@@ -4,28 +4,72 @@
 # AGPL-3.0, its output is not.
 # package example — protocol id 0xeb26c970fde3fd71
 
-# Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 defmodule Example.Weapon do
-  def none, do: 0
-  def laser, do: 1
-  def missile, do: 2
-  def railgun, do: 3
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum Weapon: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none | :laser | :missile | :railgun | 4..15
+
+  @doc "The wire value of a Weapon value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..15
+  def to_int(:none), do: 0
+  def to_int(:laser), do: 1
+  def to_int(:missile), do: 2
+  def to_int(:railgun), do: 3
+  def to_int(v) when is_integer(v) and v > 3 and v <= 15, do: v
+
+  def to_int(v) do
+    raise ArgumentError, "not a Weapon value: #{inspect(v)}"
+  end
+
+  @doc "The Weapon value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :laser}
+  def from_int(2), do: {:ok, :missile}
+  def from_int(3), do: {:ok, :railgun}
+  def from_int(v) when is_integer(v) and v > 3 and v <= 15, do: {:ok, v}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 3
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 15
 end
 
 # type ProbeHeader
 defmodule Example.ProbeHeader do
+  @moduledoc """
+  The type ProbeHeader. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{version: 0..7, probe_id: 0..18_446_744_073_709_551_615}
+
   defstruct version: 0, probe_id: 0
 end
 
 # type ProbeBits
 defmodule Example.ProbeBits do
+  @moduledoc """
+  The type ProbeBits. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{
+          small: 0..511,
+          boundary: 0..8_589_934_591,
+          wide: 0..18_446_744_073_709_551_615,
+          sensor: 0..4_294_967_295,
+          nonce: 0..18_446_744_073_709_551_615
+        }
+
   # sensor: wire [0, 4294967295]
   # nonce: wire [0, 18446744073709551615]
   defstruct small: 0, boundary: 0, wide: 0, sensor: 0, nonce: 0
@@ -33,6 +77,23 @@ end
 
 # type ProbeSample
 defmodule Example.ProbeSample do
+  @moduledoc """
+  The type ProbeSample. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{
+          active: boolean(),
+          orientation: float(),
+          raw_delta: -2_147_483_648..2_147_483_647,
+          big_delta: -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
+          weapon: Example.Weapon.t(),
+          has_target: boolean(),
+          target_id: 0..65535,
+          idle_ticks: 0..4_294_967_295,
+          samples: [0..65535]
+        }
+
   # active: specified default at construction; zero_* gives the §5 zero form
   # orientation: compressed float [-180.0, 180.0] @ 0.01
   # active — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -43,7 +104,7 @@ defmodule Example.ProbeSample do
             orientation: 0.0,
             raw_delta: 0,
             big_delta: 0,
-            weapon: 0,
+            weapon: :none,
             has_target: false,
             target_id: 0,
             idle_ticks: 0,
@@ -52,60 +113,137 @@ end
 
 # type ProbeRing
 defmodule Example.ProbeRing do
+  @moduledoc """
+  The type ProbeRing. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{radius: 0..65535}
+
   defstruct radius: 0
 end
 
 # type ProbeSlab
 defmodule Example.ProbeSlab do
+  @moduledoc """
+  The type ProbeSlab. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{width: 0..100, height: 0..255}
+
   # width: wire [0, 100]
   defstruct width: 0, height: 0
 end
 
 # ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.ProbeShapeType do
-  def none, do: 0
-  def ring, do: 1
-  def slab, do: 2
-  # the declared variant count (SPEC §4.2)
+  @moduledoc "The tag of union ProbeShape: :none, then one atom per arm in declared order."
+
+  @type t :: :none | :ring | :slab
+
+  @doc "The wire value of a ProbeShapeType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..2
+  def to_int(:none), do: 0
+  def to_int(:ring), do: 1
+  def to_int(:slab), do: 2
+
+  def to_int(v) do
+    raise ArgumentError, "not a ProbeShapeType value: #{inspect(v)}"
+  end
+
+  @doc "The ProbeShapeType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :ring}
+  def from_int(2), do: {:ok, :slab}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 2
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 2
 end
 
-# ProbeShape — at most one of the arms; type says which. Construction is the empty
-# union (None). A read builds the selected arm from the wire; unselected
-# arms hold their construction form (SPEC §4.8 leaves them unspecified).
-# Consumers read the selected arm only.
+# ProbeShape — nil (None), {:arm, payload}, or a payload-free arm's bare atom (SPEC §4.8)
 defmodule Example.ProbeShape do
-  defstruct type: 0, ring: %Example.ProbeRing{}, slab: %Example.ProbeSlab{}
+  @moduledoc """
+  The union ProbeShape: `nil` is None, an arm with a payload is
+  `{:arm, payload}`, and a payload-free arm is its bare atom.
+  """
+
+  @type t :: nil | {:ring, Example.ProbeRing.t()} | {:slab, Example.ProbeSlab.t()}
 end
 
 # type ProbeCollider
 defmodule Example.ProbeCollider do
+  @moduledoc """
+  The type ProbeCollider. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{
+          armor: 0..255,
+          shape: Example.ProbeShape.t(),
+          backup: Example.ProbeShape.t(),
+          extras: [Example.ProbeShape.t()]
+        }
+
   # extras: counted array — a list of up to 2 elements
-  defstruct armor: 0, shape: %Example.ProbeShape{}, backup: %Example.ProbeShape{}, extras: []
+  defstruct armor: 0, shape: nil, backup: nil, extras: []
 end
 
 # type ProbeConfig
 defmodule Example.ProbeConfig do
+  @moduledoc """
+  The type ProbeConfig. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{retries: -2_147_483_648..2_147_483_647, preferred: Example.Weapon.t()}
+
   # retries: specified default at construction; zero_* gives the §5 zero form
   # preferred: specified default at construction; zero_* gives the §5 zero form
-  defstruct retries: -1, preferred: 3
+  defstruct retries: -1, preferred: :railgun
 end
 
 # type ProbeArray
 defmodule Example.ProbeArray do
+  @moduledoc """
+  The type ProbeArray. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{samples: [Example.ProbeSample.t()], config: Example.ProbeConfig.t()}
+
   defstruct samples: List.duplicate(%Example.ProbeSample{}, 2), config: %Example.ProbeConfig{}
 end
 
 # type Heartbeat
 defmodule Example.Heartbeat do
+  @moduledoc """
+  The type Heartbeat. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{}
+
   # empty body — presence is the payload (SPEC §4.6)
   defstruct []
 end
 
 # type Test
 defmodule Example.Test do
+  @moduledoc """
+  The type Test. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{test_a: 0..65535, test_b: 0..1000, test_c: 0..1000, test_d: 0..1000}
+
   # test_b: wire [0, 1000]
   # test_c: wire [0, 1000]
   # test_d: wire [0, 1000]
@@ -114,24 +252,78 @@ end
 
 # type Block
 defmodule Example.Block do
+  @moduledoc """
+  The type Block. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{data: binary()}
+
   # data: bytes(MaxBlockSize) — a binary; byte_size is the used length (SPEC §4.7)
   defstruct data: <<>>
 end
 
 # type Chat
 defmodule Example.Chat do
+  @moduledoc """
+  The type Chat. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{text: String.t()}
+
   # text: string(MaxChatLength) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   defstruct text: <<>>
 end
 
 # type ProbeReport
 defmodule Example.ProbeReport do
+  @moduledoc """
+  The type ProbeReport. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{
+          header: Example.ProbeHeader.t(),
+          flags: 0..18_446_744_073_709_551_615,
+          echo: Example.Test.t()
+        }
+
   # flags: ProbeFlags — consumed as masks, uint64 storage (SPEC §4.2)
   defstruct header: %Example.ProbeHeader{}, flags: 0, echo: %Example.Test{}
 end
 
 # type TestData
 defmodule Example.TestData do
+  @moduledoc """
+  The type TestData. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{
+          a: -100..100,
+          b: -100..100,
+          c: -100..150,
+          d: 0..255,
+          e: 0..255,
+          f: 0..255,
+          g: boolean(),
+          items: [0..255],
+          float_value: Example.PacketRuntime.float32(),
+          compressed_float_value: float(),
+          double_value: Example.PacketRuntime.float64(),
+          int8_value: -128..127,
+          int16_value: -32768..32767,
+          uint8_value: 0..255,
+          uint16_value: 0..65535,
+          uint32_value: 0..4_294_967_295,
+          uint64_value: 0..18_446_744_073_709_551_615,
+          int64_full: -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
+          int64_range: -1_000_000_000_000..1_000_000_000_000,
+          fixed_bytes: [0..255],
+          text: String.t()
+        }
+
   # a: wire [-100, 100]
   # b: wire [-100, 100]
   # c: wire [-100, 150]
@@ -164,6 +356,13 @@ end
 
 # type CompressedProbe
 defmodule Example.CompressedProbe do
+  @moduledoc """
+  The type CompressedProbe. Construction carries its specified defaults; the
+  codecs are in Example.Wire.
+  """
+
+  @type t :: %__MODULE__{boundary: float(), offset: float()}
+
   # boundary: compressed float [0.0, 10.0] @ 0.01
   # offset: compressed float [-5.0, 5.0] @ 0.001
   defstruct boundary: 0.0, offset: 0.0
@@ -172,56 +371,58 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Wire.schema.
 defmodule Example.Wire do
+  @moduledoc """
+  The file-scope surface of Wire.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
 
-  @cf_tab_0 (fn ->
-               fr = fn value ->
-                 ax = abs(value)
+  import Example.PacketRuntime,
+    only: [
+      rd: 3,
+      rdw: 3,
+      f32_bits: 1,
+      f32_value: 1,
+      f64_bits: 1,
+      f64_value: 1,
+      cf_quantize: 5,
+      cf_decode: 4,
+      cf_table: 4
+    ]
 
-                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-                   y = value * 536_870_913.0
-                   y - (y - value)
-                 else
-                   case <<value::float-32-little>> do
-                     <<rounded::float-32-little>> -> rounded
-                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-                   end
-                 end
-               end
+  @cf_tab_0 cf_table(1000, 1000.0, 10.0, 0.0)
 
-               List.to_tuple(
-                 for integer <- 0..1000 do
-                   quotient = fr.(fr.(integer * 1.0) / 1000.0)
-                   scaled = fr.(quotient * 10.0)
-
-                   case fr.(scaled + 0.0) do
-                     :pos_inf -> {:nonfinite, 0x7F800000}
-                     :neg_inf -> {:nonfinite, 0xFF800000}
-                     value -> value
-                   end
-                 end
-               )
-             end).()
-
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
+  @doc "The constant ProbeId."
+  @spec probe_id() :: integer()
   def probe_id, do: 244_837_814_094_590
 
+  @doc "The constant HalfTurn."
+  @spec half_turn() :: float()
   def half_turn, do: 180.0
 
+  @doc "The constant TickRate."
+  @spec tick_rate() :: float()
   def tick_rate, do: 60.0
 
+  @doc "The constant SpinRate."
+  @spec spin_rate() :: float()
   def spin_rate, do: 1.5
 
-  # enum_name_weapon: debug/log/tooling name for any Weapon wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a Weapon value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_weapon(Example.Weapon.t() | integer()) :: String.t()
   def enum_name_weapon(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :laser -> "Laser"
       1 -> "Laser"
+      :missile -> "Missile"
       2 -> "Missile"
+      :railgun -> "Railgun"
       3 -> "Railgun"
       _ -> "???"
     end
@@ -230,14 +431,27 @@ defmodule Example.Wire do
   # ProbeFlags — one bit per variant, consumed as masks; flags-typed fields store
   # the uint64 mask pattern in every target — a plain integer here — wire
   # 8 bits (SPEC §4.2). Mask names are the family's flat spelling.
+  @doc "The Armed mask of ProbeFlags (bit 0)."
+  @spec probe_flags_armed() :: non_neg_integer()
   def probe_flags_armed, do: 1 <<< 0
+
+  @doc "The Cloaked mask of ProbeFlags (bit 1)."
+  @spec probe_flags_cloaked() :: non_neg_integer()
   def probe_flags_cloaked, do: 1 <<< 1
+
+  @doc "The Damaged mask of ProbeFlags (bit 2)."
+  @spec probe_flags_damaged() :: non_neg_integer()
   def probe_flags_damaged, do: 1 <<< 2
-  # the declared variant count (SPEC §4.2)
+
+  @doc "The declared variant count of ProbeFlags (SPEC §4.2)."
+  @spec probe_flags_count() :: non_neg_integer()
   def probe_flags_count, do: 3
 
-  # flag_name_probe_flags: debug/log/tooling name for bit i of ProbeFlags —
-  # out-of-range bits name as "???"
+  @doc """
+  The debug/log/tooling name of bit i of ProbeFlags; out-of-range bits
+  name as "???".
+  """
+  @spec flag_name_probe_flags(integer()) :: String.t()
   def flag_name_probe_flags(bit) do
     case bit do
       0 -> "Armed"
@@ -247,8 +461,11 @@ defmodule Example.Wire do
     end
   end
 
-  # flag_names_probe_flags renders the set bits of value as "A|B" — "0" for the
-  # empty set, bits past the declared variants as hex
+  @doc """
+  Renders the set bits of a ProbeFlags value as "A|B": "0" for the empty
+  set, bits past the declared variants as hex.
+  """
+  @spec flag_names_probe_flags(non_neg_integer()) :: String.t()
   def flag_names_probe_flags(value) do
     names =
       Enum.filter(0..2, fn bit -> (value >>> bit &&& 1) != 0 end)
@@ -265,20 +482,33 @@ defmodule Example.Wire do
     if names == [], do: "0", else: Enum.join(names, "|")
   end
 
-  # probe_header_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_header_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeHeader can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_header_max_bits() :: pos_integer()
   def probe_header_max_bits, do: 87
+
+  @doc """
+  probe_header_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_header_max_bytes() :: pos_integer()
   def probe_header_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeHeader{}).
+  @doc """
+  The §5 zero form of ProbeHeader: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeHeader{}`).
+  """
+  @spec zero_probe_header() :: Example.ProbeHeader.t()
   def zero_probe_header, do: %Example.ProbeHeader{version: 0, probe_id: 0}
 
-  # write_probe_header packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_header(value) do
-    data = <<>>
+  @doc """
+  Packs a ProbeHeader into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_header!(Example.ProbeHeader.t()) :: binary()
+  def write_probe_header!(value) do
     %{version: value_version, probe_id: value_probe_id} = value
     # const(0xAB, 8) rides the wire (SPEC §4.3)
     v = 171
@@ -288,7 +518,7 @@ defmodule Example.Wire do
     # reserved bits ride as zeros (SPEC §4.3)
     v = 0
     scratch = scratch ||| v <<< 11
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    data = <<scratch::little-size(2)-unit(8)>>
     # align: zero-pad to the byte boundary (SPEC §4.3)
     # already byte-aligned, and nothing is pending
     v = value_probe_id &&& 0xFFFFFFFF
@@ -296,15 +526,29 @@ defmodule Example.Wire do
     v = value_probe_id >>> 32 &&& 0xFFFFFFFF
     sc0 = scratch
     scratch = v
-    data = <<data::binary, sc0::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
-    data
+    <<data::binary, sc0::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
   end
 
-  # read_probe_header_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_header!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_header(Example.ProbeHeader.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_header(value) do
+    {:ok, write_probe_header!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeHeader from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_header_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeHeader.t(), non_neg_integer()} | :error
   def read_probe_header_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -312,53 +556,36 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 16 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 16)
+      if 16 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 16)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       # a read rejects any other value (SPEC §4.3)
       if v != 171, do: throw(:invalid)
       v = rv >>> 8 &&& 0x7
-      bits_read = bits_read + 3
       v_version = v
       v = rv >>> 11
-      bits_read = bits_read + 5
       # reserved bits must read zero (SPEC §4.3)
       if v != 0, do: throw(:invalid)
-      pad = 8 - (bits_read &&& 7) &&& 7
-
-      if pad != 0 do
-        if bits_read + pad > num_bits do
-          throw(:invalid)
-        end
-
-        if rd(data, bits_read, pad) != 0 do
-          # nonzero padding is refused (SPEC §4.3)
-          throw(:invalid)
-        end
-      end
-
-      bits_read = bits_read + pad
-      if bits_read + 64 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 80 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 16, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 48, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_probe_id = w
       value = %Example.ProbeHeader{version: v_version, probe_id: v_probe_id}
-      {:ok, value, bits_read}
+      {:ok, value, 80}
     catch
       :invalid -> :error
     end
   end
 
-  # read_probe_header is read_probe_header_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeHeader from the first num_bits of data: read_probe_header_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_header(binary(), non_neg_integer()) :: {:ok, Example.ProbeHeader.t()} | :error
   def read_probe_header(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_header_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -366,30 +593,33 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_header is the exact wire bits write_probe_header would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_header(_value) do
-    bits = 0
-    bits = bits + 16
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits + 64
-  end
-
-  # probe_bits_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_bits_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeBits can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_bits_max_bits() :: pos_integer()
   def probe_bits_max_bits, do: 202
+
+  @doc """
+  probe_bits_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_bits_max_bytes() :: pos_integer()
   def probe_bits_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeBits{}).
+  @doc """
+  The §5 zero form of ProbeBits: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeBits{}`).
+  """
+  @spec zero_probe_bits() :: Example.ProbeBits.t()
   def zero_probe_bits, do: %Example.ProbeBits{small: 0, boundary: 0, wide: 0, sensor: 0, nonce: 0}
 
-  # write_probe_bits packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_bits(value) do
-    data = <<>>
-
+  @doc """
+  Packs a ProbeBits into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_bits!(Example.ProbeBits.t()) :: binary()
+  def write_probe_bits!(value) do
     %{
       small: value_small,
       boundary: value_boundary,
@@ -444,8 +674,8 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< 2
 
     data =
-      <<data::binary, sc0::little-size(5)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+      <<sc0::little-size(5)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
         scratch::little-size(4)-unit(8)>>
 
     scratch = scratch >>> 32
@@ -453,11 +683,26 @@ defmodule Example.Wire do
     <<data::binary, scratch>>
   end
 
-  # read_probe_bits_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_bits!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_bits(Example.ProbeBits.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_bits(value) do
+    {:ok, write_probe_bits!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeBits from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_bits_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeBits.t(), non_neg_integer()} | :error
   def read_probe_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -465,39 +710,30 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 202 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 202 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1FF
-      bits_read = bits_read + 9
       v_small = v
       v = rv >>> 9 &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 41 &&& 0x1
-      bits_read = bits_read + 1
       w = w ||| v <<< 32
       v_boundary = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 42, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 74, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_wide = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 106, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_sensor = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 138, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 170, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_nonce = w
 
@@ -509,14 +745,17 @@ defmodule Example.Wire do
         nonce: v_nonce
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 202}
     catch
       :invalid -> :error
     end
   end
 
-  # read_probe_bits is read_probe_bits_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeBits from the first num_bits of data: read_probe_bits_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_bits(binary(), non_neg_integer()) :: {:ok, Example.ProbeBits.t()} | :error
   def read_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_bits_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -524,24 +763,31 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_bits is the exact wire bits write_probe_bits would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_bits(_value), do: 202
-
-  # probe_sample_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_sample_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeSample can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_sample_max_bits() :: pos_integer()
   def probe_sample_max_bits, do: 276
+
+  @doc """
+  probe_sample_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_sample_max_bytes() :: pos_integer()
   def probe_sample_max_bytes, do: 40
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeSample{}).
+  @doc """
+  The §5 zero form of ProbeSample: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeSample{}`).
+  """
+  @spec zero_probe_sample() :: Example.ProbeSample.t()
   def zero_probe_sample do
     %Example.ProbeSample{
       active: false,
       orientation: 0.0,
       raw_delta: 0,
       big_delta: 0,
-      weapon: 0,
+      weapon: :none,
       has_target: false,
       target_id: 0,
       idle_ticks: 0,
@@ -549,12 +795,13 @@ defmodule Example.Wire do
     }
   end
 
-  # write_probe_sample packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_sample(value) do
-    data = <<>>
-
+  @doc """
+  Packs a ProbeSample into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_sample!(Example.ProbeSample.t()) :: binary()
+  def write_probe_sample!(value) do
     %{
       active: value_active,
       orientation: value_orientation,
@@ -579,7 +826,7 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< 1
 
     data =
-      <<data::binary, sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8),
+      <<sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8),
         scratch::little-size(4)-unit(8)>>
 
     scratch = scratch >>> 32
@@ -587,16 +834,7 @@ defmodule Example.Wire do
     {data, scratch, scratch_bits} =
       if value_active do
         %{weapon: value_weapon, has_target: value_has_target} = value
-
-        if value_weapon < 0 do
-          raise ArgumentError, "value.weapon is below the wire minimum"
-        end
-
-        if value_weapon > 15 do
-          raise ArgumentError, "value.weapon is above the wire maximum"
-        end
-
-        v = value_weapon
+        v = Example.Weapon.to_int(value_weapon)
         scratch = scratch ||| v <<< 1
         v = if value_has_target, do: 1, else: 0
         scratch = scratch ||| v <<< 5
@@ -647,11 +885,26 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_sample_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_sample!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_sample(Example.ProbeSample.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_sample(value) do
+    {:ok, write_probe_sample!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeSample from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_sample_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeSample.t(), non_neg_integer()} | :error
   def read_probe_sample_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -659,50 +912,43 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 113 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 113 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1
-      bits_read = bits_read + 1
       v_active = v == 1
       v = rv >>> 1 &&& 0xFFFF
-      bits_read = bits_read + 16
       # headroom above the quantum count is refused
       if v > 36000, do: throw(:invalid)
       v_orientation = cf_decode(v, 36000.0, 360.0, -180.0)
       v = rv >>> 17
-      bits_read = bits_read + 32
       v_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 49, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 81, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_big_delta = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
 
       {bits_read, v_weapon, v_has_target, v_target_id, v_idle_ticks} =
         if v_active do
-          if bits_read + 5 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 5)
+          if 118 > num_bits, do: throw(:invalid)
+          rv = rd(data, 113, 5)
           v = rv &&& 0xF
-          bits_read = bits_read + 4
-          v_weapon = v
+          {:ok, v_weapon} = Example.Weapon.from_int(v)
           v = rv >>> 4
-          bits_read = bits_read + 1
           v_has_target = v == 1
 
           {bits_read, v_target_id} =
             if v_has_target do
-              if bits_read + 16 > num_bits, do: throw(:invalid)
-              rv = rd(data, bits_read, 16)
+              if 134 > num_bits, do: throw(:invalid)
+              rv = rd(data, 118, 16)
               v = rv
-              bits_read = bits_read + 16
               v_target_id = v
+              bits_read = 134
               {bits_read, v_target_id}
             else
+              bits_read = 118
               v_target_id = 0
               {bits_read, v_target_id}
             end
@@ -710,12 +956,12 @@ defmodule Example.Wire do
           v_idle_ticks = 0
           {bits_read, v_weapon, v_has_target, v_target_id, v_idle_ticks}
         else
-          if bits_read + 32 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 32)
+          if 145 > num_bits, do: throw(:invalid)
+          rv = rd(data, 113, 32)
           v = rv
-          bits_read = bits_read + 32
           v_idle_ticks = v
-          v_weapon = 0
+          bits_read = 145
+          v_weapon = :none
           v_has_target = false
           v_target_id = 0
           {bits_read, v_weapon, v_has_target, v_target_id, v_idle_ticks}
@@ -724,10 +970,9 @@ defmodule Example.Wire do
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       n = v + 1
-      if bits_read + n * 16 > num_bits, do: throw(:invalid)
-      {bits_read, v_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read)
+      if bits_read + 3 + n * 16 > num_bits, do: throw(:invalid)
+      {bits_read, v_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read + 3)
 
       value = %Example.ProbeSample{
         active: v_active,
@@ -747,8 +992,11 @@ defmodule Example.Wire do
     end
   end
 
-  # read_probe_sample is read_probe_sample_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeSample from the first num_bits of data: read_probe_sample_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_sample(binary(), non_neg_integer()) :: {:ok, Example.ProbeSample.t()} | :error
   def read_probe_sample(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_sample_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -756,58 +1004,58 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_sample is the exact wire bits write_probe_sample would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_sample(value) do
-    bits = 0
-    bits = bits + 113
-
-    bits =
-      if value.active do
-        bits = bits + 5
-
-        bits =
-          if value.has_target do
-            bits + 16
-          else
-            bits
-          end
-
-        bits
-      else
-        bits + 32
-      end
-
-    bits = bits + 3
-    bits = bits + length(value.samples) * 16
-    bits
-  end
-
-  # probe_ring_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_ring_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeRing can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_ring_max_bits() :: pos_integer()
   def probe_ring_max_bits, do: 16
+
+  @doc """
+  probe_ring_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_ring_max_bytes() :: pos_integer()
   def probe_ring_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeRing{}).
+  @doc """
+  The §5 zero form of ProbeRing: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeRing{}`).
+  """
+  @spec zero_probe_ring() :: Example.ProbeRing.t()
   def zero_probe_ring, do: %Example.ProbeRing{radius: 0}
 
-  # write_probe_ring packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_ring(value) do
-    data = <<>>
+  @doc """
+  Packs a ProbeRing into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_ring!(Example.ProbeRing.t()) :: binary()
+  def write_probe_ring!(value) do
     v = value.radius &&& 0xFFFF
     scratch = v
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
-    data
+    <<scratch::little-size(2)-unit(8)>>
   end
 
-  # read_probe_ring_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_ring!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_ring(Example.ProbeRing.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_ring(value) do
+    {:ok, write_probe_ring!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeRing from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_ring_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeRing.t(), non_neg_integer()} | :error
   def read_probe_ring_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -815,21 +1063,22 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 16 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 16)
+      if 16 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 16)
       v = rv
-      bits_read = bits_read + 16
       v_radius = v
       value = %Example.ProbeRing{radius: v_radius}
-      {:ok, value, bits_read}
+      {:ok, value, 16}
     catch
       :invalid -> :error
     end
   end
 
-  # read_probe_ring is read_probe_ring_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeRing from the first num_bits of data: read_probe_ring_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_ring(binary(), non_neg_integer()) :: {:ok, Example.ProbeRing.t()} | :error
   def read_probe_ring(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_ring_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -837,24 +1086,33 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_ring is the exact wire bits write_probe_ring would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_ring(_value), do: 16
-
-  # probe_slab_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_slab_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeSlab can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_slab_max_bits() :: pos_integer()
   def probe_slab_max_bits, do: 15
+
+  @doc """
+  probe_slab_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_slab_max_bytes() :: pos_integer()
   def probe_slab_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeSlab{}).
+  @doc """
+  The §5 zero form of ProbeSlab: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeSlab{}`).
+  """
+  @spec zero_probe_slab() :: Example.ProbeSlab.t()
   def zero_probe_slab, do: %Example.ProbeSlab{width: 0, height: 0}
 
-  # write_probe_slab packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_slab(value) do
-    data = <<>>
+  @doc """
+  Packs a ProbeSlab into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_slab!(Example.ProbeSlab.t()) :: binary()
+  def write_probe_slab!(value) do
     %{width: value_width, height: value_height} = value
 
     if value_width < 0 do
@@ -869,17 +1127,32 @@ defmodule Example.Wire do
     scratch = v
     v = value_height &&& 0xFF
     scratch = scratch ||| v <<< 7
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_probe_slab_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_slab!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_slab(Example.ProbeSlab.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_slab(value) do
+    {:ok, write_probe_slab!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeSlab from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_slab_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeSlab.t(), non_neg_integer()} | :error
   def read_probe_slab_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -887,26 +1160,26 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 15 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 15)
+      if 15 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 15)
       v = rv &&& 0x7F
-      bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 100, do: throw(:invalid)
       v_width = v
       v = rv >>> 7
-      bits_read = bits_read + 8
       v_height = v
       value = %Example.ProbeSlab{width: v_width, height: v_height}
-      {:ok, value, bits_read}
+      {:ok, value, 15}
     catch
       :invalid -> :error
     end
   end
 
-  # read_probe_slab is read_probe_slab_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeSlab from the first num_bits of data: read_probe_slab_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_slab(binary(), non_neg_integer()) :: {:ok, Example.ProbeSlab.t()} | :error
   def read_probe_slab(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_slab_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -914,60 +1187,75 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_slab is the exact wire bits write_probe_slab would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_slab(_value), do: 15
-
-  # probe_shape_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-  # probe_shape_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc "The most wire bits a ProbeShape can take: the tag plus the largest arm (SPEC §4.8)."
+  @spec probe_shape_max_bits() :: pos_integer()
   def probe_shape_max_bits, do: 18
+
+  @doc """
+  probe_shape_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_shape_max_bytes() :: pos_integer()
   def probe_shape_max_bytes, do: 8
 
-  # enum_name_probe_shape_type: debug/log/tooling name for any ProbeShapeType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a ProbeShapeType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_probe_shape_type(Example.ProbeShapeType.t() | integer()) :: String.t()
   def enum_name_probe_shape_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :ring -> "Ring"
       1 -> "Ring"
+      :slab -> "Slab"
       2 -> "Slab"
       _ -> "???"
     end
   end
 
-  # The §5 zero form — the empty union (None). Arms hold their construction
-  # form: every arm is unselected at None, and unselected arms are
-  # unspecified by rule (SPEC §4.8).
-  def zero_probe_shape, do: %Example.ProbeShape{}
+  @doc "The §5 zero form of ProbeShape: the empty union, None."
+  @spec zero_probe_shape() :: Example.ProbeShape.t()
+  def zero_probe_shape, do: nil
 
-  # write_probe_shape packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_shape(value) do
+  @doc """
+  Packs a ProbeShape into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_shape!(Example.ProbeShape.t()) :: binary()
+  def write_probe_shape!(value) do
+    v =
+      case value do
+        nil ->
+          0
+
+        {:ring, _} ->
+          1
+
+        {:slab, _} ->
+          2
+
+        value_other ->
+          raise ArgumentError, "value is not a ProbeShape value: #{inspect(value_other)}"
+      end
+
+    scratch = v
     data = <<>>
 
-    if value.type < 0 do
-      raise ArgumentError, "value.type is below the wire minimum"
-    end
-
-    if value.type > 2 do
-      raise ArgumentError, "value.type is above the wire maximum"
-    end
-
-    v = value.type
-    scratch = v
-
     {data, scratch, scratch_bits} =
-      case value.type do
-        1 ->
-          v = value.ring.radius &&& 0xFFFF
+      case value do
+        {:ring, value_ring} ->
+          v = value_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< 2
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
           scratch = scratch >>> 16
           scratch_bits = 2
           {data, scratch, scratch_bits}
 
-        2 ->
-          %{width: value_slab_width, height: value_slab_height} = value.slab
+        {:slab, value_slab} ->
+          %{width: value_slab_width, height: value_slab_height} = value_slab
 
           if value_slab_width < 0 do
             raise ArgumentError, "value.slab.width is below the wire minimum"
@@ -987,7 +1275,7 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 2
           {data, scratch, scratch_bits}
       end
@@ -995,11 +1283,26 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_shape_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_shape!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_shape(Example.ProbeShape.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_shape(value) do
+    {:ok, write_probe_shape!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeShape from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_shape_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeShape.t(), non_neg_integer()} | :error
   def read_probe_shape_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1007,44 +1310,40 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 2
 
       {bits_read, v} =
         case v do
           1 ->
-            if bits_read + 16 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 16)
+            if 18 > num_bits, do: throw(:invalid)
+            rv = rd(data, 2, 16)
             v = rv
-            bits_read = bits_read + 16
             v_ring_radius = v
             v_ring = %Example.ProbeRing{radius: v_ring_radius}
-            u = %Example.ProbeShape{type: 1, ring: v_ring}
-            {bits_read, u}
+            bits_read = 18
+            {bits_read, {:ring, v_ring}}
 
           2 ->
-            if bits_read + 15 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 15)
+            if 17 > num_bits, do: throw(:invalid)
+            rv = rd(data, 2, 15)
             v = rv &&& 0x7F
-            bits_read = bits_read + 7
             # a smuggled offset is refused
             if v > 100, do: throw(:invalid)
             v_slab_width = v
             v = rv >>> 7
-            bits_read = bits_read + 8
             v_slab_height = v
             v_slab = %Example.ProbeSlab{width: v_slab_width, height: v_slab_height}
-            u = %Example.ProbeShape{type: 2, slab: v_slab}
-            {bits_read, u}
+            bits_read = 17
+            {bits_read, {:slab, v_slab}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.ProbeShape{}}
+            {bits_read, nil}
         end
 
       {:ok, v, bits_read}
@@ -1053,8 +1352,11 @@ defmodule Example.Wire do
     end
   end
 
-  # read_probe_shape is read_probe_shape_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeShape from the first num_bits of data: read_probe_shape_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_shape(binary(), non_neg_integer()) :: {:ok, Example.ProbeShape.t()} | :error
   def read_probe_shape(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_shape_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1062,78 +1364,71 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_shape is the exact wire bits write_probe_shape would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_shape(value) do
-    bits = 0
-    bits = bits + 2
-
-    bits =
-      case value.type do
-        1 ->
-          bits + 16
-
-        2 ->
-          bits + 15
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits
-  end
-
-  # probe_collider_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_collider_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeCollider can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_collider_max_bits() :: pos_integer()
   def probe_collider_max_bits, do: 82
+
+  @doc """
+  probe_collider_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_collider_max_bytes() :: pos_integer()
   def probe_collider_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeCollider{}).
+  @doc """
+  The §5 zero form of ProbeCollider: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeCollider{}`).
+  """
+  @spec zero_probe_collider() :: Example.ProbeCollider.t()
   def zero_probe_collider do
-    %Example.ProbeCollider{
-      armor: 0,
-      shape: %Example.ProbeShape{},
-      backup: %Example.ProbeShape{},
-      extras: []
-    }
+    %Example.ProbeCollider{armor: 0, shape: nil, backup: nil, extras: []}
   end
 
-  # write_probe_collider packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_collider(value) do
-    data = <<>>
+  @doc """
+  Packs a ProbeCollider into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_collider!(Example.ProbeCollider.t()) :: binary()
+  def write_probe_collider!(value) do
     %{armor: value_armor, shape: value_shape, backup: value_backup, extras: value_extras} = value
     v = value_armor &&& 0xFF
     scratch = v
 
-    if value_shape.type < 0 do
-      raise ArgumentError, "value.shape.type is below the wire minimum"
-    end
+    v =
+      case value_shape do
+        nil ->
+          0
 
-    if value_shape.type > 2 do
-      raise ArgumentError, "value.shape.type is above the wire maximum"
-    end
+        {:ring, _} ->
+          1
 
-    v = value_shape.type
+        {:slab, _} ->
+          2
+
+        value_shape_other ->
+          raise ArgumentError,
+                "value.shape is not a ProbeShape value: #{inspect(value_shape_other)}"
+      end
+
     scratch = scratch ||| v <<< 8
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
 
     {data, scratch, scratch_bits} =
-      case value_shape.type do
-        1 ->
-          v = value_shape.ring.radius &&& 0xFFFF
+      case value_shape do
+        {:ring, value_shape_ring} ->
+          v = value_shape_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< 2
           data = <<data::binary, scratch::little-size(2)-unit(8)>>
           scratch = scratch >>> 16
           scratch_bits = 2
           {data, scratch, scratch_bits}
 
-        2 ->
-          %{width: value_shape_slab_width, height: value_shape_slab_height} = value_shape.slab
+        {:slab, value_shape_slab} ->
+          %{width: value_shape_slab_width, height: value_shape_slab_height} = value_shape_slab
 
           if value_shape_slab_width < 0 do
             raise ArgumentError, "value.shape.slab.width is below the wire minimum"
@@ -1153,20 +1448,27 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 2
           {data, scratch, scratch_bits}
       end
 
-    if value_backup.type < 0 do
-      raise ArgumentError, "value.backup.type is below the wire minimum"
-    end
+    v =
+      case value_backup do
+        nil ->
+          0
 
-    if value_backup.type > 2 do
-      raise ArgumentError, "value.backup.type is above the wire maximum"
-    end
+        {:ring, _} ->
+          1
 
-    v = value_backup.type
+        {:slab, _} ->
+          2
+
+        value_backup_other ->
+          raise ArgumentError,
+                "value.backup is not a ProbeShape value: #{inspect(value_backup_other)}"
+      end
+
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -1175,9 +1477,9 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      case value_backup.type do
-        1 ->
-          v = value_backup.ring.radius &&& 0xFFFF
+      case value_backup do
+        {:ring, value_backup_ring} ->
+          v = value_backup_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 16
           flush = scratch_bits >>> 3
@@ -1186,8 +1488,8 @@ defmodule Example.Wire do
           scratch_bits = scratch_bits &&& 7
           {data, scratch, scratch_bits}
 
-        2 ->
-          %{width: value_backup_slab_width, height: value_backup_slab_height} = value_backup.slab
+        {:slab, value_backup_slab} ->
+          %{width: value_backup_slab_width, height: value_backup_slab_height} = value_backup_slab
 
           if value_backup_slab_width < 0 do
             raise ArgumentError, "value.backup.slab.width is below the wire minimum"
@@ -1210,7 +1512,7 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           {data, scratch, scratch_bits}
       end
 
@@ -1234,11 +1536,26 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_collider_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_collider!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_collider(Example.ProbeCollider.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_collider(value) do
+    {:ok, write_probe_collider!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeCollider from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_collider_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeCollider.t(), non_neg_integer()} | :error
   def read_probe_collider_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1246,41 +1563,36 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 8 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 8)
+      if 8 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 8)
       v = rv
-      bits_read = bits_read + 8
       v_armor = v
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 10 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 8, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 10
 
       {bits_read, v_shape} =
         case v do
           1 ->
-            if bits_read + 16 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 16)
+            if 26 > num_bits, do: throw(:invalid)
+            rv = rd(data, 10, 16)
             v = rv
-            bits_read = bits_read + 16
             v_shape_ring_radius = v
             v_shape_ring = %Example.ProbeRing{radius: v_shape_ring_radius}
-            u = %Example.ProbeShape{type: 1, ring: v_shape_ring}
-            {bits_read, u}
+            bits_read = 26
+            {bits_read, {:ring, v_shape_ring}}
 
           2 ->
-            if bits_read + 15 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 15)
+            if 25 > num_bits, do: throw(:invalid)
+            rv = rd(data, 10, 15)
             v = rv &&& 0x7F
-            bits_read = bits_read + 7
             # a smuggled offset is refused
             if v > 100, do: throw(:invalid)
             v_shape_slab_width = v
             v = rv >>> 7
-            bits_read = bits_read + 8
             v_shape_slab_height = v
 
             v_shape_slab = %Example.ProbeSlab{
@@ -1288,20 +1600,20 @@ defmodule Example.Wire do
               height: v_shape_slab_height
             }
 
-            u = %Example.ProbeShape{type: 2, slab: v_shape_slab}
-            {bits_read, u}
+            bits_read = 25
+            {bits_read, {:slab, v_shape_slab}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.ProbeShape{}}
+            {bits_read, nil}
         end
 
       if bits_read + 2 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = bits_read + 2
 
       {bits_read, v_backup} =
         case v do
@@ -1309,22 +1621,19 @@ defmodule Example.Wire do
             if bits_read + 16 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 16)
             v = rv
-            bits_read = bits_read + 16
             v_backup_ring_radius = v
             v_backup_ring = %Example.ProbeRing{radius: v_backup_ring_radius}
-            u = %Example.ProbeShape{type: 1, ring: v_backup_ring}
-            {bits_read, u}
+            bits_read = bits_read + 16
+            {bits_read, {:ring, v_backup_ring}}
 
           2 ->
             if bits_read + 15 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 15)
             v = rv &&& 0x7F
-            bits_read = bits_read + 7
             # a smuggled offset is refused
             if v > 100, do: throw(:invalid)
             v_backup_slab_width = v
             v = rv >>> 7
-            bits_read = bits_read + 8
             v_backup_slab_height = v
 
             v_backup_slab = %Example.ProbeSlab{
@@ -1332,22 +1641,21 @@ defmodule Example.Wire do
               height: v_backup_slab_height
             }
 
-            u = %Example.ProbeShape{type: 2, slab: v_backup_slab}
-            {bits_read, u}
+            bits_read = bits_read + 15
+            {bits_read, {:slab, v_backup_slab}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.ProbeShape{}}
+            {bits_read, nil}
         end
 
       if bits_read + 2 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # the count guards the loop — reject, never clamp
       if v > 2, do: throw(:invalid)
       n = v
-      {bits_read, v_extras} = r_probe_collider_extras(n, [], data, num_bits, bits_read)
+      {bits_read, v_extras} = r_probe_collider_extras(n, [], data, num_bits, bits_read + 2)
 
       value = %Example.ProbeCollider{
         armor: v_armor,
@@ -1362,8 +1670,12 @@ defmodule Example.Wire do
     end
   end
 
-  # read_probe_collider is read_probe_collider_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeCollider from the first num_bits of data: read_probe_collider_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_collider(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeCollider.t()} | :error
   def read_probe_collider(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_collider_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1371,85 +1683,64 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_collider is the exact wire bits write_probe_collider would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_collider(value) do
-    bits = 0
-    bits = bits + 8
-    bits = bits + 2
-
-    bits =
-      case value.shape.type do
-        1 ->
-          bits + 16
-
-        2 ->
-          bits + 15
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits = bits + 2
-
-    bits =
-      case value.backup.type do
-        1 ->
-          bits + 16
-
-        2 ->
-          bits + 15
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits = bits + 2
-    bits = m_probe_collider_extras(value.extras, bits)
-    bits
-  end
-
-  # probe_config_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_config_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeConfig can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_config_max_bits() :: pos_integer()
   def probe_config_max_bits, do: 36
+
+  @doc """
+  probe_config_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_config_max_bytes() :: pos_integer()
   def probe_config_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeConfig{}).
-  def zero_probe_config, do: %Example.ProbeConfig{retries: 0, preferred: 0}
+  @doc """
+  The §5 zero form of ProbeConfig: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeConfig{}`).
+  """
+  @spec zero_probe_config() :: Example.ProbeConfig.t()
+  def zero_probe_config, do: %Example.ProbeConfig{retries: 0, preferred: :none}
 
-  # write_probe_config packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_config(value) do
-    data = <<>>
+  @doc """
+  Packs a ProbeConfig into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_config!(Example.ProbeConfig.t()) :: binary()
+  def write_probe_config!(value) do
     %{retries: value_retries, preferred: value_preferred} = value
     v = value_retries &&& 0xFFFFFFFF
     scratch = v
-
-    if value_preferred < 0 do
-      raise ArgumentError, "value.preferred is below the wire minimum"
-    end
-
-    if value_preferred > 15 do
-      raise ArgumentError, "value.preferred is above the wire maximum"
-    end
-
-    v = value_preferred
+    v = Example.Weapon.to_int(value_preferred)
     scratch = scratch ||| v <<< 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    data = <<scratch::little-size(4)-unit(8)>>
     scratch = scratch >>> 32
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_probe_config_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_config!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_config(Example.ProbeConfig.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_config(value) do
+    {:ok, write_probe_config!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeConfig from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_config_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeConfig.t(), non_neg_integer()} | :error
   def read_probe_config_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1457,24 +1748,24 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 36 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 36)
+      if 36 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 36)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_retries = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
       v = rv >>> 32
-      bits_read = bits_read + 4
-      v_preferred = v
+      {:ok, v_preferred} = Example.Weapon.from_int(v)
       value = %Example.ProbeConfig{retries: v_retries, preferred: v_preferred}
-      {:ok, value, bits_read}
+      {:ok, value, 36}
     catch
       :invalid -> :error
     end
   end
 
-  # read_probe_config is read_probe_config_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeConfig from the first num_bits of data: read_probe_config_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_config(binary(), non_neg_integer()) :: {:ok, Example.ProbeConfig.t()} | :error
   def read_probe_config(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_config_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1482,17 +1773,24 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_config is the exact wire bits write_probe_config would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_config(_value), do: 36
-
-  # probe_array_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_array_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeArray can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_array_max_bits() :: pos_integer()
   def probe_array_max_bits, do: 588
+
+  @doc """
+  probe_array_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_array_max_bytes() :: pos_integer()
   def probe_array_max_bytes, do: 80
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeArray{}).
+  @doc """
+  The §5 zero form of ProbeArray: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeArray{}`).
+  """
+  @spec zero_probe_array() :: Example.ProbeArray.t()
   def zero_probe_array do
     %Example.ProbeArray{
       samples: List.duplicate(zero_probe_sample(), 2),
@@ -1500,11 +1798,13 @@ defmodule Example.Wire do
     }
   end
 
-  # write_probe_array packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_array(value) do
-    data = <<>>
+  @doc """
+  Packs a ProbeArray into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_array!(Example.ProbeArray.t()) :: binary()
+  def write_probe_array!(value) do
     %{samples: value_samples, config: value_config} = value
 
     if length(value_samples) != 2 do
@@ -1515,22 +1815,13 @@ defmodule Example.Wire do
     scratch = 0
 
     {data, scratch, scratch_bits} =
-      w_probe_array_samples(value_samples, data, scratch, scratch_bits)
+      w_probe_array_samples(value_samples, <<>>, scratch, scratch_bits)
 
     %{retries: value_config_retries, preferred: value_config_preferred} = value_config
     v = value_config_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
-
-    if value_config_preferred < 0 do
-      raise ArgumentError, "value.config.preferred is below the wire minimum"
-    end
-
-    if value_config_preferred > 15 do
-      raise ArgumentError, "value.config.preferred is above the wire maximum"
-    end
-
-    v = value_config_preferred
+    v = Example.Weapon.to_int(value_config_preferred)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 4
     flush = scratch_bits >>> 3
@@ -1540,11 +1831,26 @@ defmodule Example.Wire do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_probe_array_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_array!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_array(Example.ProbeArray.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_array(value) do
+    {:ok, write_probe_array!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeArray from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_array_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeArray.t(), non_neg_integer()} | :error
   def read_probe_array_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1552,26 +1858,26 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      {bits_read, v_samples} = r_probe_array_samples(2, [], data, num_bits, bits_read)
+      {bits_read, v_samples} = r_probe_array_samples(2, [], data, num_bits, 0)
       if bits_read + 36 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 36)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_config_retries = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
       v = rv >>> 32
-      bits_read = bits_read + 4
-      v_config_preferred = v
+      {:ok, v_config_preferred} = Example.Weapon.from_int(v)
       v_config = %Example.ProbeConfig{retries: v_config_retries, preferred: v_config_preferred}
       value = %Example.ProbeArray{samples: v_samples, config: v_config}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 36}
     catch
       :invalid -> :error
     end
   end
 
-  # read_probe_array is read_probe_array_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeArray from the first num_bits of data: read_probe_array_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_array(binary(), non_neg_integer()) :: {:ok, Example.ProbeArray.t()} | :error
   def read_probe_array(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_array_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1579,37 +1885,57 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_array is the exact wire bits write_probe_array would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_array(value) do
-    bits = 0
-    bits = m_probe_array_samples(value.samples, bits)
-    bits + 36
-  end
-
-  # heartbeat_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # heartbeat_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Heartbeat can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec heartbeat_max_bits() :: pos_integer()
   def heartbeat_max_bits, do: 0
+
+  @doc """
+  heartbeat_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec heartbeat_max_bytes() :: pos_integer()
   def heartbeat_max_bytes, do: 0
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Heartbeat{}).
+  @doc """
+  The §5 zero form of Heartbeat: all-zero storage. Specified defaults live
+  only in construction (`%Example.Heartbeat{}`).
+  """
+  @spec zero_heartbeat() :: Example.Heartbeat.t()
   def zero_heartbeat, do: %Example.Heartbeat{}
 
-  # write_heartbeat packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_heartbeat(_value) do
-    data = <<>>
+  @doc """
+  Packs a Heartbeat into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_heartbeat!(Example.Heartbeat.t()) :: binary()
+  def write_heartbeat!(_value) do
     # empty body — presence is the payload (SPEC §4.6)
-    data
+    <<>>
   end
 
-  # read_heartbeat_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_heartbeat!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_heartbeat(Example.Heartbeat.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_heartbeat(value) do
+    {:ok, write_heartbeat!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Heartbeat from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_heartbeat_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Heartbeat.t(), non_neg_integer()} | :error
   def read_heartbeat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1617,15 +1943,17 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      {:ok, %Example.Heartbeat{}, bits_read}
+      {:ok, %Example.Heartbeat{}, 0}
     catch
       :invalid -> :error
     end
   end
 
-  # read_heartbeat is read_heartbeat_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Heartbeat from the first num_bits of data: read_heartbeat_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_heartbeat(binary(), non_neg_integer()) :: {:ok, Example.Heartbeat.t()} | :error
   def read_heartbeat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_heartbeat_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1633,25 +1961,33 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_heartbeat is the exact wire bits write_heartbeat would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_heartbeat(_value), do: 0
-
-  # test_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # test_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Test can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec test_max_bits() :: pos_integer()
   def test_max_bits, do: 46
+
+  @doc """
+  test_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec test_max_bytes() :: pos_integer()
   def test_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Test{}).
+  @doc """
+  The §5 zero form of Test: all-zero storage. Specified defaults live
+  only in construction (`%Example.Test{}`).
+  """
+  @spec zero_test() :: Example.Test.t()
   def zero_test, do: %Example.Test{test_a: 0, test_b: 0, test_c: 0, test_d: 0}
 
-  # write_test packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_test(value) do
-    data = <<>>
-
+  @doc """
+  Packs a Test into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_test!(Example.Test.t()) :: binary()
+  def write_test!(value) do
     %{
       test_a: value_test_a,
       test_b: value_test_b,
@@ -1694,17 +2030,32 @@ defmodule Example.Wire do
 
     v = value_test_d
     scratch = scratch ||| v <<< 36
-    data = <<data::binary, scratch::little-size(5)-unit(8)>>
+    data = <<scratch::little-size(5)-unit(8)>>
     scratch = scratch >>> 40
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_test_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_test!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_test(Example.Test.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_test(value) do
+    {:ok, write_test!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Test from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_test_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Test.t(), non_neg_integer()} | :error
   def read_test_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1712,24 +2063,19 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 46 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 46)
+      if 46 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 46)
       v = rv &&& 0xFFFF
-      bits_read = bits_read + 16
       v_test_a = v
       v = rv >>> 16 &&& 0x3FF
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_test_b = v
       v = rv >>> 26 &&& 0x3FF
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_test_c = v
       v = rv >>> 36
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_test_d = v
@@ -1741,14 +2087,17 @@ defmodule Example.Wire do
         test_d: v_test_d
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 46}
     catch
       :invalid -> :error
     end
   end
 
-  # read_test is read_test_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Test from the first num_bits of data: read_test_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_test(binary(), non_neg_integer()) :: {:ok, Example.Test.t()} | :error
   def read_test(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_test_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1756,32 +2105,40 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_test is the exact wire bits write_test would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_test(_value), do: 46
-
-  # block_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # block_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Block can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec block_max_bits() :: pos_integer()
   def block_max_bits, do: 16018
+
+  @doc """
+  block_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec block_max_bytes() :: pos_integer()
   def block_max_bytes, do: 2008
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Block{}).
+  @doc """
+  The §5 zero form of Block: all-zero storage. Specified defaults live
+  only in construction (`%Example.Block{}`).
+  """
+  @spec zero_block() :: Example.Block.t()
   def zero_block, do: %Example.Block{data: <<>>}
 
-  # write_block packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_block(value) do
-    data = <<>>
-
+  @doc """
+  Packs a Block into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_block!(Example.Block.t()) :: binary()
+  def write_block!(value) do
     if byte_size(value.data) > 2000 do
       raise ArgumentError, "value.data longer than the declared 2000-byte bound"
     end
 
     v = byte_size(value.data)
     scratch = v
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = <<data::binary, scratch>>
@@ -1790,11 +2147,26 @@ defmodule Example.Wire do
     data
   end
 
-  # read_block_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_block!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_block(Example.Block.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_block(value) do
+    {:ok, write_block!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Block from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_block_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Block.t(), non_neg_integer()} | :error
   def read_block_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1802,31 +2174,18 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 11 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 11 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7FF
-      bits_read = bits_read + 11
       # the length guards the slice — reject, never clamp
       if v > 2000, do: throw(:invalid)
       len = v
-      pad = 8 - (bits_read &&& 7) &&& 7
-
-      if pad != 0 do
-        if bits_read + pad > num_bits do
-          throw(:invalid)
-        end
-
-        if rd(data, bits_read, pad) != 0 do
-          # nonzero padding is refused (SPEC §4.3)
-          throw(:invalid)
-        end
-      end
-
-      bits_read = bits_read + pad
-      if bits_read + len * 8 > num_bits, do: throw(:invalid)
-      v_data = binary_part(data, bits_read >>> 3, len)
-      bits_read = bits_read + len * 8
+      if 16 > num_bits, do: throw(:invalid)
+      # nonzero padding is refused (SPEC §4.3)
+      if rd(data, 11, 5) != 0, do: throw(:invalid)
+      if 16 + len * 8 > num_bits, do: throw(:invalid)
+      v_data = binary_part(data, 2, len)
+      bits_read = 16 + len * 8
       value = %Example.Block{data: v_data}
       {:ok, value, bits_read}
     catch
@@ -1834,8 +2193,11 @@ defmodule Example.Wire do
     end
   end
 
-  # read_block is read_block_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Block from the first num_bits of data: read_block_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_block(binary(), non_neg_integer()) :: {:ok, Example.Block.t()} | :error
   def read_block(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_block_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1843,38 +2205,40 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_block is the exact wire bits write_block would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_block(value) do
-    bits = 0
-    bits = bits + 11
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.data) * 8
-    bits
-  end
-
-  # chat_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # chat_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Chat can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec chat_max_bits() :: pos_integer()
   def chat_max_bits, do: 2064
+
+  @doc """
+  chat_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec chat_max_bytes() :: pos_integer()
   def chat_max_bytes, do: 264
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Chat{}).
+  @doc """
+  The §5 zero form of Chat: all-zero storage. Specified defaults live
+  only in construction (`%Example.Chat{}`).
+  """
+  @spec zero_chat() :: Example.Chat.t()
   def zero_chat, do: %Example.Chat{text: <<>>}
 
-  # write_chat packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_chat(value) do
-    data = <<>>
-
+  @doc """
+  Packs a Chat into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_chat!(Example.Chat.t()) :: binary()
+  def write_chat!(value) do
     if byte_size(value.text) > 256 do
       raise ArgumentError, "value.text longer than the declared 256-byte bound"
     end
 
     v = byte_size(value.text)
     scratch = v
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
+    data = <<scratch::little-size(1)-unit(8)>>
     scratch = scratch >>> 8
     # align: zero-pad to the byte boundary (SPEC §4.3)
     data = <<data::binary, scratch>>
@@ -1883,11 +2247,26 @@ defmodule Example.Wire do
     data
   end
 
-  # read_chat_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_chat!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_chat(Example.Chat.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_chat(value) do
+    {:ok, write_chat!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Chat from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_chat_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Chat.t(), non_neg_integer()} | :error
   def read_chat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1895,31 +2274,18 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 9 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 9 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1FF
-      bits_read = bits_read + 9
       # the length guards the slice — reject, never clamp
       if v > 256, do: throw(:invalid)
       len = v
-      pad = 8 - (bits_read &&& 7) &&& 7
-
-      if pad != 0 do
-        if bits_read + pad > num_bits do
-          throw(:invalid)
-        end
-
-        if rd(data, bits_read, pad) != 0 do
-          # nonzero padding is refused (SPEC §4.3)
-          throw(:invalid)
-        end
-      end
-
-      bits_read = bits_read + pad
-      if bits_read + len * 8 > num_bits, do: throw(:invalid)
-      v_text = binary_part(data, bits_read >>> 3, len)
-      bits_read = bits_read + len * 8
+      if 16 > num_bits, do: throw(:invalid)
+      # nonzero padding is refused (SPEC §4.3)
+      if rd(data, 9, 7) != 0, do: throw(:invalid)
+      if 16 + len * 8 > num_bits, do: throw(:invalid)
+      v_text = binary_part(data, 2, len)
+      bits_read = 16 + len * 8
       # malformed UTF-8 is content the read refuses (SPEC §4.7)
       if not String.valid?(v_text), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
@@ -1931,8 +2297,11 @@ defmodule Example.Wire do
     end
   end
 
-  # read_chat is read_chat_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Chat from the first num_bits of data: read_chat_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_chat(binary(), non_neg_integer()) :: {:ok, Example.Chat.t()} | :error
   def read_chat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_chat_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1940,32 +2309,35 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_chat is the exact wire bits write_chat would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_chat(value) do
-    bits = 0
-    bits = bits + 9
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.text) * 8
-    bits
-  end
-
-  # probe_report_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # probe_report_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ProbeReport can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec probe_report_max_bits() :: pos_integer()
   def probe_report_max_bits, do: 141
+
+  @doc """
+  probe_report_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec probe_report_max_bytes() :: pos_integer()
   def probe_report_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ProbeReport{}).
+  @doc """
+  The §5 zero form of ProbeReport: all-zero storage. Specified defaults live
+  only in construction (`%Example.ProbeReport{}`).
+  """
+  @spec zero_probe_report() :: Example.ProbeReport.t()
   def zero_probe_report do
     %Example.ProbeReport{header: zero_probe_header(), flags: 0, echo: zero_test()}
   end
 
-  # write_probe_report packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_probe_report(value) do
-    data = <<>>
+  @doc """
+  Packs a ProbeReport into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_probe_report!(Example.ProbeReport.t()) :: binary()
+  def write_probe_report!(value) do
     %{header: value_header, flags: value_flags, echo: value_echo} = value
     %{version: value_header_version, probe_id: value_header_probe_id} = value_header
     # const(0xAB, 8) rides the wire (SPEC §4.3)
@@ -1976,7 +2348,7 @@ defmodule Example.Wire do
     # reserved bits ride as zeros (SPEC §4.3)
     v = 0
     scratch = scratch ||| v <<< 11
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    data = <<scratch::little-size(2)-unit(8)>>
     # align: zero-pad to the byte boundary (SPEC §4.3)
     # already byte-aligned, and nothing is pending
     v = value_header_probe_id &&& 0xFFFFFFFF
@@ -2045,11 +2417,26 @@ defmodule Example.Wire do
     <<data::binary, scratch>>
   end
 
-  # read_probe_report_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_probe_report!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_probe_report(Example.ProbeReport.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_probe_report(value) do
+    {:ok, write_probe_report!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ProbeReport from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_probe_report_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ProbeReport.t(), non_neg_integer()} | :error
   def read_probe_report_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -2057,66 +2444,41 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 16 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 16)
+      if 16 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 16)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       # a read rejects any other value (SPEC §4.3)
       if v != 171, do: throw(:invalid)
       v = rv >>> 8 &&& 0x7
-      bits_read = bits_read + 3
       v_header_version = v
       v = rv >>> 11
-      bits_read = bits_read + 5
       # reserved bits must read zero (SPEC §4.3)
       if v != 0, do: throw(:invalid)
-      pad = 8 - (bits_read &&& 7) &&& 7
-
-      if pad != 0 do
-        if bits_read + pad > num_bits do
-          throw(:invalid)
-        end
-
-        if rd(data, bits_read, pad) != 0 do
-          # nonzero padding is refused (SPEC §4.3)
-          throw(:invalid)
-        end
-      end
-
-      bits_read = bits_read + pad
-      if bits_read + 64 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 80 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 16, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 48, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_header_probe_id = w
       v_header = %Example.ProbeHeader{version: v_header_version, probe_id: v_header_probe_id}
-      if bits_read + 54 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 134 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 80, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       v_flags = v
       v = rv >>> 8 &&& 0xFFFF
-      bits_read = bits_read + 16
       v_echo_test_a = v
       v = rv >>> 24 &&& 0x3FF
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_echo_test_b = v
       v = rv >>> 34 &&& 0x3FF
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_echo_test_c = v
-      rv = rd(data, bits_read, 10)
+      rv = rd(data, 124, 10)
       v = rv
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_echo_test_d = v
@@ -2129,14 +2491,17 @@ defmodule Example.Wire do
       }
 
       value = %Example.ProbeReport{header: v_header, flags: v_flags, echo: v_echo}
-      {:ok, value, bits_read}
+      {:ok, value, 134}
     catch
       :invalid -> :error
     end
   end
 
-  # read_probe_report is read_probe_report_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ProbeReport from the first num_bits of data: read_probe_report_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_probe_report(binary(), non_neg_integer()) :: {:ok, Example.ProbeReport.t()} | :error
   def read_probe_report(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_probe_report_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -2144,22 +2509,24 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_probe_report is the exact wire bits write_probe_report would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_probe_report(_value) do
-    bits = 0
-    bits = bits + 16
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits + 118
-  end
-
-  # test_data_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # test_data_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a TestData can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec test_data_max_bits() :: pos_integer()
   def test_data_max_bits, do: 2735
+
+  @doc """
+  test_data_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec test_data_max_bytes() :: pos_integer()
   def test_data_max_bytes, do: 344
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.TestData{}).
+  @doc """
+  The §5 zero form of TestData: all-zero storage. Specified defaults live
+  only in construction (`%Example.TestData{}`).
+  """
+  @spec zero_test_data() :: Example.TestData.t()
   def zero_test_data do
     %Example.TestData{
       a: 0,
@@ -2186,12 +2553,13 @@ defmodule Example.Wire do
     }
   end
 
-  # write_test_data packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_test_data(value) do
-    data = <<>>
-
+  @doc """
+  Packs a TestData into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_test_data!(Example.TestData.t()) :: binary()
+  def write_test_data!(value) do
     %{
       a: value_a,
       b: value_b,
@@ -2266,7 +2634,7 @@ defmodule Example.Wire do
     sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 1
-    data = <<data::binary, sc0::little-size(6)-unit(8)>>
+    data = <<sc0::little-size(6)-unit(8)>>
     scratch_bits = 6
     {data, scratch, scratch_bits} = w_test_data_items(value_items, data, scratch, scratch_bits)
     v = f32_bits(value_float_value)
@@ -2403,11 +2771,26 @@ defmodule Example.Wire do
     data
   end
 
-  # read_test_data_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_test_data!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_test_data(Example.TestData.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_test_data(value) do
+    {:ok, write_test_data!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a TestData from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_test_data_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.TestData.t(), non_neg_integer()} | :error
   def read_test_data_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -2415,97 +2798,75 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 49 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 49 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_a = v - 100
       v = rv >>> 8 &&& 0xFF
-      bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 200, do: throw(:invalid)
       v_b = v - 100
       v = rv >>> 16 &&& 0xFF
-      bits_read = bits_read + 8
       # a smuggled offset is refused
       if v > 250, do: throw(:invalid)
       v_c = v - 100
       v = rv >>> 24 &&& 0xFF
-      bits_read = bits_read + 8
       v_d = v
       v = rv >>> 32 &&& 0xFF
-      bits_read = bits_read + 8
       v_e = v
       v = rv >>> 40 &&& 0xFF
-      bits_read = bits_read + 8
       v_f = v
       v = rv >>> 48
-      bits_read = bits_read + 1
       v_g = v == 1
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 54 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 49, 49)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       # the count guards the loop — reject, never clamp
       if v > 16, do: throw(:invalid)
       n = v
-      if bits_read + n * 8 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_test_data_items_align(n, [], data, num_bits, bits_read)
+      if 54 + n * 8 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_test_data_items_align(n, [], data, num_bits, 54)
       if bits_read + 355 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_float_value = f32_value(v)
       v = rv >>> 32 &&& 0x3FF
-      bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
       v_compressed_float_value = elem(@cf_tab_0, v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 42, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 74, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_double_value = f64_value(w)
       v = rv >>> 32 &&& 0xFF
-      bits_read = bits_read + 8
       v_int8_value = if v >= 128, do: v - 256, else: v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 114, 49)
       v = rv &&& 0xFFFF
-      bits_read = bits_read + 16
       v_int16_value = if v >= 32768, do: v - 65536, else: v
       v = rv >>> 16 &&& 0xFF
-      bits_read = bits_read + 8
       v_uint8_value = v
       v = rv >>> 24 &&& 0xFFFF
-      bits_read = bits_read + 16
       v_uint16_value = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 154, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_uint32_value = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 186, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 218, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_uint64_value = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 250, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 282, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
 
       v_int64_full =
@@ -2515,16 +2876,15 @@ defmodule Example.Wire do
           w
         end
 
-      rv = rdw(data, bits_read, 41)
+      rv = rdw(data, bits_read + 314, 41)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32
-      bits_read = bits_read + 9
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 2_000_000_000_000, do: throw(:invalid)
       v_int64_range = w - 1_000_000_000_000
+      bits_read = bits_read + 355
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -2547,8 +2907,8 @@ defmodule Example.Wire do
       if bits_read + 8 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       len = v
+      bits_read = bits_read + 8
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -2601,8 +2961,11 @@ defmodule Example.Wire do
     end
   end
 
-  # read_test_data is read_test_data_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a TestData from the first num_bits of data: read_test_data_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_test_data(binary(), non_neg_integer()) :: {:ok, Example.TestData.t()} | :error
   def read_test_data(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_test_data_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -2610,48 +2973,62 @@ defmodule Example.Wire do
     end
   end
 
-  # measure_test_data is the exact wire bits write_test_data would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_test_data(value) do
-    bits = 0
-    bits = bits + 54
-    bits = bits + length(value.items) * 8
-    bits = bits + 355
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + 144
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.text) * 8
-    bits
-  end
-
-  # compressed_probe_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # compressed_probe_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a CompressedProbe can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec compressed_probe_max_bits() :: pos_integer()
   def compressed_probe_max_bits, do: 24
+
+  @doc """
+  compressed_probe_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec compressed_probe_max_bytes() :: pos_integer()
   def compressed_probe_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.CompressedProbe{}).
+  @doc """
+  The §5 zero form of CompressedProbe: all-zero storage. Specified defaults live
+  only in construction (`%Example.CompressedProbe{}`).
+  """
+  @spec zero_compressed_probe() :: Example.CompressedProbe.t()
   def zero_compressed_probe, do: %Example.CompressedProbe{boundary: 0.0, offset: 0.0}
 
-  # write_compressed_probe packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_compressed_probe(value) do
-    data = <<>>
+  @doc """
+  Packs a CompressedProbe into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_compressed_probe!(Example.CompressedProbe.t()) :: binary()
+  def write_compressed_probe!(value) do
     %{boundary: value_boundary, offset: value_offset} = value
     v = cf_quantize(value_boundary, 0.0, 10.0, 1000, 1000.0)
     scratch = v
     v = cf_quantize(value_offset, -5.0, 10.0, 10000, 10000.0)
     scratch = scratch ||| v <<< 10
-    data = <<data::binary, scratch::little-size(3)-unit(8)>>
-    data
+    <<scratch::little-size(3)-unit(8)>>
   end
 
-  # read_compressed_probe_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_compressed_probe!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_compressed_probe(Example.CompressedProbe.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_compressed_probe(value) do
+    {:ok, write_compressed_probe!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a CompressedProbe from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_compressed_probe_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.CompressedProbe.t(), non_neg_integer()} | :error
   def read_compressed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -2659,38 +3036,35 @@ defmodule Example.Wire do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 24 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 24)
+      if 24 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 24)
       v = rv &&& 0x3FF
-      bits_read = bits_read + 10
       # headroom above the quantum count is refused
       if v > 1000, do: throw(:invalid)
       v_boundary = elem(@cf_tab_0, v)
       v = rv >>> 10
-      bits_read = bits_read + 14
       # headroom above the quantum count is refused
       if v > 10000, do: throw(:invalid)
       v_offset = cf_decode(v, 10000.0, 10.0, -5.0)
       value = %Example.CompressedProbe{boundary: v_boundary, offset: v_offset}
-      {:ok, value, bits_read}
+      {:ok, value, 24}
     catch
       :invalid -> :error
     end
   end
 
-  # read_compressed_probe is read_compressed_probe_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a CompressedProbe from the first num_bits of data: read_compressed_probe_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_compressed_probe(binary(), non_neg_integer()) ::
+          {:ok, Example.CompressedProbe.t()} | :error
   def read_compressed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_compressed_probe_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
   end
-
-  # measure_compressed_probe is the exact wire bits write_compressed_probe would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_compressed_probe(_value), do: 24
 
   defp w_probe_sample_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -2736,23 +3110,19 @@ defmodule Example.Wire do
        when remaining >= 3 do
     rv = rdw(data, bits_read, 48)
     v = rv &&& 0xFFFF
-    bits_read = bits_read + 16
     e1 = v
     v = rv >>> 16 &&& 0xFFFF
-    bits_read = bits_read + 16
     e2 = v
     v = rv >>> 32
-    bits_read = bits_read + 16
     e3 = v
-    r_probe_sample_samples(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_probe_sample_samples(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 48)
   end
 
   defp r_probe_sample_samples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 16)
     v = rv
-    bits_read = bits_read + 16
     e = v
-    r_probe_sample_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_probe_sample_samples(remaining - 1, [e | acc], data, num_bits, bits_read + 16)
   end
 
   defp r_probe_sample_samples_align(remaining, acc, data, num_bits, bits_read)
@@ -2834,15 +3204,21 @@ defmodule Example.Wire do
   defp w_probe_collider_extras([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp w_probe_collider_extras([e | rest], data, scratch, scratch_bits) do
-    if e.type < 0 do
-      raise ArgumentError, "e.type is below the wire minimum"
-    end
+    v =
+      case e do
+        nil ->
+          0
 
-    if e.type > 2 do
-      raise ArgumentError, "e.type is above the wire maximum"
-    end
+        {:ring, _} ->
+          1
 
-    v = e.type
+        {:slab, _} ->
+          2
+
+        e_other ->
+          raise ArgumentError, "e is not a ProbeShape value: #{inspect(e_other)}"
+      end
+
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -2851,9 +3227,9 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      case e.type do
-        1 ->
-          v = e.ring.radius &&& 0xFFFF
+      case e do
+        {:ring, e_ring} ->
+          v = e_ring.radius &&& 0xFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 16
           flush = scratch_bits >>> 3
@@ -2862,8 +3238,8 @@ defmodule Example.Wire do
           scratch_bits = scratch_bits &&& 7
           {data, scratch, scratch_bits}
 
-        2 ->
-          %{width: e_slab_width, height: e_slab_height} = e.slab
+        {:slab, e_slab} ->
+          %{width: e_slab_width, height: e_slab_height} = e_slab
 
           if e_slab_width < 0 do
             raise ArgumentError, "e.slab.width is below the wire minimum"
@@ -2886,7 +3262,7 @@ defmodule Example.Wire do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           {data, scratch, scratch_bits}
       end
 
@@ -2900,9 +3276,9 @@ defmodule Example.Wire do
     if bits_read + 2 > num_bits, do: throw(:invalid)
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x3
-    bits_read = bits_read + 2
     # not a wire-legal tag (SPEC §4.8)
     if v > 2, do: throw(:invalid)
+    bits_read = bits_read + 2
 
     {bits_read, e} =
       case v do
@@ -2910,54 +3286,30 @@ defmodule Example.Wire do
           if bits_read + 16 > num_bits, do: throw(:invalid)
           rv = rd(data, bits_read, 16)
           v = rv
-          bits_read = bits_read + 16
           e_ring_radius = v
           e_ring = %Example.ProbeRing{radius: e_ring_radius}
-          u = %Example.ProbeShape{type: 1, ring: e_ring}
-          {bits_read, u}
+          bits_read = bits_read + 16
+          {bits_read, {:ring, e_ring}}
 
         2 ->
           if bits_read + 15 > num_bits, do: throw(:invalid)
           rv = rd(data, bits_read, 15)
           v = rv &&& 0x7F
-          bits_read = bits_read + 7
           # a smuggled offset is refused
           if v > 100, do: throw(:invalid)
           e_slab_width = v
           v = rv >>> 7
-          bits_read = bits_read + 8
           e_slab_height = v
           e_slab = %Example.ProbeSlab{width: e_slab_width, height: e_slab_height}
-          u = %Example.ProbeShape{type: 2, slab: e_slab}
-          {bits_read, u}
+          bits_read = bits_read + 15
+          {bits_read, {:slab, e_slab}}
 
         _ ->
           # None — the tag is the whole wire (SPEC §4.8)
-          {bits_read, %Example.ProbeShape{}}
+          {bits_read, nil}
       end
 
     r_probe_collider_extras(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  defp m_probe_collider_extras([], bits), do: bits
-
-  defp m_probe_collider_extras([e | rest], bits) do
-    bits = bits + 2
-
-    bits =
-      case e.type do
-        1 ->
-          bits + 16
-
-        2 ->
-          bits + 15
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    m_probe_collider_extras(rest, bits)
   end
 
   defp w_probe_array_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -3006,16 +3358,7 @@ defmodule Example.Wire do
     {data, scratch, scratch_bits} =
       if e_active do
         %{weapon: e_weapon, has_target: e_has_target} = e
-
-        if e_weapon < 0 do
-          raise ArgumentError, "e.weapon is below the wire minimum"
-        end
-
-        if e_weapon > 15 do
-          raise ArgumentError, "e.weapon is above the wire maximum"
-        end
-
-        v = e_weapon
+        v = Example.Weapon.to_int(e_weapon)
         scratch = scratch ||| v <<< scratch_bits
         scratch_bits = scratch_bits + 4
         v = if e_has_target, do: 1, else: 0
@@ -3079,46 +3422,40 @@ defmodule Example.Wire do
   defp r_probe_array_samples(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x1
-    bits_read = bits_read + 1
     e_active = v == 1
     v = rv >>> 1 &&& 0xFFFF
-    bits_read = bits_read + 16
     # headroom above the quantum count is refused
     if v > 36000, do: throw(:invalid)
     e_orientation = cf_decode(v, 36000.0, 360.0, -180.0)
     v = rv >>> 17
-    bits_read = bits_read + 32
     e_raw_delta = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 49, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 81, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e_big_delta = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
 
     {bits_read, e_weapon, e_has_target, e_target_id, e_idle_ticks} =
       if e_active do
-        if bits_read + 5 > num_bits, do: throw(:invalid)
-        rv = rd(data, bits_read, 5)
+        if bits_read + 118 > num_bits, do: throw(:invalid)
+        rv = rd(data, bits_read + 113, 5)
         v = rv &&& 0xF
-        bits_read = bits_read + 4
-        e_weapon = v
+        {:ok, e_weapon} = Example.Weapon.from_int(v)
         v = rv >>> 4
-        bits_read = bits_read + 1
         e_has_target = v == 1
 
         {bits_read, e_target_id} =
           if e_has_target do
-            if bits_read + 16 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 16)
+            if bits_read + 134 > num_bits, do: throw(:invalid)
+            rv = rd(data, bits_read + 118, 16)
             v = rv
-            bits_read = bits_read + 16
             e_target_id = v
+            bits_read = bits_read + 134
             {bits_read, e_target_id}
           else
+            bits_read = bits_read + 118
             e_target_id = 0
             {bits_read, e_target_id}
           end
@@ -3126,12 +3463,12 @@ defmodule Example.Wire do
         e_idle_ticks = 0
         {bits_read, e_weapon, e_has_target, e_target_id, e_idle_ticks}
       else
-        if bits_read + 32 > num_bits, do: throw(:invalid)
-        rv = rd(data, bits_read, 32)
+        if bits_read + 145 > num_bits, do: throw(:invalid)
+        rv = rd(data, bits_read + 113, 32)
         v = rv
-        bits_read = bits_read + 32
         e_idle_ticks = v
-        e_weapon = 0
+        bits_read = bits_read + 145
+        e_weapon = :none
         e_has_target = false
         e_target_id = 0
         {bits_read, e_weapon, e_has_target, e_target_id, e_idle_ticks}
@@ -3140,10 +3477,9 @@ defmodule Example.Wire do
     if bits_read + 3 > num_bits, do: throw(:invalid)
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x7
-    bits_read = bits_read + 3
     n = v + 1
-    if bits_read + n * 16 > num_bits, do: throw(:invalid)
-    {bits_read, e_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read)
+    if bits_read + 3 + n * 16 > num_bits, do: throw(:invalid)
+    {bits_read, e_samples} = r_probe_sample_samples_align(n, [], data, num_bits, bits_read + 3)
 
     e = %Example.ProbeSample{
       active: e_active,
@@ -3158,32 +3494,6 @@ defmodule Example.Wire do
     }
 
     r_probe_array_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  defp m_probe_array_samples([], bits), do: bits
-
-  defp m_probe_array_samples([e | rest], bits) do
-    bits = bits + 113
-
-    bits =
-      if e.active do
-        bits = bits + 5
-
-        bits =
-          if e.has_target do
-            bits + 16
-          else
-            bits
-          end
-
-        bits
-      else
-        bits + 32
-      end
-
-    bits = bits + 3
-    bits = bits + length(e.samples) * 16
-    m_probe_array_samples(rest, bits)
   end
 
   defp w_test_data_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -3301,26 +3611,21 @@ defmodule Example.Wire do
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
-    bits_read = bits_read + 8
     e1 = v
     v = rv >>> 8 &&& 0xFF
-    bits_read = bits_read + 8
     e2 = v
     v = rv >>> 16 &&& 0xFF
-    bits_read = bits_read + 8
     e3 = v
     v = rv >>> 24
-    bits_read = bits_read + 8
     e4 = v
-    r_test_data_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_test_data_items(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
   defp r_test_data_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
-    bits_read = bits_read + 8
     e = v
-    r_test_data_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_test_data_items(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
   defp r_test_data_items_align(remaining, acc, data, num_bits, bits_read)
@@ -3407,26 +3712,21 @@ defmodule Example.Wire do
        when remaining >= 4 do
     rv = rd(data, bits_read, 32)
     v = rv &&& 0xFF
-    bits_read = bits_read + 8
     e1 = v
     v = rv >>> 8 &&& 0xFF
-    bits_read = bits_read + 8
     e2 = v
     v = rv >>> 16 &&& 0xFF
-    bits_read = bits_read + 8
     e3 = v
     v = rv >>> 24
-    bits_read = bits_read + 8
     e4 = v
-    r_test_data_fixed_bytes(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_test_data_fixed_bytes(remaining - 4, [e4, e3, e2, e1 | acc], data, num_bits, bits_read + 32)
   end
 
   defp r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 8)
     v = rv
-    bits_read = bits_read + 8
     e = v
-    r_test_data_fixed_bytes(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_test_data_fixed_bytes(remaining - 1, [e | acc], data, num_bits, bits_read + 8)
   end
 
   defp r_test_data_fixed_bytes_align(remaining, acc, data, num_bits, bits_read)
@@ -3514,183 +3814,4 @@ defmodule Example.Wire do
 
   defp r_test_data_fixed_bytes_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
     do: r_test_data_fixed_bytes(remaining, acc, data, num_bits, bits_read)
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The 32-bit IEEE-754 pattern of a float value for the write path — a
-  # non-finite pattern travels as {:nonfinite, bits}, since no BEAM float
-  # term can hold it (the serialize.elixir convention). Caller errors raise;
-  # the checks are O(1).
-  defp f32_bits(value) when is_float(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) == 0xFF do
-      raise ArgumentError, "float overflows float32; write {:nonfinite, bits} instead"
-    end
-
-    bits
-  end
-
-  defp f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
-    end
-
-    bits
-  end
-
-  # The value of a 32-bit pattern for the read path: the float for a finite
-  # pattern, {:nonfinite, bits} otherwise. Never raises — the bits are
-  # untrusted.
-  defp f32_value(bits) do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<value::float-32-little>> = <<bits::little-32>>
-      value
-    else
-      {:nonfinite, bits}
-    end
-  end
-
-  # The 64-bit IEEE-754 pattern of a double value and its inverse — the
-  # same bit-transparent contract as f32, at width 64.
-  defp f64_bits(value) when is_float(value) do
-    <<bits::little-64>> = <<value::float-64-little>>
-    bits
-  end
-
-  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
-
-    bits
-  end
-
-  defp f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
-    end
-  end
-
-  # A number rounded to its nearest float32 — one emulated float32 step
-  # (exact: the double result carries 2x24+2 significant bits, so the second
-  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the
-  # compressed-float clamps can resolve it the way the reference's float
-  # arithmetic does.
-  #
-  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):
-  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the
-  # float32 normal range, below the smallest magnitude that rounds to
-  # infinity — y = value * C; y - (y - value) IS the value rounded to 24
-  # significant bits, round-to-nearest-even, in three flops with nothing
-  # allocated beyond the result. Outside that range (the subnormal grid,
-  # overflow to the atoms, zero with its sign) fr_slow keeps the exact
-  # semantics the construct/match pair defines.
-  defp fr(value) do
-    ax = abs(value)
-
-    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do
-      y = value * 536_870_913.0
-      y - (y - value)
-    else
-      fr_slow(value)
-    end
-  end
-
-  # The slow path's refusal IS the test: a float segment does not match a
-  # non-finite pattern, so a finite value costs one construction and one
-  # match and never touches the exponent field, while the second clause
-  # reads the sign of exactly the patterns the first one refused.
-  defp fr_slow(value) do
-    case <<value::float-32-little>> do
-      <<rounded::float-32-little>> -> rounded
-      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf
-    end
-  end
-
-  defp cf_clamp01(:pos_inf), do: 1.0
-  defp cf_clamp01(:neg_inf), do: 0.0
-  defp cf_clamp01(n) when n < 0.0, do: 0.0
-  defp cf_clamp01(n) when n > 1.0, do: 1.0
-  defp cf_clamp01(n), do: n
-
-  # The family's two-rounding float32 quantization (SPEC §4.3), the port's
-  # own steps: normalize with every step rounding, clamp to [0, 1] (which
-  # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,
-  # and the normative integer clamp to the step count.
-  # miv32 is the float32 of the step count, folded at generation time: it
-  # is a declaration constant, and recomputing its rounding per call was
-  # one of the six float32 steps.
-  defp cf_quantize(value, min32, delta, miv, miv32) do
-    if not is_number(value) do
-      raise ArgumentError, "a compressed float writes a finite number"
-    end
-
-    difference =
-      case fr(value * 1.0) do
-        :pos_inf -> :pos_inf
-        :neg_inf -> :neg_inf
-        v32 -> fr(v32 - min32)
-      end
-
-    normalized =
-      case difference do
-        :pos_inf -> 1.0
-        :neg_inf -> 0.0
-        d -> cf_clamp01(fr(d / delta))
-      end
-
-    scaled = fr(normalized * miv32)
-    integer = floor(fr(scaled + 0.5))
-    min(integer, miv)
-  end
-
-  # The reader's arithmetic, pinned the same way: the quotient rounds, the
-  # product rounds BEFORE min is added, and the sum rounds — float32
-  # throughout, never fused, never widened. The final add cannot overflow
-  # for a conforming declaration; the non-finite mapping keeps the
-  # never-raise reader obligation airtight.
-  defp cf_decode(integer, miv32, delta, min32) do
-    quotient = fr(fr(integer * 1.0) / miv32)
-    scaled = fr(quotient * delta)
-
-    case fr(scaled + min32) do
-      :pos_inf -> {:nonfinite, 0x7F800000}
-      :neg_inf -> {:nonfinite, 0xFF800000}
-      value -> value
-    end
-  end
 end

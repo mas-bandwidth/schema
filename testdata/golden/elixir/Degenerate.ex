@@ -6,119 +6,243 @@
 
 # type Vec2
 defmodule Example.Vec2 do
+  @moduledoc """
+  The type Vec2. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{x: Example.PacketRuntime.float64(), y: Example.PacketRuntime.float64()}
+
   defstruct x: 0.0, y: 0.0
 end
 
 # type SpanF64
 defmodule Example.SpanF64 do
+  @moduledoc """
+  The type SpanF64. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{values: [Example.PacketRuntime.float64()]}
+
   defstruct values: List.duplicate(0.0, 2)
 end
 
 # type SpanU64
 defmodule Example.SpanU64 do
+  @moduledoc """
+  The type SpanU64. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{values: [0..18_446_744_073_709_551_615]}
+
   defstruct values: List.duplicate(0, 2)
 end
 
 # type SpanI64
 defmodule Example.SpanI64 do
+  @moduledoc """
+  The type SpanI64. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{values: [-9_223_372_036_854_775_808..9_223_372_036_854_775_807]}
+
   defstruct values: List.duplicate(0, 2)
 end
 
 # type SpanOne
 defmodule Example.SpanOne do
+  @moduledoc """
+  The type SpanOne. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{values: [0..18_446_744_073_709_551_615]}
+
   defstruct values: List.duplicate(0, 1)
 end
 
 # type SpanChunk
 defmodule Example.SpanChunk do
+  @moduledoc """
+  The type SpanChunk. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{values: [0..65535]}
+
   defstruct values: List.duplicate(0, 4)
 end
 
 # type SpanTail
 defmodule Example.SpanTail do
+  @moduledoc """
+  The type SpanTail. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{values: [Example.PacketRuntime.float64()], tail: 0..4_294_967_295}
+
   defstruct values: List.duplicate(0.0, 2), tail: 0
 end
 
 # type SpanTwice
 defmodule Example.SpanTwice do
+  @moduledoc """
+  The type SpanTwice. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{
+          a: [Example.PacketRuntime.float64()],
+          b: [Example.PacketRuntime.float64()]
+        }
+
   defstruct a: List.duplicate(0.0, 2), b: List.duplicate(0.0, 2)
 end
 
 # type Trio
 defmodule Example.Trio do
+  @moduledoc """
+  The type Trio. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{a: 0..1_048_575, b: 0..1_048_575, c: 0..16_777_215}
+
   defstruct a: 0, b: 0, c: 0
 end
 
 # type TrioSole
 defmodule Example.TrioSole do
+  @moduledoc """
+  The type TrioSole. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{inner: Example.Trio.t()}
+
   defstruct inner: %Example.Trio{}
 end
 
 # type Vec3Sole
 defmodule Example.Vec3Sole do
+  @moduledoc """
+  The type Vec3Sole. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{v: Example.Vec3.t()}
+
   defstruct v: %Example.Vec3{}
 end
 
 # type TrioFirst
 defmodule Example.TrioFirst do
+  @moduledoc """
+  The type TrioFirst. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{inner: Example.Trio.t(), trailer: 0..65535}
+
   defstruct inner: %Example.Trio{}, trailer: 0
 end
 
 # type TrioStraddle
 defmodule Example.TrioStraddle do
+  @moduledoc """
+  The type TrioStraddle. Construction carries its specified defaults; the
+  codecs are in Example.Degenerate.
+  """
+
+  @type t :: %__MODULE__{
+          pad0: 0..18_446_744_073_709_551_615,
+          pad1: 0..18_446_744_073_709_551_615,
+          pad2: 0..18_446_744_073_709_551_615,
+          pad3: 0..18_446_744_073_709_551_615,
+          pad4: 0..18_446_744_073_709_551_615,
+          pad5: 0..16_777_215,
+          inner: Example.Trio.t()
+        }
+
   defstruct pad0: 0, pad1: 0, pad2: 0, pad3: 0, pad4: 0, pad5: 0, inner: %Example.Trio{}
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Degenerate.schema.
 defmodule Example.Degenerate do
+  @moduledoc """
+  The file-scope surface of Degenerate.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
 
-  @compile {:inline, rd: 3}
+  import Example.PacketRuntime,
+    only: [
+      rd: 3,
+      rdw: 3,
+      put_f64: 2,
+      get_f64: 2,
+      f64_bits: 1,
+      f64_value: 1
+    ]
 
-  @compile {:inline, rdw: 3}
-
-  # vec2_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # vec2_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Vec2 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec vec2_max_bits() :: pos_integer()
   def vec2_max_bits, do: 128
+
+  @doc """
+  vec2_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec vec2_max_bytes() :: pos_integer()
   def vec2_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Vec2{}).
+  @doc """
+  The §5 zero form of Vec2: all-zero storage. Specified defaults live
+  only in construction (`%Example.Vec2{}`).
+  """
+  @spec zero_vec2() :: Example.Vec2.t()
   def zero_vec2, do: %Example.Vec2{x: 0.0, y: 0.0}
 
-  # write_vec2 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_vec2(value) do
-    data = <<>>
+  @doc """
+  Packs a Vec2 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_vec2!(Example.Vec2.t()) :: binary()
+  def write_vec2!(value) do
     %{x: value_x, y: value_y} = value
-    w = f64_bits(value_x)
-    v = w &&& 0xFFFFFFFF
-    scratch = v
-    v = w >>> 32
-    sc0 = scratch
-    scratch = v
-    w = f64_bits(value_y)
-    v = w &&& 0xFFFFFFFF
-    sc1 = scratch
-    scratch = v
-    v = w >>> 32
-    sc2 = scratch
-    scratch = v
-
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
-
-    data
+    data = put_f64(<<>>, value_x)
+    put_f64(data, value_y)
   end
 
-  # read_vec2_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_vec2!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_vec2(Example.Vec2.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_vec2(value) do
+    {:ok, write_vec2!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Vec2 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_vec2_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Vec2.t(), non_neg_integer()} | :error
   def read_vec2_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -126,35 +250,21 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 128 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_x = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rd(data, bits_read, 32)
-      v = rv
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_y = f64_value(w)
+      if 128 > num_bits, do: throw(:invalid)
+      v_x = get_f64(data, 0)
+      v_y = get_f64(data, 64)
       value = %Example.Vec2{x: v_x, y: v_y}
-      {:ok, value, bits_read}
+      {:ok, value, 128}
     catch
       :invalid -> :error
     end
   end
 
-  # read_vec2 is read_vec2_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Vec2 from the first num_bits of data: read_vec2_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_vec2(binary(), non_neg_integer()) :: {:ok, Example.Vec2.t()} | :error
   def read_vec2(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec2_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -162,40 +272,63 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_vec2 is the exact wire bits write_vec2 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_vec2(_value), do: 128
-
-  # span_f64_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # span_f64_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a SpanF64 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec span_f64_max_bits() :: pos_integer()
   def span_f64_max_bits, do: 128
+
+  @doc """
+  span_f64_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec span_f64_max_bytes() :: pos_integer()
   def span_f64_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.SpanF64{}).
+  @doc """
+  The §5 zero form of SpanF64: all-zero storage. Specified defaults live
+  only in construction (`%Example.SpanF64{}`).
+  """
+  @spec zero_span_f64() :: Example.SpanF64.t()
   def zero_span_f64, do: %Example.SpanF64{values: List.duplicate(0.0, 2)}
 
-  # write_span_f64 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_span_f64(value) do
-    data = <<>>
-
+  @doc """
+  Packs a SpanF64 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_span_f64!(Example.SpanF64.t()) :: binary()
+  def write_span_f64!(value) do
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_f64_values(value.values, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_f64_values(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_span_f64_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_span_f64!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_span_f64(Example.SpanF64.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_span_f64(value) do
+    {:ok, write_span_f64!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a SpanF64 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_span_f64_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.SpanF64.t(), non_neg_integer()} | :error
   def read_span_f64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -203,9 +336,8 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_f64_values(2, [], data, num_bits, bits_read)
+      if 128 > num_bits, do: throw(:invalid)
+      {bits_read, v_values} = r_span_f64_values(2, [], data, num_bits, 0)
       value = %Example.SpanF64{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -213,8 +345,11 @@ defmodule Example.Degenerate do
     end
   end
 
-  # read_span_f64 is read_span_f64_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a SpanF64 from the first num_bits of data: read_span_f64_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_span_f64(binary(), non_neg_integer()) :: {:ok, Example.SpanF64.t()} | :error
   def read_span_f64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_f64_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -222,40 +357,63 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_span_f64 is the exact wire bits write_span_f64 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_span_f64(_value), do: 128
-
-  # span_u64_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # span_u64_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a SpanU64 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec span_u64_max_bits() :: pos_integer()
   def span_u64_max_bits, do: 128
+
+  @doc """
+  span_u64_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec span_u64_max_bytes() :: pos_integer()
   def span_u64_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.SpanU64{}).
+  @doc """
+  The §5 zero form of SpanU64: all-zero storage. Specified defaults live
+  only in construction (`%Example.SpanU64{}`).
+  """
+  @spec zero_span_u64() :: Example.SpanU64.t()
   def zero_span_u64, do: %Example.SpanU64{values: List.duplicate(0, 2)}
 
-  # write_span_u64 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_span_u64(value) do
-    data = <<>>
-
+  @doc """
+  Packs a SpanU64 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_span_u64!(Example.SpanU64.t()) :: binary()
+  def write_span_u64!(value) do
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_u64_values(value.values, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_u64_values(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_span_u64_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_span_u64!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_span_u64(Example.SpanU64.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_span_u64(value) do
+    {:ok, write_span_u64!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a SpanU64 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_span_u64_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.SpanU64.t(), non_neg_integer()} | :error
   def read_span_u64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -263,9 +421,8 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_u64_values(2, [], data, num_bits, bits_read)
+      if 128 > num_bits, do: throw(:invalid)
+      {bits_read, v_values} = r_span_u64_values(2, [], data, num_bits, 0)
       value = %Example.SpanU64{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -273,8 +430,11 @@ defmodule Example.Degenerate do
     end
   end
 
-  # read_span_u64 is read_span_u64_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a SpanU64 from the first num_bits of data: read_span_u64_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_span_u64(binary(), non_neg_integer()) :: {:ok, Example.SpanU64.t()} | :error
   def read_span_u64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_u64_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -282,40 +442,63 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_span_u64 is the exact wire bits write_span_u64 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_span_u64(_value), do: 128
-
-  # span_i64_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # span_i64_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a SpanI64 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec span_i64_max_bits() :: pos_integer()
   def span_i64_max_bits, do: 128
+
+  @doc """
+  span_i64_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec span_i64_max_bytes() :: pos_integer()
   def span_i64_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.SpanI64{}).
+  @doc """
+  The §5 zero form of SpanI64: all-zero storage. Specified defaults live
+  only in construction (`%Example.SpanI64{}`).
+  """
+  @spec zero_span_i64() :: Example.SpanI64.t()
   def zero_span_i64, do: %Example.SpanI64{values: List.duplicate(0, 2)}
 
-  # write_span_i64 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_span_i64(value) do
-    data = <<>>
-
+  @doc """
+  Packs a SpanI64 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_span_i64!(Example.SpanI64.t()) :: binary()
+  def write_span_i64!(value) do
     if length(value.values) != 2 do
       raise ArgumentError, "value.values must hold exactly 2 elements"
     end
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_i64_values(value.values, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_i64_values(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_span_i64_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_span_i64!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_span_i64(Example.SpanI64.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_span_i64(value) do
+    {:ok, write_span_i64!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a SpanI64 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_span_i64_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.SpanI64.t(), non_neg_integer()} | :error
   def read_span_i64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -323,9 +506,8 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_i64_values(2, [], data, num_bits, bits_read)
+      if 128 > num_bits, do: throw(:invalid)
+      {bits_read, v_values} = r_span_i64_values(2, [], data, num_bits, 0)
       value = %Example.SpanI64{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -333,8 +515,11 @@ defmodule Example.Degenerate do
     end
   end
 
-  # read_span_i64 is read_span_i64_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a SpanI64 from the first num_bits of data: read_span_i64_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_span_i64(binary(), non_neg_integer()) :: {:ok, Example.SpanI64.t()} | :error
   def read_span_i64(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_i64_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -342,40 +527,63 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_span_i64 is the exact wire bits write_span_i64 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_span_i64(_value), do: 128
-
-  # span_one_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # span_one_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a SpanOne can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec span_one_max_bits() :: pos_integer()
   def span_one_max_bits, do: 64
+
+  @doc """
+  span_one_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec span_one_max_bytes() :: pos_integer()
   def span_one_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.SpanOne{}).
+  @doc """
+  The §5 zero form of SpanOne: all-zero storage. Specified defaults live
+  only in construction (`%Example.SpanOne{}`).
+  """
+  @spec zero_span_one() :: Example.SpanOne.t()
   def zero_span_one, do: %Example.SpanOne{values: List.duplicate(0, 1)}
 
-  # write_span_one packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_span_one(value) do
-    data = <<>>
-
+  @doc """
+  Packs a SpanOne into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_span_one!(Example.SpanOne.t()) :: binary()
+  def write_span_one!(value) do
     if length(value.values) != 1 do
       raise ArgumentError, "value.values must hold exactly 1 elements"
     end
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_one_values(value.values, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_one_values(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_span_one_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_span_one!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_span_one(Example.SpanOne.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_span_one(value) do
+    {:ok, write_span_one!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a SpanOne from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_span_one_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.SpanOne.t(), non_neg_integer()} | :error
   def read_span_one_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -383,9 +591,8 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 64 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_one_values(1, [], data, num_bits, bits_read)
+      if 64 > num_bits, do: throw(:invalid)
+      {bits_read, v_values} = r_span_one_values(1, [], data, num_bits, 0)
       value = %Example.SpanOne{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -393,8 +600,11 @@ defmodule Example.Degenerate do
     end
   end
 
-  # read_span_one is read_span_one_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a SpanOne from the first num_bits of data: read_span_one_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_span_one(binary(), non_neg_integer()) :: {:ok, Example.SpanOne.t()} | :error
   def read_span_one(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_one_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -402,40 +612,63 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_span_one is the exact wire bits write_span_one would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_span_one(_value), do: 64
-
-  # span_chunk_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # span_chunk_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a SpanChunk can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec span_chunk_max_bits() :: pos_integer()
   def span_chunk_max_bits, do: 64
+
+  @doc """
+  span_chunk_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec span_chunk_max_bytes() :: pos_integer()
   def span_chunk_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.SpanChunk{}).
+  @doc """
+  The §5 zero form of SpanChunk: all-zero storage. Specified defaults live
+  only in construction (`%Example.SpanChunk{}`).
+  """
+  @spec zero_span_chunk() :: Example.SpanChunk.t()
   def zero_span_chunk, do: %Example.SpanChunk{values: List.duplicate(0, 4)}
 
-  # write_span_chunk packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_span_chunk(value) do
-    data = <<>>
-
+  @doc """
+  Packs a SpanChunk into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_span_chunk!(Example.SpanChunk.t()) :: binary()
+  def write_span_chunk!(value) do
     if length(value.values) != 4 do
       raise ArgumentError, "value.values must hold exactly 4 elements"
     end
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_chunk_values(value.values, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_chunk_values(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_span_chunk_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_span_chunk!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_span_chunk(Example.SpanChunk.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_span_chunk(value) do
+    {:ok, write_span_chunk!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a SpanChunk from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_span_chunk_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.SpanChunk.t(), non_neg_integer()} | :error
   def read_span_chunk_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -443,9 +676,8 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 64 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_chunk_values_align(4, [], data, num_bits, bits_read)
+      if 64 > num_bits, do: throw(:invalid)
+      {bits_read, v_values} = r_span_chunk_values_align(4, [], data, num_bits, 0)
       value = %Example.SpanChunk{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -453,8 +685,11 @@ defmodule Example.Degenerate do
     end
   end
 
-  # read_span_chunk is read_span_chunk_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a SpanChunk from the first num_bits of data: read_span_chunk_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_span_chunk(binary(), non_neg_integer()) :: {:ok, Example.SpanChunk.t()} | :error
   def read_span_chunk(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_chunk_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -462,24 +697,33 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_span_chunk is the exact wire bits write_span_chunk would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_span_chunk(_value), do: 64
-
-  # span_tail_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # span_tail_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a SpanTail can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec span_tail_max_bits() :: pos_integer()
   def span_tail_max_bits, do: 160
+
+  @doc """
+  span_tail_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec span_tail_max_bytes() :: pos_integer()
   def span_tail_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.SpanTail{}).
+  @doc """
+  The §5 zero form of SpanTail: all-zero storage. Specified defaults live
+  only in construction (`%Example.SpanTail{}`).
+  """
+  @spec zero_span_tail() :: Example.SpanTail.t()
   def zero_span_tail, do: %Example.SpanTail{values: List.duplicate(0.0, 2), tail: 0}
 
-  # write_span_tail packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_span_tail(value) do
-    data = <<>>
+  @doc """
+  Packs a SpanTail into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_span_tail!(Example.SpanTail.t()) :: binary()
+  def write_span_tail!(value) do
     %{values: value_values, tail: value_tail} = value
 
     if length(value_values) != 2 do
@@ -488,7 +732,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_tail_values(value_values, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_tail_values(value_values, <<>>, scratch, scratch_bits)
     v = value_tail &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -499,11 +743,26 @@ defmodule Example.Degenerate do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_span_tail_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_span_tail!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_span_tail(Example.SpanTail.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_span_tail(value) do
+    {:ok, write_span_tail!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a SpanTail from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_span_tail_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.SpanTail.t(), non_neg_integer()} | :error
   def read_span_tail_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -511,22 +770,23 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 160 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_tail_values(2, [], data, num_bits, bits_read)
+      if 160 > num_bits, do: throw(:invalid)
+      {bits_read, v_values} = r_span_tail_values(2, [], data, num_bits, 0)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_tail = v
       value = %Example.SpanTail{values: v_values, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 32}
     catch
       :invalid -> :error
     end
   end
 
-  # read_span_tail is read_span_tail_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a SpanTail from the first num_bits of data: read_span_tail_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_span_tail(binary(), non_neg_integer()) :: {:ok, Example.SpanTail.t()} | :error
   def read_span_tail(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_tail_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -534,26 +794,35 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_span_tail is the exact wire bits write_span_tail would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_span_tail(_value), do: 160
-
-  # span_twice_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # span_twice_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a SpanTwice can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec span_twice_max_bits() :: pos_integer()
   def span_twice_max_bits, do: 256
+
+  @doc """
+  span_twice_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec span_twice_max_bytes() :: pos_integer()
   def span_twice_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.SpanTwice{}).
+  @doc """
+  The §5 zero form of SpanTwice: all-zero storage. Specified defaults live
+  only in construction (`%Example.SpanTwice{}`).
+  """
+  @spec zero_span_twice() :: Example.SpanTwice.t()
   def zero_span_twice do
     %Example.SpanTwice{a: List.duplicate(0.0, 2), b: List.duplicate(0.0, 2)}
   end
 
-  # write_span_twice packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_span_twice(value) do
-    data = <<>>
+  @doc """
+  Packs a SpanTwice into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_span_twice!(Example.SpanTwice.t()) :: binary()
+  def write_span_twice!(value) do
     %{a: value_a, b: value_b} = value
 
     if length(value_a) != 2 do
@@ -562,7 +831,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_twice_a(value_a, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_span_twice_a(value_a, <<>>, scratch, scratch_bits)
 
     if length(value_b) != 2 do
       raise ArgumentError, "value.b must hold exactly 2 elements"
@@ -572,11 +841,26 @@ defmodule Example.Degenerate do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_span_twice_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_span_twice!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_span_twice(Example.SpanTwice.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_span_twice(value) do
+    {:ok, write_span_twice!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a SpanTwice from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_span_twice_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.SpanTwice.t(), non_neg_integer()} | :error
   def read_span_twice_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -584,9 +868,8 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 256 > num_bits, do: throw(:invalid)
-      {bits_read, v_a} = r_span_twice_a(2, [], data, num_bits, bits_read)
+      if 256 > num_bits, do: throw(:invalid)
+      {bits_read, v_a} = r_span_twice_a(2, [], data, num_bits, 0)
       {bits_read, v_b} = r_span_twice_b(2, [], data, num_bits, bits_read)
       value = %Example.SpanTwice{a: v_a, b: v_b}
       {:ok, value, bits_read}
@@ -595,8 +878,11 @@ defmodule Example.Degenerate do
     end
   end
 
-  # read_span_twice is read_span_twice_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a SpanTwice from the first num_bits of data: read_span_twice_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_span_twice(binary(), non_neg_integer()) :: {:ok, Example.SpanTwice.t()} | :error
   def read_span_twice(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_span_twice_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -604,24 +890,33 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_span_twice is the exact wire bits write_span_twice would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_span_twice(_value), do: 256
-
-  # trio_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # trio_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Trio can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec trio_max_bits() :: pos_integer()
   def trio_max_bits, do: 64
+
+  @doc """
+  trio_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec trio_max_bytes() :: pos_integer()
   def trio_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Trio{}).
+  @doc """
+  The §5 zero form of Trio: all-zero storage. Specified defaults live
+  only in construction (`%Example.Trio{}`).
+  """
+  @spec zero_trio() :: Example.Trio.t()
   def zero_trio, do: %Example.Trio{a: 0, b: 0, c: 0}
 
-  # write_trio packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_trio(value) do
-    data = <<>>
+  @doc """
+  Packs a Trio into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_trio!(Example.Trio.t()) :: binary()
+  def write_trio!(value) do
     %{a: value_a, b: value_b, c: value_c} = value
     v = value_a &&& 0xFFFFF
     scratch = v
@@ -630,15 +925,29 @@ defmodule Example.Degenerate do
     v = value_c &&& 0xFFFFFF
     sc0 = scratch
     scratch = v
-    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
-    data
+    <<sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
   end
 
-  # read_trio_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_trio!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_trio(Example.Trio.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_trio(value) do
+    {:ok, write_trio!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Trio from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_trio_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Trio.t(), non_neg_integer()} | :error
   def read_trio_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -646,28 +955,27 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 64 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 64 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_a = v
       v = rv >>> 20 &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_b = v
-      rv = rd(data, bits_read, 24)
+      rv = rd(data, 40, 24)
       v = rv
-      bits_read = bits_read + 24
       v_c = v
       value = %Example.Trio{a: v_a, b: v_b, c: v_c}
-      {:ok, value, bits_read}
+      {:ok, value, 64}
     catch
       :invalid -> :error
     end
   end
 
-  # read_trio is read_trio_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Trio from the first num_bits of data: read_trio_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_trio(binary(), non_neg_integer()) :: {:ok, Example.Trio.t()} | :error
   def read_trio(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -675,24 +983,33 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_trio is the exact wire bits write_trio would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_trio(_value), do: 64
-
-  # trio_sole_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # trio_sole_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a TrioSole can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec trio_sole_max_bits() :: pos_integer()
   def trio_sole_max_bits, do: 64
+
+  @doc """
+  trio_sole_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec trio_sole_max_bytes() :: pos_integer()
   def trio_sole_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.TrioSole{}).
+  @doc """
+  The §5 zero form of TrioSole: all-zero storage. Specified defaults live
+  only in construction (`%Example.TrioSole{}`).
+  """
+  @spec zero_trio_sole() :: Example.TrioSole.t()
   def zero_trio_sole, do: %Example.TrioSole{inner: zero_trio()}
 
-  # write_trio_sole packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_trio_sole(value) do
-    data = <<>>
+  @doc """
+  Packs a TrioSole into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_trio_sole!(Example.TrioSole.t()) :: binary()
+  def write_trio_sole!(value) do
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value.inner
     v = value_inner_a &&& 0xFFFFF
     scratch = v
@@ -701,15 +1018,29 @@ defmodule Example.Degenerate do
     v = value_inner_c &&& 0xFFFFFF
     sc0 = scratch
     scratch = v
-    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
-    data
+    <<sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
   end
 
-  # read_trio_sole_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_trio_sole!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_trio_sole(Example.TrioSole.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_trio_sole(value) do
+    {:ok, write_trio_sole!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a TrioSole from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_trio_sole_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.TrioSole.t(), non_neg_integer()} | :error
   def read_trio_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -717,29 +1048,28 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 64 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 64 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_inner_a = v
       v = rv >>> 20 &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_inner_b = v
-      rv = rd(data, bits_read, 24)
+      rv = rd(data, 40, 24)
       v = rv
-      bits_read = bits_read + 24
       v_inner_c = v
       v_inner = %Example.Trio{a: v_inner_a, b: v_inner_b, c: v_inner_c}
       value = %Example.TrioSole{inner: v_inner}
-      {:ok, value, bits_read}
+      {:ok, value, 64}
     catch
       :invalid -> :error
     end
   end
 
-  # read_trio_sole is read_trio_sole_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a TrioSole from the first num_bits of data: read_trio_sole_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_trio_sole(binary(), non_neg_integer()) :: {:ok, Example.TrioSole.t()} | :error
   def read_trio_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_sole_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -747,59 +1077,59 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_trio_sole is the exact wire bits write_trio_sole would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_trio_sole(_value), do: 64
-
-  # vec3_sole_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # vec3_sole_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Vec3Sole can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec vec3_sole_max_bits() :: pos_integer()
   def vec3_sole_max_bits, do: 192
+
+  @doc """
+  vec3_sole_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec vec3_sole_max_bytes() :: pos_integer()
   def vec3_sole_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Vec3Sole{}).
+  @doc """
+  The §5 zero form of Vec3Sole: all-zero storage. Specified defaults live
+  only in construction (`%Example.Vec3Sole{}`).
+  """
+  @spec zero_vec3_sole() :: Example.Vec3Sole.t()
   def zero_vec3_sole, do: %Example.Vec3Sole{v: Example.Types.zero_vec3()}
 
-  # write_vec3_sole packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_vec3_sole(value) do
-    data = <<>>
+  @doc """
+  Packs a Vec3Sole into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_vec3_sole!(Example.Vec3Sole.t()) :: binary()
+  def write_vec3_sole!(value) do
     %{x: value_v_x, y: value_v_y, z: value_v_z} = value.v
-    w = f64_bits(value_v_x)
-    v = w &&& 0xFFFFFFFF
-    scratch = v
-    v = w >>> 32
-    sc0 = scratch
-    scratch = v
-    w = f64_bits(value_v_y)
-    v = w &&& 0xFFFFFFFF
-    sc1 = scratch
-    scratch = v
-    v = w >>> 32
-    sc2 = scratch
-    scratch = v
-    w = f64_bits(value_v_z)
-    v = w &&& 0xFFFFFFFF
-    sc3 = scratch
-    scratch = v
-    v = w >>> 32
-    sc4 = scratch
-    scratch = v
-
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        scratch::little-size(4)-unit(8)>>
-
-    data
+    data = put_f64(<<>>, value_v_x)
+    data = put_f64(data, value_v_y)
+    put_f64(data, value_v_z)
   end
 
-  # read_vec3_sole_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_vec3_sole!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_vec3_sole(Example.Vec3Sole.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_vec3_sole(value) do
+    {:ok, write_vec3_sole!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Vec3Sole from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_vec3_sole_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Vec3Sole.t(), non_neg_integer()} | :error
   def read_vec3_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -807,45 +1137,23 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 192 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_v_x = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_v_y = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rd(data, bits_read, 32)
-      v = rv
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_v_z = f64_value(w)
+      if 192 > num_bits, do: throw(:invalid)
+      v_v_x = get_f64(data, 0)
+      v_v_y = get_f64(data, 64)
+      v_v_z = get_f64(data, 128)
       v_v = %Example.Vec3{x: v_v_x, y: v_v_y, z: v_v_z}
       value = %Example.Vec3Sole{v: v_v}
-      {:ok, value, bits_read}
+      {:ok, value, 192}
     catch
       :invalid -> :error
     end
   end
 
-  # read_vec3_sole is read_vec3_sole_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Vec3Sole from the first num_bits of data: read_vec3_sole_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_vec3_sole(binary(), non_neg_integer()) :: {:ok, Example.Vec3Sole.t()} | :error
   def read_vec3_sole(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec3_sole_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -853,24 +1161,33 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_vec3_sole is the exact wire bits write_vec3_sole would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_vec3_sole(_value), do: 192
-
-  # trio_first_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # trio_first_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a TrioFirst can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec trio_first_max_bits() :: pos_integer()
   def trio_first_max_bits, do: 80
+
+  @doc """
+  trio_first_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec trio_first_max_bytes() :: pos_integer()
   def trio_first_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.TrioFirst{}).
+  @doc """
+  The §5 zero form of TrioFirst: all-zero storage. Specified defaults live
+  only in construction (`%Example.TrioFirst{}`).
+  """
+  @spec zero_trio_first() :: Example.TrioFirst.t()
   def zero_trio_first, do: %Example.TrioFirst{inner: zero_trio(), trailer: 0}
 
-  # write_trio_first packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_trio_first(value) do
-    data = <<>>
+  @doc """
+  Packs a TrioFirst into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_trio_first!(Example.TrioFirst.t()) :: binary()
+  def write_trio_first!(value) do
     %{inner: value_inner, trailer: value_trailer} = value
     %{a: value_inner_a, b: value_inner_b, c: value_inner_c} = value_inner
     v = value_inner_a &&& 0xFFFFF
@@ -882,15 +1199,29 @@ defmodule Example.Degenerate do
     scratch = v
     v = value_trailer &&& 0xFFFF
     scratch = scratch ||| v <<< 24
-    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(5)-unit(8)>>
-    data
+    <<sc0::little-size(5)-unit(8), scratch::little-size(5)-unit(8)>>
   end
 
-  # read_trio_first_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_trio_first!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_trio_first(Example.TrioFirst.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_trio_first(value) do
+    {:ok, write_trio_first!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a TrioFirst from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_trio_first_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.TrioFirst.t(), non_neg_integer()} | :error
   def read_trio_first_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -898,32 +1229,30 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 80 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 80 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_inner_a = v
       v = rv >>> 20 &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_inner_b = v
-      rv = rdw(data, bits_read, 40)
+      rv = rdw(data, 40, 40)
       v = rv &&& 0xFFFFFF
-      bits_read = bits_read + 24
       v_inner_c = v
       v_inner = %Example.Trio{a: v_inner_a, b: v_inner_b, c: v_inner_c}
       v = rv >>> 24
-      bits_read = bits_read + 16
       v_trailer = v
       value = %Example.TrioFirst{inner: v_inner, trailer: v_trailer}
-      {:ok, value, bits_read}
+      {:ok, value, 80}
     catch
       :invalid -> :error
     end
   end
 
-  # read_trio_first is read_trio_first_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a TrioFirst from the first num_bits of data: read_trio_first_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_trio_first(binary(), non_neg_integer()) :: {:ok, Example.TrioFirst.t()} | :error
   def read_trio_first(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_first_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -931,17 +1260,24 @@ defmodule Example.Degenerate do
     end
   end
 
-  # measure_trio_first is the exact wire bits write_trio_first would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_trio_first(_value), do: 80
-
-  # trio_straddle_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # trio_straddle_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a TrioStraddle can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec trio_straddle_max_bits() :: pos_integer()
   def trio_straddle_max_bits, do: 408
+
+  @doc """
+  trio_straddle_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec trio_straddle_max_bytes() :: pos_integer()
   def trio_straddle_max_bytes, do: 56
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.TrioStraddle{}).
+  @doc """
+  The §5 zero form of TrioStraddle: all-zero storage. Specified defaults live
+  only in construction (`%Example.TrioStraddle{}`).
+  """
+  @spec zero_trio_straddle() :: Example.TrioStraddle.t()
   def zero_trio_straddle do
     %Example.TrioStraddle{
       pad0: 0,
@@ -954,12 +1290,13 @@ defmodule Example.Degenerate do
     }
   end
 
-  # write_trio_straddle packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_trio_straddle(value) do
-    data = <<>>
-
+  @doc """
+  Packs a TrioStraddle into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_trio_straddle!(Example.TrioStraddle.t()) :: binary()
+  def write_trio_straddle!(value) do
     %{
       pad0: value_pad0,
       pad1: value_pad1,
@@ -1012,21 +1349,32 @@ defmodule Example.Degenerate do
     v = value_inner_c &&& 0xFFFFFF
     scratch = scratch ||| v <<< 24
 
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8),
-        sc8::little-size(4)-unit(8), sc9::little-size(4)-unit(8), sc10::little-size(5)-unit(8),
-        scratch::little-size(6)-unit(8)>>
-
-    data
+    <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+      sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8), sc5::little-size(4)-unit(8),
+      sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8), sc8::little-size(4)-unit(8),
+      sc9::little-size(4)-unit(8), sc10::little-size(5)-unit(8), scratch::little-size(6)-unit(8)>>
   end
 
-  # read_trio_straddle_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_trio_straddle!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_trio_straddle(Example.TrioStraddle.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_trio_straddle(value) do
+    {:ok, write_trio_straddle!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a TrioStraddle from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_trio_straddle_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.TrioStraddle.t(), non_neg_integer()} | :error
   def read_trio_straddle_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1034,66 +1382,51 @@ defmodule Example.Degenerate do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 408 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 408 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad0 = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 96, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad1 = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 128, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 160, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad2 = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 192, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 224, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad3 = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 256, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 288, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_pad4 = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 320, 49)
       v = rv &&& 0xFFFFFF
-      bits_read = bits_read + 24
       v_pad5 = v
       v = rv >>> 24 &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_inner_a = v
-      rv = rdw(data, bits_read, 44)
+      rv = rdw(data, 364, 44)
       v = rv &&& 0xFFFFF
-      bits_read = bits_read + 20
       v_inner_b = v
       v = rv >>> 20
-      bits_read = bits_read + 24
       v_inner_c = v
       v_inner = %Example.Trio{a: v_inner_a, b: v_inner_b, c: v_inner_c}
 
@@ -1107,24 +1440,24 @@ defmodule Example.Degenerate do
         inner: v_inner
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 408}
     catch
       :invalid -> :error
     end
   end
 
-  # read_trio_straddle is read_trio_straddle_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a TrioStraddle from the first num_bits of data: read_trio_straddle_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_trio_straddle(binary(), non_neg_integer()) ::
+          {:ok, Example.TrioStraddle.t()} | :error
   def read_trio_straddle(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_trio_straddle_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
   end
-
-  # measure_trio_straddle is the exact wire bits write_trio_straddle would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_trio_straddle(_value), do: 408
 
   defp w_span_f64_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -1152,14 +1485,12 @@ defmodule Example.Degenerate do
   defp r_span_f64_values(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 32, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_f64_values(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_span_f64_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
   defp w_span_u64_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1187,14 +1518,12 @@ defmodule Example.Degenerate do
   defp r_span_u64_values(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 32, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = w
-    r_span_u64_values(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_span_u64_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
   defp w_span_i64_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1222,14 +1551,12 @@ defmodule Example.Degenerate do
   defp r_span_i64_values(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 32, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-    r_span_i64_values(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_span_i64_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
   defp w_span_one_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1257,14 +1584,12 @@ defmodule Example.Degenerate do
   defp r_span_one_values(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 32, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = w
-    r_span_one_values(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_span_one_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
   defp w_span_chunk_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1311,23 +1636,19 @@ defmodule Example.Degenerate do
        when remaining >= 3 do
     rv = rdw(data, bits_read, 48)
     v = rv &&& 0xFFFF
-    bits_read = bits_read + 16
     e1 = v
     v = rv >>> 16 &&& 0xFFFF
-    bits_read = bits_read + 16
     e2 = v
     v = rv >>> 32
-    bits_read = bits_read + 16
     e3 = v
-    r_span_chunk_values(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_span_chunk_values(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 48)
   end
 
   defp r_span_chunk_values(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 16)
     v = rv
-    bits_read = bits_read + 16
     e = v
-    r_span_chunk_values(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_span_chunk_values(remaining - 1, [e | acc], data, num_bits, bits_read + 16)
   end
 
   defp r_span_chunk_values_align(remaining, acc, data, num_bits, bits_read)
@@ -1432,14 +1753,12 @@ defmodule Example.Degenerate do
   defp r_span_tail_values(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 32, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_tail_values(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_span_tail_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
   defp w_span_twice_a([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1489,14 +1808,12 @@ defmodule Example.Degenerate do
   defp r_span_twice_a(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 32, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_twice_a(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_span_twice_a(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
   defp r_span_twice_b(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
@@ -1504,69 +1821,11 @@ defmodule Example.Degenerate do
   defp r_span_twice_b(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 32, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_twice_b(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The 64-bit IEEE-754 pattern of a double value and its inverse — the
-  # same bit-transparent contract as f32, at width 64.
-  defp f64_bits(value) when is_float(value) do
-    <<bits::little-64>> = <<value::float-64-little>>
-    bits
-  end
-
-  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
-
-    bits
-  end
-
-  defp f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
-    end
+    r_span_twice_b(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 end

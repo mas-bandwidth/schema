@@ -6,22 +6,63 @@
 
 # type Vec3
 defmodule Example.Vec3 do
+  @moduledoc """
+  The type Vec3. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          x: Example.PacketRuntime.float64(),
+          y: Example.PacketRuntime.float64(),
+          z: Example.PacketRuntime.float64()
+        }
+
   defstruct x: 0.0, y: 0.0, z: 0.0
 end
 
 # type Quat
 defmodule Example.Quat do
+  @moduledoc """
+  The type Quat. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          x: Example.PacketRuntime.float64(),
+          y: Example.PacketRuntime.float64(),
+          z: Example.PacketRuntime.float64(),
+          w: Example.PacketRuntime.float64()
+        }
+
   defstruct x: 0.0, y: 0.0, z: 0.0, w: 0.0
 end
 
 # type Handle
 defmodule Example.Handle do
+  @moduledoc """
+  The type Handle. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{object_id: 0..9999, object_sequence: 0..255}
+
   # object_id: wire [0, 9999]
   defstruct object_id: 0, object_sequence: 0
 end
 
 # type QuantizedPosition
 defmodule Example.QuantizedPosition do
+  @moduledoc """
+  The type QuantizedPosition. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          x: -8_388_608..8_388_608,
+          y: -8_388_608..8_388_608,
+          z: -8_388_608..8_388_608
+        }
+
   # x: wire [-8388608, 8388608]
   # y: wire [-8388608, 8388608]
   # z: wire [-8388608, 8388608]
@@ -30,6 +71,17 @@ end
 
 # type QuantizedVelocity
 defmodule Example.QuantizedVelocity do
+  @moduledoc """
+  The type QuantizedVelocity. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          x: -2_097_152..2_097_152,
+          y: -2_097_152..2_097_152,
+          z: -2_097_152..2_097_152
+        }
+
   # x: wire [-2097152, 2097152]
   # y: wire [-2097152, 2097152]
   # z: wire [-2097152, 2097152]
@@ -38,6 +90,13 @@ end
 
 # type QuantizedRotation
 defmodule Example.QuantizedRotation do
+  @moduledoc """
+  The type QuantizedRotation. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{x: -1024..1024, y: -1024..1024, z: -1024..1024, w: -1024..1024}
+
   # x: wire [-1024, 1024]
   # y: wire [-1024, 1024]
   # z: wire [-1024, 1024]
@@ -47,6 +106,19 @@ end
 
 # type RigidBody
 defmodule Example.RigidBody do
+  @moduledoc """
+  The type RigidBody. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          position: Example.Vec3.t(),
+          orientation: Example.Quat.t(),
+          at_rest: boolean(),
+          linear_velocity: Example.Vec3.t(),
+          angular_velocity: Example.Vec3.t()
+        }
+
   # !at_rest — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct position: %Example.Vec3{},
             orientation: %Example.Quat{},
@@ -57,6 +129,27 @@ end
 
 # type Input
 defmodule Example.Input do
+  @moduledoc """
+  The type Input. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          stick_x: Example.PacketRuntime.float32(),
+          stick_y: Example.PacketRuntime.float32(),
+          throttle: Example.PacketRuntime.float32(),
+          yaw: Example.PacketRuntime.float32(),
+          pitch: Example.PacketRuntime.float32(),
+          fire: boolean(),
+          alt_fire: boolean(),
+          boost: boolean(),
+          brake: boolean(),
+          aim: boolean(),
+          lock_on: boolean(),
+          zoom: boolean(),
+          ping: boolean()
+        }
+
   defstruct stick_x: 0.0,
             stick_y: 0.0,
             throttle: 0.0,
@@ -74,30 +167,67 @@ end
 
 # type InputPacket
 defmodule Example.InputPacket do
+  @moduledoc """
+  The type InputPacket. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          synchronize_sequence: 0..65535,
+          current_frame: 0..18_446_744_073_709_551_615,
+          start_frame: 0..18_446_744_073_709_551_615,
+          inputs: [Example.Input.t()]
+        }
+
   # inputs: counted array — a list of up to MaxInputsPerPacket elements
   defstruct synchronize_sequence: 0, current_frame: 0, start_frame: 0, inputs: []
 end
 
 # type ShipCreate
 defmodule Example.ShipCreate do
+  @moduledoc """
+  The type ShipCreate. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          ship_type: Example.ShipType.t(),
+          position: Example.QuantizedPosition.t(),
+          rotation: Example.QuantizedRotation.t(),
+          linear_velocity: Example.QuantizedVelocity.t(),
+          has_flags: boolean(),
+          flags: 0..18_446_744_073_709_551_615,
+          team: Example.Team.t(),
+          health: 0..1000,
+          thrust: 0..100,
+          pending: Example.Pending.t()
+        }
+
   # has_flags — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # flags: ShipFlags — consumed as masks, uint64 storage (SPEC §4.2)
   # health: wire [0, 1000]
   # thrust: wire [0, 100]
-  defstruct ship_type: 0,
+  defstruct ship_type: :none,
             position: %Example.QuantizedPosition{},
             rotation: %Example.QuantizedRotation{},
             linear_velocity: %Example.QuantizedVelocity{},
             has_flags: false,
             flags: 0,
-            team: 0,
+            team: :none,
             health: 0,
             thrust: 0,
-            pending: 0
+            pending: :none
 end
 
 # type ExpressionProbe
 defmodule Example.ExpressionProbe do
+  @moduledoc """
+  The type ExpressionProbe. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{hardpoint_index: 0..31, spin_rate: 1024..2048}
+
   # hardpoint_index: wire [0, 31]
   # spin_rate: specified default at construction; zero_* gives the §5 zero form; wire [1024, 2048]
   defstruct hardpoint_index: 0, spin_rate: 1024
@@ -105,6 +235,19 @@ end
 
 # type ExtremeProbe
 defmodule Example.ExtremeProbe do
+  @moduledoc """
+  The type ExtremeProbe. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          floor_bound: -9_223_372_036_854_775_808..100,
+          doubled_floor: -9_223_372_036_854_775_808..100,
+          ceiling_range: 1..18_446_744_073_709_551_615,
+          floor_default: -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
+          ceiling_default: 0..18_446_744_073_709_551_615
+        }
+
   # floor_bound: wire [-9223372036854775808, 100]
   # doubled_floor: wire [-9223372036854775808, 100]
   # ceiling_range: specified default at construction; zero_* gives the §5 zero form; wire [1, 18446744073709551615]
@@ -119,6 +262,18 @@ end
 
 # type ExtremeRow
 defmodule Example.ExtremeRow do
+  @moduledoc """
+  The type ExtremeRow. Construction carries its specified defaults; the
+  codecs are in Example.Types.
+  """
+
+  @type t :: %__MODULE__{
+          clamped_floor: -9_223_372_036_854_775_808..100,
+          clamped_ceiling: 1..18_446_744_073_709_551_614,
+          floor_def: -9_223_372_036_854_775_808..9_223_372_036_854_775_807,
+          ceiling_def: 0..18_446_744_073_709_551_615
+        }
+
   # clamped_floor: wire [-9223372036854775808, 100]
   # clamped_ceiling: specified default at construction; zero_* gives the §5 zero form; wire [1, 18446744073709551614]
   # floor_def: specified default at construction; zero_* gives the §5 zero form
@@ -132,61 +287,78 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Types.schema.
 defmodule Example.Types do
+  @moduledoc """
+  The file-scope surface of Types.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
 
-  @compile {:inline, rd: 3}
+  import Example.PacketRuntime,
+    only: [
+      rd: 3,
+      rdw: 3,
+      f32_bits: 1,
+      f32_value: 1,
+      put_f64: 2,
+      get_f64: 2,
+      f64_bits: 1,
+      f64_value: 1
+    ]
 
-  @compile {:inline, rdw: 3}
-
-  # vec3_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # vec3_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Vec3 can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec vec3_max_bits() :: pos_integer()
   def vec3_max_bits, do: 192
+
+  @doc """
+  vec3_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec vec3_max_bytes() :: pos_integer()
   def vec3_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Vec3{}).
+  @doc """
+  The §5 zero form of Vec3: all-zero storage. Specified defaults live
+  only in construction (`%Example.Vec3{}`).
+  """
+  @spec zero_vec3() :: Example.Vec3.t()
   def zero_vec3, do: %Example.Vec3{x: 0.0, y: 0.0, z: 0.0}
 
-  # write_vec3 packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_vec3(value) do
-    data = <<>>
+  @doc """
+  Packs a Vec3 into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_vec3!(Example.Vec3.t()) :: binary()
+  def write_vec3!(value) do
     %{x: value_x, y: value_y, z: value_z} = value
-    w = f64_bits(value_x)
-    v = w &&& 0xFFFFFFFF
-    scratch = v
-    v = w >>> 32
-    sc0 = scratch
-    scratch = v
-    w = f64_bits(value_y)
-    v = w &&& 0xFFFFFFFF
-    sc1 = scratch
-    scratch = v
-    v = w >>> 32
-    sc2 = scratch
-    scratch = v
-    w = f64_bits(value_z)
-    v = w &&& 0xFFFFFFFF
-    sc3 = scratch
-    scratch = v
-    v = w >>> 32
-    sc4 = scratch
-    scratch = v
-
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        scratch::little-size(4)-unit(8)>>
-
-    data
+    data = put_f64(<<>>, value_x)
+    data = put_f64(data, value_y)
+    put_f64(data, value_z)
   end
 
-  # read_vec3_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_vec3!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_vec3(Example.Vec3.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_vec3(value) do
+    {:ok, write_vec3!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Vec3 from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_vec3_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Vec3.t(), non_neg_integer()} | :error
   def read_vec3_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -194,44 +366,22 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 192 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_x = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_y = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rd(data, bits_read, 32)
-      v = rv
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_z = f64_value(w)
+      if 192 > num_bits, do: throw(:invalid)
+      v_x = get_f64(data, 0)
+      v_y = get_f64(data, 64)
+      v_z = get_f64(data, 128)
       value = %Example.Vec3{x: v_x, y: v_y, z: v_z}
-      {:ok, value, bits_read}
+      {:ok, value, 192}
     catch
       :invalid -> :error
     end
   end
 
-  # read_vec3 is read_vec3_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Vec3 from the first num_bits of data: read_vec3_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_vec3(binary(), non_neg_integer()) :: {:ok, Example.Vec3.t()} | :error
   def read_vec3(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_vec3_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -239,67 +389,60 @@ defmodule Example.Types do
     end
   end
 
-  # measure_vec3 is the exact wire bits write_vec3 would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_vec3(_value), do: 192
-
-  # quat_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # quat_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Quat can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec quat_max_bits() :: pos_integer()
   def quat_max_bits, do: 256
+
+  @doc """
+  quat_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec quat_max_bytes() :: pos_integer()
   def quat_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Quat{}).
+  @doc """
+  The §5 zero form of Quat: all-zero storage. Specified defaults live
+  only in construction (`%Example.Quat{}`).
+  """
+  @spec zero_quat() :: Example.Quat.t()
   def zero_quat, do: %Example.Quat{x: 0.0, y: 0.0, z: 0.0, w: 0.0}
 
-  # write_quat packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_quat(value) do
-    data = <<>>
+  @doc """
+  Packs a Quat into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_quat!(Example.Quat.t()) :: binary()
+  def write_quat!(value) do
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
-    w = f64_bits(value_x)
-    v = w &&& 0xFFFFFFFF
-    scratch = v
-    v = w >>> 32
-    sc0 = scratch
-    scratch = v
-    w = f64_bits(value_y)
-    v = w &&& 0xFFFFFFFF
-    sc1 = scratch
-    scratch = v
-    v = w >>> 32
-    sc2 = scratch
-    scratch = v
-    w = f64_bits(value_z)
-    v = w &&& 0xFFFFFFFF
-    sc3 = scratch
-    scratch = v
-    v = w >>> 32
-    sc4 = scratch
-    scratch = v
-    w = f64_bits(value_w)
-    v = w &&& 0xFFFFFFFF
-    sc5 = scratch
-    scratch = v
-    v = w >>> 32
-    sc6 = scratch
-    scratch = v
-
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8),
-        scratch::little-size(4)-unit(8)>>
-
-    data
+    data = put_f64(<<>>, value_x)
+    data = put_f64(data, value_y)
+    data = put_f64(data, value_z)
+    put_f64(data, value_w)
   end
 
-  # read_quat_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_quat!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_quat(Example.Quat.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_quat(value) do
+    {:ok, write_quat!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Quat from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_quat_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Quat.t(), non_neg_integer()} | :error
   def read_quat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -307,53 +450,23 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 256 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_x = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_y = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_z = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rd(data, bits_read, 32)
-      v = rv
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_w = f64_value(w)
+      if 256 > num_bits, do: throw(:invalid)
+      v_x = get_f64(data, 0)
+      v_y = get_f64(data, 64)
+      v_z = get_f64(data, 128)
+      v_w = get_f64(data, 192)
       value = %Example.Quat{x: v_x, y: v_y, z: v_z, w: v_w}
-      {:ok, value, bits_read}
+      {:ok, value, 256}
     catch
       :invalid -> :error
     end
   end
 
-  # read_quat is read_quat_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Quat from the first num_bits of data: read_quat_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_quat(binary(), non_neg_integer()) :: {:ok, Example.Quat.t()} | :error
   def read_quat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quat_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -361,24 +474,33 @@ defmodule Example.Types do
     end
   end
 
-  # measure_quat is the exact wire bits write_quat would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_quat(_value), do: 256
-
-  # handle_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # handle_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Handle can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec handle_max_bits() :: pos_integer()
   def handle_max_bits, do: 22
+
+  @doc """
+  handle_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec handle_max_bytes() :: pos_integer()
   def handle_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Handle{}).
+  @doc """
+  The §5 zero form of Handle: all-zero storage. Specified defaults live
+  only in construction (`%Example.Handle{}`).
+  """
+  @spec zero_handle() :: Example.Handle.t()
   def zero_handle, do: %Example.Handle{object_id: 0, object_sequence: 0}
 
-  # write_handle packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_handle(value) do
-    data = <<>>
+  @doc """
+  Packs a Handle into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_handle!(Example.Handle.t()) :: binary()
+  def write_handle!(value) do
     %{object_id: value_object_id, object_sequence: value_object_sequence} = value
 
     if value_object_id < 0 do
@@ -393,17 +515,32 @@ defmodule Example.Types do
     scratch = v
     v = value_object_sequence &&& 0xFF
     scratch = scratch ||| v <<< 14
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
+    data = <<scratch::little-size(2)-unit(8)>>
     scratch = scratch >>> 16
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_handle_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_handle!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_handle(Example.Handle.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_handle(value) do
+    {:ok, write_handle!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Handle from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_handle_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Handle.t(), non_neg_integer()} | :error
   def read_handle_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -411,26 +548,26 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 22 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 22)
+      if 22 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 22)
       v = rv &&& 0x3FFF
-      bits_read = bits_read + 14
       # a smuggled offset is refused
       if v > 9999, do: throw(:invalid)
       v_object_id = v
       v = rv >>> 14
-      bits_read = bits_read + 8
       v_object_sequence = v
       value = %Example.Handle{object_id: v_object_id, object_sequence: v_object_sequence}
-      {:ok, value, bits_read}
+      {:ok, value, 22}
     catch
       :invalid -> :error
     end
   end
 
-  # read_handle is read_handle_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Handle from the first num_bits of data: read_handle_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_handle(binary(), non_neg_integer()) :: {:ok, Example.Handle.t()} | :error
   def read_handle(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_handle_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -438,24 +575,33 @@ defmodule Example.Types do
     end
   end
 
-  # measure_handle is the exact wire bits write_handle would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_handle(_value), do: 22
-
-  # quantized_position_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # quantized_position_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a QuantizedPosition can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec quantized_position_max_bits() :: pos_integer()
   def quantized_position_max_bits, do: 75
+
+  @doc """
+  quantized_position_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec quantized_position_max_bytes() :: pos_integer()
   def quantized_position_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.QuantizedPosition{}).
+  @doc """
+  The §5 zero form of QuantizedPosition: all-zero storage. Specified defaults live
+  only in construction (`%Example.QuantizedPosition{}`).
+  """
+  @spec zero_quantized_position() :: Example.QuantizedPosition.t()
   def zero_quantized_position, do: %Example.QuantizedPosition{x: 0, y: 0, z: 0}
 
-  # write_quantized_position packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_quantized_position(value) do
-    data = <<>>
+  @doc """
+  Packs a QuantizedPosition into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_quantized_position!(Example.QuantizedPosition.t()) :: binary()
+  def write_quantized_position!(value) do
     %{x: value_x, y: value_y, z: value_z} = value
 
     if value_x < -8_388_608 do
@@ -492,17 +638,33 @@ defmodule Example.Types do
     sc0 = scratch
     scratch = scratch >>> 48
     scratch = scratch ||| v <<< 2
-    data = <<data::binary, sc0::little-size(6)-unit(8), scratch::little-size(3)-unit(8)>>
+    data = <<sc0::little-size(6)-unit(8), scratch::little-size(3)-unit(8)>>
     scratch = scratch >>> 24
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_quantized_position_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_quantized_position!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_quantized_position(Example.QuantizedPosition.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_quantized_position(value) do
+    {:ok, write_quantized_position!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a QuantizedPosition from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_quantized_position_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.QuantizedPosition.t(), non_neg_integer()} | :error
   def read_quantized_position_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
@@ -511,35 +673,35 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 75 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 75 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_x = v - 8_388_608
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 25, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_y = v - 8_388_608
-      rv = rd(data, bits_read, 25)
+      rv = rd(data, 50, 25)
       v = rv
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_z = v - 8_388_608
       value = %Example.QuantizedPosition{x: v_x, y: v_y, z: v_z}
-      {:ok, value, bits_read}
+      {:ok, value, 75}
     catch
       :invalid -> :error
     end
   end
 
-  # read_quantized_position is read_quantized_position_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a QuantizedPosition from the first num_bits of data: read_quantized_position_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_quantized_position(binary(), non_neg_integer()) ::
+          {:ok, Example.QuantizedPosition.t()} | :error
   def read_quantized_position(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quantized_position_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -547,24 +709,33 @@ defmodule Example.Types do
     end
   end
 
-  # measure_quantized_position is the exact wire bits write_quantized_position would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_quantized_position(_value), do: 75
-
-  # quantized_velocity_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # quantized_velocity_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a QuantizedVelocity can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec quantized_velocity_max_bits() :: pos_integer()
   def quantized_velocity_max_bits, do: 69
+
+  @doc """
+  quantized_velocity_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec quantized_velocity_max_bytes() :: pos_integer()
   def quantized_velocity_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.QuantizedVelocity{}).
+  @doc """
+  The §5 zero form of QuantizedVelocity: all-zero storage. Specified defaults live
+  only in construction (`%Example.QuantizedVelocity{}`).
+  """
+  @spec zero_quantized_velocity() :: Example.QuantizedVelocity.t()
   def zero_quantized_velocity, do: %Example.QuantizedVelocity{x: 0, y: 0, z: 0}
 
-  # write_quantized_velocity packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_quantized_velocity(value) do
-    data = <<>>
+  @doc """
+  Packs a QuantizedVelocity into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_quantized_velocity!(Example.QuantizedVelocity.t()) :: binary()
+  def write_quantized_velocity!(value) do
     %{x: value_x, y: value_y, z: value_z} = value
 
     if value_x < -2_097_152 do
@@ -601,17 +772,33 @@ defmodule Example.Types do
     sc0 = scratch
     scratch = scratch >>> 40
     scratch = scratch ||| v <<< 6
-    data = <<data::binary, sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
+    data = <<sc0::little-size(5)-unit(8), scratch::little-size(3)-unit(8)>>
     scratch = scratch >>> 24
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_quantized_velocity_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_quantized_velocity!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_quantized_velocity(Example.QuantizedVelocity.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_quantized_velocity(value) do
+    {:ok, write_quantized_velocity!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a QuantizedVelocity from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_quantized_velocity_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.QuantizedVelocity.t(), non_neg_integer()} | :error
   def read_quantized_velocity_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
@@ -620,34 +807,34 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 69 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 69 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7FFFFF
-      bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_x = v - 2_097_152
       v = rv >>> 23 &&& 0x7FFFFF
-      bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_y = v - 2_097_152
-      rv = rd(data, bits_read, 23)
+      rv = rd(data, 46, 23)
       v = rv
-      bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_z = v - 2_097_152
       value = %Example.QuantizedVelocity{x: v_x, y: v_y, z: v_z}
-      {:ok, value, bits_read}
+      {:ok, value, 69}
     catch
       :invalid -> :error
     end
   end
 
-  # read_quantized_velocity is read_quantized_velocity_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a QuantizedVelocity from the first num_bits of data: read_quantized_velocity_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_quantized_velocity(binary(), non_neg_integer()) ::
+          {:ok, Example.QuantizedVelocity.t()} | :error
   def read_quantized_velocity(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quantized_velocity_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -655,24 +842,33 @@ defmodule Example.Types do
     end
   end
 
-  # measure_quantized_velocity is the exact wire bits write_quantized_velocity would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_quantized_velocity(_value), do: 69
-
-  # quantized_rotation_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # quantized_rotation_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a QuantizedRotation can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec quantized_rotation_max_bits() :: pos_integer()
   def quantized_rotation_max_bits, do: 48
+
+  @doc """
+  quantized_rotation_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec quantized_rotation_max_bytes() :: pos_integer()
   def quantized_rotation_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.QuantizedRotation{}).
+  @doc """
+  The §5 zero form of QuantizedRotation: all-zero storage. Specified defaults live
+  only in construction (`%Example.QuantizedRotation{}`).
+  """
+  @spec zero_quantized_rotation() :: Example.QuantizedRotation.t()
   def zero_quantized_rotation, do: %Example.QuantizedRotation{x: 0, y: 0, z: 0, w: 0}
 
-  # write_quantized_rotation packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_quantized_rotation(value) do
-    data = <<>>
+  @doc """
+  Packs a QuantizedRotation into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_quantized_rotation!(Example.QuantizedRotation.t()) :: binary()
+  def write_quantized_rotation!(value) do
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
     if value_x < -1024 do
@@ -718,15 +914,30 @@ defmodule Example.Types do
 
     v = value_w + 1024
     scratch = scratch ||| v <<< 36
-    data = <<data::binary, scratch::little-size(6)-unit(8)>>
-    data
+    <<scratch::little-size(6)-unit(8)>>
   end
 
-  # read_quantized_rotation_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_quantized_rotation!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_quantized_rotation(Example.QuantizedRotation.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_quantized_rotation(value) do
+    {:ok, write_quantized_rotation!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a QuantizedRotation from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_quantized_rotation_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.QuantizedRotation.t(), non_neg_integer()} | :error
   def read_quantized_rotation_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
@@ -735,38 +946,37 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 48 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 48)
+      if 48 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 48)
       v = rv &&& 0xFFF
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_x = v - 1024
       v = rv >>> 12 &&& 0xFFF
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_y = v - 1024
       v = rv >>> 24 &&& 0xFFF
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_z = v - 1024
       v = rv >>> 36
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_w = v - 1024
       value = %Example.QuantizedRotation{x: v_x, y: v_y, z: v_z, w: v_w}
-      {:ok, value, bits_read}
+      {:ok, value, 48}
     catch
       :invalid -> :error
     end
   end
 
-  # read_quantized_rotation is read_quantized_rotation_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a QuantizedRotation from the first num_bits of data: read_quantized_rotation_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_quantized_rotation(binary(), non_neg_integer()) ::
+          {:ok, Example.QuantizedRotation.t()} | :error
   def read_quantized_rotation(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_quantized_rotation_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -774,17 +984,24 @@ defmodule Example.Types do
     end
   end
 
-  # measure_quantized_rotation is the exact wire bits write_quantized_rotation would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_quantized_rotation(_value), do: 48
-
-  # rigid_body_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # rigid_body_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a RigidBody can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec rigid_body_max_bits() :: pos_integer()
   def rigid_body_max_bits, do: 833
+
+  @doc """
+  rigid_body_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec rigid_body_max_bytes() :: pos_integer()
   def rigid_body_max_bytes, do: 112
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.RigidBody{}).
+  @doc """
+  The §5 zero form of RigidBody: all-zero storage. Specified defaults live
+  only in construction (`%Example.RigidBody{}`).
+  """
+  @spec zero_rigid_body() :: Example.RigidBody.t()
   def zero_rigid_body do
     %Example.RigidBody{
       position: zero_vec3(),
@@ -795,33 +1012,18 @@ defmodule Example.Types do
     }
   end
 
-  # write_rigid_body packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_rigid_body(value) do
-    data = <<>>
+  @doc """
+  Packs a RigidBody into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_rigid_body!(Example.RigidBody.t()) :: binary()
+  def write_rigid_body!(value) do
     %{position: value_position, orientation: value_orientation, at_rest: value_at_rest} = value
     %{x: value_position_x, y: value_position_y, z: value_position_z} = value_position
-    w = f64_bits(value_position_x)
-    v = w &&& 0xFFFFFFFF
-    scratch = v
-    v = w >>> 32
-    sc0 = scratch
-    scratch = v
-    w = f64_bits(value_position_y)
-    v = w &&& 0xFFFFFFFF
-    sc1 = scratch
-    scratch = v
-    v = w >>> 32
-    sc2 = scratch
-    scratch = v
-    w = f64_bits(value_position_z)
-    v = w &&& 0xFFFFFFFF
-    sc3 = scratch
-    scratch = v
-    v = w >>> 32
-    sc4 = scratch
-    scratch = v
+    data = put_f64(<<>>, value_position_x)
+    data = put_f64(data, value_position_y)
+    data = put_f64(data, value_position_z)
 
     %{
       x: value_orientation_x,
@@ -830,46 +1032,12 @@ defmodule Example.Types do
       w: value_orientation_w
     } = value_orientation
 
-    w = f64_bits(value_orientation_x)
-    v = w &&& 0xFFFFFFFF
-    sc5 = scratch
-    scratch = v
-    v = w >>> 32
-    sc6 = scratch
-    scratch = v
-    w = f64_bits(value_orientation_y)
-    v = w &&& 0xFFFFFFFF
-    sc7 = scratch
-    scratch = v
-    v = w >>> 32
-    sc8 = scratch
-    scratch = v
-    w = f64_bits(value_orientation_z)
-    v = w &&& 0xFFFFFFFF
-    sc9 = scratch
-    scratch = v
-    v = w >>> 32
-    sc10 = scratch
-    scratch = v
-    w = f64_bits(value_orientation_w)
-    v = w &&& 0xFFFFFFFF
-    sc11 = scratch
-    scratch = v
-    v = w >>> 32
-    sc12 = scratch
-    scratch = v
+    data = put_f64(data, value_orientation_x)
+    data = put_f64(data, value_orientation_y)
+    data = put_f64(data, value_orientation_z)
+    data = put_f64(data, value_orientation_w)
     v = if value_at_rest, do: 1, else: 0
-    scratch = scratch ||| v <<< 32
-
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8),
-        sc8::little-size(4)-unit(8), sc9::little-size(4)-unit(8), sc10::little-size(4)-unit(8),
-        sc11::little-size(4)-unit(8), sc12::little-size(4)-unit(8),
-        scratch::little-size(4)-unit(8)>>
-
-    scratch = scratch >>> 32
+    scratch = v
 
     {data, scratch} =
       if not value_at_rest do
@@ -888,25 +1056,25 @@ defmodule Example.Types do
         v = w &&& 0xFFFFFFFF
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        sc13 = scratch
+        sc0 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_linear_velocity_y)
         v = w &&& 0xFFFFFFFF
-        sc14 = scratch
+        sc1 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        sc15 = scratch
+        sc2 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_linear_velocity_z)
         v = w &&& 0xFFFFFFFF
-        sc16 = scratch
+        sc3 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        sc17 = scratch
+        sc4 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
 
@@ -918,39 +1086,38 @@ defmodule Example.Types do
 
         w = f64_bits(value_angular_velocity_x)
         v = w &&& 0xFFFFFFFF
-        sc18 = scratch
+        sc5 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        sc19 = scratch
+        sc6 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_angular_velocity_y)
         v = w &&& 0xFFFFFFFF
-        sc20 = scratch
+        sc7 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        sc21 = scratch
+        sc8 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         w = f64_bits(value_angular_velocity_z)
         v = w &&& 0xFFFFFFFF
-        sc22 = scratch
+        sc9 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
         v = w >>> 32
-        sc23 = scratch
+        sc10 = scratch
         scratch = scratch >>> 32
         scratch = scratch ||| v <<< 1
 
         data =
-          <<data::binary, sc13::little-size(4)-unit(8), sc14::little-size(4)-unit(8),
-            sc15::little-size(4)-unit(8), sc16::little-size(4)-unit(8),
-            sc17::little-size(4)-unit(8), sc18::little-size(4)-unit(8),
-            sc19::little-size(4)-unit(8), sc20::little-size(4)-unit(8),
-            sc21::little-size(4)-unit(8), sc22::little-size(4)-unit(8),
-            sc23::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+          <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+            sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
+            sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8),
+            sc8::little-size(4)-unit(8), sc9::little-size(4)-unit(8),
+            sc10::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
 
         scratch = scratch >>> 32
         {data, scratch}
@@ -962,11 +1129,26 @@ defmodule Example.Types do
     <<data::binary, scratch>>
   end
 
-  # read_rigid_body_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_rigid_body!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_rigid_body(Example.RigidBody.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_rigid_body(value) do
+    {:ok, write_rigid_body!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a RigidBody from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_rigid_body_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.RigidBody.t(), non_neg_integer()} | :error
   def read_rigid_body_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -974,72 +1156,15 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 449 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_position_x = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_position_y = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_position_z = f64_value(w)
+      if 449 > num_bits, do: throw(:invalid)
+      v_position_x = get_f64(data, 0)
+      v_position_y = get_f64(data, 64)
+      v_position_z = get_f64(data, 128)
       v_position = %Example.Vec3{x: v_position_x, y: v_position_y, z: v_position_z}
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_orientation_x = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_orientation_y = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_orientation_z = f64_value(w)
-      rv = rdw(data, bits_read, 49)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = v
-      rv = rd(data, bits_read, 33)
-      v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
-      w = w ||| v <<< 32
-      v_orientation_w = f64_value(w)
+      v_orientation_x = get_f64(data, 192)
+      v_orientation_y = get_f64(data, 256)
+      v_orientation_z = get_f64(data, 320)
+      v_orientation_w = get_f64(data, 384)
 
       v_orientation = %Example.Quat{
         x: v_orientation_x,
@@ -1048,38 +1173,32 @@ defmodule Example.Types do
         w: v_orientation_w
       }
 
-      v = rv >>> 32
-      bits_read = bits_read + 1
+      rv = rdw(data, 448, 49)
+      v = rv &&& 0x1
       v_at_rest = v == 1
 
       {bits_read, v_linear_velocity, v_angular_velocity} =
         if not v_at_rest do
-          if bits_read + 384 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 49)
+          if 833 > num_bits, do: throw(:invalid)
+          rv = rdw(data, 449, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 481, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_linear_velocity_x = f64_value(w)
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 513, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 545, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_linear_velocity_y = f64_value(w)
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 577, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 609, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_linear_velocity_z = f64_value(w)
 
@@ -1089,31 +1208,25 @@ defmodule Example.Types do
             z: v_linear_velocity_z
           }
 
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 641, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 673, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_angular_velocity_x = f64_value(w)
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 705, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 737, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_angular_velocity_y = f64_value(w)
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, 769, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rd(data, bits_read, 32)
+          rv = rd(data, 801, 32)
           v = rv
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
           v_angular_velocity_z = f64_value(w)
 
@@ -1123,8 +1236,10 @@ defmodule Example.Types do
             z: v_angular_velocity_z
           }
 
+          bits_read = 833
           {bits_read, v_linear_velocity, v_angular_velocity}
         else
+          bits_read = 449
           v_linear_velocity = zero_vec3()
           v_angular_velocity = zero_vec3()
           {bits_read, v_linear_velocity, v_angular_velocity}
@@ -1144,8 +1259,11 @@ defmodule Example.Types do
     end
   end
 
-  # read_rigid_body is read_rigid_body_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a RigidBody from the first num_bits of data: read_rigid_body_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_rigid_body(binary(), non_neg_integer()) :: {:ok, Example.RigidBody.t()} | :error
   def read_rigid_body(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_rigid_body_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1153,29 +1271,24 @@ defmodule Example.Types do
     end
   end
 
-  # measure_rigid_body is the exact wire bits write_rigid_body would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_rigid_body(value) do
-    bits = 0
-    bits = bits + 449
-
-    bits =
-      if not value.at_rest do
-        bits + 384
-      else
-        bits
-      end
-
-    bits
-  end
-
-  # input_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # input_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Input can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec input_max_bits() :: pos_integer()
   def input_max_bits, do: 168
+
+  @doc """
+  input_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec input_max_bytes() :: pos_integer()
   def input_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Input{}).
+  @doc """
+  The §5 zero form of Input: all-zero storage. Specified defaults live
+  only in construction (`%Example.Input{}`).
+  """
+  @spec zero_input() :: Example.Input.t()
   def zero_input do
     %Example.Input{
       stick_x: 0.0,
@@ -1194,12 +1307,13 @@ defmodule Example.Types do
     }
   end
 
-  # write_input packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_input(value) do
-    data = <<>>
-
+  @doc """
+  Packs a Input into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_input!(Example.Input.t()) :: binary()
+  def write_input!(value) do
     %{
       stick_x: value_stick_x,
       stick_y: value_stick_y,
@@ -1247,19 +1361,30 @@ defmodule Example.Types do
     v = if value_ping, do: 1, else: 0
     scratch = scratch ||| v <<< 39
 
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8),
-        scratch::little-size(5)-unit(8)>>
-
-    data
+    <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+      sc3::little-size(4)-unit(8), scratch::little-size(5)-unit(8)>>
   end
 
-  # read_input_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_input!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_input(Example.Input.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_input(value) do
+    {:ok, write_input!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Input from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_input_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Input.t(), non_neg_integer()} | :error
   def read_input_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1267,51 +1392,37 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 168 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 168 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_stick_x = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_stick_y = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_throttle = f32_value(v)
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 96, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_yaw = f32_value(v)
-      rv = rdw(data, bits_read, 40)
+      rv = rdw(data, 128, 40)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_pitch = f32_value(v)
       v = rv >>> 32 &&& 0x1
-      bits_read = bits_read + 1
       v_fire = v == 1
       v = rv >>> 33 &&& 0x1
-      bits_read = bits_read + 1
       v_alt_fire = v == 1
       v = rv >>> 34 &&& 0x1
-      bits_read = bits_read + 1
       v_boost = v == 1
       v = rv >>> 35 &&& 0x1
-      bits_read = bits_read + 1
       v_brake = v == 1
       v = rv >>> 36 &&& 0x1
-      bits_read = bits_read + 1
       v_aim = v == 1
       v = rv >>> 37 &&& 0x1
-      bits_read = bits_read + 1
       v_lock_on = v == 1
       v = rv >>> 38 &&& 0x1
-      bits_read = bits_read + 1
       v_zoom = v == 1
       v = rv >>> 39
-      bits_read = bits_read + 1
       v_ping = v == 1
 
       value = %Example.Input{
@@ -1330,14 +1441,17 @@ defmodule Example.Types do
         ping: v_ping
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 168}
     catch
       :invalid -> :error
     end
   end
 
-  # read_input is read_input_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Input from the first num_bits of data: read_input_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_input(binary(), non_neg_integer()) :: {:ok, Example.Input.t()} | :error
   def read_input(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_input_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1345,27 +1459,35 @@ defmodule Example.Types do
     end
   end
 
-  # measure_input is the exact wire bits write_input would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_input(_value), do: 168
-
-  # input_packet_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # input_packet_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a InputPacket can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec input_packet_max_bits() :: pos_integer()
   def input_packet_max_bits, do: 2837
+
+  @doc """
+  input_packet_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec input_packet_max_bytes() :: pos_integer()
   def input_packet_max_bytes, do: 360
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.InputPacket{}).
+  @doc """
+  The §5 zero form of InputPacket: all-zero storage. Specified defaults live
+  only in construction (`%Example.InputPacket{}`).
+  """
+  @spec zero_input_packet() :: Example.InputPacket.t()
   def zero_input_packet do
     %Example.InputPacket{synchronize_sequence: 0, current_frame: 0, start_frame: 0, inputs: []}
   end
 
-  # write_input_packet packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_input_packet(value) do
-    data = <<>>
-
+  @doc """
+  Packs a InputPacket into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_input_packet!(Example.InputPacket.t()) :: binary()
+  def write_input_packet!(value) do
     %{
       synchronize_sequence: value_synchronize_sequence,
       current_frame: value_current_frame,
@@ -1396,8 +1518,8 @@ defmodule Example.Types do
     scratch = scratch ||| v <<< 32
 
     data =
-      <<data::binary, sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
+      <<sc0::little-size(6)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        scratch::little-size(4)-unit(8)>>
 
     scratch = scratch >>> 32
     scratch_bits = 5
@@ -1408,11 +1530,26 @@ defmodule Example.Types do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_input_packet_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_input_packet!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_input_packet(Example.InputPacket.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_input_packet(value) do
+    {:ok, write_input_packet!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a InputPacket from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_input_packet_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.InputPacket.t(), non_neg_integer()} | :error
   def read_input_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1420,38 +1557,31 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 144 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 144 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFF
-      bits_read = bits_read + 16
       v_synchronize_sequence = v
       v = rv >>> 16 &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 48, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_current_frame = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 80, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 112, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_start_frame = w
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 149 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 144, 49)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       # the count guards the loop — reject, never clamp
       if v > 16, do: throw(:invalid)
       n = v
-      if bits_read + n * 168 > num_bits, do: throw(:invalid)
-      {bits_read, v_inputs} = r_input_packet_inputs(n, [], data, num_bits, bits_read)
+      if 149 + n * 168 > num_bits, do: throw(:invalid)
+      {bits_read, v_inputs} = r_input_packet_inputs(n, [], data, num_bits, 149)
 
       value = %Example.InputPacket{
         synchronize_sequence: v_synchronize_sequence,
@@ -1466,8 +1596,11 @@ defmodule Example.Types do
     end
   end
 
-  # read_input_packet is read_input_packet_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a InputPacket from the first num_bits of data: read_input_packet_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_input_packet(binary(), non_neg_integer()) :: {:ok, Example.InputPacket.t()} | :error
   def read_input_packet(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_input_packet_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1475,43 +1608,46 @@ defmodule Example.Types do
     end
   end
 
-  # measure_input_packet is the exact wire bits write_input_packet would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_input_packet(value) do
-    bits = 0
-    bits = bits + 149
-    bits = bits + length(value.inputs) * 168
-    bits
-  end
-
-  # ship_create_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # ship_create_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ShipCreate can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec ship_create_max_bits() :: pos_integer()
   def ship_create_max_bits, do: 219
+
+  @doc """
+  ship_create_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec ship_create_max_bytes() :: pos_integer()
   def ship_create_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ShipCreate{}).
+  @doc """
+  The §5 zero form of ShipCreate: all-zero storage. Specified defaults live
+  only in construction (`%Example.ShipCreate{}`).
+  """
+  @spec zero_ship_create() :: Example.ShipCreate.t()
   def zero_ship_create do
     %Example.ShipCreate{
-      ship_type: 0,
+      ship_type: :none,
       position: zero_quantized_position(),
       rotation: zero_quantized_rotation(),
       linear_velocity: zero_quantized_velocity(),
       has_flags: false,
       flags: 0,
-      team: 0,
+      team: :none,
       health: 0,
       thrust: 0,
-      pending: 0
+      pending: :none
     }
   end
 
-  # write_ship_create packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_ship_create(value) do
-    data = <<>>
-
+  @doc """
+  Packs a ShipCreate into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_ship_create!(Example.ShipCreate.t()) :: binary()
+  def write_ship_create!(value) do
     %{
       ship_type: value_ship_type,
       position: value_position,
@@ -1524,15 +1660,7 @@ defmodule Example.Types do
       pending: value_pending
     } = value
 
-    if value_ship_type < 0 do
-      raise ArgumentError, "value.ship_type is below the wire minimum"
-    end
-
-    if value_ship_type > 5 do
-      raise ArgumentError, "value.ship_type is above the wire maximum"
-    end
-
-    v = value_ship_type
+    v = Example.ShipType.to_int(value_ship_type)
     scratch = v
     %{x: value_position_x, y: value_position_y, z: value_position_z} = value_position
 
@@ -1670,9 +1798,8 @@ defmodule Example.Types do
     scratch = scratch ||| v <<< 27
 
     data =
-      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(6)-unit(8),
-        sc2::little-size(6)-unit(8), sc3::little-size(6)-unit(8),
-        scratch::little-size(3)-unit(8)>>
+      <<sc0::little-size(3)-unit(8), sc1::little-size(6)-unit(8), sc2::little-size(6)-unit(8),
+        sc3::little-size(6)-unit(8), scratch::little-size(3)-unit(8)>>
 
     scratch = scratch >>> 24
 
@@ -1693,15 +1820,7 @@ defmodule Example.Types do
         {data, scratch, scratch_bits}
       end
 
-    if value_team < 0 do
-      raise ArgumentError, "value.team is below the wire minimum"
-    end
-
-    if value_team > 2 do
-      raise ArgumentError, "value.team is above the wire maximum"
-    end
-
-    v = value_team
+    v = Example.Team.to_int(value_team)
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
 
@@ -1728,15 +1847,7 @@ defmodule Example.Types do
     v = value_thrust
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 7
-
-    if value_pending < 0 do
-      raise ArgumentError, "value.pending is below the wire minimum"
-    end
-
-    if value_pending > 0 do
-      raise ArgumentError, "value.pending is above the wire maximum"
-    end
-
+    Example.Pending.to_int(value_pending)
     flush = scratch_bits >>> 3
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
@@ -1744,11 +1855,26 @@ defmodule Example.Types do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_ship_create_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_ship_create!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_ship_create(Example.ShipCreate.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_ship_create(value) do
+    {:ok, write_ship_create!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ShipCreate from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_ship_create_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ShipCreate.t(), non_neg_integer()} | :error
   def read_ship_create_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1756,50 +1882,41 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 196 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 196 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # headroom above the wire range is refused
       if v > 5, do: throw(:invalid)
-      v_ship_type = v
+      {:ok, v_ship_type} = Example.ShipType.from_int(v)
       v = rv >>> 3 &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_x = v - 8_388_608
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 28, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_y = v - 8_388_608
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 53, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 16_777_216, do: throw(:invalid)
       v_position_z = v - 8_388_608
       v_position = %Example.QuantizedPosition{x: v_position_x, y: v_position_y, z: v_position_z}
       v = rv >>> 25 &&& 0xFFF
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_x = v - 1024
       v = rv >>> 37
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_y = v - 1024
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 102, 49)
       v = rv &&& 0xFFF
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_z = v - 1024
       v = rv >>> 12 &&& 0xFFF
-      bits_read = bits_read + 12
       # a smuggled offset is refused
       if v > 2048, do: throw(:invalid)
       v_rotation_w = v - 1024
@@ -1812,18 +1929,15 @@ defmodule Example.Types do
       }
 
       v = rv >>> 24 &&& 0x7FFFFF
-      bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_linear_velocity_x = v - 2_097_152
-      rv = rdw(data, bits_read, 47)
+      rv = rdw(data, 149, 47)
       v = rv &&& 0x7FFFFF
-      bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_linear_velocity_y = v - 2_097_152
       v = rv >>> 23 &&& 0x7FFFFF
-      bits_read = bits_read + 23
       # a smuggled offset is refused
       if v > 4_194_304, do: throw(:invalid)
       v_linear_velocity_z = v - 2_097_152
@@ -1835,18 +1949,18 @@ defmodule Example.Types do
       }
 
       v = rv >>> 46
-      bits_read = bits_read + 1
       v_has_flags = v == 1
 
       {bits_read, v_flags} =
         if v_has_flags do
-          if bits_read + 4 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 4)
+          if 200 > num_bits, do: throw(:invalid)
+          rv = rd(data, 196, 4)
           v = rv
-          bits_read = bits_read + 4
           v_flags = v
+          bits_read = 200
           {bits_read, v_flags}
         else
+          bits_read = 196
           v_flags = 0
           {bits_read, v_flags}
         end
@@ -1854,21 +1968,18 @@ defmodule Example.Types do
       if bits_read + 19 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 19)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # headroom above the wire range is refused
       if v > 2, do: throw(:invalid)
-      v_team = v
+      {:ok, v_team} = Example.Team.from_int(v)
       v = rv >>> 2 &&& 0x3FF
-      bits_read = bits_read + 10
       # a smuggled offset is refused
       if v > 1000, do: throw(:invalid)
       v_health = v
       v = rv >>> 12
-      bits_read = bits_read + 7
       # a smuggled offset is refused
       if v > 100, do: throw(:invalid)
       v_thrust = v
-      v_pending = 0
+      v_pending = :none
 
       value = %Example.ShipCreate{
         ship_type: v_ship_type,
@@ -1883,14 +1994,17 @@ defmodule Example.Types do
         pending: v_pending
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 19}
     catch
       :invalid -> :error
     end
   end
 
-  # read_ship_create is read_ship_create_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ShipCreate from the first num_bits of data: read_ship_create_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_ship_create(binary(), non_neg_integer()) :: {:ok, Example.ShipCreate.t()} | :error
   def read_ship_create(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_ship_create_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1898,36 +2012,33 @@ defmodule Example.Types do
     end
   end
 
-  # measure_ship_create is the exact wire bits write_ship_create would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_ship_create(value) do
-    bits = 0
-    bits = bits + 196
-
-    bits =
-      if value.has_flags do
-        bits + 4
-      else
-        bits
-      end
-
-    bits + 19
-  end
-
-  # expression_probe_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # expression_probe_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ExpressionProbe can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec expression_probe_max_bits() :: pos_integer()
   def expression_probe_max_bits, do: 16
+
+  @doc """
+  expression_probe_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec expression_probe_max_bytes() :: pos_integer()
   def expression_probe_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ExpressionProbe{}).
+  @doc """
+  The §5 zero form of ExpressionProbe: all-zero storage. Specified defaults live
+  only in construction (`%Example.ExpressionProbe{}`).
+  """
+  @spec zero_expression_probe() :: Example.ExpressionProbe.t()
   def zero_expression_probe, do: %Example.ExpressionProbe{hardpoint_index: 0, spin_rate: 0}
 
-  # write_expression_probe packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_expression_probe(value) do
-    data = <<>>
+  @doc """
+  Packs a ExpressionProbe into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_expression_probe!(Example.ExpressionProbe.t()) :: binary()
+  def write_expression_probe!(value) do
     %{hardpoint_index: value_hardpoint_index, spin_rate: value_spin_rate} = value
 
     if value_hardpoint_index < 0 do
@@ -1951,15 +2062,30 @@ defmodule Example.Types do
 
     v = value_spin_rate - 1024
     scratch = scratch ||| v <<< 5
-    data = <<data::binary, scratch::little-size(2)-unit(8)>>
-    data
+    <<scratch::little-size(2)-unit(8)>>
   end
 
-  # read_expression_probe_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_expression_probe!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_expression_probe(Example.ExpressionProbe.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_expression_probe(value) do
+    {:ok, write_expression_probe!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ExpressionProbe from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_expression_probe_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ExpressionProbe.t(), non_neg_integer()} | :error
   def read_expression_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1967,26 +2093,27 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 16 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 16)
+      if 16 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 16)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       v_hardpoint_index = v
       v = rv >>> 5
-      bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 1024, do: throw(:invalid)
       v_spin_rate = v + 1024
       value = %Example.ExpressionProbe{hardpoint_index: v_hardpoint_index, spin_rate: v_spin_rate}
-      {:ok, value, bits_read}
+      {:ok, value, 16}
     catch
       :invalid -> :error
     end
   end
 
-  # read_expression_probe is read_expression_probe_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ExpressionProbe from the first num_bits of data: read_expression_probe_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_expression_probe(binary(), non_neg_integer()) ::
+          {:ok, Example.ExpressionProbe.t()} | :error
   def read_expression_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_expression_probe_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1994,21 +2121,32 @@ defmodule Example.Types do
     end
   end
 
-  # measure_expression_probe is the exact wire bits write_expression_probe would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_expression_probe(_value), do: 16
-
+  @doc "The constant FloorLimit."
+  @spec floor_limit() :: integer()
   def floor_limit, do: -9_223_372_036_854_775_808
 
+  @doc "The constant CeilingCount."
+  @spec ceiling_count() :: integer()
   def ceiling_count, do: 18_446_744_073_709_551_615
 
-  # extreme_probe_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # extreme_probe_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ExtremeProbe can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec extreme_probe_max_bits() :: pos_integer()
   def extreme_probe_max_bits, do: 320
+
+  @doc """
+  extreme_probe_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec extreme_probe_max_bytes() :: pos_integer()
   def extreme_probe_max_bytes, do: 40
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ExtremeProbe{}).
+  @doc """
+  The §5 zero form of ExtremeProbe: all-zero storage. Specified defaults live
+  only in construction (`%Example.ExtremeProbe{}`).
+  """
+  @spec zero_extreme_probe() :: Example.ExtremeProbe.t()
   def zero_extreme_probe do
     %Example.ExtremeProbe{
       floor_bound: 0,
@@ -2019,12 +2157,13 @@ defmodule Example.Types do
     }
   end
 
-  # write_extreme_probe packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_extreme_probe(value) do
-    data = <<>>
-
+  @doc """
+  Packs a ExtremeProbe into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_extreme_probe!(Example.ExtremeProbe.t()) :: binary()
+  def write_extreme_probe!(value) do
     %{
       floor_bound: value_floor_bound,
       doubled_floor: value_doubled_floor,
@@ -2092,20 +2231,32 @@ defmodule Example.Types do
     sc8 = scratch
     scratch = v
 
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8),
-        sc8::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
-
-    data
+    <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+      sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8), sc5::little-size(4)-unit(8),
+      sc6::little-size(4)-unit(8), sc7::little-size(4)-unit(8), sc8::little-size(4)-unit(8),
+      scratch::little-size(4)-unit(8)>>
   end
 
-  # read_extreme_probe_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_extreme_probe!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_extreme_probe(Example.ExtremeProbe.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_extreme_probe(value) do
+    {:ok, write_extreme_probe!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ExtremeProbe from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_extreme_probe_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ExtremeProbe.t(), non_neg_integer()} | :error
   def read_extreme_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -2113,48 +2264,39 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 320 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 320 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 9_223_372_036_854_775_908, do: throw(:invalid)
       v_floor_bound = w - 9_223_372_036_854_775_808
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 96, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 9_223_372_036_854_775_908, do: throw(:invalid)
       v_doubled_floor = w - 9_223_372_036_854_775_808
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 128, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 160, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 18_446_744_073_709_551_614, do: throw(:invalid)
       v_ceiling_range = w + 1
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 192, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 224, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
 
       v_floor_default =
@@ -2164,13 +2306,11 @@ defmodule Example.Types do
           w
         end
 
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 256, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 288, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_ceiling_default = w
 
@@ -2182,14 +2322,18 @@ defmodule Example.Types do
         ceiling_default: v_ceiling_default
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 320}
     catch
       :invalid -> :error
     end
   end
 
-  # read_extreme_probe is read_extreme_probe_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ExtremeProbe from the first num_bits of data: read_extreme_probe_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_extreme_probe(binary(), non_neg_integer()) ::
+          {:ok, Example.ExtremeProbe.t()} | :error
   def read_extreme_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_extreme_probe_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -2197,27 +2341,35 @@ defmodule Example.Types do
     end
   end
 
-  # measure_extreme_probe is the exact wire bits write_extreme_probe would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_extreme_probe(_value), do: 320
-
-  # extreme_row_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # extreme_row_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ExtremeRow can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec extreme_row_max_bits() :: pos_integer()
   def extreme_row_max_bits, do: 256
+
+  @doc """
+  extreme_row_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec extreme_row_max_bytes() :: pos_integer()
   def extreme_row_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ExtremeRow{}).
+  @doc """
+  The §5 zero form of ExtremeRow: all-zero storage. Specified defaults live
+  only in construction (`%Example.ExtremeRow{}`).
+  """
+  @spec zero_extreme_row() :: Example.ExtremeRow.t()
   def zero_extreme_row do
     %Example.ExtremeRow{clamped_floor: 0, clamped_ceiling: 0, floor_def: 0, ceiling_def: 0}
   end
 
-  # write_extreme_row packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_extreme_row(value) do
-    data = <<>>
-
+  @doc """
+  Packs a ExtremeRow into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_extreme_row!(Example.ExtremeRow.t()) :: binary()
+  def write_extreme_row!(value) do
     %{
       clamped_floor: value_clamped_floor,
       clamped_ceiling: value_clamped_ceiling,
@@ -2268,20 +2420,31 @@ defmodule Example.Types do
     sc6 = scratch
     scratch = v
 
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8),
-        scratch::little-size(4)-unit(8)>>
-
-    data
+    <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+      sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8), sc5::little-size(4)-unit(8),
+      sc6::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
   end
 
-  # read_extreme_row_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_extreme_row!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_extreme_row(Example.ExtremeRow.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_extreme_row(value) do
+    {:ok, write_extreme_row!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ExtremeRow from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_extreme_row_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ExtremeRow.t(), non_neg_integer()} | :error
   def read_extreme_row_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -2289,46 +2452,37 @@ defmodule Example.Types do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 256 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 256 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 9_223_372_036_854_775_908, do: throw(:invalid)
       v_clamped_floor = w - 9_223_372_036_854_775_808
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 96, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 18_446_744_073_709_551_613, do: throw(:invalid)
       v_clamped_ceiling = w + 1
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 128, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 160, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_floor_def = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 192, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 224, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       v_ceiling_def = w
 
@@ -2339,24 +2493,23 @@ defmodule Example.Types do
         ceiling_def: v_ceiling_def
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 256}
     catch
       :invalid -> :error
     end
   end
 
-  # read_extreme_row is read_extreme_row_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ExtremeRow from the first num_bits of data: read_extreme_row_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_extreme_row(binary(), non_neg_integer()) :: {:ok, Example.ExtremeRow.t()} | :error
   def read_extreme_row(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_extreme_row_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
   end
-
-  # measure_extreme_row is the exact wire bits write_extreme_row would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_extreme_row(_value), do: 256
 
   defp w_input_packet_inputs([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -2450,47 +2603,34 @@ defmodule Example.Types do
   defp r_input_packet_inputs(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_stick_x = f32_value(v)
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 32, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_stick_y = f32_value(v)
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 64, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_throttle = f32_value(v)
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 96, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_yaw = f32_value(v)
-    rv = rdw(data, bits_read, 40)
+    rv = rdw(data, bits_read + 128, 40)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     e_pitch = f32_value(v)
     v = rv >>> 32 &&& 0x1
-    bits_read = bits_read + 1
     e_fire = v == 1
     v = rv >>> 33 &&& 0x1
-    bits_read = bits_read + 1
     e_alt_fire = v == 1
     v = rv >>> 34 &&& 0x1
-    bits_read = bits_read + 1
     e_boost = v == 1
     v = rv >>> 35 &&& 0x1
-    bits_read = bits_read + 1
     e_brake = v == 1
     v = rv >>> 36 &&& 0x1
-    bits_read = bits_read + 1
     e_aim = v == 1
     v = rv >>> 37 &&& 0x1
-    bits_read = bits_read + 1
     e_lock_on = v == 1
     v = rv >>> 38 &&& 0x1
-    bits_read = bits_read + 1
     e_zoom = v == 1
     v = rv >>> 39
-    bits_read = bits_read + 1
     e_ping = v == 1
 
     e = %Example.Input{
@@ -2509,96 +2649,6 @@ defmodule Example.Types do
       ping: e_ping
     }
 
-    r_input_packet_inputs(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The 32-bit IEEE-754 pattern of a float value for the write path — a
-  # non-finite pattern travels as {:nonfinite, bits}, since no BEAM float
-  # term can hold it (the serialize.elixir convention). Caller errors raise;
-  # the checks are O(1).
-  defp f32_bits(value) when is_float(value) do
-    <<bits::little-32>> = <<value::float-32-little>>
-
-    if (bits >>> 23 &&& 0xFF) == 0xFF do
-      raise ArgumentError, "float overflows float32; write {:nonfinite, bits} instead"
-    end
-
-    bits
-  end
-
-  defp f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
-    end
-
-    bits
-  end
-
-  # The value of a 32-bit pattern for the read path: the float for a finite
-  # pattern, {:nonfinite, bits} otherwise. Never raises — the bits are
-  # untrusted.
-  defp f32_value(bits) do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<value::float-32-little>> = <<bits::little-32>>
-      value
-    else
-      {:nonfinite, bits}
-    end
-  end
-
-  # The 64-bit IEEE-754 pattern of a double value and its inverse — the
-  # same bit-transparent contract as f32, at width 64.
-  defp f64_bits(value) when is_float(value) do
-    <<bits::little-64>> = <<value::float-64-little>>
-    bits
-  end
-
-  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
-
-    bits
-  end
-
-  defp f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
-    end
+    r_input_packet_inputs(remaining - 1, [e | acc], data, num_bits, bits_read + 168)
   end
 end

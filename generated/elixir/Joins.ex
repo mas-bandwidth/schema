@@ -6,6 +6,13 @@
 
 # type ArmsAgree
 defmodule Example.ArmsAgree do
+  @moduledoc """
+  The type ArmsAgree. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, flag: boolean(), a: 0..2047, b: 0..2047, tail: 0..127}
+
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
@@ -13,6 +20,13 @@ end
 
 # type ArmsDisagree
 defmodule Example.ArmsDisagree do
+  @moduledoc """
+  The type ArmsDisagree. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, flag: boolean(), a: 0..2047, b: 0..7, tail: 0..127}
+
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, b: 0, tail: 0
@@ -20,12 +34,34 @@ end
 
 # type ArmEmpty
 defmodule Example.ArmEmpty do
+  @moduledoc """
+  The type ArmEmpty. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, flag: boolean(), a: 0..524_287, tail: 0..127}
+
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   defstruct lead: 0, flag: false, a: 0, tail: 0
 end
 
 # type ArmsNested
 defmodule Example.ArmsNested do
+  @moduledoc """
+  The type ArmsNested. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{
+          lead: 0..7,
+          outer: boolean(),
+          inner: boolean(),
+          x: 0..536_870_911,
+          y: 0..31,
+          z: 0..8191,
+          tail: 0..63
+        }
+
   # outer — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # outer && inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # outer && !inner — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -35,6 +71,13 @@ end
 
 # type ArmAlign
 defmodule Example.ArmAlign do
+  @moduledoc """
+  The type ArmAlign. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, flag: boolean(), s: String.t(), b: 0..1023, tail: 0..127}
+
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # s: string(4) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -43,6 +86,13 @@ end
 
 # type ArmArray
 defmodule Example.ArmArray do
+  @moduledoc """
+  The type ArmArray. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, flag: boolean(), items: [0..8191], b: 0..511, tail: 0..127}
+
   # flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
   # items: counted array — a list of up to 3 elements; wire [0, 8191]
   # !flag — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
@@ -51,46 +101,112 @@ end
 
 # type Narrow
 defmodule Example.Narrow do
+  @moduledoc """
+  The type Narrow. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{n: 0..7}
+
   defstruct n: 0
 end
 
 # type Wide
 defmodule Example.Wide do
+  @moduledoc """
+  The type Wide. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{w: 0..137_438_953_471}
+
   defstruct w: 0
 end
 
 # UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
 defmodule Example.UnevenType do
-  def none, do: 0
-  def narrow, do: 1
-  def wide, do: 2
-  # the declared variant count (SPEC §4.2)
+  @moduledoc "The tag of union Uneven: :none, then one atom per arm in declared order."
+
+  @type t :: :none | :narrow | :wide
+
+  @doc "The wire value of a UnevenType value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..2
+  def to_int(:none), do: 0
+  def to_int(:narrow), do: 1
+  def to_int(:wide), do: 2
+
+  def to_int(v) do
+    raise ArgumentError, "not a UnevenType value: #{inspect(v)}"
+  end
+
+  @doc "The UnevenType value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :narrow}
+  def from_int(2), do: {:ok, :wide}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 2
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 2
 end
 
-# Uneven — at most one of the arms; type says which. Construction is the empty
-# union (None). A read builds the selected arm from the wire; unselected
-# arms hold their construction form (SPEC §4.8 leaves them unspecified).
-# Consumers read the selected arm only.
+# Uneven — nil (None), {:arm, payload}, or a payload-free arm's bare atom (SPEC §4.8)
 defmodule Example.Uneven do
-  defstruct type: 0, narrow: %Example.Narrow{}, wide: %Example.Wide{}
+  @moduledoc """
+  The union Uneven: `nil` is None, an arm with a payload is
+  `{:arm, payload}`, and a payload-free arm is its bare atom.
+  """
+
+  @type t :: nil | {:narrow, Example.Narrow.t()} | {:wide, Example.Wide.t()}
 end
 
 # type HoldsUneven
 defmodule Example.HoldsUneven do
-  defstruct lead: 0, u: %Example.Uneven{}, tail: 0
+  @moduledoc """
+  The type HoldsUneven. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, u: Example.Uneven.t(), tail: 0..2047}
+
+  defstruct lead: 0, u: nil, tail: 0
 end
 
 # type ArrUneven
 defmodule Example.ArrUneven do
+  @moduledoc """
+  The type ArrUneven. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{lead: 0..31, items: [Example.Uneven.t()], tail: 0..7}
+
   # items: counted array — a list of up to 3 elements
   defstruct lead: 0, items: [], tail: 0
 end
 
 # type RegainAfterAlign
 defmodule Example.RegainAfterAlign do
+  @moduledoc """
+  The type RegainAfterAlign. Construction carries its specified defaults; the
+  codecs are in Example.Joins.
+  """
+
+  @type t :: %__MODULE__{
+          lead: 0..31,
+          items: [0..8191],
+          s: String.t(),
+          p: 0..4_294_967_295,
+          q: 0..536_870_911,
+          r: 0..524_287,
+          tail: 0..15
+        }
+
   # items: counted array — a list of up to 3 elements; wire [0, 8191]
   # s: string(4) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   defstruct lead: 0, items: [], s: <<>>, p: 0, q: 0, r: 0, tail: 0
@@ -99,31 +215,47 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Joins.schema.
 defmodule Example.Joins do
+  @moduledoc """
+  The file-scope surface of Joins.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
+  import Example.PacketRuntime, only: [rd: 3, rdw: 3]
 
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
-  # arms_agree_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arms_agree_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArmsAgree can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arms_agree_max_bits() :: pos_integer()
   def arms_agree_max_bits, do: 24
+
+  @doc """
+  arms_agree_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arms_agree_max_bytes() :: pos_integer()
   def arms_agree_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArmsAgree{}).
+  @doc """
+  The §5 zero form of ArmsAgree: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArmsAgree{}`).
+  """
+  @spec zero_arms_agree() :: Example.ArmsAgree.t()
   def zero_arms_agree, do: %Example.ArmsAgree{lead: 0, flag: false, a: 0, b: 0, tail: 0}
 
-  # write_arms_agree packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arms_agree(value) do
-    data = <<>>
+  @doc """
+  Packs a ArmsAgree into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arms_agree!(Example.ArmsAgree.t()) :: binary()
+  def write_arms_agree!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
+    data = <<>>
 
     {data, scratch} =
       if value_flag do
@@ -142,15 +274,29 @@ defmodule Example.Joins do
 
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< 1
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
-    data
+    <<data::binary, scratch::little-size(1)-unit(8)>>
   end
 
-  # read_arms_agree_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arms_agree!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arms_agree(Example.ArmsAgree.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arms_agree(value) do
+    {:ok, write_arms_agree!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArmsAgree from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arms_agree_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArmsAgree.t(), non_neg_integer()} | :error
   def read_arms_agree_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -158,46 +304,45 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 24 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 24)
+      if 24 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 24)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       v_lead = v
       v = rv >>> 5 &&& 0x1
-      bits_read = bits_read + 1
       v_flag = v == 1
 
       {bits_read, v_a, v_b} =
         if v_flag do
-          rv = rd(data, bits_read, 11)
+          rv = rd(data, 6, 11)
           v = rv
-          bits_read = bits_read + 11
           v_a = v
+          bits_read = 17
           v_b = 0
           {bits_read, v_a, v_b}
         else
-          rv = rd(data, bits_read, 11)
+          rv = rd(data, 6, 11)
           v = rv
-          bits_read = bits_read + 11
           v_b = v
+          bits_read = 17
           v_a = 0
           {bits_read, v_a, v_b}
         end
 
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7F
-      bits_read = bits_read + 7
       v_tail = v
       value = %Example.ArmsAgree{lead: v_lead, flag: v_flag, a: v_a, b: v_b, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 7}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arms_agree is read_arms_agree_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArmsAgree from the first num_bits of data: read_arms_agree_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arms_agree(binary(), non_neg_integer()) :: {:ok, Example.ArmsAgree.t()} | :error
   def read_arms_agree(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_agree_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -205,29 +350,39 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_arms_agree is the exact wire bits write_arms_agree would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arms_agree(_value), do: 24
-
-  # arms_disagree_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arms_disagree_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArmsDisagree can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arms_disagree_max_bits() :: pos_integer()
   def arms_disagree_max_bits, do: 24
+
+  @doc """
+  arms_disagree_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arms_disagree_max_bytes() :: pos_integer()
   def arms_disagree_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArmsDisagree{}).
+  @doc """
+  The §5 zero form of ArmsDisagree: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArmsDisagree{}`).
+  """
+  @spec zero_arms_disagree() :: Example.ArmsDisagree.t()
   def zero_arms_disagree, do: %Example.ArmsDisagree{lead: 0, flag: false, a: 0, b: 0, tail: 0}
 
-  # write_arms_disagree packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arms_disagree(value) do
-    data = <<>>
+  @doc """
+  Packs a ArmsDisagree into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arms_disagree!(Example.ArmsDisagree.t()) :: binary()
+  def write_arms_disagree!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
+    data = <<>>
 
     {data, scratch} =
       if value_flag do
@@ -246,15 +401,29 @@ defmodule Example.Joins do
 
     v = value_tail &&& 0x7F
     scratch = scratch ||| v <<< 1
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
-    data
+    <<data::binary, scratch::little-size(1)-unit(8)>>
   end
 
-  # read_arms_disagree_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arms_disagree!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arms_disagree(Example.ArmsDisagree.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arms_disagree(value) do
+    {:ok, write_arms_disagree!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArmsDisagree from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arms_disagree_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArmsDisagree.t(), non_neg_integer()} | :error
   def read_arms_disagree_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -262,31 +431,28 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 6 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 6)
+      if 6 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 6)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       v_lead = v
       v = rv >>> 5
-      bits_read = bits_read + 1
       v_flag = v == 1
 
       {bits_read, v_a, v_b} =
         if v_flag do
-          if bits_read + 11 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 11)
+          if 17 > num_bits, do: throw(:invalid)
+          rv = rd(data, 6, 11)
           v = rv
-          bits_read = bits_read + 11
           v_a = v
+          bits_read = 17
           v_b = 0
           {bits_read, v_a, v_b}
         else
-          if bits_read + 3 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 3)
+          if 9 > num_bits, do: throw(:invalid)
+          rv = rd(data, 6, 3)
           v = rv
-          bits_read = bits_read + 3
           v_b = v
+          bits_read = 9
           v_a = 0
           {bits_read, v_a, v_b}
         end
@@ -294,17 +460,20 @@ defmodule Example.Joins do
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 7)
       v = rv
-      bits_read = bits_read + 7
       v_tail = v
       value = %Example.ArmsDisagree{lead: v_lead, flag: v_flag, a: v_a, b: v_b, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 7}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arms_disagree is read_arms_disagree_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArmsDisagree from the first num_bits of data: read_arms_disagree_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arms_disagree(binary(), non_neg_integer()) ::
+          {:ok, Example.ArmsDisagree.t()} | :error
   def read_arms_disagree(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_disagree_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -312,41 +481,39 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_arms_disagree is the exact wire bits write_arms_disagree would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arms_disagree(value) do
-    bits = 0
-    bits = bits + 6
-
-    bits =
-      if value.flag do
-        bits + 11
-      else
-        bits + 3
-      end
-
-    bits + 7
-  end
-
-  # arm_empty_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arm_empty_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArmEmpty can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arm_empty_max_bits() :: pos_integer()
   def arm_empty_max_bits, do: 32
+
+  @doc """
+  arm_empty_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arm_empty_max_bytes() :: pos_integer()
   def arm_empty_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArmEmpty{}).
+  @doc """
+  The §5 zero form of ArmEmpty: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArmEmpty{}`).
+  """
+  @spec zero_arm_empty() :: Example.ArmEmpty.t()
   def zero_arm_empty, do: %Example.ArmEmpty{lead: 0, flag: false, a: 0, tail: 0}
 
-  # write_arm_empty packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arm_empty(value) do
-    data = <<>>
+  @doc """
+  Packs a ArmEmpty into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arm_empty!(Example.ArmEmpty.t()) :: binary()
+  def write_arm_empty!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
+    data = <<>>
 
     {data, scratch, scratch_bits} =
       if value_flag do
@@ -371,11 +538,26 @@ defmodule Example.Joins do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_arm_empty_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arm_empty!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arm_empty(Example.ArmEmpty.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arm_empty(value) do
+    {:ok, write_arm_empty!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArmEmpty from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arm_empty_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArmEmpty.t(), non_neg_integer()} | :error
   def read_arm_empty_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -383,25 +565,23 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 6 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 6)
+      if 6 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 6)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       v_lead = v
       v = rv >>> 5
-      bits_read = bits_read + 1
       v_flag = v == 1
 
       {bits_read, v_a} =
         if v_flag do
-          if bits_read + 19 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 19)
+          if 25 > num_bits, do: throw(:invalid)
+          rv = rd(data, 6, 19)
           v = rv
-          bits_read = bits_read + 19
           v_a = v
+          bits_read = 25
           {bits_read, v_a}
         else
+          bits_read = 6
           v_a = 0
           {bits_read, v_a}
         end
@@ -409,17 +589,19 @@ defmodule Example.Joins do
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 7)
       v = rv
-      bits_read = bits_read + 7
       v_tail = v
       value = %Example.ArmEmpty{lead: v_lead, flag: v_flag, a: v_a, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 7}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arm_empty is read_arm_empty_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArmEmpty from the first num_bits of data: read_arm_empty_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arm_empty(binary(), non_neg_integer()) :: {:ok, Example.ArmEmpty.t()} | :error
   def read_arm_empty(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_empty_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -427,43 +609,41 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_arm_empty is the exact wire bits write_arm_empty would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arm_empty(value) do
-    bits = 0
-    bits = bits + 6
-
-    bits =
-      if value.flag do
-        bits + 19
-      else
-        bits
-      end
-
-    bits + 7
-  end
-
-  # arms_nested_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arms_nested_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArmsNested can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arms_nested_max_bits() :: pos_integer()
   def arms_nested_max_bits, do: 40
+
+  @doc """
+  arms_nested_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arms_nested_max_bytes() :: pos_integer()
   def arms_nested_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArmsNested{}).
+  @doc """
+  The §5 zero form of ArmsNested: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArmsNested{}`).
+  """
+  @spec zero_arms_nested() :: Example.ArmsNested.t()
   def zero_arms_nested do
     %Example.ArmsNested{lead: 0, outer: false, inner: false, x: 0, y: 0, z: 0, tail: 0}
   end
 
-  # write_arms_nested packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arms_nested(value) do
-    data = <<>>
+  @doc """
+  Packs a ArmsNested into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arms_nested!(Example.ArmsNested.t()) :: binary()
+  def write_arms_nested!(value) do
     %{lead: value_lead, outer: value_outer, tail: value_tail} = value
     v = value_lead &&& 0x7
     scratch = v
     v = if value_outer, do: 1, else: 0
     scratch = scratch ||| v <<< 3
+    data = <<>>
 
     {data, scratch, scratch_bits} =
       if value_outer do
@@ -506,11 +686,26 @@ defmodule Example.Joins do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_arms_nested_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arms_nested!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arms_nested(Example.ArmsNested.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arms_nested(value) do
+    {:ok, write_arms_nested!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArmsNested from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arms_nested_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArmsNested.t(), non_neg_integer()} | :error
   def read_arms_nested_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -518,39 +713,35 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 4 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 4)
+      if 4 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 4)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       v_lead = v
       v = rv >>> 3
-      bits_read = bits_read + 1
       v_outer = v == 1
 
       {bits_read, v_inner, v_x, v_y, v_z} =
         if v_outer do
-          if bits_read + 1 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 1)
+          if 5 > num_bits, do: throw(:invalid)
+          rv = rd(data, 4, 1)
           v = rv
-          bits_read = bits_read + 1
           v_inner = v == 1
 
           {bits_read, v_x, v_y} =
             if v_inner do
-              if bits_read + 29 > num_bits, do: throw(:invalid)
-              rv = rd(data, bits_read, 29)
+              if 34 > num_bits, do: throw(:invalid)
+              rv = rd(data, 5, 29)
               v = rv
-              bits_read = bits_read + 29
               v_x = v
+              bits_read = 34
               v_y = 0
               {bits_read, v_x, v_y}
             else
-              if bits_read + 5 > num_bits, do: throw(:invalid)
-              rv = rd(data, bits_read, 5)
+              if 10 > num_bits, do: throw(:invalid)
+              rv = rd(data, 5, 5)
               v = rv
-              bits_read = bits_read + 5
               v_y = v
+              bits_read = 10
               v_x = 0
               {bits_read, v_x, v_y}
             end
@@ -558,11 +749,11 @@ defmodule Example.Joins do
           v_z = 0
           {bits_read, v_inner, v_x, v_y, v_z}
         else
-          if bits_read + 13 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 13)
+          if 17 > num_bits, do: throw(:invalid)
+          rv = rd(data, 4, 13)
           v = rv
-          bits_read = bits_read + 13
           v_z = v
+          bits_read = 17
           v_inner = false
           v_x = 0
           v_y = 0
@@ -572,7 +763,6 @@ defmodule Example.Joins do
       if bits_read + 6 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 6)
       v = rv
-      bits_read = bits_read + 6
       v_tail = v
 
       value = %Example.ArmsNested{
@@ -585,14 +775,17 @@ defmodule Example.Joins do
         tail: v_tail
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 6}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arms_nested is read_arms_nested_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArmsNested from the first num_bits of data: read_arms_nested_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arms_nested(binary(), non_neg_integer()) :: {:ok, Example.ArmsNested.t()} | :error
   def read_arms_nested(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arms_nested_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -600,50 +793,39 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_arms_nested is the exact wire bits write_arms_nested would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arms_nested(value) do
-    bits = 0
-    bits = bits + 4
-
-    bits =
-      if value.outer do
-        bits = bits + 1
-
-        bits =
-          if value.inner do
-            bits + 29
-          else
-            bits + 5
-          end
-
-        bits
-      else
-        bits + 13
-      end
-
-    bits + 6
-  end
-
-  # arm_align_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arm_align_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArmAlign can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arm_align_max_bits() :: pos_integer()
   def arm_align_max_bits, do: 55
+
+  @doc """
+  arm_align_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arm_align_max_bytes() :: pos_integer()
   def arm_align_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArmAlign{}).
+  @doc """
+  The §5 zero form of ArmAlign: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArmAlign{}`).
+  """
+  @spec zero_arm_align() :: Example.ArmAlign.t()
   def zero_arm_align, do: %Example.ArmAlign{lead: 0, flag: false, s: <<>>, b: 0, tail: 0}
 
-  # write_arm_align packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arm_align(value) do
-    data = <<>>
+  @doc """
+  Packs a ArmAlign into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arm_align!(Example.ArmAlign.t()) :: binary()
+  def write_arm_align!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
+    data = <<>>
 
     {data, scratch} =
       if value_flag do
@@ -675,11 +857,26 @@ defmodule Example.Joins do
     <<data::binary, scratch>>
   end
 
-  # read_arm_align_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arm_align!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arm_align(Example.ArmAlign.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arm_align(value) do
+    {:ok, write_arm_align!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArmAlign from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arm_align_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArmAlign.t(), non_neg_integer()} | :error
   def read_arm_align_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -687,42 +884,27 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 6 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 6)
+      if 6 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 6)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       v_lead = v
       v = rv >>> 5
-      bits_read = bits_read + 1
       v_flag = v == 1
 
       {bits_read, v_s, v_b} =
         if v_flag do
-          if bits_read + 3 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 49)
+          if 9 > num_bits, do: throw(:invalid)
+          rv = rdw(data, 6, 49)
           v = rv &&& 0x7
-          bits_read = bits_read + 3
           # the length guards the slice — reject, never clamp
           if v > 4, do: throw(:invalid)
           len = v
-          pad = 8 - (bits_read &&& 7) &&& 7
-
-          if pad != 0 do
-            if bits_read + pad > num_bits do
-              throw(:invalid)
-            end
-
-            if rd(data, bits_read, pad) != 0 do
-              # nonzero padding is refused (SPEC §4.3)
-              throw(:invalid)
-            end
-          end
-
-          bits_read = bits_read + pad
-          if bits_read + len * 8 > num_bits, do: throw(:invalid)
-          v_s = binary_part(data, bits_read >>> 3, len)
-          bits_read = bits_read + len * 8
+          if 16 > num_bits, do: throw(:invalid)
+          # nonzero padding is refused (SPEC §4.3)
+          if rd(data, 9, 7) != 0, do: throw(:invalid)
+          if 16 + len * 8 > num_bits, do: throw(:invalid)
+          v_s = binary_part(data, 2, len)
+          bits_read = 16 + len * 8
           # malformed UTF-8 is content the read refuses (SPEC §4.7)
           if not String.valid?(v_s), do: throw(:invalid)
           # an interior null is content the read refuses (SPEC §4.7)
@@ -730,11 +912,11 @@ defmodule Example.Joins do
           v_b = 0
           {bits_read, v_s, v_b}
         else
-          if bits_read + 10 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 10)
+          if 16 > num_bits, do: throw(:invalid)
+          rv = rd(data, 6, 10)
           v = rv
-          bits_read = bits_read + 10
           v_b = v
+          bits_read = 16
           v_s = <<>>
           {bits_read, v_s, v_b}
         end
@@ -742,17 +924,19 @@ defmodule Example.Joins do
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 7)
       v = rv
-      bits_read = bits_read + 7
       v_tail = v
       value = %Example.ArmAlign{lead: v_lead, flag: v_flag, s: v_s, b: v_b, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 7}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arm_align is read_arm_align_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArmAlign from the first num_bits of data: read_arm_align_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arm_align(binary(), non_neg_integer()) :: {:ok, Example.ArmAlign.t()} | :error
   def read_arm_align(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_align_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -760,44 +944,39 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_arm_align is the exact wire bits write_arm_align would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arm_align(value) do
-    bits = 0
-    bits = bits + 6
-
-    bits =
-      if value.flag do
-        bits = bits + 3
-        bits = bits + (8 - (bits &&& 7) &&& 7)
-        bits = bits + byte_size(value.s) * 8
-        bits
-      else
-        bits + 10
-      end
-
-    bits + 7
-  end
-
-  # arm_array_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arm_array_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArmArray can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arm_array_max_bits() :: pos_integer()
   def arm_array_max_bits, do: 54
+
+  @doc """
+  arm_array_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arm_array_max_bytes() :: pos_integer()
   def arm_array_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArmArray{}).
+  @doc """
+  The §5 zero form of ArmArray: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArmArray{}`).
+  """
+  @spec zero_arm_array() :: Example.ArmArray.t()
   def zero_arm_array, do: %Example.ArmArray{lead: 0, flag: false, items: [], b: 0, tail: 0}
 
-  # write_arm_array packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arm_array(value) do
-    data = <<>>
+  @doc """
+  Packs a ArmArray into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arm_array!(Example.ArmArray.t()) :: binary()
+  def write_arm_array!(value) do
     %{lead: value_lead, flag: value_flag, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
     v = if value_flag, do: 1, else: 0
     scratch = scratch ||| v <<< 5
+    data = <<>>
 
     {data, scratch, scratch_bits} =
       if value_flag do
@@ -836,11 +1015,26 @@ defmodule Example.Joins do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_arm_array_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arm_array!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arm_array(Example.ArmArray.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arm_array(value) do
+    {:ok, write_arm_array!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArmArray from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arm_array_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArmArray.t(), non_neg_integer()} | :error
   def read_arm_array_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -848,33 +1042,29 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 6 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 6)
+      if 6 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 6)
       v = rv &&& 0x1F
-      bits_read = bits_read + 5
       v_lead = v
       v = rv >>> 5
-      bits_read = bits_read + 1
       v_flag = v == 1
 
       {bits_read, v_items, v_b} =
         if v_flag do
-          if bits_read + 2 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 49)
+          if 8 > num_bits, do: throw(:invalid)
+          rv = rdw(data, 6, 49)
           v = rv &&& 0x3
-          bits_read = bits_read + 2
           n = v
-          if bits_read + n * 13 > num_bits, do: throw(:invalid)
-          {bits_read, v_items} = r_arm_array_items(n, [], data, num_bits, bits_read)
+          if 8 + n * 13 > num_bits, do: throw(:invalid)
+          {bits_read, v_items} = r_arm_array_items(n, [], data, num_bits, 8)
           v_b = 0
           {bits_read, v_items, v_b}
         else
-          if bits_read + 9 > num_bits, do: throw(:invalid)
-          rv = rd(data, bits_read, 9)
+          if 15 > num_bits, do: throw(:invalid)
+          rv = rd(data, 6, 9)
           v = rv
-          bits_read = bits_read + 9
           v_b = v
+          bits_read = 15
           v_items = []
           {bits_read, v_items, v_b}
         end
@@ -882,17 +1072,19 @@ defmodule Example.Joins do
       if bits_read + 7 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 7)
       v = rv
-      bits_read = bits_read + 7
       v_tail = v
       value = %Example.ArmArray{lead: v_lead, flag: v_flag, items: v_items, b: v_b, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 7}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arm_array is read_arm_array_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArmArray from the first num_bits of data: read_arm_array_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arm_array(binary(), non_neg_integer()) :: {:ok, Example.ArmArray.t()} | :error
   def read_arm_array(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arm_array_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -900,49 +1092,59 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_arm_array is the exact wire bits write_arm_array would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arm_array(value) do
-    bits = 0
-    bits = bits + 6
-
-    bits =
-      if value.flag do
-        bits = bits + 2
-        bits = bits + length(value.items) * 13
-        bits
-      else
-        bits + 9
-      end
-
-    bits + 7
-  end
-
-  # narrow_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # narrow_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Narrow can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec narrow_max_bits() :: pos_integer()
   def narrow_max_bits, do: 3
+
+  @doc """
+  narrow_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec narrow_max_bytes() :: pos_integer()
   def narrow_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Narrow{}).
+  @doc """
+  The §5 zero form of Narrow: all-zero storage. Specified defaults live
+  only in construction (`%Example.Narrow{}`).
+  """
+  @spec zero_narrow() :: Example.Narrow.t()
   def zero_narrow, do: %Example.Narrow{n: 0}
 
-  # write_narrow packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_narrow(value) do
-    data = <<>>
+  @doc """
+  Packs a Narrow into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_narrow!(Example.Narrow.t()) :: binary()
+  def write_narrow!(value) do
     v = value.n &&& 0x7
     scratch = v
     # the residual byte, statically known to be there
-    <<data::binary, scratch>>
+    <<scratch>>
   end
 
-  # read_narrow_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_narrow!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_narrow(Example.Narrow.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_narrow(value) do
+    {:ok, write_narrow!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Narrow from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_narrow_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Narrow.t(), non_neg_integer()} | :error
   def read_narrow_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -950,21 +1152,22 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 3)
+      if 3 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 3)
       v = rv
-      bits_read = bits_read + 3
       v_n = v
       value = %Example.Narrow{n: v_n}
-      {:ok, value, bits_read}
+      {:ok, value, 3}
     catch
       :invalid -> :error
     end
   end
 
-  # read_narrow is read_narrow_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Narrow from the first num_bits of data: read_narrow_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_narrow(binary(), non_neg_integer()) :: {:ok, Example.Narrow.t()} | :error
   def read_narrow(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_narrow_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -972,39 +1175,63 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_narrow is the exact wire bits write_narrow would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_narrow(_value), do: 3
-
-  # wide_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # wide_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a Wide can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec wide_max_bits() :: pos_integer()
   def wide_max_bits, do: 37
+
+  @doc """
+  wide_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec wide_max_bytes() :: pos_integer()
   def wide_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.Wide{}).
+  @doc """
+  The §5 zero form of Wide: all-zero storage. Specified defaults live
+  only in construction (`%Example.Wide{}`).
+  """
+  @spec zero_wide() :: Example.Wide.t()
   def zero_wide, do: %Example.Wide{w: 0}
 
-  # write_wide packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_wide(value) do
-    data = <<>>
+  @doc """
+  Packs a Wide into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_wide!(Example.Wide.t()) :: binary()
+  def write_wide!(value) do
     v = value.w &&& 0xFFFFFFFF
     scratch = v
     v = value.w >>> 32 &&& 0x1F
     scratch = scratch ||| v <<< 32
-    data = <<data::binary, scratch::little-size(4)-unit(8)>>
+    data = <<scratch::little-size(4)-unit(8)>>
     scratch = scratch >>> 32
     # the residual byte, statically known to be there
     <<data::binary, scratch>>
   end
 
-  # read_wide_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_wide!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_wide(Example.Wide.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_wide(value) do
+    {:ok, write_wide!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Wide from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_wide_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Wide.t(), non_neg_integer()} | :error
   def read_wide_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1012,25 +1239,25 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 37 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 37)
+      if 37 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 37)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32
-      bits_read = bits_read + 5
       w = w ||| v <<< 32
       v_w = w
       value = %Example.Wide{w: v_w}
-      {:ok, value, bits_read}
+      {:ok, value, 37}
     catch
       :invalid -> :error
     end
   end
 
-  # read_wide is read_wide_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Wide from the first num_bits of data: read_wide_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_wide(binary(), non_neg_integer()) :: {:ok, Example.Wide.t()} | :error
   def read_wide(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1038,60 +1265,75 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_wide is the exact wire bits write_wide would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_wide(_value), do: 37
-
-  # uneven_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-  # uneven_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc "The most wire bits a Uneven can take: the tag plus the largest arm (SPEC §4.8)."
+  @spec uneven_max_bits() :: pos_integer()
   def uneven_max_bits, do: 39
+
+  @doc """
+  uneven_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec uneven_max_bytes() :: pos_integer()
   def uneven_max_bytes, do: 8
 
-  # enum_name_uneven_type: debug/log/tooling name for any UnevenType wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a UnevenType value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_uneven_type(Example.UnevenType.t() | integer()) :: String.t()
   def enum_name_uneven_type(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :narrow -> "Narrow"
       1 -> "Narrow"
+      :wide -> "Wide"
       2 -> "Wide"
       _ -> "???"
     end
   end
 
-  # The §5 zero form — the empty union (None). Arms hold their construction
-  # form: every arm is unselected at None, and unselected arms are
-  # unspecified by rule (SPEC §4.8).
-  def zero_uneven, do: %Example.Uneven{}
+  @doc "The §5 zero form of Uneven: the empty union, None."
+  @spec zero_uneven() :: Example.Uneven.t()
+  def zero_uneven, do: nil
 
-  # write_uneven packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_uneven(value) do
+  @doc """
+  Packs a Uneven into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_uneven!(Example.Uneven.t()) :: binary()
+  def write_uneven!(value) do
+    v =
+      case value do
+        nil ->
+          0
+
+        {:narrow, _} ->
+          1
+
+        {:wide, _} ->
+          2
+
+        value_other ->
+          raise ArgumentError, "value is not a Uneven value: #{inspect(value_other)}"
+      end
+
+    scratch = v
     data = <<>>
 
-    if value.type < 0 do
-      raise ArgumentError, "value.type is below the wire minimum"
-    end
-
-    if value.type > 2 do
-      raise ArgumentError, "value.type is above the wire maximum"
-    end
-
-    v = value.type
-    scratch = v
-
     {data, scratch, scratch_bits} =
-      case value.type do
-        1 ->
-          v = value.narrow.n &&& 0x7
+      case value do
+        {:narrow, value_narrow} ->
+          v = value_narrow.n &&& 0x7
           scratch = scratch ||| v <<< 2
           scratch_bits = 5
           {data, scratch, scratch_bits}
 
-        2 ->
-          v = value.wide.w &&& 0xFFFFFFFF
+        {:wide, value_wide} ->
+          v = value_wide.w &&& 0xFFFFFFFF
           scratch = scratch ||| v <<< 2
-          v = value.wide.w >>> 32 &&& 0x1F
+          v = value_wide.w >>> 32 &&& 0x1F
           scratch = scratch ||| v <<< 34
           data = <<data::binary, scratch::little-size(4)-unit(8)>>
           scratch = scratch >>> 32
@@ -1099,7 +1341,7 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 2
           {data, scratch, scratch_bits}
       end
@@ -1107,11 +1349,26 @@ defmodule Example.Joins do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_uneven_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_uneven!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_uneven(Example.Uneven.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_uneven(value) do
+    {:ok, write_uneven!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a Uneven from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_uneven_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.Uneven.t(), non_neg_integer()} | :error
   def read_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1119,43 +1376,39 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 2 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 2
 
       {bits_read, v} =
         case v do
           1 ->
-            if bits_read + 3 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 3)
+            if 5 > num_bits, do: throw(:invalid)
+            rv = rd(data, 2, 3)
             v = rv
-            bits_read = bits_read + 3
             v_narrow_n = v
             v_narrow = %Example.Narrow{n: v_narrow_n}
-            u = %Example.Uneven{type: 1, narrow: v_narrow}
-            {bits_read, u}
+            bits_read = 5
+            {bits_read, {:narrow, v_narrow}}
 
           2 ->
-            if bits_read + 37 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 37)
+            if 39 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 2, 37)
             v = rv &&& 0xFFFFFFFF
-            bits_read = bits_read + 32
             w = v
             v = rv >>> 32
-            bits_read = bits_read + 5
             w = w ||| v <<< 32
             v_wide_w = w
             v_wide = %Example.Wide{w: v_wide_w}
-            u = %Example.Uneven{type: 2, wide: v_wide}
-            {bits_read, u}
+            bits_read = 39
+            {bits_read, {:wide, v_wide}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.Uneven{}}
+            {bits_read, nil}
         end
 
       {:ok, v, bits_read}
@@ -1164,8 +1417,11 @@ defmodule Example.Joins do
     end
   end
 
-  # read_uneven is read_uneven_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a Uneven from the first num_bits of data: read_uneven_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_uneven(binary(), non_neg_integer()) :: {:ok, Example.Uneven.t()} | :error
   def read_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_uneven_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1173,71 +1429,69 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_uneven is the exact wire bits write_uneven would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_uneven(value) do
-    bits = 0
-    bits = bits + 2
-
-    bits =
-      case value.type do
-        1 ->
-          bits + 3
-
-        2 ->
-          bits + 37
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits
-  end
-
-  # holds_uneven_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # holds_uneven_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a HoldsUneven can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec holds_uneven_max_bits() :: pos_integer()
   def holds_uneven_max_bits, do: 55
+
+  @doc """
+  holds_uneven_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec holds_uneven_max_bytes() :: pos_integer()
   def holds_uneven_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.HoldsUneven{}).
-  def zero_holds_uneven, do: %Example.HoldsUneven{lead: 0, u: %Example.Uneven{}, tail: 0}
+  @doc """
+  The §5 zero form of HoldsUneven: all-zero storage. Specified defaults live
+  only in construction (`%Example.HoldsUneven{}`).
+  """
+  @spec zero_holds_uneven() :: Example.HoldsUneven.t()
+  def zero_holds_uneven, do: %Example.HoldsUneven{lead: 0, u: nil, tail: 0}
 
-  # write_holds_uneven packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_holds_uneven(value) do
-    data = <<>>
+  @doc """
+  Packs a HoldsUneven into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_holds_uneven!(Example.HoldsUneven.t()) :: binary()
+  def write_holds_uneven!(value) do
     %{lead: value_lead, u: value_u, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
 
-    if value_u.type < 0 do
-      raise ArgumentError, "value.u.type is below the wire minimum"
-    end
+    v =
+      case value_u do
+        nil ->
+          0
 
-    if value_u.type > 2 do
-      raise ArgumentError, "value.u.type is above the wire maximum"
-    end
+        {:narrow, _} ->
+          1
 
-    v = value_u.type
+        {:wide, _} ->
+          2
+
+        value_u_other ->
+          raise ArgumentError, "value.u is not a Uneven value: #{inspect(value_u_other)}"
+      end
+
     scratch = scratch ||| v <<< 5
+    data = <<>>
 
     {data, scratch, scratch_bits} =
-      case value_u.type do
-        1 ->
-          v = value_u.narrow.n &&& 0x7
+      case value_u do
+        {:narrow, value_u_narrow} ->
+          v = value_u_narrow.n &&& 0x7
           scratch = scratch ||| v <<< 7
           data = <<data::binary, scratch::little-size(1)-unit(8)>>
           scratch = scratch >>> 8
           scratch_bits = 2
           {data, scratch, scratch_bits}
 
-        2 ->
-          v = value_u.wide.w &&& 0xFFFFFFFF
+        {:wide, value_u_wide} ->
+          v = value_u_wide.w &&& 0xFFFFFFFF
           scratch = scratch ||| v <<< 7
-          v = value_u.wide.w >>> 32 &&& 0x1F
+          v = value_u_wide.w >>> 32 &&& 0x1F
           scratch = scratch ||| v <<< 39
           data = <<data::binary, scratch::little-size(5)-unit(8)>>
           scratch = scratch >>> 40
@@ -1245,7 +1499,7 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           scratch_bits = 7
           {data, scratch, scratch_bits}
       end
@@ -1260,11 +1514,26 @@ defmodule Example.Joins do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_holds_uneven_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_holds_uneven!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_holds_uneven(Example.HoldsUneven.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_holds_uneven(value) do
+    {:ok, write_holds_uneven!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a HoldsUneven from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_holds_uneven_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.HoldsUneven.t(), non_neg_integer()} | :error
   def read_holds_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1272,64 +1541,61 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 5)
+      if 5 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 5)
       v = rv
-      bits_read = bits_read + 5
       v_lead = v
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 7 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 5, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       # not a wire-legal tag (SPEC §4.8)
       if v > 2, do: throw(:invalid)
+      bits_read = 7
 
       {bits_read, v_u} =
         case v do
           1 ->
-            if bits_read + 3 > num_bits, do: throw(:invalid)
-            rv = rd(data, bits_read, 3)
+            if 10 > num_bits, do: throw(:invalid)
+            rv = rd(data, 7, 3)
             v = rv
-            bits_read = bits_read + 3
             v_u_narrow_n = v
             v_u_narrow = %Example.Narrow{n: v_u_narrow_n}
-            u = %Example.Uneven{type: 1, narrow: v_u_narrow}
-            {bits_read, u}
+            bits_read = 10
+            {bits_read, {:narrow, v_u_narrow}}
 
           2 ->
-            if bits_read + 37 > num_bits, do: throw(:invalid)
-            rv = rdw(data, bits_read, 37)
+            if 44 > num_bits, do: throw(:invalid)
+            rv = rdw(data, 7, 37)
             v = rv &&& 0xFFFFFFFF
-            bits_read = bits_read + 32
             w = v
             v = rv >>> 32
-            bits_read = bits_read + 5
             w = w ||| v <<< 32
             v_u_wide_w = w
             v_u_wide = %Example.Wide{w: v_u_wide_w}
-            u = %Example.Uneven{type: 2, wide: v_u_wide}
-            {bits_read, u}
+            bits_read = 44
+            {bits_read, {:wide, v_u_wide}}
 
           _ ->
             # None — the tag is the whole wire (SPEC §4.8)
-            {bits_read, %Example.Uneven{}}
+            {bits_read, nil}
         end
 
       if bits_read + 11 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 11)
       v = rv
-      bits_read = bits_read + 11
       v_tail = v
       value = %Example.HoldsUneven{lead: v_lead, u: v_u, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 11}
     catch
       :invalid -> :error
     end
   end
 
-  # read_holds_uneven is read_holds_uneven_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a HoldsUneven from the first num_bits of data: read_holds_uneven_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_holds_uneven(binary(), non_neg_integer()) :: {:ok, Example.HoldsUneven.t()} | :error
   def read_holds_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_holds_uneven_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1337,43 +1603,33 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_holds_uneven is the exact wire bits write_holds_uneven would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_holds_uneven(value) do
-    bits = 0
-    bits = bits + 5
-    bits = bits + 2
-
-    bits =
-      case value.u.type do
-        1 ->
-          bits + 3
-
-        2 ->
-          bits + 37
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    bits + 11
-  end
-
-  # arr_uneven_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # arr_uneven_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a ArrUneven can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec arr_uneven_max_bits() :: pos_integer()
   def arr_uneven_max_bits, do: 127
+
+  @doc """
+  arr_uneven_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec arr_uneven_max_bytes() :: pos_integer()
   def arr_uneven_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.ArrUneven{}).
+  @doc """
+  The §5 zero form of ArrUneven: all-zero storage. Specified defaults live
+  only in construction (`%Example.ArrUneven{}`).
+  """
+  @spec zero_arr_uneven() :: Example.ArrUneven.t()
   def zero_arr_uneven, do: %Example.ArrUneven{lead: 0, items: [], tail: 0}
 
-  # write_arr_uneven packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_arr_uneven(value) do
-    data = <<>>
+  @doc """
+  Packs a ArrUneven into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_arr_uneven!(Example.ArrUneven.t()) :: binary()
+  def write_arr_uneven!(value) do
     %{lead: value_lead, items: value_items, tail: value_tail} = value
     v = value_lead &&& 0x1F
     scratch = v
@@ -1386,7 +1642,7 @@ defmodule Example.Joins do
     v = n
     scratch = scratch ||| v <<< 5
     scratch_bits = 7
-    {data, scratch, scratch_bits} = w_arr_uneven_items(value_items, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = w_arr_uneven_items(value_items, <<>>, scratch, scratch_bits)
     v = value_tail &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
@@ -1397,11 +1653,26 @@ defmodule Example.Joins do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_arr_uneven_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_arr_uneven!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_arr_uneven(Example.ArrUneven.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_arr_uneven(value) do
+    {:ok, write_arr_uneven!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a ArrUneven from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_arr_uneven_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.ArrUneven.t(), non_neg_integer()} | :error
   def read_arr_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1409,32 +1680,31 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 5)
+      if 5 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 5)
       v = rv
-      bits_read = bits_read + 5
       v_lead = v
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 7 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 5, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       n = v
-      {bits_read, v_items} = r_arr_uneven_items(n, [], data, num_bits, bits_read)
+      {bits_read, v_items} = r_arr_uneven_items(n, [], data, num_bits, 7)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
-      bits_read = bits_read + 3
       v_tail = v
       value = %Example.ArrUneven{lead: v_lead, items: v_items, tail: v_tail}
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 3}
     catch
       :invalid -> :error
     end
   end
 
-  # read_arr_uneven is read_arr_uneven_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a ArrUneven from the first num_bits of data: read_arr_uneven_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_arr_uneven(binary(), non_neg_integer()) :: {:ok, Example.ArrUneven.t()} | :error
   def read_arr_uneven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_arr_uneven_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1442,32 +1712,35 @@ defmodule Example.Joins do
     end
   end
 
-  # measure_arr_uneven is the exact wire bits write_arr_uneven would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_arr_uneven(value) do
-    bits = 0
-    bits = bits + 7
-    bits = m_arr_uneven_items(value.items, bits)
-    bits + 3
-  end
-
-  # regain_after_align_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # regain_after_align_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a RegainAfterAlign can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec regain_after_align_max_bits() :: pos_integer()
   def regain_after_align_max_bits, do: 172
+
+  @doc """
+  regain_after_align_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec regain_after_align_max_bytes() :: pos_integer()
   def regain_after_align_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Example.RegainAfterAlign{}).
+  @doc """
+  The §5 zero form of RegainAfterAlign: all-zero storage. Specified defaults live
+  only in construction (`%Example.RegainAfterAlign{}`).
+  """
+  @spec zero_regain_after_align() :: Example.RegainAfterAlign.t()
   def zero_regain_after_align do
     %Example.RegainAfterAlign{lead: 0, items: [], s: <<>>, p: 0, q: 0, r: 0, tail: 0}
   end
 
-  # write_regain_after_align packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_regain_after_align(value) do
-    data = <<>>
-
+  @doc """
+  Packs a RegainAfterAlign into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_regain_after_align!(Example.RegainAfterAlign.t()) :: binary()
+  def write_regain_after_align!(value) do
     %{
       lead: value_lead,
       items: value_items,
@@ -1491,7 +1764,7 @@ defmodule Example.Joins do
     scratch_bits = 7
 
     {data, scratch, scratch_bits} =
-      w_regain_after_align_items(value_items, data, scratch, scratch_bits)
+      w_regain_after_align_items(value_items, <<>>, scratch, scratch_bits)
 
     if byte_size(value_s) > 4 do
       raise ArgumentError, "value.s longer than the declared 4-byte bound"
@@ -1523,11 +1796,27 @@ defmodule Example.Joins do
     <<data::binary, scratch>>
   end
 
-  # read_regain_after_align_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_regain_after_align!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_regain_after_align(Example.RegainAfterAlign.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_regain_after_align(value) do
+    {:ok, write_regain_after_align!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a RegainAfterAlign from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_regain_after_align_bits(binary(), non_neg_integer()) ::
+          {:ok, Example.RegainAfterAlign.t(), non_neg_integer()} | :error
   def read_regain_after_align_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
@@ -1536,26 +1825,23 @@ defmodule Example.Joins do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 5 > num_bits, do: throw(:invalid)
-      rv = rd(data, bits_read, 5)
+      if 5 > num_bits, do: throw(:invalid)
+      rv = rd(data, 0, 5)
       v = rv
-      bits_read = bits_read + 5
       v_lead = v
-      if bits_read + 2 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 7 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 5, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
       n = v
-      if bits_read + n * 13 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_regain_after_align_items(n, [], data, num_bits, bits_read)
+      if 7 + n * 13 > num_bits, do: throw(:invalid)
+      {bits_read, v_items} = r_regain_after_align_items(n, [], data, num_bits, 7)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # the length guards the slice — reject, never clamp
       if v > 4, do: throw(:invalid)
       len = v
+      bits_read = bits_read + 3
       pad = 8 - (bits_read &&& 7) &&& 7
 
       if pad != 0 do
@@ -1580,18 +1866,14 @@ defmodule Example.Joins do
       if bits_read + 84 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       v_p = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 32, 49)
       v = rv &&& 0x1FFFFFFF
-      bits_read = bits_read + 29
       v_q = v
       v = rv >>> 29 &&& 0x7FFFF
-      bits_read = bits_read + 19
       v_r = v
-      rv = rd(data, bits_read, 4)
+      rv = rd(data, bits_read + 80, 4)
       v = rv
-      bits_read = bits_read + 4
       v_tail = v
 
       value = %Example.RegainAfterAlign{
@@ -1604,31 +1886,23 @@ defmodule Example.Joins do
         tail: v_tail
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 84}
     catch
       :invalid -> :error
     end
   end
 
-  # read_regain_after_align is read_regain_after_align_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a RegainAfterAlign from the first num_bits of data: read_regain_after_align_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_regain_after_align(binary(), non_neg_integer()) ::
+          {:ok, Example.RegainAfterAlign.t()} | :error
   def read_regain_after_align(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_regain_after_align_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
-  end
-
-  # measure_regain_after_align is the exact wire bits write_regain_after_align would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_regain_after_align(value) do
-    bits = 0
-    bits = bits + 7
-    bits = bits + length(value.items) * 13
-    bits = bits + 3
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.s) * 8
-    bits + 84
   end
 
   defp w_arm_array_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1713,37 +1987,39 @@ defmodule Example.Joins do
        when remaining >= 3 do
     rv = rdw(data, bits_read, 39)
     v = rv &&& 0x1FFF
-    bits_read = bits_read + 13
     e1 = v
     v = rv >>> 13 &&& 0x1FFF
-    bits_read = bits_read + 13
     e2 = v
     v = rv >>> 26
-    bits_read = bits_read + 13
     e3 = v
-    r_arm_array_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_arm_array_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
   end
 
   defp r_arm_array_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 13)
     v = rv
-    bits_read = bits_read + 13
     e = v
-    r_arm_array_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_arm_array_items(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
   end
 
   defp w_arr_uneven_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp w_arr_uneven_items([e | rest], data, scratch, scratch_bits) do
-    if e.type < 0 do
-      raise ArgumentError, "e.type is below the wire minimum"
-    end
+    v =
+      case e do
+        nil ->
+          0
 
-    if e.type > 2 do
-      raise ArgumentError, "e.type is above the wire maximum"
-    end
+        {:narrow, _} ->
+          1
 
-    v = e.type
+        {:wide, _} ->
+          2
+
+        e_other ->
+          raise ArgumentError, "e is not a Uneven value: #{inspect(e_other)}"
+      end
+
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 2
     flush = scratch_bits >>> 3
@@ -1752,9 +2028,9 @@ defmodule Example.Joins do
     scratch_bits = scratch_bits &&& 7
 
     {data, scratch, scratch_bits} =
-      case e.type do
-        1 ->
-          v = e.narrow.n &&& 0x7
+      case e do
+        {:narrow, e_narrow} ->
+          v = e_narrow.n &&& 0x7
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 3
           flush = scratch_bits >>> 3
@@ -1763,11 +2039,11 @@ defmodule Example.Joins do
           scratch_bits = scratch_bits &&& 7
           {data, scratch, scratch_bits}
 
-        2 ->
-          v = e.wide.w &&& 0xFFFFFFFF
+        {:wide, e_wide} ->
+          v = e_wide.w &&& 0xFFFFFFFF
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 32
-          v = e.wide.w >>> 32 &&& 0x1F
+          v = e_wide.w >>> 32 &&& 0x1F
           scratch = scratch ||| v <<< scratch_bits
           scratch_bits = scratch_bits + 5
           flush = scratch_bits >>> 3
@@ -1777,7 +2053,7 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
 
         _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
+          # None, or an arm whose tag is its whole wire (SPEC §4.8)
           {data, scratch, scratch_bits}
       end
 
@@ -1790,9 +2066,9 @@ defmodule Example.Joins do
     if bits_read + 2 > num_bits, do: throw(:invalid)
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x3
-    bits_read = bits_read + 2
     # not a wire-legal tag (SPEC §4.8)
     if v > 2, do: throw(:invalid)
+    bits_read = bits_read + 2
 
     {bits_read, e} =
       case v do
@@ -1800,53 +2076,29 @@ defmodule Example.Joins do
           if bits_read + 3 > num_bits, do: throw(:invalid)
           rv = rd(data, bits_read, 3)
           v = rv
-          bits_read = bits_read + 3
           e_narrow_n = v
           e_narrow = %Example.Narrow{n: e_narrow_n}
-          u = %Example.Uneven{type: 1, narrow: e_narrow}
-          {bits_read, u}
+          bits_read = bits_read + 3
+          {bits_read, {:narrow, e_narrow}}
 
         2 ->
           if bits_read + 37 > num_bits, do: throw(:invalid)
           rv = rdw(data, bits_read, 37)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
           v = rv >>> 32
-          bits_read = bits_read + 5
           w = w ||| v <<< 32
           e_wide_w = w
           e_wide = %Example.Wide{w: e_wide_w}
-          u = %Example.Uneven{type: 2, wide: e_wide}
-          {bits_read, u}
+          bits_read = bits_read + 37
+          {bits_read, {:wide, e_wide}}
 
         _ ->
           # None — the tag is the whole wire (SPEC §4.8)
-          {bits_read, %Example.Uneven{}}
+          {bits_read, nil}
       end
 
     r_arr_uneven_items(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  defp m_arr_uneven_items([], bits), do: bits
-
-  defp m_arr_uneven_items([e | rest], bits) do
-    bits = bits + 2
-
-    bits =
-      case e.type do
-        1 ->
-          bits + 3
-
-        2 ->
-          bits + 37
-
-        _ ->
-          # None — the tag is the whole wire (SPEC §4.8)
-          bits
-      end
-
-    m_arr_uneven_items(rest, bits)
   end
 
   defp w_regain_after_align_items([], data, scratch, scratch_bits),
@@ -1933,54 +2185,18 @@ defmodule Example.Joins do
        when remaining >= 3 do
     rv = rdw(data, bits_read, 39)
     v = rv &&& 0x1FFF
-    bits_read = bits_read + 13
     e1 = v
     v = rv >>> 13 &&& 0x1FFF
-    bits_read = bits_read + 13
     e2 = v
     v = rv >>> 26
-    bits_read = bits_read + 13
     e3 = v
-    r_regain_after_align_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read)
+    r_regain_after_align_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
   end
 
   defp r_regain_after_align_items(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 13)
     v = rv
-    bits_read = bits_read + 13
     e = v
-    r_regain_after_align_items(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+    r_regain_after_align_items(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
   end
 end

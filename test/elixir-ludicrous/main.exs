@@ -12,5 +12,6 @@
 # Mirrors test/ludicrous_main.cpp block for block; 128-bit values ride plain
 # BEAM integers. Split loader/suite for the reason test/elixir/main.exs
 # states.
+Code.require_file("PacketRuntime.ex", Path.join(__DIR__, "../../generated/elixir-ludicrous"))
 Code.require_file("Ludicrous.ex", Path.join(__DIR__, "../../generated/elixir-ludicrous"))
 Code.require_file("suite.exs", __DIR__)

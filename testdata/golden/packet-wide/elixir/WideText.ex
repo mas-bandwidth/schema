@@ -4,16 +4,16 @@
 # AGPL-3.0, its output is not.
 # package wide — protocol id 0x53835dbf9f05e4d9
 #
-# The shipped Elixir wire path (issue #167): the serialize.elixir port's
-# measured shapes — byte-granular 32-bit-group packing and 40-bit read
-# windows (every intermediate a BEAM small integer), single accumulator-
-# threaded read/write functions per type (no stream struct, no per-field
-# tuple), function-head loops — with literal widths, zero dependencies.
+# The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
+# read windows (every intermediate a BEAM small integer), single
+# accumulator-threaded read/write functions per type (no stream struct, no
+# per-field tuple), function-head loops — with literal widths, zero
+# dependencies. The shared helpers live in PacketRuntime.ex.
 #
-# write_<name>(value) -> the wire binary. The writer TRUSTS the caller
+# write_<name>!(value) -> the wire binary. The writer TRUSTS the caller
 # (the C++ stance) up to the O(1) contract checks, which raise
 # ArgumentError — the BEAM has no compile-out assert, so they are always
-# on, matching the port.
+# on. write_<name>(value) -> {:ok, binary} | {:error, message} beside it.
 #
 # read_<name>(data, num_bits) -> {:ok, value} | :error, the family read
 # verdict. The wire is a trust boundary: reads validate everything —
@@ -22,33 +22,60 @@
 # No slack past the payload is required: the windows price themselves
 # inside the binary.
 #
-# measure_<name>(value) -> exact wire bits for that value (trusted, like
-# the writer). zero_<name>() -> the §5 zero form; construction
-# (%Struct{}) carries the specified defaults instead. Floats travel
-# bit-transparently: a non-finite IEEE-754 pattern — which no BEAM float
-# term can hold — reads back as {:nonfinite, bits} and writes from the
-# same form, the serialize.elixir convention.
+# zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the
+# specified defaults instead. Enum values are atoms, union values are nil,
+# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:
+# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads
+# back as {:nonfinite, bits} and writes from the same form.
 
 # type WideSeven
 defmodule Wide.WideSeven do
+  @moduledoc """
+  The type WideSeven. Construction carries its specified defaults; the
+  codecs are in Wide.WideText.
+  """
+
+  @type t :: %__MODULE__{text: binary()}
+
   # text: wstring(7): a little-endian UTF-16 code-unit binary (SPEC §4.12)
   defstruct text: <<>>
 end
 
 # type WideFour
 defmodule Wide.WideFour do
+  @moduledoc """
+  The type WideFour. Construction carries its specified defaults; the
+  codecs are in Wide.WideText.
+  """
+
+  @type t :: %__MODULE__{text: binary()}
+
   # text: wstring(4): a little-endian UTF-16 code-unit binary (SPEC §4.12)
   defstruct text: <<>>
 end
 
 # type NarrowFifteen
 defmodule Wide.NarrowFifteen do
+  @moduledoc """
+  The type NarrowFifteen. Construction carries its specified defaults; the
+  codecs are in Wide.WideText.
+  """
+
+  @type t :: %__MODULE__{text: String.t()}
+
   # text: string(15) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)
   defstruct text: <<>>
 end
 
 # type WideInterop
 defmodule Wide.WideInterop do
+  @moduledoc """
+  The type WideInterop. Construction carries its specified defaults; the
+  codecs are in Wide.WideText.
+  """
+
+  @type t :: %__MODULE__{caption: binary()}
+
   # caption: wstring(7): a little-endian UTF-16 code-unit binary (SPEC §4.12)
   defstruct caption: <<>>
 end
@@ -56,31 +83,48 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in WideText.schema.
 defmodule Wide.WideText do
+  @moduledoc """
+  The file-scope surface of WideText.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
+  import Wide.PacketRuntime, only: [rd: 3, rdw: 3, write_wstring: 4, read_wstring: 5]
 
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
-  # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
-  # sides at the same id speak identical bits; there is no other versioning.
+  @doc """
+  The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
+  sides at the same id speak identical bits; there is no other versioning.
+  """
+  @spec protocol_id() :: non_neg_integer()
   def protocol_id, do: 0x53835DBF9F05E4D9
 
-  # wide_seven_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # wide_seven_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a WideSeven can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec wide_seven_max_bits() :: pos_integer()
   def wide_seven_max_bits, do: 227
+
+  @doc """
+  wide_seven_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec wide_seven_max_bytes() :: pos_integer()
   def wide_seven_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Wide.WideSeven{}).
+  @doc """
+  The §5 zero form of WideSeven: all-zero storage. Specified defaults live
+  only in construction (`%Wide.WideSeven{}`).
+  """
+  @spec zero_wide_seven() :: Wide.WideSeven.t()
   def zero_wide_seven, do: %Wide.WideSeven{text: <<>>}
 
-  # write_wide_seven packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_wide_seven(value) do
-    data = <<>>
-
+  @doc """
+  Packs a WideSeven into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_wide_seven!(Wide.WideSeven.t()) :: binary()
+  def write_wide_seven!(value) do
     if rem(byte_size(value.text), 2) != 0 do
       raise ArgumentError, "wstring needs complete 16-bit code units"
     end
@@ -92,15 +136,30 @@ defmodule Wide.WideText do
     v = byte_size(value.text) >>> 1
     scratch = v
     scratch_bits = 3
-    {data, scratch, scratch_bits} = write_wstring(value.text, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = write_wstring(value.text, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_wide_seven_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_wide_seven!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_wide_seven(Wide.WideSeven.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_wide_seven(value) do
+    {:ok, write_wide_seven!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a WideSeven from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_wide_seven_bits(binary(), non_neg_integer()) ::
+          {:ok, Wide.WideSeven.t(), non_neg_integer()} | :error
   def read_wide_seven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -108,16 +167,14 @@ defmodule Wide.WideText do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 3 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # the length guards the wide groups
       if v > 7, do: throw(:invalid)
       len = v
-      if bits_read + len * 32 > num_bits, do: throw(:invalid)
-      {bits_read, v_text} = read_wstring(len, data, bits_read, false, <<>>)
+      if 3 + len * 32 > num_bits, do: throw(:invalid)
+      {bits_read, v_text} = read_wstring(len, data, 3, false, <<>>)
       value = %Wide.WideSeven{text: v_text}
       {:ok, value, bits_read}
     catch
@@ -125,8 +182,11 @@ defmodule Wide.WideText do
     end
   end
 
-  # read_wide_seven is read_wide_seven_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a WideSeven from the first num_bits of data: read_wide_seven_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_wide_seven(binary(), non_neg_integer()) :: {:ok, Wide.WideSeven.t()} | :error
   def read_wide_seven(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_seven_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -134,30 +194,33 @@ defmodule Wide.WideText do
     end
   end
 
-  # measure_wide_seven is the exact wire bits write_wide_seven would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_wide_seven(value) do
-    bits = 0
-    bits = bits + 3
-    bits = bits + (byte_size(value.text) >>> 1) * 32
-    bits
-  end
-
-  # wide_four_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # wide_four_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a WideFour can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec wide_four_max_bits() :: pos_integer()
   def wide_four_max_bits, do: 131
+
+  @doc """
+  wide_four_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec wide_four_max_bytes() :: pos_integer()
   def wide_four_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Wide.WideFour{}).
+  @doc """
+  The §5 zero form of WideFour: all-zero storage. Specified defaults live
+  only in construction (`%Wide.WideFour{}`).
+  """
+  @spec zero_wide_four() :: Wide.WideFour.t()
   def zero_wide_four, do: %Wide.WideFour{text: <<>>}
 
-  # write_wide_four packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_wide_four(value) do
-    data = <<>>
-
+  @doc """
+  Packs a WideFour into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_wide_four!(Wide.WideFour.t()) :: binary()
+  def write_wide_four!(value) do
     if rem(byte_size(value.text), 2) != 0 do
       raise ArgumentError, "wstring needs complete 16-bit code units"
     end
@@ -169,15 +232,30 @@ defmodule Wide.WideText do
     v = byte_size(value.text) >>> 1
     scratch = v
     scratch_bits = 3
-    {data, scratch, scratch_bits} = write_wstring(value.text, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = write_wstring(value.text, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_wide_four_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_wide_four!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_wide_four(Wide.WideFour.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_wide_four(value) do
+    {:ok, write_wide_four!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a WideFour from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_wide_four_bits(binary(), non_neg_integer()) ::
+          {:ok, Wide.WideFour.t(), non_neg_integer()} | :error
   def read_wide_four_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -185,16 +263,14 @@ defmodule Wide.WideText do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 3 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # the length guards the wide groups
       if v > 4, do: throw(:invalid)
       len = v
-      if bits_read + len * 32 > num_bits, do: throw(:invalid)
-      {bits_read, v_text} = read_wstring(len, data, bits_read, false, <<>>)
+      if 3 + len * 32 > num_bits, do: throw(:invalid)
+      {bits_read, v_text} = read_wstring(len, data, 3, false, <<>>)
       value = %Wide.WideFour{text: v_text}
       {:ok, value, bits_read}
     catch
@@ -202,8 +278,11 @@ defmodule Wide.WideText do
     end
   end
 
-  # read_wide_four is read_wide_four_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a WideFour from the first num_bits of data: read_wide_four_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_wide_four(binary(), non_neg_integer()) :: {:ok, Wide.WideFour.t()} | :error
   def read_wide_four(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_four_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -211,30 +290,33 @@ defmodule Wide.WideText do
     end
   end
 
-  # measure_wide_four is the exact wire bits write_wide_four would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_wide_four(value) do
-    bits = 0
-    bits = bits + 3
-    bits = bits + (byte_size(value.text) >>> 1) * 32
-    bits
-  end
-
-  # narrow_fifteen_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # narrow_fifteen_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a NarrowFifteen can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec narrow_fifteen_max_bits() :: pos_integer()
   def narrow_fifteen_max_bits, do: 131
+
+  @doc """
+  narrow_fifteen_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec narrow_fifteen_max_bytes() :: pos_integer()
   def narrow_fifteen_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Wide.NarrowFifteen{}).
+  @doc """
+  The §5 zero form of NarrowFifteen: all-zero storage. Specified defaults live
+  only in construction (`%Wide.NarrowFifteen{}`).
+  """
+  @spec zero_narrow_fifteen() :: Wide.NarrowFifteen.t()
   def zero_narrow_fifteen, do: %Wide.NarrowFifteen{text: <<>>}
 
-  # write_narrow_fifteen packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_narrow_fifteen(value) do
-    data = <<>>
-
+  @doc """
+  Packs a NarrowFifteen into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_narrow_fifteen!(Wide.NarrowFifteen.t()) :: binary()
+  def write_narrow_fifteen!(value) do
     if byte_size(value.text) > 15 do
       raise ArgumentError, "value.text longer than the declared 15-byte bound"
     end
@@ -242,17 +324,32 @@ defmodule Wide.WideText do
     v = byte_size(value.text)
     scratch = v
     # align: zero-pad to the byte boundary (SPEC §4.3)
-    data = <<data::binary, scratch>>
+    data = <<scratch>>
     # the used bytes ride whole — the stream is byte-aligned here
     data = <<data::binary, value.text::binary>>
     data
   end
 
-  # read_narrow_fifteen_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_narrow_fifteen!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_narrow_fifteen(Wide.NarrowFifteen.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_narrow_fifteen(value) do
+    {:ok, write_narrow_fifteen!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a NarrowFifteen from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_narrow_fifteen_bits(binary(), non_neg_integer()) ::
+          {:ok, Wide.NarrowFifteen.t(), non_neg_integer()} | :error
   def read_narrow_fifteen_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -260,29 +357,16 @@ defmodule Wide.WideText do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 4 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 4 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xF
-      bits_read = bits_read + 4
       len = v
-      pad = 8 - (bits_read &&& 7) &&& 7
-
-      if pad != 0 do
-        if bits_read + pad > num_bits do
-          throw(:invalid)
-        end
-
-        if rd(data, bits_read, pad) != 0 do
-          # nonzero padding is refused (SPEC §4.3)
-          throw(:invalid)
-        end
-      end
-
-      bits_read = bits_read + pad
-      if bits_read + len * 8 > num_bits, do: throw(:invalid)
-      v_text = binary_part(data, bits_read >>> 3, len)
-      bits_read = bits_read + len * 8
+      if 8 > num_bits, do: throw(:invalid)
+      # nonzero padding is refused (SPEC §4.3)
+      if rd(data, 4, 4) != 0, do: throw(:invalid)
+      if 8 + len * 8 > num_bits, do: throw(:invalid)
+      v_text = binary_part(data, 1, len)
+      bits_read = 8 + len * 8
       # malformed UTF-8 is content the read refuses (SPEC §4.7)
       if not String.valid?(v_text), do: throw(:invalid)
       # an interior null is content the read refuses (SPEC §4.7)
@@ -294,8 +378,11 @@ defmodule Wide.WideText do
     end
   end
 
-  # read_narrow_fifteen is read_narrow_fifteen_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a NarrowFifteen from the first num_bits of data: read_narrow_fifteen_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_narrow_fifteen(binary(), non_neg_integer()) :: {:ok, Wide.NarrowFifteen.t()} | :error
   def read_narrow_fifteen(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_narrow_fifteen_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -303,31 +390,33 @@ defmodule Wide.WideText do
     end
   end
 
-  # measure_narrow_fifteen is the exact wire bits write_narrow_fifteen would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_narrow_fifteen(value) do
-    bits = 0
-    bits = bits + 4
-    bits = bits + (8 - (bits &&& 7) &&& 7)
-    bits = bits + byte_size(value.text) * 8
-    bits
-  end
-
-  # wide_interop_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # wide_interop_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a WideInterop can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec wide_interop_max_bits() :: pos_integer()
   def wide_interop_max_bits, do: 227
+
+  @doc """
+  wide_interop_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec wide_interop_max_bytes() :: pos_integer()
   def wide_interop_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Wide.WideInterop{}).
+  @doc """
+  The §5 zero form of WideInterop: all-zero storage. Specified defaults live
+  only in construction (`%Wide.WideInterop{}`).
+  """
+  @spec zero_wide_interop() :: Wide.WideInterop.t()
   def zero_wide_interop, do: %Wide.WideInterop{caption: <<>>}
 
-  # write_wide_interop packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_wide_interop(value) do
-    data = <<>>
-
+  @doc """
+  Packs a WideInterop into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_wide_interop!(Wide.WideInterop.t()) :: binary()
+  def write_wide_interop!(value) do
     if rem(byte_size(value.caption), 2) != 0 do
       raise ArgumentError, "wstring needs complete 16-bit code units"
     end
@@ -339,15 +428,30 @@ defmodule Wide.WideText do
     v = byte_size(value.caption) >>> 1
     scratch = v
     scratch_bits = 3
-    {data, scratch, scratch_bits} = write_wstring(value.caption, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = write_wstring(value.caption, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_wide_interop_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_wide_interop!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_wide_interop(Wide.WideInterop.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_wide_interop(value) do
+    {:ok, write_wide_interop!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a WideInterop from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_wide_interop_bits(binary(), non_neg_integer()) ::
+          {:ok, Wide.WideInterop.t(), non_neg_integer()} | :error
   def read_wide_interop_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -355,16 +459,14 @@ defmodule Wide.WideText do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 3 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # the length guards the wide groups
       if v > 7, do: throw(:invalid)
       len = v
-      if bits_read + len * 32 > num_bits, do: throw(:invalid)
-      {bits_read, v_caption} = read_wstring(len, data, bits_read, false, <<>>)
+      if 3 + len * 32 > num_bits, do: throw(:invalid)
+      {bits_read, v_caption} = read_wstring(len, data, 3, false, <<>>)
       value = %Wide.WideInterop{caption: v_caption}
       {:ok, value, bits_read}
     catch
@@ -372,85 +474,15 @@ defmodule Wide.WideText do
     end
   end
 
-  # read_wide_interop is read_wide_interop_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a WideInterop from the first num_bits of data: read_wide_interop_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_wide_interop(binary(), non_neg_integer()) :: {:ok, Wide.WideInterop.t()} | :error
   def read_wide_interop(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_interop_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
-  end
-
-  # measure_wide_interop is the exact wire bits write_wide_interop would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_wide_interop(value) do
-    bits = 0
-    bits = bits + 3
-    bits = bits + (byte_size(value.caption) >>> 1) * 32
-    bits
-  end
-
-  defp write_wstring(<<>>, data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
-
-  defp write_wstring(<<unit::little-16, rest::binary>>, data, scratch, scratch_bits) do
-    if unit == 0 do
-      raise ArgumentError, "wstring null unit"
-    end
-
-    group = scratch ||| unit <<< scratch_bits
-    data = <<data::binary, group::little-32>>
-    write_wstring(rest, data, group >>> 32, scratch_bits)
-  end
-
-  defp read_wstring(0, _data, _bits_read, true, _acc), do: throw(:invalid)
-  defp read_wstring(0, _data, bits_read, false, acc), do: {bits_read, acc}
-
-  defp read_wstring(remaining, data, bits_read, expect_low, acc) do
-    unit = rd(data, bits_read, 32)
-
-    if unit == 0 or unit > 0xFFFF do
-      throw(:invalid)
-    end
-
-    high = unit >= 0xD800 and unit <= 0xDBFF
-    low = unit >= 0xDC00 and unit <= 0xDFFF
-
-    if low != expect_low do
-      throw(:invalid)
-    end
-
-    read_wstring(remaining - 1, data, bits_read + 32, high, <<acc::binary, unit::little-16>>)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
   end
 end

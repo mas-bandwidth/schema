@@ -1,53 +1,51 @@
 // Package elixir emits the Elixir target: one .ex file per schema file —
-// Constants.schema -> Constants.ex — deterministic to the byte (SPEC §6.1).
-// There is no external formatter in the build path: the emitter writes clean
+// Constants.schema -> Constants.ex — plus the unit's support module
+// PacketRuntime.ex, deterministic to the byte (SPEC §6.1). There is no
+// external formatter in the build path: the emitter writes clean
 // 2-space-indented Elixir directly, held to `mix format`'s own style (goldens
 // pin it, and the test chain runs the formatter as a refuser).
 //
 // The target is Elixir 1.20 on Erlang/OTP 29. Generated code is
 // SELF-CONTAINED: it defines its own modules and touches nothing beyond the
 // standard library — no serialize.elixir dependency, no hex packages. The
-// serialize.elixir port measured the shapes this backend emits (issue #167):
-// every packing intermediate stays under the BEAM's 60-bit small-integer
-// boundary — values merge in at most 32-bit groups through a byte-granular
-// scratch (nothing here ever reaches 2^40) and decode through the port's
-// 40-bit windows (+41% write / +91% read measured against the boxing
-// shapes); read and write are SINGLE FUNCTIONS PER TYPE threading the
-// output binary / scratch / bit position as plain rebound accumulators —
-// no stream struct and no per-field tuple (the port measured its per-op
-// immutable API at a 7x allocation tax) — with arrays as tail-recursive
-// function-head loops, the port's own fast form; and validation is always
-// on, because the BEAM has no compile-out assert: reads validate everything
-// and never raise on hostile bytes, writes carry the O(1) contract checks
-// as ArgumentError raises (the port's misuse convention).
+// shapes are the serialize.elixir port's measured ones: every packing
+// intermediate stays under the BEAM's 60-bit small-integer boundary — values
+// merge in at most 32-bit groups through a byte-granular scratch and decode
+// through 40/56-bit windows; read and write are SINGLE FUNCTIONS PER TYPE
+// threading the output binary / scratch / bit position as plain rebound
+// accumulators — no stream struct and no per-field tuple — with arrays as
+// tail-recursive function-head loops; and validation is always on, because
+// the BEAM has no compile-out assert: reads validate everything and never
+// raise on hostile bytes, writes carry the O(1) contract checks as
+// ArgumentError raises.
 //
 // Storage is the §6.1 storage principle in the BEAM value domain: one
 // defstruct module per type, every field initialized at declaration with
 // its construction default (folded to a literal — defstruct defaults
-// evaluate at compile time, where a symbolic cross-module call would
-// impose an ordering the runtime never sees). Member names are the
-// snake_case of ir.GoExportName — the same ir.RustSnake mapping the Rust
-// target uses, a bijection on it, so the checker's existing collision
-// detection covers Elixir without a second registry. Integer fields of
-// every width store plain BEAM integers (arbitrary precision makes the
-// 128-bit pair emulation of other targets unnecessary); fixed point
-// stores the raw scaled integer; flags store the uint64 mask pattern;
-// strings and bytes store binaries whose byte_size is the used length;
-// arrays store lists (construction defaults reach through fixed arrays;
-// counted arrays construct empty).
+// evaluate at compile time). Member names are the snake_case of
+// ir.GoExportName — the same ir.RustSnake mapping the Rust target uses, a
+// bijection on it, so the checker's existing collision detection covers
+// Elixir without a second registry. Integer fields of every width store plain
+// BEAM integers; fixed point stores the raw scaled integer; flags store the
+// uint64 mask pattern; strings and bytes store binaries whose byte_size is the
+// used length; arrays store lists. An ENUM VALUE IS AN ATOM — :none for 0, the
+// variant's snake_case otherwise, and a plain integer only for an unnamed
+// `| max = K` headroom value — with E.to_int/1 and E.from_int/1 at the wire.
+// A UNION VALUE IS nil (None), {:arm, payload}, or the bare :arm of a
+// payload-free arm: a tagged tuple is the BEAM's one-of, and since no BEAM
+// term is mutable, the pre-allocated arms other targets keep buy nothing here.
 //
 // Functions per type live in the per-file module (Types.schema -> module
-// <Ns>.Types beside the type modules — the file-scope surface of the JS and
-// Dart targets, spelled the only way Elixir can spell it):
-// write_<name>(value) -> the wire binary (trusted writer, O(1) contracts
-// raise ArgumentError); read_<name>(data, num_bits) -> {:ok, value} |
-// :error (the family read verdict as the port's ok/error convention —
-// reads validate EVERYTHING and never raise on hostile bytes; the body
-// throws :invalid to a catch at the surface, so refusal is an early exit
-// without a per-op result tuple); measure_<name>(value) -> exact wire bits
-// (static runs folded to literals at generation time); zero_<name>() ->
-// the §5 zero form (construction is `%<Ns>.<Name>{}`, which carries the
-// specified defaults instead).
+// <Ns>.Types beside the type modules): write_<name>!(value) -> the wire
+// binary, raising ArgumentError on a contract violation, and
+// write_<name>(value) -> {:ok, binary} | {:error, message} beside it;
+// read_<name>(data, num_bits) -> {:ok, value} | :error, the family read
+// verdict (the body throws :invalid to a catch at the surface, so refusal is
+// an early exit without a per-op result tuple), and read_<name>_bits, which
+// also reports the bits consumed; zero_<name>() -> the §5 zero form
+// (construction is `%<Ns>.<Name>{}`, which carries the specified defaults
+// instead). There is no generated measure function (SPEC §6.1). Every module
+// carries @moduledoc and @type t, and every public function @doc and @spec.
 package elixir
 
 import (
@@ -74,6 +72,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			ns: ir.GoExportName(u.Package), helpers: map[string]string{}}
 		g.emitFile()
 		out[f.Base+".ex"] = g.assemble()
+	}
+	if unitNeedsRuntime(u) {
+		out[RuntimeModule+".ex"] = runtimeFile(u)
 	}
 	return out, nil
 }
@@ -119,6 +120,24 @@ func checkNames(u *ir.Unit) error {
 		}
 	}
 	ns := ir.GoExportName(u.Package)
+	// the unit's support module <Ns>.PacketRuntime, in PacketRuntime.ex: a
+	// declaration or a schema file of that name would take the module or the
+	// output file, so the name is claimed for both
+	if unitNeedsRuntime(u) {
+		if _, isDecl := u.DeclFile[RuntimeModule]; isDecl {
+			return fmt.Errorf("declaration %s collides with the Elixir support module %s.%s; rename it", RuntimeModule, ns, RuntimeModule)
+		}
+		for _, un := range u.Unions {
+			if un.Name+"Type" == RuntimeModule {
+				return fmt.Errorf("union %s needs the tag module %s, which collides with the Elixir support module %s.%s; rename it", un.Name, RuntimeModule, ns, RuntimeModule)
+			}
+		}
+		for _, f := range u.Files {
+			if ir.GoExportName(f.Base) == RuntimeModule || f.Base == RuntimeModule {
+				return fmt.Errorf("schema file %s.schema collides with the Elixir support module %s.%s (%s.ex); rename the file", f.Base, ns, RuntimeModule, RuntimeModule)
+			}
+		}
+	}
 	for _, f := range u.Files {
 		base := ir.GoExportName(f.Base)
 		fileMod := base
@@ -246,18 +265,30 @@ type gen struct {
 	// file however many callers inline it
 	helperOwner string
 
-	// per-file helper needs
-	needWString bool // packet UTF-16 code-unit binary helpers
-	needRd      bool // rd/3 — the 40-bit window decode
-	needRdw     bool // rdw/3 — the 56-bit window decode, for groups past 33 bits
-	needF32     bool // f32_bits/1 + f32_value/1
-	needF64     bool // f64_bits/1 + f64_value/1
-	// the compressed-float helpers are needed in halves: a write always
-	// quantizes, but a read past cfTableMax is what puts cf_decode/4 in the
-	// module — below it the decode is a table lookup and the function would
-	// be dead. fr/1 + fr_slow/1 back both halves, so either need emits them.
-	needCfQ    bool // cf_clamp01/1 + cf_quantize/5
-	needCfD    bool // cf_decode/4
+	// the runtime functions this file's codecs call (runtimeOrder's
+	// spelling), which is exactly what its import names
+	uses map[string]bool
+
+	// THE READ POSITION'S STATIC STATE. bits_read is the runtime variable;
+	// rdPend is how far the emitted reads have moved past it, so a field no
+	// longer rebinds bits_read: positions render as `bits_read + <pend>`, or
+	// as a literal while rdKnown says bits_read itself is the literal rdBase
+	// (a read surface starts at 0 and stays known until a length the wire
+	// decides). rdBound says the variable exists at all — under a known
+	// position nothing binds it until something reads it at runtime.
+	// rdAligned says the runtime bits_read sits on a byte, which an align and
+	// the bytes of a string leave behind.
+	rdKnown   bool
+	rdBase    int64
+	rdPend    int64
+	rdBound   bool
+	rdAligned bool
+
+	// dataBound says the write surface has bound `data`: its first append is
+	// a construction (`data = <<...>>`), never an append to an empty binary
+	dataBound bool
+	lastSeg   segRecord
+
 	usesImport bool // the module body uses Bitwise operators
 
 	// loop helpers the current file's wire bodies need, in first-need order,
@@ -341,6 +372,17 @@ func fixedTableModuleNames(u *ir.Unit) map[string]bool {
 	return names
 }
 
+// use records the runtime functions (runtimeOrder's spelling) this file's
+// codecs call.
+func (g *gen) use(names ...string) {
+	if g.uses == nil {
+		g.uses = map[string]bool{}
+	}
+	for _, n := range names {
+		g.uses[n] = true
+	}
+}
+
 func (g *gen) assemble() []byte {
 	var h strings.Builder
 	// the basename, not the invocation-relative path: output is deterministic
@@ -354,16 +396,16 @@ func (g *gen) assemble() []byte {
 		// the unit-level target notes ride the home file only — said once
 		// per unit, not once per file
 		h.WriteString("#\n")
-		h.WriteString("# The shipped Elixir wire path (issue #167): the serialize.elixir port's\n")
-		h.WriteString("# measured shapes — byte-granular 32-bit-group packing and 40-bit read\n")
-		h.WriteString("# windows (every intermediate a BEAM small integer), single accumulator-\n")
-		h.WriteString("# threaded read/write functions per type (no stream struct, no per-field\n")
-		h.WriteString("# tuple), function-head loops — with literal widths, zero dependencies.\n")
+		h.WriteString("# The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit\n")
+		h.WriteString("# read windows (every intermediate a BEAM small integer), single\n")
+		h.WriteString("# accumulator-threaded read/write functions per type (no stream struct, no\n")
+		h.WriteString("# per-field tuple), function-head loops — with literal widths, zero\n")
+		h.WriteString("# dependencies. The shared helpers live in PacketRuntime.ex.\n")
 		h.WriteString("#\n")
-		h.WriteString("# write_<name>(value) -> the wire binary. The writer TRUSTS the caller\n")
+		h.WriteString("# write_<name>!(value) -> the wire binary. The writer TRUSTS the caller\n")
 		h.WriteString("# (the C++ stance) up to the O(1) contract checks, which raise\n")
 		h.WriteString("# ArgumentError — the BEAM has no compile-out assert, so they are always\n")
-		h.WriteString("# on, matching the port.\n")
+		h.WriteString("# on. write_<name>(value) -> {:ok, binary} | {:error, message} beside it.\n")
 		h.WriteString("#\n")
 		h.WriteString("# read_<name>(data, num_bits) -> {:ok, value} | :error, the family read\n")
 		h.WriteString("# verdict. The wire is a trust boundary: reads validate everything —\n")
@@ -372,12 +414,11 @@ func (g *gen) assemble() []byte {
 		h.WriteString("# No slack past the payload is required: the windows price themselves\n")
 		h.WriteString("# inside the binary.\n")
 		h.WriteString("#\n")
-		h.WriteString("# measure_<name>(value) -> exact wire bits for that value (trusted, like\n")
-		h.WriteString("# the writer). zero_<name>() -> the §5 zero form; construction\n")
-		h.WriteString("# (%Struct{}) carries the specified defaults instead. Floats travel\n")
-		h.WriteString("# bit-transparently: a non-finite IEEE-754 pattern — which no BEAM float\n")
-		h.WriteString("# term can hold — reads back as {:nonfinite, bits} and writes from the\n")
-		h.WriteString("# same form, the serialize.elixir convention.\n")
+		h.WriteString("# zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the\n")
+		h.WriteString("# specified defaults instead. Enum values are atoms, union values are nil,\n")
+		h.WriteString("# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:\n")
+		h.WriteString("# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads\n")
+		h.WriteString("# back as {:nonfinite, bits} and writes from the same form.\n")
 	}
 	h.WriteString("\n")
 	h.WriteString(strings.TrimRight(normalizeBlanks(g.body.String()), "\n"))
@@ -476,81 +517,113 @@ func tableUnionsOrder(f *ir.File) []*ir.Union {
 	return out
 }
 
-// emitEnumModule emits an integer-constant namespace — the Elixir translation
-// of the family's integer-backed enums: a module of 0-arity functions,
-// because storage must hold every wire-legal value and | max = ... headroom
-// values have no richer Elixir value to be.
-// emitModuleDoc writes a declaration's `///` block as the module's own
-// @moduledoc (SPEC §4.1). Elixir is the one target that carries the doc as
-// documentation rather than as a line comment, because a declaration lowers
-// to a module here and a module has an attribute to hang it on. A field and a
-// variant have none, so theirs reach the descriptor column alone.
-func (g *gen) emitModuleDoc(doc string) {
-	if doc == "" {
-		return
-	}
-	g.bpf("  @moduledoc %s\n", ir.QuoteDocElixir(doc))
+// emitEnumModule emits an enum's module: its values are ATOMS — :none for 0,
+// a variant's snake_case otherwise — because an atom is what a guard and a
+// pattern can name, and the integer the wire carries is to_int/1's and
+// from_int/1's business. An unnamed `| max = K` headroom value has no atom to
+// be, so it stays the integer: every wire-legal value is still representable
+// (SPEC §4.2, §6.1).
+func (g *gen) emitEnumModule(d *ir.Enum) {
+	g.bpf("# %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2)\n", d.Name, d.Max)
+	g.bpf("defmodule %s do\n", g.mod(d.Name))
+	g.emitModuleDoc(d.Doc,
+		fmt.Sprintf("The enum %s: each value is an atom, :none being the implicit 0.", d.Name),
+		"An unnamed value up to the declared max is the integer itself.")
+	g.emitEnumSurface(d.Name, d.Variants, d.Max)
+	g.bpf("end\n\n")
 }
 
-func (g *gen) emitEnumModule(d *ir.Enum) {
-	g.bpf("# %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
-	g.bpf("# an integer-constant namespace — the Elixir translation of the family's\n")
-	g.bpf("# integer-backed enums: storage must hold every wire-legal value, and\n")
-	g.bpf("# | max = ... headroom values have no richer Elixir value to be\n")
-	g.bpf("defmodule %s do\n", g.mod(d.Name))
-	g.emitModuleDoc(d.Doc)
-	g.bpf("  def none, do: 0\n")
-	for i, v := range d.Variants {
-		g.bpf("  def %s, do: %d\n", elixirName(v), i+1)
+// emitEnumSurface writes an enum surface's type and its four functions: the
+// two wire conversions, the variant count and the exported extent.
+func (g *gen) emitEnumSurface(name string, variants []string, max int64) {
+	g.bpf("\n")
+	g.emitTypeAlts(enumSpec(variants, max))
+	n := int64(len(variants))
+	wire := "0.." + intLit64(max)
+	if max == 0 {
+		wire = "0"
 	}
-	g.bpf("  # the declared variant count (SPEC §4.2)\n")
-	g.bpf("  def count, do: %s\n", intLit64(int64(len(d.Variants))))
-	g.bpf("  # the exported extent (SPEC §4.2)\n")
-	g.bpf("  def max, do: %s\n", intLit64(d.Max))
-	g.bpf("end\n\n")
+	g.bpf("\n")
+	g.emitDoc(fmt.Sprintf("The wire value of a %s value; anything else raises ArgumentError.", name))
+	g.emitSpec("to_int(t())", wire)
+	g.bpf("  def to_int(:none), do: 0\n")
+	for i, v := range variants {
+		g.bpf("  def to_int(%s), do: %d\n", enumAtom(v), i+1)
+	}
+	if max > n {
+		g.bpf("  def to_int(v) when is_integer(v) and v > %s and v <= %s, do: v\n", intLit64(n), intLit64(max))
+	}
+	g.bpf("\n")
+	g.bpf("  def to_int(v) do\n")
+	g.bpf("    raise ArgumentError, \"not a %s value: #{inspect(v)}\"\n", name)
+	g.bpf("  end\n\n")
+	g.emitDoc(fmt.Sprintf("The %s value of a wire value: `{:ok, value}`, or `:error` past the max.", name))
+	g.emitSpec("from_int(integer())", "{:ok, t()} | :error")
+	g.bpf("  def from_int(0), do: {:ok, :none}\n")
+	for i, v := range variants {
+		g.bpf("  def from_int(%d), do: {:ok, %s}\n", i+1, enumAtom(v))
+	}
+	if max > n {
+		g.bpf("  def from_int(v) when is_integer(v) and v > %s and v <= %s, do: {:ok, v}\n", intLit64(n), intLit64(max))
+	}
+	g.bpf("  def from_int(_), do: :error\n\n")
+	g.emitDoc("The declared variant count (SPEC §4.2).")
+	g.emitSpec("count()", "non_neg_integer()")
+	g.bpf("  def count, do: %s\n\n", intLit64(n))
+	g.emitDoc("The exported extent: the highest wire-legal value (SPEC §4.2).")
+	g.emitSpec("max()", "non_neg_integer()")
+	g.bpf("  def max, do: %s\n", intLit64(max))
 }
 
 // emitUnionModules emits a first-class one-of (SPEC §4.8): the <Name>Type tag
-// namespace, then the struct — the tag beside one arm per variant, each
-// holding its payload type's construction form.
+// enum, then the union's own module, which holds its type: nil for None,
+// {:arm, payload} for an arm with a payload, the bare atom for a payload-free
+// arm. There is no struct: a tagged tuple is the BEAM's one-of, and since no
+// BEAM term is mutable, pre-allocated storage per arm buys nothing.
 func (g *gen) emitUnionModules(d *ir.Union) {
 	g.bpf("# %sType: union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)\n", d.Name, d.Name)
 	g.bpf("defmodule %sType do\n", g.mod(d.Name))
-	g.bpf("  def none, do: 0\n")
+	g.emitModuleDoc("",
+		fmt.Sprintf("The tag of union %s: :none, then one atom per arm in declared order.", d.Name))
+	arms := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
-		g.bpf("  def %s, do: %d\n", elixirName(v.Name), i+1)
+		arms[i] = v.Name
 	}
-	g.bpf("  # the declared variant count (SPEC §4.2)\n")
-	g.bpf("  def count, do: %s\n", intLit64(int64(len(d.Variants))))
-	g.bpf("  # the exported extent (SPEC §4.2)\n")
-	g.bpf("  def max, do: %s\n", intLit64(d.Max))
+	g.emitEnumSurface(d.Name+"Type", arms, d.Max)
 	g.bpf("end\n\n")
 
-	g.bpf("# %s — at most one of the arms; type says which. Construction is the empty\n", d.Name)
-	g.bpf("# union (None). A read builds the selected arm from the wire; unselected\n")
-	g.bpf("# arms hold their construction form (SPEC §4.8 leaves them unspecified).\n")
-	g.bpf("# Consumers read the selected arm only.\n")
-	fields := []string{"type: 0"}
+	g.bpf("# %s — nil (None), {:arm, payload}, or a payload-free arm's bare atom (SPEC §4.8)\n", d.Name)
+	g.bpf("defmodule %s do\n", g.mod(d.Name))
+	g.emitModuleDoc(d.Doc,
+		fmt.Sprintf("The union %s: `nil` is None, an arm with a payload is", d.Name),
+		"`{:arm, payload}`, and a payload-free arm is its bare atom.")
+	alts := []string{"nil"}
 	for _, v := range d.Variants {
 		if v.Void() {
-			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
+			alts = append(alts, enumAtom(v.Name))
+			continue
 		}
-		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(v.Name), g.storageDefault(v.F)))
+		alts = append(alts, fmt.Sprintf("{%s, %s}", enumAtom(v.Name), g.typeSpec(v.F)))
 	}
-	g.bpf("defmodule %s do\n", g.mod(d.Name))
-	g.emitModuleDoc(d.Doc)
-	g.emitDefstruct(fields)
+	g.bpf("\n")
+	g.emitTypeAlts(alts)
 	g.bpf("end\n\n")
 }
 
 func (g *gen) emitStructModule(d *ir.Struct) {
 	g.bpf("# type %s\n", d.Name)
-	var fields []string
+	var fields, specs []string
 	for _, f := range d.Fields {
 		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(f.Name), g.storageDefault(f)))
+		specs = append(specs, fmt.Sprintf("%s: %s", elixirName(f.Name), g.typeSpec(f)))
 	}
 	g.bpf("defmodule %s do\n", g.mod(d.Name))
-	g.emitModuleDoc(d.Doc)
+	g.emitModuleDoc(d.Doc,
+		fmt.Sprintf("The type %s. Construction carries its specified defaults; the", d.Name),
+		fmt.Sprintf("codecs are in %s.", fileModuleName(g.unit, g.file)))
+	g.bpf("\n")
+	g.emitStructType(specs)
+	g.bpf("\n")
 	if len(d.Fields) == 0 {
 		g.bpf("  # empty body — presence is the payload (SPEC §4.6)\n")
 		g.bpf("  defstruct []\n")
@@ -558,7 +631,7 @@ func (g *gen) emitStructModule(d *ir.Struct) {
 		g.emitFieldComments(d)
 		g.emitDefstruct(fields)
 	}
-	EmitKeyedAccessors(&g.body, d)
+	emitKeyedAccessors(&g.body, d, g.ns)
 	g.bpf("end\n\n")
 }
 
@@ -568,6 +641,14 @@ func (g *gen) emitStructModule(d *ir.Struct) {
 // docs/PORTING.md M5). Key 0 (None), keys past E.Max, negative keys, and
 // non-integer keys raise ArgumentError naming the field, the key, and the bound.
 func EmitKeyedAccessors(b *strings.Builder, st *ir.Struct) {
+	emitKeyedAccessors(b, st, "")
+}
+
+// emitKeyedAccessors is EmitKeyedAccessors with the unit namespace: a packet
+// type's accessors also take the key as the enum's own atom, which is what
+// a value of that enum is in this target. A table's accessors (ns "") keep
+// the integer keys the table surface reads.
+func emitKeyedAccessors(b *strings.Builder, st *ir.Struct, ns string) {
 	for _, f := range st.Fields {
 		if f.KeyEnum == "" || f.KeyEnumRef == nil || f.KeyEnumRef.Max <= 0 {
 			continue
@@ -580,14 +661,40 @@ func EmitKeyedAccessors(b *strings.Builder, st *ir.Struct) {
 		maxLit := intLit64(f.KeyEnumRef.Max)
 		maxPlain := strconv.FormatInt(f.KeyEnumRef.Max, 10)
 		b.WriteString("\n  # [" + enumName + "] — 1-based keyed access (1.." + maxPlain + "); 0 (None) and > " + enumName + ".max raise ArgumentError (SPEC §4.3).\n")
+		atoms := []string{":none"}
+		for _, v := range f.KeyEnumRef.Variants {
+			atoms = append(atoms, enumAtom(v))
+		}
+		// an atom that names no variant falls through to the refusal below
+		atomGuard := "is_atom(key) and key in [" + strings.Join(atoms, ", ") + "]"
+		key := "pos_integer()"
+		if ns != "" {
+			key = ns + "." + enumName + ".t()"
+			b.WriteString("  @doc \"The " + fn + " element at an " + enumName + " key, by atom or by its 1-based wire value.\"\n")
+			b.WriteString("  @spec " + fn + "_at(t(), " + key + ") :: term()\n")
+		}
 		b.WriteString("  def " + fn + "_at(s, key) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
 		b.WriteString("    Enum.at(s." + fn + ", key - 1)\n")
 		b.WriteString("  end\n\n")
+		if ns != "" {
+			b.WriteString("  def " + fn + "_at(s, key) when " + atomGuard + ",\n    do: " + fn + "_at(s, " + ns + "." + enumName + ".to_int(key))\n\n")
+		}
 		b.WriteString("  def " + fn + "_at(_s, key), do: refuse_" + fn + "_key(key)\n\n")
+		if ns != "" {
+			b.WriteString("  @doc \"Replaces the " + fn + " element at an " + enumName + " key.\"\n")
+			b.WriteString("  @spec put_" + fn + "_at(t(), " + key + ", term()) :: t()\n")
+		}
 		b.WriteString("  def put_" + fn + "_at(s, key, v) when is_integer(key) and key >= 1 and key <= " + maxLit + " do\n")
 		b.WriteString("    %{s | " + fn + ": List.replace_at(s." + fn + ", key - 1, v)}\n")
 		b.WriteString("  end\n\n")
+		if ns != "" {
+			b.WriteString("  def put_" + fn + "_at(s, key, v) when " + atomGuard + ",\n    do: put_" + fn + "_at(s, " + ns + "." + enumName + ".to_int(key), v)\n\n")
+		}
 		b.WriteString("  def put_" + fn + "_at(_s, key, _v), do: refuse_" + fn + "_key(key)\n\n")
+		if ns != "" {
+			b.WriteString("  @doc \"The " + fn + " elements as {key, element} pairs, keyed by wire value.\"\n")
+			b.WriteString("  @spec " + fn + "_entries(t()) :: [{pos_integer(), term()}]\n")
+		}
 		b.WriteString("  def " + fn + "_entries(s) do\n")
 		b.WriteString("    Enum.with_index(s." + fn + ", 1) |> Enum.map(fn {v, k} -> {k, v} end)\n")
 		b.WriteString("  end\n\n")
@@ -748,10 +855,10 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
-			if f.DefVariant != "" {
-				return fmt.Sprintf("%d", enumVariantValue(ref, f.DefVariant))
+			if f.DefVariant != "" && enumVariantValue(ref, f.DefVariant) != 0 {
+				return enumAtom(f.DefVariant)
 			}
-			return "0"
+			return ":none"
 		case *ir.Flags:
 			if f.HasDefault {
 				return intLit(f.DefInt)
@@ -763,7 +870,7 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 			}
 			return fmt.Sprintf("%%%s{}", g.mod(t.Name))
 		case *ir.Union:
-			return fmt.Sprintf("%%%s{}", g.mod(t.Name))
+			return "nil" // None (SPEC §4.8)
 		}
 	}
 	// integer / bits storage as a plain BEAM integer
@@ -789,14 +896,19 @@ func (g *gen) emitFileModule(order []ir.Decl) {
 	g.bpf("# The file-scope surface: constants, flags masks, name helpers and the\n")
 	g.bpf("# wire functions of every declaration in %s.schema.\n", g.file.Base)
 	g.bpf("defmodule %s do\n", fileModuleName(g.unit, g.file))
+	g.emitModuleDoc("",
+		fmt.Sprintf("The file-scope surface of %s.schema: its constants, flags masks and", g.file.Base),
+		"name helpers, and the wire functions of every declaration in it.")
+	g.bpf("\n")
 
 	var b strings.Builder
 	saved := g.body
 	g.body = b
 
 	if g.home {
-		g.bpf("  # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two\n")
-		g.bpf("  # sides at the same id speak identical bits; there is no other versioning.\n")
+		g.emitDoc("The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two",
+			"sides at the same id speak identical bits; there is no other versioning.")
+		g.emitSpec("protocol_id()", "non_neg_integer()")
 		g.bpf("  def protocol_id, do: 0x%016X\n\n", g.unit.ProtocolId)
 	}
 
@@ -815,23 +927,40 @@ func (g *gen) emitFileModule(order []ir.Decl) {
 		}
 	}
 	g.emitLoopHelpers()
-	g.emitSupportHelpers()
 
 	inner := strings.TrimRight(g.body.String(), "\n")
 	g.body = saved
 	if g.usesImport {
-		g.bpf("  import Bitwise\n\n")
+		g.bpf("  import Bitwise\n")
+	}
+	if len(g.uses) > 0 {
+		var only []string
+		for _, n := range runtimeOrder {
+			if g.uses[n] {
+				name, arity, _ := strings.Cut(n, "/")
+				only = append(only, name+": "+arity)
+			}
+		}
+		one := fmt.Sprintf("  import %s, only: [%s]", g.mod(RuntimeModule), strings.Join(only, ", "))
+		if len(one) <= formatWidth {
+			g.bpf("%s\n", one)
+		} else {
+			g.bpf("\n  import %s,\n    only: [\n", g.mod(RuntimeModule))
+			for i, o := range only {
+				sep := ","
+				if i == len(only)-1 {
+					sep = ""
+				}
+				g.bpf("      %s%s\n", o, sep)
+			}
+			g.bpf("    ]\n")
+		}
+	}
+	if g.usesImport || len(g.uses) > 0 {
+		g.bpf("\n")
 	}
 	for _, def := range g.cfTabDef {
 		g.body.WriteString(def)
-	}
-	if g.needRd {
-		// inlined by the compiler, so the literal widths at every call site
-		// reach the mask arithmetic as constants
-		g.bpf("  @compile {:inline, rd: 3}\n\n")
-	}
-	if g.needRdw {
-		g.bpf("  @compile {:inline, rdw: 3}\n\n")
 	}
 	g.body.WriteString(inner)
 	g.bpf("\nend\n")
@@ -844,7 +973,13 @@ func (g *gen) emitFileModule(order []ir.Decl) {
 func (g *gen) emitConst(d *ir.Const) {
 	name := elixirName(d.Name)
 	g.foldComment(d.Expr)
+	if d.Doc != "" {
+		g.bpf("  @doc %s\n", ir.QuoteDocElixir(d.Doc))
+	} else {
+		g.emitDoc(fmt.Sprintf("The constant %s.", d.Name))
+	}
 	if d.IsFloat {
+		g.emitSpec(name+"()", "float()")
 		if d.Storage == "float32" {
 			g.bpf("  def %s, do: %s\n\n", name, formatFloat32(d.Float))
 			return
@@ -852,6 +987,7 @@ func (g *gen) emitConst(d *ir.Const) {
 		g.bpf("  def %s, do: %s\n\n", name, formatFloat(d.Float))
 		return
 	}
+	g.emitSpec(name+"()", "integer()")
 	g.bpf("  def %s, do: %s\n\n", name, g.renderInt(d.Expr, d.Int))
 }
 
@@ -864,15 +1000,25 @@ func (g *gen) foldComment(e ast.Expr) {
 }
 
 // emitEnumHelpers emits the enum's debug-name function into the file module
-// (the constant namespace is the enum's own module, emitted earlier).
+// (the enum's own surface is its module, emitted earlier).
 func (g *gen) emitEnumHelpers(d *ir.Enum) {
-	g.bpf("  # enum_name_%s: debug/log/tooling name for any %s wire value —\n", ir.RustSnake(d.Name), d.Name)
-	g.bpf("  # out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("  def enum_name_%s(value) do\n", ir.RustSnake(d.Name))
+	g.emitNameFunction(ir.RustSnake(d.Name), d.Name, d.Variants, d.Variants)
+}
+
+// emitNameFunction emits enum_name_<snake>/1: the debug/log/tooling name of
+// any value of an enum surface, given as its atom or as its wire value;
+// anything past the named variants names as "???".
+func (g *gen) emitNameFunction(snake, name string, variants, names []string) {
+	g.emitDoc(fmt.Sprintf("The debug/log/tooling name of a %s value, by atom or by wire", name),
+		"value; anything past the named variants names as \"???\".")
+	g.emitSpec(fmt.Sprintf("enum_name_%s(%s.t() | integer())", snake, g.mod(name)), "String.t()")
+	g.bpf("  def enum_name_%s(value) do\n", snake)
 	g.bpf("    case value do\n")
+	g.bpf("      :none -> \"None\"\n")
 	g.bpf("      0 -> \"None\"\n")
-	for i, v := range d.Variants {
-		g.bpf("      %d -> \"%s\"\n", i+1, v)
+	for i, v := range variants {
+		g.bpf("      %s -> \"%s\"\n", enumAtom(v), names[i])
+		g.bpf("      %d -> \"%s\"\n", i+1, names[i])
 	}
 	g.bpf("      _ -> \"???\"\n")
 	g.bpf("    end\n")
@@ -885,15 +1031,23 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.bpf("  # %d bits (SPEC §4.2). Mask names are the family's flat spelling.\n", d.WireBits)
 	g.usesImport = true
 	for i, v := range d.Variants {
-		g.bpf("  def %s, do: 1 <<< %d\n", elixirName(d.Name+v), i)
+		mask := elixirName(d.Name + v)
+		if i < len(d.VariantDocs) && d.VariantDocs[i] != "" {
+			g.bpf("  @doc %s\n", ir.QuoteDocElixir(d.VariantDocs[i]))
+		} else {
+			g.emitDoc(fmt.Sprintf("The %s mask of %s (bit %d).", v, d.Name, i))
+		}
+		g.emitSpec(mask+"()", "non_neg_integer()")
+		g.bpf("  def %s, do: 1 <<< %d\n\n", mask, i)
 	}
-	g.bpf("  # the declared variant count (SPEC §4.2)\n")
-	g.bpf("  def %s_count, do: %d\n\n", ir.RustSnake(d.Name), len(d.Variants))
-
-	g.usesImport = true
 	snake := ir.RustSnake(d.Name)
-	g.bpf("  # flag_name_%s: debug/log/tooling name for bit i of %s —\n", snake, d.Name)
-	g.bpf("  # out-of-range bits name as \"???\"\n")
+	g.emitDoc(fmt.Sprintf("The declared variant count of %s (SPEC §4.2).", d.Name))
+	g.emitSpec(snake+"_count()", "non_neg_integer()")
+	g.bpf("  def %s_count, do: %d\n\n", snake, len(d.Variants))
+
+	g.emitDoc(fmt.Sprintf("The debug/log/tooling name of bit i of %s; out-of-range bits", d.Name),
+		"name as \"???\".")
+	g.emitSpec(fmt.Sprintf("flag_name_%s(integer())", snake), "String.t()")
 	g.bpf("  def flag_name_%s(bit) do\n", snake)
 	g.bpf("    case bit do\n")
 	for i, v := range d.Variants {
@@ -903,8 +1057,9 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.bpf("    end\n")
 	g.bpf("  end\n\n")
 
-	g.bpf("  # flag_names_%s renders the set bits of value as \"A|B\" — \"0\" for the\n", snake)
-	g.bpf("  # empty set, bits past the declared variants as hex\n")
+	g.emitDoc(fmt.Sprintf("Renders the set bits of a %s value as \"A|B\": \"0\" for the empty", d.Name),
+		"set, bits past the declared variants as hex.")
+	g.emitSpec(fmt.Sprintf("flag_names_%s(non_neg_integer())", snake), "String.t()")
 	g.bpf("  def flag_names_%s(value) do\n", snake)
 	g.bpf("    names =\n")
 	g.bpf("      Enum.filter(0..%d, fn bit -> (value >>> bit &&& 1) != 0 end)\n", len(d.Variants)-1)

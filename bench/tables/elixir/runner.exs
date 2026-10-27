@@ -225,7 +225,7 @@ defmodule SchemaTablesBenchElixir do
     |> Enum.each(fn {variant, k} ->
       case Bench.Bench.read_bench_mixed(variant, record * 8) do
         {:ok, decoded} ->
-          if Bench.Bench.write_bench_mixed(decoded) != variant do
+          if Bench.Bench.write_bench_mixed!(decoded) != variant do
             gate_fail(
               "packet variant #{k} round-trip bytes differ — refusing to bench a codec " <>
                 "that does not reproduce the corpus"

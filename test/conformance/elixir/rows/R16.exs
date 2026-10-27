@@ -310,6 +310,12 @@ end
 # required at runtime): struct(Module, fields).
 struct_of = fn ns, name, fields -> struct(Module.concat([ns, name]), fields) end
 
+# an enum value is an atom in this port: the variant a wire ordinal names
+enum_of = fn ns, name, ordinal ->
+  {:ok, value} = Module.concat([ns, name]).from_int(ordinal)
+  value
+end
+
 save = fn mod, fun, values -> apply(mod, String.to_atom(fun <> "_fixed_save"), [values]) end
 load = fn mod, fun, data -> apply(mod, String.to_atom(fun <> "_fixed_load"), [data]) end
 
@@ -452,7 +458,7 @@ end
 # ============================================================================
 
 ew = mods["enum_width"]
-ew_rec = struct_of.(ew.old_ns, "Lineage", tier: 255, seq: 12)
+ew_rec = struct_of.(ew.old_ns, "Lineage", tier: enum_of.(ew.old_ns, "Wide", 255), seq: 12)
 file = save.(ew.old_mod, "lineage", [ew_rec])
 
 case load.(ew.new_mod, "lineage", file) do
@@ -462,7 +468,7 @@ case load.(ew.new_mod, "lineage", file) do
 
     check.(
       "enum_width: the widened ordinal and the scalar behind it landed exactly",
-      v.tier == 255 and v.seq == 12
+      v.tier == enum_of.(ew.new_ns, "Wide", 255) and v.seq == 12
     )
 
   other ->
@@ -559,7 +565,7 @@ end
 # ============================================================================
 
 ea = mods["enum_append"]
-ea_rec = struct_of.(ea.old_ns, "Lineage", tier: 3, seq: 9)
+ea_rec = struct_of.(ea.old_ns, "Lineage", tier: :gold, seq: 9)
 file = save.(ea.old_mod, "lineage", [ea_rec])
 
 case forge.(file, <<0x03, 0x09, 0x00, 0x00, 0x00>>, 1, fn acc, at ->
@@ -570,7 +576,7 @@ case forge.(file, <<0x03, 0x09, 0x00, 0x00, 0x00>>, 1, fn acc, at ->
     # lineage, so the plan is compiled from the OLD (three-variant) layout.
     case load.(ea.new_mod, "lineage", forged) do
       {:ok, [v], report} ->
-        check.("forged ordinal, compiled plan: one past the WRITER's top lands None", v.tier == 0)
+        check.("forged ordinal, compiled plan: one past the WRITER's top lands None", v.tier == :none)
         check.("forged ordinal, compiled plan: the scalar behind it landed", v.seq == 9)
 
         check.(
@@ -588,7 +594,7 @@ case forge.(file, <<0x03, 0x09, 0x00, 0x00, 0x00>>, 1, fn acc, at ->
     # hash, so the plan is the baked identity one.
     case load.(ea.old_mod, "lineage", forged) do
       {:ok, [v], report} ->
-        check.("forged ordinal, identity plan: one past the WRITER's top lands None", v.tier == 0)
+        check.("forged ordinal, identity plan: one past the WRITER's top lands None", v.tier == :none)
         check.("forged ordinal, identity plan: the scalar behind it landed", v.seq == 9)
         check.("forged ordinal, identity plan: clamped == 1 on the SAME forged bytes", report.clamped == 1)
         check.("forged ordinal, identity plan: only clamped moved", quiet.(report, [:clamped]))
@@ -629,7 +635,7 @@ file = save.(ea.old_mod, "lineage", [ea_rec])
 
 case load.(ea.new_mod, "lineage", file) do
   {:ok, [v], report} ->
-    check.("enum_append clean: the appended variant is not an event — Gold landed", v.tier == 3 and v.seq == 9)
+    check.("enum_append clean: the appended variant is not an event — Gold landed", v.tier == :gold and v.seq == 9)
     check.("enum_append clean: the ORDINAL op moved every counter not at all", quiet.(report, []))
 
   other ->
@@ -641,7 +647,7 @@ ua = mods["union_append"]
 
 ua_rec =
   struct_of.(ua.old_ns, "Lineage",
-    pick: struct_of.(ua.old_ns, "Pick", type: 1, alpha: struct_of.(ua.old_ns, "Alpha", m: 7)),
+    pick: {:alpha, struct_of.(ua.old_ns, "Alpha", m: 7)},
     seq: 5
   )
 
@@ -651,7 +657,7 @@ case load.(ua.new_mod, "lineage", file) do
   {:ok, [v], report} ->
     check.(
       "union_append: an appended arm is not an event — the tag and payload landed",
-      v.pick.type == 1 and v.pick.alpha.m == 7 and v.seq == 5
+      elem(v.pick, 0) == :alpha and elem(v.pick, 1).m == 7 and v.seq == 5
     )
 
     check.("union_append: the CONST op moved every counter not at all", quiet.(report, []))

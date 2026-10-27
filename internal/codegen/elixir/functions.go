@@ -1,22 +1,21 @@
-// Wire-function emission: write/read/measure/zero per type, the issue #167
-// prescription — the serialize.elixir port's proven shapes with literal
-// constant widths, nested types inlined into the caller's body (one function
-// per top-level operation), bounds checks fused per maximal static run on the
-// read side, and the measure side's static runs folded to literals at
-// generation time.
+// Wire-function emission: write/read/zero per type — the serialize.elixir
+// port's proven shapes with literal constant widths, nested types inlined
+// into the caller's body (one function per top-level operation), and bounds
+// checks fused per maximal static run on the read side.
 //
 // The wire math is the family group structure (32-bit groups, least
 // significant first) through the port's small-integer machinery: the write
 // side merges into a byte-granular scratch — after every merge the whole
 // bytes flush to the output binary, so the scratch never holds more than
 // 7 + 32 bits and no intermediate approaches the BEAM's 60-bit boxing
-// boundary — and the read side decodes through the port's 40-bit windows.
+// boundary — and the read side decodes through 40/56-bit windows at
+// positions the generator knows statically wherever the wire lets it.
 // Refusal on the read side is a thrown :invalid caught at the function
-// surface: an early exit with no per-operation result tuple (the port's
-// measured 7x allocation tax), surfaced as the family verdict
-// {:ok, value} | :error. Loops are tail-recursive function-head helpers
-// threading the same plain accumulators; each loop costs one returned tuple,
-// never one per element.
+// surface: an early exit with no per-operation result tuple (a `with` chain
+// would cost one tagged tuple per operation, which is the 7x allocation tax
+// the port measured), surfaced as the family verdict {:ok, value} | :error.
+// Loops are tail-recursive function-head helpers threading the same plain
+// accumulators; each loop costs one returned tuple, never one per element.
 package elixir
 
 import (
@@ -90,6 +89,9 @@ type wseg struct {
 // appends of a dynamic-width segment cost 103.7 ns against 103.6 for literal
 // widths — the append is the expense, not the arithmetic around it).
 func (s wseg) text() string {
+	if s.width == "" && s.whole == 0 {
+		return s.reg // the residual byte: a default 8-bit segment
+	}
 	if s.width != "" {
 		return fmt.Sprintf("%s::little-size(%s)-unit(8)", s.reg, s.width)
 	}
@@ -199,29 +201,56 @@ func (g *gen) flushW(ind string) {
 // with the comma or the closing `>>` that will follow it.
 func (g *gen) segAppend(segs []wseg, ind string) {
 	parts := make([]string, 0, len(segs)+1)
-	parts = append(parts, "data::binary")
+	if g.dataBound {
+		parts = append(parts, "data::binary")
+	}
+	g.dataBound = true
 	for _, s := range segs {
 		parts = append(parts, s.text())
 	}
-	if one := ind + "data = <<" + strings.Join(parts, ", ") + ">>"; len(one) <= formatWidth {
-		g.pf("%s\n", one)
-		return
+	g.lastSeg = segRecord{start: g.fn.Len(), parts: parts, ind: ind}
+	g.fn.WriteString(construction("data = ", parts, ind))
+	g.lastSeg.end = g.fn.Len()
+}
+
+// segRecord is where the last binary construction sits in the function being
+// emitted, so the write surface's tail can return it rather than bind it.
+type segRecord struct {
+	start, end int
+	parts      []string
+	ind        string
+}
+
+// construction renders `<lhs><<parts>>` at ind in mix format's shape. Bound to
+// data, the long form breaks after the `=` with `<<` two deeper and the
+// segments filling greedily four deeper; as a bare expression it opens on its
+// own line and continues two deeper.
+func construction(lhs string, parts []string, ind string) string {
+	if one := ind + lhs + "<<" + strings.Join(parts, ", ") + ">>"; len(one) <= formatWidth {
+		return one + "\n"
 	}
-	g.pf("\n%sdata =\n", ind)
-	line := ind + "  <<" + parts[0]
+	var b strings.Builder
+	b.WriteString("\n") // a multi-line statement stands apart
+	open, cont := ind+"<<", ind+"  "
+	if lhs != "" {
+		fmt.Fprintf(&b, "%s%s\n", ind, strings.TrimRight(lhs, " "))
+		open, cont = ind+"  <<", ind+"    "
+	}
+	line := open + parts[0]
 	for i := 1; i < len(parts); i++ {
 		tail := 1 // the comma that follows this segment
 		if i == len(parts)-1 {
 			tail = 2 // the closing >> instead
 		}
 		if len(line)+1+1+len(parts[i])+tail > formatWidth {
-			g.pf("%s,\n", line)
-			line = ind + "    " + parts[i]
+			fmt.Fprintf(&b, "%s,\n", line)
+			line = cont + parts[i]
 			continue
 		}
 		line += ", " + parts[i]
 	}
-	g.pf("%s>>\n\n", line)
+	fmt.Fprintf(&b, "%s>>\n\n", line)
+	return b.String()
 }
 
 // syncSB materializes scratch_bits where the emitted code is about to read it
@@ -251,6 +280,25 @@ func (g *gen) ensureScratch(ind string, alsoSB bool) {
 	}
 }
 
+// ensureData binds data where emitted code is about to read it with nothing
+// having bound it yet: a write surface's first append is a construction, so
+// the empty binary is spelled only where something consumes it as such.
+func (g *gen) ensureData(ind string) {
+	if !g.dataBound {
+		g.pf("%sdata = <<>>\n", ind)
+		g.dataBound = true
+	}
+}
+
+// dataArg is data as a call argument that rebinds it: the empty binary
+// itself where nothing has bound data yet.
+func (g *gen) dataArg() string {
+	if g.dataBound {
+		return "data"
+	}
+	return "<<>>"
+}
+
 // sbState is the static scratch state, saved across an emission that has to
 // be entered more than once (a branch's arms) or entered fresh (a helper).
 type sbState struct {
@@ -262,10 +310,11 @@ type sbState struct {
 	sbBound bool
 	segs    []wseg
 	segN    int
+	data    bool
 }
 
 func (g *gen) sbSave() sbState {
-	return sbState{g.sbKnown, g.sbVal, g.scZero, g.pendW, g.scBound, g.sbBound, g.segW, g.segN}
+	return sbState{g.sbKnown, g.sbVal, g.scZero, g.pendW, g.scBound, g.sbBound, g.segW, g.segN, g.dataBound}
 }
 
 // captureArm emits one arm of a branch or a union case into a detached
@@ -301,6 +350,7 @@ func (g *gen) sbRestore(s sbState) {
 	g.sbKnown, g.sbVal, g.scZero, g.pendW = s.known, s.val, s.zero, s.pend
 	g.scBound, g.sbBound = s.scBound, s.sbBound
 	g.segW, g.segN = s.segs, s.segN
+	g.dataBound = s.data
 }
 
 // joinArm is one captured emission path of a branch or a union case: the
@@ -326,6 +376,7 @@ func (g *gen) emitWriteJoin(ind, open, close string, arms []joinArm) {
 		ends[i] = a.end
 	}
 	val, agree := sbAgree(ends)
+	g.dataBound = true // the caller bound it before capturing the arms
 	tuple := "{data, scratch, scratch_bits}"
 	if agree {
 		tuple = "{data, scratch}"
@@ -398,11 +449,11 @@ func (g *gen) readR(bits int64, ind string) {
 			w = bits
 		}
 		if w <= rdWindowBits {
-			g.needRd = true
-			g.pf("%srv = rd(data, bits_read, %d)\n", ind, w)
+			g.use("rd/3")
+			g.pf("%srv = rd(data, %s, %d)\n", ind, g.rpos(0), w)
 		} else {
-			g.needRdw = true
-			g.pf("%srv = rdw(data, bits_read, %d)\n", ind, w)
+			g.use("rdw/3")
+			g.pf("%srv = rdw(data, %s, %d)\n", ind, g.rpos(0), w)
 		}
 		g.rdOff, g.rdAvail = 0, w
 	}
@@ -417,7 +468,7 @@ func (g *gen) readR(bits int64, ind string) {
 	default:
 		g.pf("%sv = rv >>> %d &&& %s\n", ind, g.rdOff, maskHex(bits))
 	}
-	g.pf("%sbits_read = bits_read + %d\n", ind, bits)
+	g.rdPend += bits
 	g.rdOff += bits
 	g.rdAvail -= bits
 	if g.rdRun > 0 {
@@ -584,55 +635,50 @@ func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 // ---- per-struct emission ----
 
 func (g *gen) emitStructFunctions(st *ir.Struct) {
-	maxBits := ir.MaxBitsStruct(st)
-	snake := ir.RustSnake(st.Name)
-	g.bpf("  # %s_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).\n", snake)
-	g.bpf("  # %s_max_bytes is rounded up to the family 8-byte write-buffer granularity.\n", snake)
-	g.bpf("  def %s_max_bits, do: %s\n", snake, intLit64(maxBits))
-	g.bpf("  def %s_max_bytes, do: %s\n\n", snake, intLit64(ir.MaxBytes(maxBits)))
-
+	g.emitBounds(st.Name, ir.MaxBitsStruct(st),
+		"the longest wire path, align padding at its worst case (SPEC §6.1)")
 	g.emitZeroFunction(st)
 	g.emitWriteFunction(st.Name, st.Items)
 	g.emitReadFunction(st.Name, st, st.Items)
-	g.emitMeasureFunction(st.Name, st.Items)
+}
+
+// emitBounds emits <name>_max_bits/0 and <name>_max_bytes/0 (SPEC §6.1).
+func (g *gen) emitBounds(name string, maxBits int64, what string) {
+	snake := ir.RustSnake(name)
+	g.emitDoc(fmt.Sprintf("The most wire bits a %s can take: %s.", name, what))
+	g.emitSpec(snake+"_max_bits()", "pos_integer()")
+	g.bpf("  def %s_max_bits, do: %s\n\n", snake, intLit64(maxBits))
+	g.emitDoc(fmt.Sprintf("%s_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer", snake),
+		"granularity.")
+	g.emitSpec(snake+"_max_bytes()", "pos_integer()")
+	g.bpf("  def %s_max_bytes, do: %s\n\n", snake, intLit64(ir.MaxBytes(maxBits)))
 }
 
 // emitUnionFunctions emits the union's bounds and the same function surface
 // as a type: the tag rides in minimal bits, then the selected arm only
 // (SPEC §4.8).
 func (g *gen) emitUnionFunctions(d *ir.Union) {
-	maxBits := ir.MaxBitsUnion(d)
-	snake := ir.RustSnake(d.Name)
-	g.bpf("  # %s_max_bits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", snake)
-	g.bpf("  # %s_max_bytes is rounded up to the family 8-byte write-buffer granularity.\n", snake)
-	g.bpf("  def %s_max_bits, do: %s\n", snake, intLit64(maxBits))
-	g.bpf("  def %s_max_bytes, do: %s\n\n", snake, intLit64(ir.MaxBytes(maxBits)))
+	g.emitBounds(d.Name, ir.MaxBitsUnion(d), "the tag plus the largest arm (SPEC §4.8)")
 
 	// the tag enum's name surface is a declared enum's, member for member: a
 	// reader logging which message arrived writes enum_name_<tag>(value)
 	// whichever enum it is. Nothing on the read or write path calls it.
-	tag := ir.RustSnake(d.Name + "Type")
-	g.bpf("  # enum_name_%s: debug/log/tooling name for any %sType wire value —\n", tag, d.Name)
-	g.bpf("  # out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
-	g.bpf("  def enum_name_%s(value) do\n", tag)
-	g.bpf("    case value do\n")
-	g.bpf("      0 -> \"None\"\n")
+	arms := make([]string, len(d.Variants))
+	names := make([]string, len(d.Variants))
 	for i, v := range d.Variants {
-		g.bpf("      %d -> \"%s\"\n", i+1, ir.GoExportName(v.Name))
+		arms[i] = v.Name
+		names[i] = ir.GoExportName(v.Name)
 	}
-	g.bpf("      _ -> \"???\"\n")
-	g.bpf("    end\n")
-	g.bpf("  end\n\n")
+	g.emitNameFunction(ir.RustSnake(d.Name+"Type"), d.Name+"Type", arms, names)
 
-	g.bpf("  # The §5 zero form — the empty union (None). Arms hold their construction\n")
-	g.bpf("  # form: every arm is unselected at None, and unselected arms are\n")
-	g.bpf("  # unspecified by rule (SPEC §4.8).\n")
-	g.bpf("  def zero_%s, do: %%%s{}\n\n", snake, g.mod(d.Name))
+	snake := ir.RustSnake(d.Name)
+	g.emitDoc(fmt.Sprintf("The §5 zero form of %s: the empty union, None.", d.Name))
+	g.emitSpec("zero_"+snake+"()", g.mod(d.Name)+".t()")
+	g.bpf("  def zero_%s, do: nil\n\n", snake)
 
 	item := unionItem(d)
 	g.emitWriteFunction(d.Name, []ir.Item{item})
 	g.emitReadFunction(d.Name, nil, []ir.Item{item})
-	g.emitMeasureFunction(d.Name, []ir.Item{item})
 }
 
 // unionItem wraps a union as a self-typed field item so the standalone union
@@ -649,8 +695,9 @@ func unionItem(d *ir.Union) ir.Item {
 // wire contract stays a pure function of the encodings).
 func (g *gen) emitZeroFunction(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
-	g.bpf("  # The §5 zero form: all-zero storage; specified defaults live only in\n")
-	g.bpf("  # construction (%%%s{}).\n", g.mod(st.Name))
+	g.emitDoc(fmt.Sprintf("The §5 zero form of %s: all-zero storage. Specified defaults live", st.Name),
+		fmt.Sprintf("only in construction (`%%%s{}`).", g.mod(st.Name)))
+	g.emitSpec("zero_"+snake+"()", g.mod(st.Name)+".t()")
 	var fields []string
 	for _, f := range st.Fields {
 		fields = append(fields, fmt.Sprintf("%s: %s", elixirName(f.Name), g.zeroValue(f)))
@@ -710,8 +757,10 @@ func (g *gen) zeroScalar(t ir.FieldType) string {
 		case *ir.Struct:
 			return g.zeroCall(t.Name)
 		case *ir.Union:
-			// zero IS None; arms are unspecified at None (SPEC §4.8)
-			return fmt.Sprintf("%%%s{}", g.mod(t.Name))
+			// zero IS None (SPEC §4.8)
+			return "nil"
+		case *ir.Enum:
+			return ":none"
 		}
 	}
 	return "0"
@@ -728,6 +777,13 @@ func (g *gen) zeroCall(typeName string) string {
 	return fileModuleName(g.unit, &ir.File{Base: base}) + "." + call
 }
 
+// valueSpec is the typespec of a declaration's value.
+func (g *gen) valueSpec(name string) string { return g.mod(name) + ".t()" }
+
+// emitWriteFunction emits the PAIR: write_<name>!(value) -> the wire binary,
+// raising ArgumentError where a write contract is violated, and
+// write_<name>(value) -> {:ok, binary} | {:error, message}, the verdict form
+// beside it — the read side's own {:ok, ...} shape.
 func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	g.usesImport = true
 	snake := ir.RustSnake(name)
@@ -737,41 +793,71 @@ func (g *gen) emitWriteFunction(name string, items []ir.Item) {
 	// first length the message's own data decides packs at literal offsets
 	g.sbKnown, g.sbVal, g.scZero = true, 0, true
 	g.scBound, g.sbBound = false, false
+	g.dataBound = false
+	g.lastSeg = segRecord{}
 	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
+	var tail string
 	g.withOwner(name, func() {
 		g.emitWriteItems(items, "value", "    ")
 		g.flushW("    ") // the tail is a barrier: the residual is < 8 bits
 		// the return reads what it is about to test or append
-		if !g.sbKnown {
+		switch {
+		case !g.sbKnown:
 			g.ensureScratch("    ", true)
-		} else if g.sbVal != 0 {
+			g.ensureData("    ")
+			tail = "    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n"
+		case g.sbVal != 0:
 			g.ensureScratch("    ", false)
+			if g.dataBound {
+				tail = "    # the residual byte, statically known to be there\n    <<data::binary, scratch>>\n"
+			} else {
+				tail = "    # the residual byte, statically known to be there\n    <<scratch>>\n"
+			}
+		case !g.dataBound:
+			tail = "    <<>>\n"
+		default:
+			tail = "    data\n"
 		}
 	})
 	body := g.fn.String()
+	if tail == "    data\n" && g.lastSeg.end == len(body) && g.lastSeg.parts != nil {
+		// a body whose last statement builds data returns the construction
+		// itself rather than binding it and naming it again
+		body = body[:g.lastSeg.start] + construction("", g.lastSeg.parts, g.lastSeg.ind)
+		tail = ""
+	} else if tail == "    data\n" {
+		// and so does a body whose last statement is a float64's append
+		trimmed := strings.TrimSuffix(body, "\n")
+		cut := strings.LastIndex(trimmed, "\n") + 1
+		if last := trimmed[cut:]; strings.HasPrefix(last, "    data = put_f64(") {
+			body = trimmed[:cut] + "    " + strings.TrimPrefix(last, "    data = ") + "\n"
+			tail = ""
+		}
+	}
 
-	g.bpf("  # write_%s packs value into a fresh binary — the trusted writer; the O(1)\n", snake)
-	g.bpf("  # contract checks raise ArgumentError, always on (the BEAM has no\n")
-	g.bpf("  # compile-out assert). Returns the wire bytes.\n")
+	g.emitDoc(fmt.Sprintf("Packs a %s into a fresh binary and returns the wire bytes. The", name),
+		"writer trusts the caller up to the O(1) contract checks, which raise",
+		"ArgumentError — always on, since the BEAM has no compile-out assert.")
+	g.emitSpec(fmt.Sprintf("write_%s!(%s)", snake, g.valueSpec(name)), "binary()")
 	param := "value"
 	if !strings.Contains(body, "value") {
 		param = "_value"
 	}
-	g.bpf("  def write_%s(%s) do\n", snake, param)
-	g.bpf("    data = <<>>\n")
-	if body == "" {
+	g.bpf("  def write_%s!(%s) do\n", snake, param)
+	if body == "" && tail == "    <<>>\n" {
 		g.bpf("    # empty body — presence is the payload (SPEC §4.6)\n")
 	}
 	g.body.WriteString(body)
-	switch {
-	case !g.sbKnown:
-		g.bpf("    if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n")
-	case g.sbVal != 0:
-		g.bpf("    # the residual byte, statically known to be there\n")
-		g.bpf("    <<data::binary, scratch>>\n")
-	default:
-		g.bpf("    data\n")
-	}
+	g.body.WriteString(tail)
+	g.bpf("  end\n\n")
+
+	g.emitDoc(fmt.Sprintf("write_%s!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`", snake),
+		"where the bang form raises ArgumentError.")
+	g.emitSpec(fmt.Sprintf("write_%s(%s)", snake, g.valueSpec(name)), "{:ok, binary()} | {:error, String.t()}")
+	g.bpf("  def write_%s(value) do\n", snake)
+	g.bpf("    {:ok, write_%s!(value)}\n", snake)
+	g.bpf("  rescue\n")
+	g.bpf("    e in ArgumentError -> {:error, Exception.message(e)}\n")
 	g.bpf("  end\n\n")
 }
 
@@ -787,6 +873,10 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 	snake := ir.RustSnake(name)
 	g.fn.Reset()
 	g.rdBreak()
+	// the surface starts at bit 0, known: positions are literals until a
+	// length the wire decides, and bits_read is bound only where runtime
+	// code reads it
+	g.rdKnown, g.rdBase, g.rdPend, g.rdBound, g.rdAligned = true, 0, 0, false, true
 	g.withOwner(name, func() { g.emitReadItems(items, "v", "      ", false) })
 	if st != nil {
 		var fields []string
@@ -794,42 +884,116 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 			fields = append(fields, fmt.Sprintf("%s: %s", elixirName(f.Name), local("v", f)))
 		}
 		if len(fields) == 0 {
-			g.pf("      {:ok, %%%s{}, bits_read}\n", g.mod(name))
+			g.pf("      {:ok, %%%s{}, %s}\n", g.mod(name), g.rpos(0))
 		} else {
 			g.structLit(&g.fn, "      ", "value = ", name, fields)
-			g.pf("      {:ok, value, bits_read}\n")
+			g.pf("      {:ok, value, %s}\n", g.rpos(0))
 		}
 	} else {
-		g.pf("      {:ok, v, bits_read}\n")
+		g.pf("      {:ok, v, %s}\n", g.rpos(0))
 	}
 	body := g.fn.String()
 
-	g.bpf("  # read_%s_bits decodes the first num_bits of data and REPORTS THE BITS\n", snake)
-	g.bpf("  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a\n")
-	g.bpf("  # second object behind the first in one buffer. :error rejects the wire\n")
-	g.bpf("  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No\n")
-	g.bpf("  # slack past the payload is required.\n")
+	g.emitDoc(fmt.Sprintf("Decodes a %s from the first num_bits of data and REPORTS THE BITS", name),
+		"CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a",
+		"second object behind the first in one buffer. `:error` rejects the wire",
+		"(bounds, ranges, wire constants, padding); hostile bytes never raise. No",
+		"slack past the payload is required.")
+	g.emitSpec(fmt.Sprintf("read_%s_bits(binary(), non_neg_integer())", snake),
+		fmt.Sprintf("{:ok, %s, non_neg_integer()} | :error", g.valueSpec(name)))
 	g.readHead(snake + "_bits")
 	g.bpf("    try do\n")
 	g.bpf("      if num_bits > byte_size(data) * 8 do\n")
 	g.bpf("        # the payload cannot exceed the buffer behind it\n")
 	g.bpf("        throw(:invalid)\n")
 	g.bpf("      end\n\n")
-	g.bpf("      bits_read = 0\n")
 	g.body.WriteString(body)
 	g.bpf("    catch\n")
 	g.bpf("      :invalid -> :error\n")
 	g.bpf("    end\n")
 	g.bpf("  end\n\n")
 
-	g.bpf("  # read_%s is read_%s_bits with the count dropped — the family read\n", snake, snake)
-	g.bpf("  # verdict, unchanged, and the entry every caller already holds.\n")
+	g.emitDoc(fmt.Sprintf("Decodes a %s from the first num_bits of data: read_%s_bits/2", name, snake),
+		"with the count dropped, the family read verdict.")
+	g.emitSpec(fmt.Sprintf("read_%s(binary(), non_neg_integer())", snake),
+		fmt.Sprintf("{:ok, %s} | :error", g.valueSpec(name)))
 	g.readHead(snake)
 	g.bpf("    case read_%s_bits(data, num_bits) do\n", snake)
 	g.bpf("      {:ok, value, _bits_read} -> {:ok, value}\n")
 	g.bpf("      :error -> :error\n")
 	g.bpf("    end\n")
 	g.bpf("  end\n\n")
+}
+
+// rpos is the read position `extra` bits past where the emitted reads stand:
+// a literal while the position is static, bits_read plus the static
+// distance otherwise.
+func (g *gen) rpos(extra int64) string {
+	off := g.rdPend + extra
+	if g.rdKnown {
+		return intLit64(g.rdBase + off)
+	}
+	if off == 0 {
+		return "bits_read"
+	}
+	return "bits_read + " + intLit64(off)
+}
+
+// rdAlignedNow reports whether the read position is statically on a byte.
+func (g *gen) rdAlignedNow() bool {
+	if g.rdKnown {
+		return (g.rdBase+g.rdPend)&7 == 0
+	}
+	return g.rdAligned && g.rdPend&7 == 0
+}
+
+// syncRd binds bits_read to the position the reads have reached, where
+// runtime code is about to read the variable: a loop, a branch or a union
+// arm leaving through its tuple, the dynamic tail of an align.
+func (g *gen) syncRd(ind string) {
+	if g.rdPend == 0 && g.rdBound {
+		return
+	}
+	g.pf("%sbits_read = %s\n", ind, g.rpos(0))
+	g.rdAligned = g.rdAlignedNow()
+	if g.rdKnown {
+		g.rdBase += g.rdPend
+	}
+	g.rdPend, g.rdBound = 0, true
+}
+
+// rdState is the read position's static state, saved across the arms of a
+// branch or a union case, which each enter at the same one.
+type rdState struct {
+	known, bound, aligned bool
+	base, pend            int64
+}
+
+func (g *gen) rdSave() rdState {
+	return rdState{g.rdKnown, g.rdBound, g.rdAligned, g.rdBase, g.rdPend}
+}
+
+func (g *gen) rdRestore(s rdState) {
+	g.rdKnown, g.rdBound, g.rdAligned, g.rdBase, g.rdPend = s.known, s.bound, s.aligned, s.base, s.pend
+}
+
+// rdJoin is the position past a join whose arms each synced bits_read. The
+// variable the join's tuple bound is the position from here on — even where
+// every arm ended on the same literal, the tuple carries it, and reading it
+// is what keeps it from being an unused binding — and it sits on a byte
+// where every arm's did.
+func (g *gen) rdJoin(ends []rdState) {
+	aligned := true
+	for _, e := range ends {
+		aligned = aligned && (e.aligned || (e.known && e.base&7 == 0))
+	}
+	g.rdDynamic(aligned)
+}
+
+// rdDynamic records that a call returned bits_read at a position the wire
+// decided.
+func (g *gen) rdDynamic(aligned bool) {
+	g.rdKnown, g.rdBound, g.rdAligned, g.rdPend = false, true, aligned, 0
 }
 
 // readHead writes a read entry's head, wrapping the guard onto its own line
@@ -976,6 +1140,7 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 			// before it and inside each arm: what leaves the if is one
 			// invariant, not one per arm
 			g.flushW(ind)
+			g.ensureData(ind) // every arm leaves through the tuple
 			entry := g.sbSave()
 			thenText, thenEnd := g.captureArm(entry, func() {
 				g.emitWriteItems(item.Then, path, ind+"    ")
@@ -1027,13 +1192,14 @@ func (g *gen) emitWriteAlign(ind string) {
 	switch {
 	case !g.sbKnown:
 		g.ensureScratch(ind, true)
+		g.ensureData(ind)
 		g.pf("%sdata = if scratch_bits != 0, do: <<data::binary, scratch>>, else: data\n", ind)
 		// scratch_bits is NOT zeroed here, and neither is scratch: the
 		// offset is static from this point, and whatever reads either of
 		// them next publishes the zero it needs
 	case g.sbVal != 0:
 		g.ensureScratch(ind, false)
-		g.pf("%sdata = <<data::binary, scratch>>\n", ind)
+		g.segAppend([]wseg{{reg: "scratch"}}, ind)
 	default:
 		g.pf("%s# already byte-aligned, and nothing is pending\n", ind)
 	}
@@ -1057,7 +1223,8 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.syncSB(ind) // and reads the offset the caller was tracking statically
 		g.ensureScratch(ind, true)
 		g.callAssign("{data, scratch, scratch_bits}",
-			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
+			fmt.Sprintf("%s(%s, %s, scratch, scratch_bits)", helper, name, g.dataArg()), ind)
+		g.dataBound = true
 		// how many elements rode is the message's business, so the offset
 		// past the loop is the wire's, not the generator's
 		g.sbKnown, g.scZero = false, false
@@ -1077,7 +1244,8 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 		g.syncSB(ind) // and reads the offset the caller was tracking statically
 		g.ensureScratch(ind, true)
 		g.callAssign("{data, scratch, scratch_bits}",
-			fmt.Sprintf("%s(%s, data, scratch, scratch_bits)", helper, name), ind)
+			fmt.Sprintf("%s(%s, %s, scratch, scratch_bits)", helper, name, g.dataArg()), ind)
+		g.dataBound = true
 		// how many elements rode is the message's business, so the offset
 		// past the loop is the wire's, not the generator's
 		g.sbKnown, g.scZero = false, false
@@ -1109,6 +1277,7 @@ func (g *gen) writeHelper(f *ir.Field) string {
 	// body maintains scratch_bits the way it did before the static pass
 	g.sbKnown, g.scZero = false, false
 	g.scBound, g.sbBound = true, true // both arrive as parameters
+	g.dataBound = true
 	// a helper is its own function: its own locals, its own name space
 	g.bindW, g.bindDisp, g.bindUsed = nil, nil, map[string]bool{}
 	base := fmt.Sprintf("  defp %s([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}", name)
@@ -1177,6 +1346,7 @@ func (g *gen) writeClause(f *ir.Field, name string, k int64) {
 	g.pendW, g.segW, g.segN = 0, nil, 0
 	g.sbKnown, g.scZero = false, false
 	g.scBound, g.sbBound = true, true
+	g.dataBound = true
 	g.pf("  defp %s([%s | rest], data, scratch, scratch_bits) do\n", name, strings.Join(evs, ", "))
 	for _, ev := range evs {
 		g.emitWriteElem(f, ev, "    ")
@@ -1300,11 +1470,20 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteCompressedFloat(f, name, ind)
 			return
 		}
-		g.needF32 = true
+		g.use("f32_bits/1")
 		g.pf("%sv = f32_bits(%s)\n", ind, name)
 		g.mergeW(32, ind)
 	case ir.TFloat64:
-		g.needF64 = true
+		if g.sbKnown && g.sbVal&7 == 0 {
+			// on a byte: the value rides as one native float segment, and no
+			// 64-bit integer is ever formed
+			g.flushW(ind)
+			g.use("put_f64/2")
+			g.pf("%sdata = put_f64(%s, %s)\n", ind, g.dataArg(), name)
+			g.dataBound = true
+			return
+		}
+		g.use("f64_bits/1")
 		g.pf("%sw = f64_bits(%s)\n", ind, name)
 		g.emitWriteWide("w", 64, ind)
 	case ir.TWString:
@@ -1314,12 +1493,15 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			g.emitCheckRange(name, g.dsp(name), big.NewInt(0), big.NewInt(ref.Max), ind)
+			// to_int/1 is the contract check: anything but a value of the
+			// enum raises ArgumentError
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
 			if bits == 0 {
-				return // degenerate [0, 0]: zero bits; the check still rides
+				// degenerate [0, 0]: zero bits; the check still rides
+				g.pf("%s%s.to_int(%s)\n", ind, g.mod(f.Type.Name), name)
+				return
 			}
-			g.pf("%sv = %s\n", ind, name)
+			g.pf("%sv = %s.to_int(%s)\n", ind, g.mod(f.Type.Name), name)
 			g.mergeW(bits, ind)
 		case *ir.Flags:
 			wb := int64(ref.WireBits)
@@ -1406,7 +1588,7 @@ func f32lit(v float64) string {
 // quantizer — every step float32, overflow clamping, the normative integer
 // clamp.
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
-	g.needCfQ = true
+	g.use("cf_quantize/5")
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
@@ -1426,51 +1608,96 @@ func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.mergeW(lenBits, ind)
 	g.emitWriteAlign(ind)
 	g.pf("%s# the used bytes ride whole — the stream is byte-aligned here\n", ind)
-	g.pf("%sdata = <<data::binary, %s::binary>>\n", ind, name)
+	if g.dataBound {
+		g.pf("%sdata = <<data::binary, %s::binary>>\n", ind, name)
+	} else {
+		g.pf("%sdata = <<%s::binary>>\n", ind, name)
+		g.dataBound = true
+	}
 }
 
-// emitWriteUnion inlines a union (SPEC §4.8): the tag contract checked
-// BEFORE it rides, the tag in minimal bits, then a case inlines each arm's
-// items — the struct-inlining move, per arm.
+// freshLocal claims a local name in the function being emitted, never one an
+// enclosing scope still holds.
+func (g *gen) freshLocal(l string) string {
+	for g.bindUsed[l] {
+		l += "_"
+	}
+	g.bindUsed[l] = true
+	return l
+}
+
+// emitWriteUnion inlines a union (SPEC §4.8): one case decides the tag —
+// and is the contract check, raising ArgumentError on anything that is not
+// a value of the union — the tag rides in minimal bits, then a second case
+// inlines the selected arm's items, the struct-inlining move, per arm.
 func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
-	// the tag validates BEFORE it rides (SPEC §4.8)
-	g.emitCheckRange(expr+".type", g.dsp(expr)+".type", big.NewInt(0), big.NewInt(u.Max), ind)
+	shown := g.dsp(expr)
 	if u.Max == 0 {
-		return // an empty union's degenerate tag range [0, 0] costs zero bits
+		// an empty union's degenerate tag range [0, 0] costs zero bits
+		g.raiseIf(fmt.Sprintf("%s != nil", expr), fmt.Sprintf("%s is not None, the only %s value", shown, u.Name), ind)
+		return
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.pf("%sv = %s.type\n", ind, expr)
+	other := g.freshLocal(strings.NewReplacer(".", "_").Replace(expr) + "_other")
+	g.pf("\n")
+	g.pf("%sv =\n", ind)
+	g.pf("%s  case %s do\n", ind, expr)
+	// one clause per wire tag, in the formatter's broken form: the raise
+	// below takes two lines, so mix format breaks every clause
+	g.pf("%s    nil ->\n%s      0\n\n", ind, ind)
+	payload := false
+	for i, vr := range u.Variants {
+		if vr.Void() {
+			g.pf("%s    %s ->\n%s      %d\n\n", ind, enumAtom(vr.Name), ind, i+1)
+			continue
+		}
+		payload = payload || len(vr.Ref.Items) > 0
+		g.pf("%s    {%s, _} ->\n%s      %d\n\n", ind, enumAtom(vr.Name), ind, i+1)
+	}
+	g.pf("%s    %s ->\n", ind, other)
+	msg := fmt.Sprintf("\"%s is not a %s value: #{inspect(%s)}\"", shown, u.Name, other)
+	if one := ind + "      raise ArgumentError, " + msg; len(one) <= formatWidth {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%s      raise ArgumentError,\n%s            %s\n", ind, ind, msg)
+	}
+	g.pf("%s  end\n", ind)
+	g.pf("\n")
 	g.mergeW(bits, ind)
+	if !payload {
+		return // every arm is its tag: the case above was the whole wire
+	}
 	// the case joins every arm, so the group closes before it and inside
 	// each arm: what leaves the case is one invariant, not one per arm
 	g.flushW(ind)
+	g.ensureData(ind)
 	entry := g.sbSave()
 	var arms []joinArm
-	for i, vr := range u.Variants {
+	for _, vr := range u.Variants {
+		if vr.Void() || len(vr.Ref.Items) == 0 {
+			continue
+		}
+		local := g.freshLocal(strings.NewReplacer(".", "_").Replace(expr) + "_" + elixirName(vr.Name))
+		if g.bindDisp == nil {
+			g.bindDisp = map[string]string{}
+		}
+		g.bindDisp[local] = shown + "." + elixirName(vr.Name)
 		body, end := g.captureArm(entry, func() {
-			if vr.Void() {
-				g.pf("%s      # a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
-				return
-			}
-			if len(vr.Ref.Items) == 0 {
-				g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
-				return
-			}
 			g.withOwner(vr.Type, func() {
-				g.emitWriteItems(vr.Ref.Items, expr+"."+elixirName(vr.Name), ind+"      ")
+				g.emitWriteItems(vr.Ref.Items, local, ind+"      ")
 				g.flushW(ind + "      ")
 			})
 		})
 		arms = append(arms, joinArm{
-			lead: fmt.Sprintf("%s    %d ->\n", ind, i+1), body: body,
+			lead: fmt.Sprintf("%s    {%s, %s} ->\n", ind, enumAtom(vr.Name), local), body: body,
 			tupleIn: ind + "      ", trail: "\n", end: end,
 		})
 	}
-	none := fmt.Sprintf("%s      # None — the tag is the whole wire (SPEC §4.8)\n", ind)
+	rest := fmt.Sprintf("%s      # None, or an arm whose tag is its whole wire (SPEC §4.8)\n", ind)
 	arms = append(arms, joinArm{
-		lead: ind + "    _ ->\n", body: none, tupleIn: ind + "      ", end: entry,
+		lead: ind + "    _ ->\n", body: rest, tupleIn: ind + "      ", end: entry,
 	})
-	g.emitWriteJoin(ind, fmt.Sprintf("  case %s.type do\n", expr), "  end\n", arms)
+	g.emitWriteJoin(ind, fmt.Sprintf("  case %s do\n", expr), "  end\n", arms)
 }
 
 // ---- read emission ----
@@ -1493,7 +1720,7 @@ func (g *gen) emitReadItems(items []ir.Item, pre, ind string, bounded bool) {
 				j++
 			}
 			if !bounded && total > 0 {
-				g.throwIf(fmt.Sprintf("bits_read + %s > num_bits", intLit64(total)), "", ind)
+				g.throwIf(fmt.Sprintf("%s > num_bits", g.rpos(total)), "", ind)
 			}
 			// the run's own length sizes the read groups inside it —
 			// unless a WIDER run is already open around this scope, as it
@@ -1543,23 +1770,30 @@ func (g *gen) emitReadBranch(item *ir.Branch, pre, ind string, bounded bool) {
 	}
 	locals := append(g.collectLocals(item.Then, pre), g.collectLocals(item.Else, pre)...)
 	tuple := "{bits_read, " + strings.Join(locals, ", ") + "}"
+	entry := g.rdSave()
 	g.pf("\n")
 	g.pf("%s%s =\n", ind, tuple)
 	g.pf("%s  if %s do\n", ind, cond)
 	g.rdBreak()
 	g.emitReadItems(item.Then, pre, ind+"    ", bounded)
+	g.syncRd(ind + "    ") // the arm leaves through the tuple
+	thenEnd := g.rdSave()
 	g.emitZeroLocals(item.Else, pre, ind+"    ")
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  else\n", ind)
 	g.rdBreak()
+	g.rdRestore(entry)
 	if item.Else != nil {
 		g.emitReadItems(item.Else, pre, ind+"    ", bounded)
 	}
+	g.syncRd(ind + "    ")
+	elseEnd := g.rdSave()
 	g.emitZeroLocals(item.Then, pre, ind+"    ")
 	g.pf("%s    %s\n", ind, tuple)
 	g.pf("%s  end\n", ind)
 	g.pf("\n")
 	g.rdBreak()
+	g.rdJoin([]rdState{thenEnd, elseEnd})
 }
 
 // collectLocals lists the locals an item subtree binds, in declaration order.
@@ -1592,8 +1826,22 @@ func (g *gen) emitZeroLocals(items []ir.Item, pre, ind string) {
 }
 
 // emitReadAlign verifies zero padding to the byte boundary and advances.
+// Where the position is static the pad is a literal, or nothing at all.
 func (g *gen) emitReadAlign(ind string) {
-	g.needRd = true
+	if g.rdAlignedNow() {
+		g.rdBreak()
+		return // already on a byte: nothing to pad, nothing to check
+	}
+	g.use("rd/3")
+	if g.rdKnown {
+		pad := 8 - (g.rdBase+g.rdPend)&7
+		g.throwIf(fmt.Sprintf("%s > num_bits", g.rpos(pad)), "", ind)
+		g.throwIf(fmt.Sprintf("rd(data, %s, %d) != 0", g.rpos(0), pad), "nonzero padding is refused (SPEC §4.3)", ind)
+		g.rdPend += pad
+		g.rdBreak()
+		return
+	}
+	g.syncRd(ind)
 	g.pf("%spad = 8 - (bits_read &&& 7) &&& 7\n", ind)
 	g.pf("\n")
 	g.pf("%sif pad != 0 do\n", ind)
@@ -1608,6 +1856,7 @@ func (g *gen) emitReadAlign(ind string) {
 	g.pf("%send\n", ind)
 	g.pf("\n")
 	g.pf("%sbits_read = bits_read + pad\n", ind)
+	g.rdAligned = true
 	g.rdBreak()
 }
 
@@ -1650,7 +1899,8 @@ func (g *gen) emitReadField(f *ir.Field, pre, ind string, bounded bool) {
 		helper := g.readHelper(f, true)
 		g.rdBreak()
 		g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
-			fmt.Sprintf("%s(%s, [], data, num_bits, bits_read)", helper, intLit64(f.ArrayBound)), ind)
+			fmt.Sprintf("%s(%s, [], data, num_bits, %s)", helper, intLit64(f.ArrayBound), g.rpos(0)), ind)
+		g.rdDynamic(false)
 	case ir.ArrayCounted:
 		g.emitReadCounted(f, lv, ind)
 	default:
@@ -1661,7 +1911,7 @@ func (g *gen) emitReadField(f *ir.Field, pre, ind string, bounded bool) {
 func (g *gen) emitReadCounted(f *ir.Field, lv, ind string) {
 	countBits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
 	if countBits > 0 {
-		g.throwIf(fmt.Sprintf("bits_read + %s > num_bits", intLit64(countBits)), "", ind)
+		g.throwIf(fmt.Sprintf("%s > num_bits", g.rpos(countBits)), "", ind)
 		g.readR(countBits, ind)
 		diff := f.ArrayBound - f.ArrayMin
 		if diff != (int64(1)<<countBits)-1 {
@@ -1677,18 +1927,20 @@ func (g *gen) emitReadCounted(f *ir.Field, lv, ind string) {
 	}
 	if elemBits, ok := g.staticBitsScalar(f); ok {
 		if elemBits > 0 {
-			g.throwIf(fmt.Sprintf("bits_read + n * %s > num_bits", intLit64(elemBits)), "", ind)
+			g.throwIf(fmt.Sprintf("%s + n * %s > num_bits", g.rpos(0), intLit64(elemBits)), "", ind)
 		}
 		helper := g.readHelper(f, true)
 		g.rdBreak()
 		g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
-			fmt.Sprintf("%s(n, [], data, num_bits, bits_read)", helper), ind)
+			fmt.Sprintf("%s(n, [], data, num_bits, %s)", helper, g.rpos(0)), ind)
+		g.rdDynamic(false)
 		return
 	}
 	helper := g.readHelper(f, false)
 	g.rdBreak()
 	g.callAssign(fmt.Sprintf("{bits_read, %s}", lv),
-		fmt.Sprintf("%s(n, [], data, num_bits, bits_read)", helper), ind)
+		fmt.Sprintf("%s(n, [], data, num_bits, %s)", helper, g.rpos(0)), ind)
+	g.rdDynamic(false)
 }
 
 // readHelper materializes (once per file) the tail-recursive read loop for
@@ -1703,6 +1955,7 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	g.helpers[name] = ""
 	saved := g.fn
 	savedOff, savedAvail, savedRun := g.rdOff, g.rdAvail, g.rdRun
+	savedPos := g.rdSave()
 	g.fn = strings.Builder{}
 	g.rdBreak() // the element body opens its own group
 	// the counter is `remaining`, never `n` — a nested counted array's count
@@ -1725,6 +1978,7 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	g.helpers[name] = g.fn.String()
 	g.fn = saved
 	g.rdOff, g.rdAvail, g.rdRun = savedOff, savedAvail, savedRun
+	g.rdRestore(savedPos)
 	g.helperOrder = append(g.helperOrder, name)
 	return g.readEntry(f, name)
 }
@@ -1767,6 +2021,8 @@ func (g *gen) readClause(f *ir.Field, name string, k int64, bounded bool) {
 		}
 	}
 	g.rdBreak() // a clause opens its own group
+	// at a position the caller's element count decides
+	g.rdDynamic(false)
 	if k > 1 {
 		g.pf("  defp %s(remaining, acc, data, num_bits, bits_read)\n", name)
 		g.pf("       when remaining >= %d do\n", k)
@@ -1788,8 +2044,8 @@ func (g *gen) readClause(f *ir.Field, name string, k int64, bounded bool) {
 	for i, ev := range evs {
 		cons[int(k)-1-i] = ev // the accumulator is reversed at the end
 	}
-	g.pf("    %s(remaining - %d, [%s | acc], data, num_bits, bits_read)\n",
-		name, k, strings.Join(cons, ", "))
+	g.wrapCall(name, []string{fmt.Sprintf("remaining - %d", k), "[" + strings.Join(cons, ", ") + " | acc]",
+		"data", "num_bits", g.rpos(0)}, "    ")
 	g.pf("  end\n\n")
 	g.rdBreak()
 }
@@ -2145,11 +2401,19 @@ func (g *gen) emitReadScalar(f *ir.Field, lv, ind string, bounded bool) {
 			g.emitReadCompressedFloat(f, lv, ind)
 			return
 		}
-		g.needF32 = true
+		g.use("f32_value/1")
 		g.readR(32, ind)
 		g.pf("%s%s = f32_value(v)\n", ind, lv)
 	case ir.TFloat64:
-		g.needF64 = true
+		if g.feed == nil && g.rdAlignedNow() {
+			// on a byte: one native float segment, no 64-bit integer formed
+			g.use("get_f64/2")
+			g.rdBreak()
+			g.pf("%s%s = get_f64(data, %s)\n", ind, lv, g.rpos(0))
+			g.rdPend += 64
+			return
+		}
+		g.use("f64_value/1")
 		g.emitReadWide(64, ind)
 		g.pf("%s%s = f64_value(w)\n", ind, lv)
 	case ir.TNamed:
@@ -2157,14 +2421,15 @@ func (g *gen) emitReadScalar(f *ir.Field, lv, ind string, bounded bool) {
 		case *ir.Enum:
 			bits := ir.BitsRequired(big.NewInt(0), big.NewInt(ref.Max))
 			if bits == 0 {
-				g.pf("%s%s = 0\n", ind, lv)
+				g.pf("%s%s = :none\n", ind, lv)
 				return
 			}
 			g.readR(bits, ind)
 			if ref.Max != (int64(1)<<bits)-1 {
 				g.throwIf(fmt.Sprintf("v > %s", intLit64(ref.Max)), "headroom above the wire range is refused", ind)
 			}
-			g.pf("%s%s = v\n", ind, lv)
+			// v is in [0, max] here, so the conversion cannot refuse
+			g.pf("%s{:ok, %s} = %s.from_int(v)\n", ind, lv, g.mod(f.Type.Name))
 		case *ir.Flags:
 			wb := int64(ref.WireBits)
 			if wb <= 32 {
@@ -2201,7 +2466,7 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, lv, ind string) {
 			g.cfTable(maxInt, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF))))
 		return
 	}
-	g.needCfD = true
+	g.use("cf_decode/4")
 	g.pf("%s%s = cf_decode(v, %s, %s, %s)\n", ind, lv, f32lit(float64(maxInt)), f32lit(float64(deltaF)), f32lit(float64(minF)))
 }
 
@@ -2226,39 +2491,9 @@ func (g *gen) cfTable(maxInt uint64, miv32, delta, min32 string) int {
 	}
 	idx := len(g.cfTabDef)
 	g.cfTabs[key] = idx
-	g.usesImport = true // the table builder's fr_slow arm shifts sign bits
-	var b strings.Builder
-	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
-	w("  @cf_tab_%d (fn ->\n", idx)
-	w("               fr = fn value ->\n")
-	w("                 ax = abs(value)\n")
-	w("\n")
-	w("                 if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do\n")
-	w("                   y = value * 536_870_913.0\n")
-	w("                   y - (y - value)\n")
-	w("                 else\n")
-	w("                   case <<value::float-32-little>> do\n")
-	w("                     <<rounded::float-32-little>> -> rounded\n")
-	w("                     <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
-	w("                   end\n")
-	w("                 end\n")
-	w("               end\n")
-	w("\n")
-	w("               List.to_tuple(\n")
-	w("                 for integer <- 0..%d do\n", maxInt)
-	w("                   quotient = fr.(fr.(integer * 1.0) / %s)\n", miv32)
-	w("                   scaled = fr.(quotient * %s)\n", delta)
-	w("\n")
-	w("                   case fr.(scaled + %s) do\n", min32)
-	w("                     :pos_inf -> {:nonfinite, 0x7F800000}\n")
-	w("                     :neg_inf -> {:nonfinite, 0xFF800000}\n")
-	w("                     value -> value\n")
-	w("                   end\n")
-	w("                 end\n")
-	w("               )\n")
-	w("             end).()\n")
-	w("\n")
-	g.cfTabDef = append(g.cfTabDef, b.String())
+	g.use("cf_table/4")
+	g.cfTabDef = append(g.cfTabDef,
+		fmt.Sprintf("  @cf_tab_%d cf_table(%d, %s, %s, %s)\n\n", idx, maxInt, miv32, delta, min32))
 	return idx
 }
 
@@ -2334,16 +2569,24 @@ func (g *gen) emitReadInt(f *ir.Field, lv, ind string) {
 // the interior-null and UTF-8 validity refusals.
 func (g *gen) emitReadBytesField(f *ir.Field, lv, ind string) {
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-	g.throwIf(fmt.Sprintf("bits_read + %s > num_bits", intLit64(lenBits)), "", ind)
+	g.throwIf(fmt.Sprintf("%s > num_bits", g.rpos(lenBits)), "", ind)
 	g.readR(lenBits, ind)
 	if f.Type.Size != (int64(1)<<lenBits)-1 {
 		g.throwIf(fmt.Sprintf("v > %s", intLit64(f.Type.Size)), "the length guards the slice — reject, never clamp", ind)
 	}
 	g.pf("%slen = v\n", ind)
 	g.emitReadAlign(ind)
-	g.throwIf("bits_read + len * 8 > num_bits", "", ind)
-	g.pf("%s%s = binary_part(data, bits_read >>> 3, len)\n", ind, lv)
-	g.pf("%sbits_read = bits_read + len * 8\n", ind)
+	g.throwIf(fmt.Sprintf("%s + len * 8 > num_bits", g.rpos(0)), "", ind)
+	at := "(" + g.rpos(0) + ") >>> 3"
+	switch {
+	case g.rdKnown:
+		at = intLit64((g.rdBase + g.rdPend) >> 3)
+	case g.rdPend == 0:
+		at = "bits_read >>> 3"
+	}
+	g.pf("%s%s = binary_part(data, %s, len)\n", ind, lv, at)
+	g.pf("%sbits_read = %s + len * 8\n", ind, g.rpos(0))
+	g.rdDynamic(true) // whole bytes behind an align: still on a byte
 	g.rdBreak()
 	if f.Type.Kind == ir.TString {
 		g.throwIf(fmt.Sprintf("not String.valid?(%s)", lv), "malformed UTF-8 is content the read refuses (SPEC §4.7)", ind)
@@ -2354,251 +2597,68 @@ func (g *gen) emitReadBytesField(f *ir.Field, lv, ind string) {
 
 // emitReadUnion is the union read half: the tag reads in minimal bits and a
 // value above the count is refused (SPEC §4.8); each arm decodes into fresh
-// locals and the case returns the assembled union struct.
+// locals and the case returns the union value — nil for None, {:arm, payload}
+// or a payload-free arm's bare atom.
 func (g *gen) emitReadUnion(u *ir.Union, lv, ind string, bounded bool) {
 	if u.Max == 0 {
 		g.pf("%s# zero wire bits — only None exists (SPEC §4.8)\n", ind)
-		g.pf("%s%s = %%%s{}\n", ind, lv, g.mod(u.Name))
+		g.pf("%s%s = nil\n", ind, lv)
 		return
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	if !bounded {
-		g.throwIf(fmt.Sprintf("bits_read + %d > num_bits", bits), "", ind)
+		g.throwIf(fmt.Sprintf("%s > num_bits", g.rpos(bits)), "", ind)
 	}
 	g.readR(bits, ind)
 	if u.Max != (int64(1)<<bits)-1 {
 		g.throwIf(fmt.Sprintf("v > %s", intLit64(u.Max)), "not a wire-legal tag (SPEC §4.8)", ind)
 	}
+	// every arm leaves through the tuple, so they all enter with bits_read
+	// bound to the position past the tag
+	g.syncRd(ind)
+	entry := g.rdSave()
+	var ends []rdState
 	g.pf("\n")
 	g.pf("%s{bits_read, %s} =\n", ind, lv)
 	g.pf("%s  case v do\n", ind)
 	for i, vr := range u.Variants {
-		arm := lv + "_" + elixirName(vr.Name)
+		g.rdRestore(entry)
 		g.pf("%s    %d ->\n", ind, i+1)
-		if vr.Void() {
-			g.pf("%s      # a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+		if vr.Void() || len(vr.Ref.Items) == 0 {
+			if vr.Void() {
+				g.pf("%s      # a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			} else {
+				g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
+			}
 			g.rdBreak()
-			g.structLit(&g.fn, ind+"      ", "u = ", u.Name, []string{fmt.Sprintf("type: %d", i+1)})
-			g.pf("%s      {bits_read, u}\n\n", ind)
+			val := enumAtom(vr.Name)
+			if !vr.Void() {
+				val = fmt.Sprintf("{%s, %%%s{}}", enumAtom(vr.Name), g.mod(vr.Ref.Name))
+			}
+			g.pf("%s      {bits_read, %s}\n\n", ind, val)
+			ends = append(ends, g.rdSave())
 			continue
 		}
-		if len(vr.Ref.Items) == 0 {
-			g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
-		}
+		arm := lv + "_" + elixirName(vr.Name)
 		g.rdBreak() // each arm opens its own group
 		g.withOwner(vr.Type, func() {
 			g.emitReadItems(vr.Ref.Items, arm, ind+"      ", false)
 			g.emitBuildStruct(vr.Ref, arm, arm, ind+"      ")
 		})
-		g.structLit(&g.fn, ind+"      ", "u = ",
-			u.Name, []string{fmt.Sprintf("type: %d", i+1), fmt.Sprintf("%s: %s", elixirName(vr.Name), arm)})
-		g.pf("%s      {bits_read, u}\n", ind)
+		g.syncRd(ind + "      ")
+		ends = append(ends, g.rdSave())
+		g.pf("%s      {bits_read, {%s, %s}}\n", ind, enumAtom(vr.Name), arm)
 		g.pf("\n")
 	}
+	g.rdRestore(entry)
+	ends = append(ends, entry)
 	g.pf("%s    _ ->\n", ind)
 	g.pf("%s      # None — the tag is the whole wire (SPEC §4.8)\n", ind)
-	g.pf("%s      {bits_read, %%%s{}}\n", ind, g.mod(u.Name))
+	g.pf("%s      {bits_read, nil}\n", ind)
 	g.pf("%s  end\n", ind)
 	g.pf("\n")
 	g.rdBreak()
-}
-
-// ---- measure emission ----
-
-// emitMeasureFunction emits measure_<name>: exact wire bits for a value,
-// static runs folded to generation-time literals; a fully static type folds
-// to a single return.
-func (g *gen) emitMeasureFunction(name string, items []ir.Item) {
-	snake := ir.RustSnake(name)
-	g.fn.Reset()
-	pending := int64(0)
-	g.withOwner(name, func() { g.emitMeasureItems(items, "value", "    ", &pending) })
-	body := g.fn.String()
-
-	g.bpf("  # measure_%s is the exact wire bits write_%s would produce for value —\n", snake, snake)
-	g.bpf("  # trusted like the writer; static runs fold to literals at generation time.\n")
-	if body == "" {
-		// fully static: the whole wire folded to one constant
-		g.bpf("  def measure_%s(_value), do: %s\n\n", snake, intLit64(pending))
-		return
-	}
-	param := "value"
-	if !strings.Contains(body, "value") {
-		param = "_value"
-	}
-	g.bpf("  def measure_%s(%s) do\n", snake, param)
-	g.bpf("    bits = 0\n")
-	g.body.WriteString(body)
-	if pending != 0 {
-		g.bpf("    bits + %s\n", intLit64(pending))
-	} else {
-		g.bpf("    bits\n")
-	}
-	g.bpf("  end\n\n")
-}
-
-// flushMeasure adds the pending folded bits before dynamic code that needs
-// the running position.
-func (g *gen) flushMeasure(pending *int64, ind string) {
-	if *pending != 0 {
-		g.pf("%sbits = bits + %s\n", ind, intLit64(*pending))
-		*pending = 0
-	}
-}
-
-func (g *gen) emitMeasureItems(items []ir.Item, path, ind string, pending *int64) {
-	for _, item := range items {
-		if bits, ok := g.staticBitsItem(item); ok {
-			*pending += bits
-			continue
-		}
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitMeasureField(item.F, path, ind, pending)
-		case *ir.AlignItem:
-			g.flushMeasure(pending, ind)
-			g.pf("%sbits = bits + (8 - (bits &&& 7) &&& 7)\n", ind)
-		case *ir.Branch:
-			g.flushMeasure(pending, ind)
-			cond := path + "." + elixirName(item.Cond)
-			if item.Neg {
-				cond = "not " + cond
-			}
-			g.pf("\n")
-			g.pf("%sbits =\n", ind)
-			g.pf("%s  if %s do\n", ind, cond)
-			thenPending := int64(0)
-			g.emitMeasureItems(item.Then, path, ind+"    ", &thenPending)
-			if thenPending != 0 {
-				g.pf("%s    bits + %s\n", ind, intLit64(thenPending))
-			} else {
-				g.pf("%s    bits\n", ind)
-			}
-			g.pf("%s  else\n", ind)
-			elsePending := int64(0)
-			if item.Else != nil {
-				g.emitMeasureItems(item.Else, path, ind+"    ", &elsePending)
-			}
-			if elsePending != 0 {
-				g.pf("%s    bits + %s\n", ind, intLit64(elsePending))
-			} else {
-				g.pf("%s    bits\n", ind)
-			}
-			g.pf("%s  end\n", ind)
-			g.pf("\n")
-		}
-	}
-}
-
-func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
-	name := path + "." + elixirName(f.Name)
-	if f.Name == "" {
-		name = path
-	}
-	switch {
-	case f.Type.Kind == ir.TWString:
-		*pending += ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-		g.flushMeasure(pending, ind)
-		g.pf("%sbits = bits + (byte_size(%s) >>> 1) * 32\n", ind, name)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-		*pending += lenBits
-		g.flushMeasure(pending, ind)
-		g.pf("%sbits = bits + (8 - (bits &&& 7) &&& 7)\n", ind)
-		g.pf("%sbits = bits + byte_size(%s) * 8\n", ind, name)
-	case f.Array == ir.ArrayCounted:
-		countBits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
-		*pending += countBits
-		if elemBits, ok := g.staticBitsScalar(f); ok {
-			g.flushMeasure(pending, ind)
-			g.pf("%sbits = bits + length(%s) * %s\n", ind, name, intLit64(elemBits))
-			return
-		}
-		g.flushMeasure(pending, ind)
-		helper := g.measureHelper(f)
-		g.pf("%sbits = %s(%s, bits)\n", ind, helper, name)
-	case f.Array == ir.ArrayFixed:
-		// a fixed array of dynamically-sized elements
-		g.flushMeasure(pending, ind)
-		helper := g.measureHelper(f)
-		g.callAssign("bits", fmt.Sprintf("%s(%s, bits)", helper, name), ind)
-	default:
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			g.withOwner(ref.Name, func() { g.emitMeasureItems(ref.Items, name, ind, pending) })
-		case *ir.Union:
-			g.flushMeasure(pending, ind)
-			g.emitMeasureUnion(ref, name, ind)
-		}
-	}
-}
-
-// measureHelper materializes the tail-recursive measure loop for an array
-// field of dynamically-sized elements.
-func (g *gen) measureHelper(f *ir.Field) string {
-	name := g.helperName("m", f)
-	if _, done := g.helpers[name]; done {
-		return name
-	}
-	g.helpers[name] = ""
-	saved := g.fn
-	g.fn = strings.Builder{}
-	g.pf("  defp %s([], bits), do: bits\n\n", name)
-	g.pf("  defp %s([e | rest], bits) do\n", name)
-	inner := int64(0)
-	switch ref := f.Type.Ref.(type) {
-	case *ir.Struct:
-		g.withOwner(ref.Name, func() { g.emitMeasureItems(ref.Items, "e", "    ", &inner) })
-	case *ir.Union:
-		g.emitMeasureUnion(ref, "e", "    ")
-	}
-	if inner != 0 {
-		g.pf("    %s(rest, bits + %s)\n", name, intLit64(inner))
-	} else {
-		g.pf("    %s(rest, bits)\n", name)
-	}
-	g.pf("  end\n\n")
-	g.helpers[name] = g.fn.String()
-	g.fn = saved
-	g.helperOrder = append(g.helperOrder, name)
-	return name
-}
-
-// emitMeasureUnion measures tag + selected arm through a case.
-func (g *gen) emitMeasureUnion(u *ir.Union, expr, ind string) {
-	if u.Max == 0 {
-		return // zero wire bits — only None exists (SPEC §4.8)
-	}
-	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.pf("%sbits = bits + %s\n", ind, intLit64(bits))
-	g.pf("\n")
-	g.pf("%sbits =\n", ind)
-	g.pf("%s  case %s.type do\n", ind, expr)
-	for i, vr := range u.Variants {
-		arm := expr + "." + elixirName(vr.Name)
-		g.pf("%s    %d ->\n", ind, i+1)
-		if vr.Void() {
-			g.pf("%s      # a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s      bits\n\n", ind, ind)
-			continue
-		}
-		inner := int64(0)
-		before := g.fn.Len()
-		g.withOwner(vr.Type, func() { g.emitMeasureItems(vr.Ref.Items, arm, ind+"      ", &inner) })
-		if g.fn.Len() == before && inner == 0 {
-			g.pf("%s      # empty arm — presence is the payload (SPEC §4.6)\n", ind)
-		}
-		if inner != 0 {
-			g.pf("%s      bits + %s\n", ind, intLit64(inner))
-		} else {
-			g.pf("%s      bits\n", ind)
-		}
-		g.pf("\n")
-	}
-	g.pf("%s    _ ->\n", ind)
-	g.pf("%s      # None — the tag is the whole wire (SPEC §4.8)\n", ind)
-	g.pf("%s      bits\n", ind)
-	g.pf("%s  end\n", ind)
-	g.pf("\n")
+	g.rdJoin(ends)
 }
 
 // ---- the per-file private helpers ----
@@ -2606,178 +2666,5 @@ func (g *gen) emitMeasureUnion(u *ir.Union, expr, ind string) {
 func (g *gen) emitLoopHelpers() {
 	for _, name := range g.helperOrder {
 		g.body.WriteString(g.helpers[name])
-	}
-}
-
-func (g *gen) emitSupportHelpers() {
-	if g.needWString {
-		g.body.WriteString(wstringHelpers)
-	}
-	if g.needRd {
-		g.bpf("  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset\n")
-		g.bpf("  # plus a 32-bit group, small enough that no intermediate ever boxes. The\n")
-		g.bpf("  # callers have already priced the read inside num_bits, so the tail\n")
-		g.bpf("  # fallback decodes exactly the bytes that exist.\n")
-		g.bpf("  defp rd(data, bits_read, bits) do\n")
-		g.bpf("    i = bits_read >>> 3\n\n")
-		g.bpf("    window =\n")
-		g.bpf("      case data do\n")
-		g.bpf("        <<_::binary-size(^i), w::little-40, _::binary>> -> w\n")
-		g.bpf("        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)\n")
-		g.bpf("      end\n\n")
-		g.bpf("    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1\n")
-		g.bpf("  end\n\n")
-	}
-	if g.needRdw {
-		g.bpf("  # The wide window decode: 56 bits, enough for a 7-bit offset plus a\n")
-		g.bpf("  # 49-bit group, and still under the 2^59 fixnum boundary — one match\n")
-		g.bpf("  # context serves a whole group of fields instead of one per field. A\n")
-		g.bpf("  # 64-bit window would box and measures slower than the reads it saves.\n")
-		g.bpf("  defp rdw(data, bits_read, bits) do\n")
-		g.bpf("    i = bits_read >>> 3\n\n")
-		g.bpf("    window =\n")
-		g.bpf("      case data do\n")
-		g.bpf("        <<_::binary-size(^i), w::little-56, _::binary>> -> w\n")
-		g.bpf("        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)\n")
-		g.bpf("      end\n\n")
-		g.bpf("    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1\n")
-		g.bpf("  end\n\n")
-	}
-	if g.needF32 {
-		g.bpf("  # The 32-bit IEEE-754 pattern of a float value for the write path — a\n")
-		g.bpf("  # non-finite pattern travels as {:nonfinite, bits}, since no BEAM float\n")
-		g.bpf("  # term can hold it (the serialize.elixir convention). Caller errors raise;\n")
-		g.bpf("  # the checks are O(1).\n")
-		g.bpf("  defp f32_bits(value) when is_float(value) do\n")
-		g.bpf("    <<bits::little-32>> = <<value::float-32-little>>\n\n")
-		g.bpf("    if (bits >>> 23 &&& 0xFF) == 0xFF do\n")
-		g.bpf("      raise ArgumentError, \"float overflows float32; write {:nonfinite, bits} instead\"\n")
-		g.bpf("    end\n\n")
-		g.bpf("    bits\n")
-		g.bpf("  end\n\n")
-		g.bpf("  defp f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do\n")
-		g.bpf("    if (bits >>> 23 &&& 0xFF) != 0xFF do\n")
-		g.bpf("      raise ArgumentError, \"{:nonfinite, bits} carries a finite float32 pattern; write the float\"\n")
-		g.bpf("    end\n\n")
-		g.bpf("    bits\n")
-		g.bpf("  end\n\n")
-		g.bpf("  # The value of a 32-bit pattern for the read path: the float for a finite\n")
-		g.bpf("  # pattern, {:nonfinite, bits} otherwise. Never raises — the bits are\n")
-		g.bpf("  # untrusted.\n")
-		g.bpf("  defp f32_value(bits) do\n")
-		g.bpf("    if (bits >>> 23 &&& 0xFF) != 0xFF do\n")
-		g.bpf("      <<value::float-32-little>> = <<bits::little-32>>\n")
-		g.bpf("      value\n")
-		g.bpf("    else\n")
-		g.bpf("      {:nonfinite, bits}\n")
-		g.bpf("    end\n")
-		g.bpf("  end\n\n")
-	}
-	if g.needF64 {
-		g.bpf("  # The 64-bit IEEE-754 pattern of a double value and its inverse — the\n")
-		g.bpf("  # same bit-transparent contract as f32, at width 64.\n")
-		g.bpf("  defp f64_bits(value) when is_float(value) do\n")
-		g.bpf("    <<bits::little-64>> = <<value::float-64-little>>\n")
-		g.bpf("    bits\n")
-		g.bpf("  end\n\n")
-		g.bpf("  defp f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do\n")
-		g.bpf("    if (bits >>> 52 &&& 0x7FF) != 0x7FF do\n")
-		g.bpf("      raise ArgumentError, \"{:nonfinite, bits} carries a finite float64 pattern; write the float\"\n")
-		g.bpf("    end\n\n")
-		g.bpf("    bits\n")
-		g.bpf("  end\n\n")
-		g.bpf("  defp f64_value(bits) do\n")
-		g.bpf("    if (bits >>> 52 &&& 0x7FF) != 0x7FF do\n")
-		g.bpf("      <<value::float-64-little>> = <<bits::little-64>>\n")
-		g.bpf("      value\n")
-		g.bpf("    else\n")
-		g.bpf("      {:nonfinite, bits}\n")
-		g.bpf("    end\n")
-		g.bpf("  end\n\n")
-	}
-	if g.needCfQ || g.needCfD {
-		g.bpf("  # A number rounded to its nearest float32 — one emulated float32 step\n")
-		g.bpf("  # (exact: the double result carries 2x24+2 significant bits, so the second\n")
-		g.bpf("  # rounding is innocuous). Overflow reports :pos_inf / :neg_inf so the\n")
-		g.bpf("  # compressed-float clamps can resolve it the way the reference's float\n")
-		g.bpf("  # arithmetic does.\n")
-		g.bpf("  #\n")
-		g.bpf("  # The fast path is arithmetic (Veltkamp/Dekker splitting, C = 2^29 + 1):\n")
-		g.bpf("  # for a double whose magnitude is in [2^-126, 2^128 - 2^103) — the\n")
-		g.bpf("  # float32 normal range, below the smallest magnitude that rounds to\n")
-		g.bpf("  # infinity — y = value * C; y - (y - value) IS the value rounded to 24\n")
-		g.bpf("  # significant bits, round-to-nearest-even, in three flops with nothing\n")
-		g.bpf("  # allocated beyond the result. Outside that range (the subnormal grid,\n")
-		g.bpf("  # overflow to the atoms, zero with its sign) fr_slow keeps the exact\n")
-		g.bpf("  # semantics the construct/match pair defines.\n")
-		g.bpf("  defp fr(value) do\n")
-		g.bpf("    ax = abs(value)\n\n")
-		g.bpf("    if ax >= 1.1754943508222875e-38 and ax < 3.4028235677973366e38 do\n")
-		g.bpf("      y = value * 536_870_913.0\n")
-		g.bpf("      y - (y - value)\n")
-		g.bpf("    else\n")
-		g.bpf("      fr_slow(value)\n")
-		g.bpf("    end\n")
-		g.bpf("  end\n\n")
-		g.bpf("  # The slow path's refusal IS the test: a float segment does not match a\n")
-		g.bpf("  # non-finite pattern, so a finite value costs one construction and one\n")
-		g.bpf("  # match and never touches the exponent field, while the second clause\n")
-		g.bpf("  # reads the sign of exactly the patterns the first one refused.\n")
-		g.bpf("  defp fr_slow(value) do\n")
-		g.bpf("    case <<value::float-32-little>> do\n")
-		g.bpf("      <<rounded::float-32-little>> -> rounded\n")
-		g.bpf("      <<bits::little-32>> -> if bits >>> 31 == 1, do: :neg_inf, else: :pos_inf\n")
-		g.bpf("    end\n")
-		g.bpf("  end\n\n")
-	}
-	if g.needCfQ {
-		g.bpf("  defp cf_clamp01(:pos_inf), do: 1.0\n")
-		g.bpf("  defp cf_clamp01(:neg_inf), do: 0.0\n")
-		g.bpf("  defp cf_clamp01(n) when n < 0.0, do: 0.0\n")
-		g.bpf("  defp cf_clamp01(n) when n > 1.0, do: 1.0\n")
-		g.bpf("  defp cf_clamp01(n), do: n\n\n")
-		g.bpf("  # The family's two-rounding float32 quantization (SPEC §4.3), the port's\n")
-		g.bpf("  # own steps: normalize with every step rounding, clamp to [0, 1] (which\n")
-		g.bpf("  # also grounds an overflowed value), scale, round BEFORE the +0.5, floor,\n")
-		g.bpf("  # and the normative integer clamp to the step count.\n")
-		g.bpf("  # miv32 is the float32 of the step count, folded at generation time: it\n")
-		g.bpf("  # is a declaration constant, and recomputing its rounding per call was\n")
-		g.bpf("  # one of the six float32 steps.\n")
-		g.bpf("  defp cf_quantize(value, min32, delta, miv, miv32) do\n")
-		g.bpf("    if not is_number(value) do\n")
-		g.bpf("      raise ArgumentError, \"a compressed float writes a finite number\"\n")
-		g.bpf("    end\n\n")
-		g.bpf("    difference =\n")
-		g.bpf("      case fr(value * 1.0) do\n")
-		g.bpf("        :pos_inf -> :pos_inf\n")
-		g.bpf("        :neg_inf -> :neg_inf\n")
-		g.bpf("        v32 -> fr(v32 - min32)\n")
-		g.bpf("      end\n\n")
-		g.bpf("    normalized =\n")
-		g.bpf("      case difference do\n")
-		g.bpf("        :pos_inf -> 1.0\n")
-		g.bpf("        :neg_inf -> 0.0\n")
-		g.bpf("        d -> cf_clamp01(fr(d / delta))\n")
-		g.bpf("      end\n\n")
-		g.bpf("    scaled = fr(normalized * miv32)\n")
-		g.bpf("    integer = floor(fr(scaled + 0.5))\n")
-		g.bpf("    min(integer, miv)\n")
-		g.bpf("  end\n\n")
-	}
-	if g.needCfD {
-		g.bpf("  # The reader's arithmetic, pinned the same way: the quotient rounds, the\n")
-		g.bpf("  # product rounds BEFORE min is added, and the sum rounds — float32\n")
-		g.bpf("  # throughout, never fused, never widened. The final add cannot overflow\n")
-		g.bpf("  # for a conforming declaration; the non-finite mapping keeps the\n")
-		g.bpf("  # never-raise reader obligation airtight.\n")
-		g.bpf("  defp cf_decode(integer, miv32, delta, min32) do\n")
-		g.bpf("    quotient = fr(fr(integer * 1.0) / miv32)\n")
-		g.bpf("    scaled = fr(quotient * delta)\n\n")
-		g.bpf("    case fr(scaled + min32) do\n")
-		g.bpf("      :pos_inf -> {:nonfinite, 0x7F800000}\n")
-		g.bpf("      :neg_inf -> {:nonfinite, 0xFF800000}\n")
-		g.bpf("      value -> value\n")
-		g.bpf("    end\n")
-		g.bpf("  end\n\n")
 	}
 }

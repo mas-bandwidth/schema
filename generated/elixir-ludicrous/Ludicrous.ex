@@ -4,16 +4,16 @@
 # AGPL-3.0, its output is not.
 # package ludicrous — protocol id 0xf4a226f4166d919b
 #
-# The shipped Elixir wire path (issue #167): the serialize.elixir port's
-# measured shapes — byte-granular 32-bit-group packing and 40-bit read
-# windows (every intermediate a BEAM small integer), single accumulator-
-# threaded read/write functions per type (no stream struct, no per-field
-# tuple), function-head loops — with literal widths, zero dependencies.
+# The Elixir wire path: byte-granular 32-bit-group packing and 40/56-bit
+# read windows (every intermediate a BEAM small integer), single
+# accumulator-threaded read/write functions per type (no stream struct, no
+# per-field tuple), function-head loops — with literal widths, zero
+# dependencies. The shared helpers live in PacketRuntime.ex.
 #
-# write_<name>(value) -> the wire binary. The writer TRUSTS the caller
+# write_<name>!(value) -> the wire binary. The writer TRUSTS the caller
 # (the C++ stance) up to the O(1) contract checks, which raise
 # ArgumentError — the BEAM has no compile-out assert, so they are always
-# on, matching the port.
+# on. write_<name>(value) -> {:ok, binary} | {:error, message} beside it.
 #
 # read_<name>(data, num_bits) -> {:ok, value} | :error, the family read
 # verdict. The wire is a trust boundary: reads validate everything —
@@ -22,30 +22,64 @@
 # No slack past the payload is required: the windows price themselves
 # inside the binary.
 #
-# measure_<name>(value) -> exact wire bits for that value (trusted, like
-# the writer). zero_<name>() -> the §5 zero form; construction
-# (%Struct{}) carries the specified defaults instead. Floats travel
-# bit-transparently: a non-finite IEEE-754 pattern — which no BEAM float
-# term can hold — reads back as {:nonfinite, bits} and writes from the
-# same form, the serialize.elixir convention.
+# zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the
+# specified defaults instead. Enum values are atoms, union values are nil,
+# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:
+# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads
+# back as {:nonfinite, bits} and writes from the same form.
 
-# DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
-# an integer-constant namespace — the Elixir translation of the family's
-# integer-backed enums: storage must hold every wire-legal value, and
-# | max = ... headroom values have no richer Elixir value to be
+# DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
 defmodule Ludicrous.DriveMode do
-  def none, do: 0
-  def cruise, do: 1
-  def warp, do: 2
-  def ludicrous, do: 3
-  # the declared variant count (SPEC §4.2)
+  @moduledoc """
+  The enum DriveMode: each value is an atom, :none being the implicit 0.
+  An unnamed value up to the declared max is the integer itself.
+  """
+
+  @type t :: :none | :cruise | :warp | :ludicrous
+
+  @doc "The wire value of a DriveMode value; anything else raises ArgumentError."
+  @spec to_int(t()) :: 0..3
+  def to_int(:none), do: 0
+  def to_int(:cruise), do: 1
+  def to_int(:warp), do: 2
+  def to_int(:ludicrous), do: 3
+
+  def to_int(v) do
+    raise ArgumentError, "not a DriveMode value: #{inspect(v)}"
+  end
+
+  @doc "The DriveMode value of a wire value: `{:ok, value}`, or `:error` past the max."
+  @spec from_int(integer()) :: {:ok, t()} | :error
+  def from_int(0), do: {:ok, :none}
+  def from_int(1), do: {:ok, :cruise}
+  def from_int(2), do: {:ok, :warp}
+  def from_int(3), do: {:ok, :ludicrous}
+  def from_int(_), do: :error
+
+  @doc "The declared variant count (SPEC §4.2)."
+  @spec count() :: non_neg_integer()
   def count, do: 3
-  # the exported extent (SPEC §4.2)
+
+  @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
+  @spec max() :: non_neg_integer()
   def max, do: 3
 end
 
 # type FixedProbe
 defmodule Ludicrous.FixedProbe do
+  @moduledoc """
+  The type FixedProbe. Construction carries its specified defaults; the
+  codecs are in Ludicrous.Ludicrous.
+  """
+
+  @type t :: %__MODULE__{
+          angle: -11_796_480..11_796_480,
+          position: -1_966_080_000..1_966_080_000,
+          reach: -65_536_000_000..65_536_000_000,
+          ticks: 0..1_000_000,
+          samples: [-524_288..524_288]
+        }
+
   # angle: fixed point Q16.16 — the raw scaled integer; wire [-180, 180]
   # position: fixed point Q48.16 — the raw scaled integer; wire [-30000, 30000]
   # reach: fixed point Q112.16 — the raw scaled integer; wire [-1000000, 1000000]
@@ -56,6 +90,21 @@ end
 
 # type UnsignedProbe
 defmodule Ludicrous.UnsignedProbe do
+  @moduledoc """
+  The type UnsignedProbe. Construction carries its specified defaults; the
+  codecs are in Ludicrous.Ludicrous.
+  """
+
+  @type t :: %__MODULE__{
+          angle: 0..23_592_960,
+          span: 0..18_446_744_073_709_486_080,
+          reach: 0..131_072_000_000,
+          ticks: 0..1_000_000,
+          samples: [0..1_048_576],
+          locked: 196_608,
+          tail: 0..255
+        }
+
   # angle: fixed point Q16.16 — the raw scaled integer; wire [0, 360]
   # span: fixed point Q48.16 — the raw scaled integer; wire [0, 281474976710655]
   # reach: fixed point Q112.16 — the raw scaled integer; wire [0, 2000000]
@@ -73,6 +122,20 @@ end
 
 # type WideProbe
 defmodule Ludicrous.WideProbe do
+  @moduledoc """
+  The type WideProbe. Construction carries its specified defaults; the
+  codecs are in Ludicrous.Ludicrous.
+  """
+
+  @type t :: %__MODULE__{
+          entity_id: 0..340_282_366_920_938_463_463_374_607_431_768_211_455,
+          energy: -5_000_000_000..5_000_000_000,
+          flux:
+            -1_267_650_600_228_229_401_496_703_205_376..1_267_650_600_228_229_401_496_703_205_376,
+          bias: -1000..1000,
+          seed: 0..340_282_366_920_938_463_463_374_607_431_768_211_455
+        }
+
   # energy: wire [-5000000000, 5000000000]
   # flux: wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
   # bias: specified default at construction; zero_* gives the §5 zero form; wire [-1000, 1000]
@@ -82,9 +145,23 @@ end
 
 # type LudicrousState
 defmodule Ludicrous.LudicrousState do
+  @moduledoc """
+  The type LudicrousState. Construction carries its specified defaults; the
+  codecs are in Ludicrous.Ludicrous.
+  """
+
+  @type t :: %__MODULE__{
+          mode: Ludicrous.DriveMode.t(),
+          probe: Ludicrous.FixedProbe.t(),
+          wide: Ludicrous.WideProbe.t(),
+          keys: [0..340_282_366_920_938_463_463_374_607_431_768_211_455],
+          has_target: boolean(),
+          target_id: 0..340_282_366_920_938_463_463_374_607_431_768_211_455
+        }
+
   # keys: counted array — a list of up to 4 elements
   # has_target — wire branch; storage holds both sides, a read zeroes the untaken side (SPEC §5):
-  defstruct mode: 0,
+  defstruct mode: :none,
             probe: %Ludicrous.FixedProbe{},
             wide: %Ludicrous.WideProbe{},
             keys: [],
@@ -94,6 +171,18 @@ end
 
 # type DegenerateProbe
 defmodule Ludicrous.DegenerateProbe do
+  @moduledoc """
+  The type DegenerateProbe. Construction carries its specified defaults; the
+  codecs are in Ludicrous.Ludicrous.
+  """
+
+  @type t :: %__MODULE__{
+          locked_fixed: -196_608,
+          locked_int: 7,
+          locked_wide: -12_345_678_901_234,
+          tail: 0..255
+        }
+
   # locked_fixed: fixed point Q16.16 — the raw scaled integer; specified default at construction; zero_* gives the §5 zero form; wire [-3, -3]
   # locked_int: specified default at construction; zero_* gives the §5 zero form; wire [7, 7]
   # locked_wide: specified default at construction; zero_* gives the §5 zero form; wire [-12345678901234, -12345678901234]
@@ -102,6 +191,17 @@ end
 
 # type FixedVec
 defmodule Ludicrous.FixedVec do
+  @moduledoc """
+  The type FixedVec. Construction carries its specified defaults; the
+  codecs are in Ludicrous.Ludicrous.
+  """
+
+  @type t :: %__MODULE__{
+          x: -6_553_600_000..6_553_600_000,
+          y: -6_553_600_000..6_553_600_000,
+          z: -6_553_600_000..6_553_600_000
+        }
+
   # x: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
   # y: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
   # z: fixed point Q48.16 — the raw scaled integer; wire [-100000, 100000]
@@ -110,6 +210,18 @@ end
 
 # type FixedQuat
 defmodule Ludicrous.FixedQuat do
+  @moduledoc """
+  The type FixedQuat. Construction carries its specified defaults; the
+  codecs are in Ludicrous.Ludicrous.
+  """
+
+  @type t :: %__MODULE__{
+          x: -1_073_741_824..1_073_741_824,
+          y: -1_073_741_824..1_073_741_824,
+          z: -1_073_741_824..1_073_741_824,
+          w: -1_073_741_824..1_073_741_824
+        }
+
   # x: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]
   # y: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]
   # z: fixed point Q2.30 — the raw scaled integer; wire [-1, 1]
@@ -120,37 +232,62 @@ end
 # The file-scope surface: constants, flags masks, name helpers and the
 # wire functions of every declaration in Ludicrous.schema.
 defmodule Ludicrous.Ludicrous do
+  @moduledoc """
+  The file-scope surface of Ludicrous.schema: its constants, flags masks and
+  name helpers, and the wire functions of every declaration in it.
+  """
+
   import Bitwise
+  import Ludicrous.PacketRuntime, only: [rd: 3, rdw: 3]
 
-  @compile {:inline, rd: 3}
-
-  @compile {:inline, rdw: 3}
-
-  # The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
-  # sides at the same id speak identical bits; there is no other versioning.
+  @doc """
+  The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
+  sides at the same id speak identical bits; there is no other versioning.
+  """
+  @spec protocol_id() :: non_neg_integer()
   def protocol_id, do: 0xF4A226F4166D919B
 
+  @doc "The constant MaxWorldUnits."
+  @spec max_world_units() :: integer()
   def max_world_units, do: 30000
 
-  # enum_name_drive_mode: debug/log/tooling name for any DriveMode wire value —
-  # out-of-set values (wire-legal up to the declared max) name as "???"
+  @doc """
+  The debug/log/tooling name of a DriveMode value, by atom or by wire
+  value; anything past the named variants names as "???".
+  """
+  @spec enum_name_drive_mode(Ludicrous.DriveMode.t() | integer()) :: String.t()
   def enum_name_drive_mode(value) do
     case value do
+      :none -> "None"
       0 -> "None"
+      :cruise -> "Cruise"
       1 -> "Cruise"
+      :warp -> "Warp"
       2 -> "Warp"
+      :ludicrous -> "Ludicrous"
       3 -> "Ludicrous"
       _ -> "???"
     end
   end
 
-  # fixed_probe_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # fixed_probe_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a FixedProbe can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec fixed_probe_max_bits() :: pos_integer()
   def fixed_probe_max_bits, do: 156
+
+  @doc """
+  fixed_probe_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec fixed_probe_max_bytes() :: pos_integer()
   def fixed_probe_max_bytes, do: 24
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Ludicrous.FixedProbe{}).
+  @doc """
+  The §5 zero form of FixedProbe: all-zero storage. Specified defaults live
+  only in construction (`%Ludicrous.FixedProbe{}`).
+  """
+  @spec zero_fixed_probe() :: Ludicrous.FixedProbe.t()
   def zero_fixed_probe do
     %Ludicrous.FixedProbe{
       angle: 0,
@@ -161,12 +298,13 @@ defmodule Ludicrous.Ludicrous do
     }
   end
 
-  # write_fixed_probe packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_fixed_probe(value) do
-    data = <<>>
-
+  @doc """
+  Packs a FixedProbe into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_fixed_probe!(Ludicrous.FixedProbe.t()) :: binary()
+  def write_fixed_probe!(value) do
     %{
       angle: value_angle,
       position: value_position,
@@ -233,8 +371,8 @@ defmodule Ludicrous.Ludicrous do
     end
 
     data =
-      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), scratch::little-size(3)-unit(8)>>
+      <<sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        scratch::little-size(3)-unit(8)>>
 
     scratch = scratch >>> 24
     scratch_bits = 2
@@ -245,11 +383,26 @@ defmodule Ludicrous.Ludicrous do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_fixed_probe_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_fixed_probe!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_fixed_probe(Ludicrous.FixedProbe.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_fixed_probe(value) do
+    {:ok, write_fixed_probe!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a FixedProbe from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_fixed_probe_bits(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.FixedProbe.t(), non_neg_integer()} | :error
   def read_fixed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -257,37 +410,31 @@ defmodule Ludicrous.Ludicrous do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 156 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 156 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_angle = v - 11_796_480
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 25, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 3_932_160_000, do: throw(:invalid)
       v_position = v - 1_966_080_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 57, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x1F
-      bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_reach = w - 65_536_000_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 94, 49)
       v = rv &&& 0xFFFFF
-      bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_ticks = v
-      {bits_read, v_samples} = r_fixed_probe_samples(2, [], data, num_bits, bits_read)
+      {bits_read, v_samples} = r_fixed_probe_samples(2, [], data, num_bits, 114)
 
       value = %Ludicrous.FixedProbe{
         angle: v_angle,
@@ -303,8 +450,11 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # read_fixed_probe is read_fixed_probe_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a FixedProbe from the first num_bits of data: read_fixed_probe_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_fixed_probe(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedProbe.t()} | :error
   def read_fixed_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_probe_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -312,17 +462,24 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # measure_fixed_probe is the exact wire bits write_fixed_probe would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_fixed_probe(_value), do: 156
-
-  # unsigned_probe_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # unsigned_probe_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a UnsignedProbe can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec unsigned_probe_max_bits() :: pos_integer()
   def unsigned_probe_max_bits, do: 196
+
+  @doc """
+  unsigned_probe_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec unsigned_probe_max_bytes() :: pos_integer()
   def unsigned_probe_max_bytes, do: 32
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Ludicrous.UnsignedProbe{}).
+  @doc """
+  The §5 zero form of UnsignedProbe: all-zero storage. Specified defaults live
+  only in construction (`%Ludicrous.UnsignedProbe{}`).
+  """
+  @spec zero_unsigned_probe() :: Ludicrous.UnsignedProbe.t()
   def zero_unsigned_probe do
     %Ludicrous.UnsignedProbe{
       angle: 0,
@@ -335,12 +492,13 @@ defmodule Ludicrous.Ludicrous do
     }
   end
 
-  # write_unsigned_probe packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_unsigned_probe(value) do
-    data = <<>>
-
+  @doc """
+  Packs a UnsignedProbe into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_unsigned_probe!(Ludicrous.UnsignedProbe.t()) :: binary()
+  def write_unsigned_probe!(value) do
     %{
       angle: value_angle,
       span: value_span,
@@ -412,9 +570,8 @@ defmodule Ludicrous.Ludicrous do
     end
 
     data =
-      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8),
-        scratch::little-size(3)-unit(8)>>
+      <<sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        sc3::little-size(4)-unit(8), scratch::little-size(3)-unit(8)>>
 
     scratch = scratch >>> 24
     scratch_bits = 2
@@ -436,11 +593,27 @@ defmodule Ludicrous.Ludicrous do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_unsigned_probe_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_unsigned_probe!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_unsigned_probe(Ludicrous.UnsignedProbe.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_unsigned_probe(value) do
+    {:ok, write_unsigned_probe!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a UnsignedProbe from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_unsigned_probe_bits(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.UnsignedProbe.t(), non_neg_integer()} | :error
   def read_unsigned_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -448,46 +621,38 @@ defmodule Ludicrous.Ludicrous do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 196 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 196 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_angle = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 25, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 57, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 18_446_744_073_709_486_080, do: throw(:invalid)
       v_span = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 89, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x1F
-      bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_reach = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 126, 49)
       v = rv &&& 0xFFFFF
-      bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_ticks = v
-      {bits_read, v_samples} = r_unsigned_probe_samples(2, [], data, num_bits, bits_read)
+      {bits_read, v_samples} = r_unsigned_probe_samples(2, [], data, num_bits, 146)
       v_locked = 196_608
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFF
-      bits_read = bits_read + 8
       v_tail = v
 
       value = %Ludicrous.UnsignedProbe{
@@ -500,14 +665,18 @@ defmodule Ludicrous.Ludicrous do
         tail: v_tail
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, bits_read + 8}
     catch
       :invalid -> :error
     end
   end
 
-  # read_unsigned_probe is read_unsigned_probe_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a UnsignedProbe from the first num_bits of data: read_unsigned_probe_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_unsigned_probe(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.UnsignedProbe.t()} | :error
   def read_unsigned_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_unsigned_probe_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -515,27 +684,35 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # measure_unsigned_probe is the exact wire bits write_unsigned_probe would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_unsigned_probe(_value), do: 196
-
-  # wide_probe_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # wide_probe_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a WideProbe can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec wide_probe_max_bits() :: pos_integer()
   def wide_probe_max_bits, do: 403
+
+  @doc """
+  wide_probe_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec wide_probe_max_bytes() :: pos_integer()
   def wide_probe_max_bytes, do: 56
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Ludicrous.WideProbe{}).
+  @doc """
+  The §5 zero form of WideProbe: all-zero storage. Specified defaults live
+  only in construction (`%Ludicrous.WideProbe{}`).
+  """
+  @spec zero_wide_probe() :: Ludicrous.WideProbe.t()
   def zero_wide_probe do
     %Ludicrous.WideProbe{entity_id: 0, energy: 0, flux: 0, bias: 0, seed: 0}
   end
 
-  # write_wide_probe packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_wide_probe(value) do
-    data = <<>>
-
+  @doc """
+  Packs a WideProbe into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_wide_probe!(Ludicrous.WideProbe.t()) :: binary()
+  def write_wide_probe!(value) do
     %{
       entity_id: value_entity_id,
       energy: value_energy,
@@ -623,10 +800,10 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< 3
 
     data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8),
-        sc5::little-size(4)-unit(8), sc6::little-size(4)-unit(8), sc7::little-size(6)-unit(8),
-        sc8::little-size(4)-unit(8), sc9::little-size(4)-unit(8), sc10::little-size(4)-unit(8),
+      <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+        sc3::little-size(4)-unit(8), sc4::little-size(4)-unit(8), sc5::little-size(4)-unit(8),
+        sc6::little-size(4)-unit(8), sc7::little-size(6)-unit(8), sc8::little-size(4)-unit(8),
+        sc9::little-size(4)-unit(8), sc10::little-size(4)-unit(8),
         scratch::little-size(4)-unit(8)>>
 
     scratch = scratch >>> 32
@@ -634,11 +811,26 @@ defmodule Ludicrous.Ludicrous do
     <<data::binary, scratch>>
   end
 
-  # read_wide_probe_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_wide_probe!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_wide_probe(Ludicrous.WideProbe.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_wide_probe(value) do
+    {:ok, write_wide_probe!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a WideProbe from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_wide_probe_bits(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.WideProbe.t(), non_neg_integer()} | :error
   def read_wide_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -646,73 +838,57 @@ defmodule Ludicrous.Ludicrous do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 403 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 403 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 96, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_entity_id = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 128, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x3
-      bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 10_000_000_000, do: throw(:invalid)
       v_energy = w - 5_000_000_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 162, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 194, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 226, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
       v = rv >>> 32 &&& 0x3F
-      bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_flux = w - 1_267_650_600_228_229_401_496_703_205_376
       v = rv >>> 38
-      bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 2000, do: throw(:invalid)
       v_bias = v - 1000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 275, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 307, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 339, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 371, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_seed = w
 
@@ -724,14 +900,17 @@ defmodule Ludicrous.Ludicrous do
         seed: v_seed
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 403}
     catch
       :invalid -> :error
     end
   end
 
-  # read_wide_probe is read_wide_probe_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a WideProbe from the first num_bits of data: read_wide_probe_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_wide_probe(binary(), non_neg_integer()) :: {:ok, Ludicrous.WideProbe.t()} | :error
   def read_wide_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_wide_probe_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -739,20 +918,27 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # measure_wide_probe is the exact wire bits write_wide_probe would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_wide_probe(_value), do: 403
-
-  # ludicrous_state_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # ludicrous_state_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a LudicrousState can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec ludicrous_state_max_bits() :: pos_integer()
   def ludicrous_state_max_bits, do: 1205
+
+  @doc """
+  ludicrous_state_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec ludicrous_state_max_bytes() :: pos_integer()
   def ludicrous_state_max_bytes, do: 152
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Ludicrous.LudicrousState{}).
+  @doc """
+  The §5 zero form of LudicrousState: all-zero storage. Specified defaults live
+  only in construction (`%Ludicrous.LudicrousState{}`).
+  """
+  @spec zero_ludicrous_state() :: Ludicrous.LudicrousState.t()
   def zero_ludicrous_state do
     %Ludicrous.LudicrousState{
-      mode: 0,
+      mode: :none,
       probe: zero_fixed_probe(),
       wide: zero_wide_probe(),
       keys: [],
@@ -761,12 +947,13 @@ defmodule Ludicrous.Ludicrous do
     }
   end
 
-  # write_ludicrous_state packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_ludicrous_state(value) do
-    data = <<>>
-
+  @doc """
+  Packs a LudicrousState into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_ludicrous_state!(Ludicrous.LudicrousState.t()) :: binary()
+  def write_ludicrous_state!(value) do
     %{
       mode: value_mode,
       probe: value_probe,
@@ -775,15 +962,7 @@ defmodule Ludicrous.Ludicrous do
       has_target: value_has_target
     } = value
 
-    if value_mode < 0 do
-      raise ArgumentError, "value.mode is below the wire minimum"
-    end
-
-    if value_mode > 3 do
-      raise ArgumentError, "value.mode is above the wire maximum"
-    end
-
-    v = value_mode
+    v = Ludicrous.DriveMode.to_int(value_mode)
     scratch = v
 
     %{
@@ -851,8 +1030,8 @@ defmodule Ludicrous.Ludicrous do
     end
 
     data =
-      <<data::binary, sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(5)-unit(8), scratch::little-size(2)-unit(8)>>
+      <<sc0::little-size(3)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(5)-unit(8),
+        scratch::little-size(2)-unit(8)>>
 
     scratch = scratch >>> 16
     scratch_bits = 4
@@ -1061,11 +1240,27 @@ defmodule Ludicrous.Ludicrous do
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
-  # read_ludicrous_state_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_ludicrous_state!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_ludicrous_state(Ludicrous.LudicrousState.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_ludicrous_state(value) do
+    {:ok, write_ludicrous_state!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a LudicrousState from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_ludicrous_state_bits(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.LudicrousState.t(), non_neg_integer()} | :error
   def read_ludicrous_state_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1073,40 +1268,33 @@ defmodule Ludicrous.Ludicrous do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 561 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 561 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0x3
-      bits_read = bits_read + 2
-      v_mode = v
+      {:ok, v_mode} = Ludicrous.DriveMode.from_int(v)
       v = rv >>> 2 &&& 0x1FFFFFF
-      bits_read = bits_read + 25
       # a smuggled offset is refused
       if v > 23_592_960, do: throw(:invalid)
       v_probe_angle = v - 11_796_480
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 27, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 3_932_160_000, do: throw(:invalid)
       v_probe_position = v - 1_966_080_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 59, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x1F
-      bits_read = bits_read + 5
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 131_072_000_000, do: throw(:invalid)
       v_probe_reach = w - 65_536_000_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 96, 49)
       v = rv &&& 0xFFFFF
-      bits_read = bits_read + 20
       # a smuggled offset is refused
       if v > 1_000_000, do: throw(:invalid)
       v_probe_ticks = v
-      {bits_read, v_probe_samples} = r_fixed_probe_samples(2, [], data, num_bits, bits_read)
+      {bits_read, v_probe_samples} = r_fixed_probe_samples(2, [], data, num_bits, 116)
 
       v_probe = %Ludicrous.FixedProbe{
         angle: v_probe_angle,
@@ -1118,69 +1306,54 @@ defmodule Ludicrous.Ludicrous do
 
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 96, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_entity_id = w
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 128, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x3
-      bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 10_000_000_000, do: throw(:invalid)
       v_wide_energy = w - 5_000_000_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 162, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 194, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 226, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
       v = rv >>> 32 &&& 0x3F
-      bits_read = bits_read + 6
       w = w ||| v <<< 96
       # a smuggled offset is refused
       if w > 2_535_301_200_456_458_802_993_406_410_752, do: throw(:invalid)
       v_wide_flux = w - 1_267_650_600_228_229_401_496_703_205_376
       v = rv >>> 38
-      bits_read = bits_read + 11
       # a smuggled offset is refused
       if v > 2000, do: throw(:invalid)
       v_wide_bias = v - 1000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 275, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 307, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 32
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, bits_read + 339, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = w ||| v <<< 64
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, bits_read + 371, 32)
       v = rv
-      bits_read = bits_read + 32
       w = w ||| v <<< 96
       v_wide_seed = w
 
@@ -1192,43 +1365,39 @@ defmodule Ludicrous.Ludicrous do
         seed: v_wide_seed
       }
 
-      if bits_read + 3 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if bits_read + 406 > num_bits, do: throw(:invalid)
+      rv = rdw(data, bits_read + 403, 49)
       v = rv &&& 0x7
-      bits_read = bits_read + 3
       # the count guards the loop — reject, never clamp
       if v > 4, do: throw(:invalid)
       n = v
-      if bits_read + n * 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_keys} = r_ludicrous_state_keys(n, [], data, num_bits, bits_read)
+      if bits_read + 406 + n * 128 > num_bits, do: throw(:invalid)
+      {bits_read, v_keys} = r_ludicrous_state_keys(n, [], data, num_bits, bits_read + 406)
       if bits_read + 1 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 1)
       v = rv
-      bits_read = bits_read + 1
       v_has_target = v == 1
 
       {bits_read, v_target_id} =
         if v_has_target do
-          if bits_read + 128 > num_bits, do: throw(:invalid)
-          rv = rdw(data, bits_read, 49)
+          if bits_read + 129 > num_bits, do: throw(:invalid)
+          rv = rdw(data, bits_read + 1, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = v
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, bits_read + 33, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 32
-          rv = rdw(data, bits_read, 49)
+          rv = rdw(data, bits_read + 65, 49)
           v = rv &&& 0xFFFFFFFF
-          bits_read = bits_read + 32
           w = w ||| v <<< 64
-          rv = rd(data, bits_read, 32)
+          rv = rd(data, bits_read + 97, 32)
           v = rv
-          bits_read = bits_read + 32
           w = w ||| v <<< 96
           v_target_id = w
+          bits_read = bits_read + 129
           {bits_read, v_target_id}
         else
+          bits_read = bits_read + 1
           v_target_id = 0
           {bits_read, v_target_id}
         end
@@ -1248,8 +1417,12 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # read_ludicrous_state is read_ludicrous_state_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a LudicrousState from the first num_bits of data: read_ludicrous_state_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_ludicrous_state(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.LudicrousState.t()} | :error
   def read_ludicrous_state(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_ludicrous_state_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1257,41 +1430,35 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # measure_ludicrous_state is the exact wire bits write_ludicrous_state would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_ludicrous_state(value) do
-    bits = 0
-    bits = bits + 564
-    bits = bits + length(value.keys) * 128
-    bits = bits + 1
-
-    bits =
-      if value.has_target do
-        bits + 128
-      else
-        bits
-      end
-
-    bits
-  end
-
-  # degenerate_probe_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # degenerate_probe_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a DegenerateProbe can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec degenerate_probe_max_bits() :: pos_integer()
   def degenerate_probe_max_bits, do: 8
+
+  @doc """
+  degenerate_probe_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec degenerate_probe_max_bytes() :: pos_integer()
   def degenerate_probe_max_bytes, do: 8
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Ludicrous.DegenerateProbe{}).
+  @doc """
+  The §5 zero form of DegenerateProbe: all-zero storage. Specified defaults live
+  only in construction (`%Ludicrous.DegenerateProbe{}`).
+  """
+  @spec zero_degenerate_probe() :: Ludicrous.DegenerateProbe.t()
   def zero_degenerate_probe do
     %Ludicrous.DegenerateProbe{locked_fixed: 0, locked_int: 0, locked_wide: 0, tail: 0}
   end
 
-  # write_degenerate_probe packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_degenerate_probe(value) do
-    data = <<>>
-
+  @doc """
+  Packs a DegenerateProbe into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_degenerate_probe!(Ludicrous.DegenerateProbe.t()) :: binary()
+  def write_degenerate_probe!(value) do
     %{
       locked_fixed: value_locked_fixed,
       locked_int: value_locked_int,
@@ -1313,15 +1480,30 @@ defmodule Ludicrous.Ludicrous do
 
     v = value_tail &&& 0xFF
     scratch = v
-    data = <<data::binary, scratch::little-size(1)-unit(8)>>
-    data
+    <<scratch::little-size(1)-unit(8)>>
   end
 
-  # read_degenerate_probe_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_degenerate_probe!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_degenerate_probe(Ludicrous.DegenerateProbe.t()) ::
+          {:ok, binary()} | {:error, String.t()}
+  def write_degenerate_probe(value) do
+    {:ok, write_degenerate_probe!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a DegenerateProbe from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_degenerate_probe_bits(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.DegenerateProbe.t(), non_neg_integer()} | :error
   def read_degenerate_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1329,14 +1511,12 @@ defmodule Ludicrous.Ludicrous do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 8 > num_bits, do: throw(:invalid)
+      if 8 > num_bits, do: throw(:invalid)
       v_locked_fixed = -196_608
       v_locked_int = 7
       v_locked_wide = -12_345_678_901_234
-      rv = rd(data, bits_read, 8)
+      rv = rd(data, 0, 8)
       v = rv
-      bits_read = bits_read + 8
       v_tail = v
 
       value = %Ludicrous.DegenerateProbe{
@@ -1346,14 +1526,18 @@ defmodule Ludicrous.Ludicrous do
         tail: v_tail
       }
 
-      {:ok, value, bits_read}
+      {:ok, value, 8}
     catch
       :invalid -> :error
     end
   end
 
-  # read_degenerate_probe is read_degenerate_probe_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a DegenerateProbe from the first num_bits of data: read_degenerate_probe_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_degenerate_probe(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.DegenerateProbe.t()} | :error
   def read_degenerate_probe(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_degenerate_probe_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1361,24 +1545,33 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # measure_degenerate_probe is the exact wire bits write_degenerate_probe would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_degenerate_probe(_value), do: 8
-
-  # fixed_vec_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # fixed_vec_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a FixedVec can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec fixed_vec_max_bits() :: pos_integer()
   def fixed_vec_max_bits, do: 102
+
+  @doc """
+  fixed_vec_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec fixed_vec_max_bytes() :: pos_integer()
   def fixed_vec_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Ludicrous.FixedVec{}).
+  @doc """
+  The §5 zero form of FixedVec: all-zero storage. Specified defaults live
+  only in construction (`%Ludicrous.FixedVec{}`).
+  """
+  @spec zero_fixed_vec() :: Ludicrous.FixedVec.t()
   def zero_fixed_vec, do: %Ludicrous.FixedVec{x: 0, y: 0, z: 0}
 
-  # write_fixed_vec packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_fixed_vec(value) do
-    data = <<>>
+  @doc """
+  Packs a FixedVec into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_fixed_vec!(Ludicrous.FixedVec.t()) :: binary()
+  def write_fixed_vec!(value) do
     %{x: value_x, y: value_y, z: value_z} = value
 
     if value_x < -6_553_600_000 do
@@ -1428,7 +1621,7 @@ defmodule Ludicrous.Ludicrous do
     scratch = scratch ||| v <<< 36
 
     data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
+      <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
         scratch::little-size(4)-unit(8)>>
 
     scratch = scratch >>> 32
@@ -1436,11 +1629,26 @@ defmodule Ludicrous.Ludicrous do
     <<data::binary, scratch>>
   end
 
-  # read_fixed_vec_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_fixed_vec!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_fixed_vec(Ludicrous.FixedVec.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_fixed_vec(value) do
+    {:ok, write_fixed_vec!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a FixedVec from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_fixed_vec_bits(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.FixedVec.t(), non_neg_integer()} | :error
   def read_fixed_vec_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1448,47 +1656,43 @@ defmodule Ludicrous.Ludicrous do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 102 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 102 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x3
-      bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_x = w - 6_553_600_000
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 34, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32 &&& 0x3
-      bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_y = w - 6_553_600_000
-      rv = rdw(data, bits_read, 34)
+      rv = rdw(data, 68, 34)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       w = v
       v = rv >>> 32
-      bits_read = bits_read + 2
       w = w ||| v <<< 32
       # a smuggled offset is refused
       if w > 13_107_200_000, do: throw(:invalid)
       v_z = w - 6_553_600_000
       value = %Ludicrous.FixedVec{x: v_x, y: v_y, z: v_z}
-      {:ok, value, bits_read}
+      {:ok, value, 102}
     catch
       :invalid -> :error
     end
   end
 
-  # read_fixed_vec is read_fixed_vec_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a FixedVec from the first num_bits of data: read_fixed_vec_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_fixed_vec(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedVec.t()} | :error
   def read_fixed_vec(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_vec_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
@@ -1496,24 +1700,33 @@ defmodule Ludicrous.Ludicrous do
     end
   end
 
-  # measure_fixed_vec is the exact wire bits write_fixed_vec would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_fixed_vec(_value), do: 102
-
-  # fixed_quat_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
-  # fixed_quat_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  @doc """
+  The most wire bits a FixedQuat can take: the longest wire path, align padding at its worst case (SPEC §6.1).
+  """
+  @spec fixed_quat_max_bits() :: pos_integer()
   def fixed_quat_max_bits, do: 128
+
+  @doc """
+  fixed_quat_max_bits/0 in bytes, rounded up to the family 8-byte write-buffer
+  granularity.
+  """
+  @spec fixed_quat_max_bytes() :: pos_integer()
   def fixed_quat_max_bytes, do: 16
 
-  # The §5 zero form: all-zero storage; specified defaults live only in
-  # construction (%Ludicrous.FixedQuat{}).
+  @doc """
+  The §5 zero form of FixedQuat: all-zero storage. Specified defaults live
+  only in construction (`%Ludicrous.FixedQuat{}`).
+  """
+  @spec zero_fixed_quat() :: Ludicrous.FixedQuat.t()
   def zero_fixed_quat, do: %Ludicrous.FixedQuat{x: 0, y: 0, z: 0, w: 0}
 
-  # write_fixed_quat packs value into a fresh binary — the trusted writer; the O(1)
-  # contract checks raise ArgumentError, always on (the BEAM has no
-  # compile-out assert). Returns the wire bytes.
-  def write_fixed_quat(value) do
-    data = <<>>
+  @doc """
+  Packs a FixedQuat into a fresh binary and returns the wire bytes. The
+  writer trusts the caller up to the O(1) contract checks, which raise
+  ArgumentError — always on, since the BEAM has no compile-out assert.
+  """
+  @spec write_fixed_quat!(Ludicrous.FixedQuat.t()) :: binary()
+  def write_fixed_quat!(value) do
     %{x: value_x, y: value_y, z: value_z, w: value_w} = value
 
     if value_x < -1_073_741_824 do
@@ -1563,18 +1776,30 @@ defmodule Ludicrous.Ludicrous do
     sc2 = scratch
     scratch = v
 
-    data =
-      <<data::binary, sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8),
-        sc2::little-size(4)-unit(8), scratch::little-size(4)-unit(8)>>
-
-    data
+    <<sc0::little-size(4)-unit(8), sc1::little-size(4)-unit(8), sc2::little-size(4)-unit(8),
+      scratch::little-size(4)-unit(8)>>
   end
 
-  # read_fixed_quat_bits decodes the first num_bits of data and REPORTS THE BITS
-  # CONSUMED (SPEC §5): {:ok, value, bits_read}. The count is what frames a
-  # second object behind the first in one buffer. :error rejects the wire
-  # (bounds, ranges, wire constants, padding); hostile bytes never raise. No
-  # slack past the payload is required.
+  @doc """
+  write_fixed_quat!/1 as a verdict: `{:ok, binary}`, or `{:error, message}`
+  where the bang form raises ArgumentError.
+  """
+  @spec write_fixed_quat(Ludicrous.FixedQuat.t()) :: {:ok, binary()} | {:error, String.t()}
+  def write_fixed_quat(value) do
+    {:ok, write_fixed_quat!(value)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Decodes a FixedQuat from the first num_bits of data and REPORTS THE BITS
+  CONSUMED (SPEC §5): `{:ok, value, bits_read}`. The count is what frames a
+  second object behind the first in one buffer. `:error` rejects the wire
+  (bounds, ranges, wire constants, padding); hostile bytes never raise. No
+  slack past the payload is required.
+  """
+  @spec read_fixed_quat_bits(binary(), non_neg_integer()) ::
+          {:ok, Ludicrous.FixedQuat.t(), non_neg_integer()} | :error
   def read_fixed_quat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
       if num_bits > byte_size(data) * 8 do
@@ -1582,51 +1807,45 @@ defmodule Ludicrous.Ludicrous do
         throw(:invalid)
       end
 
-      bits_read = 0
-      if bits_read + 128 > num_bits, do: throw(:invalid)
-      rv = rdw(data, bits_read, 49)
+      if 128 > num_bits, do: throw(:invalid)
+      rv = rdw(data, 0, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_x = v - 1_073_741_824
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 32, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_y = v - 1_073_741_824
-      rv = rdw(data, bits_read, 49)
+      rv = rdw(data, 64, 49)
       v = rv &&& 0xFFFFFFFF
-      bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_z = v - 1_073_741_824
-      rv = rd(data, bits_read, 32)
+      rv = rd(data, 96, 32)
       v = rv
-      bits_read = bits_read + 32
       # a smuggled offset is refused
       if v > 2_147_483_648, do: throw(:invalid)
       v_w = v - 1_073_741_824
       value = %Ludicrous.FixedQuat{x: v_x, y: v_y, z: v_z, w: v_w}
-      {:ok, value, bits_read}
+      {:ok, value, 128}
     catch
       :invalid -> :error
     end
   end
 
-  # read_fixed_quat is read_fixed_quat_bits with the count dropped — the family read
-  # verdict, unchanged, and the entry every caller already holds.
+  @doc """
+  Decodes a FixedQuat from the first num_bits of data: read_fixed_quat_bits/2
+  with the count dropped, the family read verdict.
+  """
+  @spec read_fixed_quat(binary(), non_neg_integer()) :: {:ok, Ludicrous.FixedQuat.t()} | :error
   def read_fixed_quat(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     case read_fixed_quat_bits(data, num_bits) do
       {:ok, value, _bits_read} -> {:ok, value}
       :error -> :error
     end
   end
-
-  # measure_fixed_quat is the exact wire bits write_fixed_quat would produce for value —
-  # trusted like the writer; static runs fold to literals at generation time.
-  def measure_fixed_quat(_value), do: 128
 
   defp w_fixed_probe_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
@@ -1715,26 +1934,23 @@ defmodule Ludicrous.Ludicrous do
        when remaining >= 2 do
     rv = rdw(data, bits_read, 42)
     v = rv &&& 0x1FFFFF
-    bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e1 = v - 524_288
     v = rv >>> 21
-    bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e2 = v - 524_288
-    r_fixed_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read)
+    r_fixed_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 42)
   end
 
   defp r_fixed_probe_samples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 21)
     v = rv
-    bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e = v - 524_288
-    r_fixed_probe_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_fixed_probe_samples(remaining - 1, [e | acc], data, num_bits, bits_read + 21)
   end
 
   defp w_unsigned_probe_samples([], data, scratch, scratch_bits),
@@ -1825,26 +2041,23 @@ defmodule Ludicrous.Ludicrous do
        when remaining >= 2 do
     rv = rdw(data, bits_read, 42)
     v = rv &&& 0x1FFFFF
-    bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e1 = v
     v = rv >>> 21
-    bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e2 = v
-    r_unsigned_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read)
+    r_unsigned_probe_samples(remaining - 2, [e2, e1 | acc], data, num_bits, bits_read + 42)
   end
 
   defp r_unsigned_probe_samples(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 21)
     v = rv
-    bits_read = bits_read + 21
     # a smuggled offset is refused
     if v > 1_048_576, do: throw(:invalid)
     e = v
-    r_unsigned_probe_samples(remaining - 1, [e | acc], data, num_bits, bits_read)
+    r_unsigned_probe_samples(remaining - 1, [e | acc], data, num_bits, bits_read + 21)
   end
 
   defp w_ludicrous_state_keys([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
@@ -1891,53 +2104,17 @@ defmodule Ludicrous.Ludicrous do
   defp r_ludicrous_state_keys(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = v
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 32, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = w ||| v <<< 32
-    rv = rdw(data, bits_read, 49)
+    rv = rdw(data, bits_read + 64, 49)
     v = rv &&& 0xFFFFFFFF
-    bits_read = bits_read + 32
     w = w ||| v <<< 64
-    rv = rd(data, bits_read, 32)
+    rv = rd(data, bits_read + 96, 32)
     v = rv
-    bits_read = bits_read + 32
     w = w ||| v <<< 96
     e = w
-    r_ludicrous_state_keys(remaining - 1, [e | acc], data, num_bits, bits_read)
-  end
-
-  # The port's 40-bit window decode (issue #167): enough for a 7-bit offset
-  # plus a 32-bit group, small enough that no intermediate ever boxes. The
-  # callers have already priced the read inside num_bits, so the tail
-  # fallback decodes exactly the bytes that exist.
-  defp rd(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-40, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
-  end
-
-  # The wide window decode: 56 bits, enough for a 7-bit offset plus a
-  # 49-bit group, and still under the 2^59 fixnum boundary — one match
-  # context serves a whole group of fields instead of one per field. A
-  # 64-bit window would box and measures slower than the reads it saves.
-  defp rdw(data, bits_read, bits) do
-    i = bits_read >>> 3
-
-    window =
-      case data do
-        <<_::binary-size(^i), w::little-56, _::binary>> -> w
-        <<_::binary-size(^i), rest::binary>> -> :binary.decode_unsigned(rest, :little)
-      end
-
-    window >>> (bits_read &&& 7) &&& (1 <<< bits) - 1
+    r_ludicrous_state_keys(remaining - 1, [e | acc], data, num_bits, bits_read + 128)
   end
 end
