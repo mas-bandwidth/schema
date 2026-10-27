@@ -6,7 +6,7 @@
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
-// write/read/measure functions per type, zero runtime dependencies.
+// write/read functions per type, zero runtime dependencies.
 //
 // write<Name>(value, view) -> bytes written. The writer TRUSTS the caller
 // (the C++ stance): contracts are asserted — active under --enable-asserts,
@@ -19,18 +19,13 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
-// measure<Name>(value) -> exact wire bits for that value (trusted, like
-// the writer). zero<Name>(value) -> the §5 zero form.
+// zero<Name>(value) -> the §5 zero form. There is no measure function
+// (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
 import 'dart:typed_data';
 
 import 'Int128.dart' show Int128, UInt128;
-
-// Unsigned 64-bit less-than: flip the sign bit so the signed comparison
-// orders the unsigned domain (uint64 values ride bit-transparently in int).
-@pragma('vm:prefer-inline')
-bool _unsignedLessThan(int a, int b) =>
-    (a ^ 0x8000000000000000) < (b ^ 0x8000000000000000);
+import 'Schema.dart' show Schema;
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
@@ -125,19 +120,13 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
       (((value.position + 1966080000) & 0xffffffff) << 25);
   scratch |= v << scratchBits;
   scratchBits += 57;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (57 - scratchBits);
-  }
   {
     const min = Int128(0xffffffffffffffff, 0xfffffff0bdc00000);
     const max = Int128(0, 65536000000);
     assert(value.reach >= min);
     assert(value.reach <= max);
     final off = (value.reach - min).toUnsigned();
-    v = ((off.lo) & 0x1fffffffff);
+    v = off.lo & 0x1fffffffff;
     scratch |= v << scratchBits;
     scratchBits += 37;
     if (scratchBits >= 64) {
@@ -149,7 +138,7 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
   }
   assert(value.ticks >= 0);
   assert(value.ticks <= 1000000);
-  v = ((value.ticks) & 0xfffff);
+  v = value.ticks & 0xfffff;
   scratch |= v << scratchBits;
   scratchBits += 20;
   if (scratchBits >= 64) {
@@ -161,7 +150,7 @@ int writeFixedProbe(FixedProbe value, ByteData view) {
   for (var i0 = 0; i0 < 2; i0++) {
     assert(value.samples[i0] >= -524288);
     assert(value.samples[i0] <= 524288);
-    v = ((value.samples[i0] + 524288) & 0x1fffff);
+    v = (value.samples[i0] + 524288) & 0x1fffff;
     scratch |= v << scratchBits;
     scratchBits += 21;
     if (scratchBits >= 64) {
@@ -256,10 +245,6 @@ bool readFixedProbe(FixedProbe value, ByteData view, int numBits) {
   return true;
 }
 
-// measureFixedProbe is the exact wire bits writeFixedProbe would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureFixedProbe(FixedProbe value) => 156;
-
 // type UnsignedProbe
 final class UnsignedProbe {
   // wire [0, 360]
@@ -317,17 +302,11 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
   var v = 0;
   assert(value.angle >= 0);
   assert(value.angle <= 23592960);
-  assert(!_unsignedLessThan(0xffffffffffff0000, value.span));
-  v = ((value.angle) & 0x1ffffff);
+  assert(!Schema.unsignedLessThan(0xffffffffffff0000, value.span));
+  v = value.angle & 0x1ffffff;
   scratch |= v << scratchBits;
   scratchBits += 25;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (25 - scratchBits);
-  }
-  v = (value.span);
+  v = value.span;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -339,7 +318,7 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
   {
     const max = UInt128(0, 131072000000);
     assert(value.reach <= max);
-    v = ((value.reach.lo) & 0x1fffffffff);
+    v = value.reach.lo & 0x1fffffffff;
     scratch |= v << scratchBits;
     scratchBits += 37;
     if (scratchBits >= 64) {
@@ -351,7 +330,7 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
   }
   assert(value.ticks >= 0);
   assert(value.ticks <= 1000000);
-  v = ((value.ticks) & 0xfffff);
+  v = value.ticks & 0xfffff;
   scratch |= v << scratchBits;
   scratchBits += 20;
   if (scratchBits >= 64) {
@@ -363,7 +342,7 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
   for (var i0 = 0; i0 < 2; i0++) {
     assert(value.samples[i0] >= 0);
     assert(value.samples[i0] <= 1048576);
-    v = ((value.samples[i0]) & 0x1fffff);
+    v = value.samples[i0] & 0x1fffff;
     scratch |= v << scratchBits;
     scratchBits += 21;
     if (scratchBits >= 64) {
@@ -374,7 +353,7 @@ int writeUnsignedProbe(UnsignedProbe value, ByteData view) {
     }
   }
   assert(value.locked == 196608);
-  v = ((value.tail) & 0xff);
+  v = value.tail & 0xff;
   scratch |= v << scratchBits;
   scratchBits += 8;
   if (scratchBits >= 64) {
@@ -437,7 +416,7 @@ bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  if (_unsignedLessThan(0xffffffffffff0000, lo)) {
+  if (Schema.unsignedLessThan(0xffffffffffff0000, lo)) {
     return false; // a smuggled offset is refused
   }
   value.span = lo;
@@ -482,10 +461,6 @@ bool readUnsignedProbe(UnsignedProbe value, ByteData view, int numBits) {
   value.tail = v;
   return true;
 }
-
-// measureUnsignedProbe is the exact wire bits writeUnsignedProbe would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureUnsignedProbe(UnsignedProbe value) => 196;
 
 // type WideProbe
 final class WideProbe {
@@ -534,7 +509,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = (value.entityId.lo);
+  v = value.entityId.lo;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -543,7 +518,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.entityId.hi);
+  v = value.entityId.hi;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -558,7 +533,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
     assert(value.energy >= min);
     assert(value.energy <= max);
     final off = (value.energy - min).toUnsigned();
-    v = ((off.lo) & 0x3ffffffff);
+    v = off.lo & 0x3ffffffff;
     scratch |= v << scratchBits;
     scratchBits += 34;
     if (scratchBits >= 64) {
@@ -574,7 +549,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
     assert(value.flux >= min);
     assert(value.flux <= max);
     final off = (value.flux - min).toUnsigned();
-    v = (off.lo);
+    v = off.lo;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -583,7 +558,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = ((off.hi) & 0x3fffffffff);
+    v = off.hi & 0x3fffffffff;
     scratch |= v << scratchBits;
     scratchBits += 38;
     if (scratchBits >= 64) {
@@ -599,7 +574,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
     assert(value.bias >= min);
     assert(value.bias <= max);
     final off = (value.bias - min).toUnsigned();
-    v = ((off.lo) & 0x7ff);
+    v = off.lo & 0x7ff;
     scratch |= v << scratchBits;
     scratchBits += 11;
     if (scratchBits >= 64) {
@@ -609,7 +584,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
       scratch = v >>> (11 - scratchBits);
     }
   }
-  v = (value.seed.lo);
+  v = value.seed.lo;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -618,7 +593,7 @@ int writeWideProbe(WideProbe value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.seed.hi);
+  v = value.seed.hi;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -789,10 +764,6 @@ bool readWideProbe(WideProbe value, ByteData view, int numBits) {
   return true;
 }
 
-// measureWideProbe is the exact wire bits writeWideProbe would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureWideProbe(WideProbe value) => 403;
-
 // type LudicrousState
 final class LudicrousState {
   int mode = DriveMode.none;
@@ -852,24 +823,18 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
   assert(value.probe.position >= -1966080000);
   assert(value.probe.position <= 1966080000);
   v =
-      ((value.mode) & 0x3) |
+      (value.mode & 0x3) |
       (((value.probe.angle + 11796480) & 0x1ffffff) << 2) |
       (((value.probe.position + 1966080000) & 0xffffffff) << 27);
   scratch |= v << scratchBits;
   scratchBits += 59;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (59 - scratchBits);
-  }
   {
     const min = Int128(0xffffffffffffffff, 0xfffffff0bdc00000);
     const max = Int128(0, 65536000000);
     assert(value.probe.reach >= min);
     assert(value.probe.reach <= max);
     final off = (value.probe.reach - min).toUnsigned();
-    v = ((off.lo) & 0x1fffffffff);
+    v = off.lo & 0x1fffffffff;
     scratch |= v << scratchBits;
     scratchBits += 37;
     if (scratchBits >= 64) {
@@ -881,7 +846,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
   }
   assert(value.probe.ticks >= 0);
   assert(value.probe.ticks <= 1000000);
-  v = ((value.probe.ticks) & 0xfffff);
+  v = value.probe.ticks & 0xfffff;
   scratch |= v << scratchBits;
   scratchBits += 20;
   if (scratchBits >= 64) {
@@ -893,7 +858,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
   for (var i0 = 0; i0 < 2; i0++) {
     assert(value.probe.samples[i0] >= -524288);
     assert(value.probe.samples[i0] <= 524288);
-    v = ((value.probe.samples[i0] + 524288) & 0x1fffff);
+    v = (value.probe.samples[i0] + 524288) & 0x1fffff;
     scratch |= v << scratchBits;
     scratchBits += 21;
     if (scratchBits >= 64) {
@@ -903,7 +868,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratch = v >>> (21 - scratchBits);
     }
   }
-  v = (value.wide.entityId.lo);
+  v = value.wide.entityId.lo;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -912,7 +877,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.wide.entityId.hi);
+  v = value.wide.entityId.hi;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -927,7 +892,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     assert(value.wide.energy >= min);
     assert(value.wide.energy <= max);
     final off = (value.wide.energy - min).toUnsigned();
-    v = ((off.lo) & 0x3ffffffff);
+    v = off.lo & 0x3ffffffff;
     scratch |= v << scratchBits;
     scratchBits += 34;
     if (scratchBits >= 64) {
@@ -943,7 +908,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     assert(value.wide.flux >= min);
     assert(value.wide.flux <= max);
     final off = (value.wide.flux - min).toUnsigned();
-    v = (off.lo);
+    v = off.lo;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -952,7 +917,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = ((off.hi) & 0x3fffffffff);
+    v = off.hi & 0x3fffffffff;
     scratch |= v << scratchBits;
     scratchBits += 38;
     if (scratchBits >= 64) {
@@ -968,7 +933,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     assert(value.wide.bias >= min);
     assert(value.wide.bias <= max);
     final off = (value.wide.bias - min).toUnsigned();
-    v = ((off.lo) & 0x7ff);
+    v = off.lo & 0x7ff;
     scratch |= v << scratchBits;
     scratchBits += 11;
     if (scratchBits >= 64) {
@@ -978,7 +943,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratch = v >>> (11 - scratchBits);
     }
   }
-  v = (value.wide.seed.lo);
+  v = value.wide.seed.lo;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -989,7 +954,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
   }
   assert(value.keysCount >= 0);
   assert(value.keysCount <= 4);
-  v = (value.wide.seed.hi);
+  v = value.wide.seed.hi;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -998,7 +963,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.keysCount) & 0x7);
+  v = value.keysCount & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -1008,7 +973,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     scratch = v >>> (3 - scratchBits);
   }
   for (var i0 = 0; i0 < value.keysCount; i0++) {
-    v = (value.keys[i0].lo);
+    v = value.keys[i0].lo;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1017,7 +982,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = (value.keys[i0].hi);
+    v = value.keys[i0].hi;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1027,7 +992,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratch = v >>> (64 - scratchBits);
     }
   }
-  v = (value.hasTarget ? 1 : 0);
+  v = value.hasTarget ? 1 : 0;
   scratch |= v << scratchBits;
   scratchBits += 1;
   if (scratchBits >= 64) {
@@ -1037,7 +1002,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
     scratch = v >>> (1 - scratchBits);
   }
   if (value.hasTarget) {
-    v = (value.targetId.lo);
+    v = value.targetId.lo;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1046,7 +1011,7 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = (value.targetId.hi);
+    v = value.targetId.hi;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1374,19 +1339,6 @@ bool readLudicrousState(LudicrousState value, ByteData view, int numBits) {
   return true;
 }
 
-// measureLudicrousState is the exact wire bits writeLudicrousState would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureLudicrousState(LudicrousState value) {
-  var bits = 0;
-  bits += 564;
-  bits += value.keysCount * 128;
-  bits += 1;
-  if (value.hasTarget) {
-    bits += 128;
-  }
-  return bits;
-}
-
 // type DegenerateProbe
 final class DegenerateProbe {
   // specified default at construction; zero* gives the §5 zero form; wire [-3, -3]
@@ -1436,15 +1388,9 @@ int writeDegenerateProbe(DegenerateProbe value, ByteData view) {
     const locked = Int128(0xffffffffffffffff, 0xfffff4c58c31d00e);
     assert(value.lockedWide == locked);
   }
-  v = ((value.tail) & 0xff);
+  v = value.tail & 0xff;
   scratch |= v << scratchBits;
   scratchBits += 8;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (8 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1493,10 +1439,6 @@ bool readDegenerateProbe(DegenerateProbe value, ByteData view, int numBits) {
   return true;
 }
 
-// measureDegenerateProbe is the exact wire bits writeDegenerateProbe would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureDegenerateProbe(DegenerateProbe value) => 8;
-
 // type FixedVec
 final class FixedVec {
   // wire [-100000, 100000]
@@ -1541,18 +1483,12 @@ int writeFixedVec(FixedVec value, ByteData view) {
   assert(value.x <= 6553600000);
   assert(value.y >= -6553600000);
   assert(value.y <= 6553600000);
-  v = ((value.x + 6553600000) & 0x3ffffffff);
+  v = (value.x + 6553600000) & 0x3ffffffff;
   scratch |= v << scratchBits;
   scratchBits += 34;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (34 - scratchBits);
-  }
   assert(value.z >= -6553600000);
   assert(value.z <= 6553600000);
-  v = ((value.y + 6553600000) & 0x3ffffffff);
+  v = (value.y + 6553600000) & 0x3ffffffff;
   scratch |= v << scratchBits;
   scratchBits += 34;
   if (scratchBits >= 64) {
@@ -1561,7 +1497,7 @@ int writeFixedVec(FixedVec value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (34 - scratchBits);
   }
-  v = ((value.z + 6553600000) & 0x3ffffffff);
+  v = (value.z + 6553600000) & 0x3ffffffff;
   scratch |= v << scratchBits;
   scratchBits += 34;
   if (scratchBits >= 64) {
@@ -1636,10 +1572,6 @@ bool readFixedVec(FixedVec value, ByteData view, int numBits) {
   value.z = -6553600000 + lo;
   return true;
 }
-
-// measureFixedVec is the exact wire bits writeFixedVec would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureFixedVec(FixedVec value) => 102;
 
 // type FixedQuat
 final class FixedQuat {
@@ -1792,7 +1724,3 @@ bool readFixedQuat(FixedQuat value, ByteData view, int numBits) {
   value.w = -1073741824 + v;
   return true;
 }
-
-// measureFixedQuat is the exact wire bits writeFixedQuat would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureFixedQuat(FixedQuat value) => 128;

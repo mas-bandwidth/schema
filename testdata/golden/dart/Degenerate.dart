@@ -6,27 +6,8 @@
 
 import 'dart:typed_data';
 
+import 'Schema.dart' show Schema;
 import 'Types.dart' show Vec3, initVec3, zeroVec3;
-
-// One 8-byte conversion scratch under overlaid typed-data views — single
-// threaded per isolate, always consumed in the same operation that fills it.
-final Float32List _f32 = Float32List(2);
-final Float64List _f64 = _f32.buffer.asFloat64List();
-final Uint64List _u64 = _f32.buffer.asUint64List();
-
-// The 64 bits of the IEEE-754 double representation of value — exactly the
-// bits of the Dart double — and the inverse.
-@pragma('vm:prefer-inline')
-int _float64BitsFromDouble(double value) {
-  _f64[0] = value;
-  return _u64[0];
-}
-
-@pragma('vm:prefer-inline')
-double _doubleFromFloat64Bits(int bits) {
-  _u64[0] = bits;
-  return _f64[0];
-}
 
 // type Vec2
 final class Vec2 {
@@ -62,7 +43,7 @@ int writeVec2(Vec2 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = _float64BitsFromDouble(value.x);
+  v = Schema.float64BitsFromDouble(value.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -71,7 +52,7 @@ int writeVec2(Vec2 value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.y);
+  v = Schema.float64BitsFromDouble(value.y);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -128,7 +109,7 @@ bool readVec2(Vec2 value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.x = _doubleFromFloat64Bits(lo);
+  value.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -145,13 +126,9 @@ bool readVec2(Vec2 value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.y = _doubleFromFloat64Bits(lo);
+  value.y = Schema.doubleFromFloat64Bits(lo);
   return true;
 }
-
-// measureVec2 is the exact wire bits writeVec2 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureVec2(Vec2 value) => 128;
 
 // type SpanF64
 final class SpanF64 {
@@ -185,7 +162,7 @@ int writeSpanF64(SpanF64 value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
-    v = _float64BitsFromDouble(value.values[i0]);
+    v = Schema.float64BitsFromDouble(value.values[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -244,14 +221,10 @@ bool readSpanF64(SpanF64 value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.values[i0] = _doubleFromFloat64Bits(lo);
+    value.values[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   return true;
 }
-
-// measureSpanF64 is the exact wire bits writeSpanF64 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSpanF64(SpanF64 value) => 128;
 
 // type SpanU64
 final class SpanU64 {
@@ -285,7 +258,7 @@ int writeSpanU64(SpanU64 value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
-    v = (value.values[i0]);
+    v = value.values[i0];
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -349,10 +322,6 @@ bool readSpanU64(SpanU64 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureSpanU64 is the exact wire bits writeSpanU64 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSpanU64(SpanU64 value) => 128;
-
 // type SpanI64
 final class SpanI64 {
   final Int64List values = Int64List(2);
@@ -385,7 +354,7 @@ int writeSpanI64(SpanI64 value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
-    v = (value.values[i0]);
+    v = value.values[i0];
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -449,10 +418,6 @@ bool readSpanI64(SpanI64 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureSpanI64 is the exact wire bits writeSpanI64 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSpanI64(SpanI64 value) => 128;
-
 // type SpanOne
 final class SpanOne {
   final Uint64List values = Uint64List(1);
@@ -485,7 +450,7 @@ int writeSpanOne(SpanOne value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 1; i0++) {
-    v = (value.values[i0]);
+    v = value.values[i0];
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -549,10 +514,6 @@ bool readSpanOne(SpanOne value, ByteData view, int numBits) {
   return true;
 }
 
-// measureSpanOne is the exact wire bits writeSpanOne would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSpanOne(SpanOne value) => 64;
-
 // type SpanChunk
 final class SpanChunk {
   final Uint16List values = Uint16List(4);
@@ -585,7 +546,7 @@ int writeSpanChunk(SpanChunk value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 4; i0++) {
-    v = ((value.values[i0]) & 0xffff);
+    v = value.values[i0] & 0xffff;
     scratch |= v << scratchBits;
     scratchBits += 16;
     if (scratchBits >= 64) {
@@ -639,10 +600,6 @@ bool readSpanChunk(SpanChunk value, ByteData view, int numBits) {
   return true;
 }
 
-// measureSpanChunk is the exact wire bits writeSpanChunk would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSpanChunk(SpanChunk value) => 64;
-
 // type SpanTail
 final class SpanTail {
   final Float64List values = Float64List(2);
@@ -678,7 +635,7 @@ int writeSpanTail(SpanTail value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
-    v = _float64BitsFromDouble(value.values[i0]);
+    v = Schema.float64BitsFromDouble(value.values[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -688,7 +645,7 @@ int writeSpanTail(SpanTail value, ByteData view) {
       scratch = v >>> (64 - scratchBits);
     }
   }
-  v = ((value.tail) & 0xffffffff);
+  v = value.tail & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -746,7 +703,7 @@ bool readSpanTail(SpanTail value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.values[i0] = _doubleFromFloat64Bits(lo);
+    value.values[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -758,10 +715,6 @@ bool readSpanTail(SpanTail value, ByteData view, int numBits) {
   value.tail = v;
   return true;
 }
-
-// measureSpanTail is the exact wire bits writeSpanTail would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSpanTail(SpanTail value) => 160;
 
 // type SpanTwice
 final class SpanTwice {
@@ -798,7 +751,7 @@ int writeSpanTwice(SpanTwice value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
-    v = _float64BitsFromDouble(value.a[i0]);
+    v = Schema.float64BitsFromDouble(value.a[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -809,7 +762,7 @@ int writeSpanTwice(SpanTwice value, ByteData view) {
     }
   }
   for (var i0 = 0; i0 < 2; i0++) {
-    v = _float64BitsFromDouble(value.b[i0]);
+    v = Schema.float64BitsFromDouble(value.b[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -868,7 +821,7 @@ bool readSpanTwice(SpanTwice value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.a[i0] = _doubleFromFloat64Bits(lo);
+    value.a[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   for (var i0 = 0; i0 < 2; i0++) {
     if (bitsRead >>> 3 < tailBase) {
@@ -887,14 +840,10 @@ bool readSpanTwice(SpanTwice value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
-    value.b[i0] = _doubleFromFloat64Bits(lo);
+    value.b[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   return true;
 }
-
-// measureSpanTwice is the exact wire bits writeSpanTwice would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSpanTwice(SpanTwice value) => 256;
 
 // type Trio
 final class Trio {
@@ -934,9 +883,9 @@ int writeTrio(Trio value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   v =
-      ((value.a) & 0xfffff) |
-      (((value.b) & 0xfffff) << 20) |
-      (((value.c) & 0xffffff) << 40);
+      (value.a & 0xfffff) |
+      ((value.b & 0xfffff) << 20) |
+      ((value.c & 0xffffff) << 40);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -998,10 +947,6 @@ bool readTrio(Trio value, ByteData view, int numBits) {
   return true;
 }
 
-// measureTrio is the exact wire bits writeTrio would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureTrio(Trio value) => 64;
-
 // type TrioSole
 final class TrioSole {
   final Trio inner = Trio();
@@ -1034,9 +979,9 @@ int writeTrioSole(TrioSole value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   v =
-      ((value.inner.a) & 0xfffff) |
-      (((value.inner.b) & 0xfffff) << 20) |
-      (((value.inner.c) & 0xffffff) << 40);
+      (value.inner.a & 0xfffff) |
+      ((value.inner.b & 0xfffff) << 20) |
+      ((value.inner.c & 0xffffff) << 40);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1098,10 +1043,6 @@ bool readTrioSole(TrioSole value, ByteData view, int numBits) {
   return true;
 }
 
-// measureTrioSole is the exact wire bits writeTrioSole would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureTrioSole(TrioSole value) => 64;
-
 // type Vec3Sole
 final class Vec3Sole {
   final Vec3 v = Vec3();
@@ -1133,7 +1074,7 @@ int writeVec3Sole(Vec3Sole value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = _float64BitsFromDouble(value.v.x);
+  v = Schema.float64BitsFromDouble(value.v.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1142,7 +1083,7 @@ int writeVec3Sole(Vec3Sole value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.v.y);
+  v = Schema.float64BitsFromDouble(value.v.y);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1151,7 +1092,7 @@ int writeVec3Sole(Vec3Sole value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.v.z);
+  v = Schema.float64BitsFromDouble(value.v.z);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1208,7 +1149,7 @@ bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.v.x = _doubleFromFloat64Bits(lo);
+  value.v.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1225,7 +1166,7 @@ bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.v.y = _doubleFromFloat64Bits(lo);
+  value.v.y = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1242,13 +1183,9 @@ bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.v.z = _doubleFromFloat64Bits(lo);
+  value.v.z = Schema.doubleFromFloat64Bits(lo);
   return true;
 }
-
-// measureVec3Sole is the exact wire bits writeVec3Sole would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureVec3Sole(Vec3Sole value) => 192;
 
 // type TrioFirst
 final class TrioFirst {
@@ -1285,9 +1222,9 @@ int writeTrioFirst(TrioFirst value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   v =
-      ((value.inner.a) & 0xfffff) |
-      (((value.inner.b) & 0xfffff) << 20) |
-      (((value.inner.c) & 0xffffff) << 40);
+      (value.inner.a & 0xfffff) |
+      ((value.inner.b & 0xfffff) << 20) |
+      ((value.inner.c & 0xffffff) << 40);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1296,7 +1233,7 @@ int writeTrioFirst(TrioFirst value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.trailer) & 0xffff);
+  v = value.trailer & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 16;
   if (scratchBits >= 64) {
@@ -1361,10 +1298,6 @@ bool readTrioFirst(TrioFirst value, ByteData view, int numBits) {
   return true;
 }
 
-// measureTrioFirst is the exact wire bits writeTrioFirst would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureTrioFirst(TrioFirst value) => 80;
-
 // type TrioStraddle
 final class TrioStraddle {
   int pad0 = 0;
@@ -1414,7 +1347,7 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = (value.pad0);
+  v = value.pad0;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1423,7 +1356,7 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.pad1);
+  v = value.pad1;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1432,7 +1365,7 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.pad2);
+  v = value.pad2;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1441,7 +1374,7 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.pad3);
+  v = value.pad3;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1450,7 +1383,7 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = (value.pad4);
+  v = value.pad4;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1460,9 +1393,9 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratch = v >>> (64 - scratchBits);
   }
   v =
-      ((value.pad5) & 0xffffff) |
-      (((value.inner.a) & 0xfffff) << 24) |
-      (((value.inner.b) & 0xfffff) << 44);
+      (value.pad5 & 0xffffff) |
+      ((value.inner.a & 0xfffff) << 24) |
+      ((value.inner.b & 0xfffff) << 44);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -1471,7 +1404,7 @@ int writeTrioStraddle(TrioStraddle value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.inner.c) & 0xffffff);
+  v = value.inner.c & 0xffffff;
   scratch |= v << scratchBits;
   scratchBits += 24;
   if (scratchBits >= 64) {
@@ -1621,7 +1554,3 @@ bool readTrioStraddle(TrioStraddle value, ByteData view, int numBits) {
   value.inner.c = v;
   return true;
 }
-
-// measureTrioStraddle is the exact wire bits writeTrioStraddle would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureTrioStraddle(TrioStraddle value) => 408;

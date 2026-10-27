@@ -53,7 +53,7 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = (value.sortKey);
+  v = value.sortKey;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -62,7 +62,7 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.meshId) & 0xffffffff) | (((value.materialId) & 0xffffffff) << 32);
+  v = (value.meshId & 0xffffffff) | ((value.materialId & 0xffffffff) << 32);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -73,7 +73,7 @@ int writeRenderSprite(RenderSprite value, ByteData view) {
   }
   assert(value.team >= 0);
   assert(value.team <= 2);
-  v = ((value.layer) & 0xff) | (((value.team) & 0x3) << 8);
+  v = (value.layer & 0xff) | ((value.team & 0x3) << 8);
   scratch |= v << scratchBits;
   scratchBits += 10;
   if (scratchBits >= 64) {
@@ -159,10 +159,6 @@ bool readRenderSprite(RenderSprite value, ByteData view, int numBits) {
   return true;
 }
 
-// measureRenderSprite is the exact wire bits writeRenderSprite would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureRenderSprite(RenderSprite value) => 138;
-
 // type RenderBlock
 final class RenderBlock {
   int workerIndex = 0;
@@ -213,8 +209,8 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
   assert(value.spritesCount >= 0);
   assert(value.spritesCount <= 64);
   v =
-      ((value.workerIndex) & 0xffffffff) |
-      (((value.spriteCountHint) & 0xffffffff) << 32);
+      (value.workerIndex & 0xffffffff) |
+      ((value.spriteCountHint & 0xffffffff) << 32);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -223,7 +219,7 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.spritesCount) & 0x7f);
+  v = value.spritesCount & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
   if (scratchBits >= 64) {
@@ -234,7 +230,7 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
   }
   for (var i0 = 0; i0 < value.spritesCount; i0++) {
     final e0 = value.sprites[i0];
-    v = (e0.sortKey);
+    v = e0.sortKey;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -243,7 +239,7 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (64 - scratchBits);
     }
-    v = ((e0.meshId) & 0xffffffff) | (((e0.materialId) & 0xffffffff) << 32);
+    v = (e0.meshId & 0xffffffff) | ((e0.materialId & 0xffffffff) << 32);
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -254,7 +250,7 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
     }
     assert(e0.team >= 0);
     assert(e0.team <= 2);
-    v = ((e0.layer) & 0xff) | (((e0.team) & 0x3) << 8);
+    v = (e0.layer & 0xff) | ((e0.team & 0x3) << 8);
     scratch |= v << scratchBits;
     scratchBits += 10;
     if (scratchBits >= 64) {
@@ -370,13 +366,4 @@ bool readRenderBlock(RenderBlock value, ByteData view, int numBits) {
     e0.team = v;
   }
   return true;
-}
-
-// measureRenderBlock is the exact wire bits writeRenderBlock would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureRenderBlock(RenderBlock value) {
-  var bits = 0;
-  bits += 71;
-  bits += value.spritesCount * 138;
-  return bits;
 }

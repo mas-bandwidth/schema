@@ -22,14 +22,18 @@ void main() {
       stdout.writeln('REFUSE');
       continue;
     }
-    final bits = d.measureNarrow(value);
-    if (!d.readNarrow(d.Narrow(), view, bits) ||
-        d.readNarrow(d.Narrow(), view, bits - 1)) {
-      throw StateError('exact bit bound');
-    }
     final encoded = Uint8List(256);
     final count = d.writeNarrow(value, ByteData.sublistView(encoded));
-    if (count != (bits + 7) ~/ 8) throw StateError('writer byte count');
+    // There is no measure function (SPEC §6.1): the exact bit length is the
+    // fewest bits the reader accepts, which lies in write's last byte.
+    var bits = count == 0 ? 0 : count * 8 - 7;
+    while (bits <= count * 8 && !d.readNarrow(d.Narrow(), view, bits)) {
+      bits++;
+    }
+    if (bits > count * 8 ||
+        (bits > 0 && d.readNarrow(d.Narrow(), view, bits - 1))) {
+      throw StateError('exact bit bound');
+    }
     stdout.writeln(
       'OK $bits ${hex(value.text.sublist(0, value.textLength))} '
       '$bits ${hex(encoded.sublist(0, count))}',

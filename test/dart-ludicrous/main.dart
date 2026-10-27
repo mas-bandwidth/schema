@@ -60,8 +60,9 @@ bool bytesEqual(Uint8List a, Uint8List b) {
 Uint8List golden(String name) =>
     File('../../testdata/wire/$name.bin').readAsBytesSync();
 
-// The bit-exact measure oracle (#163): the C++ reference writer's exact bit
-// count, pinned beside the byte golden.
+// The bit-exact oracle (#163): the C++ reference writer's exact bit count,
+// pinned beside the byte golden; the reader holds it, since there is no
+// measure function (SPEC §6.1).
 int goldenBits(String name) =>
     int.parse(File('../../testdata/wire/$name.bits').readAsStringSync().trim());
 
@@ -143,13 +144,20 @@ void main() {
       bytesEqual(takenWire, g),
       'wire golden ludicrous_state — Dart bytes must equal the C++-pinned bytes',
     );
+    final pinnedBits = goldenBits('ludicrous_state');
+    check((pinnedBits + 7) >>> 3 == n, 'written bytes vs the C++ bit count');
     check(
-      (measureLudicrousState(inp) + 7) >>> 3 == n,
-      'measure vs written bytes',
-    );
-    check(
-      measureLudicrousState(inp) == goldenBits('ludicrous_state'),
-      'measure vs the C++ reference bit count (bit-exact oracle)',
+      !readLudicrousState(
+            LudicrousState(),
+            ByteData.sublistView(takenWire),
+            pinnedBits - 1,
+          ) &&
+          readLudicrousState(
+            LudicrousState(),
+            ByteData.sublistView(takenWire),
+            pinnedBits,
+          ),
+      'reads in exactly the C++ reference bit count (bit-exact oracle)',
     );
 
     final out = LudicrousState();
@@ -273,7 +281,7 @@ void main() {
       bytesEqual(written(n), golden('degenerate_probe')),
       'wire golden degenerate_probe',
     );
-    check(measureDegenerateProbe(inp) == 8, 'the degenerate wire is one byte');
+    check(n == 1, 'the degenerate wire is one byte');
 
     final out = DegenerateProbe();
     check(

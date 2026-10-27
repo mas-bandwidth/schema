@@ -2740,7 +2740,12 @@ or a file per declaration where the language demands one.
   name at all** — a schema identifier may begin with an underscore, so a
   generated `_foo` at top level would be a collision no registry covers
   (SPEC-TABLES.md §11). A table-free unit grows none of it, and its packet
-  libraries are byte-identical either way.
+  libraries are byte-identical either way. The packet libraries' shared
+  helpers (the float conversion scratch, the compressed-float rounding, the
+  unsigned compare, the UTF-8 check) are static members of one class,
+  `Schema`, in one support library per unit, `Schema.dart`, which each
+  packet library imports with `show Schema`; `Schema` is a name every unit
+  already claims, and the library's text is the same in every unit.
 - **Java:** one `.java` file per schema file for the packet half, in
   `package <package>`. A unit that declares TABLES FANS OUT: **a public Java
   type lives in a file of its own name**, so the two accelerators are one
@@ -2884,6 +2889,14 @@ object to emit against; the bit reader and writer live in the generated code:
 | emits against | free functions over a caller-owned `ByteData` view | `static` methods on the file's class over a caller-owned `byte[]` | module functions over a binary; read and write thread the output, scratch and bit position as rebound accumulators — no stream struct |
 | error idiom | `bool` early-out | `boolean` early-out | `{:ok, value}` or `:error`; the body throws `:invalid` to a catch at the surface |
 | buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | the writer returns the binary; read buffers need NO slack past the payload |
+
+**Dart runs on the VM, AOT and dart2wasm, not on dart2js.** The generated
+Dart holds 64-bit values bit-transparently in `int` and moves them through
+`ByteData.getUint64`/`setUint64` and `Uint64List` views. dart2wasm has a
+64-bit `int` and compiles and runs it; dart2js has neither 64-bit integers
+nor those typed-data members, and it refuses the output at compile time (the
+protocol id, a 64-bit literal, is the first error). A web build of a
+schema unit takes dart2wasm, or the JavaScript target.
 
 ## 7. The compiler
 

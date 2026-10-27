@@ -11,7 +11,7 @@
 // 5-6x off the C++ reference and located the gap in dispatch and per-call
 // width arithmetic, so this backend emits what that port's findings
 // prescribe (issue #155): the family bitpacker INLINED at every field with
-// literal constant widths and masks, separate monomorphic write/read/measure
+// literal constant widths and masks, separate monomorphic write/read
 // functions per type, bounds checks fused per static run, and asserts (not
 // branches) for writer contracts — active under --enable-asserts, compiled
 // out in release, exactly the C++ trusted-writer stance.
@@ -31,8 +31,8 @@
 // Functions per type: write<Name>(value, view) -> bytes written (trusted
 // writer, contracts asserted); read<Name>(value, view, numBits) -> bool (the
 // family read verdict — reads validate EVERYTHING and never throw on hostile
-// bytes); measure<Name>(value) -> exact wire bits (static runs folded to one
-// literal at generation time); zero<Name>(value) -> the §5 zero form.
+// bytes); zero<Name>(value) -> the §5 zero form. No measure function is
+// generated (SPEC §6.1): write returns the size.
 // Buffers are caller-owned ByteData views: write buffers hold <name>MaxBytes
 // (a multiple of 8 — the family write-buffer granularity); read buffers need
 // NO slack past the payload — the reader prices its 64-bit windows inside
@@ -74,10 +74,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out["Int128.dart"] = emitInt128Support(u)
 	}
+	needRuntime := false
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, home: f.Base == home, imports: map[string]map[string]bool{}}
 		g.emitFile()
 		out[f.Base+".dart"] = g.assemble()
+		needRuntime = needRuntime || g.needRuntime
+	}
+	if needRuntime {
+		for _, f := range u.Files {
+			if f.Base == runtimeBase {
+				return nil, fmt.Errorf("schema file %s.schema collides with the %s.dart support library the Dart emitter writes beside the unit; rename the file", runtimeBase, runtimeBase)
+			}
+		}
+		out[runtimeBase+".dart"] = emitRuntime()
 	}
 	return out, nil
 }
@@ -238,6 +248,10 @@ type gen struct {
 	chunk     []chunkPiece
 	chunkBits int64
 
+	// scratchHi is the static ceiling on the emitted scratchBits (write
+	// side): a merge whose ceiling stays under 64 needs no spill test.
+	scratchHi int64
+
 	// the read-side window ledger: bits still extractable from the loaded
 	// 64-bit window (windowAvail) and the literal shift of the next field
 	// inside it (windowRel). A load guarantees 57 valid bits (64 minus the
@@ -246,14 +260,8 @@ type gen struct {
 	windowAvail int64
 	windowRel   int64
 
-	// per-file helper needs
-	needFround   bool // _fround
-	needF32Conv  bool // the _u32/_f64/_u64 views an inline float32 conversion uses (issue 404)
-	needF64Conv  bool // _float64BitsFromDouble / _doubleFromFloat64Bits
-	needULess    bool // _unsignedLessThan
-	needHex      bool // _hex64 (flagNames high-bit rendering)
-	needUTF8     bool // _schemaUtf8Valid
-	needScratch  bool // the overlaid conversion scratch views
+	// the file references the Schema class of Schema.dart (runtime.go)
+	needRuntime  bool
 	usesTypeData bool // dart:typed_data is imported
 }
 
@@ -308,7 +316,7 @@ func (g *gen) assemble() []byte {
 		h.WriteString("//\n")
 		h.WriteString("// The shipped Dart wire path (issue #155): the serialize.dart bitpacker\n")
 		h.WriteString("// inlined at every field, literal constant widths and masks, monomorphic\n")
-		h.WriteString("// write/read/measure functions per type, zero runtime dependencies.\n")
+		h.WriteString("// write/read functions per type, zero runtime dependencies.\n")
 		h.WriteString("//\n")
 		h.WriteString("// write<Name>(value, view) -> bytes written. The writer TRUSTS the caller\n")
 		h.WriteString("// (the C++ stance): contracts are asserted — active under --enable-asserts,\n")
@@ -321,8 +329,8 @@ func (g *gen) assemble() []byte {
 		h.WriteString("// tags — and NEVER throw on hostile bytes. No slack past the payload is\n")
 		h.WriteString("// required: the reader prices its 64-bit windows inside the buffer.\n")
 		h.WriteString("//\n")
-		h.WriteString("// measure<Name>(value) -> exact wire bits for that value (trusted, like\n")
-		h.WriteString("// the writer). zero<Name>(value) -> the §5 zero form.\n")
+		h.WriteString("// zero<Name>(value) -> the §5 zero form. There is no measure function\n")
+		h.WriteString("// (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.\n")
 	}
 	h.WriteString("\n")
 	if g.usesTypeData {
@@ -344,7 +352,6 @@ func (g *gen) assemble() []byte {
 		}
 		h.WriteString("\n")
 	}
-	g.emitHelpers(&h)
 	h.WriteString(strings.TrimRight(g.body.String(), "\n"))
 	h.WriteString("\n")
 	return []byte(h.String())
@@ -369,67 +376,19 @@ func (g *gen) writeImport(h *strings.Builder, base string, syms []string) {
 	}
 }
 
-// emitHelpers writes the per-file private helpers the emitted bodies used.
-func (g *gen) emitHelpers(h *strings.Builder) {
-	if g.needUTF8 {
-		h.WriteString(utf8Helper)
+// useRuntime records that the file references the shared helpers of
+// Schema.dart, which it then imports with `show Schema`.
+func (g *gen) useRuntime() {
+	if g.needRuntime {
+		return
 	}
-	if g.needScratch {
-		// One view per conversion actually emitted: `dart analyze` refuses an
-		// unreferenced private declaration, so a file that converts only
-		// float64 must not carry the float32 view (and the corpus had no such
-		// file until Degenerate.schema). _f32 owns the buffer, so it is
-		// referenced whenever any view is.
-		h.WriteString("// One 8-byte conversion scratch under overlaid typed-data views — single\n")
-		h.WriteString("// threaded per isolate, always consumed in the same operation that fills it.\n")
-		h.WriteString("final Float32List _f32 = Float32List(2);\n")
-		if g.needF32Conv {
-			h.WriteString("final Uint32List _u32 = _f32.buffer.asUint32List();\n")
-		}
-		if g.needF32Conv || g.needF64Conv {
-			h.WriteString("final Float64List _f64 = _f32.buffer.asFloat64List();\n")
-			h.WriteString("final Uint64List _u64 = _f32.buffer.asUint64List();\n")
-		}
-		h.WriteString("\n")
+	g.needRuntime = true
+	set := g.imports[runtimeBase]
+	if set == nil {
+		set = map[string]bool{}
+		g.imports[runtimeBase] = set
 	}
-	if g.needFround {
-		h.WriteString("// value rounded to the nearest float32, as a double: the float32 rounding\n")
-		h.WriteString("// boundary the compressed-float arithmetic is pinned to (SPEC §4.3).\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("double _fround(double value) {\n")
-		h.WriteString("  _f32[0] = value;\n")
-		h.WriteString("  return _f32[0];\n")
-		h.WriteString("}\n\n")
-	}
-	if g.needF64Conv {
-		h.WriteString("// The 64 bits of the IEEE-754 double representation of value — exactly the\n")
-		h.WriteString("// bits of the Dart double — and the inverse.\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("int _float64BitsFromDouble(double value) {\n")
-		h.WriteString("  _f64[0] = value;\n")
-		h.WriteString("  return _u64[0];\n")
-		h.WriteString("}\n\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("double _doubleFromFloat64Bits(int bits) {\n")
-		h.WriteString("  _u64[0] = bits;\n")
-		h.WriteString("  return _f64[0];\n")
-		h.WriteString("}\n\n")
-	}
-	if g.needULess {
-		h.WriteString("// Unsigned 64-bit less-than: flip the sign bit so the signed comparison\n")
-		h.WriteString("// orders the unsigned domain (uint64 values ride bit-transparently in int).\n")
-		h.WriteString("@pragma('vm:prefer-inline')\n")
-		h.WriteString("bool _unsignedLessThan(int a, int b) =>\n")
-		h.WriteString("    (a ^ 0x8000000000000000) < (b ^ 0x8000000000000000);\n\n")
-	}
-	if g.needHex {
-		h.WriteString("// Hex of a uint64 bit pattern held in a signed int (toRadixString would\n")
-		h.WriteString("// render the sign, not the pattern).\n")
-		h.WriteString("String _hex64(int value) => value < 0\n")
-		h.WriteString("    ? (value >>> 32).toRadixString(16) +\n")
-		h.WriteString("          (value & 0xffffffff).toRadixString(16).padLeft(8, '0')\n")
-		h.WriteString("    : value.toRadixString(16);\n\n")
-	}
+	set["Schema"] = true
 }
 
 func (g *gen) emitFile() {
@@ -575,9 +534,9 @@ func (g *gen) emitFlags(d *ir.Flags) {
 		g.bpf("  if (value & (1 << %d) != 0) {\n    names.add('%s');\n  }\n", i, v)
 	}
 	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
-		g.needHex = true
+		g.useRuntime()
 		g.bpf("  if (value >>> %d != 0) {\n", len(d.Variants))
-		g.bpf("    names.add('0x${_hex64((value >>> %d) << %d)}');\n", len(d.Variants), len(d.Variants))
+		g.bpf("    names.add('0x${Schema.hex64((value >>> %d) << %d)}');\n", len(d.Variants), len(d.Variants))
 		g.bpf("  }\n")
 	}
 	g.bpf("  return names.isEmpty ? '0' : names.join('|');\n}\n\n")

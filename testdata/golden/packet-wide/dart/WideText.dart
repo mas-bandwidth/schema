@@ -6,7 +6,7 @@
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
-// write/read/measure functions per type, zero runtime dependencies.
+// write/read functions per type, zero runtime dependencies.
 //
 // write<Name>(value, view) -> bytes written. The writer TRUSTS the caller
 // (the C++ stance): contracts are asserted — active under --enable-asserts,
@@ -19,47 +19,12 @@
 // tags — and NEVER throw on hostile bytes. No slack past the payload is
 // required: the reader prices its 64-bit windows inside the buffer.
 //
-// measure<Name>(value) -> exact wire bits for that value (trusted, like
-// the writer). zero<Name>(value) -> the §5 zero form.
+// zero<Name>(value) -> the §5 zero form. There is no measure function
+// (SPEC §6.1): write returns the size, <name>MaxBytes sizes buffers.
 
 import 'dart:typed_data';
 
-// Malformed UTF-8 fails the read in every build mode (SPEC §4.7).
-bool _schemaUtf8Valid(Uint8List bytes, int length) {
-  var index = 0;
-  while (index < length) {
-    final lead = bytes[index++];
-    if (lead < 0x80) continue;
-    int remaining, point;
-    if ((lead & 0xE0) == 0xC0) {
-      remaining = 1;
-      point = lead & 0x1F;
-    } else if ((lead & 0xF0) == 0xE0) {
-      remaining = 2;
-      point = lead & 0x0F;
-    } else if ((lead & 0xF8) == 0xF0) {
-      remaining = 3;
-      point = lead & 0x07;
-    } else {
-      return false;
-    }
-    if (remaining > length - index) return false;
-    for (var part = 0; part < remaining; part++) {
-      final byte = bytes[index++];
-      if ((byte & 0xC0) != 0x80) return false;
-      point = (point << 6) | (byte & 0x3F);
-    }
-    if (remaining == 1 && point < 0x80) return false;
-    if (remaining == 2 &&
-        (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) {
-      return false;
-    }
-    if (remaining == 3 && (point < 0x10000 || point > 0x10FFFF)) {
-      return false;
-    }
-  }
-  return true;
-}
+import 'Schema.dart' show Schema;
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
@@ -102,15 +67,9 @@ int writeWideSeven(WideSeven value, ByteData view) {
   {
     final wideLength = value.textLength;
     assert(wideLength >= 0 && wideLength <= 7);
-    v = ((wideLength) & 0x7);
+    v = wideLength & 0x7;
     scratch |= v << scratchBits;
     scratchBits += 3;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (3 - scratchBits);
-    }
     for (var wideIndex = 0; wideIndex < wideLength; wideIndex++) {
       v = value.text[wideIndex];
       assert(v != 0);
@@ -198,15 +157,6 @@ bool readWideSeven(WideSeven value, ByteData view, int numBits) {
   return true;
 }
 
-// measureWideSeven is the exact wire bits writeWideSeven would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureWideSeven(WideSeven value) {
-  var bits = 0;
-  bits += 3;
-  bits += value.textLength * 32;
-  return bits;
-}
-
 // type WideFour
 final class WideFour {
   final Uint16List text = Uint16List(4);
@@ -244,15 +194,9 @@ int writeWideFour(WideFour value, ByteData view) {
   {
     final wideLength = value.textLength;
     assert(wideLength >= 0 && wideLength <= 4);
-    v = ((wideLength) & 0x7);
+    v = wideLength & 0x7;
     scratch |= v << scratchBits;
     scratchBits += 3;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (3 - scratchBits);
-    }
     for (var wideIndex = 0; wideIndex < wideLength; wideIndex++) {
       v = value.text[wideIndex];
       assert(v != 0);
@@ -340,15 +284,6 @@ bool readWideFour(WideFour value, ByteData view, int numBits) {
   return true;
 }
 
-// measureWideFour is the exact wire bits writeWideFour would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureWideFour(WideFour value) {
-  var bits = 0;
-  bits += 3;
-  bits += value.textLength * 32;
-  return bits;
-}
-
 // type NarrowFifteen
 final class NarrowFifteen {
   // string(15): max length, used length beside it (SPEC §4.7)
@@ -386,25 +321,13 @@ int writeNarrowFifteen(NarrowFifteen value, ByteData view) {
   var v = 0;
   assert(value.textLength >= 0);
   assert(value.textLength <= 15);
-  v = ((value.textLength) & 0xf);
+  v = value.textLength & 0xf;
   scratch |= v << scratchBits;
   scratchBits += 4;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (4 - scratchBits);
-  }
   {
     final pad = scratchBits & 7;
     if (pad != 0) {
       scratchBits += 8 - pad;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = 0;
-      }
     }
   }
   {
@@ -497,7 +420,7 @@ bool readNarrowFifteen(NarrowFifteen value, ByteData view, int numBits) {
     }
   }
   bitsRead += value.textLength * 8;
-  if (!_schemaUtf8Valid(value.text, value.textLength)) {
+  if (!Schema.utf8Valid(value.text, value.textLength)) {
     return false;
   }
   for (var i0 = 0; i0 < value.textLength; i0++) {
@@ -506,16 +429,6 @@ bool readNarrowFifteen(NarrowFifteen value, ByteData view, int numBits) {
     }
   }
   return true;
-}
-
-// measureNarrowFifteen is the exact wire bits writeNarrowFifteen would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureNarrowFifteen(NarrowFifteen value) {
-  var bits = 0;
-  bits += 4;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.textLength * 8;
-  return bits;
 }
 
 // type WideInterop
@@ -555,15 +468,9 @@ int writeWideInterop(WideInterop value, ByteData view) {
   {
     final wideLength = value.captionLength;
     assert(wideLength >= 0 && wideLength <= 7);
-    v = ((wideLength) & 0x7);
+    v = wideLength & 0x7;
     scratch |= v << scratchBits;
     scratchBits += 3;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (3 - scratchBits);
-    }
     for (var wideIndex = 0; wideIndex < wideLength; wideIndex++) {
       v = value.caption[wideIndex];
       assert(v != 0);
@@ -649,13 +556,4 @@ bool readWideInterop(WideInterop value, ByteData view, int numBits) {
     }
   }
   return true;
-}
-
-// measureWideInterop is the exact wire bits writeWideInterop would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureWideInterop(WideInterop value) {
-  var bits = 0;
-  bits += 3;
-  bits += value.captionLength * 32;
-  return bits;
 }

@@ -7,79 +7,7 @@
 import 'dart:typed_data';
 
 import 'Constants.dart' show maxBlockSize, maxChatLength;
-
-// Malformed UTF-8 fails the read in every build mode (SPEC §4.7).
-bool _schemaUtf8Valid(Uint8List bytes, int length) {
-  var index = 0;
-  while (index < length) {
-    final lead = bytes[index++];
-    if (lead < 0x80) continue;
-    int remaining, point;
-    if ((lead & 0xE0) == 0xC0) {
-      remaining = 1;
-      point = lead & 0x1F;
-    } else if ((lead & 0xF0) == 0xE0) {
-      remaining = 2;
-      point = lead & 0x0F;
-    } else if ((lead & 0xF8) == 0xF0) {
-      remaining = 3;
-      point = lead & 0x07;
-    } else {
-      return false;
-    }
-    if (remaining > length - index) return false;
-    for (var part = 0; part < remaining; part++) {
-      final byte = bytes[index++];
-      if ((byte & 0xC0) != 0x80) return false;
-      point = (point << 6) | (byte & 0x3F);
-    }
-    if (remaining == 1 && point < 0x80) return false;
-    if (remaining == 2 &&
-        (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) {
-      return false;
-    }
-    if (remaining == 3 && (point < 0x10000 || point > 0x10FFFF)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// One 8-byte conversion scratch under overlaid typed-data views — single
-// threaded per isolate, always consumed in the same operation that fills it.
-final Float32List _f32 = Float32List(2);
-final Uint32List _u32 = _f32.buffer.asUint32List();
-final Float64List _f64 = _f32.buffer.asFloat64List();
-final Uint64List _u64 = _f32.buffer.asUint64List();
-
-// value rounded to the nearest float32, as a double: the float32 rounding
-// boundary the compressed-float arithmetic is pinned to (SPEC §4.3).
-@pragma('vm:prefer-inline')
-double _fround(double value) {
-  _f32[0] = value;
-  return _f32[0];
-}
-
-// The 64 bits of the IEEE-754 double representation of value — exactly the
-// bits of the Dart double — and the inverse.
-@pragma('vm:prefer-inline')
-int _float64BitsFromDouble(double value) {
-  _f64[0] = value;
-  return _u64[0];
-}
-
-@pragma('vm:prefer-inline')
-double _doubleFromFloat64Bits(int bits) {
-  _u64[0] = bits;
-  return _f64[0];
-}
-
-// Hex of a uint64 bit pattern held in a signed int (toRadixString would
-// render the sign, not the pattern).
-String _hex64(int value) => value < 0
-    ? (value >>> 32).toRadixString(16) +
-          (value & 0xffffffff).toRadixString(16).padLeft(8, '0')
-    : value.toRadixString(16);
+import 'Schema.dart' show Schema;
 
 const int probeId = 244837814094590;
 
@@ -157,7 +85,7 @@ String flagNamesProbeFlags(int value) {
     names.add('Damaged');
   }
   if (value >>> 3 != 0) {
-    names.add('0x${_hex64((value >>> 3) << 3)}');
+    names.add('0x${Schema.hex64((value >>> 3) << 3)}');
   }
   return names.isEmpty ? '0' : names.join('|');
 }
@@ -196,28 +124,16 @@ int writeProbeHeader(ProbeHeader value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = 171 | (((value.version) & 0x7) << 8) | (0 << 11);
+  v = 171 | ((value.version & 0x7) << 8);
   scratch |= v << scratchBits;
   scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
   {
     final pad = scratchBits & 7;
     if (pad != 0) {
       scratchBits += 8 - pad;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = 0;
-      }
     }
   }
-  v = (value.probeId);
+  v = value.probeId;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -311,16 +227,6 @@ bool readProbeHeader(ProbeHeader value, ByteData view, int numBits) {
   return true;
 }
 
-// measureProbeHeader is the exact wire bits writeProbeHeader would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeHeader(ProbeHeader value) {
-  var bits = 0;
-  bits += 16;
-  bits += (8 - (bits & 7)) & 7;
-  bits += 64;
-  return bits;
-}
-
 // type ProbeBits
 final class ProbeBits {
   int small = 0;
@@ -366,18 +272,12 @@ int writeProbeBits(ProbeBits value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = ((value.small) & 0x1ff) | (((value.boundary) & 0x1ffffffff) << 9);
+  v = (value.small & 0x1ff) | ((value.boundary & 0x1ffffffff) << 9);
   scratch |= v << scratchBits;
   scratchBits += 42;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (42 - scratchBits);
-  }
   assert(value.sensor >= 0);
   assert(value.sensor <= 4294967295);
-  v = (value.wide);
+  v = value.wide;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -386,7 +286,7 @@ int writeProbeBits(ProbeBits value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.sensor) & 0xffffffff);
+  v = value.sensor & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -395,7 +295,7 @@ int writeProbeBits(ProbeBits value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
-  v = (value.nonce);
+  v = value.nonce;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -492,10 +392,6 @@ bool readProbeBits(ProbeBits value, ByteData view, int numBits) {
   return true;
 }
 
-// measureProbeBits is the exact wire bits writeProbeBits would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeBits(ProbeBits value) => 202;
-
 // type ProbeSample
 final class ProbeSample {
   // specified default at construction; zero* gives the §5 zero form
@@ -566,45 +462,27 @@ int writeProbeSample(ProbeSample value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = (value.active ? 1 : 0);
+  v = value.active ? 1 : 0;
   scratch |= v << scratchBits;
   scratchBits += 1;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (1 - scratchBits);
-  }
   {
-    final x = _fround(value.orientation);
+    final x = Schema.fround(value.orientation);
     assert(x.isFinite);
-    var n = _fround(_fround(x - -180.0) / 360.0);
+    var n = Schema.fround(Schema.fround(x + 180.0) / 360.0);
     if (!(n >= 0.0)) {
       n = 0.0;
     } else if (!(n <= 1.0)) {
       n = 1.0;
     }
-    v = _fround(_fround(n * 36000.0) + 0.5).floor();
+    v = Schema.fround(Schema.fround(n * 36000.0) + 0.5).floor();
     if (v > 36000) v = 36000;
   }
   scratch |= v << scratchBits;
   scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
-  v = ((value.rawDelta) & 0xffffffff);
+  v = value.rawDelta & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (32 - scratchBits);
-  }
-  v = (value.bigDelta);
+  v = value.bigDelta;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -616,7 +494,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
   if (value.active) {
     assert(value.weapon >= 0);
     assert(value.weapon <= 15);
-    v = ((value.weapon) & 0xf) | ((value.hasTarget ? 1 : 0) << 4);
+    v = (value.weapon & 0xf) | ((value.hasTarget ? 1 : 0) << 4);
     scratch |= v << scratchBits;
     scratchBits += 5;
     if (scratchBits >= 64) {
@@ -626,7 +504,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       scratch = v >>> (5 - scratchBits);
     }
     if (value.hasTarget) {
-      v = ((value.targetId) & 0xffff);
+      v = value.targetId & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
       if (scratchBits >= 64) {
@@ -637,7 +515,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       }
     }
   } else {
-    v = ((value.idleTicks) & 0xffffffff);
+    v = value.idleTicks & 0xffffffff;
     scratch |= v << scratchBits;
     scratchBits += 32;
     if (scratchBits >= 64) {
@@ -649,7 +527,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
   }
   assert(value.samplesCount >= 1);
   assert(value.samplesCount <= 8);
-  v = ((value.samplesCount - 1) & 0x7);
+  v = (value.samplesCount - 1) & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -662,10 +540,10 @@ int writeProbeSample(ProbeSample value, ByteData view) {
     var i0 = 0;
     for (; i0 + 4 <= value.samplesCount; i0 += 4) {
       v =
-          ((value.samples[i0]) & 0xffff) |
-          (((value.samples[i0 + 1]) & 0xffff) << 16) |
-          (((value.samples[i0 + 2]) & 0xffff) << 32) |
-          (((value.samples[i0 + 3]) & 0xffff) << 48);
+          (value.samples[i0] & 0xffff) |
+          ((value.samples[i0 + 1] & 0xffff) << 16) |
+          ((value.samples[i0 + 2] & 0xffff) << 32) |
+          ((value.samples[i0 + 3] & 0xffff) << 48);
       scratch |= v << scratchBits;
       scratchBits += 64;
       if (scratchBits >= 64) {
@@ -676,7 +554,7 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       }
     }
     for (; i0 < value.samplesCount; i0++) {
-      v = ((value.samples[i0]) & 0xffff);
+      v = value.samples[i0] & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
       if (scratchBits >= 64) {
@@ -732,9 +610,10 @@ bool readProbeSample(ProbeSample value, ByteData view, int numBits) {
   if (v > 36000) {
     return false; // headroom above the quantum count is refused
   }
-  value.orientation = _fround(
-    _fround(_fround(_fround(v.toDouble()) / 36000.0) * 360.0) + -180.0,
-  );
+  {
+    final q = Schema.fround(Schema.fround(v.toDouble()) / 36000.0);
+    value.orientation = Schema.fround(Schema.fround(q * 360.0) - 180.0);
+  }
   v = (window >>> 17) & 0xffffffff;
   bitsRead += 32;
   value.rawDelta = (v << 32) >> 32;
@@ -851,24 +730,6 @@ bool readProbeSample(ProbeSample value, ByteData view, int numBits) {
   return true;
 }
 
-// measureProbeSample is the exact wire bits writeProbeSample would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeSample(ProbeSample value) {
-  var bits = 0;
-  bits += 113;
-  if (value.active) {
-    bits += 5;
-    if (value.hasTarget) {
-      bits += 16;
-    }
-  } else {
-    bits += 32;
-  }
-  bits += 3;
-  bits += value.samplesCount * 16;
-  return bits;
-}
-
 // type ProbeRing
 final class ProbeRing {
   int radius = 0;
@@ -900,15 +761,9 @@ int writeProbeRing(ProbeRing value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = ((value.radius) & 0xffff);
+  v = value.radius & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -951,10 +806,6 @@ bool readProbeRing(ProbeRing value, ByteData view, int numBits) {
   return true;
 }
 
-// measureProbeRing is the exact wire bits writeProbeRing would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeRing(ProbeRing value) => 16;
-
 // type ProbeSlab
 final class ProbeSlab {
   // wire [0, 100]
@@ -992,15 +843,9 @@ int writeProbeSlab(ProbeSlab value, ByteData view) {
   var v = 0;
   assert(value.width >= 0);
   assert(value.width <= 100);
-  v = ((value.width) & 0x7f) | (((value.height) & 0xff) << 7);
+  v = (value.width & 0x7f) | ((value.height & 0xff) << 7);
   scratch |= v << scratchBits;
   scratchBits += 15;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (15 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1048,10 +893,6 @@ bool readProbeSlab(ProbeSlab value, ByteData view, int numBits) {
   value.height = v;
   return true;
 }
-
-// measureProbeSlab is the exact wire bits writeProbeSlab would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeSlab(ProbeSlab value) => 15;
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
 abstract final class ProbeShapeType {
@@ -1111,38 +952,20 @@ int writeProbeShape(ProbeShape value, ByteData view) {
   var v = 0;
   assert(value.type >= 0);
   assert(value.type <= 2);
-  v = ((value.type) & 0x3);
+  v = value.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   switch (value.type) {
-    case 1:
-      v = ((value.ring.radius) & 0xffff);
+    case ProbeShapeType.ring:
+      v = value.ring.radius & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (16 - scratchBits);
-      }
-    case 2:
+    case ProbeShapeType.slab:
       assert(value.slab.width >= 0);
       assert(value.slab.width <= 100);
-      v = ((value.slab.width) & 0x7f) | (((value.slab.height) & 0xff) << 7);
+      v = (value.slab.width & 0x7f) | ((value.slab.height & 0xff) << 7);
       scratch |= v << scratchBits;
       scratchBits += 15;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (15 - scratchBits);
-      }
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -1187,8 +1010,7 @@ bool readProbeShape(ProbeShape value, ByteData view, int numBits) {
   }
   value.type = v;
   switch (value.type) {
-    case 1:
-      value.ring.radius = 0;
+    case ProbeShapeType.ring:
       if (bitsRead + 16 > numBits) {
         return false;
       }
@@ -1201,9 +1023,7 @@ bool readProbeShape(ProbeShape value, ByteData view, int numBits) {
       v = window & 0xffff;
       bitsRead += 16;
       value.ring.radius = v;
-    case 2:
-      value.slab.width = 0;
-      value.slab.height = 0;
+    case ProbeShapeType.slab:
       if (bitsRead + 15 > numBits) {
         return false;
       }
@@ -1224,20 +1044,6 @@ bool readProbeShape(ProbeShape value, ByteData view, int numBits) {
       value.slab.height = v;
   }
   return true;
-}
-
-// measureProbeShape is the exact wire bits writeProbeShape would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeShape(ProbeShape value) {
-  var bits = 0;
-  bits += 2;
-  switch (value.type) {
-    case 1:
-      bits += 16;
-    case 2:
-      bits += 15;
-  }
-  return bits;
 }
 
 // type ProbeCollider
@@ -1289,94 +1095,52 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
   var v = 0;
   assert(value.shape.type >= 0);
   assert(value.shape.type <= 2);
-  v = ((value.armor) & 0xff) | (((value.shape.type) & 0x3) << 8);
+  v = (value.armor & 0xff) | ((value.shape.type & 0x3) << 8);
   scratch |= v << scratchBits;
   scratchBits += 10;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (10 - scratchBits);
-  }
   switch (value.shape.type) {
-    case 1:
-      v = ((value.shape.ring.radius) & 0xffff);
+    case ProbeShapeType.ring:
+      v = value.shape.ring.radius & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (16 - scratchBits);
-      }
-    case 2:
+    case ProbeShapeType.slab:
       assert(value.shape.slab.width >= 0);
       assert(value.shape.slab.width <= 100);
       v =
-          ((value.shape.slab.width) & 0x7f) |
-          (((value.shape.slab.height) & 0xff) << 7);
+          (value.shape.slab.width & 0x7f) |
+          ((value.shape.slab.height & 0xff) << 7);
       scratch |= v << scratchBits;
       scratchBits += 15;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (15 - scratchBits);
-      }
   }
   assert(value.backup.type >= 0);
   assert(value.backup.type <= 2);
-  v = ((value.backup.type) & 0x3);
+  v = value.backup.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   switch (value.backup.type) {
-    case 1:
-      v = ((value.backup.ring.radius) & 0xffff);
+    case ProbeShapeType.ring:
+      v = value.backup.ring.radius & 0xffff;
       scratch |= v << scratchBits;
       scratchBits += 16;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (16 - scratchBits);
-      }
-    case 2:
+    case ProbeShapeType.slab:
       assert(value.backup.slab.width >= 0);
       assert(value.backup.slab.width <= 100);
       v =
-          ((value.backup.slab.width) & 0x7f) |
-          (((value.backup.slab.height) & 0xff) << 7);
+          (value.backup.slab.width & 0x7f) |
+          ((value.backup.slab.height & 0xff) << 7);
       scratch |= v << scratchBits;
       scratchBits += 15;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (15 - scratchBits);
-      }
   }
   assert(value.extrasCount >= 0);
   assert(value.extrasCount <= 2);
-  v = ((value.extrasCount) & 0x3);
+  v = value.extrasCount & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   for (var i0 = 0; i0 < value.extrasCount; i0++) {
     final e0 = value.extras[i0];
     assert(e0.type >= 0);
     assert(e0.type <= 2);
-    v = ((e0.type) & 0x3);
+    v = e0.type & 0x3;
     scratch |= v << scratchBits;
     scratchBits += 2;
     if (scratchBits >= 64) {
@@ -1386,8 +1150,8 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
       scratch = v >>> (2 - scratchBits);
     }
     switch (e0.type) {
-      case 1:
-        v = ((e0.ring.radius) & 0xffff);
+      case ProbeShapeType.ring:
+        v = e0.ring.radius & 0xffff;
         scratch |= v << scratchBits;
         scratchBits += 16;
         if (scratchBits >= 64) {
@@ -1396,10 +1160,10 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
           scratchBits -= 64;
           scratch = v >>> (16 - scratchBits);
         }
-      case 2:
+      case ProbeShapeType.slab:
         assert(e0.slab.width >= 0);
         assert(e0.slab.width <= 100);
-        v = ((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7);
+        v = (e0.slab.width & 0x7f) | ((e0.slab.height & 0xff) << 7);
         scratch |= v << scratchBits;
         scratchBits += 15;
         if (scratchBits >= 64) {
@@ -1459,8 +1223,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
   }
   value.shape.type = v;
   switch (value.shape.type) {
-    case 1:
-      value.shape.ring.radius = 0;
+    case ProbeShapeType.ring:
       if (bitsRead + 16 > numBits) {
         return false;
       }
@@ -1473,9 +1236,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
       v = window & 0xffff;
       bitsRead += 16;
       value.shape.ring.radius = v;
-    case 2:
-      value.shape.slab.width = 0;
-      value.shape.slab.height = 0;
+    case ProbeShapeType.slab:
       if (bitsRead + 15 > numBits) {
         return false;
       }
@@ -1510,8 +1271,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
   }
   value.backup.type = v;
   switch (value.backup.type) {
-    case 1:
-      value.backup.ring.radius = 0;
+    case ProbeShapeType.ring:
       if (bitsRead + 16 > numBits) {
         return false;
       }
@@ -1524,9 +1284,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
       v = window & 0xffff;
       bitsRead += 16;
       value.backup.ring.radius = v;
-    case 2:
-      value.backup.slab.width = 0;
-      value.backup.slab.height = 0;
+    case ProbeShapeType.slab:
       if (bitsRead + 15 > numBits) {
         return false;
       }
@@ -1577,8 +1335,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
     }
     e0.type = v;
     switch (e0.type) {
-      case 1:
-        e0.ring.radius = 0;
+      case ProbeShapeType.ring:
         if (bitsRead + 16 > numBits) {
           return false;
         }
@@ -1591,9 +1348,7 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
         v = window & 0xffff;
         bitsRead += 16;
         e0.ring.radius = v;
-      case 2:
-        e0.slab.width = 0;
-        e0.slab.height = 0;
+      case ProbeShapeType.slab:
         if (bitsRead + 15 > numBits) {
           return false;
         }
@@ -1615,39 +1370,6 @@ bool readProbeCollider(ProbeCollider value, ByteData view, int numBits) {
     }
   }
   return true;
-}
-
-// measureProbeCollider is the exact wire bits writeProbeCollider would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeCollider(ProbeCollider value) {
-  var bits = 0;
-  bits += 8;
-  bits += 2;
-  switch (value.shape.type) {
-    case 1:
-      bits += 16;
-    case 2:
-      bits += 15;
-  }
-  bits += 2;
-  switch (value.backup.type) {
-    case 1:
-      bits += 16;
-    case 2:
-      bits += 15;
-  }
-  bits += 2;
-  for (var i0 = 0; i0 < value.extrasCount; i0++) {
-    final e0 = value.extras[i0];
-    bits += 2;
-    switch (e0.type) {
-      case 1:
-        bits += 16;
-      case 2:
-        bits += 15;
-    }
-  }
-  return bits;
 }
 
 // type ProbeConfig
@@ -1688,15 +1410,9 @@ int writeProbeConfig(ProbeConfig value, ByteData view) {
   var v = 0;
   assert(value.preferred >= 0);
   assert(value.preferred <= 15);
-  v = ((value.retries) & 0xffffffff) | (((value.preferred) & 0xf) << 32);
+  v = (value.retries & 0xffffffff) | ((value.preferred & 0xf) << 32);
   scratch |= v << scratchBits;
   scratchBits += 36;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (36 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1742,10 +1458,6 @@ bool readProbeConfig(ProbeConfig value, ByteData view, int numBits) {
   return true;
 }
 
-// measureProbeConfig is the exact wire bits writeProbeConfig would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeConfig(ProbeConfig value) => 36;
-
 // type ProbeArray
 final class ProbeArray {
   final List<ProbeSample> samples = List.generate(2, (_) => ProbeSample());
@@ -1786,7 +1498,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
     final e0 = value.samples[i0];
-    v = (e0.active ? 1 : 0);
+    v = e0.active ? 1 : 0;
     scratch |= v << scratchBits;
     scratchBits += 1;
     if (scratchBits >= 64) {
@@ -1796,15 +1508,15 @@ int writeProbeArray(ProbeArray value, ByteData view) {
       scratch = v >>> (1 - scratchBits);
     }
     {
-      final x = _fround(e0.orientation);
+      final x = Schema.fround(e0.orientation);
       assert(x.isFinite);
-      var n = _fround(_fround(x - -180.0) / 360.0);
+      var n = Schema.fround(Schema.fround(x + 180.0) / 360.0);
       if (!(n >= 0.0)) {
         n = 0.0;
       } else if (!(n <= 1.0)) {
         n = 1.0;
       }
-      v = _fround(_fround(n * 36000.0) + 0.5).floor();
+      v = Schema.fround(Schema.fround(n * 36000.0) + 0.5).floor();
       if (v > 36000) v = 36000;
     }
     scratch |= v << scratchBits;
@@ -1815,7 +1527,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (16 - scratchBits);
     }
-    v = ((e0.rawDelta) & 0xffffffff);
+    v = e0.rawDelta & 0xffffffff;
     scratch |= v << scratchBits;
     scratchBits += 32;
     if (scratchBits >= 64) {
@@ -1824,7 +1536,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (32 - scratchBits);
     }
-    v = (e0.bigDelta);
+    v = e0.bigDelta;
     scratch |= v << scratchBits;
     scratchBits += 64;
     if (scratchBits >= 64) {
@@ -1836,7 +1548,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
     if (e0.active) {
       assert(e0.weapon >= 0);
       assert(e0.weapon <= 15);
-      v = ((e0.weapon) & 0xf) | ((e0.hasTarget ? 1 : 0) << 4);
+      v = (e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4);
       scratch |= v << scratchBits;
       scratchBits += 5;
       if (scratchBits >= 64) {
@@ -1846,7 +1558,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         scratch = v >>> (5 - scratchBits);
       }
       if (e0.hasTarget) {
-        v = ((e0.targetId) & 0xffff);
+        v = e0.targetId & 0xffff;
         scratch |= v << scratchBits;
         scratchBits += 16;
         if (scratchBits >= 64) {
@@ -1857,7 +1569,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         }
       }
     } else {
-      v = ((e0.idleTicks) & 0xffffffff);
+      v = e0.idleTicks & 0xffffffff;
       scratch |= v << scratchBits;
       scratchBits += 32;
       if (scratchBits >= 64) {
@@ -1869,7 +1581,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
     }
     assert(e0.samplesCount >= 1);
     assert(e0.samplesCount <= 8);
-    v = ((e0.samplesCount - 1) & 0x7);
+    v = (e0.samplesCount - 1) & 0x7;
     scratch |= v << scratchBits;
     scratchBits += 3;
     if (scratchBits >= 64) {
@@ -1882,10 +1594,10 @@ int writeProbeArray(ProbeArray value, ByteData view) {
       var i1 = 0;
       for (; i1 + 4 <= e0.samplesCount; i1 += 4) {
         v =
-            ((e0.samples[i1]) & 0xffff) |
-            (((e0.samples[i1 + 1]) & 0xffff) << 16) |
-            (((e0.samples[i1 + 2]) & 0xffff) << 32) |
-            (((e0.samples[i1 + 3]) & 0xffff) << 48);
+            (e0.samples[i1] & 0xffff) |
+            ((e0.samples[i1 + 1] & 0xffff) << 16) |
+            ((e0.samples[i1 + 2] & 0xffff) << 32) |
+            ((e0.samples[i1 + 3] & 0xffff) << 48);
         scratch |= v << scratchBits;
         scratchBits += 64;
         if (scratchBits >= 64) {
@@ -1896,7 +1608,7 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         }
       }
       for (; i1 < e0.samplesCount; i1++) {
-        v = ((e0.samples[i1]) & 0xffff);
+        v = e0.samples[i1] & 0xffff;
         scratch |= v << scratchBits;
         scratchBits += 16;
         if (scratchBits >= 64) {
@@ -1911,8 +1623,8 @@ int writeProbeArray(ProbeArray value, ByteData view) {
   assert(value.config.preferred >= 0);
   assert(value.config.preferred <= 15);
   v =
-      ((value.config.retries) & 0xffffffff) |
-      (((value.config.preferred) & 0xf) << 32);
+      (value.config.retries & 0xffffffff) |
+      ((value.config.preferred & 0xf) << 32);
   scratch |= v << scratchBits;
   scratchBits += 36;
   if (scratchBits >= 64) {
@@ -1968,9 +1680,10 @@ bool readProbeArray(ProbeArray value, ByteData view, int numBits) {
     if (v > 36000) {
       return false; // headroom above the quantum count is refused
     }
-    e0.orientation = _fround(
-      _fround(_fround(_fround(v.toDouble()) / 36000.0) * 360.0) + -180.0,
-    );
+    {
+      final q = Schema.fround(Schema.fround(v.toDouble()) / 36000.0);
+      e0.orientation = Schema.fround(Schema.fround(q * 360.0) - 180.0);
+    }
     v = (window >>> 17) & 0xffffffff;
     bitsRead += 32;
     e0.rawDelta = (v << 32) >> 32;
@@ -2104,28 +1817,6 @@ bool readProbeArray(ProbeArray value, ByteData view, int numBits) {
   return true;
 }
 
-// measureProbeArray is the exact wire bits writeProbeArray would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeArray(ProbeArray value) {
-  var bits = 0;
-  for (var i0 = 0; i0 < 2; i0++) {
-    final e0 = value.samples[i0];
-    bits += 113;
-    if (e0.active) {
-      bits += 5;
-      if (e0.hasTarget) {
-        bits += 16;
-      }
-    } else {
-      bits += 32;
-    }
-    bits += 3;
-    bits += e0.samplesCount * 16;
-  }
-  bits += 36;
-  return bits;
-}
-
 // type Heartbeat
 final class Heartbeat {
   // empty body — presence is the payload (SPEC §4.6)
@@ -2169,10 +1860,6 @@ int writeHeartbeat(Heartbeat value, ByteData view) {
 bool readHeartbeat(Heartbeat value, ByteData view, int numBits) {
   return true;
 }
-
-// measureHeartbeat is the exact wire bits writeHeartbeat would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureHeartbeat(Heartbeat value) => 0;
 
 // type Test
 final class Test {
@@ -2224,18 +1911,12 @@ int writeTest(Test value, ByteData view) {
   assert(value.testD >= 0);
   assert(value.testD <= 1000);
   v =
-      ((value.testA) & 0xffff) |
-      (((value.testB) & 0x3ff) << 16) |
-      (((value.testC) & 0x3ff) << 26) |
-      (((value.testD) & 0x3ff) << 36);
+      (value.testA & 0xffff) |
+      ((value.testB & 0x3ff) << 16) |
+      ((value.testC & 0x3ff) << 26) |
+      ((value.testD & 0x3ff) << 36);
   scratch |= v << scratchBits;
   scratchBits += 46;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (46 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -2296,10 +1977,6 @@ bool readTest(Test value, ByteData view, int numBits) {
   return true;
 }
 
-// measureTest is the exact wire bits writeTest would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureTest(Test value) => 46;
-
 // type Block
 final class Block {
   // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
@@ -2337,25 +2014,13 @@ int writeBlock(Block value, ByteData view) {
   var v = 0;
   assert(value.dataLength >= 0);
   assert(value.dataLength <= 2000);
-  v = ((value.dataLength) & 0x7ff);
+  v = value.dataLength & 0x7ff;
   scratch |= v << scratchBits;
   scratchBits += 11;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (11 - scratchBits);
-  }
   {
     final pad = scratchBits & 7;
     if (pad != 0) {
       scratchBits += 8 - pad;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = 0;
-      }
     }
   }
   {
@@ -2454,16 +2119,6 @@ bool readBlock(Block value, ByteData view, int numBits) {
   return true;
 }
 
-// measureBlock is the exact wire bits writeBlock would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureBlock(Block value) {
-  var bits = 0;
-  bits += 11;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.dataLength * 8;
-  return bits;
-}
-
 // type Chat
 final class Chat {
   // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
@@ -2501,25 +2156,13 @@ int writeChat(Chat value, ByteData view) {
   var v = 0;
   assert(value.textLength >= 0);
   assert(value.textLength <= 256);
-  v = ((value.textLength) & 0x1ff);
+  v = value.textLength & 0x1ff;
   scratch |= v << scratchBits;
   scratchBits += 9;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (9 - scratchBits);
-  }
   {
     final pad = scratchBits & 7;
     if (pad != 0) {
       scratchBits += 8 - pad;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = 0;
-      }
     }
   }
   {
@@ -2615,7 +2258,7 @@ bool readChat(Chat value, ByteData view, int numBits) {
     }
   }
   bitsRead += value.textLength * 8;
-  if (!_schemaUtf8Valid(value.text, value.textLength)) {
+  if (!Schema.utf8Valid(value.text, value.textLength)) {
     return false;
   }
   for (var i0 = 0; i0 < value.textLength; i0++) {
@@ -2624,16 +2267,6 @@ bool readChat(Chat value, ByteData view, int numBits) {
     }
   }
   return true;
-}
-
-// measureChat is the exact wire bits writeChat would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureChat(Chat value) {
-  var bits = 0;
-  bits += 9;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.textLength * 8;
-  return bits;
 }
 
 // type ProbeReport
@@ -2674,29 +2307,17 @@ int writeProbeReport(ProbeReport value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = 171 | (((value.header.version) & 0x7) << 8) | (0 << 11);
+  v = 171 | ((value.header.version & 0x7) << 8);
   scratch |= v << scratchBits;
   scratchBits += 16;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (16 - scratchBits);
-  }
   {
     final pad = scratchBits & 7;
     if (pad != 0) {
       scratchBits += 8 - pad;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = 0;
-      }
     }
   }
   assert(value.flags >>> 8 == 0);
-  v = (value.header.probeId);
+  v = value.header.probeId;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -2712,11 +2333,11 @@ int writeProbeReport(ProbeReport value, ByteData view) {
   assert(value.echo.testD >= 0);
   assert(value.echo.testD <= 1000);
   v =
-      ((value.flags) & 0xff) |
-      (((value.echo.testA) & 0xffff) << 8) |
-      (((value.echo.testB) & 0x3ff) << 24) |
-      (((value.echo.testC) & 0x3ff) << 34) |
-      (((value.echo.testD) & 0x3ff) << 44);
+      (value.flags & 0xff) |
+      ((value.echo.testA & 0xffff) << 8) |
+      ((value.echo.testB & 0x3ff) << 24) |
+      ((value.echo.testC & 0x3ff) << 34) |
+      ((value.echo.testD & 0x3ff) << 44);
   scratch |= v << scratchBits;
   scratchBits += 54;
   if (scratchBits >= 64) {
@@ -2842,16 +2463,6 @@ bool readProbeReport(ProbeReport value, ByteData view, int numBits) {
   return true;
 }
 
-// measureProbeReport is the exact wire bits writeProbeReport would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureProbeReport(ProbeReport value) {
-  var bits = 0;
-  bits += 16;
-  bits += (8 - (bits & 7)) & 7;
-  bits += 118;
-  return bits;
-}
-
 // type TestData
 final class TestData {
   // wire [-100, 100]
@@ -2968,19 +2579,13 @@ int writeTestData(TestData value, ByteData view) {
       ((value.a + 100) & 0xff) |
       (((value.b + 100) & 0xff) << 8) |
       (((value.c + 100) & 0xff) << 16) |
-      (((value.d) & 0xff) << 24) |
-      (((value.e) & 0xff) << 32) |
-      (((value.f) & 0xff) << 40) |
+      ((value.d & 0xff) << 24) |
+      ((value.e & 0xff) << 32) |
+      ((value.f & 0xff) << 40) |
       ((value.g ? 1 : 0) << 48) |
-      (((value.itemsCount) & 0x1f) << 49);
+      ((value.itemsCount & 0x1f) << 49);
   scratch |= v << scratchBits;
   scratchBits += 54;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (54 - scratchBits);
-  }
   {
     var i0 = 0;
     for (; i0 + 8 <= value.itemsCount; i0 += 8) {
@@ -3001,14 +2606,14 @@ int writeTestData(TestData value, ByteData view) {
       assert(value.items[i0 + 7] >= 0);
       assert(value.items[i0 + 7] <= 255);
       v =
-          ((value.items[i0]) & 0xff) |
-          (((value.items[i0 + 1]) & 0xff) << 8) |
-          (((value.items[i0 + 2]) & 0xff) << 16) |
-          (((value.items[i0 + 3]) & 0xff) << 24) |
-          (((value.items[i0 + 4]) & 0xff) << 32) |
-          (((value.items[i0 + 5]) & 0xff) << 40) |
-          (((value.items[i0 + 6]) & 0xff) << 48) |
-          (((value.items[i0 + 7]) & 0xff) << 56);
+          (value.items[i0] & 0xff) |
+          ((value.items[i0 + 1] & 0xff) << 8) |
+          ((value.items[i0 + 2] & 0xff) << 16) |
+          ((value.items[i0 + 3] & 0xff) << 24) |
+          ((value.items[i0 + 4] & 0xff) << 32) |
+          ((value.items[i0 + 5] & 0xff) << 40) |
+          ((value.items[i0 + 6] & 0xff) << 48) |
+          ((value.items[i0 + 7] & 0xff) << 56);
       scratch |= v << scratchBits;
       scratchBits += 64;
       if (scratchBits >= 64) {
@@ -3021,7 +2626,7 @@ int writeTestData(TestData value, ByteData view) {
     for (; i0 < value.itemsCount; i0++) {
       assert(value.items[i0] >= 0);
       assert(value.items[i0] <= 255);
-      v = ((value.items[i0]) & 0xff);
+      v = value.items[i0] & 0xff;
       scratch |= v << scratchBits;
       scratchBits += 8;
       if (scratchBits >= 64) {
@@ -3033,15 +2638,15 @@ int writeTestData(TestData value, ByteData view) {
     }
   }
   if (!value.floatValue.isNaN) {
-    _f32[0] = value.floatValue;
-    v = _u32[0];
+    Schema.f32[0] = value.floatValue;
+    v = Schema.u32[0];
   } else {
-    _f64[0] = value.floatValue;
-    v = (_u64[0] >>> 29) & 0x7fffff;
+    Schema.f64[0] = value.floatValue;
+    v = (Schema.u64[0] >>> 29) & 0x7fffff;
     if (v == 0) {
       v = 0x400000;
     }
-    v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;
+    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
   }
   scratch |= v << scratchBits;
   scratchBits += 32;
@@ -3052,15 +2657,15 @@ int writeTestData(TestData value, ByteData view) {
     scratch = v >>> (32 - scratchBits);
   }
   {
-    final x = _fround(value.compressedFloatValue);
+    final x = Schema.fround(value.compressedFloatValue);
     assert(x.isFinite);
-    var n = _fround(_fround(x - 0.0) / 10.0);
+    var n = Schema.fround(x / 10.0);
     if (!(n >= 0.0)) {
       n = 0.0;
     } else if (!(n <= 1.0)) {
       n = 1.0;
     }
-    v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    v = Schema.fround(Schema.fround(n * 1000.0) + 0.5).floor();
     if (v > 1000) v = 1000;
   }
   scratch |= v << scratchBits;
@@ -3071,7 +2676,7 @@ int writeTestData(TestData value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (10 - scratchBits);
   }
-  v = _float64BitsFromDouble(value.doubleValue);
+  v = Schema.float64BitsFromDouble(value.doubleValue);
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -3081,10 +2686,10 @@ int writeTestData(TestData value, ByteData view) {
     scratch = v >>> (64 - scratchBits);
   }
   v =
-      ((value.int8Value) & 0xff) |
-      (((value.int16Value) & 0xffff) << 8) |
-      (((value.uint8Value) & 0xff) << 24) |
-      (((value.uint16Value) & 0xffff) << 32);
+      (value.int8Value & 0xff) |
+      ((value.int16Value & 0xffff) << 8) |
+      ((value.uint8Value & 0xff) << 24) |
+      ((value.uint16Value & 0xffff) << 32);
   scratch |= v << scratchBits;
   scratchBits += 48;
   if (scratchBits >= 64) {
@@ -3093,7 +2698,7 @@ int writeTestData(TestData value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (48 - scratchBits);
   }
-  v = ((value.uint32Value) & 0xffffffff);
+  v = value.uint32Value & 0xffffffff;
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -3102,7 +2707,7 @@ int writeTestData(TestData value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
-  v = (value.uint64Value);
+  v = value.uint64Value;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -3113,7 +2718,7 @@ int writeTestData(TestData value, ByteData view) {
   }
   assert(value.int64Range >= -1000000000000);
   assert(value.int64Range <= 1000000000000);
-  v = (value.int64Full);
+  v = value.int64Full;
   scratch |= v << scratchBits;
   scratchBits += 64;
   if (scratchBits >= 64) {
@@ -3122,7 +2727,7 @@ int writeTestData(TestData value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  v = ((value.int64Range + 1000000000000) & 0x1ffffffffff);
+  v = (value.int64Range + 1000000000000) & 0x1ffffffffff;
   scratch |= v << scratchBits;
   scratchBits += 41;
   if (scratchBits >= 64) {
@@ -3163,7 +2768,7 @@ int writeTestData(TestData value, ByteData view) {
   }
   assert(value.textLength >= 0);
   assert(value.textLength <= 255);
-  v = value.fixedBytes[16] | (((value.textLength) & 0xff) << 8);
+  v = value.fixedBytes[16] | ((value.textLength & 0xff) << 8);
   scratch |= v << scratchBits;
   scratchBits += 16;
   if (scratchBits >= 64) {
@@ -3346,21 +2951,22 @@ bool readTestData(TestData value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   if ((v & 0x7fffffff) <= 0x7f800000) {
-    _u32[0] = v;
-    value.floatValue = _f32[0];
+    Schema.u32[0] = v;
+    value.floatValue = Schema.f32[0];
   } else {
-    _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    _u64[0] |= 0x7ff0000000000000;
-    value.floatValue = _f64[0];
+    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
+    Schema.u64[0] |= 0x7ff0000000000000;
+    value.floatValue = Schema.f64[0];
   }
   v = (window >>> 32) & 0x3ff;
   bitsRead += 10;
   if (v > 1000) {
     return false; // headroom above the quantum count is refused
   }
-  value.compressedFloatValue = _fround(
-    _fround(_fround(_fround(v.toDouble()) / 1000.0) * 10.0) + 0.0,
-  );
+  {
+    final q = Schema.fround(Schema.fround(v.toDouble()) / 1000.0);
+    value.compressedFloatValue = Schema.fround(q * 10.0);
+  }
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -3377,7 +2983,7 @@ bool readTestData(TestData value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
-  value.doubleValue = _doubleFromFloat64Bits(lo);
+  value.doubleValue = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0xff;
   bitsRead += 8;
   value.int8Value = (v << 56) >> 56;
@@ -3501,7 +3107,7 @@ bool readTestData(TestData value, ByteData view, int numBits) {
     }
   }
   bitsRead += value.textLength * 8;
-  if (!_schemaUtf8Valid(value.text, value.textLength)) {
+  if (!Schema.utf8Valid(value.text, value.textLength)) {
     return false;
   }
   for (var i0 = 0; i0 < value.textLength; i0++) {
@@ -3510,20 +3116,6 @@ bool readTestData(TestData value, ByteData view, int numBits) {
     }
   }
   return true;
-}
-
-// measureTestData is the exact wire bits writeTestData would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureTestData(TestData value) {
-  var bits = 0;
-  bits += 54;
-  bits += value.itemsCount * 8;
-  bits += 355;
-  bits += (8 - (bits & 7)) & 7;
-  bits += 144;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.textLength * 8;
-  return bits;
 }
 
 // type CompressedProbe
@@ -3563,45 +3155,33 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   {
-    final x = _fround(value.boundary);
+    final x = Schema.fround(value.boundary);
     assert(x.isFinite);
-    var n = _fround(_fround(x - 0.0) / 10.0);
+    var n = Schema.fround(x / 10.0);
     if (!(n >= 0.0)) {
       n = 0.0;
     } else if (!(n <= 1.0)) {
       n = 1.0;
     }
-    v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    v = Schema.fround(Schema.fround(n * 1000.0) + 0.5).floor();
     if (v > 1000) v = 1000;
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (10 - scratchBits);
-  }
   {
-    final x = _fround(value.offset);
+    final x = Schema.fround(value.offset);
     assert(x.isFinite);
-    var n = _fround(_fround(x - -5.0) / 10.0);
+    var n = Schema.fround(Schema.fround(x + 5.0) / 10.0);
     if (!(n >= 0.0)) {
       n = 0.0;
     } else if (!(n <= 1.0)) {
       n = 1.0;
     }
-    v = _fround(_fround(n * 10000.0) + 0.5).floor();
+    v = Schema.fround(Schema.fround(n * 10000.0) + 0.5).floor();
     if (v > 10000) v = 10000;
   }
   scratch |= v << scratchBits;
   scratchBits += 14;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (14 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -3643,20 +3223,18 @@ bool readCompressedProbe(CompressedProbe value, ByteData view, int numBits) {
   if (v > 1000) {
     return false; // headroom above the quantum count is refused
   }
-  value.boundary = _fround(
-    _fround(_fround(_fround(v.toDouble()) / 1000.0) * 10.0) + 0.0,
-  );
+  {
+    final q = Schema.fround(Schema.fround(v.toDouble()) / 1000.0);
+    value.boundary = Schema.fround(q * 10.0);
+  }
   v = (window >>> 10) & 0x3fff;
   bitsRead += 14;
   if (v > 10000) {
     return false; // headroom above the quantum count is refused
   }
-  value.offset = _fround(
-    _fround(_fround(_fround(v.toDouble()) / 10000.0) * 10.0) + -5.0,
-  );
+  {
+    final q = Schema.fround(Schema.fround(v.toDouble()) / 10000.0);
+    value.offset = Schema.fround(Schema.fround(q * 10.0) - 5.0);
+  }
   return true;
 }
-
-// measureCompressedProbe is the exact wire bits writeCompressedProbe would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureCompressedProbe(CompressedProbe value) => 24;

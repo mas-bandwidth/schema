@@ -6,42 +6,7 @@
 
 import 'dart:typed_data';
 
-// Malformed UTF-8 fails the read in every build mode (SPEC §4.7).
-bool _schemaUtf8Valid(Uint8List bytes, int length) {
-  var index = 0;
-  while (index < length) {
-    final lead = bytes[index++];
-    if (lead < 0x80) continue;
-    int remaining, point;
-    if ((lead & 0xE0) == 0xC0) {
-      remaining = 1;
-      point = lead & 0x1F;
-    } else if ((lead & 0xF0) == 0xE0) {
-      remaining = 2;
-      point = lead & 0x0F;
-    } else if ((lead & 0xF8) == 0xF0) {
-      remaining = 3;
-      point = lead & 0x07;
-    } else {
-      return false;
-    }
-    if (remaining > length - index) return false;
-    for (var part = 0; part < remaining; part++) {
-      final byte = bytes[index++];
-      if ((byte & 0xC0) != 0x80) return false;
-      point = (point << 6) | (byte & 0x3F);
-    }
-    if (remaining == 1 && point < 0x80) return false;
-    if (remaining == 2 &&
-        (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) {
-      return false;
-    }
-    if (remaining == 3 && (point < 0x10000 || point > 0x10FFFF)) {
-      return false;
-    }
-  }
-  return true;
-}
+import 'Schema.dart' show Schema;
 
 // type W13
 final class W13 {
@@ -80,15 +45,9 @@ int writeW13(W13 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 12);
-  v = ((value.itemsCount) & 0xf);
+  v = value.itemsCount & 0xf;
   scratch |= v << scratchBits;
   scratchBits += 4;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (4 - scratchBits);
-  }
   {
     var i0 = 0;
     for (; i0 + 4 <= value.itemsCount; i0 += 4) {
@@ -101,10 +60,10 @@ int writeW13(W13 value, ByteData view) {
       assert(value.items[i0 + 3] >= 0);
       assert(value.items[i0 + 3] <= 8191);
       v =
-          ((value.items[i0]) & 0x1fff) |
-          (((value.items[i0 + 1]) & 0x1fff) << 13) |
-          (((value.items[i0 + 2]) & 0x1fff) << 26) |
-          (((value.items[i0 + 3]) & 0x1fff) << 39);
+          (value.items[i0] & 0x1fff) |
+          ((value.items[i0 + 1] & 0x1fff) << 13) |
+          ((value.items[i0 + 2] & 0x1fff) << 26) |
+          ((value.items[i0 + 3] & 0x1fff) << 39);
       scratch |= v << scratchBits;
       scratchBits += 52;
       if (scratchBits >= 64) {
@@ -117,7 +76,7 @@ int writeW13(W13 value, ByteData view) {
     for (; i0 < value.itemsCount; i0++) {
       assert(value.items[i0] >= 0);
       assert(value.items[i0] <= 8191);
-      v = ((value.items[i0]) & 0x1fff);
+      v = value.items[i0] & 0x1fff;
       scratch |= v << scratchBits;
       scratchBits += 13;
       if (scratchBits >= 64) {
@@ -210,15 +169,6 @@ bool readW13(W13 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureW13 is the exact wire bits writeW13 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureW13(W13 value) {
-  var bits = 0;
-  bits += 4;
-  bits += value.itemsCount * 13;
-  return bits;
-}
-
 // type W17
 final class W17 {
   // wire [0, 131071]
@@ -256,15 +206,9 @@ int writeW17(W17 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 9);
-  v = ((value.itemsCount) & 0xf);
+  v = value.itemsCount & 0xf;
   scratch |= v << scratchBits;
   scratchBits += 4;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (4 - scratchBits);
-  }
   {
     var i0 = 0;
     for (; i0 + 3 <= value.itemsCount; i0 += 3) {
@@ -275,9 +219,9 @@ int writeW17(W17 value, ByteData view) {
       assert(value.items[i0 + 2] >= 0);
       assert(value.items[i0 + 2] <= 131071);
       v =
-          ((value.items[i0]) & 0x1ffff) |
-          (((value.items[i0 + 1]) & 0x1ffff) << 17) |
-          (((value.items[i0 + 2]) & 0x1ffff) << 34);
+          (value.items[i0] & 0x1ffff) |
+          ((value.items[i0 + 1] & 0x1ffff) << 17) |
+          ((value.items[i0 + 2] & 0x1ffff) << 34);
       scratch |= v << scratchBits;
       scratchBits += 51;
       if (scratchBits >= 64) {
@@ -290,7 +234,7 @@ int writeW17(W17 value, ByteData view) {
     for (; i0 < value.itemsCount; i0++) {
       assert(value.items[i0] >= 0);
       assert(value.items[i0] <= 131071);
-      v = ((value.items[i0]) & 0x1ffff);
+      v = value.items[i0] & 0x1ffff;
       scratch |= v << scratchBits;
       scratchBits += 17;
       if (scratchBits >= 64) {
@@ -380,15 +324,6 @@ bool readW17(W17 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureW17 is the exact wire bits writeW17 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureW17(W17 value) {
-  var bits = 0;
-  bits += 4;
-  bits += value.itemsCount * 17;
-  return bits;
-}
-
 // type W26
 final class W26 {
   // wire [0, 67108863]
@@ -426,15 +361,9 @@ int writeW26(W26 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 6);
-  v = ((value.itemsCount) & 0x7);
+  v = value.itemsCount & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (3 - scratchBits);
-  }
   {
     var i0 = 0;
     for (; i0 + 2 <= value.itemsCount; i0 += 2) {
@@ -443,8 +372,8 @@ int writeW26(W26 value, ByteData view) {
       assert(value.items[i0 + 1] >= 0);
       assert(value.items[i0 + 1] <= 67108863);
       v =
-          ((value.items[i0]) & 0x3ffffff) |
-          (((value.items[i0 + 1]) & 0x3ffffff) << 26);
+          (value.items[i0] & 0x3ffffff) |
+          ((value.items[i0 + 1] & 0x3ffffff) << 26);
       scratch |= v << scratchBits;
       scratchBits += 52;
       if (scratchBits >= 64) {
@@ -457,7 +386,7 @@ int writeW26(W26 value, ByteData view) {
     for (; i0 < value.itemsCount; i0++) {
       assert(value.items[i0] >= 0);
       assert(value.items[i0] <= 67108863);
-      v = ((value.items[i0]) & 0x3ffffff);
+      v = value.items[i0] & 0x3ffffff;
       scratch |= v << scratchBits;
       scratchBits += 26;
       if (scratchBits >= 64) {
@@ -544,15 +473,6 @@ bool readW26(W26 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureW26 is the exact wire bits writeW26 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureW26(W26 value) {
-  var bits = 0;
-  bits += 3;
-  bits += value.itemsCount * 26;
-  return bits;
-}
-
 // type W1
 final class W1 {
   // wire [0, 1]
@@ -590,15 +510,9 @@ int writeW1(W1 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 20);
-  v = ((value.itemsCount) & 0x1f);
+  v = value.itemsCount & 0x1f;
   scratch |= v << scratchBits;
   scratchBits += 5;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (5 - scratchBits);
-  }
   {
     var i0 = 0;
     for (; i0 + 64 <= value.itemsCount; i0 += 64) {
@@ -731,70 +645,70 @@ int writeW1(W1 value, ByteData view) {
       assert(value.items[i0 + 63] >= 0);
       assert(value.items[i0 + 63] <= 1);
       v =
-          ((value.items[i0]) & 0x1) |
-          (((value.items[i0 + 1]) & 0x1) << 1) |
-          (((value.items[i0 + 2]) & 0x1) << 2) |
-          (((value.items[i0 + 3]) & 0x1) << 3) |
-          (((value.items[i0 + 4]) & 0x1) << 4) |
-          (((value.items[i0 + 5]) & 0x1) << 5) |
-          (((value.items[i0 + 6]) & 0x1) << 6) |
-          (((value.items[i0 + 7]) & 0x1) << 7) |
-          (((value.items[i0 + 8]) & 0x1) << 8) |
-          (((value.items[i0 + 9]) & 0x1) << 9) |
-          (((value.items[i0 + 10]) & 0x1) << 10) |
-          (((value.items[i0 + 11]) & 0x1) << 11) |
-          (((value.items[i0 + 12]) & 0x1) << 12) |
-          (((value.items[i0 + 13]) & 0x1) << 13) |
-          (((value.items[i0 + 14]) & 0x1) << 14) |
-          (((value.items[i0 + 15]) & 0x1) << 15) |
-          (((value.items[i0 + 16]) & 0x1) << 16) |
-          (((value.items[i0 + 17]) & 0x1) << 17) |
-          (((value.items[i0 + 18]) & 0x1) << 18) |
-          (((value.items[i0 + 19]) & 0x1) << 19) |
-          (((value.items[i0 + 20]) & 0x1) << 20) |
-          (((value.items[i0 + 21]) & 0x1) << 21) |
-          (((value.items[i0 + 22]) & 0x1) << 22) |
-          (((value.items[i0 + 23]) & 0x1) << 23) |
-          (((value.items[i0 + 24]) & 0x1) << 24) |
-          (((value.items[i0 + 25]) & 0x1) << 25) |
-          (((value.items[i0 + 26]) & 0x1) << 26) |
-          (((value.items[i0 + 27]) & 0x1) << 27) |
-          (((value.items[i0 + 28]) & 0x1) << 28) |
-          (((value.items[i0 + 29]) & 0x1) << 29) |
-          (((value.items[i0 + 30]) & 0x1) << 30) |
-          (((value.items[i0 + 31]) & 0x1) << 31) |
-          (((value.items[i0 + 32]) & 0x1) << 32) |
-          (((value.items[i0 + 33]) & 0x1) << 33) |
-          (((value.items[i0 + 34]) & 0x1) << 34) |
-          (((value.items[i0 + 35]) & 0x1) << 35) |
-          (((value.items[i0 + 36]) & 0x1) << 36) |
-          (((value.items[i0 + 37]) & 0x1) << 37) |
-          (((value.items[i0 + 38]) & 0x1) << 38) |
-          (((value.items[i0 + 39]) & 0x1) << 39) |
-          (((value.items[i0 + 40]) & 0x1) << 40) |
-          (((value.items[i0 + 41]) & 0x1) << 41) |
-          (((value.items[i0 + 42]) & 0x1) << 42) |
-          (((value.items[i0 + 43]) & 0x1) << 43) |
-          (((value.items[i0 + 44]) & 0x1) << 44) |
-          (((value.items[i0 + 45]) & 0x1) << 45) |
-          (((value.items[i0 + 46]) & 0x1) << 46) |
-          (((value.items[i0 + 47]) & 0x1) << 47) |
-          (((value.items[i0 + 48]) & 0x1) << 48) |
-          (((value.items[i0 + 49]) & 0x1) << 49) |
-          (((value.items[i0 + 50]) & 0x1) << 50) |
-          (((value.items[i0 + 51]) & 0x1) << 51) |
-          (((value.items[i0 + 52]) & 0x1) << 52) |
-          (((value.items[i0 + 53]) & 0x1) << 53) |
-          (((value.items[i0 + 54]) & 0x1) << 54) |
-          (((value.items[i0 + 55]) & 0x1) << 55) |
-          (((value.items[i0 + 56]) & 0x1) << 56) |
-          (((value.items[i0 + 57]) & 0x1) << 57) |
-          (((value.items[i0 + 58]) & 0x1) << 58) |
-          (((value.items[i0 + 59]) & 0x1) << 59) |
-          (((value.items[i0 + 60]) & 0x1) << 60) |
-          (((value.items[i0 + 61]) & 0x1) << 61) |
-          (((value.items[i0 + 62]) & 0x1) << 62) |
-          (((value.items[i0 + 63]) & 0x1) << 63);
+          (value.items[i0] & 0x1) |
+          ((value.items[i0 + 1] & 0x1) << 1) |
+          ((value.items[i0 + 2] & 0x1) << 2) |
+          ((value.items[i0 + 3] & 0x1) << 3) |
+          ((value.items[i0 + 4] & 0x1) << 4) |
+          ((value.items[i0 + 5] & 0x1) << 5) |
+          ((value.items[i0 + 6] & 0x1) << 6) |
+          ((value.items[i0 + 7] & 0x1) << 7) |
+          ((value.items[i0 + 8] & 0x1) << 8) |
+          ((value.items[i0 + 9] & 0x1) << 9) |
+          ((value.items[i0 + 10] & 0x1) << 10) |
+          ((value.items[i0 + 11] & 0x1) << 11) |
+          ((value.items[i0 + 12] & 0x1) << 12) |
+          ((value.items[i0 + 13] & 0x1) << 13) |
+          ((value.items[i0 + 14] & 0x1) << 14) |
+          ((value.items[i0 + 15] & 0x1) << 15) |
+          ((value.items[i0 + 16] & 0x1) << 16) |
+          ((value.items[i0 + 17] & 0x1) << 17) |
+          ((value.items[i0 + 18] & 0x1) << 18) |
+          ((value.items[i0 + 19] & 0x1) << 19) |
+          ((value.items[i0 + 20] & 0x1) << 20) |
+          ((value.items[i0 + 21] & 0x1) << 21) |
+          ((value.items[i0 + 22] & 0x1) << 22) |
+          ((value.items[i0 + 23] & 0x1) << 23) |
+          ((value.items[i0 + 24] & 0x1) << 24) |
+          ((value.items[i0 + 25] & 0x1) << 25) |
+          ((value.items[i0 + 26] & 0x1) << 26) |
+          ((value.items[i0 + 27] & 0x1) << 27) |
+          ((value.items[i0 + 28] & 0x1) << 28) |
+          ((value.items[i0 + 29] & 0x1) << 29) |
+          ((value.items[i0 + 30] & 0x1) << 30) |
+          ((value.items[i0 + 31] & 0x1) << 31) |
+          ((value.items[i0 + 32] & 0x1) << 32) |
+          ((value.items[i0 + 33] & 0x1) << 33) |
+          ((value.items[i0 + 34] & 0x1) << 34) |
+          ((value.items[i0 + 35] & 0x1) << 35) |
+          ((value.items[i0 + 36] & 0x1) << 36) |
+          ((value.items[i0 + 37] & 0x1) << 37) |
+          ((value.items[i0 + 38] & 0x1) << 38) |
+          ((value.items[i0 + 39] & 0x1) << 39) |
+          ((value.items[i0 + 40] & 0x1) << 40) |
+          ((value.items[i0 + 41] & 0x1) << 41) |
+          ((value.items[i0 + 42] & 0x1) << 42) |
+          ((value.items[i0 + 43] & 0x1) << 43) |
+          ((value.items[i0 + 44] & 0x1) << 44) |
+          ((value.items[i0 + 45] & 0x1) << 45) |
+          ((value.items[i0 + 46] & 0x1) << 46) |
+          ((value.items[i0 + 47] & 0x1) << 47) |
+          ((value.items[i0 + 48] & 0x1) << 48) |
+          ((value.items[i0 + 49] & 0x1) << 49) |
+          ((value.items[i0 + 50] & 0x1) << 50) |
+          ((value.items[i0 + 51] & 0x1) << 51) |
+          ((value.items[i0 + 52] & 0x1) << 52) |
+          ((value.items[i0 + 53] & 0x1) << 53) |
+          ((value.items[i0 + 54] & 0x1) << 54) |
+          ((value.items[i0 + 55] & 0x1) << 55) |
+          ((value.items[i0 + 56] & 0x1) << 56) |
+          ((value.items[i0 + 57] & 0x1) << 57) |
+          ((value.items[i0 + 58] & 0x1) << 58) |
+          ((value.items[i0 + 59] & 0x1) << 59) |
+          ((value.items[i0 + 60] & 0x1) << 60) |
+          ((value.items[i0 + 61] & 0x1) << 61) |
+          ((value.items[i0 + 62] & 0x1) << 62) |
+          ((value.items[i0 + 63] & 0x1) << 63);
       scratch |= v << scratchBits;
       scratchBits += 64;
       if (scratchBits >= 64) {
@@ -807,7 +721,7 @@ int writeW1(W1 value, ByteData view) {
     for (; i0 < value.itemsCount; i0++) {
       assert(value.items[i0] >= 0);
       assert(value.items[i0] <= 1);
-      v = ((value.items[i0]) & 0x1);
+      v = value.items[i0] & 0x1;
       scratch |= v << scratchBits;
       scratchBits += 1;
       if (scratchBits >= 64) {
@@ -1059,15 +973,6 @@ bool readW1(W1 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureW1 is the exact wire bits writeW1 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureW1(W1 value) {
-  var bits = 0;
-  bits += 5;
-  bits += value.itemsCount * 1;
-  return bits;
-}
-
 // type W52
 final class W52 {
   // wire [0, 4503599627370495]
@@ -1105,19 +1010,13 @@ int writeW52(W52 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
-  v = ((value.itemsCount) & 0x3);
+  v = value.itemsCount & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 4503599627370495);
-    v = ((value.items[i0]) & 0xfffffffffffff);
+    v = value.items[i0] & 0xfffffffffffff;
     scratch |= v << scratchBits;
     scratchBits += 52;
     if (scratchBits >= 64) {
@@ -1183,15 +1082,6 @@ bool readW52(W52 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureW52 is the exact wire bits writeW52 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureW52(W52 value) {
-  var bits = 0;
-  bits += 2;
-  bits += value.itemsCount * 52;
-  return bits;
-}
-
 // type W50
 final class W50 {
   // wire [0, 1125899906842623]
@@ -1229,19 +1119,13 @@ int writeW50(W50 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
-  v = ((value.itemsCount) & 0x3);
+  v = value.itemsCount & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   for (var i0 = 0; i0 < value.itemsCount; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 1125899906842623);
-    v = ((value.items[i0]) & 0x3ffffffffffff);
+    v = value.items[i0] & 0x3ffffffffffff;
     scratch |= v << scratchBits;
     scratchBits += 50;
     if (scratchBits >= 64) {
@@ -1307,15 +1191,6 @@ bool readW50(W50 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureW50 is the exact wire bits writeW50 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureW50(W50 value) {
-  var bits = 0;
-  bits += 2;
-  bits += value.itemsCount * 50;
-  return bits;
-}
-
 // type F13
 final class F13 {
   // wire [0, 8191]
@@ -1351,7 +1226,7 @@ int writeF13(F13 value, ByteData view) {
   for (var i0 = 0; i0 < 7; i0++) {
     assert(value.items[i0] >= 0);
     assert(value.items[i0] <= 8191);
-    v = ((value.items[i0]) & 0x1fff);
+    v = value.items[i0] & 0x1fff;
     scratch |= v << scratchBits;
     scratchBits += 13;
     if (scratchBits >= 64) {
@@ -1405,10 +1280,6 @@ bool readF13(F13 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureF13 is the exact wire bits writeF13 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureF13(F13 value) => 91;
-
 // type Tri3
 final class Tri3 {
   int a = 0;
@@ -1443,15 +1314,9 @@ int writeTri3(Tri3 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = ((value.a) & 0x1) | (((value.b) & 0x3) << 1);
+  v = (value.a & 0x1) | ((value.b & 0x3) << 1);
   scratch |= v << scratchBits;
   scratchBits += 3;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (3 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1497,10 +1362,6 @@ bool readTri3(Tri3 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureTri3 is the exact wire bits writeTri3 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureTri3(Tri3 value) => 3;
-
 // type ArrTri3
 final class ArrTri3 {
   final List<Tri3> items = List.generate(10, (_) => Tri3());
@@ -1541,15 +1402,9 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 10);
-  v = ((value.itemsCount) & 0xf);
+  v = value.itemsCount & 0xf;
   scratch |= v << scratchBits;
   scratchBits += 4;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (4 - scratchBits);
-  }
   {
     var i0 = 0;
     for (; i0 + 21 <= value.itemsCount; i0 += 21) {
@@ -1575,48 +1430,48 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
       final e0g19 = value.items[i0 + 19];
       final e0g20 = value.items[i0 + 20];
       v =
-          ((e0.a) & 0x1) |
-          (((e0.b) & 0x3) << 1) |
-          (((e0g1.a) & 0x1) << 3) |
-          (((e0g1.b) & 0x3) << 4) |
-          (((e0g2.a) & 0x1) << 6) |
-          (((e0g2.b) & 0x3) << 7) |
-          (((e0g3.a) & 0x1) << 9) |
-          (((e0g3.b) & 0x3) << 10) |
-          (((e0g4.a) & 0x1) << 12) |
-          (((e0g4.b) & 0x3) << 13) |
-          (((e0g5.a) & 0x1) << 15) |
-          (((e0g5.b) & 0x3) << 16) |
-          (((e0g6.a) & 0x1) << 18) |
-          (((e0g6.b) & 0x3) << 19) |
-          (((e0g7.a) & 0x1) << 21) |
-          (((e0g7.b) & 0x3) << 22) |
-          (((e0g8.a) & 0x1) << 24) |
-          (((e0g8.b) & 0x3) << 25) |
-          (((e0g9.a) & 0x1) << 27) |
-          (((e0g9.b) & 0x3) << 28) |
-          (((e0g10.a) & 0x1) << 30) |
-          (((e0g10.b) & 0x3) << 31) |
-          (((e0g11.a) & 0x1) << 33) |
-          (((e0g11.b) & 0x3) << 34) |
-          (((e0g12.a) & 0x1) << 36) |
-          (((e0g12.b) & 0x3) << 37) |
-          (((e0g13.a) & 0x1) << 39) |
-          (((e0g13.b) & 0x3) << 40) |
-          (((e0g14.a) & 0x1) << 42) |
-          (((e0g14.b) & 0x3) << 43) |
-          (((e0g15.a) & 0x1) << 45) |
-          (((e0g15.b) & 0x3) << 46) |
-          (((e0g16.a) & 0x1) << 48) |
-          (((e0g16.b) & 0x3) << 49) |
-          (((e0g17.a) & 0x1) << 51) |
-          (((e0g17.b) & 0x3) << 52) |
-          (((e0g18.a) & 0x1) << 54) |
-          (((e0g18.b) & 0x3) << 55) |
-          (((e0g19.a) & 0x1) << 57) |
-          (((e0g19.b) & 0x3) << 58) |
-          (((e0g20.a) & 0x1) << 60) |
-          (((e0g20.b) & 0x3) << 61);
+          (e0.a & 0x1) |
+          ((e0.b & 0x3) << 1) |
+          ((e0g1.a & 0x1) << 3) |
+          ((e0g1.b & 0x3) << 4) |
+          ((e0g2.a & 0x1) << 6) |
+          ((e0g2.b & 0x3) << 7) |
+          ((e0g3.a & 0x1) << 9) |
+          ((e0g3.b & 0x3) << 10) |
+          ((e0g4.a & 0x1) << 12) |
+          ((e0g4.b & 0x3) << 13) |
+          ((e0g5.a & 0x1) << 15) |
+          ((e0g5.b & 0x3) << 16) |
+          ((e0g6.a & 0x1) << 18) |
+          ((e0g6.b & 0x3) << 19) |
+          ((e0g7.a & 0x1) << 21) |
+          ((e0g7.b & 0x3) << 22) |
+          ((e0g8.a & 0x1) << 24) |
+          ((e0g8.b & 0x3) << 25) |
+          ((e0g9.a & 0x1) << 27) |
+          ((e0g9.b & 0x3) << 28) |
+          ((e0g10.a & 0x1) << 30) |
+          ((e0g10.b & 0x3) << 31) |
+          ((e0g11.a & 0x1) << 33) |
+          ((e0g11.b & 0x3) << 34) |
+          ((e0g12.a & 0x1) << 36) |
+          ((e0g12.b & 0x3) << 37) |
+          ((e0g13.a & 0x1) << 39) |
+          ((e0g13.b & 0x3) << 40) |
+          ((e0g14.a & 0x1) << 42) |
+          ((e0g14.b & 0x3) << 43) |
+          ((e0g15.a & 0x1) << 45) |
+          ((e0g15.b & 0x3) << 46) |
+          ((e0g16.a & 0x1) << 48) |
+          ((e0g16.b & 0x3) << 49) |
+          ((e0g17.a & 0x1) << 51) |
+          ((e0g17.b & 0x3) << 52) |
+          ((e0g18.a & 0x1) << 54) |
+          ((e0g18.b & 0x3) << 55) |
+          ((e0g19.a & 0x1) << 57) |
+          ((e0g19.b & 0x3) << 58) |
+          ((e0g20.a & 0x1) << 60) |
+          ((e0g20.b & 0x3) << 61);
       scratch |= v << scratchBits;
       scratchBits += 63;
       if (scratchBits >= 64) {
@@ -1628,7 +1483,7 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
     }
     for (; i0 < value.itemsCount; i0++) {
       final e0 = value.items[i0];
-      v = ((e0.a) & 0x1) | (((e0.b) & 0x3) << 1);
+      v = (e0.a & 0x1) | ((e0.b & 0x3) << 1);
       scratch |= v << scratchBits;
       scratchBits += 3;
       if (scratchBits >= 64) {
@@ -1846,15 +1701,6 @@ bool readArrTri3(ArrTri3 value, ByteData view, int numBits) {
   return true;
 }
 
-// measureArrTri3 is the exact wire bits writeArrTri3 would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureArrTri3(ArrTri3 value) {
-  var bits = 0;
-  bits += 4;
-  bits += value.itemsCount * 3;
-  return bits;
-}
-
 // type Eleven
 final class Eleven {
   int a = 0;
@@ -1889,15 +1735,9 @@ int writeEleven(Eleven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = ((value.a) & 0x7) | (((value.b) & 0xff) << 3);
+  v = (value.a & 0x7) | ((value.b & 0xff) << 3);
   scratch |= v << scratchBits;
   scratchBits += 11;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (11 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -1943,10 +1783,6 @@ bool readEleven(Eleven value, ByteData view, int numBits) {
   return true;
 }
 
-// measureEleven is the exact wire bits writeEleven would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureEleven(Eleven value) => 11;
-
 // type ArrEleven
 final class ArrEleven {
   final List<Eleven> items = List.generate(9, (_) => Eleven());
@@ -1984,7 +1820,7 @@ int writeArrEleven(ArrEleven value, ByteData view) {
   var v = 0;
   for (var i0 = 0; i0 < 9; i0++) {
     final e0 = value.items[i0];
-    v = ((e0.a) & 0x7) | (((e0.b) & 0xff) << 3);
+    v = (e0.a & 0x7) | ((e0.b & 0xff) << 3);
     scratch |= v << scratchBits;
     scratchBits += 11;
     if (scratchBits >= 64) {
@@ -2042,10 +1878,6 @@ bool readArrEleven(ArrEleven value, ByteData view, int numBits) {
   return true;
 }
 
-// measureArrEleven is the exact wire bits writeArrEleven would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureArrEleven(ArrEleven value) => 99;
-
 // type EmptyA
 final class EmptyA {
   // empty body — presence is the payload (SPEC §4.6)
@@ -2090,10 +1922,6 @@ bool readEmptyA(EmptyA value, ByteData view, int numBits) {
   return true;
 }
 
-// measureEmptyA is the exact wire bits writeEmptyA would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureEmptyA(EmptyA value) => 0;
-
 // type EmptyB
 final class EmptyB {
   // empty body — presence is the payload (SPEC §4.6)
@@ -2137,10 +1965,6 @@ int writeEmptyB(EmptyB value, ByteData view) {
 bool readEmptyB(EmptyB value, ByteData view, int numBits) {
   return true;
 }
-
-// measureEmptyB is the exact wire bits writeEmptyB would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureEmptyB(EmptyB value) => 0;
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
 abstract final class EmptyUnionType {
@@ -2200,19 +2024,13 @@ int writeEmptyUnion(EmptyUnion value, ByteData view) {
   var v = 0;
   assert(value.type >= 0);
   assert(value.type <= 2);
-  v = ((value.type) & 0x3);
+  v = value.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   switch (value.type) {
-    case 1:
+    case EmptyUnionType.a:
       break; // empty arm — presence is the payload (SPEC §4.6)
-    case 2:
+    case EmptyUnionType.b:
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
   if (scratchBits != 0) {
@@ -2258,26 +2076,12 @@ bool readEmptyUnion(EmptyUnion value, ByteData view, int numBits) {
   }
   value.type = v;
   switch (value.type) {
-    case 1:
+    case EmptyUnionType.a:
       break; // empty arm — presence is the payload (SPEC §4.6)
-    case 2:
+    case EmptyUnionType.b:
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
   return true;
-}
-
-// measureEmptyUnion is the exact wire bits writeEmptyUnion would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureEmptyUnion(EmptyUnion value) {
-  var bits = 0;
-  bits += 2;
-  switch (value.type) {
-    case 1:
-      break; // empty arm — presence is the payload (SPEC §4.6)
-    case 2:
-      break; // empty arm — presence is the payload (SPEC §4.6)
-  }
-  return bits;
 }
 
 // type HoldsEmptyUnion
@@ -2319,30 +2123,18 @@ int writeHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view) {
   var v = 0;
   assert(value.u.type >= 0);
   assert(value.u.type <= 2);
-  v = ((value.lead) & 0x1f) | (((value.u.type) & 0x3) << 5);
+  v = (value.lead & 0x1f) | ((value.u.type & 0x3) << 5);
   scratch |= v << scratchBits;
   scratchBits += 7;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (7 - scratchBits);
-  }
   switch (value.u.type) {
-    case 1:
+    case EmptyUnionType.a:
       break; // empty arm — presence is the payload (SPEC §4.6)
-    case 2:
+    case EmptyUnionType.b:
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
-  v = ((value.tail) & 0x7f);
+  v = value.tail & 0x7f;
   scratch |= v << scratchBits;
   scratchBits += 7;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (7 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -2392,9 +2184,9 @@ bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
   }
   value.u.type = v;
   switch (value.u.type) {
-    case 1:
+    case EmptyUnionType.a:
       break; // empty arm — presence is the payload (SPEC §4.6)
-    case 2:
+    case EmptyUnionType.b:
       break; // empty arm — presence is the payload (SPEC §4.6)
   }
   if (bitsRead + 7 > numBits) {
@@ -2409,22 +2201,6 @@ bool readHoldsEmptyUnion(HoldsEmptyUnion value, ByteData view, int numBits) {
   bitsRead += 7;
   value.tail = v;
   return true;
-}
-
-// measureHoldsEmptyUnion is the exact wire bits writeHoldsEmptyUnion would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureHoldsEmptyUnion(HoldsEmptyUnion value) {
-  var bits = 0;
-  bits += 5;
-  bits += 2;
-  switch (value.u.type) {
-    case 1:
-      break; // empty arm — presence is the payload (SPEC §4.6)
-    case 2:
-      break; // empty arm — presence is the payload (SPEC §4.6)
-  }
-  bits += 7;
-  return bits;
 }
 
 // type Strs
@@ -2477,25 +2253,13 @@ int writeStrs(Strs value, ByteData view) {
   var v = 0;
   assert(value.sLength >= 0);
   assert(value.sLength <= 8);
-  v = ((value.lead) & 0x1f) | (((value.sLength) & 0xf) << 5);
+  v = (value.lead & 0x1f) | ((value.sLength & 0xf) << 5);
   scratch |= v << scratchBits;
   scratchBits += 9;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (9 - scratchBits);
-  }
   {
     final pad = scratchBits & 7;
     if (pad != 0) {
       scratchBits += 8 - pad;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = 0;
-      }
     }
   }
   {
@@ -2529,7 +2293,7 @@ int writeStrs(Strs value, ByteData view) {
   }
   assert(value.bLength >= 0);
   assert(value.bLength <= 8);
-  v = ((value.bLength) & 0xf);
+  v = value.bLength & 0xf;
   scratch |= v << scratchBits;
   scratchBits += 4;
   if (scratchBits >= 64) {
@@ -2579,7 +2343,7 @@ int writeStrs(Strs value, ByteData view) {
       }
     }
   }
-  v = ((value.tail) & 0x7);
+  v = value.tail & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -2658,7 +2422,7 @@ bool readStrs(Strs value, ByteData view, int numBits) {
     }
   }
   bitsRead += value.sLength * 8;
-  if (!_schemaUtf8Valid(value.s, value.sLength)) {
+  if (!Schema.utf8Valid(value.s, value.sLength)) {
     return false;
   }
   for (var i0 = 0; i0 < value.sLength; i0++) {
@@ -2716,20 +2480,6 @@ bool readStrs(Strs value, ByteData view, int numBits) {
   return true;
 }
 
-// measureStrs is the exact wire bits writeStrs would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureStrs(Strs value) {
-  var bits = 0;
-  bits += 9;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.sLength * 8;
-  bits += 4;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.bLength * 8;
-  bits += 3;
-  return bits;
-}
-
 // type ArrNested
 final class ArrNested {
   int lead = 0;
@@ -2776,15 +2526,9 @@ int writeArrNested(ArrNested value, ByteData view) {
   var v = 0;
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 4);
-  v = ((value.lead) & 0x1f) | (((value.itemsCount) & 0x7) << 5);
+  v = (value.lead & 0x1f) | ((value.itemsCount & 0x7) << 5);
   scratch |= v << scratchBits;
   scratchBits += 8;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (8 - scratchBits);
-  }
   {
     var i0 = 0;
     for (; i0 + 5 <= value.itemsCount; i0 += 5) {
@@ -2794,16 +2538,16 @@ int writeArrNested(ArrNested value, ByteData view) {
       final e0g3 = value.items[i0 + 3];
       final e0g4 = value.items[i0 + 4];
       v =
-          ((e0.a) & 0x7) |
-          (((e0.b) & 0xff) << 3) |
-          (((e0g1.a) & 0x7) << 11) |
-          (((e0g1.b) & 0xff) << 14) |
-          (((e0g2.a) & 0x7) << 22) |
-          (((e0g2.b) & 0xff) << 25) |
-          (((e0g3.a) & 0x7) << 33) |
-          (((e0g3.b) & 0xff) << 36) |
-          (((e0g4.a) & 0x7) << 44) |
-          (((e0g4.b) & 0xff) << 47);
+          (e0.a & 0x7) |
+          ((e0.b & 0xff) << 3) |
+          ((e0g1.a & 0x7) << 11) |
+          ((e0g1.b & 0xff) << 14) |
+          ((e0g2.a & 0x7) << 22) |
+          ((e0g2.b & 0xff) << 25) |
+          ((e0g3.a & 0x7) << 33) |
+          ((e0g3.b & 0xff) << 36) |
+          ((e0g4.a & 0x7) << 44) |
+          ((e0g4.b & 0xff) << 47);
       scratch |= v << scratchBits;
       scratchBits += 55;
       if (scratchBits >= 64) {
@@ -2815,7 +2559,7 @@ int writeArrNested(ArrNested value, ByteData view) {
     }
     for (; i0 < value.itemsCount; i0++) {
       final e0 = value.items[i0];
-      v = ((e0.a) & 0x7) | (((e0.b) & 0xff) << 3);
+      v = (e0.a & 0x7) | ((e0.b & 0xff) << 3);
       scratch |= v << scratchBits;
       scratchBits += 11;
       if (scratchBits >= 64) {
@@ -2826,7 +2570,7 @@ int writeArrNested(ArrNested value, ByteData view) {
       }
     }
   }
-  v = ((value.tail) & 0x7);
+  v = value.tail & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -2961,16 +2705,6 @@ bool readArrNested(ArrNested value, ByteData view, int numBits) {
   return true;
 }
 
-// measureArrNested is the exact wire bits writeArrNested would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureArrNested(ArrNested value) {
-  var bits = 0;
-  bits += 8;
-  bits += value.itemsCount * 11;
-  bits += 3;
-  return bits;
-}
-
 // type Sole
 final class Sole {
   int only = 0;
@@ -3002,15 +2736,9 @@ int writeSole(Sole value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
-  v = ((value.only) & 0x1fff);
+  v = value.only & 0x1fff;
   scratch |= v << scratchBits;
   scratchBits += 13;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (13 - scratchBits);
-  }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
   }
@@ -3052,7 +2780,3 @@ bool readSole(Sole value, ByteData view, int numBits) {
   value.only = v;
   return true;
 }
-
-// measureSole is the exact wire bits writeSole would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureSole(Sole value) => 13;
