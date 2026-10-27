@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -26,7 +26,8 @@ extern "C" {
 
 
 /* type BenchPacket */
-typedef struct bench_bench_packet_t {
+typedef struct bench_bench_packet_t
+{
     int32_t a;
     int32_t b;
     int32_t c;
@@ -46,7 +47,8 @@ typedef struct bench_bench_packet_t {
 
 
 /* type BenchInts */
-typedef struct bench_bench_ints_t {
+typedef struct bench_bench_ints_t
+{
     int32_t f0;
     int32_t f1;
     int32_t f2;
@@ -64,7 +66,8 @@ typedef struct bench_bench_ints_t {
 
 
 /* type BenchBits */
-typedef struct bench_bench_bits_t {
+typedef struct bench_bench_bits_t
+{
     uint32_t b7;
     uint32_t b13;
     uint32_t b23;
@@ -132,14 +135,14 @@ static SCHEMA_UNUSED const char * bench_enum_name_mixed_weapon( bench_mixed_weap
 /* flags MixedDamage — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 8 bits (SPEC §4.2) */
 typedef uint64_t bench_mixed_damage_t;
-#define BENCH_MIXED_DAMAGE_BLEEDING (1ULL << 0)
-#define BENCH_MIXED_DAMAGE_BURNING (1ULL << 1)
-#define BENCH_MIXED_DAMAGE_STUNNED (1ULL << 2)
-#define BENCH_MIXED_DAMAGE_SLOWED (1ULL << 3)
-#define BENCH_MIXED_DAMAGE_POISONED (1ULL << 4)
-#define BENCH_MIXED_DAMAGE_SHIELDED (1ULL << 5)
-#define BENCH_MIXED_DAMAGE_AIRBORNE (1ULL << 6)
-#define BENCH_MIXED_DAMAGE_DOWNED (1ULL << 7)
+#define BENCH_MIXED_DAMAGE_BLEEDING ( 1ULL << 0 )
+#define BENCH_MIXED_DAMAGE_BURNING ( 1ULL << 1 )
+#define BENCH_MIXED_DAMAGE_STUNNED ( 1ULL << 2 )
+#define BENCH_MIXED_DAMAGE_SLOWED ( 1ULL << 3 )
+#define BENCH_MIXED_DAMAGE_POISONED ( 1ULL << 4 )
+#define BENCH_MIXED_DAMAGE_SHIELDED ( 1ULL << 5 )
+#define BENCH_MIXED_DAMAGE_AIRBORNE ( 1ULL << 6 )
+#define BENCH_MIXED_DAMAGE_DOWNED ( 1ULL << 7 )
 #define BENCH_MIXED_DAMAGE_COUNT 8 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of MixedDamage — out-of-range bits name as "???". */
@@ -215,7 +218,8 @@ static SCHEMA_UNUSED const char * bench_flag_names_mixed_damage( uint64_t value,
 
 
 /* type MixedEntity */
-typedef struct bench_mixed_entity_t {
+typedef struct bench_mixed_entity_t
+{
     uint32_t entity_id;
     int32_t pos_x;
     int32_t pos_y;
@@ -237,7 +241,8 @@ typedef struct bench_mixed_entity_t {
 
 
 /* type MixedStat */
-typedef struct bench_mixed_stat_t {
+typedef struct bench_mixed_stat_t
+{
     uint32_t stat_id;
     int32_t delta;
 } bench_mixed_stat_t;
@@ -247,7 +252,8 @@ typedef struct bench_mixed_stat_t {
 
 
 /* type MixedHitEvent */
-typedef struct bench_mixed_hit_event_t {
+typedef struct bench_mixed_hit_event_t
+{
     uint32_t target_id;
     int32_t damage;
     int32_t hit_kind;
@@ -259,7 +265,8 @@ typedef struct bench_mixed_hit_event_t {
 
 
 /* type MixedChatEvent */
-typedef struct bench_mixed_chat_event_t {
+typedef struct bench_mixed_chat_event_t
+{
     int32_t channel;
     uint32_t speaker;
 } bench_mixed_chat_event_t;
@@ -269,7 +276,8 @@ typedef struct bench_mixed_chat_event_t {
 
 
 /* type MixedPickupEvent */
-typedef struct bench_mixed_pickup_event_t {
+typedef struct bench_mixed_pickup_event_t
+{
     uint32_t item_id;
     int32_t amount;
 } bench_mixed_pickup_event_t;
@@ -301,9 +309,11 @@ static SCHEMA_UNUSED const char * bench_enum_name_mixed_event_type( bench_mixed_
     }
 }
 
-typedef struct bench_mixed_event_t {
+typedef struct bench_mixed_event_t
+{
     bench_mixed_event_type_t type;
-    union {
+    union
+    {
         bench_mixed_hit_event_t hit;
         bench_mixed_chat_event_t chat;
         bench_mixed_pickup_event_t pickup;
@@ -339,7 +349,8 @@ static SCHEMA_UNUSED bench_mixed_pickup_event_t * bench_mixed_event_select_picku
 
 
 /* type BenchMixed */
-typedef struct bench_bench_mixed_t {
+typedef struct bench_bench_mixed_t
+{
     uint32_t sequence;
     int32_t ack_sequence;
     uint32_t ack_bits;

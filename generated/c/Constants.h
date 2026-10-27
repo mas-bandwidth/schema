@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 
@@ -21,21 +21,21 @@ extern "C" {
    sides at the same id speak identical bits; there is no other versioning. */
 #define EXAMPLE_PROTOCOL_ID 0xeb26c970fde3fd71ULL
 
-#define EXAMPLE_POSITION_UNITS (1024)
-#define EXAMPLE_VELOCITY_UNITS (1024)
-#define EXAMPLE_ROTATION_UNITS (1024)
-#define EXAMPLE_MAX_WORLD_METERS (8192)
-#define EXAMPLE_MAX_POSITION_UNITS (EXAMPLE_MAX_WORLD_METERS * EXAMPLE_POSITION_UNITS)
-#define EXAMPLE_MAX_SPEED_METERS (2048)
-#define EXAMPLE_MAX_VELOCITY_UNITS (EXAMPLE_MAX_SPEED_METERS * EXAMPLE_VELOCITY_UNITS)
-#define EXAMPLE_MAX_HEALTH (1000)
-#define EXAMPLE_MAX_OBJECTS (10000)
-#define EXAMPLE_SHIP_MAX_LASERS (16)
-#define EXAMPLE_SHIP_MAX_MISSILES (16)
-#define EXAMPLE_NUM_TEAMS (2) /* = Team.Max */
-#define EXAMPLE_MAX_INPUTS_PER_PACKET (16)
-#define EXAMPLE_MAX_BLOCK_SIZE (2000)
-#define EXAMPLE_MAX_CHAT_LENGTH (256)
+#define EXAMPLE_POSITION_UNITS ( 1024 )
+#define EXAMPLE_VELOCITY_UNITS ( 1024 )
+#define EXAMPLE_ROTATION_UNITS ( 1024 )
+#define EXAMPLE_MAX_WORLD_METERS ( 8192 )
+#define EXAMPLE_MAX_POSITION_UNITS ( EXAMPLE_MAX_WORLD_METERS * EXAMPLE_POSITION_UNITS )
+#define EXAMPLE_MAX_SPEED_METERS ( 2048 )
+#define EXAMPLE_MAX_VELOCITY_UNITS ( EXAMPLE_MAX_SPEED_METERS * EXAMPLE_VELOCITY_UNITS )
+#define EXAMPLE_MAX_HEALTH ( 1000 )
+#define EXAMPLE_MAX_OBJECTS ( 10000 )
+#define EXAMPLE_SHIP_MAX_LASERS ( 16 )
+#define EXAMPLE_SHIP_MAX_MISSILES ( 16 )
+#define EXAMPLE_NUM_TEAMS ( 2 ) /* = Team.Max */
+#define EXAMPLE_MAX_INPUTS_PER_PACKET ( 16 )
+#define EXAMPLE_MAX_BLOCK_SIZE ( 2000 )
+#define EXAMPLE_MAX_CHAT_LENGTH ( 256 )
 #ifdef __cplusplus
 }
 #endif

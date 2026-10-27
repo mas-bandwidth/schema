@@ -855,13 +855,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_ship_create( serializ
 /* Writes ExpressionProbe. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_expression_probe( serialize_write_stream_t * stream, const example_expression_probe_t * value )
 {
-    serialize_assert( (serialize_int64_t) value->hardpoint_index >= 0 && (serialize_int64_t) value->hardpoint_index <= (EXAMPLE_SHIP_MAX_LASERS + EXAMPLE_SHIP_MAX_MISSILES) - 1 );
+    serialize_assert( (serialize_int64_t) value->hardpoint_index >= 0 && (serialize_int64_t) value->hardpoint_index <= ( EXAMPLE_SHIP_MAX_LASERS + EXAMPLE_SHIP_MAX_MISSILES ) - 1 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->hardpoint_index ), 5 ) )
     {
         return 0;
     }
-    serialize_assert( (serialize_int64_t) value->spin_rate >= -(-EXAMPLE_ROTATION_UNITS) && (serialize_int64_t) value->spin_rate <= EXAMPLE_ROTATION_UNITS * 2 );
-    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->spin_rate - (serialize_uint32_t) ( -(-EXAMPLE_ROTATION_UNITS) ), 11 ) )
+    serialize_assert( (serialize_int64_t) value->spin_rate >= -( -EXAMPLE_ROTATION_UNITS ) && (serialize_int64_t) value->spin_rate <= EXAMPLE_ROTATION_UNITS * 2 );
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) value->spin_rate - (serialize_uint32_t) ( -( -EXAMPLE_ROTATION_UNITS ) ), 11 ) )
     {
         return 0;
     }
@@ -895,11 +895,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_expression_probe( ser
             return 0;
         }
         offset_value = raw;
-        if ( offset_value > (serialize_uint64_t) ( EXAMPLE_ROTATION_UNITS * 2 ) - (serialize_uint64_t) ( -(-EXAMPLE_ROTATION_UNITS) ) )
+        if ( offset_value > (serialize_uint64_t) ( EXAMPLE_ROTATION_UNITS * 2 ) - (serialize_uint64_t) ( -( -EXAMPLE_ROTATION_UNITS ) ) )
         {
             return serialize_read_fail( stream );
         }
-        value->spin_rate = (int32_t) ( offset_value + (serialize_uint64_t) ( -(-EXAMPLE_ROTATION_UNITS) ) );
+        value->spin_rate = (int32_t) ( offset_value + (serialize_uint64_t) ( -( -EXAMPLE_ROTATION_UNITS ) ) );
     }
     return 1;
 }

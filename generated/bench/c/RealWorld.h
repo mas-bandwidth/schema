@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -57,11 +57,11 @@ static SCHEMA_UNUSED const char * realworld_enum_name_packet_mode( realworld_pac
 /* flags PacketFlags — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 5 bits (SPEC §4.2) */
 typedef uint64_t realworld_packet_flags_t;
-#define REALWORLD_PACKET_FLAGS_SHIELDED (1ULL << 0)
-#define REALWORLD_PACKET_FLAGS_CLOAKED (1ULL << 1)
-#define REALWORLD_PACKET_FLAGS_OVERHEATED (1ULL << 2)
-#define REALWORLD_PACKET_FLAGS_LOW_POWER (1ULL << 3)
-#define REALWORLD_PACKET_FLAGS_JAMMING (1ULL << 4)
+#define REALWORLD_PACKET_FLAGS_SHIELDED ( 1ULL << 0 )
+#define REALWORLD_PACKET_FLAGS_CLOAKED ( 1ULL << 1 )
+#define REALWORLD_PACKET_FLAGS_OVERHEATED ( 1ULL << 2 )
+#define REALWORLD_PACKET_FLAGS_LOW_POWER ( 1ULL << 3 )
+#define REALWORLD_PACKET_FLAGS_JAMMING ( 1ULL << 4 )
 #define REALWORLD_PACKET_FLAGS_COUNT 5 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of PacketFlags — out-of-range bits name as "???". */
@@ -122,7 +122,8 @@ static SCHEMA_UNUSED const char * realworld_flag_names_packet_flags( uint64_t va
 
 
 /* type RealPacket */
-typedef struct realworld_real_packet_t {
+typedef struct realworld_real_packet_t
+{
     int32_t f001_int;
     double f002_f64;
     int32_t f003_int;

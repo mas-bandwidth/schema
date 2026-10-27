@@ -9,10 +9,15 @@
 #ifndef SCHEMA_RUNTIME_H
 #define SCHEMA_RUNTIME_H
 
-#define SCHEMA_RUNTIME_VERSION 0x49d315a2ec8afd2cULL
+#define SCHEMA_RUNTIME_VERSION 0xd1887bcfafab63acULL
 
 #include <stdint.h>
 #include <string.h> /* memcpy — the interior-null scan */
+
+/* The feature tests below are spelled the way the serialize runtime spells
+   its own, tight inside the preprocessor's parentheses, so the formatter is
+   kept off them. */
+/* clang-format off */
 
 /* SCHEMA_UNUSED guards the header-static functions: a translation unit that
    includes a header but calls only some of its functions would otherwise warn
@@ -95,6 +100,8 @@
 #else
 #define SCHEMA_TABLE_RESTRICT
 #endif
+
+/* clang-format on */
 
 #ifdef __cplusplus
 extern "C" {

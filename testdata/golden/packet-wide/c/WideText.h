@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 
@@ -23,7 +23,8 @@ extern "C" {
 
 
 /* type WideSeven */
-typedef struct wide_wide_seven_t {
+typedef struct wide_wide_seven_t
+{
     uint16_t text[7 + 1]; /* UTF-16 code units, plus the read terminator (SPEC §4.12) */
     int32_t text_length;
 } wide_wide_seven_t;
@@ -33,7 +34,8 @@ typedef struct wide_wide_seven_t {
 
 
 /* type WideFour */
-typedef struct wide_wide_four_t {
+typedef struct wide_wide_four_t
+{
     uint16_t text[4 + 1]; /* UTF-16 code units, plus the read terminator (SPEC §4.12) */
     int32_t text_length;
 } wide_wide_four_t;
@@ -43,7 +45,8 @@ typedef struct wide_wide_four_t {
 
 
 /* type NarrowFifteen */
-typedef struct wide_narrow_fifteen_t {
+typedef struct wide_narrow_fifteen_t
+{
     char text[15 + 1]; /* string(15): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
 } wide_narrow_fifteen_t;
@@ -53,7 +56,8 @@ typedef struct wide_narrow_fifteen_t {
 
 
 /* type WideInterop */
-typedef struct wide_wide_interop_t {
+typedef struct wide_wide_interop_t
+{
     uint16_t caption[7 + 1]; /* UTF-16 code units, plus the read terminator (SPEC §4.12) */
     int32_t caption_length;
 } wide_wide_interop_t;

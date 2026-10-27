@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
@@ -21,7 +21,8 @@ extern "C" {
 
 
 /* type DefaultArm */
-typedef struct example_default_arm_t {
+typedef struct example_default_arm_t
+{
     example_probe_config_t entries[2];
     int32_t entries_count;
     uint8_t marker;
@@ -69,9 +70,11 @@ static SCHEMA_UNUSED const char * example_enum_name_default_choice_type( example
     }
 }
 
-typedef struct example_default_choice_t {
+typedef struct example_default_choice_t
+{
     example_default_choice_type_t type;
-    union {
+    union
+    {
         example_default_arm_t first;
         example_default_arm_t second;
     } as;
@@ -99,7 +102,8 @@ static SCHEMA_UNUSED example_default_arm_t * example_default_choice_select_secon
 
 
 /* type DefaultChoicePacket */
-typedef struct example_default_choice_packet_t {
+typedef struct example_default_choice_packet_t
+{
     example_default_choice_t choice;
 } example_default_choice_packet_t;
 
@@ -108,7 +112,8 @@ typedef struct example_default_choice_packet_t {
 
 
 /* type DefaultBulkArm */
-typedef struct example_default_bulk_arm_t {
+typedef struct example_default_bulk_arm_t
+{
     example_default_arm_t payload;
     uint8_t data[2];
     int32_t data_length;
@@ -150,9 +155,11 @@ static SCHEMA_UNUSED const char * example_enum_name_default_bulk_choice_type( ex
     }
 }
 
-typedef struct example_default_bulk_choice_t {
+typedef struct example_default_bulk_choice_t
+{
     example_default_bulk_choice_type_t type;
-    union {
+    union
+    {
         example_default_bulk_arm_t first;
         example_default_bulk_arm_t second;
     } as;

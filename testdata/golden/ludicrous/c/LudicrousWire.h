@@ -432,7 +432,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_degenerate_probe( s
     }
 
     value->locked_fixed = (int32_t) -196608LL;
-    value->locked_int = (int32_t) (7);
+    value->locked_int = (int32_t) 7;
     value->locked_wide = serialize_int128_from_int64( -12345678901234 );
     {
         serialize_uint32_t raw = 0;

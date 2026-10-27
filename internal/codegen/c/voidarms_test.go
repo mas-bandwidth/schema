@@ -31,7 +31,7 @@ union Empty {}
 	header := string(files["Arms.h"])
 	wire := string(files["ArmsWire.h"])
 	for _, name := range []string{"Signals", "Signal", "Empty"} {
-		want := "typedef struct " + name + " {\n    " + name + "Type type;\n} " + name + ";"
+		want := "typedef struct " + name + "\n{\n    " + name + "Type type;\n} " + name + ";"
 		if !strings.Contains(header, want) {
 			t.Errorf("%s must have tag-only storage, without an empty C union", name)
 		}

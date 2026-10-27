@@ -104,8 +104,12 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 		// terminator. Numeric bytes preserve UTF-8 and literal backslashes.
 		if len(f.DefBytes) > 0 {
 			g.pf("    {\n        static const uint8_t bytes[] = {")
-			for _, b := range f.DefBytes {
-				g.pf(" 0x%02x,", b)
+			for i, b := range f.DefBytes {
+				sep := ","
+				if i == len(f.DefBytes)-1 {
+					sep = "" // no trailing comma: the list stays on one line
+				}
+				g.pf(" 0x%02x%s", b, sep)
 			}
 			g.pf(" };\n        memcpy( value.%s, bytes, sizeof( bytes ) );\n    }\n", f.Name)
 		}

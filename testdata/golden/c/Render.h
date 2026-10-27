@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
-#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 #include "Enums.h"
@@ -18,10 +18,11 @@
 extern "C" {
 #endif
 
-#define EXAMPLE_RENDER_BLOCK_MAX_SPRITES (64)
+#define EXAMPLE_RENDER_BLOCK_MAX_SPRITES ( 64 )
 
 /* type RenderSprite */
-typedef struct example_render_sprite_t {
+typedef struct example_render_sprite_t
+{
     uint64_t sort_key;
     uint32_t mesh_id;
     uint32_t material_id;
@@ -34,7 +35,8 @@ typedef struct example_render_sprite_t {
 
 
 /* type RenderBlock */
-typedef struct example_render_block_t {
+typedef struct example_render_block_t
+{
     uint32_t worker_index;
     uint32_t sprite_count_hint;
     example_render_sprite_t sprites[EXAMPLE_RENDER_BLOCK_MAX_SPRITES];

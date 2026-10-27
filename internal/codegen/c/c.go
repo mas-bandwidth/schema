@@ -263,7 +263,7 @@ func (g *gen) constValue(d *ir.Const) string {
 	if wrapped(v) {
 		return v
 	}
-	return "(" + v + ")"
+	return "( " + v + " )"
 }
 
 func formatFloat(v float64) string {
@@ -326,7 +326,7 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.pf("typedef uint64_t %s;\n", d.Name)
 	for i, v := range d.Variants {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "", "//"))
-		g.pf("#define %s_%s (1ULL << %d)\n", screaming(d.Name), screaming(v), i)
+		g.pf("#define %s_%s ( 1ULL << %d )\n", screaming(d.Name), screaming(v), i)
 	}
 	g.pf("#define %s_COUNT %d /* the declared variant count (SPEC §4.2) */\n", screaming(d.Name), len(d.Variants))
 	g.pf("\n")
@@ -372,14 +372,24 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	if len(d.Fields) == 0 {
 		// C forbids an empty struct; one padding byte keeps sizeof() legal and
 		// the type usable. It carries no wire bits.
-		g.pf("typedef struct %s {\n    char unused_; /* C has no empty struct; carries no wire bits */\n} %s;\n\n", d.Name, d.Name)
+		g.pf("typedef struct %s\n{\n    char unused_; /* C has no empty struct; carries no wire bits */\n} %s;\n\n", d.Name, d.Name)
 		return
 	}
-	g.pf("typedef struct %s {\n", d.Name)
+	g.pf("typedef struct %s\n{\n", d.Name)
 	for _, f := range d.Fields {
 		g.pf("%s", ir.DocComment(f.Doc, "    ", "//"))
 		if f.Type.Width == 128 && ir.TableClosure(g.unit)[d.Name] {
-			g.pf("    SCHEMA_C_ALIGN16 ")
+			// the alignment rides in front of the member's own line, at the
+			// member's indent: emitField writes the line, and its four-space
+			// indent is replaced by the attribute
+			at := g.body.Len()
+			g.emitField(f)
+			line := g.body.String()[at:]
+			rest := g.body.String()[:at]
+			g.body.Reset()
+			g.body.WriteString(rest)
+			g.body.WriteString("    SCHEMA_C_ALIGN16 " + strings.TrimPrefix(line, "    "))
+			continue
 		}
 		g.emitField(f)
 	}
@@ -424,11 +434,11 @@ func (g *gen) emitUnion(d *ir.Union) {
 	if !hasPayload {
 		g.pf("/* No arm has a payload; C forbids an empty union member, so the\n")
 		g.pf("   struct is the tag alone. */\n")
-		g.pf("typedef struct %s {\n    %s type;\n} %s;\n\n", d.Name, tag, d.Name)
+		g.pf("typedef struct %s\n{\n    %s type;\n} %s;\n\n", d.Name, tag, d.Name)
 	} else {
-		g.pf("typedef struct %s {\n", d.Name)
+		g.pf("typedef struct %s\n{\n", d.Name)
 		g.pf("    %s type;\n", tag)
-		g.pf("    union {\n")
+		g.pf("    union\n    {\n")
 		for _, v := range d.Variants {
 			if v.Void() {
 				continue // a payload-free arm has only its tag (SPEC §4.8)
