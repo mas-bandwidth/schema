@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -35,9 +36,7 @@ func dequalifyC(src, root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	names, err := cqualify.Names(files, u.Package)
 	if err != nil {
 		return "", err

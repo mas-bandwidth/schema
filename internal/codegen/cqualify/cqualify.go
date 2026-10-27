@@ -343,7 +343,7 @@ func declared(src string) *decls {
 	// preprocessor: #define NAME, and the hook shape — a lowercase NAME
 	// #defined directly under its own #ifndef, which a caller overrides
 	lastIfndef := ""
-	for i := 0; i < len(toks); i++ {
+	for i := range len(toks) {
 		if toks[i].directive < 0 || (i > 0 && toks[i-1].directive == toks[i].directive) {
 			continue
 		}
