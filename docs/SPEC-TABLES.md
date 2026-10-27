@@ -12389,9 +12389,9 @@ own schema's prose whether or not anything reads it, exactly as it already
 carries the field names beside it. §8.4's answer ("what a build pays is what
 it compiles") does not reach this one, because a game compiles the table
 headers by definition. **The opt-in marker is what bounds it, and that is
-why the marker exists** (SPEC §4.1): this repo's own corpus carries 166
+why the marker exists** (SPEC §4.1): this repo's own corpus carries
 comment lines sitting directly above a declaration, a field, a variant or an
-arm, across 40 of its 47 files, working notes to the last one, and under an
+arm throughout, working notes to the last one, and under an
 implicit binding rule every one of them would be in that binary and in nine
 languages' generated comments. Under `///` a build pays for the lines an
 author chose to publish and for no others.
