@@ -6844,35 +6844,35 @@ carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
 
 **A COMPRESSED FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A
-compressed float is defined for the values in `[min, max]`, and a NaN, the
-infinities and a negative zero are each stated here, because every comparison
-against a NaN is false and a bounds test of `< min` and `> max` alone hands a
-NaN through whole: a value outside the declared range, uncounted, given to a
-caller the declaration promises a number inside it. (HELD, 2026-10-27:
-whether the finite rule of §3.3, which makes a PLAIN float's NaN or infinity
-a refusal, also turns this clamp into a refusal is open for Glenn; until he
-rules, a compressed float keeps the clamp below.) The rule, the same in the
+compressed float is defined for the FINITE values, clamped into `[min, max]`.
+A NaN and the infinities are stated here because every comparison against a
+NaN is false, so a bounds test of `< min` and `> max` alone would hand one
+through whole. The rule follows the plain float's and the packet wire's
+(Glenn, 2026-10-27, "same rule as packets"; SPEC.md §4.3), the same in the
 message, fixed, variable and text forms:
 
-- **A VALUE WRITTEN AS NaN NEVER LANDS AS NaN.** It clamps to `min` and COUNTS,
-  exactly as `-Inf` and a finite value below `min` do, or, in the one form
-  with no spelling for it, it is REFUSED BY NAME. A quiet NaN, a signalling
-  NaN, a NaN with any payload and either sign are one case.
-- **`+Inf` CLAMPS TO `max` AND `-Inf` TO `min`, AND EACH COUNTS**, as a finite
-  value past that end does, or is refused by name where a NaN is.
+- **A NaN OR AN INFINITY IS REFUSED ON WRITE, AND NEVER CLAMPED.** Every
+  writer refuses one (measure and write return `-1`, naming the field). A
+  quiet NaN, a signalling NaN, a NaN with any payload, either sign and either
+  infinity are one case. Where a form carries the float whole (FIXED,
+  VARIABLE), a READ that meets one refuses it on its raw bits as
+  `non_finite_float`, naming the field, before the field is written; that
+  test runs FIRST, before the bounds pass.
+- **A FINITE VALUE PAST AN END CLAMPS TO THAT END, AND COUNTS**, as before.
 - **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the
   rule chooses for `0`. No sign bit is kept and nothing is counted, because the
   value is inside the range and only its spelling differs.
 
-Where the clamp runs, and what counts it, is each form's own:
+Where the refusal and the clamp run, and what counts the clamp, is each
+form's own:
 
-| form | where a NaN, an infinity and a `-0` are held |
+| form | where a NaN, an infinity, a finite value past an end and a `-0` are held |
 | --- | --- |
-| MESSAGE (§3.3) | the WRITER's quantizer (above): `!(ratio >= 0)` is true for a NaN, so it takes the `0` end, and the writer COUNTS every value its quantizer clamps — a NaN, an infinity, a finite value past either end — into `clamped` on the report handed to `SaveMessages`. The reader sees only an index in `[0, count]`, so it decodes a value inside `[min, max]` and counts nothing |
-| FIXED (§3.4) | the READ's bounds pass, which tests for the NaN FIRST and then each end; `clamped` on the load's report. The record carries the float whole, so the writer moves nothing |
-| VARIABLE (§3) | the READ's clamp to the declared range (§4), the same test in the same order; `clamped` on the load's report |
+| MESSAGE (§3.3) | the WRITER: a NaN or an infinity is refused (`-1`) before the quantizer runs; the quantizer clamps a finite value past either end and COUNTS it into `clamped` on the report handed to `SaveMessages`. The reader sees only an index in `[0, count]`, so it decodes a value inside `[min, max]` and counts nothing |
+| FIXED (§3.4) | the WRITER refuses a NaN or an infinity (`-1`); the READ tests the raw bits for a non-finite value FIRST (`non_finite_float`, refused) and then each end (`clamped` on the load's report) |
+| VARIABLE (§3) | the same: the WRITER refuses, and the READ refuses a non-finite value and then clamps a finite one to the declared range (§4), `clamped` on the load's report |
 | TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
 
 The quantizer, read off the Go oracle (`ir.TableMessageQuantize` and
@@ -6881,34 +6881,33 @@ cannot tell "the index of 0" from "index 0":
 
 | input | `[0, 1]` at `0.01` (`count` 100): index → decoded | `[-1, 1]` at `0.01` (`count` 200): index → decoded |
 | --- | --- | --- |
-| a NaN | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
+| a NaN, `+Inf`, `-Inf` | refused on write; no index | refused on write; no index |
 | `-0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
 | `+0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
-| `+Inf` | `100` → `1`, which is `max` | `200` → `1`, which is `max` |
-| `-Inf` | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
 | below `min` | `0` → `min` | `0` → `min` |
 | above `max` | `count` → `max` | `count` → `max` |
 
 In general `-0` and `+0` take the index of the grid point the rule chooses for
 `0`, and decode to that point; it is index `0` only when `min` is `0`. The index
 never leaves `[0, count]` and a decoded value never leaves `[min, max]`, so in
-every form a compressed float lands inside its declared range and a NaN never
-lands at all. The rule is held on the Go leg and in the Go oracle by
-`internal/codegen/gotable/cfloat_special_values_test.go`, which pins NaN,
-`-0`, `+0`, `+Inf` and `-Inf` in all four forms on both shapes above, and by
-`internal/codegen/gotable/fixedcfloat_test.go`'s NaN and negative-zero rows. A
-leg that lands a NaN, keeps a `-0`'s sign bit, or clamps without counting here
-is out of conformance with this paragraph.
+every form a compressed float lands inside its declared range and a NaN or an
+infinity never lands at all. Until the Go leg lands the 2026-10-27 rule,
+`internal/codegen/gotable/cfloat_special_values_test.go` and
+`internal/codegen/gotable/fixedcfloat_test.go` pin the older clamp (a NaN to
+`min`, `+Inf` to `max`, `-Inf` to `min`, each counted); the Go card flips
+those rows to refusals. A leg that lands a NaN, clamps one instead of refusing
+it, keeps a `-0`'s sign bit, or clamps a finite value without counting is out
+of conformance with this paragraph.
 
 **A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A `float32`
-or `float64` with no declared range is defined for every IEEE-754 pattern,
-and §3's FLOAT RIDES AS ITS BIT PATTERN holds for it unchanged: no writer
-normalizes one and no reader repairs one. The rule settles the two places
+or `float64` with no declared range is defined for every FINITE IEEE-754
+pattern, and §3's rule holds for it: a finite value rides as its bits, no
+writer normalizes one and no reader repairs one. The rule settles the places
 that pattern can still fail to agree with itself across the forms — a
-default elision that compares with `==`, under which `-0 == +0`, and a text
-form that has no spelling for a NaN or an infinity — and it is chosen so that
-§16.2's last sentence holds for the binary reads too: **no value a strict
-read calls clean is one any writer refuses.**
+default elision that compares with `==`, under which `-0 == +0`, and the NaN
+and the infinities, which are refused (2026-10-27) — and it is chosen so that
+§16.2's last sentence holds for every read: **no value any read accepts is
+one any writer refuses.**
 
 - **`-0` IS A VALUE, AND IT RIDES.** A plain float's default ELISION COMPARES
   BIT PATTERNS, not values: a field is left off the wire only when its 32 or
@@ -6941,7 +6940,15 @@ read calls clean is one any writer refuses.**
   and its READ cannot produce one (a token is a finite number or it is
   `kind_mismatch`, §16.2). The guarantee is now unconditional: every plain
   float any read accepts is finite, so `Save`, `ToJson` and `SaveText` all
-  write it.
+  write it. Two reads that do not walk every field keep the rule
+  too. A NO-WALK block or cook open (§7, §13.4, §13.6): its STRICT VALIDATOR refuses
+  a non-finite float at load as `non_finite_float`, naming the field, and an
+  accessor that decodes a float field refuses a non-finite one with
+  `non_finite_float` (latched on the view, the field named) and never returns
+  the value. A RETAINED UNKNOWN entry (§6.6) whose wire kind is a float kind
+  (`10` or `11`) is tested on read like a known field, and a non-finite one is
+  refused as `non_finite_float`: uniformity wins over carrying bytes the
+  reader cannot name.
 - **EVERY OTHER PATTERN IS AN ORDINARY VALUE**, a subnormal included: the
   largest subnormal rides every binary form as its bits, writes as the
   shortest text that reads back as the same value at the field's width, and
