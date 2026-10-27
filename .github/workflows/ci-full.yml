@@ -988,6 +988,58 @@ jobs:
         run: make tables-cs-leg-${{ matrix.config }}
 
 
+  # THE UNITY C# LEG, PER PULL REQUEST (docs/UNITY.md). --lang unity is packet
+  # types only and has no table conformance driver, so no matrix discovered
+  # from test/conformance reaches it; this job is its pull-request gate. It is
+  # `make test-unity` whole: the corpus compiled in the Unity dialect
+  # (netstandard2.1, C# 9) and run against the C++-pinned wire goldens in Debug
+  # and Release, the packet defaults, UTF-8 and wide-text gates against the C++
+  # oracle, and each one's negative control. Measured 18 s on the author's
+  # machine after the compiler build.
+  unity:
+    name: Unity C# packet leg
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # serialize.cs is the runtime the generated code calls; serialize (the
+      # C++ headers) builds the packet-text and packet-wide oracle drivers.
+      - name: Check out the serialize runtimes (pinned releases)
+        run: |
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
+      - name: run the leg
+        run: make test-unity
+
+
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
   # little-endian and byte-oriented throughout; §7 says a cook is produced in
   # the byte order of the build it is cooked for, and that Open refuses any

@@ -119,6 +119,7 @@ var catalog = []Entry{
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
+	e("internal/codegen/unity", "Unity C# packet emitter", "go test ./internal/codegen/unity", "go test ./internal/codegen/unity"),
 
 	// tables/
 	e("tables/arms", "union-arm traversal corpus", "make check", "bin/schema check tables/arms"),
@@ -211,6 +212,7 @@ var catalog = []Entry{
 	e("test/slowgate", "SCHEMA_SLOW proof wrapper", "make slow-gate-scan", "make slow-gate-scan"),
 	e("test/table-base64", "table base64 gates", "make test", "make test"),
 	e("test/tables", "C++ table tests", "make test", "./build/schema_test_tables"),
+	e("test/unity", "Unity C# packet tests", "make test-unity", "make test-unity"),
 	e("test/vocabgen", "wide-vocabulary generator", "make check", "go run ./test/vocabgen"),
 	e("test/wide", "wide-text C++ tests", "./build/schema_test_wide", "./build/schema_test_wide"),
 }

@@ -18,6 +18,16 @@
 /test/cs/obj/
 /test/cs-ludicrous/bin/
 /test/cs-ludicrous/obj/
+# the Unity C# leg (make/unity.mk): each harness and the Unity-dialect library
+# beside it build in place
+/test/unity/bin/
+/test/unity/obj/
+/test/unity/lib/bin/
+/test/unity/lib/obj/
+/test/packet-*/unity/bin/
+/test/packet-*/unity/obj/
+/test/packet-*/unity/lib/bin/
+/test/packet-*/unity/lib/obj/
 /test/cs-tables/bin/
 /test/cs-tables/obj/
 /test/cs-block/bin/

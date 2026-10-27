@@ -56,5 +56,6 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
+| `unity/` | Unity C# packet tests | `make test-unity` | `make test-unity` |
 | `vocabgen/` | wide-vocabulary generator | `make check` | `go run ./test/vocabgen` |
 | `wide/` | wide-text C++ tests | `./build/schema_test_wide` | `./build/schema_test_wide` |

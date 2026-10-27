@@ -103,6 +103,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "  Max: 2, // the exported extent (SPEC §4.2)",
 		nameFunc: "export function EnumNameWeaponFireType(value) {",
 	},
+	"unity": {
+		// as cs: Max is a typed constant beside the enum, never a member
+		max:      "public const WeaponFireType WeaponFireTypeMax = (WeaponFireType)2; // the exported extent (SPEC §4.2)",
+		nameFunc: "public static string EnumNameWeaponFireType(WeaponFireType value)",
+	},
 	"rust": {
 		count:    "    pub const COUNT: WeaponFireType = WeaponFireType(2); // the declared variant count (SPEC §4.2)",
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",

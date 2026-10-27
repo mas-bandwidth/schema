@@ -234,6 +234,10 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if packetOnlyTarget(target) {
+			requireTablesFollowOn(t, target, err)
+			continue
+		}
 		if err != nil {
 			t.Errorf("%s refused a fixed table's string, bytes and flags defaults: %v", target, err)
 			continue
@@ -284,7 +288,12 @@ func TestFX1GeneratesOnEveryLeg(t *testing.T) {
 	u := unitFromSource(t, string(src))
 	c := New()
 	for _, target := range c.Targets() {
-		if _, err := c.Generate(u, target, Options{}); err != nil {
+		_, err := c.Generate(u, target, Options{})
+		if packetOnlyTarget(target) {
+			requireTablesFollowOn(t, target, err)
+			continue
+		}
+		if err != nil {
 			t.Errorf("%s refused FX1 (label string(8) = \"fx\"): %v", target, err)
 		}
 	}

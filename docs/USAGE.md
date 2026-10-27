@@ -95,6 +95,12 @@ Run the same command with `--lang c`, `--lang cs`, `--lang elixir`, `--lang go`,
 language — writing the
 **same bits**.
 
+**C# comes in two generators.** `--lang cs` is modern .NET (8 and later,
+C# 12). `--lang unity` is Unity: C# 9 over netstandard2.1, every type an
+unmanaged `[Serializable]` struct with its arrays and strings inline, no
+`unsafe`, IL2CPP and Burst friendly — the same bits again. It carries packet
+types today; [UNITY.md](UNITY.md) is its design note.
+
 **Go: on a shared runtime by default, or standalone (your choice).** By
 default the Go target imports one package of this module,
 `github.com/mas-bandwidth/schema/v2/tables/goruntime`, which carries the

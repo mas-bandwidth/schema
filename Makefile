@@ -6178,6 +6178,10 @@ tables-ports-refuse-wide-scalars: bin/schema
 			echo "tables wide-scalar: $$lang has no --lang yet (schema new-leg skeleton)"; \
 			continue; \
 		fi; \
+		if grep -q "the $$lang table backend is a named follow-on" build/tables-wide-refusal/$$lang.log; then \
+			echo "tables wide-scalar: $$lang is packet-only and refuses every table by name"; \
+			refuse=$$((refuse+1)); continue; \
+		fi; \
 		grep -q "does not carry the fixed-point and 128-bit table-wire kinds yet" build/tables-wide-refusal/$$lang.log || \
 			{ echo "REFUSAL GATE FAILED: the $$lang backend stopped for another reason:"; cat build/tables-wide-refusal/$$lang.log; exit 1; }; \
 		grep -q "SimState.reach fixed(112, 16)" build/tables-wide-refusal/$$lang.log || \

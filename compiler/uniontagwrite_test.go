@@ -49,11 +49,12 @@ type Volley
 // tagAssertsInDebug is the tag's DEBUG-ONLY form in each target that has one:
 // the exact text the writer emits, in that target's own assert idiom.
 var tagAssertsInDebug = map[string][]string{
-	"c":    {"serialize_assert( value->type <= SHOT_TYPE_MAX );"},
-	"cpp":  {"serialize_assert( value.type <= ShotType::Max );"},
-	"cs":   {`Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]");`},
-	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
-	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
+	"c":     {"serialize_assert( value->type <= SHOT_TYPE_MAX );"},
+	"cpp":   {"serialize_assert( value.type <= ShotType::Max );"},
+	"cs":    {`Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]");`},
+	"unity": {`Debug.Assert(tagValue <= 2, "the union tag is outside [0, 2]");`},
+	"dart":  {"assert(value.type >= 0);", "assert(value.type <= 2);"},
+	"java":  {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
 	// js is not here: its debug-only idiom is the PRODUCTION/checked fork of
 	// the flat writer, not a statement. Checked separately below.
 }
@@ -62,9 +63,10 @@ var tagAssertsInDebug = map[string][]string{
 // carry. An assert BESIDE a live refusal removes nothing, so none of it may
 // survive.
 var tagGoneFromRelease = map[string][]string{
-	"c":   {"if ( value->type > SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
-	"cpp": {"not a ShotType value; nothing was written"},
-	"cs":  {"if (tagValue > 2)"},
+	"c":     {"if ( value->type > SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
+	"cpp":   {"not a ShotType value; nothing was written"},
+	"cs":    {"if (tagValue > 2)"},
+	"unity": {"if (tagValue > 2)"},
 }
 
 // tagRefusesEveryBuild is the write's UNCONDITIONAL tag refusal, for the

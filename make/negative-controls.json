@@ -475,6 +475,18 @@
       "dotnet": "pin"
     },
     {
+      "name": "unity-packet",
+      "when": "pull-request",
+      "why": "the Unity C# port's packet controls (docs/UNITY.md): a wrong wire constant against the C++-pinned goldens, missing default bytes against the construction form, and the UTF-8 and surrogate-pairing read refusals removed against the C++ oracle's bit-flip sweep. Each plants its defect in a copy of the generated source and rebuilds the Unity-dialect library around it. Measured about 40 s over 4 controls on the author's machine.",
+      "targets": [
+        "unity-wire-negative-control",
+        "packet-defaults-unity-negative-control",
+        "packet-utf8-unity-negative-control",
+        "packet-wide-unity-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-cards",
       "when": "pull-request",
       "why": "the C# card driver's controls, split from the cs group when the merged stream took that job past its 5-minute timeout: one rendered byte changed (render alone must go red), the upgrade and task-hash switches (each must turn the shared-corpus run red), and the retained-unknown-field control on the Card codec. 2 s each on the author's machine, plus the SDK build.",

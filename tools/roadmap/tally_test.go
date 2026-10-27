@@ -150,10 +150,12 @@ func TestThePageCarriesTheThreeTables(t *testing.T) {
 	}
 }
 
-// TestEveryTableHasTwelveLanguages holds every table header to the nine supported
-// packet-wire languages (#1861) plus the three queued ports (luau, lua, squirrel), in the same order.
-func TestEveryTableHasTwelveLanguages(t *testing.T) {
-	want := "| feature | cpp | c | cs | go | rust | java | js | dart | elixir | luau | lua | squirrel |"
+// TestEveryTableHasThirteenLanguages holds every table header to the nine
+// supported packet-wire languages (#1861), the Unity C# generator beside C#
+// (docs/UNITY.md), and the three queued ports (luau, lua, squirrel), in the
+// same order.
+func TestEveryTableHasThirteenLanguages(t *testing.T) {
+	want := "| feature | cpp | c | cs | unity | go | rust | java | js | dart | elixir | luau | lua | squirrel |"
 	headers := 0
 	for n, line := range strings.Split(readRoadmap(t), "\n") {
 		if strings.HasPrefix(line, "| feature") {

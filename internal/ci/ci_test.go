@@ -190,7 +190,10 @@ func TestEveryProjectTargetsThePinnedSDK(t *testing.T) {
 		}
 		projects++
 		for _, m := range found {
-			if got := strings.TrimSpace(m[1]); got != want {
+			// netstandard2.1 is an API surface, not an SDK: every SDK builds
+			// it, so it cannot drift from the pin. It is the Unity dialect's
+			// target (test/unity/UnityDialect.props, docs/UNITY.md).
+			if got := strings.TrimSpace(m[1]); got != want && got != "netstandard2.1" {
 				t.Errorf("%s targets %s while %s pins %s: certification would run on an SDK no workflow installs (issue #470)", rel, got, dotnetPinFile, pin)
 			}
 		}

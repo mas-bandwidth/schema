@@ -23,6 +23,13 @@
       "used": false
     },
     {
+      "id": "unity",
+      "typeWire": true,
+      "conformance": false,
+      "floor": false,
+      "used": false
+    },
+    {
       "id": "go",
       "typeWire": true,
       "conformance": true,

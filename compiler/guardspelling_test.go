@@ -58,6 +58,7 @@ var guardComment = map[string]string{
 	"java":   " — wire branch",
 	"js":     " — wire branch",
 	"rust":   " — wire branch",
+	"unity":  " — wire branch",
 }
 
 func TestGuardCommentsSpellTheConditionTheWayDescriptorsDo(t *testing.T) {

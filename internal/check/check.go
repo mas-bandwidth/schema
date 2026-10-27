@@ -3553,7 +3553,7 @@ var reservedLanguages = []struct {
 		protected public register reinterpret_cast requires return short signed sizeof static
 		static_assert static_cast struct switch template this thread_local throw true try
 		typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq`},
-	{"C#", []string{"cs", "csharp"}, `abstract as base bool break byte case catch char checked class const continue
+	{"C#", []string{"cs", "csharp", "unity"}, `abstract as base bool break byte case catch char checked class const continue
 		decimal default delegate do double else enum event explicit extern false finally fixed
 		float for foreach goto if implicit in int interface internal is lock long namespace
 		new null object operator out override params private protected public readonly ref

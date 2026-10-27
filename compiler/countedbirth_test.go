@@ -51,6 +51,7 @@ var countName = map[string]string{
 	"java":   "windowCount",
 	"js":     "WindowCount",
 	"rust":   "window_count",
+	"unity":  "WindowCount",
 }
 
 // bornAtMinimum is the text each target's CONSTRUCTED form carries when the
@@ -67,6 +68,7 @@ var bornAtMinimum = map[string]string{
 	"java":   "public int windowCount = 2;",
 	"js":     "this.WindowCount = 2;",
 	"rust":   "window_count: 2,",
+	"unity":  "value.WindowCount = 2;",
 }
 
 // refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the
@@ -91,7 +93,8 @@ var assertsInDebug = map[string][]string{
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
 	// js is not here: its debug-only idiom is not an assert statement but the
 	// PRODUCTION/checked fork of the flat writer, checked separately below.
-	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
+	"rust":  {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
+	"unity": {`Debug.Assert(value.WindowCount >= 2 && value.WindowCount <= 8, "value.WindowCount out of range [2, 8]");`},
 }
 
 // goneFromRelease is the every-build refusal each assert target used to carry.
@@ -101,10 +104,11 @@ var goneFromRelease = map[string][]string{
 	"cpp": {
 		"if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )",
 	},
-	"cs":   {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
-	"dart": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"java": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"rust": {"if value.window_count < 2 || value.window_count > 8 {"},
+	"cs":    {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
+	"dart":  {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"java":  {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"rust":  {"if value.window_count < 2 || value.window_count > 8 {"},
+	"unity": {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
 }
 
 // assertToken is the build-removable predicate each target spells its writer

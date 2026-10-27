@@ -14,16 +14,47 @@ import (
 )
 
 // TestEveryTargetHasATableBackend: a unit declaring an ordinary table is
-// accepted by EVERY generated language — refusal is scoped to a construct a
-// backend does not carry, never to the table declaration itself.
+// accepted by every language with a table backend — refusal is scoped to a
+// construct a backend does not carry, never to the table declaration itself.
+// A packet-only target (registered without tables: unity today) refuses the
+// declaration by name, as a named follow-on.
 func TestEveryTargetHasATableBackend(t *testing.T) {
 	t.Parallel()
 	c := New()
 	u := unitFromSource(t, tableSrc)
 	for _, target := range c.Targets() {
-		if _, err := c.Generate(u, target, Options{}); err != nil {
+		_, err := c.Generate(u, target, Options{})
+		if packetOnlyTarget(target) {
+			requireTablesFollowOn(t, target, err)
+			continue
+		}
+		if err != nil {
 			t.Errorf("--lang %s refused a plain table declaration: %v", target, err)
 		}
+	}
+}
+
+// packetOnlyTarget reports a built-in target registered without a table
+// backend (registerBuiltin's tables flag).
+func packetOnlyTarget(target string) bool {
+	for _, name := range tableTargets {
+		if name == target {
+			return false
+		}
+	}
+	return true
+}
+
+// requireTablesFollowOn holds a packet-only target to refusing a unit with
+// tables by name, never emitting the packet half alone.
+func requireTablesFollowOn(t *testing.T, target string, err error) {
+	t.Helper()
+	if err == nil {
+		t.Errorf("--lang %s has no table backend and emitted a unit declaring tables", target)
+		return
+	}
+	if want := "the " + target + " table backend is a named follow-on"; !strings.Contains(err.Error(), want) {
+		t.Errorf("--lang %s refused without naming its table follow-on (%q): %v", target, want, err)
 	}
 }
 

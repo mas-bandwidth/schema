@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The generated units this harness drives, in the Unity dialect
+       (test/unity/UnityDialect.props). -->
+  <Import Project="../../../unity/UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>packetwideunity</AssemblyName>
+    <TextDir Condition="'$(TextDir)' == ''">$(MSBuildThisFileDirectory)../../../../build/packet-wide/unity/wide</TextDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(TextDir)/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../../../build/packet-wide/unity/shapes/*.cs" />
+  </ItemGroup>
+
+</Project>

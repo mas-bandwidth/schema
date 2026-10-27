@@ -1,0 +1,27 @@
+<Project>
+
+  <!-- THE UNITY DIALECT (docs/UNITY.md), imported by every netstandard2.1 project that
+       compiles generated Unity-target sources: the API surface Unity 2021.2
+       through Unity 6 exposes (netstandard2.1) and the language version its
+       compiler accepts (C# 9), warnings as errors, nullable off as a Unity
+       project leaves it, and no unsafe code — so anything the editor would
+       refuse fails here. serialize.cs rides as its own assembly, the way a
+       Unity project carries it in its own asmdef. -->
+  <PropertyGroup>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <SerializeCsRoot Condition="'$(SerializeCsRoot)' == ''">$(MSBuildThisFileDirectory)../../../serialize.cs</SerializeCsRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SerializeCsRoot)/src/Serialize.csproj" SetTargetFramework="TargetFramework=netstandard2.1" />
+  </ItemGroup>
+
+</Project>

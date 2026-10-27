@@ -2739,6 +2739,14 @@ or a file per declaration where the language demands one.
   per translation unit behind a guard; the home is named for the PACKAGE on
   §19.2's rule for every port. Every unit emits one further file per unit,
   `<Package>View.cs`, on the same terms as the C++ pair above.
+- **Unity C# (`--lang unity`):** one `.cs` file per schema file on the C#
+  terms above — types at namespace level, every function and constant on
+  `public static partial class Schema` — in the Unity dialect: C# 9 over
+  netstandard2.1, every `type` and `union` an unmanaged struct, its buffers the
+  unit's `Buffer<N><T>` structs and their `Buffers` span views, emitted once
+  per unit into the protocol-id home file ([UNITY.md](UNITY.md)). Packet types
+  only: a unit with tables is refused by name, the Unity table backend being a
+  named follow-on.
 - **Dart:** one library per schema file, cross-file `import`s derived from
   actual references, with `show` clauses naming exactly the symbols used. A
   unit that declares TABLES grows two further libraries per schema file —

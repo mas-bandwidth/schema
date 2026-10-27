@@ -23,3 +23,4 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `jstable/` | JS table emitter | `go test ./internal/codegen/jstable` | `go test ./internal/codegen/jstable` |
 | `rust/` | Rust packet emitter | `go test ./internal/codegen/rust` | `go test ./internal/codegen/rust` |
 | `rusttable/` | Rust table emitter | `go test ./internal/codegen/rusttable` | `go test ./internal/codegen/rusttable` |
+| `unity/` | Unity C# packet emitter | `go test ./internal/codegen/unity` | `go test ./internal/codegen/unity` |

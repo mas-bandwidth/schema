@@ -162,6 +162,14 @@ func TestGoldenSourceCs(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "cs"), files)
 }
 
+// TestGoldenSourceUnity pins the generated Unity C# (--lang unity,
+// docs/UNITY.md) byte-for-byte (SPEC §7.2 gate 1).
+func TestGoldenSourceUnity(t *testing.T) {
+	u := loadCorpus(t)
+	files := generate(t, u, "unity", nil)
+	pinDir(t, filepath.Join(goldenDir, "unity"), files)
+}
+
 // TestGoldenSourceJs pins the generated JavaScript byte-for-byte (SPEC §7.2
 // gate 1, sixth target).
 func TestGoldenSourceJs(t *testing.T) {
@@ -298,7 +306,7 @@ func TestGoldenWideSource(t *testing.T) {
 
 // The packet file is isolated from examples-wide's table kind 33 and its
 // baseline. Each port pins the exact same packet declarations as C++.
-var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir"}
+var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "unity"}
 
 func TestGoldenPacketWideSource(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(corpusWideDir, "WideText.schema"))
