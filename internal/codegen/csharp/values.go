@@ -2,7 +2,7 @@ package csharp
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -148,7 +148,7 @@ func bufferLengths(u *ir.Unit, values map[string]bool) []int64 {
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
