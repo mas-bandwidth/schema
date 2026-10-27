@@ -219,8 +219,8 @@ func t04W2(t *testing.T) {
 	if body == "" {
 		t.Fatal("W2: the fixture emits no TFixedWriteBody")
 	}
-	t04Has(t, body, "view.setUint8(at + 6, value.LinkPresent ? 1 : 0);",
+	t04Has(t, body, "view.setUint8(at + 6, value.linkPresent ? 1 : 0);",
 		"W2 the present byte is written for every record")
-	t04Has(t, body, "if (value.LinkPresent) { view.setInt32(at + 7, value.Link, true); }",
+	t04Has(t, body, "if (value.linkPresent) { view.setInt32(at + 7, value.link, true); }",
 		"W2 the payload store is inside the present branch, so an absent optional skips it")
 }

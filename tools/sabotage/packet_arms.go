@@ -45,9 +45,9 @@ var packetArmSabotages = map[string][]edit{
 	}},
 	"packet-arm-zero-js-runtime": {{
 		old: `		g.addRef(v.Type, "Init"+v.Type, "Read"+v.Type)
-		g.pf("      Init%s(value.%s); // fresh declared defaults on every selection\n", v.Type, ir.GoExportName(v.Name))`,
+		g.pf("      Init%s(value.%s); // fresh declared defaults on every selection\n", v.Type, MemberName(v.Name))`,
 		new: `		g.addRef(v.Type, "Zero"+v.Type, "Read"+v.Type)
-		g.pf("      Zero%s(value.%s); // SABOTAGED: zero instead of construction defaults\n", v.Type, ir.GoExportName(v.Name))`,
+		g.pf("      Zero%s(value.%s); // SABOTAGED: zero instead of construction defaults\n", v.Type, MemberName(v.Name))`,
 	}},
 	"packet-arm-zero-js-flat": {{
 		old: `		init := &gen{unit: g.unit, file: g.file, inlineInit: true}

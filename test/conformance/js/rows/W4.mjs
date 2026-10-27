@@ -70,16 +70,16 @@ const HEADERS = home.TableFixedHeaderBytes + home.TableFixedLayoutHeaderBytes; /
 const bodyAt = (k) => HEADERS + tables.RootConfigFixedLayoutBytes + 8 + k;     // body offsets
 
 const value = new home.RootConfig();
-value.VersionNote.set([0x72, 0x65, 0x6c, 0x2d, 0x31], 0); // "rel-1": 5 of 16 used
-value.VersionNoteLength = 5;
-const w0 = value.Weapons[0];
-w0.Damage = 12.5; w0.Speed = 250.0; w0.Penetration = 5; w0.Channel = 3;
-w0.Homing = true; w0.Effect.Type = 1; w0.Effect.Buff.Multiplier = 2.0;
-const w1 = value.Weapons[1];
-w1.Damage = 7.25; w1.Speed = 125.0; w1.Penetration = 3; w1.Channel = 0;
-w1.Homing = false; w1.Effect.Type = 0;
-value.WeaponsCount = 2;
-value.ProfilesCount = 0;
+value.versionNote.set([0x72, 0x65, 0x6c, 0x2d, 0x31], 0); // "rel-1": 5 of 16 used
+value.versionNoteLength = 5;
+const w0 = value.weapons[0];
+w0.damage = 12.5; w0.speed = 250.0; w0.penetration = 5; w0.channel = 3;
+w0.homing = true; w0.effect.type = 1; w0.effect.buff.multiplier = 2.0;
+const w1 = value.weapons[1];
+w1.damage = 7.25; w1.speed = 125.0; w1.penetration = 3; w1.channel = 0;
+w1.homing = false; w1.effect.type = 0;
+value.weaponsCount = 2;
+value.profilesCount = 0;
 
 const file = new Uint8Array(tables.RootConfigFixedMeasure(1));
 check(tables.RootConfigFixedSave([value], 1, file) === file.length,
@@ -135,19 +135,19 @@ check(JSON.stringify(countersOf(dirty.r)) === JSON.stringify(countersOf(clean.r)
   `moves no counter: every counter of the stained read equals the clean read (${JSON.stringify(countersOf(dirty.r))})`);
 
 const v = dirty.v;
-check(v.VersionNoteLength === 5 && clean.v.VersionNoteLength === 5 &&
-  v.VersionNote.subarray(0, 5).join() === "114,101,108,45,49",
-  `used units only: the string keeps its length 5 and "rel-1" behind invalid UTF-8 (len=${v.VersionNoteLength})`);
-check(v.WeaponsCount === 2 && v.Weapons[0].Damage === 12.5 && v.Weapons[0].Penetration === 5 &&
-  v.Weapons[0].Homing === true && v.Weapons[0].Effect.Type === 1 &&
-  v.Weapons[0].Effect.Buff.Multiplier === 2.0 && v.Weapons[1].Penetration === 3 &&
-  v.Weapons[1].Effect.Type === 0 && v.ProfilesCount === 0,
+check(v.versionNoteLength === 5 && clean.v.versionNoteLength === 5 &&
+  v.versionNote.subarray(0, 5).join() === "114,101,108,45,49",
+  `used units only: the string keeps its length 5 and "rel-1" behind invalid UTF-8 (len=${v.versionNoteLength})`);
+check(v.weaponsCount === 2 && v.weapons[0].damage === 12.5 && v.weapons[0].penetration === 5 &&
+  v.weapons[0].homing === true && v.weapons[0].effect.type === 1 &&
+  v.weapons[0].effect.buff.multiplier === 2.0 && v.weapons[1].penetration === 3 &&
+  v.weapons[1].effect.type === 0 && v.profilesCount === 0,
   "used units only: every live value lands exactly as the zeroed-slack read gave it");
-check(JSON.stringify([v.VersionNoteLength, v.WeaponsCount, v.Weapons[0].Penetration, v.Weapons[1].Penetration]) ===
-  JSON.stringify([clean.v.VersionNoteLength, clean.v.WeaponsCount, clean.v.Weapons[0].Penetration, clean.v.Weapons[1].Penetration]),
+check(JSON.stringify([v.versionNoteLength, v.weaponsCount, v.weapons[0].penetration, v.weapons[1].penetration]) ===
+  JSON.stringify([clean.v.versionNoteLength, clean.v.weaponsCount, clean.v.weapons[0].penetration, clean.v.weapons[1].penetration]),
   "the two peers agree: zeroed slack and stained slack decode the same used extent");
-check(v.Weapons[2].Penetration === 1 && v.Weapons[2].Damage === 21 && v.Weapons[3].Effect.Type === 0 &&
-  v.Profiles[0].NameLength === 0,
+check(v.weapons[2].penetration === 1 && v.weapons[2].damage === 21 && v.weapons[3].effect.type === 0 &&
+  v.profiles[0].nameLength === 0,
   "never looks at the slack: dead slots keep the caller's own storage, not the wire's garbage");
 
 if (failures > 0) {

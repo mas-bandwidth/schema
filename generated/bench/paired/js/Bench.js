@@ -20,6 +20,55 @@ const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
 export const ProtocolId = 0xc93127c82f083edfn;
@@ -27,18 +76,18 @@ export const ProtocolId = 0xc93127c82f083edfn;
 // type BenchPacket
 export class BenchPacket {
   constructor() {
-    this.A = 0; // wire [-100, 100]
-    this.B = 0; // wire [0, 65535]
-    this.C = 0; // wire [-1000000, 1000000]
-    this.Bits7 = 0;
-    this.Bits13 = 0;
-    this.Bits23 = 0;
-    this.Flag = false;
-    this.X = 0;
-    this.Y = 0;
-    this.Z = 0;
-    this.Big = 0n;
-    this.Blob = new Uint8Array(17);
+    this.a = 0; // wire [-100, 100]
+    this.b = 0; // wire [0, 65535]
+    this.c = 0; // wire [-1000000, 1000000]
+    this.bits7 = 0;
+    this.bits13 = 0;
+    this.bits23 = 0;
+    this.flag = false;
+    this.x = 0;
+    this.y = 0;
+    this.z = 0;
+    this.big = 0n;
+    this.blob = new Uint8Array(17);
   }
 }
 
@@ -49,94 +98,94 @@ export const BenchPacketMaxBytes = 56;
 
 // InitBenchPacket restores fresh construction values in place, preserving storage.
 export function InitBenchPacket(value) {
-  value.A = 0;
-  value.B = 0;
-  value.C = 0;
-  value.Bits7 = 0;
-  value.Bits13 = 0;
-  value.Bits23 = 0;
-  value.Flag = false;
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.Big = 0n;
-  value.Blob.fill(0);
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
+  value.bits7 = 0;
+  value.bits13 = 0;
+  value.bits23 = 0;
+  value.flag = false;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.big = 0n;
+  value.blob.fill(0);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchPacket(value) {
-  value.A = 0;
-  value.B = 0;
-  value.C = 0;
-  value.Bits7 = 0;
-  value.Bits13 = 0;
-  value.Bits23 = 0;
-  value.Flag = false;
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.Big = 0n;
-  value.Blob.fill(0);
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
+  value.bits7 = 0;
+  value.bits13 = 0;
+  value.bits23 = 0;
+  value.flag = false;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.big = 0n;
+  value.blob.fill(0);
 }
 
 export function WriteBenchPacket(stream, value) {
-  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
+  if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.A >>> 0) - (-100 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.a >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.B) || value.B < 0 || value.B > 65535) {
+  if (!Number.isInteger(value.b) || value.b < 0 || value.b > 65535) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B;
+  NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.C) || value.C < -1000000 || value.C > 1000000) {
+  if (!Number.isInteger(value.c) || value.c < -1000000 || value.c > 1000000) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.C >>> 0) - (-1000000 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.c >>> 0) - (-1000000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Bits7;
+  NUMBER_SCRATCH.value = value.bits7;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Bits13;
+  NUMBER_SCRATCH.value = value.bits13;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Bits23;
+  NUMBER_SCRATCH.value = value.bits23;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Flag;
+  BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.X;
+  NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Y;
+  NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Z;
+  NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Big;
+  BIGINT_SCRATCH.value = value.big;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (!stream.serializeAlign()) {
     return false;
   }
-  if (!stream.serializeBytes(value.Blob.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+  if (!stream.serializeBytes(value.blob.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }
   return true;
@@ -146,51 +195,51 @@ export function ReadBenchPacket(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
   }
-  value.A = NUMBER_SCRATCH.value;
+  value.a = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 65535)) {
     return false;
   }
-  value.B = NUMBER_SCRATCH.value;
+  value.b = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -1000000, 1000000)) {
     return false;
   }
-  value.C = NUMBER_SCRATCH.value;
+  value.c = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.Bits7 = NUMBER_SCRATCH.value;
+  value.bits7 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
-  value.Bits13 = NUMBER_SCRATCH.value;
+  value.bits13 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  value.Bits23 = NUMBER_SCRATCH.value;
+  value.bits23 = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Flag = BOOL_SCRATCH.value;
+  value.flag = BOOL_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Z = NUMBER_SCRATCH.value;
+  value.z = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Big = BIGINT_SCRATCH.value;
+  value.big = BIGINT_SCRATCH.value;
   if (!stream.serializeAlign()) { // rejects nonzero padding (SPEC §4.3)
     return false;
   }
-  if (!stream.serializeBytes(value.Blob.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+  if (!stream.serializeBytes(value.blob.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }
   return true;
@@ -199,16 +248,16 @@ export function ReadBenchPacket(stream, value) {
 // type BenchInts
 export class BenchInts {
   constructor() {
-    this.F0 = 0; // wire [-100, 100]
-    this.F1 = 0; // wire [0, 65535]
-    this.F2 = 0; // wire [-1000000, 1000000]
-    this.F3 = 0; // wire [0, 3]
-    this.F4 = 0; // wire [-15, 15]
-    this.F5 = 0; // wire [0, 1000]
-    this.F6 = 0; // wire [-2048, 2047]
-    this.F7 = 0; // wire [0, 255]
-    this.F8 = 0; // wire [-600000, 600000]
-    this.F9 = 0; // wire [0, 100]
+    this.f0 = 0; // wire [-100, 100]
+    this.f1 = 0; // wire [0, 65535]
+    this.f2 = 0; // wire [-1000000, 1000000]
+    this.f3 = 0; // wire [0, 3]
+    this.f4 = 0; // wire [-15, 15]
+    this.f5 = 0; // wire [0, 1000]
+    this.f6 = 0; // wire [-2048, 2047]
+    this.f7 = 0; // wire [0, 255]
+    this.f8 = 0; // wire [-600000, 600000]
+    this.f9 = 0; // wire [0, 100]
   }
 }
 
@@ -219,100 +268,100 @@ export const BenchIntsMaxBytes = 16;
 
 // InitBenchInts restores fresh construction values in place, preserving storage.
 export function InitBenchInts(value) {
-  value.F0 = 0;
-  value.F1 = 0;
-  value.F2 = 0;
-  value.F3 = 0;
-  value.F4 = 0;
-  value.F5 = 0;
-  value.F6 = 0;
-  value.F7 = 0;
-  value.F8 = 0;
-  value.F9 = 0;
+  value.f0 = 0;
+  value.f1 = 0;
+  value.f2 = 0;
+  value.f3 = 0;
+  value.f4 = 0;
+  value.f5 = 0;
+  value.f6 = 0;
+  value.f7 = 0;
+  value.f8 = 0;
+  value.f9 = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchInts(value) {
-  value.F0 = 0;
-  value.F1 = 0;
-  value.F2 = 0;
-  value.F3 = 0;
-  value.F4 = 0;
-  value.F5 = 0;
-  value.F6 = 0;
-  value.F7 = 0;
-  value.F8 = 0;
-  value.F9 = 0;
+  value.f0 = 0;
+  value.f1 = 0;
+  value.f2 = 0;
+  value.f3 = 0;
+  value.f4 = 0;
+  value.f5 = 0;
+  value.f6 = 0;
+  value.f7 = 0;
+  value.f8 = 0;
+  value.f9 = 0;
 }
 
 export function WriteBenchInts(stream, value) {
-  if (!Number.isInteger(value.F0) || value.F0 < -100 || value.F0 > 100) {
+  if (!Number.isInteger(value.f0) || value.f0 < -100 || value.f0 > 100) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F0 >>> 0) - (-100 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f0 >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.F1) || value.F1 < 0 || value.F1 > 65535) {
+  if (!Number.isInteger(value.f1) || value.f1 < 0 || value.f1 > 65535) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F1;
+  NUMBER_SCRATCH.value = value.f1;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.F2) || value.F2 < -1000000 || value.F2 > 1000000) {
+  if (!Number.isInteger(value.f2) || value.f2 < -1000000 || value.f2 > 1000000) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F2 >>> 0) - (-1000000 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f2 >>> 0) - (-1000000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.F3) || value.F3 < 0 || value.F3 > 3) {
+  if (!Number.isInteger(value.f3) || value.f3 < 0 || value.f3 > 3) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F3;
+  NUMBER_SCRATCH.value = value.f3;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.F4) || value.F4 < -15 || value.F4 > 15) {
+  if (!Number.isInteger(value.f4) || value.f4 < -15 || value.f4 > 15) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F4 >>> 0) - (-15 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f4 >>> 0) - (-15 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.F5) || value.F5 < 0 || value.F5 > 1000) {
+  if (!Number.isInteger(value.f5) || value.f5 < 0 || value.f5 > 1000) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F5;
+  NUMBER_SCRATCH.value = value.f5;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.F6) || value.F6 < -2048 || value.F6 > 2047) {
+  if (!Number.isInteger(value.f6) || value.f6 < -2048 || value.f6 > 2047) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F6 >>> 0) - (-2048 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f6 >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.F7) || value.F7 < 0 || value.F7 > 255) {
+  if (!Number.isInteger(value.f7) || value.f7 < 0 || value.f7 > 255) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F7;
+  NUMBER_SCRATCH.value = value.f7;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.F8) || value.F8 < -600000 || value.F8 > 600000) {
+  if (!Number.isInteger(value.f8) || value.f8 < -600000 || value.f8 > 600000) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F8 >>> 0) - (-600000 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f8 >>> 0) - (-600000 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.F9) || value.F9 < 0 || value.F9 > 100) {
+  if (!Number.isInteger(value.f9) || value.f9 < 0 || value.f9 > 100) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F9;
+  NUMBER_SCRATCH.value = value.f9;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -323,57 +372,57 @@ export function ReadBenchInts(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
   }
-  value.F0 = NUMBER_SCRATCH.value;
+  value.f0 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 65535)) {
     return false;
   }
-  value.F1 = NUMBER_SCRATCH.value;
+  value.f1 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -1000000, 1000000)) {
     return false;
   }
-  value.F2 = NUMBER_SCRATCH.value;
+  value.f2 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
     return false;
   }
-  value.F3 = NUMBER_SCRATCH.value;
+  value.f3 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -15, 15)) {
     return false;
   }
-  value.F4 = NUMBER_SCRATCH.value;
+  value.f4 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
     return false;
   }
-  value.F5 = NUMBER_SCRATCH.value;
+  value.f5 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -2048, 2047)) {
     return false;
   }
-  value.F6 = NUMBER_SCRATCH.value;
+  value.f6 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
     return false;
   }
-  value.F7 = NUMBER_SCRATCH.value;
+  value.f7 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -600000, 600000)) {
     return false;
   }
-  value.F8 = NUMBER_SCRATCH.value;
+  value.f8 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 100)) {
     return false;
   }
-  value.F9 = NUMBER_SCRATCH.value;
+  value.f9 = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type BenchBits
 export class BenchBits {
   constructor() {
-    this.B7 = 0;
-    this.B13 = 0;
-    this.B23 = 0;
-    this.B3 = 0;
-    this.B32 = 0;
-    this.B11 = 0;
-    this.B19 = 0;
-    this.B48 = 0n;
+    this.b7 = 0;
+    this.b13 = 0;
+    this.b23 = 0;
+    this.b3 = 0;
+    this.b32 = 0;
+    this.b11 = 0;
+    this.b19 = 0;
+    this.b48 = 0n;
   }
 }
 
@@ -384,58 +433,58 @@ export const BenchBitsMaxBytes = 24;
 
 // InitBenchBits restores fresh construction values in place, preserving storage.
 export function InitBenchBits(value) {
-  value.B7 = 0;
-  value.B13 = 0;
-  value.B23 = 0;
-  value.B3 = 0;
-  value.B32 = 0;
-  value.B11 = 0;
-  value.B19 = 0;
-  value.B48 = 0n;
+  value.b7 = 0;
+  value.b13 = 0;
+  value.b23 = 0;
+  value.b3 = 0;
+  value.b32 = 0;
+  value.b11 = 0;
+  value.b19 = 0;
+  value.b48 = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchBits(value) {
-  value.B7 = 0;
-  value.B13 = 0;
-  value.B23 = 0;
-  value.B3 = 0;
-  value.B32 = 0;
-  value.B11 = 0;
-  value.B19 = 0;
-  value.B48 = 0n;
+  value.b7 = 0;
+  value.b13 = 0;
+  value.b23 = 0;
+  value.b3 = 0;
+  value.b32 = 0;
+  value.b11 = 0;
+  value.b19 = 0;
+  value.b48 = 0n;
 }
 
 export function WriteBenchBits(stream, value) {
-  NUMBER_SCRATCH.value = value.B7;
+  NUMBER_SCRATCH.value = value.b7;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B13;
+  NUMBER_SCRATCH.value = value.b13;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B23;
+  NUMBER_SCRATCH.value = value.b23;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B3;
+  NUMBER_SCRATCH.value = value.b3;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B32;
+  NUMBER_SCRATCH.value = value.b32;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B11;
+  NUMBER_SCRATCH.value = value.b11;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B19;
+  NUMBER_SCRATCH.value = value.b19;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.B48;
+  BIGINT_SCRATCH.value = value.b48;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
@@ -446,35 +495,35 @@ export function ReadBenchBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.B7 = NUMBER_SCRATCH.value;
+  value.b7 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
-  value.B13 = NUMBER_SCRATCH.value;
+  value.b13 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  value.B23 = NUMBER_SCRATCH.value;
+  value.b23 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.B3 = NUMBER_SCRATCH.value;
+  value.b3 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.B32 = NUMBER_SCRATCH.value;
+  value.b32 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  value.B11 = NUMBER_SCRATCH.value;
+  value.b11 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
     return false;
   }
-  value.B19 = NUMBER_SCRATCH.value;
+  value.b19 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  value.B48 = BIGINT_SCRATCH.value;
+  value.b48 = BIGINT_SCRATCH.value;
   return true;
 }
 
@@ -498,9 +547,8 @@ export const MixedWeapon = Object.freeze({
   Turret: 13,
   Drone: 14,
   Repair: 15,
-  Count: 15, // the declared variant count (SPEC §4.2)
-  Max: 15, // the exported extent (SPEC §4.2)
 });
+export const MixedWeaponMax = 15; // the exported extent (SPEC §4.2)
 
 // EnumNameMixedWeapon: debug/log/tooling name for any MixedWeapon wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -610,20 +658,20 @@ export function FlagNamesMixedDamage(value) {
 // type MixedEntity
 export class MixedEntity {
   constructor() {
-    this.EntityId = 0;
-    this.PosX = 0; // wire [-16383, 16383]
-    this.PosY = 0; // wire [-16383, 16383]
-    this.PosZ = 0; // wire [-16383, 16383]
-    this.Yaw = 0;
-    this.Pitch = 0;
-    this.VelX = 0; // wire [-2048, 2047]
-    this.VelY = 0; // wire [-2048, 2047]
-    this.VelZ = 0; // wire [-2048, 2047]
-    this.Health = 0; // wire [0, 1000]
-    this.Weapon = MixedWeapon.None;
-    this.Damage = 0n; // MixedDamage — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
-    this.Moving = false;
-    this.Firing = false;
+    this.entityId = 0;
+    this.posX = 0; // wire [-16383, 16383]
+    this.posY = 0; // wire [-16383, 16383]
+    this.posZ = 0; // wire [-16383, 16383]
+    this.yaw = 0;
+    this.pitch = 0;
+    this.velX = 0; // wire [-2048, 2047]
+    this.velY = 0; // wire [-2048, 2047]
+    this.velZ = 0; // wire [-2048, 2047]
+    this.health = 0; // wire [0, 1000]
+    this.weapon = MixedWeapon.None;
+    this.damage = 0n; // MixedDamage — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    this.moving = false;
+    this.firing = false;
   }
 }
 
@@ -634,111 +682,111 @@ export const MixedEntityMaxBytes = 24;
 
 // InitMixedEntity restores fresh construction values in place, preserving storage.
 export function InitMixedEntity(value) {
-  value.EntityId = 0;
-  value.PosX = 0;
-  value.PosY = 0;
-  value.PosZ = 0;
-  value.Yaw = 0;
-  value.Pitch = 0;
-  value.VelX = 0;
-  value.VelY = 0;
-  value.VelZ = 0;
-  value.Health = 0;
-  value.Weapon = MixedWeapon.None;
-  value.Damage = 0n;
-  value.Moving = false;
-  value.Firing = false;
+  value.entityId = 0;
+  value.posX = 0;
+  value.posY = 0;
+  value.posZ = 0;
+  value.yaw = 0;
+  value.pitch = 0;
+  value.velX = 0;
+  value.velY = 0;
+  value.velZ = 0;
+  value.health = 0;
+  value.weapon = MixedWeapon.None;
+  value.damage = 0n;
+  value.moving = false;
+  value.firing = false;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedEntity(value) {
-  value.EntityId = 0;
-  value.PosX = 0;
-  value.PosY = 0;
-  value.PosZ = 0;
-  value.Yaw = 0;
-  value.Pitch = 0;
-  value.VelX = 0;
-  value.VelY = 0;
-  value.VelZ = 0;
-  value.Health = 0;
-  value.Weapon = MixedWeapon.None;
-  value.Damage = 0n;
-  value.Moving = false;
-  value.Firing = false;
+  value.entityId = 0;
+  value.posX = 0;
+  value.posY = 0;
+  value.posZ = 0;
+  value.yaw = 0;
+  value.pitch = 0;
+  value.velX = 0;
+  value.velY = 0;
+  value.velZ = 0;
+  value.health = 0;
+  value.weapon = MixedWeapon.None;
+  value.damage = 0n;
+  value.moving = false;
+  value.firing = false;
 }
 
 export function WriteMixedEntity(stream, value) {
-  NUMBER_SCRATCH.value = value.EntityId;
+  NUMBER_SCRATCH.value = value.entityId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.PosX) || value.PosX < -16383 || value.PosX > 16383) {
+  if (!Number.isInteger(value.posX) || value.posX < -16383 || value.posX > 16383) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.PosX >>> 0) - (-16383 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.posX >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.PosY) || value.PosY < -16383 || value.PosY > 16383) {
+  if (!Number.isInteger(value.posY) || value.posY < -16383 || value.posY > 16383) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.PosY >>> 0) - (-16383 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.posY >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  if (!Number.isInteger(value.PosZ) || value.PosZ < -16383 || value.PosZ > 16383) {
+  if (!Number.isInteger(value.posZ) || value.posZ < -16383 || value.posZ > 16383) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.PosZ >>> 0) - (-16383 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.posZ >>> 0) - (-16383 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 15)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Yaw;
+  NUMBER_SCRATCH.value = value.yaw;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Pitch;
+  NUMBER_SCRATCH.value = value.pitch;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  if (!Number.isInteger(value.VelX) || value.VelX < -2048 || value.VelX > 2047) {
+  if (!Number.isInteger(value.velX) || value.velX < -2048 || value.velX > 2047) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.VelX >>> 0) - (-2048 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.velX >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.VelY) || value.VelY < -2048 || value.VelY > 2047) {
+  if (!Number.isInteger(value.velY) || value.velY < -2048 || value.velY > 2047) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.VelY >>> 0) - (-2048 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.velY >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.VelZ) || value.VelZ < -2048 || value.VelZ > 2047) {
+  if (!Number.isInteger(value.velZ) || value.velZ < -2048 || value.velZ > 2047) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.VelZ >>> 0) - (-2048 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.velZ >>> 0) - (-2048 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) {
+  if (!Number.isInteger(value.health) || value.health < 0 || value.health > 1000) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Health;
+  NUMBER_SCRATCH.value = value.health;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.Weapon;
+  NUMBER_SCRATCH.value = value.weapon;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
   {
-    const flagsValue = BigInt.asUintN(64, value.Damage);
+    const flagsValue = BigInt.asUintN(64, value.damage);
     if (flagsValue >= 1n << 8n) { // a mask bit above the wire width cannot ride
       return false;
     }
@@ -747,11 +795,11 @@ export function WriteMixedEntity(stream, value) {
       return false;
     }
   }
-  BOOL_SCRATCH.value = value.Moving;
+  BOOL_SCRATCH.value = value.moving;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Firing;
+  BOOL_SCRATCH.value = value.firing;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
@@ -762,67 +810,67 @@ export function ReadMixedEntity(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  value.EntityId = NUMBER_SCRATCH.value;
+  value.entityId = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -16383, 16383)) {
     return false;
   }
-  value.PosX = NUMBER_SCRATCH.value;
+  value.posX = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -16383, 16383)) {
     return false;
   }
-  value.PosY = NUMBER_SCRATCH.value;
+  value.posY = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -16383, 16383)) {
     return false;
   }
-  value.PosZ = NUMBER_SCRATCH.value;
+  value.posZ = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  value.Yaw = NUMBER_SCRATCH.value;
+  value.yaw = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  value.Pitch = NUMBER_SCRATCH.value;
+  value.pitch = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -2048, 2047)) {
     return false;
   }
-  value.VelX = NUMBER_SCRATCH.value;
+  value.velX = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -2048, 2047)) {
     return false;
   }
-  value.VelY = NUMBER_SCRATCH.value;
+  value.velY = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -2048, 2047)) {
     return false;
   }
-  value.VelZ = NUMBER_SCRATCH.value;
+  value.velZ = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
     return false;
   }
-  value.Health = NUMBER_SCRATCH.value;
+  value.health = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
     return false;
   }
-  value.Weapon = NUMBER_SCRATCH.value;
+  value.weapon = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Damage = BigInt(NUMBER_SCRATCH.value);
+  value.damage = BigInt(NUMBER_SCRATCH.value);
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Moving = BOOL_SCRATCH.value;
+  value.moving = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Firing = BOOL_SCRATCH.value;
+  value.firing = BOOL_SCRATCH.value;
   return true;
 }
 
 // type MixedStat
 export class MixedStat {
   constructor() {
-    this.StatId = 0;
-    this.Delta = 0; // wire [-512, 511]
+    this.statId = 0;
+    this.delta = 0; // wire [-512, 511]
   }
 }
 
@@ -833,25 +881,25 @@ export const MixedStatMaxBytes = 8;
 
 // InitMixedStat restores fresh construction values in place, preserving storage.
 export function InitMixedStat(value) {
-  value.StatId = 0;
-  value.Delta = 0;
+  value.statId = 0;
+  value.delta = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedStat(value) {
-  value.StatId = 0;
-  value.Delta = 0;
+  value.statId = 0;
+  value.delta = 0;
 }
 
 export function WriteMixedStat(stream, value) {
-  NUMBER_SCRATCH.value = value.StatId;
+  NUMBER_SCRATCH.value = value.statId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.Delta) || value.Delta < -512 || value.Delta > 511) {
+  if (!Number.isInteger(value.delta) || value.delta < -512 || value.delta > 511) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.Delta >>> 0) - (-512 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.delta >>> 0) - (-512 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
@@ -862,21 +910,21 @@ export function ReadMixedStat(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.StatId = NUMBER_SCRATCH.value;
+  value.statId = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -512, 511)) {
     return false;
   }
-  value.Delta = NUMBER_SCRATCH.value;
+  value.delta = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type MixedHitEvent
 export class MixedHitEvent {
   constructor() {
-    this.TargetId = 0;
-    this.Damage = 0; // wire [0, 4095]
-    this.HitKind = 0; // wire [0, 7]
-    this.Crit = false;
+    this.targetId = 0;
+    this.damage = 0; // wire [0, 4095]
+    this.hitKind = 0; // wire [0, 7]
+    this.crit = false;
   }
 }
 
@@ -887,40 +935,40 @@ export const MixedHitEventMaxBytes = 8;
 
 // InitMixedHitEvent restores fresh construction values in place, preserving storage.
 export function InitMixedHitEvent(value) {
-  value.TargetId = 0;
-  value.Damage = 0;
-  value.HitKind = 0;
-  value.Crit = false;
+  value.targetId = 0;
+  value.damage = 0;
+  value.hitKind = 0;
+  value.crit = false;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedHitEvent(value) {
-  value.TargetId = 0;
-  value.Damage = 0;
-  value.HitKind = 0;
-  value.Crit = false;
+  value.targetId = 0;
+  value.damage = 0;
+  value.hitKind = 0;
+  value.crit = false;
 }
 
 export function WriteMixedHitEvent(stream, value) {
-  NUMBER_SCRATCH.value = value.TargetId;
+  NUMBER_SCRATCH.value = value.targetId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.Damage) || value.Damage < 0 || value.Damage > 4095) {
+  if (!Number.isInteger(value.damage) || value.damage < 0 || value.damage > 4095) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Damage;
+  NUMBER_SCRATCH.value = value.damage;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.HitKind) || value.HitKind < 0 || value.HitKind > 7) {
+  if (!Number.isInteger(value.hitKind) || value.hitKind < 0 || value.hitKind > 7) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.HitKind;
+  NUMBER_SCRATCH.value = value.hitKind;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Crit;
+  BOOL_SCRATCH.value = value.crit;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
@@ -931,27 +979,27 @@ export function ReadMixedHitEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  value.TargetId = NUMBER_SCRATCH.value;
+  value.targetId = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4095)) {
     return false;
   }
-  value.Damage = NUMBER_SCRATCH.value;
+  value.damage = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7)) {
     return false;
   }
-  value.HitKind = NUMBER_SCRATCH.value;
+  value.hitKind = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Crit = BOOL_SCRATCH.value;
+  value.crit = BOOL_SCRATCH.value;
   return true;
 }
 
 // type MixedChatEvent
 export class MixedChatEvent {
   constructor() {
-    this.Channel = 0; // wire [0, 3]
-    this.Speaker = 0;
+    this.channel = 0; // wire [0, 3]
+    this.speaker = 0;
   }
 }
 
@@ -962,25 +1010,25 @@ export const MixedChatEventMaxBytes = 8;
 
 // InitMixedChatEvent restores fresh construction values in place, preserving storage.
 export function InitMixedChatEvent(value) {
-  value.Channel = 0;
-  value.Speaker = 0;
+  value.channel = 0;
+  value.speaker = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedChatEvent(value) {
-  value.Channel = 0;
-  value.Speaker = 0;
+  value.channel = 0;
+  value.speaker = 0;
 }
 
 export function WriteMixedChatEvent(stream, value) {
-  if (!Number.isInteger(value.Channel) || value.Channel < 0 || value.Channel > 3) {
+  if (!Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Channel;
+  NUMBER_SCRATCH.value = value.channel;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Speaker;
+  NUMBER_SCRATCH.value = value.speaker;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
@@ -991,19 +1039,19 @@ export function ReadMixedChatEvent(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
     return false;
   }
-  value.Channel = NUMBER_SCRATCH.value;
+  value.channel = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  value.Speaker = NUMBER_SCRATCH.value;
+  value.speaker = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type MixedPickupEvent
 export class MixedPickupEvent {
   constructor() {
-    this.ItemId = 0;
-    this.Amount = 0; // wire [0, 255]
+    this.itemId = 0;
+    this.amount = 0; // wire [0, 255]
   }
 }
 
@@ -1014,25 +1062,25 @@ export const MixedPickupEventMaxBytes = 8;
 
 // InitMixedPickupEvent restores fresh construction values in place, preserving storage.
 export function InitMixedPickupEvent(value) {
-  value.ItemId = 0;
-  value.Amount = 0;
+  value.itemId = 0;
+  value.amount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroMixedPickupEvent(value) {
-  value.ItemId = 0;
-  value.Amount = 0;
+  value.itemId = 0;
+  value.amount = 0;
 }
 
 export function WriteMixedPickupEvent(stream, value) {
-  NUMBER_SCRATCH.value = value.ItemId;
+  NUMBER_SCRATCH.value = value.itemId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.Amount) || value.Amount < 0 || value.Amount > 255) {
+  if (!Number.isInteger(value.amount) || value.amount < 0 || value.amount > 255) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Amount;
+  NUMBER_SCRATCH.value = value.amount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -1043,11 +1091,11 @@ export function ReadMixedPickupEvent(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  value.ItemId = NUMBER_SCRATCH.value;
+  value.itemId = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
     return false;
   }
-  value.Amount = NUMBER_SCRATCH.value;
+  value.amount = NUMBER_SCRATCH.value;
   return true;
 }
 
@@ -1057,9 +1105,8 @@ export const MixedEventType = Object.freeze({
   Hit: 1,
   Chat: 2,
   Pickup: 3,
-  Count: 3, // the declared variant count (SPEC §4.2)
-  Max: 3, // the exported extent (SPEC §4.2)
 });
+export const MixedEventTypeMax = 3; // the exported extent (SPEC §4.2)
 
 // EnumNameMixedEventType: debug/log/tooling name for any MixedEventType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -1084,10 +1131,10 @@ export function EnumNameMixedEventType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class MixedEvent {
   constructor() {
-    this.Type = MixedEventType.None;
-    this.Hit = new MixedHitEvent();
-    this.Chat = new MixedChatEvent();
-    this.Pickup = new MixedPickupEvent();
+    this.type = MixedEventType.None;
+    this.hit = new MixedHitEvent();
+    this.chat = new MixedChatEvent();
+    this.pickup = new MixedPickupEvent();
   }
 }
 
@@ -1100,24 +1147,24 @@ export const MixedEventMaxBytes = 8;
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
 export function ZeroMixedEvent(value) {
-  value.Type = MixedEventType.None;
+  value.type = MixedEventType.None;
 }
 
 export function WriteMixedEvent(stream, value) {
-  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 3) {
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 3) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
-  NUMBER_SCRATCH.value = value.Type;
+  NUMBER_SCRATCH.value = value.type;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  switch (value.Type) {
+  switch (value.type) {
     case MixedEventType.Hit:
-      return WriteMixedHitEvent(stream, value.Hit);
+      return WriteMixedHitEvent(stream, value.hit);
     case MixedEventType.Chat:
-      return WriteMixedChatEvent(stream, value.Chat);
+      return WriteMixedChatEvent(stream, value.chat);
     case MixedEventType.Pickup:
-      return WriteMixedPickupEvent(stream, value.Pickup);
+      return WriteMixedPickupEvent(stream, value.pickup);
   }
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
@@ -1126,17 +1173,17 @@ export function ReadMixedEvent(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
-  value.Type = NUMBER_SCRATCH.value;
-  switch (value.Type) {
+  value.type = NUMBER_SCRATCH.value;
+  switch (value.type) {
     case MixedEventType.Hit:
-      InitMixedHitEvent(value.Hit); // fresh declared defaults on every selection
-      return ReadMixedHitEvent(stream, value.Hit);
+      InitMixedHitEvent(value.hit); // fresh declared defaults on every selection
+      return ReadMixedHitEvent(stream, value.hit);
     case MixedEventType.Chat:
-      InitMixedChatEvent(value.Chat); // fresh declared defaults on every selection
-      return ReadMixedChatEvent(stream, value.Chat);
+      InitMixedChatEvent(value.chat); // fresh declared defaults on every selection
+      return ReadMixedChatEvent(stream, value.chat);
     case MixedEventType.Pickup:
-      InitMixedPickupEvent(value.Pickup); // fresh declared defaults on every selection
-      return ReadMixedPickupEvent(stream, value.Pickup);
+      InitMixedPickupEvent(value.pickup); // fresh declared defaults on every selection
+      return ReadMixedPickupEvent(stream, value.pickup);
   }
   return true; // None
 }
@@ -1144,37 +1191,37 @@ export function ReadMixedEvent(stream, value) {
 // type BenchMixed
 export class BenchMixed {
   constructor() {
-    this.Sequence = 0;
-    this.AckSequence = 0; // wire [0, 65535]
-    this.AckBits = 0;
-    this.SessionId = 0n;
-    this.ClientId = 0;
-    this.Nonce = 0n; // wire [0, 18446744073709551615]
-    this.WorldTime = 0n; // wire [-1000000000000, 1000000000000]
-    this.FrameTick = 0n;
-    this.ServerTime = 0; // wire [0, 65535]
-    this.Entities = Array.from({ length: 8 }, () => new MixedEntity());
-    this.EntitiesCount = 1;
-    this.Stats = Array.from({ length: 80 }, () => new MixedStat());
-    this.StatsCount = 0;
-    this.GameEvent = new MixedEvent();
-    this.Loadout = new Uint8Array(4);
-    this.PlayerName = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
-    this.PlayerNameLength = 0;
-    this.Payload = new Uint8Array(16); // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
-    this.PayloadLength = 0;
-    this.AimX = 0; // compressed float [-1.0, 1.0] @ 0.01
-    this.AimY = 0; // compressed float [-1.0, 1.0] @ 0.01
-    this.AimZ = 0; // compressed float [-1.0, 1.0] @ 0.01
-    this.Recoil = 0;
-    this.Drift = 0;
-    this.WideKey = 0n;
-    this.Flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
-    this.Ping = 0; // wire [0, 250]
-    this.CrcHint = 0;
-    this.HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
-    this.Extra = 0; // wire [0, 255]
-    this.IdleTicks = 0; // wire [0, 15]
+    this.sequence = 0;
+    this.ackSequence = 0; // wire [0, 65535]
+    this.ackBits = 0;
+    this.sessionId = 0n;
+    this.clientId = 0;
+    this.nonce = 0n; // wire [0, 18446744073709551615]
+    this.worldTime = 0n; // wire [-1000000000000, 1000000000000]
+    this.frameTick = 0n;
+    this.serverTime = 0; // wire [0, 65535]
+    this.entities = Array.from({ length: 8 }, () => new MixedEntity());
+    this.entitiesCount = 1;
+    this.stats = Array.from({ length: 80 }, () => new MixedStat());
+    this.statsCount = 0;
+    this.gameEvent = new MixedEvent();
+    this.loadout = new Uint8Array(4);
+    this.playerName = new Uint8Array(15); // string(15): max length, used length beside it (SPEC §4.7)
+    this.playerNameLength = 0;
+    this.payload = new Uint8Array(16); // bytes(16): fixed buffer, used length beside it (SPEC §4.7)
+    this.payloadLength = 0;
+    this.aimX = 0; // compressed float [-1.0, 1.0] @ 0.01
+    this.aimY = 0; // compressed float [-1.0, 1.0] @ 0.01
+    this.aimZ = 0; // compressed float [-1.0, 1.0] @ 0.01
+    this.recoil = 0;
+    this.drift = 0;
+    this.wideKey = 0n;
+    this.flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+    this.ping = 0; // wire [0, 250]
+    this.crcHint = 0;
+    this.hasExtra = true; // specified default at construction; Zero* gives the §5 zero form
+    this.extra = 0; // wire [0, 255]
+    this.idleTicks = 0; // wire [0, 15]
   }
 }
 
@@ -1185,82 +1232,82 @@ export const BenchMixedMaxBytes = 456;
 
 // InitBenchMixed restores fresh construction values in place, preserving storage.
 export function InitBenchMixed(value) {
-  value.Sequence = 0;
-  value.AckSequence = 0;
-  value.AckBits = 0;
-  value.SessionId = 0n;
-  value.ClientId = 0;
-  value.Nonce = 0n;
-  value.WorldTime = 0n;
-  value.FrameTick = 0n;
-  value.ServerTime = 0;
+  value.sequence = 0;
+  value.ackSequence = 0;
+  value.ackBits = 0;
+  value.sessionId = 0n;
+  value.clientId = 0;
+  value.nonce = 0n;
+  value.worldTime = 0n;
+  value.frameTick = 0n;
+  value.serverTime = 0;
   for (let initIndex0 = 0; initIndex0 < 8; initIndex0++) {
-    const initValue0 = value.Entities[initIndex0];
+    const initValue0 = value.entities[initIndex0];
     InitMixedEntity(initValue0);
   }
-  value.EntitiesCount = 1;
+  value.entitiesCount = 1;
   for (let initIndex0 = 0; initIndex0 < 80; initIndex0++) {
-    const initValue0 = value.Stats[initIndex0];
+    const initValue0 = value.stats[initIndex0];
     InitMixedStat(initValue0);
   }
-  value.StatsCount = 0;
-  value.GameEvent.Type = 0; // None; dormant arms keep their storage
-  value.Loadout.fill(0);
-  value.PlayerName.fill(0);
-  value.PlayerNameLength = 0;
-  value.Payload.fill(0);
-  value.PayloadLength = 0;
-  value.AimX = 0;
-  value.AimY = 0;
-  value.AimZ = 0;
-  value.Recoil = 0;
-  value.Drift = 0;
-  value.WideKey = 0n;
-  value.Flux = 0n;
-  value.Ping = 0;
-  value.CrcHint = 0;
-  value.HasExtra = true;
-  value.Extra = 0;
-  value.IdleTicks = 0;
+  value.statsCount = 0;
+  value.gameEvent.type = 0; // None; dormant arms keep their storage
+  value.loadout.fill(0);
+  value.playerName.fill(0);
+  value.playerNameLength = 0;
+  value.payload.fill(0);
+  value.payloadLength = 0;
+  value.aimX = 0;
+  value.aimY = 0;
+  value.aimZ = 0;
+  value.recoil = 0;
+  value.drift = 0;
+  value.wideKey = 0n;
+  value.flux = 0n;
+  value.ping = 0;
+  value.crcHint = 0;
+  value.hasExtra = true;
+  value.extra = 0;
+  value.idleTicks = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBenchMixed(value) {
-  value.Sequence = 0;
-  value.AckSequence = 0;
-  value.AckBits = 0;
-  value.SessionId = 0n;
-  value.ClientId = 0;
-  value.Nonce = 0n;
-  value.WorldTime = 0n;
-  value.FrameTick = 0n;
-  value.ServerTime = 0;
+  value.sequence = 0;
+  value.ackSequence = 0;
+  value.ackBits = 0;
+  value.sessionId = 0n;
+  value.clientId = 0;
+  value.nonce = 0n;
+  value.worldTime = 0n;
+  value.frameTick = 0n;
+  value.serverTime = 0;
   for (let i = 0; i < 8; i++) {
-    ZeroMixedEntity(value.Entities[i]);
+    ZeroMixedEntity(value.entities[i]);
   }
-  value.EntitiesCount = 0;
+  value.entitiesCount = 0;
   for (let i = 0; i < 80; i++) {
-    ZeroMixedStat(value.Stats[i]);
+    ZeroMixedStat(value.stats[i]);
   }
-  value.StatsCount = 0;
-  ZeroMixedEvent(value.GameEvent);
-  value.Loadout.fill(0);
-  value.PlayerName.fill(0);
-  value.PlayerNameLength = 0;
-  value.Payload.fill(0);
-  value.PayloadLength = 0;
-  value.AimX = 0;
-  value.AimY = 0;
-  value.AimZ = 0;
-  value.Recoil = 0;
-  value.Drift = 0;
-  value.WideKey = 0n;
-  value.Flux = 0n;
-  value.Ping = 0;
-  value.CrcHint = 0;
-  value.HasExtra = false;
-  value.Extra = 0;
-  value.IdleTicks = 0;
+  value.statsCount = 0;
+  ZeroMixedEvent(value.gameEvent);
+  value.loadout.fill(0);
+  value.playerName.fill(0);
+  value.playerNameLength = 0;
+  value.payload.fill(0);
+  value.payloadLength = 0;
+  value.aimX = 0;
+  value.aimY = 0;
+  value.aimZ = 0;
+  value.recoil = 0;
+  value.drift = 0;
+  value.wideKey = 0n;
+  value.flux = 0n;
+  value.ping = 0;
+  value.crcHint = 0;
+  value.hasExtra = false;
+  value.extra = 0;
+  value.idleTicks = 0;
 }
 
 export function WriteBenchMixed(stream, value) {
@@ -1268,130 +1315,130 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) { // const(49374, 16) — SPEC §4.3
     return false;
   }
-  NUMBER_SCRATCH.value = value.Sequence;
+  NUMBER_SCRATCH.value = value.sequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.AckSequence) || value.AckSequence < 0 || value.AckSequence > 65535) {
+  if (!Number.isInteger(value.ackSequence) || value.ackSequence < 0 || value.ackSequence > 65535) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.AckSequence;
+  NUMBER_SCRATCH.value = value.ackSequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.AckBits;
+  NUMBER_SCRATCH.value = value.ackBits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.SessionId;
+  BIGINT_SCRATCH.value = value.sessionId;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.ClientId;
+  NUMBER_SCRATCH.value = value.clientId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.Nonce);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.WorldTime < -1000000000000n || value.WorldTime > 1000000000000n) {
+  if (value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.WorldTime - -1000000000000n);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.worldTime - -1000000000000n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 41)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.FrameTick;
+  BIGINT_SCRATCH.value = value.frameTick;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.ServerTime;
+  NUMBER_SCRATCH.value = value.serverTime;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 24, 8, 0, 65535)) {
     return false;
   }
-  if (!Number.isInteger(value.EntitiesCount) || value.EntitiesCount < 1 || value.EntitiesCount > 8) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.entitiesCount) || value.entitiesCount < 1 || value.entitiesCount > 8) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.EntitiesCount >>> 0) - (1 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.entitiesCount >>> 0) - (1 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let i = 0; i < value.EntitiesCount; i++) {
-    if (!WriteMixedEntity(stream, value.Entities[i])) {
+  for (let i = 0; i < value.entitiesCount; i++) {
+    if (!WriteMixedEntity(stream, value.entities[i])) {
       return false;
     }
   }
-  if (!Number.isInteger(value.StatsCount) || value.StatsCount < 0 || value.StatsCount > 80) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.statsCount) || value.statsCount < 0 || value.statsCount > 80) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.StatsCount;
+  NUMBER_SCRATCH.value = value.statsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  for (let i = 0; i < value.StatsCount; i++) {
-    if (!WriteMixedStat(stream, value.Stats[i])) {
+  for (let i = 0; i < value.statsCount; i++) {
+    if (!WriteMixedStat(stream, value.stats[i])) {
       return false;
     }
   }
-  if (!WriteMixedEvent(stream, value.GameEvent)) {
+  if (!WriteMixedEvent(stream, value.gameEvent)) {
     return false;
   }
   for (let i = 0; i < 4; i++) {
-    NUMBER_SCRATCH.value = value.Loadout[i];
+    NUMBER_SCRATCH.value = value.loadout[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
       return false;
     }
   }
-  if (!Number.isInteger(value.PlayerNameLength) || value.PlayerNameLength < 0 || value.PlayerNameLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.playerNameLength) || value.playerNameLength < 0 || value.playerNameLength > 15) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.PlayerNameLength;
+  NUMBER_SCRATCH.value = value.playerNameLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  if (!stream.serializeBytes(value.PlayerName.subarray(0, value.PlayerNameLength))) {
+  if (!stream.serializeBytes(value.playerName.subarray(0, value.playerNameLength))) {
     return false;
   }
-  if (!Number.isInteger(value.PayloadLength) || value.PayloadLength < 0 || value.PayloadLength > 16) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.PayloadLength;
+  NUMBER_SCRATCH.value = value.payloadLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!stream.serializeBytes(value.Payload.subarray(0, value.PayloadLength))) {
+  if (!stream.serializeBytes(value.payload.subarray(0, value.payloadLength))) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.AimX;
+  NUMBER_SCRATCH.value = value.aimX;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.AimY;
+  NUMBER_SCRATCH.value = value.aimY;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.AimZ;
+  NUMBER_SCRATCH.value = value.aimZ;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Recoil;
+  NUMBER_SCRATCH.value = value.recoil;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Drift;
+  NUMBER_SCRATCH.value = value.drift;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.WideKey;
+  BIGINT_SCRATCH.value = value.wideKey;
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Flux;
+  BIGINT_SCRATCH.value = value.flux;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Ping;
+  NUMBER_SCRATCH.value = value.ping;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 8, 8, 0, 250)) {
     return false;
   }
@@ -1402,25 +1449,25 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeAlign()) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.CrcHint;
+  NUMBER_SCRATCH.value = value.crcHint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.HasExtra;
+  BOOL_SCRATCH.value = value.hasExtra;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.Extra) || value.Extra < 0 || value.Extra > 255) {
+  if (!Number.isInteger(value.extra) || value.extra < 0 || value.extra > 255) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Extra;
+  NUMBER_SCRATCH.value = value.extra;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.IdleTicks) || value.IdleTicks < 0 || value.IdleTicks > 15) {
+  if (!Number.isInteger(value.idleTicks) || value.idleTicks < 0 || value.idleTicks > 15) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.IdleTicks;
+  NUMBER_SCRATCH.value = value.idleTicks;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
@@ -1437,137 +1484,115 @@ export function ReadBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  value.Sequence = NUMBER_SCRATCH.value;
+  value.sequence = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 65535)) {
     return false;
   }
-  value.AckSequence = NUMBER_SCRATCH.value;
+  value.ackSequence = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.AckBits = NUMBER_SCRATCH.value;
+  value.ackBits = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.SessionId = BIGINT_SCRATCH.value;
+  value.sessionId = BIGINT_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.ClientId = NUMBER_SCRATCH.value;
+  value.clientId = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Nonce = BIGINT_SCRATCH.value;
+  value.nonce = BIGINT_SCRATCH.value;
   if (!stream.serializeInt64(BIGINT_SCRATCH, -1000000000000n, 1000000000000n)) {
     return false;
   }
-  value.WorldTime = BIGINT_SCRATCH.value;
+  value.worldTime = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  value.FrameTick = BIGINT_SCRATCH.value;
+  value.frameTick = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 24, 8, 0, 65535)) {
     return false;
   }
-  value.ServerTime = NUMBER_SCRATCH.value;
+  value.serverTime = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 1, 8)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.EntitiesCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.EntitiesCount; i++) {
-    if (!ReadMixedEntity(stream, value.Entities[i])) {
+  value.entitiesCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.entitiesCount; i++) {
+    if (!ReadMixedEntity(stream, value.entities[i])) {
       return false;
     }
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 80)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.StatsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.StatsCount; i++) {
-    if (!ReadMixedStat(stream, value.Stats[i])) {
+  value.statsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.statsCount; i++) {
+    if (!ReadMixedStat(stream, value.stats[i])) {
       return false;
     }
   }
-  if (!ReadMixedEvent(stream, value.GameEvent)) {
+  if (!ReadMixedEvent(stream, value.gameEvent)) {
     return false;
   }
   for (let i = 0; i < 4; i++) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
       return false;
     }
-    value.Loadout[i] = NUMBER_SCRATCH.value;
+    value.loadout[i] = NUMBER_SCRATCH.value;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.PlayerNameLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.PlayerName.subarray(0, value.PlayerNameLength))) {
+  value.playerNameLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.playerName.subarray(0, value.playerNameLength))) {
     return false;
   }
-  for (let utf8Index = 0; utf8Index < value.PlayerNameLength;)
-  {
-    const utf8Lead = value.PlayerName[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.PlayerNameLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.PlayerName[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i = 0; i < value.PlayerNameLength; i++) {
-    if (value.PlayerName[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
-      return false;
-    }
+  if (!validText(value.playerName, value.playerNameLength)) {
+    return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 16)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.PayloadLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.Payload.subarray(0, value.PayloadLength))) {
+  value.payloadLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.payload.subarray(0, value.payloadLength))) {
     return false;
   }
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  value.AimX = NUMBER_SCRATCH.value;
+  value.aimX = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  value.AimY = NUMBER_SCRATCH.value;
+  value.aimY = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
     return false;
   }
-  value.AimZ = NUMBER_SCRATCH.value;
+  value.aimZ = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Recoil = NUMBER_SCRATCH.value;
+  value.recoil = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Drift = NUMBER_SCRATCH.value;
+  value.drift = NUMBER_SCRATCH.value;
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
-  value.WideKey = BIGINT_SCRATCH.value;
+  value.wideKey = BIGINT_SCRATCH.value;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
     return false;
   }
-  value.Flux = BIGINT_SCRATCH.value;
+  value.flux = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 8, 8, 0, 250)) {
     return false;
   }
-  value.Ping = NUMBER_SCRATCH.value;
+  value.ping = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
@@ -1580,19 +1605,19 @@ export function ReadBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
     return false;
   }
-  value.CrcHint = NUMBER_SCRATCH.value;
+  value.crcHint = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.HasExtra = BOOL_SCRATCH.value;
+  value.hasExtra = BOOL_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
     return false;
   }
-  value.Extra = NUMBER_SCRATCH.value;
+  value.extra = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
     return false;
   }
-  value.IdleTicks = NUMBER_SCRATCH.value;
+  value.idleTicks = NUMBER_SCRATCH.value;
   return true;
 }
 

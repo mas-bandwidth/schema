@@ -12,6 +12,55 @@ const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 export const ProbeId = 244837814094590n;
 
 export const HalfTurn = 180.0;
@@ -28,9 +77,8 @@ export const Weapon = Object.freeze({
   Laser: 1,
   Missile: 2,
   Railgun: 3,
-  Count: 3, // the declared variant count (SPEC §4.2)
-  Max: 15, // the exported extent (SPEC §4.2)
 });
+export const WeaponMax = 15; // the exported extent (SPEC §4.2)
 
 // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -91,8 +139,8 @@ export function FlagNamesProbeFlags(value) {
 // type ProbeHeader
 export class ProbeHeader {
   constructor() {
-    this.Version = 0;
-    this.ProbeId = 0n;
+    this.version = 0;
+    this.probeId = 0n;
   }
 }
 
@@ -103,14 +151,14 @@ export const ProbeHeaderMaxBytes = 16;
 
 // InitProbeHeader restores fresh construction values in place, preserving storage.
 export function InitProbeHeader(value) {
-  value.Version = 0;
-  value.ProbeId = 0n;
+  value.version = 0;
+  value.probeId = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeHeader(value) {
-  value.Version = 0;
-  value.ProbeId = 0n;
+  value.version = 0;
+  value.probeId = 0n;
 }
 
 export function WriteProbeHeader(stream, value) {
@@ -118,7 +166,7 @@ export function WriteProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) { // const(171, 8) — SPEC §4.3
     return false;
   }
-  NUMBER_SCRATCH.value = value.Version;
+  NUMBER_SCRATCH.value = value.version;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -129,7 +177,7 @@ export function WriteProbeHeader(stream, value) {
   if (!stream.serializeAlign()) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.ProbeId;
+  BIGINT_SCRATCH.value = value.probeId;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -146,7 +194,7 @@ export function ReadProbeHeader(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.Version = NUMBER_SCRATCH.value;
+  value.version = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
@@ -159,18 +207,18 @@ export function ReadProbeHeader(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.ProbeId = BIGINT_SCRATCH.value;
+  value.probeId = BIGINT_SCRATCH.value;
   return true;
 }
 
 // type ProbeBits
 export class ProbeBits {
   constructor() {
-    this.Small = 0;
-    this.Boundary = 0n;
-    this.Wide = 0n;
-    this.Sensor = 0; // wire [0, 4294967295]
-    this.Nonce = 0n; // wire [0, 18446744073709551615]
+    this.small = 0;
+    this.boundary = 0n;
+    this.wide = 0n;
+    this.sensor = 0; // wire [0, 4294967295]
+    this.nonce = 0n; // wire [0, 18446744073709551615]
   }
 }
 
@@ -181,43 +229,43 @@ export const ProbeBitsMaxBytes = 32;
 
 // InitProbeBits restores fresh construction values in place, preserving storage.
 export function InitProbeBits(value) {
-  value.Small = 0;
-  value.Boundary = 0n;
-  value.Wide = 0n;
-  value.Sensor = 0;
-  value.Nonce = 0n;
+  value.small = 0;
+  value.boundary = 0n;
+  value.wide = 0n;
+  value.sensor = 0;
+  value.nonce = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeBits(value) {
-  value.Small = 0;
-  value.Boundary = 0n;
-  value.Wide = 0n;
-  value.Sensor = 0;
-  value.Nonce = 0n;
+  value.small = 0;
+  value.boundary = 0n;
+  value.wide = 0n;
+  value.sensor = 0;
+  value.nonce = 0n;
 }
 
 export function WriteProbeBits(stream, value) {
-  NUMBER_SCRATCH.value = value.Small;
+  NUMBER_SCRATCH.value = value.small;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Boundary;
+  BIGINT_SCRATCH.value = value.boundary;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 33)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Wide;
+  BIGINT_SCRATCH.value = value.wide;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.Sensor) || value.Sensor < 0 || value.Sensor > 4294967295) {
+  if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Sensor;
+  NUMBER_SCRATCH.value = value.sensor;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.Nonce);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -228,49 +276,49 @@ export function ReadProbeBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  value.Small = NUMBER_SCRATCH.value;
+  value.small = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 33)) {
     return false;
   }
-  value.Boundary = BIGINT_SCRATCH.value;
+  value.boundary = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Wide = BIGINT_SCRATCH.value;
+  value.wide = BIGINT_SCRATCH.value;
   if (!stream.serializeInt64(BIGINT_SCRATCH, 0n, 4294967295n)) {
     return false;
   }
-  value.Sensor = Number(BIGINT_SCRATCH.value);
+  value.sensor = Number(BIGINT_SCRATCH.value);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Nonce = BIGINT_SCRATCH.value;
+  value.nonce = BIGINT_SCRATCH.value;
   return true;
 }
 
 // type ProbeSample
 export class ProbeSample {
   constructor() {
-    this.Active = true; // specified default at construction; Zero* gives the §5 zero form
-    this.Orientation = 0; // compressed float [-180.0, 180.0] @ 0.01
-    this.RawDelta = 0;
-    this.BigDelta = 0n;
+    this.active = true; // specified default at construction; Zero* gives the §5 zero form
+    this.orientation = 0; // compressed float [-180.0, 180.0] @ 0.01
+    this.rawDelta = 0;
+    this.bigDelta = 0n;
 
     // active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.Weapon = Weapon.None;
-    this.HasTarget = false;
+    this.weapon = Weapon.None;
+    this.hasTarget = false;
 
     // active && has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.TargetId = 0;
+    this.targetId = 0;
 
     // !active — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.IdleTicks = 0;
+    this.idleTicks = 0;
 
-    this.Samples = new Array(8).fill(0);
-    this.SamplesCount = 1;
+    this.samples = new Array(8).fill(0);
+    this.samplesCount = 1;
   }
 }
 
@@ -281,82 +329,82 @@ export const ProbeSampleMaxBytes = 40;
 
 // InitProbeSample restores fresh construction values in place, preserving storage.
 export function InitProbeSample(value) {
-  value.Active = true;
-  value.Orientation = 0;
-  value.RawDelta = 0;
-  value.BigDelta = 0n;
-  value.Weapon = Weapon.None;
-  value.HasTarget = false;
-  value.TargetId = 0;
-  value.IdleTicks = 0;
-  value.Samples.fill(0);
-  value.SamplesCount = 1;
+  value.active = true;
+  value.orientation = 0;
+  value.rawDelta = 0;
+  value.bigDelta = 0n;
+  value.weapon = Weapon.None;
+  value.hasTarget = false;
+  value.targetId = 0;
+  value.idleTicks = 0;
+  value.samples.fill(0);
+  value.samplesCount = 1;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeSample(value) {
-  value.Active = false;
-  value.Orientation = 0;
-  value.RawDelta = 0;
-  value.BigDelta = 0n;
-  value.Weapon = Weapon.None;
-  value.HasTarget = false;
-  value.TargetId = 0;
-  value.IdleTicks = 0;
-  value.Samples.fill(0);
-  value.SamplesCount = 0;
+  value.active = false;
+  value.orientation = 0;
+  value.rawDelta = 0;
+  value.bigDelta = 0n;
+  value.weapon = Weapon.None;
+  value.hasTarget = false;
+  value.targetId = 0;
+  value.idleTicks = 0;
+  value.samples.fill(0);
+  value.samplesCount = 0;
 }
 
 export function WriteProbeSample(stream, value) {
-  BOOL_SCRATCH.value = value.Active;
+  BOOL_SCRATCH.value = value.active;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Orientation;
+  NUMBER_SCRATCH.value = value.orientation;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.RawDelta >>> 0;
+  NUMBER_SCRATCH.value = value.rawDelta >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.BigDelta;
+  BIGINT_SCRATCH.value = value.bigDelta;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.Active) {
-    if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) { // headroom above the wire range cannot ride
+  if (value.active) {
+    if (!Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
       return false;
     }
-    NUMBER_SCRATCH.value = value.Weapon;
+    NUMBER_SCRATCH.value = value.weapon;
     if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
       return false;
     }
-    BOOL_SCRATCH.value = value.HasTarget;
+    BOOL_SCRATCH.value = value.hasTarget;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
     }
-    if (value.HasTarget) {
-      NUMBER_SCRATCH.value = value.TargetId;
+    if (value.hasTarget) {
+      NUMBER_SCRATCH.value = value.targetId;
       if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
         return false;
       }
     }
   } else {
-    NUMBER_SCRATCH.value = value.IdleTicks;
+    NUMBER_SCRATCH.value = value.idleTicks;
     if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
       return false;
     }
   }
-  if (!Number.isInteger(value.SamplesCount) || value.SamplesCount < 1 || value.SamplesCount > 8) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.samplesCount) || value.samplesCount < 1 || value.samplesCount > 8) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.SamplesCount >>> 0) - (1 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.samplesCount >>> 0) - (1 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let i = 0; i < value.SamplesCount; i++) {
-    NUMBER_SCRATCH.value = value.Samples[i];
+  for (let i = 0; i < value.samplesCount; i++) {
+    NUMBER_SCRATCH.value = value.samples[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
     }
@@ -368,55 +416,55 @@ export function ReadProbeSample(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Active = BOOL_SCRATCH.value;
+  value.active = BOOL_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
     return false;
   }
-  value.Orientation = NUMBER_SCRATCH.value;
+  value.orientation = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.RawDelta = NUMBER_SCRATCH.value | 0;
+  value.rawDelta = NUMBER_SCRATCH.value | 0;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.BigDelta = BigInt.asIntN(64, BIGINT_SCRATCH.value);
-  if (value.Active) {
+  value.bigDelta = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  if (value.active) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
       return false;
     }
-    value.Weapon = NUMBER_SCRATCH.value;
+    value.weapon = NUMBER_SCRATCH.value;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
     }
-    value.HasTarget = BOOL_SCRATCH.value;
-    if (value.HasTarget) {
+    value.hasTarget = BOOL_SCRATCH.value;
+    if (value.hasTarget) {
       if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
         return false;
       }
-      value.TargetId = NUMBER_SCRATCH.value;
+      value.targetId = NUMBER_SCRATCH.value;
     } else {
-      value.TargetId = 0;
+      value.targetId = 0;
     }
-    value.IdleTicks = 0;
+    value.idleTicks = 0;
   } else {
     if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
       return false;
     }
-    value.IdleTicks = NUMBER_SCRATCH.value;
-    value.Weapon = Weapon.None;
-    value.HasTarget = false;
-    value.TargetId = 0;
+    value.idleTicks = NUMBER_SCRATCH.value;
+    value.weapon = Weapon.None;
+    value.hasTarget = false;
+    value.targetId = 0;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 1, 8)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.SamplesCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.SamplesCount; i++) {
+  value.samplesCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.samplesCount; i++) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
     }
-    value.Samples[i] = NUMBER_SCRATCH.value;
+    value.samples[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -424,7 +472,7 @@ export function ReadProbeSample(stream, value) {
 // type ProbeRing
 export class ProbeRing {
   constructor() {
-    this.Radius = 0;
+    this.radius = 0;
   }
 }
 
@@ -435,16 +483,16 @@ export const ProbeRingMaxBytes = 8;
 
 // InitProbeRing restores fresh construction values in place, preserving storage.
 export function InitProbeRing(value) {
-  value.Radius = 0;
+  value.radius = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeRing(value) {
-  value.Radius = 0;
+  value.radius = 0;
 }
 
 export function WriteProbeRing(stream, value) {
-  NUMBER_SCRATCH.value = value.Radius;
+  NUMBER_SCRATCH.value = value.radius;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
@@ -455,15 +503,15 @@ export function ReadProbeRing(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  value.Radius = NUMBER_SCRATCH.value;
+  value.radius = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ProbeSlab
 export class ProbeSlab {
   constructor() {
-    this.Width = 0; // wire [0, 100]
-    this.Height = 0;
+    this.width = 0; // wire [0, 100]
+    this.height = 0;
   }
 }
 
@@ -474,25 +522,25 @@ export const ProbeSlabMaxBytes = 8;
 
 // InitProbeSlab restores fresh construction values in place, preserving storage.
 export function InitProbeSlab(value) {
-  value.Width = 0;
-  value.Height = 0;
+  value.width = 0;
+  value.height = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeSlab(value) {
-  value.Width = 0;
-  value.Height = 0;
+  value.width = 0;
+  value.height = 0;
 }
 
 export function WriteProbeSlab(stream, value) {
-  if (!Number.isInteger(value.Width) || value.Width < 0 || value.Width > 100) {
+  if (!Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Width;
+  NUMBER_SCRATCH.value = value.width;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Height;
+  NUMBER_SCRATCH.value = value.height;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -503,11 +551,11 @@ export function ReadProbeSlab(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 100)) {
     return false;
   }
-  value.Width = NUMBER_SCRATCH.value;
+  value.width = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Height = NUMBER_SCRATCH.value;
+  value.height = NUMBER_SCRATCH.value;
   return true;
 }
 
@@ -516,9 +564,8 @@ export const ProbeShapeType = Object.freeze({
   None: 0,
   Ring: 1,
   Slab: 2,
-  Count: 2, // the declared variant count (SPEC §4.2)
-  Max: 2, // the exported extent (SPEC §4.2)
 });
+export const ProbeShapeTypeMax = 2; // the exported extent (SPEC §4.2)
 
 // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -541,9 +588,9 @@ export function EnumNameProbeShapeType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class ProbeShape {
   constructor() {
-    this.Type = ProbeShapeType.None;
-    this.Ring = new ProbeRing();
-    this.Slab = new ProbeSlab();
+    this.type = ProbeShapeType.None;
+    this.ring = new ProbeRing();
+    this.slab = new ProbeSlab();
   }
 }
 
@@ -556,22 +603,22 @@ export const ProbeShapeMaxBytes = 8;
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
 export function ZeroProbeShape(value) {
-  value.Type = ProbeShapeType.None;
+  value.type = ProbeShapeType.None;
 }
 
 export function WriteProbeShape(stream, value) {
-  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
-  NUMBER_SCRATCH.value = value.Type;
+  NUMBER_SCRATCH.value = value.type;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  switch (value.Type) {
+  switch (value.type) {
     case ProbeShapeType.Ring:
-      return WriteProbeRing(stream, value.Ring);
+      return WriteProbeRing(stream, value.ring);
     case ProbeShapeType.Slab:
-      return WriteProbeSlab(stream, value.Slab);
+      return WriteProbeSlab(stream, value.slab);
   }
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
@@ -580,14 +627,14 @@ export function ReadProbeShape(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
-  value.Type = NUMBER_SCRATCH.value;
-  switch (value.Type) {
+  value.type = NUMBER_SCRATCH.value;
+  switch (value.type) {
     case ProbeShapeType.Ring:
-      InitProbeRing(value.Ring); // fresh declared defaults on every selection
-      return ReadProbeRing(stream, value.Ring);
+      InitProbeRing(value.ring); // fresh declared defaults on every selection
+      return ReadProbeRing(stream, value.ring);
     case ProbeShapeType.Slab:
-      InitProbeSlab(value.Slab); // fresh declared defaults on every selection
-      return ReadProbeSlab(stream, value.Slab);
+      InitProbeSlab(value.slab); // fresh declared defaults on every selection
+      return ReadProbeSlab(stream, value.slab);
   }
   return true; // None
 }
@@ -595,11 +642,11 @@ export function ReadProbeShape(stream, value) {
 // type ProbeCollider
 export class ProbeCollider {
   constructor() {
-    this.Armor = 0;
-    this.Shape = new ProbeShape();
-    this.Backup = new ProbeShape();
-    this.Extras = Array.from({ length: 2 }, () => new ProbeShape());
-    this.ExtrasCount = 0;
+    this.armor = 0;
+    this.shape = new ProbeShape();
+    this.backup = new ProbeShape();
+    this.extras = Array.from({ length: 2 }, () => new ProbeShape());
+    this.extrasCount = 0;
   }
 }
 
@@ -610,47 +657,47 @@ export const ProbeColliderMaxBytes = 16;
 
 // InitProbeCollider restores fresh construction values in place, preserving storage.
 export function InitProbeCollider(value) {
-  value.Armor = 0;
-  value.Shape.Type = 0; // None; dormant arms keep their storage
-  value.Backup.Type = 0; // None; dormant arms keep their storage
+  value.armor = 0;
+  value.shape.type = 0; // None; dormant arms keep their storage
+  value.backup.type = 0; // None; dormant arms keep their storage
   for (let initIndex0 = 0; initIndex0 < 2; initIndex0++) {
-    const initValue0 = value.Extras[initIndex0];
-    initValue0.Type = 0; // None; dormant arms keep their storage
+    const initValue0 = value.extras[initIndex0];
+    initValue0.type = 0; // None; dormant arms keep their storage
   }
-  value.ExtrasCount = 0;
+  value.extrasCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeCollider(value) {
-  value.Armor = 0;
-  ZeroProbeShape(value.Shape);
-  ZeroProbeShape(value.Backup);
+  value.armor = 0;
+  ZeroProbeShape(value.shape);
+  ZeroProbeShape(value.backup);
   for (let i = 0; i < 2; i++) {
-    ZeroProbeShape(value.Extras[i]);
+    ZeroProbeShape(value.extras[i]);
   }
-  value.ExtrasCount = 0;
+  value.extrasCount = 0;
 }
 
 export function WriteProbeCollider(stream, value) {
-  NUMBER_SCRATCH.value = value.Armor;
+  NUMBER_SCRATCH.value = value.armor;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!WriteProbeShape(stream, value.Shape)) {
+  if (!WriteProbeShape(stream, value.shape)) {
     return false;
   }
-  if (!WriteProbeShape(stream, value.Backup)) {
+  if (!WriteProbeShape(stream, value.backup)) {
     return false;
   }
-  if (!Number.isInteger(value.ExtrasCount) || value.ExtrasCount < 0 || value.ExtrasCount > 2) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.extrasCount) || value.extrasCount < 0 || value.extrasCount > 2) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ExtrasCount;
+  NUMBER_SCRATCH.value = value.extrasCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  for (let i = 0; i < value.ExtrasCount; i++) {
-    if (!WriteProbeShape(stream, value.Extras[i])) {
+  for (let i = 0; i < value.extrasCount; i++) {
+    if (!WriteProbeShape(stream, value.extras[i])) {
       return false;
     }
   }
@@ -661,19 +708,19 @@ export function ReadProbeCollider(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Armor = NUMBER_SCRATCH.value;
-  if (!ReadProbeShape(stream, value.Shape)) {
+  value.armor = NUMBER_SCRATCH.value;
+  if (!ReadProbeShape(stream, value.shape)) {
     return false;
   }
-  if (!ReadProbeShape(stream, value.Backup)) {
+  if (!ReadProbeShape(stream, value.backup)) {
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ExtrasCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ExtrasCount; i++) {
-    if (!ReadProbeShape(stream, value.Extras[i])) {
+  value.extrasCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.extrasCount; i++) {
+    if (!ReadProbeShape(stream, value.extras[i])) {
       return false;
     }
   }
@@ -683,8 +730,8 @@ export function ReadProbeCollider(stream, value) {
 // type ProbeConfig
 export class ProbeConfig {
   constructor() {
-    this.Retries = -1; // specified default at construction; Zero* gives the §5 zero form
-    this.Preferred = Weapon.Railgun; // specified default at construction; Zero* gives the §5 zero form
+    this.retries = -1; // specified default at construction; Zero* gives the §5 zero form
+    this.preferred = Weapon.Railgun; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -695,25 +742,25 @@ export const ProbeConfigMaxBytes = 8;
 
 // InitProbeConfig restores fresh construction values in place, preserving storage.
 export function InitProbeConfig(value) {
-  value.Retries = -1;
-  value.Preferred = Weapon.Railgun;
+  value.retries = -1;
+  value.preferred = Weapon.Railgun;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeConfig(value) {
-  value.Retries = 0;
-  value.Preferred = Weapon.None;
+  value.retries = 0;
+  value.preferred = Weapon.None;
 }
 
 export function WriteProbeConfig(stream, value) {
-  NUMBER_SCRATCH.value = value.Retries >>> 0;
+  NUMBER_SCRATCH.value = value.retries >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (!Number.isInteger(value.Preferred) || value.Preferred < 0 || value.Preferred > 15) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.Preferred;
+  NUMBER_SCRATCH.value = value.preferred;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
@@ -724,19 +771,19 @@ export function ReadProbeConfig(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.Retries = NUMBER_SCRATCH.value | 0;
+  value.retries = NUMBER_SCRATCH.value | 0;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
     return false;
   }
-  value.Preferred = NUMBER_SCRATCH.value;
+  value.preferred = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ProbeArray
 export class ProbeArray {
   constructor() {
-    this.Samples = Array.from({ length: 2 }, () => new ProbeSample());
-    this.Config = new ProbeConfig();
+    this.samples = Array.from({ length: 2 }, () => new ProbeSample());
+    this.config = new ProbeConfig();
   }
 }
 
@@ -748,27 +795,27 @@ export const ProbeArrayMaxBytes = 80;
 // InitProbeArray restores fresh construction values in place, preserving storage.
 export function InitProbeArray(value) {
   for (let initIndex0 = 0; initIndex0 < 2; initIndex0++) {
-    const initValue0 = value.Samples[initIndex0];
+    const initValue0 = value.samples[initIndex0];
     InitProbeSample(initValue0);
   }
-  InitProbeConfig(value.Config);
+  InitProbeConfig(value.config);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeArray(value) {
   for (let i = 0; i < 2; i++) {
-    ZeroProbeSample(value.Samples[i]);
+    ZeroProbeSample(value.samples[i]);
   }
-  ZeroProbeConfig(value.Config);
+  ZeroProbeConfig(value.config);
 }
 
 export function WriteProbeArray(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (!WriteProbeSample(stream, value.Samples[i])) {
+    if (!WriteProbeSample(stream, value.samples[i])) {
       return false;
     }
   }
-  if (!WriteProbeConfig(stream, value.Config)) {
+  if (!WriteProbeConfig(stream, value.config)) {
     return false;
   }
   return true;
@@ -776,11 +823,11 @@ export function WriteProbeArray(stream, value) {
 
 export function ReadProbeArray(stream, value) {
   for (let i = 0; i < 2; i++) {
-    if (!ReadProbeSample(stream, value.Samples[i])) {
+    if (!ReadProbeSample(stream, value.samples[i])) {
       return false;
     }
   }
-  if (!ReadProbeConfig(stream, value.Config)) {
+  if (!ReadProbeConfig(stream, value.config)) {
     return false;
   }
   return true;
@@ -819,10 +866,10 @@ export function ReadHeartbeat() {
 // type Test
 export class Test {
   constructor() {
-    this.TestA = 0;
-    this.TestB = 0; // wire [0, 1000]
-    this.TestC = 0; // wire [0, 1000]
-    this.TestD = 0; // wire [0, 1000]
+    this.testA = 0;
+    this.testB = 0; // wire [0, 1000]
+    this.testC = 0; // wire [0, 1000]
+    this.testD = 0; // wire [0, 1000]
   }
 }
 
@@ -833,43 +880,43 @@ export const TestMaxBytes = 8;
 
 // InitTest restores fresh construction values in place, preserving storage.
 export function InitTest(value) {
-  value.TestA = 0;
-  value.TestB = 0;
-  value.TestC = 0;
-  value.TestD = 0;
+  value.testA = 0;
+  value.testB = 0;
+  value.testC = 0;
+  value.testD = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTest(value) {
-  value.TestA = 0;
-  value.TestB = 0;
-  value.TestC = 0;
-  value.TestD = 0;
+  value.testA = 0;
+  value.testB = 0;
+  value.testC = 0;
+  value.testD = 0;
 }
 
 export function WriteTest(stream, value) {
-  NUMBER_SCRATCH.value = value.TestA;
+  NUMBER_SCRATCH.value = value.testA;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) {
+  if (!Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.TestB;
+  NUMBER_SCRATCH.value = value.testB;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) {
+  if (!Number.isInteger(value.testC) || value.testC < 0 || value.testC > 1000) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.TestC;
+  NUMBER_SCRATCH.value = value.testC;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) {
+  if (!Number.isInteger(value.testD) || value.testD < 0 || value.testD > 1000) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.TestD;
+  NUMBER_SCRATCH.value = value.testD;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
@@ -880,27 +927,27 @@ export function ReadTest(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  value.TestA = NUMBER_SCRATCH.value;
+  value.testA = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
     return false;
   }
-  value.TestB = NUMBER_SCRATCH.value;
+  value.testB = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
     return false;
   }
-  value.TestC = NUMBER_SCRATCH.value;
+  value.testC = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 1000)) {
     return false;
   }
-  value.TestD = NUMBER_SCRATCH.value;
+  value.testD = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type Block
 export class Block {
   constructor() {
-    this.Data = new Uint8Array(MaxBlockSize); // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
-    this.DataLength = 0;
+    this.data = new Uint8Array(MaxBlockSize); // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+    this.dataLength = 0;
   }
 }
 
@@ -911,25 +958,25 @@ export const BlockMaxBytes = 2008;
 
 // InitBlock restores fresh construction values in place, preserving storage.
 export function InitBlock(value) {
-  value.Data.fill(0);
-  value.DataLength = 0;
+  value.data.fill(0);
+  value.dataLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroBlock(value) {
-  value.Data.fill(0);
-  value.DataLength = 0;
+  value.data.fill(0);
+  value.dataLength = 0;
 }
 
 export function WriteBlock(stream, value) {
-  if (!Number.isInteger(value.DataLength) || value.DataLength < 0 || value.DataLength > MaxBlockSize) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > MaxBlockSize) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.DataLength;
+  NUMBER_SCRATCH.value = value.dataLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  if (!stream.serializeBytes(value.Data.subarray(0, value.DataLength))) {
+  if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
   }
   return true;
@@ -939,8 +986,8 @@ export function ReadBlock(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxBlockSize)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.DataLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.Data.subarray(0, value.DataLength))) {
+  value.dataLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.data.subarray(0, value.dataLength))) {
     return false;
   }
   return true;
@@ -949,8 +996,8 @@ export function ReadBlock(stream, value) {
 // type Chat
 export class Chat {
   constructor() {
-    this.Text = new Uint8Array(MaxChatLength); // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
-    this.TextLength = 0;
+    this.text = new Uint8Array(MaxChatLength); // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+    this.textLength = 0;
   }
 }
 
@@ -961,25 +1008,25 @@ export const ChatMaxBytes = 264;
 
 // InitChat restores fresh construction values in place, preserving storage.
 export function InitChat(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroChat(value) {
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 export function WriteChat(stream, value) {
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > MaxChatLength) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > MaxChatLength) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.TextLength;
+  NUMBER_SCRATCH.value = value.textLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+  if (!stream.serializeBytes(value.text.subarray(0, value.textLength))) {
     return false;
   }
   return true;
@@ -989,34 +1036,12 @@ export function ReadChat(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxChatLength)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.TextLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+  value.textLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.text.subarray(0, value.textLength))) {
     return false;
   }
-  for (let utf8Index = 0; utf8Index < value.TextLength;)
-  {
-    const utf8Lead = value.Text[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.TextLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.Text[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i = 0; i < value.TextLength; i++) {
-    if (value.Text[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
-      return false;
-    }
+  if (!validText(value.text, value.textLength)) {
+    return false;
   }
   return true;
 }
@@ -1024,9 +1049,9 @@ export function ReadChat(stream, value) {
 // type ProbeReport
 export class ProbeReport {
   constructor() {
-    this.Header = new ProbeHeader();
-    this.Flags = 0n; // ProbeFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
-    this.Echo = new Test();
+    this.header = new ProbeHeader();
+    this.flags = 0n; // ProbeFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    this.echo = new Test();
   }
 }
 
@@ -1037,24 +1062,24 @@ export const ProbeReportMaxBytes = 24;
 
 // InitProbeReport restores fresh construction values in place, preserving storage.
 export function InitProbeReport(value) {
-  InitProbeHeader(value.Header);
-  value.Flags = 0n;
-  InitTest(value.Echo);
+  InitProbeHeader(value.header);
+  value.flags = 0n;
+  InitTest(value.echo);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroProbeReport(value) {
-  ZeroProbeHeader(value.Header);
-  value.Flags = 0n;
-  ZeroTest(value.Echo);
+  ZeroProbeHeader(value.header);
+  value.flags = 0n;
+  ZeroTest(value.echo);
 }
 
 export function WriteProbeReport(stream, value) {
-  if (!WriteProbeHeader(stream, value.Header)) {
+  if (!WriteProbeHeader(stream, value.header)) {
     return false;
   }
   {
-    const flagsValue = BigInt.asUintN(64, value.Flags);
+    const flagsValue = BigInt.asUintN(64, value.flags);
     if (flagsValue >= 1n << 8n) { // a mask bit above the wire width cannot ride
       return false;
     }
@@ -1063,21 +1088,21 @@ export function WriteProbeReport(stream, value) {
       return false;
     }
   }
-  if (!WriteTest(stream, value.Echo)) {
+  if (!WriteTest(stream, value.echo)) {
     return false;
   }
   return true;
 }
 
 export function ReadProbeReport(stream, value) {
-  if (!ReadProbeHeader(stream, value.Header)) {
+  if (!ReadProbeHeader(stream, value.header)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Flags = BigInt(NUMBER_SCRATCH.value);
-  if (!ReadTest(stream, value.Echo)) {
+  value.flags = BigInt(NUMBER_SCRATCH.value);
+  if (!ReadTest(stream, value.echo)) {
     return false;
   }
   return true;
@@ -1086,29 +1111,29 @@ export function ReadProbeReport(stream, value) {
 // type TestData
 export class TestData {
   constructor() {
-    this.A = 0; // wire [-100, 100]
-    this.B = 0; // wire [-100, 100]
-    this.C = 0; // wire [-100, 150]
-    this.D = 0;
-    this.E = 0;
-    this.F = 0;
-    this.G = false;
-    this.Items = new Array(16).fill(0); // wire [0, 255]
-    this.ItemsCount = 0;
-    this.FloatValue = 0;
-    this.CompressedFloatValue = 0; // compressed float [0.0, 10.0] @ 0.01
-    this.DoubleValue = 0;
-    this.Int8Value = 0;
-    this.Int16Value = 0;
-    this.Uint8Value = 0;
-    this.Uint16Value = 0;
-    this.Uint32Value = 0;
-    this.Uint64Value = 0n;
-    this.Int64Full = 0n;
-    this.Int64Range = 0n; // wire [-1000000000000, 1000000000000]
-    this.FixedBytes = new Uint8Array(17);
-    this.Text = new Uint8Array(255); // string(255): max length, used length beside it (SPEC §4.7)
-    this.TextLength = 0;
+    this.a = 0; // wire [-100, 100]
+    this.b = 0; // wire [-100, 100]
+    this.c = 0; // wire [-100, 150]
+    this.d = 0;
+    this.e = 0;
+    this.f = 0;
+    this.g = false;
+    this.items = new Array(16).fill(0); // wire [0, 255]
+    this.itemsCount = 0;
+    this.floatValue = 0;
+    this.compressedFloatValue = 0; // compressed float [0.0, 10.0] @ 0.01
+    this.doubleValue = 0;
+    this.int8Value = 0;
+    this.int16Value = 0;
+    this.uint8Value = 0;
+    this.uint16Value = 0;
+    this.uint32Value = 0;
+    this.uint64Value = 0n;
+    this.int64Full = 0n;
+    this.int64Range = 0n; // wire [-1000000000000, 1000000000000]
+    this.fixedBytes = new Uint8Array(17);
+    this.text = new Uint8Array(255); // string(255): max length, used length beside it (SPEC §4.7)
+    this.textLength = 0;
   }
 }
 
@@ -1119,173 +1144,173 @@ export const TestDataMaxBytes = 344;
 
 // InitTestData restores fresh construction values in place, preserving storage.
 export function InitTestData(value) {
-  value.A = 0;
-  value.B = 0;
-  value.C = 0;
-  value.D = 0;
-  value.E = 0;
-  value.F = 0;
-  value.G = false;
-  value.Items.fill(0);
-  value.ItemsCount = 0;
-  value.FloatValue = 0;
-  value.CompressedFloatValue = 0;
-  value.DoubleValue = 0;
-  value.Int8Value = 0;
-  value.Int16Value = 0;
-  value.Uint8Value = 0;
-  value.Uint16Value = 0;
-  value.Uint32Value = 0;
-  value.Uint64Value = 0n;
-  value.Int64Full = 0n;
-  value.Int64Range = 0n;
-  value.FixedBytes.fill(0);
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
+  value.d = 0;
+  value.e = 0;
+  value.f = 0;
+  value.g = false;
+  value.items.fill(0);
+  value.itemsCount = 0;
+  value.floatValue = 0;
+  value.compressedFloatValue = 0;
+  value.doubleValue = 0;
+  value.int8Value = 0;
+  value.int16Value = 0;
+  value.uint8Value = 0;
+  value.uint16Value = 0;
+  value.uint32Value = 0;
+  value.uint64Value = 0n;
+  value.int64Full = 0n;
+  value.int64Range = 0n;
+  value.fixedBytes.fill(0);
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTestData(value) {
-  value.A = 0;
-  value.B = 0;
-  value.C = 0;
-  value.D = 0;
-  value.E = 0;
-  value.F = 0;
-  value.G = false;
-  value.Items.fill(0);
-  value.ItemsCount = 0;
-  value.FloatValue = 0;
-  value.CompressedFloatValue = 0;
-  value.DoubleValue = 0;
-  value.Int8Value = 0;
-  value.Int16Value = 0;
-  value.Uint8Value = 0;
-  value.Uint16Value = 0;
-  value.Uint32Value = 0;
-  value.Uint64Value = 0n;
-  value.Int64Full = 0n;
-  value.Int64Range = 0n;
-  value.FixedBytes.fill(0);
-  value.Text.fill(0);
-  value.TextLength = 0;
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
+  value.d = 0;
+  value.e = 0;
+  value.f = 0;
+  value.g = false;
+  value.items.fill(0);
+  value.itemsCount = 0;
+  value.floatValue = 0;
+  value.compressedFloatValue = 0;
+  value.doubleValue = 0;
+  value.int8Value = 0;
+  value.int16Value = 0;
+  value.uint8Value = 0;
+  value.uint16Value = 0;
+  value.uint32Value = 0;
+  value.uint64Value = 0n;
+  value.int64Full = 0n;
+  value.int64Range = 0n;
+  value.fixedBytes.fill(0);
+  value.text.fill(0);
+  value.textLength = 0;
 }
 
 export function WriteTestData(stream, value) {
-  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
+  if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.A >>> 0) - (-100 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.a >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.B) || value.B < -100 || value.B > 100) {
+  if (!Number.isInteger(value.b) || value.b < -100 || value.b > 100) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.B >>> 0) - (-100 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.b >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!Number.isInteger(value.C) || value.C < -100 || value.C > 150) {
+  if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.C >>> 0) - (-100 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.c >>> 0) - (-100 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.D;
+  NUMBER_SCRATCH.value = value.d;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.E;
+  NUMBER_SCRATCH.value = value.e;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F;
+  NUMBER_SCRATCH.value = value.f;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.G;
+  BOOL_SCRATCH.value = value.g;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 16) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 255) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 255) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.Items[i];
+    NUMBER_SCRATCH.value = value.items[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.FloatValue;
+  NUMBER_SCRATCH.value = value.floatValue;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.CompressedFloatValue;
+  NUMBER_SCRATCH.value = value.compressedFloatValue;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.DoubleValue;
+  NUMBER_SCRATCH.value = value.doubleValue;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Int8Value & 0xff;
+  NUMBER_SCRATCH.value = value.int8Value & 0xff;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Int16Value & 0xffff;
+  NUMBER_SCRATCH.value = value.int16Value & 0xffff;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Uint8Value;
+  NUMBER_SCRATCH.value = value.uint8Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Uint16Value;
+  NUMBER_SCRATCH.value = value.uint16Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Uint32Value;
+  NUMBER_SCRATCH.value = value.uint32Value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Uint64Value;
+  BIGINT_SCRATCH.value = value.uint64Value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Int64Full;
+  BIGINT_SCRATCH.value = value.int64Full;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.Int64Range < -1000000000000n || value.Int64Range > 1000000000000n) {
+  if (value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.Int64Range - -1000000000000n);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.int64Range - -1000000000000n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 41)) {
     return false;
   }
   if (!stream.serializeAlign()) {
     return false;
   }
-  if (!stream.serializeBytes(value.FixedBytes.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+  if (!stream.serializeBytes(value.fixedBytes.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 255) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.TextLength;
+  NUMBER_SCRATCH.value = value.textLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+  if (!stream.serializeBytes(value.text.subarray(0, value.textLength))) {
     return false;
   }
   return true;
@@ -1295,122 +1320,100 @@ export function ReadTestData(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
   }
-  value.A = NUMBER_SCRATCH.value;
+  value.a = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 100)) {
     return false;
   }
-  value.B = NUMBER_SCRATCH.value;
+  value.b = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -100, 150)) {
     return false;
   }
-  value.C = NUMBER_SCRATCH.value;
+  value.c = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.D = NUMBER_SCRATCH.value;
+  value.d = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.E = NUMBER_SCRATCH.value;
+  value.e = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.F = NUMBER_SCRATCH.value;
+  value.f = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.G = BOOL_SCRATCH.value;
+  value.g = BOOL_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 16)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
       return false;
     }
-    value.Items[i] = NUMBER_SCRATCH.value;
+    value.items[i] = NUMBER_SCRATCH.value;
   }
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.FloatValue = NUMBER_SCRATCH.value;
+  value.floatValue = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
   }
-  value.CompressedFloatValue = NUMBER_SCRATCH.value;
+  value.compressedFloatValue = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.DoubleValue = NUMBER_SCRATCH.value;
+  value.doubleValue = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Int8Value = (NUMBER_SCRATCH.value << 24) >> 24;
+  value.int8Value = (NUMBER_SCRATCH.value << 24) >> 24;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  value.Int16Value = (NUMBER_SCRATCH.value << 16) >> 16;
+  value.int16Value = (NUMBER_SCRATCH.value << 16) >> 16;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Uint8Value = NUMBER_SCRATCH.value;
+  value.uint8Value = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  value.Uint16Value = NUMBER_SCRATCH.value;
+  value.uint16Value = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.Uint32Value = NUMBER_SCRATCH.value;
+  value.uint32Value = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Uint64Value = BIGINT_SCRATCH.value;
+  value.uint64Value = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Int64Full = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.int64Full = BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeInt64(BIGINT_SCRATCH, -1000000000000n, 1000000000000n)) {
     return false;
   }
-  value.Int64Range = BIGINT_SCRATCH.value;
+  value.int64Range = BIGINT_SCRATCH.value;
   if (!stream.serializeAlign()) { // rejects nonzero padding (SPEC §4.3)
     return false;
   }
-  if (!stream.serializeBytes(value.FixedBytes.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
+  if (!stream.serializeBytes(value.fixedBytes.subarray(0, 17))) { // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.TextLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.Text.subarray(0, value.TextLength))) {
+  value.textLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.text.subarray(0, value.textLength))) {
     return false;
   }
-  for (let utf8Index = 0; utf8Index < value.TextLength;)
-  {
-    const utf8Lead = value.Text[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.TextLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.Text[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i = 0; i < value.TextLength; i++) {
-    if (value.Text[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
-      return false;
-    }
+  if (!validText(value.text, value.textLength)) {
+    return false;
   }
   return true;
 }
@@ -1418,8 +1421,8 @@ export function ReadTestData(stream, value) {
 // type CompressedProbe
 export class CompressedProbe {
   constructor() {
-    this.Boundary = 0; // compressed float [0.0, 10.0] @ 0.01
-    this.Offset = 0; // compressed float [-5.0, 5.0] @ 0.001
+    this.boundary = 0; // compressed float [0.0, 10.0] @ 0.01
+    this.offset = 0; // compressed float [-5.0, 5.0] @ 0.001
   }
 }
 
@@ -1430,22 +1433,22 @@ export const CompressedProbeMaxBytes = 8;
 
 // InitCompressedProbe restores fresh construction values in place, preserving storage.
 export function InitCompressedProbe(value) {
-  value.Boundary = 0;
-  value.Offset = 0;
+  value.boundary = 0;
+  value.offset = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroCompressedProbe(value) {
-  value.Boundary = 0;
-  value.Offset = 0;
+  value.boundary = 0;
+  value.offset = 0;
 }
 
 export function WriteCompressedProbe(stream, value) {
-  NUMBER_SCRATCH.value = value.Boundary;
+  NUMBER_SCRATCH.value = value.boundary;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Offset;
+  NUMBER_SCRATCH.value = value.offset;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.001)) {
     return false;
   }
@@ -1456,11 +1459,11 @@ export function ReadCompressedProbe(stream, value) {
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
     return false;
   }
-  value.Boundary = NUMBER_SCRATCH.value;
+  value.boundary = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.001)) {
     return false;
   }
-  value.Offset = NUMBER_SCRATCH.value;
+  value.offset = NUMBER_SCRATCH.value;
   return true;
 }
 

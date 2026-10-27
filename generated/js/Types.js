@@ -16,9 +16,9 @@ const BOOL_SCRATCH = { value: false };
 // type Vec3
 export class Vec3 {
   constructor() {
-    this.X = 0;
-    this.Y = 0;
-    this.Z = 0;
+    this.x = 0;
+    this.y = 0;
+    this.z = 0;
   }
 }
 
@@ -29,28 +29,28 @@ export const Vec3MaxBytes = 24;
 
 // InitVec3 restores fresh construction values in place, preserving storage.
 export function InitVec3(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroVec3(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
 }
 
 export function WriteVec3(stream, value) {
-  NUMBER_SCRATCH.value = value.X;
+  NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Y;
+  NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Z;
+  NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
@@ -61,25 +61,25 @@ export function ReadVec3(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Z = NUMBER_SCRATCH.value;
+  value.z = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type Quat
 export class Quat {
   constructor() {
-    this.X = 0;
-    this.Y = 0;
-    this.Z = 0;
-    this.W = 0;
+    this.x = 0;
+    this.y = 0;
+    this.z = 0;
+    this.w = 0;
   }
 }
 
@@ -90,34 +90,34 @@ export const QuatMaxBytes = 32;
 
 // InitQuat restores fresh construction values in place, preserving storage.
 export function InitQuat(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.W = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuat(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.W = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 0;
 }
 
 export function WriteQuat(stream, value) {
-  NUMBER_SCRATCH.value = value.X;
+  NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Y;
+  NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Z;
+  NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.W;
+  NUMBER_SCRATCH.value = value.w;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
@@ -128,27 +128,27 @@ export function ReadQuat(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Z = NUMBER_SCRATCH.value;
+  value.z = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.W = NUMBER_SCRATCH.value;
+  value.w = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type Handle
 export class Handle {
   constructor() {
-    this.ObjectId = 0; // wire [0, 9999]
-    this.ObjectSequence = 0;
+    this.objectId = 0; // wire [0, 9999]
+    this.objectSequence = 0;
   }
 }
 
@@ -159,25 +159,25 @@ export const HandleMaxBytes = 8;
 
 // InitHandle restores fresh construction values in place, preserving storage.
 export function InitHandle(value) {
-  value.ObjectId = 0;
-  value.ObjectSequence = 0;
+  value.objectId = 0;
+  value.objectSequence = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroHandle(value) {
-  value.ObjectId = 0;
-  value.ObjectSequence = 0;
+  value.objectId = 0;
+  value.objectSequence = 0;
 }
 
 export function WriteHandle(stream, value) {
-  if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > MaxObjects - 1) {
+  if (!Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > MaxObjects - 1) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.ObjectId;
+  NUMBER_SCRATCH.value = value.objectId;
   if (!stream.serializeBits(NUMBER_SCRATCH, 14)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.ObjectSequence;
+  NUMBER_SCRATCH.value = value.objectSequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -188,20 +188,20 @@ export function ReadHandle(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxObjects - 1)) {
     return false;
   }
-  value.ObjectId = NUMBER_SCRATCH.value;
+  value.objectId = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.ObjectSequence = NUMBER_SCRATCH.value;
+  value.objectSequence = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type QuantizedPosition
 export class QuantizedPosition {
   constructor() {
-    this.X = 0; // wire [-8388608, 8388608]
-    this.Y = 0; // wire [-8388608, 8388608]
-    this.Z = 0; // wire [-8388608, 8388608]
+    this.x = 0; // wire [-8388608, 8388608]
+    this.y = 0; // wire [-8388608, 8388608]
+    this.z = 0; // wire [-8388608, 8388608]
   }
 }
 
@@ -212,37 +212,37 @@ export const QuantizedPositionMaxBytes = 16;
 
 // InitQuantizedPosition restores fresh construction values in place, preserving storage.
 export function InitQuantizedPosition(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuantizedPosition(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
 }
 
 export function WriteQuantizedPosition(stream, value) {
-  if (!Number.isInteger(value.X) || value.X < -MaxPositionUnits || value.X > MaxPositionUnits) {
+  if (!Number.isInteger(value.x) || value.x < -MaxPositionUnits || value.x > MaxPositionUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.X >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.x >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -MaxPositionUnits || value.Y > MaxPositionUnits) {
+  if (!Number.isInteger(value.y) || value.y < -MaxPositionUnits || value.y > MaxPositionUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.Y >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.y >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -MaxPositionUnits || value.Z > MaxPositionUnits) {
+  if (!Number.isInteger(value.z) || value.z < -MaxPositionUnits || value.z > MaxPositionUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.Z >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.z >>> 0) - (-MaxPositionUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
@@ -253,24 +253,24 @@ export function ReadQuantizedPosition(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxPositionUnits, MaxPositionUnits)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxPositionUnits, MaxPositionUnits)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxPositionUnits, MaxPositionUnits)) {
     return false;
   }
-  value.Z = NUMBER_SCRATCH.value;
+  value.z = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type QuantizedVelocity
 export class QuantizedVelocity {
   constructor() {
-    this.X = 0; // wire [-2097152, 2097152]
-    this.Y = 0; // wire [-2097152, 2097152]
-    this.Z = 0; // wire [-2097152, 2097152]
+    this.x = 0; // wire [-2097152, 2097152]
+    this.y = 0; // wire [-2097152, 2097152]
+    this.z = 0; // wire [-2097152, 2097152]
   }
 }
 
@@ -281,37 +281,37 @@ export const QuantizedVelocityMaxBytes = 16;
 
 // InitQuantizedVelocity restores fresh construction values in place, preserving storage.
 export function InitQuantizedVelocity(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuantizedVelocity(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
 }
 
 export function WriteQuantizedVelocity(stream, value) {
-  if (!Number.isInteger(value.X) || value.X < -MaxVelocityUnits || value.X > MaxVelocityUnits) {
+  if (!Number.isInteger(value.x) || value.x < -MaxVelocityUnits || value.x > MaxVelocityUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.X >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.x >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -MaxVelocityUnits || value.Y > MaxVelocityUnits) {
+  if (!Number.isInteger(value.y) || value.y < -MaxVelocityUnits || value.y > MaxVelocityUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.Y >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.y >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -MaxVelocityUnits || value.Z > MaxVelocityUnits) {
+  if (!Number.isInteger(value.z) || value.z < -MaxVelocityUnits || value.z > MaxVelocityUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.Z >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.z >>> 0) - (-MaxVelocityUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
   }
@@ -322,25 +322,25 @@ export function ReadQuantizedVelocity(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxVelocityUnits, MaxVelocityUnits)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxVelocityUnits, MaxVelocityUnits)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -MaxVelocityUnits, MaxVelocityUnits)) {
     return false;
   }
-  value.Z = NUMBER_SCRATCH.value;
+  value.z = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type QuantizedRotation
 export class QuantizedRotation {
   constructor() {
-    this.X = 0; // wire [-1024, 1024]
-    this.Y = 0; // wire [-1024, 1024]
-    this.Z = 0; // wire [-1024, 1024]
-    this.W = 0; // wire [-1024, 1024]
+    this.x = 0; // wire [-1024, 1024]
+    this.y = 0; // wire [-1024, 1024]
+    this.z = 0; // wire [-1024, 1024]
+    this.w = 0; // wire [-1024, 1024]
   }
 }
 
@@ -351,46 +351,46 @@ export const QuantizedRotationMaxBytes = 8;
 
 // InitQuantizedRotation restores fresh construction values in place, preserving storage.
 export function InitQuantizedRotation(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.W = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroQuantizedRotation(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.W = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 0;
 }
 
 export function WriteQuantizedRotation(stream, value) {
-  if (!Number.isInteger(value.X) || value.X < -RotationUnits || value.X > RotationUnits) {
+  if (!Number.isInteger(value.x) || value.x < -RotationUnits || value.x > RotationUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.X >>> 0) - (-RotationUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.x >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -RotationUnits || value.Y > RotationUnits) {
+  if (!Number.isInteger(value.y) || value.y < -RotationUnits || value.y > RotationUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.Y >>> 0) - (-RotationUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.y >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -RotationUnits || value.Z > RotationUnits) {
+  if (!Number.isInteger(value.z) || value.z < -RotationUnits || value.z > RotationUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.Z >>> 0) - (-RotationUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.z >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  if (!Number.isInteger(value.W) || value.W < -RotationUnits || value.W > RotationUnits) {
+  if (!Number.isInteger(value.w) || value.w < -RotationUnits || value.w > RotationUnits) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.W >>> 0) - (-RotationUnits >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.w >>> 0) - (-RotationUnits >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
@@ -401,33 +401,33 @@ export function ReadQuantizedRotation(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -RotationUnits, RotationUnits)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -RotationUnits, RotationUnits)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -RotationUnits, RotationUnits)) {
     return false;
   }
-  value.Z = NUMBER_SCRATCH.value;
+  value.z = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -RotationUnits, RotationUnits)) {
     return false;
   }
-  value.W = NUMBER_SCRATCH.value;
+  value.w = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type RigidBody
 export class RigidBody {
   constructor() {
-    this.Position = new Vec3();
-    this.Orientation = new Quat();
-    this.AtRest = false;
+    this.position = new Vec3();
+    this.orientation = new Quat();
+    this.atRest = false;
 
     // !at_rest — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.LinearVelocity = new Vec3();
-    this.AngularVelocity = new Vec3();
+    this.linearVelocity = new Vec3();
+    this.angularVelocity = new Vec3();
   }
 }
 
@@ -438,38 +438,38 @@ export const RigidBodyMaxBytes = 112;
 
 // InitRigidBody restores fresh construction values in place, preserving storage.
 export function InitRigidBody(value) {
-  InitVec3(value.Position);
-  InitQuat(value.Orientation);
-  value.AtRest = false;
-  InitVec3(value.LinearVelocity);
-  InitVec3(value.AngularVelocity);
+  InitVec3(value.position);
+  InitQuat(value.orientation);
+  value.atRest = false;
+  InitVec3(value.linearVelocity);
+  InitVec3(value.angularVelocity);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRigidBody(value) {
-  ZeroVec3(value.Position);
-  ZeroQuat(value.Orientation);
-  value.AtRest = false;
-  ZeroVec3(value.LinearVelocity);
-  ZeroVec3(value.AngularVelocity);
+  ZeroVec3(value.position);
+  ZeroQuat(value.orientation);
+  value.atRest = false;
+  ZeroVec3(value.linearVelocity);
+  ZeroVec3(value.angularVelocity);
 }
 
 export function WriteRigidBody(stream, value) {
-  if (!WriteVec3(stream, value.Position)) {
+  if (!WriteVec3(stream, value.position)) {
     return false;
   }
-  if (!WriteQuat(stream, value.Orientation)) {
+  if (!WriteQuat(stream, value.orientation)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.AtRest;
+  BOOL_SCRATCH.value = value.atRest;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!value.AtRest) {
-    if (!WriteVec3(stream, value.LinearVelocity)) {
+  if (!value.atRest) {
+    if (!WriteVec3(stream, value.linearVelocity)) {
       return false;
     }
-    if (!WriteVec3(stream, value.AngularVelocity)) {
+    if (!WriteVec3(stream, value.angularVelocity)) {
       return false;
     }
   }
@@ -477,26 +477,26 @@ export function WriteRigidBody(stream, value) {
 }
 
 export function ReadRigidBody(stream, value) {
-  if (!ReadVec3(stream, value.Position)) {
+  if (!ReadVec3(stream, value.position)) {
     return false;
   }
-  if (!ReadQuat(stream, value.Orientation)) {
+  if (!ReadQuat(stream, value.orientation)) {
     return false;
   }
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.AtRest = BOOL_SCRATCH.value;
-  if (!value.AtRest) {
-    if (!ReadVec3(stream, value.LinearVelocity)) {
+  value.atRest = BOOL_SCRATCH.value;
+  if (!value.atRest) {
+    if (!ReadVec3(stream, value.linearVelocity)) {
       return false;
     }
-    if (!ReadVec3(stream, value.AngularVelocity)) {
+    if (!ReadVec3(stream, value.angularVelocity)) {
       return false;
     }
   } else {
-    ZeroVec3(value.LinearVelocity);
-    ZeroVec3(value.AngularVelocity);
+    ZeroVec3(value.linearVelocity);
+    ZeroVec3(value.angularVelocity);
   }
   return true;
 }
@@ -504,19 +504,19 @@ export function ReadRigidBody(stream, value) {
 // type Input
 export class Input {
   constructor() {
-    this.StickX = 0;
-    this.StickY = 0;
-    this.Throttle = 0;
-    this.Yaw = 0;
-    this.Pitch = 0;
-    this.Fire = false;
-    this.AltFire = false;
-    this.Boost = false;
-    this.Brake = false;
-    this.Aim = false;
-    this.LockOn = false;
-    this.Zoom = false;
-    this.Ping = false;
+    this.stickX = 0;
+    this.stickY = 0;
+    this.throttle = 0;
+    this.yaw = 0;
+    this.pitch = 0;
+    this.fire = false;
+    this.altFire = false;
+    this.boost = false;
+    this.brake = false;
+    this.aim = false;
+    this.lockOn = false;
+    this.zoom = false;
+    this.ping = false;
   }
 }
 
@@ -527,88 +527,88 @@ export const InputMaxBytes = 24;
 
 // InitInput restores fresh construction values in place, preserving storage.
 export function InitInput(value) {
-  value.StickX = 0;
-  value.StickY = 0;
-  value.Throttle = 0;
-  value.Yaw = 0;
-  value.Pitch = 0;
-  value.Fire = false;
-  value.AltFire = false;
-  value.Boost = false;
-  value.Brake = false;
-  value.Aim = false;
-  value.LockOn = false;
-  value.Zoom = false;
-  value.Ping = false;
+  value.stickX = 0;
+  value.stickY = 0;
+  value.throttle = 0;
+  value.yaw = 0;
+  value.pitch = 0;
+  value.fire = false;
+  value.altFire = false;
+  value.boost = false;
+  value.brake = false;
+  value.aim = false;
+  value.lockOn = false;
+  value.zoom = false;
+  value.ping = false;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroInput(value) {
-  value.StickX = 0;
-  value.StickY = 0;
-  value.Throttle = 0;
-  value.Yaw = 0;
-  value.Pitch = 0;
-  value.Fire = false;
-  value.AltFire = false;
-  value.Boost = false;
-  value.Brake = false;
-  value.Aim = false;
-  value.LockOn = false;
-  value.Zoom = false;
-  value.Ping = false;
+  value.stickX = 0;
+  value.stickY = 0;
+  value.throttle = 0;
+  value.yaw = 0;
+  value.pitch = 0;
+  value.fire = false;
+  value.altFire = false;
+  value.boost = false;
+  value.brake = false;
+  value.aim = false;
+  value.lockOn = false;
+  value.zoom = false;
+  value.ping = false;
 }
 
 export function WriteInput(stream, value) {
-  NUMBER_SCRATCH.value = value.StickX;
+  NUMBER_SCRATCH.value = value.stickX;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.StickY;
+  NUMBER_SCRATCH.value = value.stickY;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Throttle;
+  NUMBER_SCRATCH.value = value.throttle;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Yaw;
+  NUMBER_SCRATCH.value = value.yaw;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Pitch;
+  NUMBER_SCRATCH.value = value.pitch;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Fire;
+  BOOL_SCRATCH.value = value.fire;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.AltFire;
+  BOOL_SCRATCH.value = value.altFire;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Boost;
+  BOOL_SCRATCH.value = value.boost;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Brake;
+  BOOL_SCRATCH.value = value.brake;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Aim;
+  BOOL_SCRATCH.value = value.aim;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.LockOn;
+  BOOL_SCRATCH.value = value.lockOn;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Zoom;
+  BOOL_SCRATCH.value = value.zoom;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Ping;
+  BOOL_SCRATCH.value = value.ping;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
@@ -619,66 +619,66 @@ export function ReadInput(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.StickX = NUMBER_SCRATCH.value;
+  value.stickX = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.StickY = NUMBER_SCRATCH.value;
+  value.stickY = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Throttle = NUMBER_SCRATCH.value;
+  value.throttle = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Yaw = NUMBER_SCRATCH.value;
+  value.yaw = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Pitch = NUMBER_SCRATCH.value;
+  value.pitch = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Fire = BOOL_SCRATCH.value;
+  value.fire = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.AltFire = BOOL_SCRATCH.value;
+  value.altFire = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Boost = BOOL_SCRATCH.value;
+  value.boost = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Brake = BOOL_SCRATCH.value;
+  value.brake = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Aim = BOOL_SCRATCH.value;
+  value.aim = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.LockOn = BOOL_SCRATCH.value;
+  value.lockOn = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Zoom = BOOL_SCRATCH.value;
+  value.zoom = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Ping = BOOL_SCRATCH.value;
+  value.ping = BOOL_SCRATCH.value;
   return true;
 }
 
 // type InputPacket
 export class InputPacket {
   constructor() {
-    this.SynchronizeSequence = 0;
-    this.CurrentFrame = 0n;
-    this.StartFrame = 0n;
-    this.Inputs = Array.from({ length: MaxInputsPerPacket }, () => new Input());
-    this.InputsCount = 0;
+    this.synchronizeSequence = 0;
+    this.currentFrame = 0n;
+    this.startFrame = 0n;
+    this.inputs = Array.from({ length: MaxInputsPerPacket }, () => new Input());
+    this.inputsCount = 0;
   }
 }
 
@@ -689,49 +689,49 @@ export const InputPacketMaxBytes = 360;
 
 // InitInputPacket restores fresh construction values in place, preserving storage.
 export function InitInputPacket(value) {
-  value.SynchronizeSequence = 0;
-  value.CurrentFrame = 0n;
-  value.StartFrame = 0n;
+  value.synchronizeSequence = 0;
+  value.currentFrame = 0n;
+  value.startFrame = 0n;
   for (let initIndex0 = 0; initIndex0 < MaxInputsPerPacket; initIndex0++) {
-    const initValue0 = value.Inputs[initIndex0];
+    const initValue0 = value.inputs[initIndex0];
     InitInput(initValue0);
   }
-  value.InputsCount = 0;
+  value.inputsCount = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroInputPacket(value) {
-  value.SynchronizeSequence = 0;
-  value.CurrentFrame = 0n;
-  value.StartFrame = 0n;
+  value.synchronizeSequence = 0;
+  value.currentFrame = 0n;
+  value.startFrame = 0n;
   for (let i = 0; i < MaxInputsPerPacket; i++) {
-    ZeroInput(value.Inputs[i]);
+    ZeroInput(value.inputs[i]);
   }
-  value.InputsCount = 0;
+  value.inputsCount = 0;
 }
 
 export function WriteInputPacket(stream, value) {
-  NUMBER_SCRATCH.value = value.SynchronizeSequence;
+  NUMBER_SCRATCH.value = value.synchronizeSequence;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.CurrentFrame;
+  BIGINT_SCRATCH.value = value.currentFrame;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.StartFrame;
+  BIGINT_SCRATCH.value = value.startFrame;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.InputsCount) || value.InputsCount < 0 || value.InputsCount > MaxInputsPerPacket) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.inputsCount) || value.inputsCount < 0 || value.inputsCount > MaxInputsPerPacket) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.InputsCount;
+  NUMBER_SCRATCH.value = value.inputsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  for (let i = 0; i < value.InputsCount; i++) {
-    if (!WriteInput(stream, value.Inputs[i])) {
+  for (let i = 0; i < value.inputsCount; i++) {
+    if (!WriteInput(stream, value.inputs[i])) {
       return false;
     }
   }
@@ -742,21 +742,21 @@ export function ReadInputPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  value.SynchronizeSequence = NUMBER_SCRATCH.value;
+  value.synchronizeSequence = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.CurrentFrame = BIGINT_SCRATCH.value;
+  value.currentFrame = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.StartFrame = BIGINT_SCRATCH.value;
+  value.startFrame = BIGINT_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxInputsPerPacket)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.InputsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.InputsCount; i++) {
-    if (!ReadInput(stream, value.Inputs[i])) {
+  value.inputsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.inputsCount; i++) {
+    if (!ReadInput(stream, value.inputs[i])) {
       return false;
     }
   }
@@ -766,20 +766,20 @@ export function ReadInputPacket(stream, value) {
 // type ShipCreate
 export class ShipCreate {
   constructor() {
-    this.ShipType = ShipType.None;
-    this.Position = new QuantizedPosition();
-    this.Rotation = new QuantizedRotation();
-    this.LinearVelocity = new QuantizedVelocity();
-    this.HasFlags = false;
+    this.shipType = ShipType.None;
+    this.position = new QuantizedPosition();
+    this.rotation = new QuantizedRotation();
+    this.linearVelocity = new QuantizedVelocity();
+    this.hasFlags = false;
 
     // has_flags — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.Flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    this.flags = 0n; // ShipFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
 
-    this.Team = Team.None;
-    this.Health = 0; // wire [0, 1000]
-    this.Thrust = 0; // wire [0, 100]
-    this.Pending = Pending.None;
+    this.team = Team.None;
+    this.health = 0; // wire [0, 1000]
+    this.thrust = 0; // wire [0, 100]
+    this.pending = Pending.None;
   }
 }
 
@@ -790,56 +790,56 @@ export const ShipCreateMaxBytes = 32;
 
 // InitShipCreate restores fresh construction values in place, preserving storage.
 export function InitShipCreate(value) {
-  value.ShipType = ShipType.None;
-  InitQuantizedPosition(value.Position);
-  InitQuantizedRotation(value.Rotation);
-  InitQuantizedVelocity(value.LinearVelocity);
-  value.HasFlags = false;
-  value.Flags = 0n;
-  value.Team = Team.None;
-  value.Health = 0;
-  value.Thrust = 0;
-  value.Pending = Pending.None;
+  value.shipType = ShipType.None;
+  InitQuantizedPosition(value.position);
+  InitQuantizedRotation(value.rotation);
+  InitQuantizedVelocity(value.linearVelocity);
+  value.hasFlags = false;
+  value.flags = 0n;
+  value.team = Team.None;
+  value.health = 0;
+  value.thrust = 0;
+  value.pending = Pending.None;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroShipCreate(value) {
-  value.ShipType = ShipType.None;
-  ZeroQuantizedPosition(value.Position);
-  ZeroQuantizedRotation(value.Rotation);
-  ZeroQuantizedVelocity(value.LinearVelocity);
-  value.HasFlags = false;
-  value.Flags = 0n;
-  value.Team = Team.None;
-  value.Health = 0;
-  value.Thrust = 0;
-  value.Pending = Pending.None;
+  value.shipType = ShipType.None;
+  ZeroQuantizedPosition(value.position);
+  ZeroQuantizedRotation(value.rotation);
+  ZeroQuantizedVelocity(value.linearVelocity);
+  value.hasFlags = false;
+  value.flags = 0n;
+  value.team = Team.None;
+  value.health = 0;
+  value.thrust = 0;
+  value.pending = Pending.None;
 }
 
 export function WriteShipCreate(stream, value) {
-  if (!Number.isInteger(value.ShipType) || value.ShipType < 0 || value.ShipType > 5) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.shipType) || value.shipType < 0 || value.shipType > 5) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.ShipType;
+  NUMBER_SCRATCH.value = value.shipType;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  if (!WriteQuantizedPosition(stream, value.Position)) {
+  if (!WriteQuantizedPosition(stream, value.position)) {
     return false;
   }
-  if (!WriteQuantizedRotation(stream, value.Rotation)) {
+  if (!WriteQuantizedRotation(stream, value.rotation)) {
     return false;
   }
-  if (!WriteQuantizedVelocity(stream, value.LinearVelocity)) {
+  if (!WriteQuantizedVelocity(stream, value.linearVelocity)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.HasFlags;
+  BOOL_SCRATCH.value = value.hasFlags;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.HasFlags) {
+  if (value.hasFlags) {
     {
-      const flagsValue = BigInt.asUintN(64, value.Flags);
+      const flagsValue = BigInt.asUintN(64, value.flags);
       if (flagsValue >= 1n << 4n) { // a mask bit above the wire width cannot ride
         return false;
       }
@@ -849,28 +849,28 @@ export function WriteShipCreate(stream, value) {
       }
     }
   }
-  if (!Number.isInteger(value.Team) || value.Team < 0 || value.Team > 2) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.Team;
+  NUMBER_SCRATCH.value = value.team;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > MaxHealth) {
+  if (!Number.isInteger(value.health) || value.health < 0 || value.health > MaxHealth) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Health;
+  NUMBER_SCRATCH.value = value.health;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) {
+  if (!Number.isInteger(value.thrust) || value.thrust < 0 || value.thrust > 100) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Thrust;
+  NUMBER_SCRATCH.value = value.thrust;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  if (!Number.isInteger(value.Pending) || value.Pending < 0 || value.Pending > 0) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.pending) || value.pending < 0 || value.pending > 0) { // headroom above the wire range cannot ride
     return false;
   }
   return true;
@@ -880,52 +880,52 @@ export function ReadShipCreate(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 5)) {
     return false;
   }
-  value.ShipType = NUMBER_SCRATCH.value;
-  if (!ReadQuantizedPosition(stream, value.Position)) {
+  value.shipType = NUMBER_SCRATCH.value;
+  if (!ReadQuantizedPosition(stream, value.position)) {
     return false;
   }
-  if (!ReadQuantizedRotation(stream, value.Rotation)) {
+  if (!ReadQuantizedRotation(stream, value.rotation)) {
     return false;
   }
-  if (!ReadQuantizedVelocity(stream, value.LinearVelocity)) {
+  if (!ReadQuantizedVelocity(stream, value.linearVelocity)) {
     return false;
   }
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.HasFlags = BOOL_SCRATCH.value;
-  if (value.HasFlags) {
+  value.hasFlags = BOOL_SCRATCH.value;
+  if (value.hasFlags) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
       return false;
     }
-    value.Flags = BigInt(NUMBER_SCRATCH.value);
+    value.flags = BigInt(NUMBER_SCRATCH.value);
   } else {
-    value.Flags = 0n;
+    value.flags = 0n;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) {
     return false;
   }
-  value.Team = NUMBER_SCRATCH.value;
+  value.team = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, MaxHealth)) {
     return false;
   }
-  value.Health = NUMBER_SCRATCH.value;
+  value.health = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 100)) {
     return false;
   }
-  value.Thrust = NUMBER_SCRATCH.value;
+  value.thrust = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 0)) {
     return false;
   }
-  value.Pending = NUMBER_SCRATCH.value;
+  value.pending = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ExpressionProbe
 export class ExpressionProbe {
   constructor() {
-    this.HardpointIndex = 0; // wire [0, 31]
-    this.SpinRate = RotationUnits; // specified default at construction; Zero* gives the §5 zero form; wire [1024, 2048]
+    this.hardpointIndex = 0; // wire [0, 31]
+    this.spinRate = RotationUnits; // specified default at construction; Zero* gives the §5 zero form; wire [1024, 2048]
   }
 }
 
@@ -936,28 +936,28 @@ export const ExpressionProbeMaxBytes = 8;
 
 // InitExpressionProbe restores fresh construction values in place, preserving storage.
 export function InitExpressionProbe(value) {
-  value.HardpointIndex = 0;
-  value.SpinRate = RotationUnits;
+  value.hardpointIndex = 0;
+  value.spinRate = RotationUnits;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroExpressionProbe(value) {
-  value.HardpointIndex = 0;
-  value.SpinRate = 0;
+  value.hardpointIndex = 0;
+  value.spinRate = 0;
 }
 
 export function WriteExpressionProbe(stream, value) {
-  if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) {
+  if (!Number.isInteger(value.hardpointIndex) || value.hardpointIndex < 0 || value.hardpointIndex > (ShipMaxLasers + ShipMaxMissiles) - 1) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.HardpointIndex;
+  NUMBER_SCRATCH.value = value.hardpointIndex;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.SpinRate) || value.SpinRate < -(-RotationUnits) || value.SpinRate > RotationUnits * 2) {
+  if (!Number.isInteger(value.spinRate) || value.spinRate < -(-RotationUnits) || value.spinRate > RotationUnits * 2) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.SpinRate >>> 0) - (-(-RotationUnits) >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.spinRate >>> 0) - (-(-RotationUnits) >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
@@ -968,11 +968,11 @@ export function ReadExpressionProbe(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, (ShipMaxLasers + ShipMaxMissiles) - 1)) {
     return false;
   }
-  value.HardpointIndex = NUMBER_SCRATCH.value;
+  value.hardpointIndex = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -(-RotationUnits), RotationUnits * 2)) {
     return false;
   }
-  value.SpinRate = NUMBER_SCRATCH.value;
+  value.spinRate = NUMBER_SCRATCH.value;
   return true;
 }
 
@@ -983,11 +983,11 @@ export const CeilingCount = 18446744073709551615n;
 // type ExtremeProbe
 export class ExtremeProbe {
   constructor() {
-    this.FloorBound = 0n; // wire [-9223372036854775808, 100]
-    this.DoubledFloor = 0n; // wire [-9223372036854775808, 100]
-    this.CeilingRange = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551615]
-    this.FloorDefault = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
-    this.CeilingDefault = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
+    this.floorBound = 0n; // wire [-9223372036854775808, 100]
+    this.doubledFloor = 0n; // wire [-9223372036854775808, 100]
+    this.ceilingRange = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551615]
+    this.floorDefault = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
+    this.ceilingDefault = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -998,49 +998,49 @@ export const ExtremeProbeMaxBytes = 40;
 
 // InitExtremeProbe restores fresh construction values in place, preserving storage.
 export function InitExtremeProbe(value) {
-  value.FloorBound = 0n;
-  value.DoubledFloor = 0n;
-  value.CeilingRange = 1n;
-  value.FloorDefault = -9223372036854775808n;
-  value.CeilingDefault = 18446744073709551615n;
+  value.floorBound = 0n;
+  value.doubledFloor = 0n;
+  value.ceilingRange = 1n;
+  value.floorDefault = -9223372036854775808n;
+  value.ceilingDefault = 18446744073709551615n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroExtremeProbe(value) {
-  value.FloorBound = 0n;
-  value.DoubledFloor = 0n;
-  value.CeilingRange = 0n;
-  value.FloorDefault = 0n;
-  value.CeilingDefault = 0n;
+  value.floorBound = 0n;
+  value.doubledFloor = 0n;
+  value.ceilingRange = 0n;
+  value.floorDefault = 0n;
+  value.ceilingDefault = 0n;
 }
 
 export function WriteExtremeProbe(stream, value) {
-  if (value.FloorBound > 100n) {
+  if (value.floorBound > 100n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.FloorBound - -9223372036854775808n);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.floorBound - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.DoubledFloor > 100n) {
+  if (value.doubledFloor > 100n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.DoubledFloor - -9223372036854775808n);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.doubledFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.CeilingRange < 1n) {
+  if (value.ceilingRange < 1n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.CeilingRange - 1n);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ceilingRange - 1n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.FloorDefault;
+  BIGINT_SCRATCH.value = value.floorDefault;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.CeilingDefault;
+  BIGINT_SCRATCH.value = value.ceilingDefault;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -1051,36 +1051,36 @@ export function ReadExtremeProbe(stream, value) {
   if (!stream.serializeInt64(BIGINT_SCRATCH, -9223372036854775808n, 100n)) {
     return false;
   }
-  value.FloorBound = BIGINT_SCRATCH.value;
+  value.floorBound = BIGINT_SCRATCH.value;
   if (!stream.serializeInt64(BIGINT_SCRATCH, -9223372036854775808n, 100n)) {
     return false;
   }
-  value.DoubledFloor = BIGINT_SCRATCH.value;
+  value.doubledFloor = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (BIGINT_SCRATCH.value > 18446744073709551614n) { // a read rejects out-of-range (SPEC §5) — not latched
     return false;
   }
-  value.CeilingRange = BIGINT_SCRATCH.value + 1n;
+  value.ceilingRange = BIGINT_SCRATCH.value + 1n;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.FloorDefault = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.floorDefault = BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.CeilingDefault = BIGINT_SCRATCH.value;
+  value.ceilingDefault = BIGINT_SCRATCH.value;
   return true;
 }
 
 // type ExtremeRow
 export class ExtremeRow {
   constructor() {
-    this.ClampedFloor = 0n; // wire [-9223372036854775808, 100]
-    this.ClampedCeiling = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551614]
-    this.FloorDef = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
-    this.CeilingDef = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
+    this.clampedFloor = 0n; // wire [-9223372036854775808, 100]
+    this.clampedCeiling = 1n; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551614]
+    this.floorDef = -9223372036854775808n; // specified default at construction; Zero* gives the §5 zero form
+    this.ceilingDef = 18446744073709551615n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -1091,40 +1091,40 @@ export const ExtremeRowMaxBytes = 32;
 
 // InitExtremeRow restores fresh construction values in place, preserving storage.
 export function InitExtremeRow(value) {
-  value.ClampedFloor = 0n;
-  value.ClampedCeiling = 1n;
-  value.FloorDef = -9223372036854775808n;
-  value.CeilingDef = 18446744073709551615n;
+  value.clampedFloor = 0n;
+  value.clampedCeiling = 1n;
+  value.floorDef = -9223372036854775808n;
+  value.ceilingDef = 18446744073709551615n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroExtremeRow(value) {
-  value.ClampedFloor = 0n;
-  value.ClampedCeiling = 0n;
-  value.FloorDef = 0n;
-  value.CeilingDef = 0n;
+  value.clampedFloor = 0n;
+  value.clampedCeiling = 0n;
+  value.floorDef = 0n;
+  value.ceilingDef = 0n;
 }
 
 export function WriteExtremeRow(stream, value) {
-  if (value.ClampedFloor > 100n) {
+  if (value.clampedFloor > 100n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ClampedFloor - -9223372036854775808n);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.clampedFloor - -9223372036854775808n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.ClampedCeiling < 1n || value.ClampedCeiling > 18446744073709551614n) {
+  if (value.clampedCeiling < 1n || value.clampedCeiling > 18446744073709551614n) {
     return false;
   }
-  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.ClampedCeiling - 1n);
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.clampedCeiling - 1n);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.FloorDef;
+  BIGINT_SCRATCH.value = value.floorDef;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.CeilingDef;
+  BIGINT_SCRATCH.value = value.ceilingDef;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -1135,22 +1135,22 @@ export function ReadExtremeRow(stream, value) {
   if (!stream.serializeInt64(BIGINT_SCRATCH, -9223372036854775808n, 100n)) {
     return false;
   }
-  value.ClampedFloor = BIGINT_SCRATCH.value;
+  value.clampedFloor = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
   if (BIGINT_SCRATCH.value > 18446744073709551613n) { // a read rejects out-of-range (SPEC §5) — not latched
     return false;
   }
-  value.ClampedCeiling = BIGINT_SCRATCH.value + 1n;
+  value.clampedCeiling = BIGINT_SCRATCH.value + 1n;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.FloorDef = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.floorDef = BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.CeilingDef = BIGINT_SCRATCH.value;
+  value.ceilingDef = BIGINT_SCRATCH.value;
   return true;
 }
 

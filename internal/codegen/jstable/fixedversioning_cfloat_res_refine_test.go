@@ -36,11 +36,11 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n !== 1) { fail("cfloat_res_refine: n is not 1: " + n + " " + reason(r)); }
-if (back[0].Lead !== 1 || back[0].Trail !== 2) {
+if (back[0].lead !== 1 || back[0].trail !== 2) {
   fail("the row moved a neighbour: " + show(back[0]));
 }
-if (f32bits(back[0].Aim) !== %[2]d) {
-  fail("the refined reader lands the old writer's value BIT-EXACT: aim bits " + f32bits(back[0].Aim).toString(16) + ", manifest " + (%[2]d).toString(16) + ": " + show(back[0]));
+if (f32bits(back[0].aim) !== %[2]d) {
+  fail("the refined reader lands the old writer's value BIT-EXACT: aim bits " + f32bits(back[0].aim).toString(16) + ", manifest " + (%[2]d).toString(16) + ": " + show(back[0]));
 }
 if (r.clamped !== 0) {
   fail("0.1 is a whole multiple of 0.01, so nothing requantizes and clamped is EXACTLY 0: " + reason(r));

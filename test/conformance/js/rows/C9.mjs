@@ -66,7 +66,7 @@ const report = new TableFixedReport();
 
 WeaponConfigFixedDecode(wc, new DataView(body.buffer), 0, report);
 
-assert(wc.Effect.Type === 0, `tag 9 lands as None (Type=${wc.Effect.Type})`);
+assert(wc.effect.type === 0, `tag 9 lands as None (Type=${wc.effect.type})`);
 assert(report.clamped === 1, `report.clamped is exactly 1 (got ${report.clamped})`);
 assert(report.refused === 0, `not a refusal (refused=${report.refused})`);
 assert(!report.malformed, "not malformed");
@@ -77,7 +77,7 @@ assert(report.duplicate === 0, "duplicate = 0");
 
 // Verify neighbouring scalar after the union field is untouched.
 // Penetration starts at 5 (valid range [0,10]) and should be preserved.
-assert(wc.Penetration === 5, `neighbour penetration = 5 (${wc.Penetration})`);
+assert(wc.penetration === 5, `neighbour penetration = 5 (${wc.penetration})`);
 
 console.log(failures === 0 ? "GREEN" : "RED");
 process.exit(failures > 0 ? 1 : 0);

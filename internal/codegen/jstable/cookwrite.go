@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -298,7 +299,7 @@ func cookFieldLiteral(u *ir.Unit, f *ir.Field, offset int64, variable bool) stri
 	}
 	name := f.Name
 	if !variable {
-		name = ir.GoExportName(f.Name)
+		name = js.MemberName(f.Name)
 	}
 	qn := strconv.Quote(name)
 	if f.Type.Kind == ir.TNamed && f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.Type.Pointer {
@@ -686,7 +687,7 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
       return writeField(view, at + fd.armAt, arm, value, le, ctx);
     }
     if (value === null || typeof value !== "object") { return false; }
-    const tag = value.Type;
+    const tag = value.type;
     if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
     if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
     if (tag === 0) { return true; }

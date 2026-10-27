@@ -40,21 +40,21 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.pf("// resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
 	g.pf("// is unselected at None; an arm is initialized at its next selection.\n")
 	g.pf("export function Zero%s(value) {\n", d.Name)
-	g.pf("  value.Type = %sType.None;\n}\n\n", d.Name)
+	g.pf("  value.type = %sType.None;\n}\n\n", d.Name)
 
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
 	g.pf("export function Write%s(stream, value) {\n", d.Name)
 	if d.Max == 0 {
 		g.pf("  // an empty union holds only None; its degenerate tag range [0, 0] costs\n")
 		g.pf("  // zero bits (SPEC §4.8)\n")
-		g.pf("  return value.Type === %sType.None;\n}\n\n", d.Name)
+		g.pf("  return value.type === %sType.None;\n}\n\n", d.Name)
 	} else {
-		g.pf("  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > %d) {\n", d.Max)
+		g.pf("  if (!Number.isInteger(value.type) || value.type < 0 || value.type > %d) {\n", d.Max)
 		g.pf("    return false; // the tag validates BEFORE it rides (SPEC §4.8)\n  }\n")
 		scratch := g.numScratch()
-		g.pf("  %s.value = value.Type;\n", scratch)
+		g.pf("  %s.value = value.type;\n", scratch)
 		g.call("  ", fmt.Sprintf("stream.serializeBits(%s, %d)", scratch, bits), "")
-		g.pf("  switch (value.Type) {\n")
+		g.pf("  switch (value.type) {\n")
 		for _, v := range d.Variants {
 			if v.Void() {
 				g.pf("    case %sType.%s:\n      return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n",
@@ -63,21 +63,21 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			}
 			g.addRef(v.Type, "Write"+v.Type)
 			g.pf("    case %sType.%s:\n      return Write%s(stream, value.%s);\n",
-				d.Name, ir.GoExportName(v.Name), v.Type, ir.GoExportName(v.Name))
+				d.Name, ir.GoExportName(v.Name), v.Type, MemberName(v.Name))
 		}
 		g.pf("  }\n  return true; // None — the tag is the whole wire (SPEC §4.8)\n}\n\n")
 	}
 
 	g.pf("export function Read%s(stream, value) {\n", d.Name)
 	if d.Max == 0 {
-		g.pf("  value.Type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
+		g.pf("  value.type = %sType.None; // zero wire bits — only None exists (SPEC §4.8)\n", d.Name)
 		g.pf("  return true;\n}\n\n")
 		return
 	}
 	scratch := g.numScratch()
 	g.call("  ", fmt.Sprintf("stream.serializeInt(%s, 0, %d)", scratch, d.Max), " // rejects a tag above the count (SPEC §4.8)")
-	g.pf("  value.Type = %s.value;\n", scratch)
-	g.pf("  switch (value.Type) {\n")
+	g.pf("  value.type = %s.value;\n", scratch)
+	g.pf("  switch (value.type) {\n")
 	for _, v := range d.Variants {
 		g.pf("    case %sType.%s:\n", d.Name, ir.GoExportName(v.Name))
 		if v.Void() {
@@ -85,8 +85,8 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 			continue
 		}
 		g.addRef(v.Type, "Init"+v.Type, "Read"+v.Type)
-		g.pf("      Init%s(value.%s); // fresh declared defaults on every selection\n", v.Type, ir.GoExportName(v.Name))
-		g.pf("      return Read%s(stream, value.%s);\n", v.Type, ir.GoExportName(v.Name))
+		g.pf("      Init%s(value.%s); // fresh declared defaults on every selection\n", v.Type, MemberName(v.Name))
+		g.pf("      return Read%s(stream, value.%s);\n", v.Type, MemberName(v.Name))
 	}
 	g.pf("  }\n  return true; // None\n}\n\n")
 }
@@ -147,7 +147,7 @@ func (g *gen) emitInitFunction(st *ir.Struct) {
 // selected-arm initialization. Scalars use the constructor's value renderer;
 // nested unions return to None without touching their dormant payloads.
 func (g *gen) emitInitField(f *ir.Field, path, ind string) {
-	name := path + "." + ir.GoExportName(f.Name)
+	name := path + "." + MemberName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
@@ -182,7 +182,7 @@ func (g *gen) emitInitField(f *ir.Field, path, ind string) {
 
 func (g *gen) emitInitComposite(typ ir.FieldType, path, ind string) {
 	if _, union := typ.Ref.(*ir.Union); union {
-		g.pf("%s%s.Type = 0; // None; dormant arms keep their storage\n", ind, path)
+		g.pf("%s%s.type = 0; // None; dormant arms keep their storage\n", ind, path)
 		return
 	}
 	if g.inlineInit {
@@ -227,7 +227,7 @@ func (g *gen) emitWriteItems(items []ir.Item, ind string) {
 			if item.Neg {
 				neg = "!"
 			}
-			g.pf("%sif (%svalue.%s) {\n", ind, neg, ir.GoExportName(item.Cond))
+			g.pf("%sif (%svalue.%s) {\n", ind, neg, MemberName(item.Cond))
 			g.emitWriteItems(item.Then, ind+"  ")
 			if item.Else != nil {
 				g.pf("%s} else {\n", ind)
@@ -254,7 +254,7 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 			if item.Neg {
 				neg = "!"
 			}
-			g.pf("%sif (%svalue.%s) {\n", ind, neg, ir.GoExportName(item.Cond))
+			g.pf("%sif (%svalue.%s) {\n", ind, neg, MemberName(item.Cond))
 			g.emitReadItems(item.Then, ind+"  ")
 			// the untaken side reads as zero values (SPEC §5)
 			g.emitZeroItems(item.Else, ind+"  ")
@@ -326,7 +326,7 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 }
 
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
-	name := "value." + ir.GoExportName(f.Name)
+	name := "value." + MemberName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
@@ -494,7 +494,7 @@ func (g *gen) emitWriteFoldedBig(expr, lo, hi string, min, max *big.Int, guardLo
 }
 
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
-	name := "value." + ir.GoExportName(f.Name)
+	name := "value." + MemberName(f.Name)
 	if f.Array != ir.ArrayNone {
 		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
 		if g.bulkBytes[f] {
@@ -746,7 +746,7 @@ func fmtNumCast(f *ir.Field, name string) string {
 }
 
 func (g *gen) emitReadField(f *ir.Field, ind string) {
-	name := "value." + ir.GoExportName(f.Name)
+	name := "value." + MemberName(f.Name)
 	if f.Array != ir.ArrayNone {
 		bound := g.renderNum(f.ArrayExpr, big.NewInt(f.ArrayBound))
 		if g.bulkBytes[f] {
@@ -905,14 +905,13 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.pf("%s%s = %s.value;\n", ind, length, scratch)
 		g.call(ind, fmt.Sprintf("stream.serializeBytes(%s.subarray(0, %s))", name, length), "")
 		if f.Type.Kind == ir.TString {
-			emitReadUTF8(g.pf, name, length, ind)
-			// the interior-null rule is generated-code validation (SPEC §4.7);
-			// the serializeBytes bool above already surfaced a truncated
-			// stream as the stream's own latched error, so this verdict only
-			// ever judges bytes that arrived — false, nothing latched
-			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, length)
-			g.pf("%s  if (%s[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)\n", ind, name)
-			g.pf("%s    return false;\n%s  }\n%s}\n", ind, ind, ind)
+			// UTF-8 and the interior-null rule are generated-code validation
+			// (SPEC §4.7); the serializeBytes bool above already surfaced a
+			// truncated stream as the stream's own latched error, so this
+			// verdict only ever judges bytes that arrived — false, nothing
+			// latched
+			g.needText = true
+			emitReadText(g.pf, name, length, ind)
 		}
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

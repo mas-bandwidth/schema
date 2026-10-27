@@ -48,12 +48,12 @@ async function main() {
 
   // --- build a valid form-3 file of this leg's own FX1 ---
   const one = new fx1home.FxRoot();
-  one.Keep = 4242;
-  one.Narrow = 40000;
-  one.Renamed = 321;
-  one.Gone = 654;
-  one.Nested.A = 111;
-  one.Nested.B = 222;
+  one.keep = 4242;
+  one.narrow = 40000;
+  one.renamed = 321;
+  one.gone = 654;
+  one.nested.a = 111;
+  one.nested.b = 222;
 
   const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(
@@ -75,18 +75,18 @@ async function main() {
 
   const values = [new fx1home.FxRoot()];
   const v = values[0];
-  v.Keep = 0x5A5A5A5A;
-  v.Narrow = 0x5A5A;
-  v.Renamed = 0x5A5A;
-  v.Gone = 0x5A5A;
-  v.Nested.A = 0x5A5A;
-  v.Nested.B = 0x5A5A;
-  v.Label.fill(0x5A);
-  v.LabelLength = 0x5A;
-  v.Marks.fill(0x5A);
-  v.MarksCount = 0x5A;
-  v.Blob.fill(0x5A);
-  v.BlobLength = 0x5A;
+  v.keep = 0x5A5A5A5A;
+  v.narrow = 0x5A5A;
+  v.renamed = 0x5A5A;
+  v.gone = 0x5A5A;
+  v.nested.a = 0x5A5A;
+  v.nested.b = 0x5A5A;
+  v.label.fill(0x5A);
+  v.labelLength = 0x5A;
+  v.marks.fill(0x5A);
+  v.marksCount = 0x5A;
+  v.blob.fill(0x5A);
+  v.blobLength = 0x5A;
 
   // --- the actual load ---
   const r = new fx1home.TableFixedReport();
@@ -118,11 +118,11 @@ async function main() {
   // --- ASSERTION 4: nothing is decoded ---
   // Every decoded value field remains at its poisoned sentinel.
   check(
-    v.Keep === 0x5A5A5A5A && v.Narrow === 0x5A5A && v.Renamed === 0x5A5A && v.Gone === 0x5A5A &&
-      v.Nested.A === 0x5A5A && v.Nested.B === 0x5A5A &&
-      v.Label.every((b) => b === 0x5A) && v.LabelLength === 0x5A &&
-      v.Marks.every((b) => b === 0x5A) && v.MarksCount === 0x5A &&
-      v.Blob.every((b) => b === 0x5A) && v.BlobLength === 0x5A,
+    v.keep === 0x5A5A5A5A && v.narrow === 0x5A5A && v.renamed === 0x5A5A && v.gone === 0x5A5A &&
+      v.nested.a === 0x5A5A && v.nested.b === 0x5A5A &&
+      v.label.every((b) => b === 0x5A) && v.labelLength === 0x5A &&
+      v.marks.every((b) => b === 0x5A) && v.marksCount === 0x5A &&
+      v.blob.every((b) => b === 0x5A) && v.blobLength === 0x5A,
     "REFUSE is total: nothing is decoded"
   );
 

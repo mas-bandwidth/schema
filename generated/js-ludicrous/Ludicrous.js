@@ -34,9 +34,8 @@ export const DriveMode = Object.freeze({
   Cruise: 1,
   Warp: 2,
   Ludicrous: 3,
-  Count: 3, // the declared variant count (SPEC §4.2)
-  Max: 3, // the exported extent (SPEC §4.2)
 });
+export const DriveModeMax = 3; // the exported extent (SPEC §4.2)
 
 // EnumNameDriveMode: debug/log/tooling name for any DriveMode wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -58,11 +57,11 @@ export function EnumNameDriveMode(value) {
 // type FixedProbe
 export class FixedProbe {
   constructor() {
-    this.Angle = 0; // wire [-180, 180]
-    this.Position = 0n; // wire [-30000, 30000]
-    this.Reach = 0n; // wire [-1000000, 1000000]
-    this.Ticks = 0; // wire [0, 1000000]
-    this.Samples = new Array(2).fill(0); // wire [-8, 8]
+    this.angle = 0; // wire [-180, 180]
+    this.position = 0n; // wire [-30000, 30000]
+    this.reach = 0n; // wire [-1000000, 1000000]
+    this.ticks = 0; // wire [0, 1000000]
+    this.samples = new Array(2).fill(0); // wire [-8, 8]
   }
 }
 
@@ -73,41 +72,41 @@ export const FixedProbeMaxBytes = 24;
 
 // InitFixedProbe restores fresh construction values in place, preserving storage.
 export function InitFixedProbe(value) {
-  value.Angle = 0;
-  value.Position = 0n;
-  value.Reach = 0n;
-  value.Ticks = 0;
-  value.Samples.fill(0);
+  value.angle = 0;
+  value.position = 0n;
+  value.reach = 0n;
+  value.ticks = 0;
+  value.samples.fill(0);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroFixedProbe(value) {
-  value.Angle = 0;
-  value.Position = 0n;
-  value.Reach = 0n;
-  value.Ticks = 0;
-  value.Samples.fill(0);
+  value.angle = 0;
+  value.position = 0n;
+  value.reach = 0n;
+  value.ticks = 0;
+  value.samples.fill(0);
 }
 
 export function WriteFixedProbe(stream, value) {
-  NUMBER_SCRATCH.value = value.Angle;
+  NUMBER_SCRATCH.value = value.angle;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -180, 180)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Position;
+  BIGINT_SCRATCH.value = value.position;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -30000n, 30000n)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Reach;
+  BIGINT_SCRATCH.value = value.reach;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, -1000000n, 1000000n)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Ticks;
+  NUMBER_SCRATCH.value = value.ticks;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
     return false;
   }
   for (let i = 0; i < 2; i++) {
-    NUMBER_SCRATCH.value = value.Samples[i];
+    NUMBER_SCRATCH.value = value.samples[i];
     if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -8, 8)) {
       return false;
     }
@@ -119,24 +118,24 @@ export function ReadFixedProbe(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -180, 180)) {
     return false;
   }
-  value.Angle = NUMBER_SCRATCH.value;
+  value.angle = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -30000n, 30000n)) {
     return false;
   }
-  value.Position = BIGINT_SCRATCH.value;
+  value.position = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, -1000000n, 1000000n)) {
     return false;
   }
-  value.Reach = BIGINT_SCRATCH.value;
+  value.reach = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
     return false;
   }
-  value.Ticks = NUMBER_SCRATCH.value;
+  value.ticks = NUMBER_SCRATCH.value;
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -8, 8)) {
       return false;
     }
-    value.Samples[i] = NUMBER_SCRATCH.value;
+    value.samples[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -144,13 +143,13 @@ export function ReadFixedProbe(stream, value) {
 // type UnsignedProbe
 export class UnsignedProbe {
   constructor() {
-    this.Angle = 0; // wire [0, 360]
-    this.Span = 0n; // wire [0, 281474976710655]
-    this.Reach = 0n; // wire [0, 2000000]
-    this.Ticks = 0; // wire [0, 1000000]
-    this.Samples = new Array(2).fill(0); // wire [0, 16]
-    this.Locked = 196608; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
-    this.Tail = 0;
+    this.angle = 0; // wire [0, 360]
+    this.span = 0n; // wire [0, 281474976710655]
+    this.reach = 0n; // wire [0, 2000000]
+    this.ticks = 0; // wire [0, 1000000]
+    this.samples = new Array(2).fill(0); // wire [0, 16]
+    this.locked = 196608; // specified default at construction; Zero* gives the §5 zero form; wire [3, 3]
+    this.tail = 0;
   }
 }
 
@@ -161,53 +160,53 @@ export const UnsignedProbeMaxBytes = 32;
 
 // InitUnsignedProbe restores fresh construction values in place, preserving storage.
 export function InitUnsignedProbe(value) {
-  value.Angle = 0;
-  value.Span = 0n;
-  value.Reach = 0n;
-  value.Ticks = 0;
-  value.Samples.fill(0);
-  value.Locked = 196608;
-  value.Tail = 0;
+  value.angle = 0;
+  value.span = 0n;
+  value.reach = 0n;
+  value.ticks = 0;
+  value.samples.fill(0);
+  value.locked = 196608;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroUnsignedProbe(value) {
-  value.Angle = 0;
-  value.Span = 0n;
-  value.Reach = 0n;
-  value.Ticks = 0;
-  value.Samples.fill(0);
-  value.Locked = 0;
-  value.Tail = 0;
+  value.angle = 0;
+  value.span = 0n;
+  value.reach = 0n;
+  value.ticks = 0;
+  value.samples.fill(0);
+  value.locked = 0;
+  value.tail = 0;
 }
 
 export function WriteUnsignedProbe(stream, value) {
-  NUMBER_SCRATCH.value = value.Angle;
+  NUMBER_SCRATCH.value = value.angle;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, 0, 360)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Span;
+  BIGINT_SCRATCH.value = value.span;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, 0n, 281474976710655n)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Reach;
+  BIGINT_SCRATCH.value = value.reach;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, 0n, 2000000n)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Ticks;
+  NUMBER_SCRATCH.value = value.ticks;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
     return false;
   }
   for (let i = 0; i < 2; i++) {
-    NUMBER_SCRATCH.value = value.Samples[i];
+    NUMBER_SCRATCH.value = value.samples[i];
     if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, 0, 16)) {
       return false;
     }
   }
-  if (value.Locked !== 196608) {
+  if (value.locked !== 196608) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -218,41 +217,41 @@ export function ReadUnsignedProbe(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, 0, 360)) {
     return false;
   }
-  value.Angle = NUMBER_SCRATCH.value;
+  value.angle = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, 0n, 281474976710655n)) {
     return false;
   }
-  value.Span = BIGINT_SCRATCH.value;
+  value.span = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 112, 16, 0n, 2000000n)) {
     return false;
   }
-  value.Reach = BIGINT_SCRATCH.value;
+  value.reach = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 32, 0, 0, 1000000)) {
     return false;
   }
-  value.Ticks = NUMBER_SCRATCH.value;
+  value.ticks = NUMBER_SCRATCH.value;
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, 0, 16)) {
       return false;
     }
-    value.Samples[i] = NUMBER_SCRATCH.value;
+    value.samples[i] = NUMBER_SCRATCH.value;
   }
-  value.Locked = 196608;
+  value.locked = 196608;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type WideProbe
 export class WideProbe {
   constructor() {
-    this.EntityId = 0n;
-    this.Energy = 0n; // wire [-5000000000, 5000000000]
-    this.Flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
-    this.Bias = -250n; // specified default at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
-    this.Seed = 36893488147419103232n; // specified default at construction; Zero* gives the §5 zero form
+    this.entityId = 0n;
+    this.energy = 0n; // wire [-5000000000, 5000000000]
+    this.flux = 0n; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
+    this.bias = -250n; // specified default at construction; Zero* gives the §5 zero form; wire [-1000, 1000]
+    this.seed = 36893488147419103232n; // specified default at construction; Zero* gives the §5 zero form
   }
 }
 
@@ -263,40 +262,40 @@ export const WideProbeMaxBytes = 56;
 
 // InitWideProbe restores fresh construction values in place, preserving storage.
 export function InitWideProbe(value) {
-  value.EntityId = 0n;
-  value.Energy = 0n;
-  value.Flux = 0n;
-  value.Bias = -250n;
-  value.Seed = 36893488147419103232n;
+  value.entityId = 0n;
+  value.energy = 0n;
+  value.flux = 0n;
+  value.bias = -250n;
+  value.seed = 36893488147419103232n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroWideProbe(value) {
-  value.EntityId = 0n;
-  value.Energy = 0n;
-  value.Flux = 0n;
-  value.Bias = 0n;
-  value.Seed = 0n;
+  value.entityId = 0n;
+  value.energy = 0n;
+  value.flux = 0n;
+  value.bias = 0n;
+  value.seed = 0n;
 }
 
 export function WriteWideProbe(stream, value) {
-  BIGINT_SCRATCH.value = value.EntityId;
+  BIGINT_SCRATCH.value = value.entityId;
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Energy;
+  BIGINT_SCRATCH.value = value.energy;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -5000000000n, 5000000000n)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Flux;
+  BIGINT_SCRATCH.value = value.flux;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Bias;
+  BIGINT_SCRATCH.value = value.bias;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1000n, 1000n)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Seed;
+  BIGINT_SCRATCH.value = value.seed;
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
@@ -307,39 +306,39 @@ export function ReadWideProbe(stream, value) {
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
-  value.EntityId = BIGINT_SCRATCH.value;
+  value.entityId = BIGINT_SCRATCH.value;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -5000000000n, 5000000000n)) {
     return false;
   }
-  value.Energy = BIGINT_SCRATCH.value;
+  value.energy = BIGINT_SCRATCH.value;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
     return false;
   }
-  value.Flux = BIGINT_SCRATCH.value;
+  value.flux = BIGINT_SCRATCH.value;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1000n, 1000n)) {
     return false;
   }
-  value.Bias = BIGINT_SCRATCH.value;
+  value.bias = BIGINT_SCRATCH.value;
   if (!stream.serializeUint128(BIGINT_SCRATCH)) {
     return false;
   }
-  value.Seed = BIGINT_SCRATCH.value;
+  value.seed = BIGINT_SCRATCH.value;
   return true;
 }
 
 // type LudicrousState
 export class LudicrousState {
   constructor() {
-    this.Mode = DriveMode.None;
-    this.Probe = new FixedProbe();
-    this.Wide = new WideProbe();
-    this.Keys = new Array(4).fill(0n);
-    this.KeysCount = 0;
-    this.HasTarget = false;
+    this.mode = DriveMode.None;
+    this.probe = new FixedProbe();
+    this.wide = new WideProbe();
+    this.keys = new Array(4).fill(0n);
+    this.keysCount = 0;
+    this.hasTarget = false;
 
     // has_target — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.TargetId = 0n;
+    this.targetId = 0n;
   }
 }
 
@@ -350,59 +349,59 @@ export const LudicrousStateMaxBytes = 152;
 
 // InitLudicrousState restores fresh construction values in place, preserving storage.
 export function InitLudicrousState(value) {
-  value.Mode = DriveMode.None;
-  InitFixedProbe(value.Probe);
-  InitWideProbe(value.Wide);
-  value.Keys.fill(0n);
-  value.KeysCount = 0;
-  value.HasTarget = false;
-  value.TargetId = 0n;
+  value.mode = DriveMode.None;
+  InitFixedProbe(value.probe);
+  InitWideProbe(value.wide);
+  value.keys.fill(0n);
+  value.keysCount = 0;
+  value.hasTarget = false;
+  value.targetId = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroLudicrousState(value) {
-  value.Mode = DriveMode.None;
-  ZeroFixedProbe(value.Probe);
-  ZeroWideProbe(value.Wide);
-  value.Keys.fill(0n);
-  value.KeysCount = 0;
-  value.HasTarget = false;
-  value.TargetId = 0n;
+  value.mode = DriveMode.None;
+  ZeroFixedProbe(value.probe);
+  ZeroWideProbe(value.wide);
+  value.keys.fill(0n);
+  value.keysCount = 0;
+  value.hasTarget = false;
+  value.targetId = 0n;
 }
 
 export function WriteLudicrousState(stream, value) {
-  if (!Number.isInteger(value.Mode) || value.Mode < 0 || value.Mode > 3) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.Mode;
+  NUMBER_SCRATCH.value = value.mode;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  if (!WriteFixedProbe(stream, value.Probe)) {
+  if (!WriteFixedProbe(stream, value.probe)) {
     return false;
   }
-  if (!WriteWideProbe(stream, value.Wide)) {
+  if (!WriteWideProbe(stream, value.wide)) {
     return false;
   }
-  if (!Number.isInteger(value.KeysCount) || value.KeysCount < 0 || value.KeysCount > 4) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.keysCount) || value.keysCount < 0 || value.keysCount > 4) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.KeysCount;
+  NUMBER_SCRATCH.value = value.keysCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  for (let i = 0; i < value.KeysCount; i++) {
-    BIGINT_SCRATCH.value = value.Keys[i];
+  for (let i = 0; i < value.keysCount; i++) {
+    BIGINT_SCRATCH.value = value.keys[i];
     if (!stream.serializeUint128(BIGINT_SCRATCH)) {
       return false;
     }
   }
-  BOOL_SCRATCH.value = value.HasTarget;
+  BOOL_SCRATCH.value = value.hasTarget;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.HasTarget) {
-    BIGINT_SCRATCH.value = value.TargetId;
+  if (value.hasTarget) {
+    BIGINT_SCRATCH.value = value.targetId;
     if (!stream.serializeUint128(BIGINT_SCRATCH)) {
       return false;
     }
@@ -414,34 +413,34 @@ export function ReadLudicrousState(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) {
     return false;
   }
-  value.Mode = NUMBER_SCRATCH.value;
-  if (!ReadFixedProbe(stream, value.Probe)) {
+  value.mode = NUMBER_SCRATCH.value;
+  if (!ReadFixedProbe(stream, value.probe)) {
     return false;
   }
-  if (!ReadWideProbe(stream, value.Wide)) {
+  if (!ReadWideProbe(stream, value.wide)) {
     return false;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.KeysCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.KeysCount; i++) {
+  value.keysCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.keysCount; i++) {
     if (!stream.serializeUint128(BIGINT_SCRATCH)) {
       return false;
     }
-    value.Keys[i] = BIGINT_SCRATCH.value;
+    value.keys[i] = BIGINT_SCRATCH.value;
   }
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.HasTarget = BOOL_SCRATCH.value;
-  if (value.HasTarget) {
+  value.hasTarget = BOOL_SCRATCH.value;
+  if (value.hasTarget) {
     if (!stream.serializeUint128(BIGINT_SCRATCH)) {
       return false;
     }
-    value.TargetId = BIGINT_SCRATCH.value;
+    value.targetId = BIGINT_SCRATCH.value;
   } else {
-    value.TargetId = 0n;
+    value.targetId = 0n;
   }
   return true;
 }
@@ -449,10 +448,10 @@ export function ReadLudicrousState(stream, value) {
 // type DegenerateProbe
 export class DegenerateProbe {
   constructor() {
-    this.LockedFixed = -196608; // specified default at construction; Zero* gives the §5 zero form; wire [-3, -3]
-    this.LockedInt = 7; // specified default at construction; Zero* gives the §5 zero form; wire [7, 7]
-    this.LockedWide = -12345678901234n; // specified default at construction; Zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
-    this.Tail = 0;
+    this.lockedFixed = -196608; // specified default at construction; Zero* gives the §5 zero form; wire [-3, -3]
+    this.lockedInt = 7; // specified default at construction; Zero* gives the §5 zero form; wire [7, 7]
+    this.lockedWide = -12345678901234n; // specified default at construction; Zero* gives the §5 zero form; wire [-12345678901234, -12345678901234]
+    this.tail = 0;
   }
 }
 
@@ -463,31 +462,31 @@ export const DegenerateProbeMaxBytes = 8;
 
 // InitDegenerateProbe restores fresh construction values in place, preserving storage.
 export function InitDegenerateProbe(value) {
-  value.LockedFixed = -196608;
-  value.LockedInt = 7;
-  value.LockedWide = -12345678901234n;
-  value.Tail = 0;
+  value.lockedFixed = -196608;
+  value.lockedInt = 7;
+  value.lockedWide = -12345678901234n;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroDegenerateProbe(value) {
-  value.LockedFixed = 0;
-  value.LockedInt = 0;
-  value.LockedWide = 0n;
-  value.Tail = 0;
+  value.lockedFixed = 0;
+  value.lockedInt = 0;
+  value.lockedWide = 0n;
+  value.tail = 0;
 }
 
 export function WriteDegenerateProbe(stream, value) {
-  if (value.LockedFixed !== -196608) {
+  if (value.lockedFixed !== -196608) {
     return false;
   }
-  if (!Number.isInteger(value.LockedInt) || value.LockedInt < 7 || value.LockedInt > 7) {
+  if (!Number.isInteger(value.lockedInt) || value.lockedInt < 7 || value.lockedInt > 7) {
     return false;
   }
-  if (value.LockedWide !== -12345678901234n) {
+  if (value.lockedWide !== -12345678901234n) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
@@ -495,22 +494,22 @@ export function WriteDegenerateProbe(stream, value) {
 }
 
 export function ReadDegenerateProbe(stream, value) {
-  value.LockedFixed = -196608;
-  value.LockedInt = 7;
-  value.LockedWide = -12345678901234n;
+  value.lockedFixed = -196608;
+  value.lockedInt = 7;
+  value.lockedWide = -12345678901234n;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type FixedVec
 export class FixedVec {
   constructor() {
-    this.X = 0n; // wire [-100000, 100000]
-    this.Y = 0n; // wire [-100000, 100000]
-    this.Z = 0n; // wire [-100000, 100000]
+    this.x = 0n; // wire [-100000, 100000]
+    this.y = 0n; // wire [-100000, 100000]
+    this.z = 0n; // wire [-100000, 100000]
   }
 }
 
@@ -521,28 +520,28 @@ export const FixedVecMaxBytes = 16;
 
 // InitFixedVec restores fresh construction values in place, preserving storage.
 export function InitFixedVec(value) {
-  value.X = 0n;
-  value.Y = 0n;
-  value.Z = 0n;
+  value.x = 0n;
+  value.y = 0n;
+  value.z = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroFixedVec(value) {
-  value.X = 0n;
-  value.Y = 0n;
-  value.Z = 0n;
+  value.x = 0n;
+  value.y = 0n;
+  value.z = 0n;
 }
 
 export function WriteFixedVec(stream, value) {
-  BIGINT_SCRATCH.value = value.X;
+  BIGINT_SCRATCH.value = value.x;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Y;
+  BIGINT_SCRATCH.value = value.y;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Z;
+  BIGINT_SCRATCH.value = value.z;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
   }
@@ -553,25 +552,25 @@ export function ReadFixedVec(stream, value) {
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
   }
-  value.X = BIGINT_SCRATCH.value;
+  value.x = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
   }
-  value.Y = BIGINT_SCRATCH.value;
+  value.y = BIGINT_SCRATCH.value;
   if (!stream.serializeFixed(BIGINT_SCRATCH, 48, 16, -100000n, 100000n)) {
     return false;
   }
-  value.Z = BIGINT_SCRATCH.value;
+  value.z = BIGINT_SCRATCH.value;
   return true;
 }
 
 // type FixedQuat
 export class FixedQuat {
   constructor() {
-    this.X = 0; // wire [-1, 1]
-    this.Y = 0; // wire [-1, 1]
-    this.Z = 0; // wire [-1, 1]
-    this.W = 1073741824; // specified default at construction; Zero* gives the §5 zero form; wire [-1, 1]
+    this.x = 0; // wire [-1, 1]
+    this.y = 0; // wire [-1, 1]
+    this.z = 0; // wire [-1, 1]
+    this.w = 1073741824; // specified default at construction; Zero* gives the §5 zero form; wire [-1, 1]
   }
 }
 
@@ -582,34 +581,34 @@ export const FixedQuatMaxBytes = 16;
 
 // InitFixedQuat restores fresh construction values in place, preserving storage.
 export function InitFixedQuat(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.W = 1073741824;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 1073741824;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroFixedQuat(value) {
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.W = 0;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.w = 0;
 }
 
 export function WriteFixedQuat(stream, value) {
-  NUMBER_SCRATCH.value = value.X;
+  NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Y;
+  NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Z;
+  NUMBER_SCRATCH.value = value.z;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.W;
+  NUMBER_SCRATCH.value = value.w;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
@@ -620,19 +619,19 @@ export function ReadFixedQuat(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  value.Z = NUMBER_SCRATCH.value;
+  value.z = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 30, -1, 1)) {
     return false;
   }
-  value.W = NUMBER_SCRATCH.value;
+  value.w = NUMBER_SCRATCH.value;
   return true;
 }
 

@@ -44,7 +44,7 @@ func (g *fgen) emitWriteWString(f *ir.Field, name, ind string) {
 	g.guard(fmt.Sprintf("!Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
 		" // the length guards the loop; out-of-contract writes are refused", ind)
 	g.emitWriteRangedNum(length, 0, f.Type.Size, ind)
-	g.chunkFlush(ind)
+	g.wDynamic(ind)
 	g.pf("%sfor (let wideIndex = 0; wideIndex < %s; wideIndex++) {\n", ind, length)
 	g.pf("%s  v = %s[wideIndex];\n", ind, name)
 	g.guard("v === 0", " // a wide string's used units carry no interior null", ind+"  ")
@@ -55,6 +55,7 @@ func (g *fgen) emitWriteWString(f *ir.Field, name, ind string) {
 func (g *fgen) emitReadWString(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
+	g.rDynamic(ind)
 	g.pf("%sif (br + %d > numBits) return false;\n", ind, bits)
 	g.readR(bits, ind)
 	g.pf("%sif (v > %d) return false;\n%s%s = v;\n", ind, f.Type.Size, ind, length)

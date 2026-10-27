@@ -53,9 +53,9 @@ const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, back.length, data, data.length, plan, report);
 if (n !== 1) { fail("the forged file carries one record: n=" + n + " " + reason(r)); }
 if (r.refused !== 0 || r.malformed) { fail("a forged ordinal is not a refusal and not malformed: " + reason(r)); }
-if (back[0].Tier !== 0) { fail("a forged ordinal lands None: " + show(back[0])); }
-if (back[0].Tier === 4) { fail("a forged ordinal never lands Platinum: " + show(back[0])); }
-if (back[0].Seq !== 9) { fail("the scalar after the enum is untouched: " + show(back[0])); }
+if (back[0].tier !== 0) { fail("a forged ordinal lands None: " + show(back[0])); }
+if (back[0].tier === 4) { fail("a forged ordinal never lands Platinum: " + show(back[0])); }
+if (back[0].seq !== 9) { fail("the scalar after the enum is untouched: " + show(back[0])); }
 if (r.clamped !== 1) { fail("the forged ordinal is counted exactly once: " + reason(r)); }
 if (r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) {
   fail("no other counter moved: " + reason(r));

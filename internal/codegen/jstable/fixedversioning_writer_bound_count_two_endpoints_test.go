@@ -45,16 +45,16 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n !== 1) { fail("writer_bound_count: n is not 1: " + n + " " + reason(r)); }
-if (back[0].ValsCount !== 4) {
-  fail("vals_count is the WRITING endpoint's bound carried by the plan, never the distractor's 6, never the reader's 8 nor the forged 7: " + show(back[0].ValsCount));
+if (back[0].valsCount !== 4) {
+  fail("vals_count is the WRITING endpoint's bound carried by the plan, never the distractor's 6, never the reader's 8 nor the forged 7: " + show(back[0].valsCount));
 }
 for (let i = 0; i < 4; i++) {
-  if (back[0].Vals[i] !== 1000 + i) { fail("vals[" + i + "] did not land: " + show(back[0])); }
+  if (back[0].vals[i] !== 1000 + i) { fail("vals[" + i + "] did not land: " + show(back[0])); }
 }
 for (let i = 4; i < 8; i++) {
-  if (back[0].Vals[i] !== 0) { fail("vals[" + i + "] is not the reader's declared default: " + show(back[0])); }
+  if (back[0].vals[i] !== 0) { fail("vals[" + i + "] is not the reader's declared default: " + show(back[0])); }
 }
-if (back[0].Lead !== 0xAAAAAAAA || back[0].Trail !== 0xBBBBBBBB) {
+if (back[0].lead !== 0xAAAAAAAA || back[0].trail !== 0xBBBBBBBB) {
   fail("the row moved a neighbour: " + show(back[0]));
 }
 if (r.clamped !== 1) {

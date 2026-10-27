@@ -56,9 +56,9 @@ type Packet { choice Choice }
 	}
 	values := string(out["Values.js"])
 	for _, want := range []string{
-		"this.Retries = DefaultRetries;", "value.Retries = DefaultRetries;",
-		"this.Pick = Pick.High;", "value.Pick = Pick.High;",
-		"this.Wide = 18446744073709551615n;", "value.Wide = 18446744073709551615n;",
+		"this.retries = DefaultRetries;", "value.retries = DefaultRetries;",
+		"this.pick = Pick.High;", "value.pick = Pick.High;",
+		"this.wide = 18446744073709551615n;", "value.wide = 18446744073709551615n;",
 	} {
 		if !strings.Contains(values, want) {
 			t.Errorf("constructor and Init must share the default renderer; missing %q", want)
@@ -66,7 +66,7 @@ type Packet { choice Choice }
 	}
 	runtime := string(out["Packet.js"])
 	init := emittedFunction(t, runtime, "InitPayload")
-	for _, want := range []string{"value.Nested.Type = 0;", "InitElement(initValue0);", "value.RowsCount = 1;"} {
+	for _, want := range []string{"value.nested.type = 0;", "InitElement(initValue0);", "value.rowsCount = 1;"} {
 		if !strings.Contains(init, want) {
 			t.Errorf("InitPayload missing %q", want)
 		}
@@ -86,7 +86,7 @@ type Packet { choice Choice }
 		t.Error("runtime InitPayload must import its cross-file InitElement helper")
 	}
 	flat := emittedFunction(t, string(out["PacketFlat.js"]), "ReadPacketFlat")
-	for _, want := range []string{".Retries = -9;", ".Pick = 2;", ".Wide = 18446744073709551615n;", ".RowsCount = 1;"} {
+	for _, want := range []string{".retries = -9;", ".pick = 2;", ".wide = 18446744073709551615n;", ".rowsCount = 1;"} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("flat initialization must resolve construction values; missing %q", want)
 		}

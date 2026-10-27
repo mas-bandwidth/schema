@@ -99,8 +99,10 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		nameFunc: "    public static String enumNameWeaponFireType(long value) {",
 	},
 	"js": {
-		count:    "  Count: 2, // the declared variant count (SPEC §4.2)",
-		max:      "  Max: 2, // the exported extent (SPEC §4.2)",
+		// the extent is a module constant beside the frozen tag object, and
+		// there is no Count (SPEC §4.2): Object.values sees variants only
+		count:    "",
+		max:      "export const WeaponFireTypeMax = 2; // the exported extent (SPEC §4.2)",
 		nameFunc: "export function EnumNameWeaponFireType(value) {",
 	},
 	"rust": {

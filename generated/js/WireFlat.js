@@ -17,475 +17,243 @@ const PRODUCTION = typeof process !== "undefined" && !!process.env && process.en
 // Read buffers must extend at least this many bytes past the payload.
 export const FLAT_READ_SLACK = 8;
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 // ---- type ProbeHeader: the flat codec ----
 
-function writeProbeHeaderFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (171 | ((value.Version & 0x7) << 8) | (0 << 11)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  SC.setBigUint64(0, value.ProbeId, true);
+// WriteProbeHeaderFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold ProbeHeaderMaxBytes.
+export function WriteProbeHeaderFlat(view, value) {
+  let v = 0, lo = 0;
+  lo = (171 | ((value.version & 0x7) << 8) | (0 << 11));
+  SC.setBigUint64(0, value.probeId, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
+  view.setUint32(8, lo, true);
+  return 10;
 }
 
-function writeProbeHeaderFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (171 | ((value.Version & 0x7) << 8) | (0 << 11)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  SC.setBigUint64(0, value.ProbeId, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteProbeHeaderFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeHeaderMaxBytes.
-export const WriteProbeHeaderFlat = PRODUCTION ? writeProbeHeaderFlatProduction : writeProbeHeaderFlatChecked;
-
-// ReadProbeHeaderFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeHeaderFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeHeaderFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadProbeHeaderFlat(view, numBits, value) {
+  let v = 0, out = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 16 > numBits) {
+  if (16 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xff) >>> 0;
   if (v !== 171) { // a read rejects any other value
     return false;
   }
   v = (out >>> 8) & 0x7;
-  value.Version = v;
+  value.version = v;
   v = (out >>> 11) & 0x1f;
   if (v !== 0) { // reserved bits must read zero
     return false;
   }
-  br += 16;
-  s2 = br & 7;
-  if (s2 !== 0) {
-    if (br + (8 - s2) > numBits) {
-      return false;
-    }
-    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
-      return false;
-    }
-    br += 8 - s2;
-  }
-  if (br + 64 > numBits) {
+  if (80 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(2, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(6, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.ProbeId = bg;
+  value.probeId = bg;
   return true;
 }
 
 // ---- type ProbeBits: the flat codec ----
 
-function writeProbeBitsFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Small & 0x1ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  SC.setBigUint64(0, value.Boundary, true);
+function writeProbeBitsFlatProduction(view, value) {
+  let v = 0, lo = 0;
+  lo = ((value.small & 0x1ff));
+  SC.setBigUint64(0, value.boundary, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 9)) >>> 0, true);
+  lo = v >>> 23;
   v = SC.getUint32(4, true) & 0x1;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  SC.setBigUint64(0, value.Wide, true);
+  lo = (lo | (v << 9)) >>> 0;
+  SC.setBigUint64(0, value.wide, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(4, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.Sensor) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Nonce, true);
+  view.setUint32(8, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
+  v = (((value.sensor) >>> 0)) >>> 0;
+  view.setUint32(12, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
+  SC.setBigUint64(0, value.nonce, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(16, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(20, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
+  view.setUint32(24, lo, true);
+  return 26;
 }
 
-function writeProbeBitsFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Small & 0x1ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  SC.setBigUint64(0, value.Boundary, true);
+function writeProbeBitsFlatChecked(view, value) {
+  let v = 0, lo = 0;
+  lo = ((value.small & 0x1ff));
+  SC.setBigUint64(0, value.boundary, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 9)) >>> 0, true);
+  lo = v >>> 23;
   v = SC.getUint32(4, true) & 0x1;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  SC.setBigUint64(0, value.Wide, true);
+  lo = (lo | (v << 9)) >>> 0;
+  SC.setBigUint64(0, value.wide, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(4, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (!Number.isInteger(value.Sensor) || value.Sensor < 0 || value.Sensor > 4294967295) {
+  view.setUint32(8, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
+  if (!Number.isInteger(value.sensor) || value.sensor < 0 || value.sensor > 4294967295) {
     return -1;
   }
-  v = (((value.Sensor) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Nonce, true);
+  v = (((value.sensor) >>> 0)) >>> 0;
+  view.setUint32(12, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
+  SC.setBigUint64(0, value.nonce, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(16, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(20, (lo | (v << 10)) >>> 0, true);
+  lo = v >>> 22;
+  view.setUint32(24, lo, true);
+  return 26;
 }
 
-// WriteProbeBitsFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteProbeBitsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ProbeBitsMaxBytes.
 export const WriteProbeBitsFlat = PRODUCTION ? writeProbeBitsFlatProduction : writeProbeBitsFlatChecked;
 
-// ReadProbeBitsFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeBitsFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeBitsFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadProbeBitsFlat(view, numBits, value) {
+  let v = 0, out = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 202 > numBits) {
+  if (202 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1ff) >>> 0;
-  value.Small = v;
-  br += 9;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.small = v;
+  out = (view.getUint32(1, true) >>> 1) | (view.getUint32(5, true) << 31);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(5, true) >>> 1) | (view.getUint32(9, true) << 31);
   v = (out & 0x1) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Boundary = bg;
-  br += 1;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.boundary = bg;
+  out = (view.getUint32(5, true) >>> 2) | (view.getUint32(9, true) << 30);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(9, true) >>> 2) | (view.getUint32(13, true) << 30);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Wide = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.wide = bg;
+  out = (view.getUint32(13, true) >>> 2) | (view.getUint32(17, true) << 30);
   v = out >>> 0;
-  value.Sensor = v;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.sensor = v;
+  out = (view.getUint32(17, true) >>> 2) | (view.getUint32(21, true) << 30);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(21, true) >>> 2) | (view.getUint32(25, true) << 30);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Nonce = bg;
+  value.nonce = bg;
   return true;
 }
 
 // ---- type ProbeSample: the flat codec ----
 
-function writeProbeSampleFlatProduction(value, view) {
-  let v = 0, x = 0, n = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Active ? 1 : 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  x = Math.fround(value.Orientation);
+function writeProbeSampleFlatProduction(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
+  lo = ((value.active ? 1 : 0));
+  x = Math.fround(value.orientation);
   n = Math.fround(Math.fround(x - -180.0) / 360.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
   if (v > 36000) { v = 36000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  v = (((value.RawDelta >>> 0) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.BigDelta, true);
+  lo = (lo | (v << 1)) >>> 0;
+  v = (((value.rawDelta >>> 0) >>> 0)) >>> 0;
+  view.setUint32(0, (lo | (v << 17)) >>> 0, true);
+  lo = v >>> 15;
+  SC.setBigUint64(0, value.bigDelta, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(4, (lo | (v << 17)) >>> 0, true);
+  lo = v >>> 15;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (value.Active) {
-    v = ((value.Weapon & 0xf) | ((value.HasTarget ? 1 : 0) << 4)) >>> 0;
+  view.setUint32(8, (lo | (v << 17)) >>> 0, true);
+  lo = v >>> 15;
+  wi = 12;
+  sb = 17;
+  if (value.active) {
+    v = ((value.weapon & 0xf) | ((value.hasTarget ? 1 : 0) << 4)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 5;
     if (sb >= 32) {
@@ -494,8 +262,8 @@ function writeProbeSampleFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
-    if (value.HasTarget) {
-      v = (((value.TargetId) & 0xffff)) >>> 0;
+    if (value.hasTarget) {
+      v = (((value.targetId) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
       if (sb >= 32) {
@@ -506,7 +274,7 @@ function writeProbeSampleFlatProduction(value, view) {
       }
     }
   } else {
-    v = (((value.IdleTicks) >>> 0)) >>> 0;
+    v = (((value.idleTicks) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -516,7 +284,7 @@ function writeProbeSampleFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  v = (((((value.SamplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
+  v = (((((value.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -525,8 +293,8 @@ function writeProbeSampleFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
-  for (let i0 = 0; i0 < value.SamplesCount; i0++) {
-    v = (((value.Samples[i0]) & 0xffff)) >>> 0;
+  for (let i0 = 0; i0 < value.samplesCount; i0++) {
+    v = (((value.samples[i0]) & 0xffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -542,19 +310,10 @@ function writeProbeSampleFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeProbeSampleFlatChecked(value, view) {
-  let v = 0, x = 0, n = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Active ? 1 : 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  x = Math.fround(value.Orientation);
+function writeProbeSampleFlatChecked(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
+  lo = ((value.active ? 1 : 0));
+  x = Math.fround(value.orientation);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -562,47 +321,24 @@ function writeProbeSampleFlatChecked(value, view) {
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
   if (v > 36000) { v = 36000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  v = (((value.RawDelta >>> 0) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.BigDelta, true);
+  lo = (lo | (v << 1)) >>> 0;
+  v = (((value.rawDelta >>> 0) >>> 0)) >>> 0;
+  view.setUint32(0, (lo | (v << 17)) >>> 0, true);
+  lo = v >>> 15;
+  SC.setBigUint64(0, value.bigDelta, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(4, (lo | (v << 17)) >>> 0, true);
+  lo = v >>> 15;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (value.Active) {
-    if (!Number.isInteger(value.Weapon) || value.Weapon < 0 || value.Weapon > 15) { // headroom above the wire range cannot ride
+  view.setUint32(8, (lo | (v << 17)) >>> 0, true);
+  lo = v >>> 15;
+  wi = 12;
+  sb = 17;
+  if (value.active) {
+    if (!Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
       return -1;
     }
-    v = ((value.Weapon & 0xf) | ((value.HasTarget ? 1 : 0) << 4)) >>> 0;
+    v = ((value.weapon & 0xf) | ((value.hasTarget ? 1 : 0) << 4)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 5;
     if (sb >= 32) {
@@ -611,8 +347,8 @@ function writeProbeSampleFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
-    if (value.HasTarget) {
-      v = (((value.TargetId) & 0xffff)) >>> 0;
+    if (value.hasTarget) {
+      v = (((value.targetId) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
       if (sb >= 32) {
@@ -623,7 +359,7 @@ function writeProbeSampleFlatChecked(value, view) {
       }
     }
   } else {
-    v = (((value.IdleTicks) >>> 0)) >>> 0;
+    v = (((value.idleTicks) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -633,10 +369,10 @@ function writeProbeSampleFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  if (!Number.isInteger(value.SamplesCount) || value.SamplesCount < 1 || value.SamplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  if (!Number.isInteger(value.samplesCount) || value.samplesCount < 1 || value.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((((value.SamplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
+  v = (((((value.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -645,8 +381,8 @@ function writeProbeSampleFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (3 - sb);
   }
-  for (let i0 = 0; i0 < value.SamplesCount; i0++) {
-    v = (((value.Samples[i0]) & 0xffff)) >>> 0;
+  for (let i0 = 0; i0 < value.samplesCount; i0++) {
+    v = (((value.samples[i0]) & 0xffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -662,60 +398,40 @@ function writeProbeSampleFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteProbeSampleFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteProbeSampleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ProbeSampleMaxBytes.
 export const WriteProbeSampleFlat = PRODUCTION ? writeProbeSampleFlatProduction : writeProbeSampleFlatChecked;
 
-// ReadProbeSampleFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeSampleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeSampleFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadProbeSampleFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 113 > numBits) {
+  if (113 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1) >>> 0;
-  value.Active = v !== 0;
+  value.active = v !== 0;
   v = (out >>> 1) & 0xffff;
   if (v > 36000) { // headroom above the quantum count is refused
     return false;
   }
-  value.Orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
-  br += 17;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
+  out = (view.getUint32(2, true) >>> 1) | (view.getUint32(6, true) << 31);
   v = out >>> 0;
-  value.RawDelta = v | 0;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.rawDelta = v | 0;
+  out = (view.getUint32(6, true) >>> 1) | (view.getUint32(10, true) << 31);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(10, true) >>> 1) | (view.getUint32(14, true) << 31);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.BigDelta = BigInt.asIntN(64, bg);
-  br += 32;
-  if (value.Active) {
+  value.bigDelta = BigInt.asIntN(64, bg);
+  br = 113;
+  if (value.active) {
     if (br + 5 > numBits) {
       return false;
     }
@@ -725,11 +441,11 @@ export function ReadProbeSampleFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xf) >>> 0;
-    value.Weapon = v;
+    value.weapon = v;
     v = (out >>> 4) & 0x1;
-    value.HasTarget = v !== 0;
+    value.hasTarget = v !== 0;
     br += 5;
-    if (value.HasTarget) {
+    if (value.hasTarget) {
       if (br + 16 > numBits) {
         return false;
       }
@@ -739,12 +455,12 @@ export function ReadProbeSampleFlat(value, view, numBits) {
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
       v = (out & 0xffff) >>> 0;
-      value.TargetId = v;
+      value.targetId = v;
       br += 16;
     } else {
-      value.TargetId = 0;
+      value.targetId = 0;
     }
-    value.IdleTicks = 0;
+    value.idleTicks = 0;
   } else {
     if (br + 32 > numBits) {
       return false;
@@ -755,10 +471,10 @@ export function ReadProbeSampleFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
-    value.IdleTicks = v;
-    value.Weapon = 0;
-    value.HasTarget = false;
-    value.TargetId = 0;
+    value.idleTicks = v;
+    value.weapon = 0;
+    value.hasTarget = false;
+    value.targetId = 0;
     br += 32;
   }
   if (br + 3 > numBits) {
@@ -770,19 +486,19 @@ export function ReadProbeSampleFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
-  value.SamplesCount = v + 1;
+  value.samplesCount = v + 1;
   br += 3;
-  if (br + value.SamplesCount * 16 > numBits) {
+  if (br + value.samplesCount * 16 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.SamplesCount; i0++) {
+  for (let i0 = 0; i0 < value.samplesCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xffff) >>> 0;
-    value.Samples[i0] = v;
+    value.samples[i0] = v;
     br += 16;
   }
   return true;
@@ -790,151 +506,80 @@ export function ReadProbeSampleFlat(value, view, numBits) {
 
 // ---- type ProbeRing: the flat codec ----
 
-function writeProbeRingFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.Radius) & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteProbeRingFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold ProbeRingMaxBytes.
+export function WriteProbeRingFlat(view, value) {
+  let lo = 0;
+  lo = (((value.radius) & 0xffff));
+  view.setUint32(0, lo, true);
+  return 2;
 }
 
-function writeProbeRingFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.Radius) & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteProbeRingFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeRingMaxBytes.
-export const WriteProbeRingFlat = PRODUCTION ? writeProbeRingFlatProduction : writeProbeRingFlatChecked;
-
-// ReadProbeRingFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeRingFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeRingFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 16 > numBits) {
+export function ReadProbeRingFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (16 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xffff) >>> 0;
-  value.Radius = v;
+  value.radius = v;
   return true;
 }
 
 // ---- type ProbeSlab: the flat codec ----
 
-function writeProbeSlabFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.Width) & 0x7f) | (((value.Height) & 0xff) << 7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 15;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (15 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeProbeSlabFlatProduction(view, value) {
+  let lo = 0;
+  lo = (((value.width) & 0x7f) | (((value.height) & 0xff) << 7));
+  view.setUint32(0, lo, true);
+  return 2;
 }
 
-function writeProbeSlabFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.Width) || value.Width < 0 || value.Width > 100) {
+function writeProbeSlabFlatChecked(view, value) {
+  let lo = 0;
+  if (!Number.isInteger(value.width) || value.width < 0 || value.width > 100) {
     return -1;
   }
-  v = (((value.Width) & 0x7f) | (((value.Height) & 0xff) << 7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 15;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (15 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  lo = (((value.width) & 0x7f) | (((value.height) & 0xff) << 7));
+  view.setUint32(0, lo, true);
+  return 2;
 }
 
-// WriteProbeSlabFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteProbeSlabFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ProbeSlabMaxBytes.
 export const WriteProbeSlabFlat = PRODUCTION ? writeProbeSlabFlatProduction : writeProbeSlabFlatChecked;
 
-// ReadProbeSlabFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeSlabFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeSlabFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 15 > numBits) {
+export function ReadProbeSlabFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (15 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x7f) >>> 0;
   if (v > 100) { // a smuggled offset is refused
     return false;
   }
-  value.Width = v | 0;
+  value.width = v | 0;
   v = (out >>> 7) & 0xff;
-  value.Height = v;
+  value.height = v;
   return true;
 }
 
-// ---- type ProbeCollider: the flat codec ----
+// ---- union ProbeShape: the flat codec ----
 
-function writeProbeColliderFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.Armor) & 0xff) | ((value.Shape.Type & 0x3) << 8)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  switch (value.Shape.Type) {
+function writeProbeShapeFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = ((value.type & 0x3));
+  sb = 2;
+  switch (value.type) {
     case 1: {
-      v = (((value.Shape.Ring.Radius) & 0xffff)) >>> 0;
+      v = (((value.ring.radius) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
       if (sb >= 32) {
@@ -946,7 +591,7 @@ function writeProbeColliderFlatProduction(value, view) {
       break;
     }
     case 2: {
-      v = (((value.Shape.Slab.Width) & 0x7f) | (((value.Shape.Slab.Height) & 0xff) << 7)) >>> 0;
+      v = (((value.slab.width) & 0x7f) | (((value.slab.height) & 0xff) << 7)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 15;
       if (sb >= 32) {
@@ -956,88 +601,6 @@ function writeProbeColliderFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (15 - sb);
       }
       break;
-    }
-  }
-  v = ((value.Backup.Type & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  switch (value.Backup.Type) {
-    case 1: {
-      v = (((value.Backup.Ring.Radius) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.Backup.Slab.Width) & 0x7f) | (((value.Backup.Slab.Height) & 0xff) << 7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 15;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (15 - sb);
-      }
-      break;
-    }
-  }
-  v = (((value.ExtrasCount) & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  for (let i0 = 0; i0 < value.ExtrasCount; i0++) {
-    const e0 = value.Extras[i0];
-    v = ((e0.Type & 0x3)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
-    }
-    switch (e0.Type) {
-      case 1: {
-        v = (((e0.Ring.Radius) & 0xffff)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 16;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (16 - sb);
-        }
-        break;
-      }
-      case 2: {
-        v = (((e0.Slab.Width) & 0x7f) | (((e0.Slab.Height) & 0xff) << 7)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 15;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (15 - sb);
-        }
-        break;
-      }
     }
   }
   if (sb !== 0) {
@@ -1046,24 +609,16 @@ function writeProbeColliderFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeProbeColliderFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.Shape.Type) || value.Shape.Type < 0 || value.Shape.Type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+function writeProbeShapeFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
-  v = (((value.Armor) & 0xff) | ((value.Shape.Type & 0x3) << 8)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  switch (value.Shape.Type) {
+  lo = ((value.type & 0x3));
+  sb = 2;
+  switch (value.type) {
     case 1: {
-      v = (((value.Shape.Ring.Radius) & 0xffff)) >>> 0;
+      v = (((value.ring.radius) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
       if (sb >= 32) {
@@ -1075,10 +630,10 @@ function writeProbeColliderFlatChecked(value, view) {
       break;
     }
     case 2: {
-      if (!Number.isInteger(value.Shape.Slab.Width) || value.Shape.Slab.Width < 0 || value.Shape.Slab.Width > 100) {
+      if (!Number.isInteger(value.slab.width) || value.slab.width < 0 || value.slab.width > 100) {
         return -1;
       }
-      v = (((value.Shape.Slab.Width) & 0x7f) | (((value.Shape.Slab.Height) & 0xff) << 7)) >>> 0;
+      v = (((value.slab.width) & 0x7f) | (((value.slab.height) & 0xff) << 7)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 15;
       if (sb >= 32) {
@@ -1088,103 +643,6 @@ function writeProbeColliderFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (15 - sb);
       }
       break;
-    }
-  }
-  if (!Number.isInteger(value.Backup.Type) || value.Backup.Type < 0 || value.Backup.Type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
-    return -1;
-  }
-  v = ((value.Backup.Type & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  switch (value.Backup.Type) {
-    case 1: {
-      v = (((value.Backup.Ring.Radius) & 0xffff)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-      break;
-    }
-    case 2: {
-      if (!Number.isInteger(value.Backup.Slab.Width) || value.Backup.Slab.Width < 0 || value.Backup.Slab.Width > 100) {
-        return -1;
-      }
-      v = (((value.Backup.Slab.Width) & 0x7f) | (((value.Backup.Slab.Height) & 0xff) << 7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 15;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (15 - sb);
-      }
-      break;
-    }
-  }
-  if (!Number.isInteger(value.ExtrasCount) || value.ExtrasCount < 0 || value.ExtrasCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-    return -1;
-  }
-  v = (((value.ExtrasCount) & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  for (let i0 = 0; i0 < value.ExtrasCount; i0++) {
-    const e0 = value.Extras[i0];
-    if (!Number.isInteger(e0.Type) || e0.Type < 0 || e0.Type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
-      return -1;
-    }
-    v = ((e0.Type & 0x3)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
-    }
-    switch (e0.Type) {
-      case 1: {
-        v = (((e0.Ring.Radius) & 0xffff)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 16;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (16 - sb);
-        }
-        break;
-      }
-      case 2: {
-        if (!Number.isInteger(e0.Slab.Width) || e0.Slab.Width < 0 || e0.Slab.Width > 100) {
-          return -1;
-        }
-        v = (((e0.Slab.Width) & 0x7f) | (((e0.Slab.Height) & 0xff) << 7)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 15;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (15 - sb);
-        }
-        break;
-      }
     }
   }
   if (sb !== 0) {
@@ -1193,44 +651,28 @@ function writeProbeColliderFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteProbeColliderFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteProbeShapeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ProbeColliderMaxBytes.
-export const WriteProbeColliderFlat = PRODUCTION ? writeProbeColliderFlatProduction : writeProbeColliderFlatChecked;
+// of them (SPEC §5). The buffer behind view must hold ProbeShapeMaxBytes.
+export const WriteProbeShapeFlat = PRODUCTION ? writeProbeShapeFlatProduction : writeProbeShapeFlatChecked;
 
-// ReadProbeColliderFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeShapeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeColliderFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 8 > numBits) {
+export function ReadProbeShapeFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (2 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0xff) >>> 0;
-  value.Armor = v;
-  br += 8;
-  if (br + 2 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x3) >>> 0;
   if (v > 2) { // not a wire-legal tag (SPEC §4.8)
     return false;
   }
-  value.Shape.Type = v;
-  br += 2;
-  switch (value.Shape.Type) {
+  value.type = v;
+  br = 2;
+  switch (value.type) {
     case 1: {
-      value.Shape.Ring.Radius = 0;
+      value.ring.radius = 0;
       if (br + 16 > numBits) {
         return false;
       }
@@ -1240,13 +682,13 @@ export function ReadProbeColliderFlat(value, view, numBits) {
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
       v = (out & 0xffff) >>> 0;
-      value.Shape.Ring.Radius = v;
+      value.ring.radius = v;
       br += 16;
       break;
     }
     case 2: {
-      value.Shape.Slab.Width = 0;
-      value.Shape.Slab.Height = 0;
+      value.slab.width = 0;
+      value.slab.height = 0;
       if (br + 15 > numBits) {
         return false;
       }
@@ -1259,9 +701,334 @@ export function ReadProbeColliderFlat(value, view, numBits) {
       if (v > 100) { // a smuggled offset is refused
         return false;
       }
-      value.Shape.Slab.Width = v | 0;
+      value.slab.width = v | 0;
       v = (out >>> 7) & 0xff;
-      value.Shape.Slab.Height = v;
+      value.slab.height = v;
+      br += 15;
+      break;
+    }
+  }
+  return true;
+}
+
+// ---- type ProbeCollider: the flat codec ----
+
+function writeProbeColliderFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.armor) & 0xff) | ((value.shape.type & 0x3) << 8));
+  sb = 10;
+  switch (value.shape.type) {
+    case 1: {
+      v = (((value.shape.ring.radius) & 0xffff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 16;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (16 - sb);
+      }
+      break;
+    }
+    case 2: {
+      v = (((value.shape.slab.width) & 0x7f) | (((value.shape.slab.height) & 0xff) << 7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 15;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (15 - sb);
+      }
+      break;
+    }
+  }
+  v = ((value.backup.type & 0x3)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
+  }
+  switch (value.backup.type) {
+    case 1: {
+      v = (((value.backup.ring.radius) & 0xffff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 16;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (16 - sb);
+      }
+      break;
+    }
+    case 2: {
+      v = (((value.backup.slab.width) & 0x7f) | (((value.backup.slab.height) & 0xff) << 7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 15;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (15 - sb);
+      }
+      break;
+    }
+  }
+  v = (((value.extrasCount) & 0x3)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
+  }
+  for (let i0 = 0; i0 < value.extrasCount; i0++) {
+    const e0 = value.extras[i0];
+    v = ((e0.type & 0x3)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
+    }
+    switch (e0.type) {
+      case 1: {
+        v = (((e0.ring.radius) & 0xffff)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 16;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (16 - sb);
+        }
+        break;
+      }
+      case 2: {
+        v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 15;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (15 - sb);
+        }
+        break;
+      }
+    }
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeProbeColliderFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.shape.type) || value.shape.type < 0 || value.shape.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+    return -1;
+  }
+  lo = (((value.armor) & 0xff) | ((value.shape.type & 0x3) << 8));
+  sb = 10;
+  switch (value.shape.type) {
+    case 1: {
+      v = (((value.shape.ring.radius) & 0xffff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 16;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (16 - sb);
+      }
+      break;
+    }
+    case 2: {
+      if (!Number.isInteger(value.shape.slab.width) || value.shape.slab.width < 0 || value.shape.slab.width > 100) {
+        return -1;
+      }
+      v = (((value.shape.slab.width) & 0x7f) | (((value.shape.slab.height) & 0xff) << 7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 15;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (15 - sb);
+      }
+      break;
+    }
+  }
+  if (!Number.isInteger(value.backup.type) || value.backup.type < 0 || value.backup.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+    return -1;
+  }
+  v = ((value.backup.type & 0x3)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
+  }
+  switch (value.backup.type) {
+    case 1: {
+      v = (((value.backup.ring.radius) & 0xffff)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 16;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (16 - sb);
+      }
+      break;
+    }
+    case 2: {
+      if (!Number.isInteger(value.backup.slab.width) || value.backup.slab.width < 0 || value.backup.slab.width > 100) {
+        return -1;
+      }
+      v = (((value.backup.slab.width) & 0x7f) | (((value.backup.slab.height) & 0xff) << 7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 15;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (15 - sb);
+      }
+      break;
+    }
+  }
+  if (!Number.isInteger(value.extrasCount) || value.extrasCount < 0 || value.extrasCount > 2) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  v = (((value.extrasCount) & 0x3)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 2;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (2 - sb);
+  }
+  for (let i0 = 0; i0 < value.extrasCount; i0++) {
+    const e0 = value.extras[i0];
+    if (!Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+      return -1;
+    }
+    v = ((e0.type & 0x3)) >>> 0;
+    lo = (lo | (v << sb)) >>> 0;
+    sb += 2;
+    if (sb >= 32) {
+      view.setUint32(wi, lo, true);
+      wi += 4;
+      sb -= 32;
+      lo = sb === 0 ? 0 : v >>> (2 - sb);
+    }
+    switch (e0.type) {
+      case 1: {
+        v = (((e0.ring.radius) & 0xffff)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 16;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (16 - sb);
+        }
+        break;
+      }
+      case 2: {
+        if (!Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
+          return -1;
+        }
+        v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 15;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (15 - sb);
+        }
+        break;
+      }
+    }
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteProbeColliderFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold ProbeColliderMaxBytes.
+export const WriteProbeColliderFlat = PRODUCTION ? writeProbeColliderFlatProduction : writeProbeColliderFlatChecked;
+
+// ReadProbeColliderFlat(view, numBits, value) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadProbeColliderFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (8 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0xff) >>> 0;
+  value.armor = v;
+  if (10 > numBits) {
+    return false;
+  }
+  out = view.getUint32(1, true);
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
+    return false;
+  }
+  value.shape.type = v;
+  br = 10;
+  switch (value.shape.type) {
+    case 1: {
+      value.shape.ring.radius = 0;
+      if (br + 16 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0xffff) >>> 0;
+      value.shape.ring.radius = v;
+      br += 16;
+      break;
+    }
+    case 2: {
+      value.shape.slab.width = 0;
+      value.shape.slab.height = 0;
+      if (br + 15 > numBits) {
+        return false;
+      }
+      bi = br >>> 3;
+      wlo = view.getUint32(bi, true);
+      whi = view.getUint32(bi + 4, true);
+      s2 = br & 7;
+      out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+      v = (out & 0x7f) >>> 0;
+      if (v > 100) { // a smuggled offset is refused
+        return false;
+      }
+      value.shape.slab.width = v | 0;
+      v = (out >>> 7) & 0xff;
+      value.shape.slab.height = v;
       br += 15;
       break;
     }
@@ -1278,11 +1045,11 @@ export function ReadProbeColliderFlat(value, view, numBits) {
   if (v > 2) { // not a wire-legal tag (SPEC §4.8)
     return false;
   }
-  value.Backup.Type = v;
+  value.backup.type = v;
   br += 2;
-  switch (value.Backup.Type) {
+  switch (value.backup.type) {
     case 1: {
-      value.Backup.Ring.Radius = 0;
+      value.backup.ring.radius = 0;
       if (br + 16 > numBits) {
         return false;
       }
@@ -1292,13 +1059,13 @@ export function ReadProbeColliderFlat(value, view, numBits) {
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
       v = (out & 0xffff) >>> 0;
-      value.Backup.Ring.Radius = v;
+      value.backup.ring.radius = v;
       br += 16;
       break;
     }
     case 2: {
-      value.Backup.Slab.Width = 0;
-      value.Backup.Slab.Height = 0;
+      value.backup.slab.width = 0;
+      value.backup.slab.height = 0;
       if (br + 15 > numBits) {
         return false;
       }
@@ -1311,9 +1078,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
       if (v > 100) { // a smuggled offset is refused
         return false;
       }
-      value.Backup.Slab.Width = v | 0;
+      value.backup.slab.width = v | 0;
       v = (out >>> 7) & 0xff;
-      value.Backup.Slab.Height = v;
+      value.backup.slab.height = v;
       br += 15;
       break;
     }
@@ -1330,10 +1097,10 @@ export function ReadProbeColliderFlat(value, view, numBits) {
   if (v > 2) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ExtrasCount = v;
+  value.extrasCount = v;
   br += 2;
-  for (let i0 = 0; i0 < value.ExtrasCount; i0++) {
-    const e0 = value.Extras[i0];
+  for (let i0 = 0; i0 < value.extrasCount; i0++) {
+    const e0 = value.extras[i0];
     if (br + 2 > numBits) {
       return false;
     }
@@ -1346,11 +1113,11 @@ export function ReadProbeColliderFlat(value, view, numBits) {
     if (v > 2) { // not a wire-legal tag (SPEC §4.8)
       return false;
     }
-    e0.Type = v;
+    e0.type = v;
     br += 2;
-    switch (e0.Type) {
+    switch (e0.type) {
       case 1: {
-        e0.Ring.Radius = 0;
+        e0.ring.radius = 0;
         if (br + 16 > numBits) {
           return false;
         }
@@ -1360,13 +1127,13 @@ export function ReadProbeColliderFlat(value, view, numBits) {
         s2 = br & 7;
         out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
         v = (out & 0xffff) >>> 0;
-        e0.Ring.Radius = v;
+        e0.ring.radius = v;
         br += 16;
         break;
       }
       case 2: {
-        e0.Slab.Width = 0;
-        e0.Slab.Height = 0;
+        e0.slab.width = 0;
+        e0.slab.height = 0;
         if (br + 15 > numBits) {
           return false;
         }
@@ -1379,9 +1146,9 @@ export function ReadProbeColliderFlat(value, view, numBits) {
         if (v > 100) { // a smuggled offset is refused
           return false;
         }
-        e0.Slab.Width = v | 0;
+        e0.slab.width = v | 0;
         v = (out >>> 7) & 0xff;
-        e0.Slab.Height = v;
+        e0.slab.height = v;
         br += 15;
         break;
       }
@@ -1392,102 +1159,53 @@ export function ReadProbeColliderFlat(value, view, numBits) {
 
 // ---- type ProbeConfig: the flat codec ----
 
-function writeProbeConfigFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.Retries >>> 0) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.Preferred & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeProbeConfigFlatProduction(view, value) {
+  let lo = 0;
+  view.setUint32(0, (((value.retries >>> 0) >>> 0)), true);
+  lo = ((value.preferred & 0xf));
+  view.setUint32(4, lo, true);
+  return 5;
 }
 
-function writeProbeConfigFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.Preferred) || value.Preferred < 0 || value.Preferred > 15) { // headroom above the wire range cannot ride
+function writeProbeConfigFlatChecked(view, value) {
+  let lo = 0;
+  if (!Number.isInteger(value.preferred) || value.preferred < 0 || value.preferred > 15) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (((value.Retries >>> 0) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.Preferred & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(0, (((value.retries >>> 0) >>> 0)), true);
+  lo = ((value.preferred & 0xf));
+  view.setUint32(4, lo, true);
+  return 5;
 }
 
-// WriteProbeConfigFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteProbeConfigFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ProbeConfigMaxBytes.
 export const WriteProbeConfigFlat = PRODUCTION ? writeProbeConfigFlatProduction : writeProbeConfigFlatChecked;
 
-// ReadProbeConfigFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeConfigFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeConfigFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 36 > numBits) {
+export function ReadProbeConfigFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (36 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = out >>> 0;
-  value.Retries = v | 0;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.retries = v | 0;
+  out = view.getUint32(4, true);
   v = (out & 0xf) >>> 0;
-  value.Preferred = v;
+  value.preferred = v;
   return true;
 }
 
 // ---- type ProbeArray: the flat codec ----
 
-function writeProbeArrayFlatProduction(value, view) {
-  let v = 0, x = 0, n = 0;
-  let lo = 0, sb = 0, wi = 0;
+function writeProbeArrayFlatProduction(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    const e0 = value.Samples[i0];
-    v = ((e0.Active ? 1 : 0)) >>> 0;
+    const e0 = value.samples[i0];
+    v = ((e0.active ? 1 : 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 1;
     if (sb >= 32) {
@@ -1496,7 +1214,7 @@ function writeProbeArrayFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
-    x = Math.fround(e0.Orientation);
+    x = Math.fround(e0.orientation);
     n = Math.fround(Math.fround(x - -180.0) / 360.0);
     if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
     v = Math.floor(Math.fround(Math.fround(n * 36000.0) + 0.5));
@@ -1509,7 +1227,7 @@ function writeProbeArrayFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (16 - sb);
     }
-    v = (((e0.RawDelta >>> 0) >>> 0)) >>> 0;
+    v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1518,7 +1236,7 @@ function writeProbeArrayFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setBigUint64(0, e0.BigDelta, true);
+    SC.setBigUint64(0, e0.bigDelta, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1537,8 +1255,8 @@ function writeProbeArrayFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (e0.Active) {
-      v = ((e0.Weapon & 0xf) | ((e0.HasTarget ? 1 : 0) << 4)) >>> 0;
+    if (e0.active) {
+      v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 5;
       if (sb >= 32) {
@@ -1547,8 +1265,8 @@ function writeProbeArrayFlatProduction(value, view) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
-      if (e0.HasTarget) {
-        v = (((e0.TargetId) & 0xffff)) >>> 0;
+      if (e0.hasTarget) {
+        v = (((e0.targetId) & 0xffff)) >>> 0;
         lo = (lo | (v << sb)) >>> 0;
         sb += 16;
         if (sb >= 32) {
@@ -1559,7 +1277,7 @@ function writeProbeArrayFlatProduction(value, view) {
         }
       }
     } else {
-      v = (((e0.IdleTicks) >>> 0)) >>> 0;
+      v = (((e0.idleTicks) >>> 0)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -1569,7 +1287,7 @@ function writeProbeArrayFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    v = (((((e0.SamplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
+    v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 3;
     if (sb >= 32) {
@@ -1578,8 +1296,8 @@ function writeProbeArrayFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
-    for (let i1 = 0; i1 < e0.SamplesCount; i1++) {
-      v = (((e0.Samples[i1]) & 0xffff)) >>> 0;
+    for (let i1 = 0; i1 < e0.samplesCount; i1++) {
+      v = (((e0.samples[i1]) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
       if (sb >= 32) {
@@ -1590,7 +1308,7 @@ function writeProbeArrayFlatProduction(value, view) {
       }
     }
   }
-  v = (((value.Config.Retries >>> 0) >>> 0)) >>> 0;
+  v = (((value.config.retries >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1599,7 +1317,7 @@ function writeProbeArrayFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.Config.Preferred & 0xf)) >>> 0;
+  v = ((value.config.preferred & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -1614,12 +1332,11 @@ function writeProbeArrayFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeProbeArrayFlatChecked(value, view) {
-  let v = 0, x = 0, n = 0;
-  let lo = 0, sb = 0, wi = 0;
+function writeProbeArrayFlatChecked(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    const e0 = value.Samples[i0];
-    v = ((e0.Active ? 1 : 0)) >>> 0;
+    const e0 = value.samples[i0];
+    v = ((e0.active ? 1 : 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 1;
     if (sb >= 32) {
@@ -1628,7 +1345,7 @@ function writeProbeArrayFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
-    x = Math.fround(e0.Orientation);
+    x = Math.fround(e0.orientation);
     if (!Number.isFinite(x)) {
       return -1;
     }
@@ -1644,7 +1361,7 @@ function writeProbeArrayFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (16 - sb);
     }
-    v = (((e0.RawDelta >>> 0) >>> 0)) >>> 0;
+    v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1653,7 +1370,7 @@ function writeProbeArrayFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setBigUint64(0, e0.BigDelta, true);
+    SC.setBigUint64(0, e0.bigDelta, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1672,11 +1389,11 @@ function writeProbeArrayFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (e0.Active) {
-      if (!Number.isInteger(e0.Weapon) || e0.Weapon < 0 || e0.Weapon > 15) { // headroom above the wire range cannot ride
+    if (e0.active) {
+      if (!Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
         return -1;
       }
-      v = ((e0.Weapon & 0xf) | ((e0.HasTarget ? 1 : 0) << 4)) >>> 0;
+      v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 5;
       if (sb >= 32) {
@@ -1685,8 +1402,8 @@ function writeProbeArrayFlatChecked(value, view) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (5 - sb);
       }
-      if (e0.HasTarget) {
-        v = (((e0.TargetId) & 0xffff)) >>> 0;
+      if (e0.hasTarget) {
+        v = (((e0.targetId) & 0xffff)) >>> 0;
         lo = (lo | (v << sb)) >>> 0;
         sb += 16;
         if (sb >= 32) {
@@ -1697,7 +1414,7 @@ function writeProbeArrayFlatChecked(value, view) {
         }
       }
     } else {
-      v = (((e0.IdleTicks) >>> 0)) >>> 0;
+      v = (((e0.idleTicks) >>> 0)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -1707,10 +1424,10 @@ function writeProbeArrayFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    if (!Number.isInteger(e0.SamplesCount) || e0.SamplesCount < 1 || e0.SamplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    if (!Number.isInteger(e0.samplesCount) || e0.samplesCount < 1 || e0.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
       return -1;
     }
-    v = (((((e0.SamplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
+    v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 3;
     if (sb >= 32) {
@@ -1719,8 +1436,8 @@ function writeProbeArrayFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (3 - sb);
     }
-    for (let i1 = 0; i1 < e0.SamplesCount; i1++) {
-      v = (((e0.Samples[i1]) & 0xffff)) >>> 0;
+    for (let i1 = 0; i1 < e0.samplesCount; i1++) {
+      v = (((e0.samples[i1]) & 0xffff)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 16;
       if (sb >= 32) {
@@ -1731,10 +1448,10 @@ function writeProbeArrayFlatChecked(value, view) {
       }
     }
   }
-  if (!Number.isInteger(value.Config.Preferred) || value.Config.Preferred < 0 || value.Config.Preferred > 15) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.config.preferred) || value.config.preferred < 0 || value.config.preferred > 15) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (((value.Config.Retries >>> 0) >>> 0)) >>> 0;
+  v = (((value.config.retries >>> 0) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1743,7 +1460,7 @@ function writeProbeArrayFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.Config.Preferred & 0xf)) >>> 0;
+  v = ((value.config.preferred & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -1758,19 +1475,18 @@ function writeProbeArrayFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteProbeArrayFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteProbeArrayFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ProbeArrayMaxBytes.
 export const WriteProbeArrayFlat = PRODUCTION ? writeProbeArrayFlatProduction : writeProbeArrayFlatChecked;
 
-// ReadProbeArrayFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeArrayFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeArrayFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadProbeArrayFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    const e0 = value.Samples[i0];
+    const e0 = value.samples[i0];
     if (br + 113 > numBits) {
       return false;
     }
@@ -1780,12 +1496,12 @@ export function ReadProbeArrayFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1) >>> 0;
-    e0.Active = v !== 0;
+    e0.active = v !== 0;
     v = (out >>> 1) & 0xffff;
     if (v > 36000) { // headroom above the quantum count is refused
       return false;
     }
-    e0.Orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
+    e0.orientation = Math.fround(Math.fround(Math.fround(Math.fround(v) / 36000.0) * 360.0) + -180.0);
     br += 17;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1793,7 +1509,7 @@ export function ReadProbeArrayFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
-    e0.RawDelta = v | 0;
+    e0.rawDelta = v | 0;
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1811,9 +1527,9 @@ export function ReadProbeArrayFlat(value, view, numBits) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    e0.BigDelta = BigInt.asIntN(64, bg);
+    e0.bigDelta = BigInt.asIntN(64, bg);
     br += 32;
-    if (e0.Active) {
+    if (e0.active) {
       if (br + 5 > numBits) {
         return false;
       }
@@ -1823,11 +1539,11 @@ export function ReadProbeArrayFlat(value, view, numBits) {
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
       v = (out & 0xf) >>> 0;
-      e0.Weapon = v;
+      e0.weapon = v;
       v = (out >>> 4) & 0x1;
-      e0.HasTarget = v !== 0;
+      e0.hasTarget = v !== 0;
       br += 5;
-      if (e0.HasTarget) {
+      if (e0.hasTarget) {
         if (br + 16 > numBits) {
           return false;
         }
@@ -1837,12 +1553,12 @@ export function ReadProbeArrayFlat(value, view, numBits) {
         s2 = br & 7;
         out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
         v = (out & 0xffff) >>> 0;
-        e0.TargetId = v;
+        e0.targetId = v;
         br += 16;
       } else {
-        e0.TargetId = 0;
+        e0.targetId = 0;
       }
-      e0.IdleTicks = 0;
+      e0.idleTicks = 0;
     } else {
       if (br + 32 > numBits) {
         return false;
@@ -1853,10 +1569,10 @@ export function ReadProbeArrayFlat(value, view, numBits) {
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
       v = out >>> 0;
-      e0.IdleTicks = v;
-      e0.Weapon = 0;
-      e0.HasTarget = false;
-      e0.TargetId = 0;
+      e0.idleTicks = v;
+      e0.weapon = 0;
+      e0.hasTarget = false;
+      e0.targetId = 0;
       br += 32;
     }
     if (br + 3 > numBits) {
@@ -1868,19 +1584,19 @@ export function ReadProbeArrayFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x7) >>> 0;
-    e0.SamplesCount = v + 1;
+    e0.samplesCount = v + 1;
     br += 3;
-    if (br + e0.SamplesCount * 16 > numBits) {
+    if (br + e0.samplesCount * 16 > numBits) {
       return false;
     }
-    for (let i1 = 0; i1 < e0.SamplesCount; i1++) {
+    for (let i1 = 0; i1 < e0.samplesCount; i1++) {
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
       s2 = br & 7;
       out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
       v = (out & 0xffff) >>> 0;
-      e0.Samples[i1] = v;
+      e0.samples[i1] = v;
       br += 16;
     }
   }
@@ -1893,7 +1609,7 @@ export function ReadProbeArrayFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
-  value.Config.Retries = v | 0;
+  value.config.retries = v | 0;
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -1901,34 +1617,20 @@ export function ReadProbeArrayFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xf) >>> 0;
-  value.Config.Preferred = v;
+  value.config.preferred = v;
   return true;
 }
 
 // ---- type Heartbeat: the flat codec ----
 
-function writeHeartbeatFlatProduction(value, view) {
-  let lo = 0, sb = 0, wi = 0;
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteHeartbeatFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold HeartbeatMaxBytes.
+export function WriteHeartbeatFlat() {
+  return 0;
 }
 
-function writeHeartbeatFlatChecked(value, view) {
-  let lo = 0, sb = 0, wi = 0;
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteHeartbeatFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold HeartbeatMaxBytes.
-export const WriteHeartbeatFlat = PRODUCTION ? writeHeartbeatFlatProduction : writeHeartbeatFlatChecked;
-
-// ReadHeartbeatFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadHeartbeatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
 export function ReadHeartbeatFlat() {
   return true;
@@ -1936,138 +1638,79 @@ export function ReadHeartbeatFlat() {
 
 // ---- type Test: the flat codec ----
 
-function writeTestFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.TestA) & 0xffff) | (((value.TestB) & 0x3ff) << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 26;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (26 - sb);
-  }
-  v = (((value.TestC) & 0x3ff) | (((value.TestD) & 0x3ff) << 10)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeTestFlatProduction(view, value) {
+  let v = 0, lo = 0;
+  lo = (((value.testA) & 0xffff) | (((value.testB) & 0x3ff) << 16));
+  v = (((value.testC) & 0x3ff) | (((value.testD) & 0x3ff) << 10)) >>> 0;
+  view.setUint32(0, (lo | (v << 26)) >>> 0, true);
+  lo = v >>> 6;
+  view.setUint32(4, lo, true);
+  return 6;
 }
 
-function writeTestFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TestB) || value.TestB < 0 || value.TestB > 1000) {
+function writeTestFlatChecked(view, value) {
+  let v = 0, lo = 0;
+  if (!Number.isInteger(value.testB) || value.testB < 0 || value.testB > 1000) {
     return -1;
   }
-  if (!Number.isInteger(value.TestC) || value.TestC < 0 || value.TestC > 1000) {
+  if (!Number.isInteger(value.testC) || value.testC < 0 || value.testC > 1000) {
     return -1;
   }
-  v = (((value.TestA) & 0xffff) | (((value.TestB) & 0x3ff) << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 26;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (26 - sb);
-  }
-  if (!Number.isInteger(value.TestD) || value.TestD < 0 || value.TestD > 1000) {
+  lo = (((value.testA) & 0xffff) | (((value.testB) & 0x3ff) << 16));
+  if (!Number.isInteger(value.testD) || value.testD < 0 || value.testD > 1000) {
     return -1;
   }
-  v = (((value.TestC) & 0x3ff) | (((value.TestD) & 0x3ff) << 10)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  v = (((value.testC) & 0x3ff) | (((value.testD) & 0x3ff) << 10)) >>> 0;
+  view.setUint32(0, (lo | (v << 26)) >>> 0, true);
+  lo = v >>> 6;
+  view.setUint32(4, lo, true);
+  return 6;
 }
 
-// WriteTestFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteTestFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold TestMaxBytes.
 export const WriteTestFlat = PRODUCTION ? writeTestFlatProduction : writeTestFlatChecked;
 
-// ReadTestFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadTestFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadTestFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 46 > numBits) {
+export function ReadTestFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (46 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xffff) >>> 0;
-  value.TestA = v;
+  value.testA = v;
   v = (out >>> 16) & 0x3ff;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
-  value.TestB = v | 0;
-  br += 26;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.testB = v | 0;
+  out = (view.getUint32(3, true) >>> 2) | (view.getUint32(7, true) << 30);
   v = (out & 0x3ff) >>> 0;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
-  value.TestC = v | 0;
+  value.testC = v | 0;
   v = (out >>> 10) & 0x3ff;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
-  value.TestD = v | 0;
+  value.testD = v | 0;
   return true;
 }
 
 // ---- type Block: the flat codec ----
 
-function writeBlockFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.DataLength) & 0x7ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+function writeBlockFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.dataLength) & 0x7ff));
+  sb = 16;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.DataLength; i0 += 4) {
-      v = (value.Data[i0] | (value.Data[i0 + 1] << 8) | (value.Data[i0 + 2] << 16) | (value.Data[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.dataLength; i0 += 4) {
+      v = (value.data[i0] | (value.data[i0 + 1] << 8) | (value.data[i0 + 2] << 16) | (value.data[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -2077,8 +1720,8 @@ function writeBlockFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.DataLength; i0++) {
-      v = value.Data[i0];
+    for (; i0 < value.dataLength; i0++) {
+      v = value.data[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -2095,32 +1738,17 @@ function writeBlockFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeBlockFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.DataLength) || value.DataLength < 0 || value.DataLength > 2000) { // the length guards the slice; out-of-contract writes are refused
+function writeBlockFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.dataLength) || value.dataLength < 0 || value.dataLength > 2000) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.DataLength) & 0x7ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+  lo = (((value.dataLength) & 0x7ff));
+  sb = 16;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.DataLength; i0 += 4) {
-      v = (value.Data[i0] | (value.Data[i0 + 1] << 8) | (value.Data[i0 + 2] << 16) | (value.Data[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.dataLength; i0 += 4) {
+      v = (value.data[i0] | (value.data[i0 + 1] << 8) | (value.data[i0 + 2] << 16) | (value.data[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -2130,8 +1758,8 @@ function writeBlockFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.DataLength; i0++) {
-      v = value.Data[i0];
+    for (; i0 < value.dataLength; i0++) {
+      v = value.data[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -2148,16 +1776,15 @@ function writeBlockFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteBlockFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteBlockFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold BlockMaxBytes.
 export const WriteBlockFlat = PRODUCTION ? writeBlockFlatProduction : writeBlockFlatChecked;
 
-// ReadBlockFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadBlockFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadBlockFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadBlockFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 11 > numBits) {
     return false;
   }
@@ -2170,7 +1797,7 @@ export function ReadBlockFlat(value, view, numBits) {
   if (v > 2000) { // the length guards the slice — reject, never clamp
     return false;
   }
-  value.DataLength = v;
+  value.dataLength = v;
   br += 11;
   s2 = br & 7;
   if (s2 !== 0) {
@@ -2182,42 +1809,27 @@ export function ReadBlockFlat(value, view, numBits) {
     }
     br += 8 - s2;
   }
-  if (br + value.DataLength * 8 > numBits) {
+  if (br + value.dataLength * 8 > numBits) {
     return false;
   }
   bi = br >>> 3;
-  for (let i0 = 0; i0 < value.DataLength; i0++) {
-    value.Data[i0] = view.getUint8(bi + i0);
+  for (let i0 = 0; i0 < value.dataLength; i0++) {
+    value.data[i0] = view.getUint8(bi + i0);
   }
-  br += value.DataLength * 8;
+  br += value.dataLength * 8;
   return true;
 }
 
 // ---- type Chat: the flat codec ----
 
-function writeChatFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.TextLength) & 0x1ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+function writeChatFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.textLength) & 0x1ff));
+  sb = 16;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.TextLength; i0 += 4) {
-      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -2227,8 +1839,8 @@ function writeChatFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.TextLength; i0++) {
-      v = value.Text[i0];
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -2245,32 +1857,17 @@ function writeChatFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeChatFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 256) { // the length guards the slice; out-of-contract writes are refused
+function writeChatFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 256) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.TextLength) & 0x1ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+  lo = (((value.textLength) & 0x1ff));
+  sb = 16;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.TextLength; i0 += 4) {
-      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -2280,8 +1877,8 @@ function writeChatFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.TextLength; i0++) {
-      v = value.Text[i0];
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -2298,16 +1895,15 @@ function writeChatFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteChatFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteChatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ChatMaxBytes.
 export const WriteChatFlat = PRODUCTION ? writeChatFlatProduction : writeChatFlatChecked;
 
-// ReadChatFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadChatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadChatFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadChatFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 9 > numBits) {
     return false;
   }
@@ -2320,7 +1916,7 @@ export function ReadChatFlat(value, view, numBits) {
   if (v > 256) { // the length guards the slice — reject, never clamp
     return false;
   }
-  value.TextLength = v;
+  value.textLength = v;
   br += 9;
   s2 = br & 7;
   if (s2 !== 0) {
@@ -2332,323 +1928,153 @@ export function ReadChatFlat(value, view, numBits) {
     }
     br += 8 - s2;
   }
-  if (br + value.TextLength * 8 > numBits) {
+  if (br + value.textLength * 8 > numBits) {
     return false;
   }
   bi = br >>> 3;
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    value.Text[i0] = view.getUint8(bi + i0);
+  for (let i0 = 0; i0 < value.textLength; i0++) {
+    value.text[i0] = view.getUint8(bi + i0);
   }
-  br += value.TextLength * 8;
-  for (let utf8Index = 0; utf8Index < value.TextLength;)
-  {
-    const utf8Lead = value.Text[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.TextLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.Text[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    if (value.Text[i0] === 0) { // an interior null is content the read refuses
-      return false;
-    }
+  br += value.textLength * 8;
+  if (!validText(value.text, value.textLength)) {
+    return false;
   }
   return true;
 }
 
 // ---- type ProbeReport: the flat codec ----
 
-function writeProbeReportFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (171 | ((value.Header.Version & 0x7) << 8) | (0 << 11)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  SC.setBigUint64(0, value.Header.ProbeId, true);
+function writeProbeReportFlatProduction(view, value) {
+  let v = 0, lo = 0;
+  lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
+  SC.setBigUint64(0, value.header.probeId, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Flags, true);
+  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
+  SC.setBigUint64(0, value.flags, true);
   v = SC.getUint32(0, true) & 0xff;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  v = (((value.Echo.TestA) & 0xffff) | (((value.Echo.TestB) & 0x3ff) << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 26;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (26 - sb);
-  }
-  v = (((value.Echo.TestC) & 0x3ff) | (((value.Echo.TestD) & 0x3ff) << 10)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  lo = (lo | (v << 16)) >>> 0;
+  v = (((value.echo.testA) & 0xffff) | (((value.echo.testB) & 0x3ff) << 16)) >>> 0;
+  view.setUint32(8, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  v = (((value.echo.testC) & 0x3ff) | (((value.echo.testD) & 0x3ff) << 10)) >>> 0;
+  view.setUint32(12, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  view.setUint32(16, lo, true);
+  return 17;
 }
 
-function writeProbeReportFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (171 | ((value.Header.Version & 0x7) << 8) | (0 << 11)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  SC.setBigUint64(0, value.Header.ProbeId, true);
+function writeProbeReportFlatChecked(view, value) {
+  let v = 0, lo = 0;
+  lo = (171 | ((value.header.version & 0x7) << 8) | (0 << 11));
+  SC.setBigUint64(0, value.header.probeId, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (BigInt.asUintN(64, value.Flags) >= 256n) { // a mask bit above the wire width cannot ride
+  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
+  if (BigInt.asUintN(64, value.flags) >= 256n) { // a mask bit above the wire width cannot ride
     return -1;
   }
-  SC.setBigUint64(0, value.Flags, true);
+  SC.setBigUint64(0, value.flags, true);
   v = SC.getUint32(0, true) & 0xff;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  if (!Number.isInteger(value.Echo.TestB) || value.Echo.TestB < 0 || value.Echo.TestB > 1000) {
+  lo = (lo | (v << 16)) >>> 0;
+  if (!Number.isInteger(value.echo.testB) || value.echo.testB < 0 || value.echo.testB > 1000) {
     return -1;
   }
-  if (!Number.isInteger(value.Echo.TestC) || value.Echo.TestC < 0 || value.Echo.TestC > 1000) {
+  if (!Number.isInteger(value.echo.testC) || value.echo.testC < 0 || value.echo.testC > 1000) {
     return -1;
   }
-  v = (((value.Echo.TestA) & 0xffff) | (((value.Echo.TestB) & 0x3ff) << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 26;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (26 - sb);
-  }
-  if (!Number.isInteger(value.Echo.TestD) || value.Echo.TestD < 0 || value.Echo.TestD > 1000) {
+  v = (((value.echo.testA) & 0xffff) | (((value.echo.testB) & 0x3ff) << 16)) >>> 0;
+  view.setUint32(8, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  if (!Number.isInteger(value.echo.testD) || value.echo.testD < 0 || value.echo.testD > 1000) {
     return -1;
   }
-  v = (((value.Echo.TestC) & 0x3ff) | (((value.Echo.TestD) & 0x3ff) << 10)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  v = (((value.echo.testC) & 0x3ff) | (((value.echo.testD) & 0x3ff) << 10)) >>> 0;
+  view.setUint32(12, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  view.setUint32(16, lo, true);
+  return 17;
 }
 
-// WriteProbeReportFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteProbeReportFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ProbeReportMaxBytes.
 export const WriteProbeReportFlat = PRODUCTION ? writeProbeReportFlatProduction : writeProbeReportFlatChecked;
 
-// ReadProbeReportFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadProbeReportFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadProbeReportFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadProbeReportFlat(view, numBits, value) {
+  let v = 0, out = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 16 > numBits) {
+  if (16 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xff) >>> 0;
   if (v !== 171) { // a read rejects any other value
     return false;
   }
   v = (out >>> 8) & 0x7;
-  value.Header.Version = v;
+  value.header.version = v;
   v = (out >>> 11) & 0x1f;
   if (v !== 0) { // reserved bits must read zero
     return false;
   }
-  br += 16;
-  s2 = br & 7;
-  if (s2 !== 0) {
-    if (br + (8 - s2) > numBits) {
-      return false;
-    }
-    if ((view.getUint8(br >>> 3) >>> s2) !== 0) { // nonzero padding is refused
-      return false;
-    }
-    br += 8 - s2;
-  }
-  if (br + 64 > numBits) {
+  if (80 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(2, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(6, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Header.ProbeId = bg;
-  br += 32;
-  if (br + 54 > numBits) {
+  value.header.probeId = bg;
+  if (134 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(10, true);
   v = (out & 0xff) >>> 0;
-  value.Flags = BigInt(v);
+  value.flags = BigInt(v);
   v = (out >>> 8) & 0xffff;
-  value.Echo.TestA = v;
-  br += 24;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.echo.testA = v;
+  out = view.getUint32(13, true);
   v = (out & 0x3ff) >>> 0;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
-  value.Echo.TestB = v | 0;
+  value.echo.testB = v | 0;
   v = (out >>> 10) & 0x3ff;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
-  value.Echo.TestC = v | 0;
+  value.echo.testC = v | 0;
   v = (out >>> 20) & 0x3ff;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
-  value.Echo.TestD = v | 0;
+  value.echo.testD = v | 0;
   return true;
 }
 
 // ---- type TestData: the flat codec ----
 
-function writeTestDataFlatProduction(value, view) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
+function writeTestDataFlatProduction(view, value) {
+  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((((value.A >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.B >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.C >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.D & 0xff) << 24)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.E & 0xff) | ((value.F & 0xff) << 8) | ((value.G ? 1 : 0) << 16) | (((value.ItemsCount) & 0x1f) << 17)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 22;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (22 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = (((value.Items[i0]) & 0xff)) >>> 0;
+  view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
+  lo = ((value.e & 0xff) | ((value.f & 0xff) << 8) | ((value.g ? 1 : 0) << 16) | (((value.itemsCount) & 0x1f) << 17));
+  wi = 4;
+  sb = 22;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    v = (((value.items[i0]) & 0xff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -2658,7 +2084,7 @@ function writeTestDataFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  x = value.FloatValue;
+  x = value.floatValue;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -2678,7 +2104,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = Math.fround(value.CompressedFloatValue);
+  x = Math.fround(value.compressedFloatValue);
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
@@ -2691,7 +2117,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
-  SC.setFloat64(0, value.DoubleValue, true);
+  SC.setFloat64(0, value.doubleValue, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2710,7 +2136,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.Int8Value & 0xff) & 0xff) | (((value.Int16Value & 0xffff) & 0xffff) << 8) | (((value.Uint8Value) & 0xff) << 24)) >>> 0;
+  v = (((value.int8Value & 0xff) & 0xff) | (((value.int16Value & 0xffff) & 0xffff) << 8) | (((value.uint8Value) & 0xff) << 24)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2719,7 +2145,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.Uint16Value) & 0xffff)) >>> 0;
+  v = (((value.uint16Value) & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -2728,7 +2154,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  v = (((value.Uint32Value) >>> 0)) >>> 0;
+  v = (((value.uint32Value) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2737,7 +2163,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, value.Uint64Value, true);
+  SC.setBigUint64(0, value.uint64Value, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2756,7 +2182,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, value.Int64Full, true);
+  SC.setBigUint64(0, value.int64Full, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2775,7 +2201,7 @@ function writeTestDataFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, value.Int64Range - -1000000000000n, true);
+  SC.setBigUint64(0, value.int64Range - -1000000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2802,7 +2228,7 @@ function writeTestDataFlatProduction(value, view) {
     sb = 0;
   }
   for (let i0 = 0; i0 < 17; i0++) {
-    v = (((value.FixedBytes[i0]) & 0xff)) >>> 0;
+    v = (((value.fixedBytes[i0]) & 0xff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -2812,7 +2238,7 @@ function writeTestDataFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  v = (((value.TextLength) & 0xff)) >>> 0;
+  v = (((value.textLength) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -2830,8 +2256,8 @@ function writeTestDataFlatProduction(value, view) {
   }
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.TextLength; i0 += 4) {
-      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -2841,8 +2267,8 @@ function writeTestDataFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.TextLength; i0++) {
-      v = value.Text[i0];
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -2859,45 +2285,30 @@ function writeTestDataFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeTestDataFlatChecked(value, view) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
+function writeTestDataFlatChecked(view, value) {
+  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.A) || value.A < -100 || value.A > 100) {
+  if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
-  if (!Number.isInteger(value.B) || value.B < -100 || value.B > 100) {
+  if (!Number.isInteger(value.b) || value.b < -100 || value.b > 100) {
     return -1;
   }
-  if (!Number.isInteger(value.C) || value.C < -100 || value.C > 150) {
+  if (!Number.isInteger(value.c) || value.c < -100 || value.c > 150) {
     return -1;
   }
-  v = (((((value.A >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.B >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.C >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.D & 0xff) << 24)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  view.setUint32(0, (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((((value.b >>> 0) - 4294967196) >>> 0) & 0xff) << 8) | (((((value.c >>> 0) - 4294967196) >>> 0) & 0xff) << 16) | ((value.d & 0xff) << 24)), true);
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = ((value.E & 0xff) | ((value.F & 0xff) << 8) | ((value.G ? 1 : 0) << 16) | (((value.ItemsCount) & 0x1f) << 17)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 22;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (22 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 255) {
+  lo = ((value.e & 0xff) | ((value.f & 0xff) << 8) | ((value.g ? 1 : 0) << 16) | (((value.itemsCount) & 0x1f) << 17));
+  wi = 4;
+  sb = 22;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 255) {
       return -1;
     }
-    v = (((value.Items[i0]) & 0xff)) >>> 0;
+    v = (((value.items[i0]) & 0xff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -2907,7 +2318,7 @@ function writeTestDataFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  x = value.FloatValue;
+  x = value.floatValue;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -2927,7 +2338,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = Math.fround(value.CompressedFloatValue);
+  x = Math.fround(value.compressedFloatValue);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -2943,7 +2354,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
-  SC.setFloat64(0, value.DoubleValue, true);
+  SC.setFloat64(0, value.doubleValue, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -2962,7 +2373,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.Int8Value & 0xff) & 0xff) | (((value.Int16Value & 0xffff) & 0xffff) << 8) | (((value.Uint8Value) & 0xff) << 24)) >>> 0;
+  v = (((value.int8Value & 0xff) & 0xff) | (((value.int16Value & 0xffff) & 0xffff) << 8) | (((value.uint8Value) & 0xff) << 24)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2971,7 +2382,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.Uint16Value) & 0xffff)) >>> 0;
+  v = (((value.uint16Value) & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -2980,7 +2391,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  v = (((value.Uint32Value) >>> 0)) >>> 0;
+  v = (((value.uint32Value) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -2989,7 +2400,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, value.Uint64Value, true);
+  SC.setBigUint64(0, value.uint64Value, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3008,7 +2419,7 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setBigUint64(0, value.Int64Full, true);
+  SC.setBigUint64(0, value.int64Full, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3027,10 +2438,10 @@ function writeTestDataFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (value.Int64Range < -1000000000000n || value.Int64Range > 1000000000000n) {
+  if (value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
     return -1;
   }
-  SC.setBigUint64(0, value.Int64Range - -1000000000000n, true);
+  SC.setBigUint64(0, value.int64Range - -1000000000000n, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -3057,7 +2468,7 @@ function writeTestDataFlatChecked(value, view) {
     sb = 0;
   }
   for (let i0 = 0; i0 < 17; i0++) {
-    v = (((value.FixedBytes[i0]) & 0xff)) >>> 0;
+    v = (((value.fixedBytes[i0]) & 0xff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -3067,10 +2478,10 @@ function writeTestDataFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
   }
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 255) { // the length guards the slice; out-of-contract writes are refused
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 255) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.TextLength) & 0xff)) >>> 0;
+  v = (((value.textLength) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -3088,8 +2499,8 @@ function writeTestDataFlatChecked(value, view) {
   }
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.TextLength; i0 += 4) {
-      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -3099,8 +2510,8 @@ function writeTestDataFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.TextLength; i0++) {
-      v = value.Text[i0];
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -3117,80 +2528,65 @@ function writeTestDataFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteTestDataFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteTestDataFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold TestDataMaxBytes.
 export const WriteTestDataFlat = PRODUCTION ? writeTestDataFlatProduction : writeTestDataFlatChecked;
 
-// ReadTestDataFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadTestDataFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadTestDataFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadTestDataFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 49 > numBits) {
+  if (49 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xff) >>> 0;
   if (v > 200) { // a smuggled offset is refused
     return false;
   }
-  value.A = (v + 4294967196) | 0;
+  value.a = (v + 4294967196) | 0;
   v = (out >>> 8) & 0xff;
   if (v > 200) { // a smuggled offset is refused
     return false;
   }
-  value.B = (v + 4294967196) | 0;
+  value.b = (v + 4294967196) | 0;
   v = (out >>> 16) & 0xff;
   if (v > 250) { // a smuggled offset is refused
     return false;
   }
-  value.C = (v + 4294967196) | 0;
+  value.c = (v + 4294967196) | 0;
   v = (out >>> 24) & 0xff;
-  value.D = v;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.d = v;
+  out = view.getUint32(4, true);
   v = (out & 0xff) >>> 0;
-  value.E = v;
+  value.e = v;
   v = (out >>> 8) & 0xff;
-  value.F = v;
+  value.f = v;
   v = (out >>> 16) & 0x1;
-  value.G = v !== 0;
-  br += 17;
-  if (br + 5 > numBits) {
+  value.g = v !== 0;
+  if (54 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(6, true) >>> 1) | (view.getUint32(10, true) << 31);
   v = (out & 0x1f) >>> 0;
   if (v > 16) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ItemsCount = v;
-  br += 5;
-  if (br + value.ItemsCount * 8 > numBits) {
+  value.itemsCount = v;
+  br = 54;
+  if (br + value.itemsCount * 8 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xff) >>> 0;
-    value.Items[i0] = v | 0;
+    value.items[i0] = v | 0;
     br += 8;
   }
   if (br + 355 > numBits) {
@@ -3205,10 +2601,10 @@ export function ReadTestDataFlat(value, view, numBits) {
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.FloatValue = SC.getFloat64(0, true);
+    value.floatValue = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.FloatValue = SC.getFloat32(0, true);
+    value.floatValue = SC.getFloat32(0, true);
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3219,7 +2615,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   if (v > 1000) { // headroom above the quantum count is refused
     return false;
   }
-  value.CompressedFloatValue = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
+  value.compressedFloatValue = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
   br += 10;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3236,7 +2632,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
-  value.DoubleValue = SC.getFloat64(0, true);
+  value.doubleValue = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3244,11 +2640,11 @@ export function ReadTestDataFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xff) >>> 0;
-  value.Int8Value = (v << 24) >> 24;
+  value.int8Value = (v << 24) >> 24;
   v = (out >>> 8) & 0xffff;
-  value.Int16Value = (v << 16) >> 16;
+  value.int16Value = (v << 16) >> 16;
   v = (out >>> 24) & 0xff;
-  value.Uint8Value = v;
+  value.uint8Value = v;
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3256,7 +2652,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xffff) >>> 0;
-  value.Uint16Value = v;
+  value.uint16Value = v;
   br += 16;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3264,7 +2660,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
-  value.Uint32Value = v;
+  value.uint32Value = v;
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3282,7 +2678,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Uint64Value = bg;
+  value.uint64Value = bg;
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3300,7 +2696,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Int64Full = BigInt.asIntN(64, bg);
+  value.int64Full = BigInt.asIntN(64, bg);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -3321,7 +2717,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   if (bg > 2000000000000n) { // a smuggled offset is refused
     return false;
   }
-  value.Int64Range = -1000000000000n + bg;
+  value.int64Range = -1000000000000n + bg;
   br += 9;
   s2 = br & 7;
   if (s2 !== 0) {
@@ -3343,7 +2739,7 @@ export function ReadTestDataFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xff) >>> 0;
-    value.FixedBytes[i0] = v;
+    value.fixedBytes[i0] = v;
     br += 8;
   }
   if (br + 8 > numBits) {
@@ -3355,7 +2751,7 @@ export function ReadTestDataFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xff) >>> 0;
-  value.TextLength = v;
+  value.textLength = v;
   br += 8;
   s2 = br & 7;
   if (s2 !== 0) {
@@ -3367,83 +2763,43 @@ export function ReadTestDataFlat(value, view, numBits) {
     }
     br += 8 - s2;
   }
-  if (br + value.TextLength * 8 > numBits) {
+  if (br + value.textLength * 8 > numBits) {
     return false;
   }
   bi = br >>> 3;
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    value.Text[i0] = view.getUint8(bi + i0);
+  for (let i0 = 0; i0 < value.textLength; i0++) {
+    value.text[i0] = view.getUint8(bi + i0);
   }
-  br += value.TextLength * 8;
-  for (let utf8Index = 0; utf8Index < value.TextLength;)
-  {
-    const utf8Lead = value.Text[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.TextLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.Text[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    if (value.Text[i0] === 0) { // an interior null is content the read refuses
-      return false;
-    }
+  br += value.textLength * 8;
+  if (!validText(value.text, value.textLength)) {
+    return false;
   }
   return true;
 }
 
 // ---- type CompressedProbe: the flat codec ----
 
-function writeCompressedProbeFlatProduction(value, view) {
-  let v = 0, x = 0, n = 0;
-  let lo = 0, sb = 0, wi = 0;
-  x = Math.fround(value.Boundary);
+function writeCompressedProbeFlatProduction(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0;
+  x = Math.fround(value.boundary);
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
   if (v > 1000) { v = 1000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  x = Math.fround(value.Offset);
+  lo = v;
+  x = Math.fround(value.offset);
   n = Math.fround(Math.fround(x - -5.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
   if (v > 10000) { v = 10000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 14;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (14 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  lo = (lo | (v << 10)) >>> 0;
+  view.setUint32(0, lo, true);
+  return 3;
 }
 
-function writeCompressedProbeFlatChecked(value, view) {
-  let v = 0, x = 0, n = 0;
-  let lo = 0, sb = 0, wi = 0;
-  x = Math.fround(value.Boundary);
+function writeCompressedProbeFlatChecked(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0;
+  x = Math.fround(value.boundary);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -3451,15 +2807,8 @@ function writeCompressedProbeFlatChecked(value, view) {
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 1000.0) + 0.5));
   if (v > 1000) { v = 1000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  x = Math.fround(value.Offset);
+  lo = v;
+  x = Math.fround(value.offset);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -3467,48 +2816,34 @@ function writeCompressedProbeFlatChecked(value, view) {
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
   if (v > 10000) { v = 10000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 14;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (14 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  lo = (lo | (v << 10)) >>> 0;
+  view.setUint32(0, lo, true);
+  return 3;
 }
 
-// WriteCompressedProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteCompressedProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold CompressedProbeMaxBytes.
 export const WriteCompressedProbeFlat = PRODUCTION ? writeCompressedProbeFlatProduction : writeCompressedProbeFlatChecked;
 
-// ReadCompressedProbeFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadCompressedProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadCompressedProbeFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 24 > numBits) {
+export function ReadCompressedProbeFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (24 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x3ff) >>> 0;
   if (v > 1000) { // headroom above the quantum count is refused
     return false;
   }
-  value.Boundary = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
+  value.boundary = Math.fround(Math.fround(Math.fround(Math.fround(v) / 1000.0) * 10.0) + 0.0);
   v = (out >>> 10) & 0x3fff;
   if (v > 10000) { // headroom above the quantum count is refused
     return false;
   }
-  value.Offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
+  value.offset = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 10.0) + -5.0);
   return true;
 }
 

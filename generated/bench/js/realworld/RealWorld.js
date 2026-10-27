@@ -34,9 +34,8 @@ export const PacketMode = Object.freeze({
   Combat: 3,
   Docked: 4,
   Warping: 5,
-  Count: 5, // the declared variant count (SPEC §4.2)
-  Max: 5, // the exported extent (SPEC §4.2)
 });
+export const PacketModeMax = 5; // the exported extent (SPEC §4.2)
 
 // EnumNamePacketMode: debug/log/tooling name for any PacketMode wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -111,119 +110,119 @@ export function FlagNamesPacketFlags(value) {
 // type RealPacket
 export class RealPacket {
   constructor() {
-    this.F001Int = 0; // wire [-805495, 805495]
-    this.F002F64 = 0;
-    this.F003Int = 0; // wire [-835897, 835897]
-    this.F004Cf32 = 0; // compressed float [0.0, 2000.0] @ 0.1
-    this.F005Uint = 0; // wire [0, 7316]
-    this.F006Int = 0; // wire [-1513, 1513]
-    this.F007F32 = 0;
-    this.F008U64 = 0n;
-    this.F009Int = 0; // wire [-22, 22]
-    this.F010F32 = 0;
-    this.F011Bits = 0;
-    this.F012Bool = true; // specified default at construction; Zero* gives the §5 zero form
+    this.f001Int = 0; // wire [-805495, 805495]
+    this.f002F64 = 0;
+    this.f003Int = 0; // wire [-835897, 835897]
+    this.f004Cf32 = 0; // compressed float [0.0, 2000.0] @ 0.1
+    this.f005Uint = 0; // wire [0, 7316]
+    this.f006Int = 0; // wire [-1513, 1513]
+    this.f007F32 = 0;
+    this.f008U64 = 0n;
+    this.f009Int = 0; // wire [-22, 22]
+    this.f010F32 = 0;
+    this.f011Bits = 0;
+    this.f012Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
     // f012_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.F013F32 = 0;
-    this.F014Uint = 0; // wire [0, 775]
-    this.F015Int = 0; // wire [-21, 21]
-    this.F016Fixed = 0; // wire [-36, 36]
-    this.F017Uint = 0; // wire [0, 4606]
+    this.f013F32 = 0;
+    this.f014Uint = 0; // wire [0, 775]
+    this.f015Int = 0; // wire [-21, 21]
+    this.f016Fixed = 0; // wire [-36, 36]
+    this.f017Uint = 0; // wire [0, 4606]
 
-    this.F018Int = 0; // wire [-834, 834]
-    this.F019F64 = 0;
-    this.F020F32 = 0;
-    this.F021Ufixed = 0; // wire [0, 25141]
-    this.F022F32 = 0;
-    this.F023Bits = 0;
-    this.F024F32 = 0;
-    this.F025Fixed = 0; // wire [-119, 119]
-    this.F026Bits = 0;
-    this.F027Cf32 = 0; // compressed float [-2.0, 2.0] @ 0.25
-    this.F028Bits = 0;
-    this.F029I64 = 0n;
-    this.F030F32 = 0;
-    this.F031Bits = 0;
-    this.F032Int = 0; // wire [-3, 3]
-    this.F033Uint = 0; // wire [0, 142780]
-    this.F034Uint = 0; // wire [0, 14149]
-    this.F035Bits = 0;
-    this.F036Enum = PacketMode.None;
-    this.F037Bool = false;
-    this.F038Bool = false;
-    this.F039Bits = 0;
-    this.F040Fixed = 0; // wire [-5, 5]
-    this.F041Int = 0; // wire [-55, 55]
-    this.F042Bits = 0;
-    this.F043Bool = false; // specified default at construction; Zero* gives the §5 zero form
+    this.f018Int = 0; // wire [-834, 834]
+    this.f019F64 = 0;
+    this.f020F32 = 0;
+    this.f021Ufixed = 0; // wire [0, 25141]
+    this.f022F32 = 0;
+    this.f023Bits = 0;
+    this.f024F32 = 0;
+    this.f025Fixed = 0; // wire [-119, 119]
+    this.f026Bits = 0;
+    this.f027Cf32 = 0; // compressed float [-2.0, 2.0] @ 0.25
+    this.f028Bits = 0;
+    this.f029I64 = 0n;
+    this.f030F32 = 0;
+    this.f031Bits = 0;
+    this.f032Int = 0; // wire [-3, 3]
+    this.f033Uint = 0; // wire [0, 142780]
+    this.f034Uint = 0; // wire [0, 14149]
+    this.f035Bits = 0;
+    this.f036Enum = PacketMode.None;
+    this.f037Bool = false;
+    this.f038Bool = false;
+    this.f039Bits = 0;
+    this.f040Fixed = 0; // wire [-5, 5]
+    this.f041Int = 0; // wire [-55, 55]
+    this.f042Bits = 0;
+    this.f043Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
     // f043_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.F044F32 = 0;
-    this.F045Bits = 0;
-    this.F046Uint = 0; // wire [0, 76063]
-    this.F047Int = 0; // wire [-430976, 430976]
+    this.f044F32 = 0;
+    this.f045Bits = 0;
+    this.f046Uint = 0; // wire [0, 76063]
+    this.f047Int = 0; // wire [-430976, 430976]
 
-    this.F048F64 = 0;
-    this.F049Ufixed = 0; // wire [0, 3]
-    this.F050Bool = true; // specified default at construction; Zero* gives the §5 zero form
+    this.f048F64 = 0;
+    this.f049Ufixed = 0; // wire [0, 3]
+    this.f050Bool = true; // specified default at construction; Zero* gives the §5 zero form
 
     // f050_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.F051Bool = false;
-    this.F052Int = 0; // wire [-57, 57]
-    this.F053F32 = 0;
-    this.F054Int = 0; // wire [-35, 35]
+    this.f051Bool = false;
+    this.f052Int = 0; // wire [-57, 57]
+    this.f053F32 = 0;
+    this.f054Int = 0; // wire [-35, 35]
 
-    this.F055Bool = false;
-    this.F056Int = 0; // wire [-13, 13]
-    this.F057Int = 0; // wire [-15, 15]
-    this.F058F32 = 0;
-    this.F059F64 = 0;
-    this.F060Bits = 0;
-    this.F061Cf32 = 0; // compressed float [-90.0, 90.0] @ 0.5
-    this.F062Uint = 0; // wire [0, 503]
-    this.F063I64 = 0n;
-    this.F064Uint = 0; // wire [0, 299]
-    this.F065Cf32 = 0; // compressed float [0.0, 30.0] @ 0.5
-    this.F066Ufixed = 0; // wire [0, 2]
-    this.F067Cf32 = 0; // compressed float [-100.0, 100.0] @ 0.25
-    this.F068Cf32 = 0; // compressed float [0.0, 2000.0] @ 1.0
-    this.F069Bits = 0;
-    this.F070Uint = 0; // wire [0, 2]
-    this.F071Cf32 = 0; // compressed float [0.0, 10.0] @ 0.02
-    this.F072Cf32 = 0; // compressed float [0.0, 100.0] @ 0.01
-    this.F073Int = 0; // wire [-4, 4]
-    this.F074Bool = false; // specified default at construction; Zero* gives the §5 zero form
+    this.f055Bool = false;
+    this.f056Int = 0; // wire [-13, 13]
+    this.f057Int = 0; // wire [-15, 15]
+    this.f058F32 = 0;
+    this.f059F64 = 0;
+    this.f060Bits = 0;
+    this.f061Cf32 = 0; // compressed float [-90.0, 90.0] @ 0.5
+    this.f062Uint = 0; // wire [0, 503]
+    this.f063I64 = 0n;
+    this.f064Uint = 0; // wire [0, 299]
+    this.f065Cf32 = 0; // compressed float [0.0, 30.0] @ 0.5
+    this.f066Ufixed = 0; // wire [0, 2]
+    this.f067Cf32 = 0; // compressed float [-100.0, 100.0] @ 0.25
+    this.f068Cf32 = 0; // compressed float [0.0, 2000.0] @ 1.0
+    this.f069Bits = 0;
+    this.f070Uint = 0; // wire [0, 2]
+    this.f071Cf32 = 0; // compressed float [0.0, 10.0] @ 0.02
+    this.f072Cf32 = 0; // compressed float [0.0, 100.0] @ 0.01
+    this.f073Int = 0; // wire [-4, 4]
+    this.f074Bool = false; // specified default at construction; Zero* gives the §5 zero form
 
     // f074_bool — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.F075U64 = 0n;
-    this.F076Int = 0; // wire [-26218, 26218]
-    this.F077Int = 0; // wire [-17, 17]
-    this.F078Bits = 0;
-    this.F079Uint = 0; // wire [0, 17]
+    this.f075U64 = 0n;
+    this.f076Int = 0; // wire [-26218, 26218]
+    this.f077Int = 0; // wire [-17, 17]
+    this.f078Bits = 0;
+    this.f079Uint = 0; // wire [0, 17]
 
-    this.F080Bool = false;
-    this.F081Bits = 0;
-    this.F082Bits = 0;
-    this.F083Enum = PacketMode.None;
-    this.F084Ufixed = 0; // wire [0, 1]
-    this.F085Bits = 0;
-    this.F086Uint = 0; // wire [0, 399]
-    this.F087F64 = 0;
-    this.F088Int = 0; // wire [-694, 694]
-    this.F089Bits = 0n;
-    this.F090Uint = 0; // wire [0, 214]
-    this.F091Flags = 0n; // PacketFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
-    this.F092Bool = false;
-    this.F093Bits = 0n;
-    this.F094Bool = false;
-    this.F095Fixed = 0; // wire [-1577, 1577]
-    this.F096Bits = 0;
-    this.F097Bits = 0;
+    this.f080Bool = false;
+    this.f081Bits = 0;
+    this.f082Bits = 0;
+    this.f083Enum = PacketMode.None;
+    this.f084Ufixed = 0; // wire [0, 1]
+    this.f085Bits = 0;
+    this.f086Uint = 0; // wire [0, 399]
+    this.f087F64 = 0;
+    this.f088Int = 0; // wire [-694, 694]
+    this.f089Bits = 0n;
+    this.f090Uint = 0; // wire [0, 214]
+    this.f091Flags = 0n; // PacketFlags — consumed as masks, BigInt (uint64) storage (SPEC §4.2)
+    this.f092Bool = false;
+    this.f093Bits = 0n;
+    this.f094Bool = false;
+    this.f095Fixed = 0; // wire [-1577, 1577]
+    this.f096Bits = 0;
+    this.f097Bits = 0;
   }
 }
 
@@ -234,670 +233,670 @@ export const RealPacketMaxBytes = 232;
 
 // InitRealPacket restores fresh construction values in place, preserving storage.
 export function InitRealPacket(value) {
-  value.F001Int = 0;
-  value.F002F64 = 0;
-  value.F003Int = 0;
-  value.F004Cf32 = 0;
-  value.F005Uint = 0;
-  value.F006Int = 0;
-  value.F007F32 = 0;
-  value.F008U64 = 0n;
-  value.F009Int = 0;
-  value.F010F32 = 0;
-  value.F011Bits = 0;
-  value.F012Bool = true;
-  value.F013F32 = 0;
-  value.F014Uint = 0;
-  value.F015Int = 0;
-  value.F016Fixed = 0;
-  value.F017Uint = 0;
-  value.F018Int = 0;
-  value.F019F64 = 0;
-  value.F020F32 = 0;
-  value.F021Ufixed = 0;
-  value.F022F32 = 0;
-  value.F023Bits = 0;
-  value.F024F32 = 0;
-  value.F025Fixed = 0;
-  value.F026Bits = 0;
-  value.F027Cf32 = 0;
-  value.F028Bits = 0;
-  value.F029I64 = 0n;
-  value.F030F32 = 0;
-  value.F031Bits = 0;
-  value.F032Int = 0;
-  value.F033Uint = 0;
-  value.F034Uint = 0;
-  value.F035Bits = 0;
-  value.F036Enum = PacketMode.None;
-  value.F037Bool = false;
-  value.F038Bool = false;
-  value.F039Bits = 0;
-  value.F040Fixed = 0;
-  value.F041Int = 0;
-  value.F042Bits = 0;
-  value.F043Bool = false;
-  value.F044F32 = 0;
-  value.F045Bits = 0;
-  value.F046Uint = 0;
-  value.F047Int = 0;
-  value.F048F64 = 0;
-  value.F049Ufixed = 0;
-  value.F050Bool = true;
-  value.F051Bool = false;
-  value.F052Int = 0;
-  value.F053F32 = 0;
-  value.F054Int = 0;
-  value.F055Bool = false;
-  value.F056Int = 0;
-  value.F057Int = 0;
-  value.F058F32 = 0;
-  value.F059F64 = 0;
-  value.F060Bits = 0;
-  value.F061Cf32 = 0;
-  value.F062Uint = 0;
-  value.F063I64 = 0n;
-  value.F064Uint = 0;
-  value.F065Cf32 = 0;
-  value.F066Ufixed = 0;
-  value.F067Cf32 = 0;
-  value.F068Cf32 = 0;
-  value.F069Bits = 0;
-  value.F070Uint = 0;
-  value.F071Cf32 = 0;
-  value.F072Cf32 = 0;
-  value.F073Int = 0;
-  value.F074Bool = false;
-  value.F075U64 = 0n;
-  value.F076Int = 0;
-  value.F077Int = 0;
-  value.F078Bits = 0;
-  value.F079Uint = 0;
-  value.F080Bool = false;
-  value.F081Bits = 0;
-  value.F082Bits = 0;
-  value.F083Enum = PacketMode.None;
-  value.F084Ufixed = 0;
-  value.F085Bits = 0;
-  value.F086Uint = 0;
-  value.F087F64 = 0;
-  value.F088Int = 0;
-  value.F089Bits = 0n;
-  value.F090Uint = 0;
-  value.F091Flags = 0n;
-  value.F092Bool = false;
-  value.F093Bits = 0n;
-  value.F094Bool = false;
-  value.F095Fixed = 0;
-  value.F096Bits = 0;
-  value.F097Bits = 0;
+  value.f001Int = 0;
+  value.f002F64 = 0;
+  value.f003Int = 0;
+  value.f004Cf32 = 0;
+  value.f005Uint = 0;
+  value.f006Int = 0;
+  value.f007F32 = 0;
+  value.f008U64 = 0n;
+  value.f009Int = 0;
+  value.f010F32 = 0;
+  value.f011Bits = 0;
+  value.f012Bool = true;
+  value.f013F32 = 0;
+  value.f014Uint = 0;
+  value.f015Int = 0;
+  value.f016Fixed = 0;
+  value.f017Uint = 0;
+  value.f018Int = 0;
+  value.f019F64 = 0;
+  value.f020F32 = 0;
+  value.f021Ufixed = 0;
+  value.f022F32 = 0;
+  value.f023Bits = 0;
+  value.f024F32 = 0;
+  value.f025Fixed = 0;
+  value.f026Bits = 0;
+  value.f027Cf32 = 0;
+  value.f028Bits = 0;
+  value.f029I64 = 0n;
+  value.f030F32 = 0;
+  value.f031Bits = 0;
+  value.f032Int = 0;
+  value.f033Uint = 0;
+  value.f034Uint = 0;
+  value.f035Bits = 0;
+  value.f036Enum = PacketMode.None;
+  value.f037Bool = false;
+  value.f038Bool = false;
+  value.f039Bits = 0;
+  value.f040Fixed = 0;
+  value.f041Int = 0;
+  value.f042Bits = 0;
+  value.f043Bool = false;
+  value.f044F32 = 0;
+  value.f045Bits = 0;
+  value.f046Uint = 0;
+  value.f047Int = 0;
+  value.f048F64 = 0;
+  value.f049Ufixed = 0;
+  value.f050Bool = true;
+  value.f051Bool = false;
+  value.f052Int = 0;
+  value.f053F32 = 0;
+  value.f054Int = 0;
+  value.f055Bool = false;
+  value.f056Int = 0;
+  value.f057Int = 0;
+  value.f058F32 = 0;
+  value.f059F64 = 0;
+  value.f060Bits = 0;
+  value.f061Cf32 = 0;
+  value.f062Uint = 0;
+  value.f063I64 = 0n;
+  value.f064Uint = 0;
+  value.f065Cf32 = 0;
+  value.f066Ufixed = 0;
+  value.f067Cf32 = 0;
+  value.f068Cf32 = 0;
+  value.f069Bits = 0;
+  value.f070Uint = 0;
+  value.f071Cf32 = 0;
+  value.f072Cf32 = 0;
+  value.f073Int = 0;
+  value.f074Bool = false;
+  value.f075U64 = 0n;
+  value.f076Int = 0;
+  value.f077Int = 0;
+  value.f078Bits = 0;
+  value.f079Uint = 0;
+  value.f080Bool = false;
+  value.f081Bits = 0;
+  value.f082Bits = 0;
+  value.f083Enum = PacketMode.None;
+  value.f084Ufixed = 0;
+  value.f085Bits = 0;
+  value.f086Uint = 0;
+  value.f087F64 = 0;
+  value.f088Int = 0;
+  value.f089Bits = 0n;
+  value.f090Uint = 0;
+  value.f091Flags = 0n;
+  value.f092Bool = false;
+  value.f093Bits = 0n;
+  value.f094Bool = false;
+  value.f095Fixed = 0;
+  value.f096Bits = 0;
+  value.f097Bits = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRealPacket(value) {
-  value.F001Int = 0;
-  value.F002F64 = 0;
-  value.F003Int = 0;
-  value.F004Cf32 = 0;
-  value.F005Uint = 0;
-  value.F006Int = 0;
-  value.F007F32 = 0;
-  value.F008U64 = 0n;
-  value.F009Int = 0;
-  value.F010F32 = 0;
-  value.F011Bits = 0;
-  value.F012Bool = false;
-  value.F013F32 = 0;
-  value.F014Uint = 0;
-  value.F015Int = 0;
-  value.F016Fixed = 0;
-  value.F017Uint = 0;
-  value.F018Int = 0;
-  value.F019F64 = 0;
-  value.F020F32 = 0;
-  value.F021Ufixed = 0;
-  value.F022F32 = 0;
-  value.F023Bits = 0;
-  value.F024F32 = 0;
-  value.F025Fixed = 0;
-  value.F026Bits = 0;
-  value.F027Cf32 = 0;
-  value.F028Bits = 0;
-  value.F029I64 = 0n;
-  value.F030F32 = 0;
-  value.F031Bits = 0;
-  value.F032Int = 0;
-  value.F033Uint = 0;
-  value.F034Uint = 0;
-  value.F035Bits = 0;
-  value.F036Enum = PacketMode.None;
-  value.F037Bool = false;
-  value.F038Bool = false;
-  value.F039Bits = 0;
-  value.F040Fixed = 0;
-  value.F041Int = 0;
-  value.F042Bits = 0;
-  value.F043Bool = false;
-  value.F044F32 = 0;
-  value.F045Bits = 0;
-  value.F046Uint = 0;
-  value.F047Int = 0;
-  value.F048F64 = 0;
-  value.F049Ufixed = 0;
-  value.F050Bool = false;
-  value.F051Bool = false;
-  value.F052Int = 0;
-  value.F053F32 = 0;
-  value.F054Int = 0;
-  value.F055Bool = false;
-  value.F056Int = 0;
-  value.F057Int = 0;
-  value.F058F32 = 0;
-  value.F059F64 = 0;
-  value.F060Bits = 0;
-  value.F061Cf32 = 0;
-  value.F062Uint = 0;
-  value.F063I64 = 0n;
-  value.F064Uint = 0;
-  value.F065Cf32 = 0;
-  value.F066Ufixed = 0;
-  value.F067Cf32 = 0;
-  value.F068Cf32 = 0;
-  value.F069Bits = 0;
-  value.F070Uint = 0;
-  value.F071Cf32 = 0;
-  value.F072Cf32 = 0;
-  value.F073Int = 0;
-  value.F074Bool = false;
-  value.F075U64 = 0n;
-  value.F076Int = 0;
-  value.F077Int = 0;
-  value.F078Bits = 0;
-  value.F079Uint = 0;
-  value.F080Bool = false;
-  value.F081Bits = 0;
-  value.F082Bits = 0;
-  value.F083Enum = PacketMode.None;
-  value.F084Ufixed = 0;
-  value.F085Bits = 0;
-  value.F086Uint = 0;
-  value.F087F64 = 0;
-  value.F088Int = 0;
-  value.F089Bits = 0n;
-  value.F090Uint = 0;
-  value.F091Flags = 0n;
-  value.F092Bool = false;
-  value.F093Bits = 0n;
-  value.F094Bool = false;
-  value.F095Fixed = 0;
-  value.F096Bits = 0;
-  value.F097Bits = 0;
+  value.f001Int = 0;
+  value.f002F64 = 0;
+  value.f003Int = 0;
+  value.f004Cf32 = 0;
+  value.f005Uint = 0;
+  value.f006Int = 0;
+  value.f007F32 = 0;
+  value.f008U64 = 0n;
+  value.f009Int = 0;
+  value.f010F32 = 0;
+  value.f011Bits = 0;
+  value.f012Bool = false;
+  value.f013F32 = 0;
+  value.f014Uint = 0;
+  value.f015Int = 0;
+  value.f016Fixed = 0;
+  value.f017Uint = 0;
+  value.f018Int = 0;
+  value.f019F64 = 0;
+  value.f020F32 = 0;
+  value.f021Ufixed = 0;
+  value.f022F32 = 0;
+  value.f023Bits = 0;
+  value.f024F32 = 0;
+  value.f025Fixed = 0;
+  value.f026Bits = 0;
+  value.f027Cf32 = 0;
+  value.f028Bits = 0;
+  value.f029I64 = 0n;
+  value.f030F32 = 0;
+  value.f031Bits = 0;
+  value.f032Int = 0;
+  value.f033Uint = 0;
+  value.f034Uint = 0;
+  value.f035Bits = 0;
+  value.f036Enum = PacketMode.None;
+  value.f037Bool = false;
+  value.f038Bool = false;
+  value.f039Bits = 0;
+  value.f040Fixed = 0;
+  value.f041Int = 0;
+  value.f042Bits = 0;
+  value.f043Bool = false;
+  value.f044F32 = 0;
+  value.f045Bits = 0;
+  value.f046Uint = 0;
+  value.f047Int = 0;
+  value.f048F64 = 0;
+  value.f049Ufixed = 0;
+  value.f050Bool = false;
+  value.f051Bool = false;
+  value.f052Int = 0;
+  value.f053F32 = 0;
+  value.f054Int = 0;
+  value.f055Bool = false;
+  value.f056Int = 0;
+  value.f057Int = 0;
+  value.f058F32 = 0;
+  value.f059F64 = 0;
+  value.f060Bits = 0;
+  value.f061Cf32 = 0;
+  value.f062Uint = 0;
+  value.f063I64 = 0n;
+  value.f064Uint = 0;
+  value.f065Cf32 = 0;
+  value.f066Ufixed = 0;
+  value.f067Cf32 = 0;
+  value.f068Cf32 = 0;
+  value.f069Bits = 0;
+  value.f070Uint = 0;
+  value.f071Cf32 = 0;
+  value.f072Cf32 = 0;
+  value.f073Int = 0;
+  value.f074Bool = false;
+  value.f075U64 = 0n;
+  value.f076Int = 0;
+  value.f077Int = 0;
+  value.f078Bits = 0;
+  value.f079Uint = 0;
+  value.f080Bool = false;
+  value.f081Bits = 0;
+  value.f082Bits = 0;
+  value.f083Enum = PacketMode.None;
+  value.f084Ufixed = 0;
+  value.f085Bits = 0;
+  value.f086Uint = 0;
+  value.f087F64 = 0;
+  value.f088Int = 0;
+  value.f089Bits = 0n;
+  value.f090Uint = 0;
+  value.f091Flags = 0n;
+  value.f092Bool = false;
+  value.f093Bits = 0n;
+  value.f094Bool = false;
+  value.f095Fixed = 0;
+  value.f096Bits = 0;
+  value.f097Bits = 0;
 }
 
 export function WriteRealPacket(stream, value) {
-  if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) {
+  if (!Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F001Int >>> 0) - (-805495 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f001Int >>> 0) - (-805495 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F002F64;
+  NUMBER_SCRATCH.value = value.f002F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.F003Int) || value.F003Int < -835897 || value.F003Int > 835897) {
+  if (!Number.isInteger(value.f003Int) || value.f003Int < -835897 || value.f003Int > 835897) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F003Int >>> 0) - (-835897 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f003Int >>> 0) - (-835897 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F004Cf32;
+  NUMBER_SCRATCH.value = value.f004Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.1)) {
     return false;
   }
-  if (!Number.isInteger(value.F005Uint) || value.F005Uint < 0 || value.F005Uint > 7316) {
+  if (!Number.isInteger(value.f005Uint) || value.f005Uint < 0 || value.f005Uint > 7316) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F005Uint;
+  NUMBER_SCRATCH.value = value.f005Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
     return false;
   }
-  if (!Number.isInteger(value.F006Int) || value.F006Int < -1513 || value.F006Int > 1513) {
+  if (!Number.isInteger(value.f006Int) || value.f006Int < -1513 || value.f006Int > 1513) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F006Int >>> 0) - (-1513 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f006Int >>> 0) - (-1513 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F007F32;
+  NUMBER_SCRATCH.value = value.f007F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.F008U64;
+  BIGINT_SCRATCH.value = value.f008U64;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.F009Int) || value.F009Int < -22 || value.F009Int > 22) {
+  if (!Number.isInteger(value.f009Int) || value.f009Int < -22 || value.f009Int > 22) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F009Int >>> 0) - (-22 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f009Int >>> 0) - (-22 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F010F32;
+  NUMBER_SCRATCH.value = value.f010F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F011Bits;
+  NUMBER_SCRATCH.value = value.f011Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.F012Bool;
+  BOOL_SCRATCH.value = value.f012Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.F012Bool) {
-    NUMBER_SCRATCH.value = value.F013F32;
+  if (value.f012Bool) {
+    NUMBER_SCRATCH.value = value.f013F32;
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    if (!Number.isInteger(value.F014Uint) || value.F014Uint < 0 || value.F014Uint > 775) {
+    if (!Number.isInteger(value.f014Uint) || value.f014Uint < 0 || value.f014Uint > 775) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F014Uint;
+    NUMBER_SCRATCH.value = value.f014Uint;
     if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
       return false;
     }
-    if (!Number.isInteger(value.F015Int) || value.F015Int < -21 || value.F015Int > 21) {
+    if (!Number.isInteger(value.f015Int) || value.f015Int < -21 || value.f015Int > 21) {
       return false;
     }
-    NUMBER_SCRATCH.value = ((value.F015Int >>> 0) - (-21 >>> 0)) >>> 0;
+    NUMBER_SCRATCH.value = ((value.f015Int >>> 0) - (-21 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F016Fixed;
+    NUMBER_SCRATCH.value = value.f016Fixed;
     if (!stream.serializeFixed(NUMBER_SCRATCH, 12, 20, -36, 36)) {
       return false;
     }
-    if (!Number.isInteger(value.F017Uint) || value.F017Uint < 0 || value.F017Uint > 4606) {
+    if (!Number.isInteger(value.f017Uint) || value.f017Uint < 0 || value.f017Uint > 4606) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F017Uint;
+    NUMBER_SCRATCH.value = value.f017Uint;
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
   }
-  if (!Number.isInteger(value.F018Int) || value.F018Int < -834 || value.F018Int > 834) {
+  if (!Number.isInteger(value.f018Int) || value.f018Int < -834 || value.f018Int > 834) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F018Int >>> 0) - (-834 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f018Int >>> 0) - (-834 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F019F64;
+  NUMBER_SCRATCH.value = value.f019F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F020F32;
+  NUMBER_SCRATCH.value = value.f020F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F021Ufixed;
+  NUMBER_SCRATCH.value = value.f021Ufixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 20, 12, 0, 25141)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F022F32;
+  NUMBER_SCRATCH.value = value.f022F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F023Bits;
+  NUMBER_SCRATCH.value = value.f023Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F024F32;
+  NUMBER_SCRATCH.value = value.f024F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F025Fixed;
+  NUMBER_SCRATCH.value = value.f025Fixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 8, 8, -119, 119)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F026Bits;
+  NUMBER_SCRATCH.value = value.f026Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F027Cf32;
+  NUMBER_SCRATCH.value = value.f027Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -2.0, 2.0, 0.25)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F028Bits;
+  NUMBER_SCRATCH.value = value.f028Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.F029I64;
+  BIGINT_SCRATCH.value = value.f029I64;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F030F32;
+  NUMBER_SCRATCH.value = value.f030F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F031Bits;
+  NUMBER_SCRATCH.value = value.f031Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
     return false;
   }
-  if (!Number.isInteger(value.F032Int) || value.F032Int < -3 || value.F032Int > 3) {
+  if (!Number.isInteger(value.f032Int) || value.f032Int < -3 || value.f032Int > 3) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F032Int >>> 0) - (-3 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f032Int >>> 0) - (-3 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  if (!Number.isInteger(value.F033Uint) || value.F033Uint < 0 || value.F033Uint > 142780) {
+  if (!Number.isInteger(value.f033Uint) || value.f033Uint < 0 || value.f033Uint > 142780) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F033Uint;
+  NUMBER_SCRATCH.value = value.f033Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 18)) {
     return false;
   }
-  if (!Number.isInteger(value.F034Uint) || value.F034Uint < 0 || value.F034Uint > 14149) {
+  if (!Number.isInteger(value.f034Uint) || value.f034Uint < 0 || value.f034Uint > 14149) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F034Uint;
+  NUMBER_SCRATCH.value = value.f034Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 14)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F035Bits;
+  NUMBER_SCRATCH.value = value.f035Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  if (!Number.isInteger(value.F036Enum) || value.F036Enum < 0 || value.F036Enum > 5) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.f036Enum) || value.f036Enum < 0 || value.f036Enum > 5) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.F036Enum;
+  NUMBER_SCRATCH.value = value.f036Enum;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.F037Bool;
+  BOOL_SCRATCH.value = value.f037Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.F038Bool;
+  BOOL_SCRATCH.value = value.f038Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F039Bits;
+  NUMBER_SCRATCH.value = value.f039Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F040Fixed;
+  NUMBER_SCRATCH.value = value.f040Fixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 4, 12, -5, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.F041Int) || value.F041Int < -55 || value.F041Int > 55) {
+  if (!Number.isInteger(value.f041Int) || value.f041Int < -55 || value.f041Int > 55) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F041Int >>> 0) - (-55 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f041Int >>> 0) - (-55 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F042Bits;
+  NUMBER_SCRATCH.value = value.f042Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 30)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.F043Bool;
+  BOOL_SCRATCH.value = value.f043Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.F043Bool) {
-    NUMBER_SCRATCH.value = value.F044F32;
+  if (value.f043Bool) {
+    NUMBER_SCRATCH.value = value.f044F32;
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F045Bits;
+    NUMBER_SCRATCH.value = value.f045Bits;
     if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
       return false;
     }
-    if (!Number.isInteger(value.F046Uint) || value.F046Uint < 0 || value.F046Uint > 76063) {
+    if (!Number.isInteger(value.f046Uint) || value.f046Uint < 0 || value.f046Uint > 76063) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F046Uint;
+    NUMBER_SCRATCH.value = value.f046Uint;
     if (!stream.serializeBits(NUMBER_SCRATCH, 17)) {
       return false;
     }
-    if (!Number.isInteger(value.F047Int) || value.F047Int < -430976 || value.F047Int > 430976) {
+    if (!Number.isInteger(value.f047Int) || value.f047Int < -430976 || value.f047Int > 430976) {
       return false;
     }
-    NUMBER_SCRATCH.value = ((value.F047Int >>> 0) - (-430976 >>> 0)) >>> 0;
+    NUMBER_SCRATCH.value = ((value.f047Int >>> 0) - (-430976 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.F048F64;
+  NUMBER_SCRATCH.value = value.f048F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F049Ufixed;
+  NUMBER_SCRATCH.value = value.f049Ufixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 3)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.F050Bool;
+  BOOL_SCRATCH.value = value.f050Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.F050Bool) {
-    BOOL_SCRATCH.value = value.F051Bool;
+  if (value.f050Bool) {
+    BOOL_SCRATCH.value = value.f051Bool;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
     }
-    if (!Number.isInteger(value.F052Int) || value.F052Int < -57 || value.F052Int > 57) {
+    if (!Number.isInteger(value.f052Int) || value.f052Int < -57 || value.f052Int > 57) {
       return false;
     }
-    NUMBER_SCRATCH.value = ((value.F052Int >>> 0) - (-57 >>> 0)) >>> 0;
+    NUMBER_SCRATCH.value = ((value.f052Int >>> 0) - (-57 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F053F32;
+    NUMBER_SCRATCH.value = value.f053F32;
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    if (!Number.isInteger(value.F054Int) || value.F054Int < -35 || value.F054Int > 35) {
+    if (!Number.isInteger(value.f054Int) || value.f054Int < -35 || value.f054Int > 35) {
       return false;
     }
-    NUMBER_SCRATCH.value = ((value.F054Int >>> 0) - (-35 >>> 0)) >>> 0;
+    NUMBER_SCRATCH.value = ((value.f054Int >>> 0) - (-35 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
       return false;
     }
   }
-  BOOL_SCRATCH.value = value.F055Bool;
+  BOOL_SCRATCH.value = value.f055Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.F056Int) || value.F056Int < -13 || value.F056Int > 13) {
+  if (!Number.isInteger(value.f056Int) || value.f056Int < -13 || value.f056Int > 13) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F056Int >>> 0) - (-13 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f056Int >>> 0) - (-13 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.F057Int) || value.F057Int < -15 || value.F057Int > 15) {
+  if (!Number.isInteger(value.f057Int) || value.f057Int < -15 || value.f057Int > 15) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F057Int >>> 0) - (-15 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f057Int >>> 0) - (-15 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F058F32;
+  NUMBER_SCRATCH.value = value.f058F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F059F64;
+  NUMBER_SCRATCH.value = value.f059F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F060Bits;
+  NUMBER_SCRATCH.value = value.f060Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F061Cf32;
+  NUMBER_SCRATCH.value = value.f061Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -90.0, 90.0, 0.5)) {
     return false;
   }
-  if (!Number.isInteger(value.F062Uint) || value.F062Uint < 0 || value.F062Uint > 503) {
+  if (!Number.isInteger(value.f062Uint) || value.f062Uint < 0 || value.f062Uint > 503) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F062Uint;
+  NUMBER_SCRATCH.value = value.f062Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.F063I64;
+  BIGINT_SCRATCH.value = value.f063I64;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (!Number.isInteger(value.F064Uint) || value.F064Uint < 0 || value.F064Uint > 299) {
+  if (!Number.isInteger(value.f064Uint) || value.f064Uint < 0 || value.f064Uint > 299) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F064Uint;
+  NUMBER_SCRATCH.value = value.f064Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F065Cf32;
+  NUMBER_SCRATCH.value = value.f065Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 30.0, 0.5)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F066Ufixed;
+  NUMBER_SCRATCH.value = value.f066Ufixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 2)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F067Cf32;
+  NUMBER_SCRATCH.value = value.f067Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -100.0, 100.0, 0.25)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F068Cf32;
+  NUMBER_SCRATCH.value = value.f068Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 1.0)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F069Bits;
+  NUMBER_SCRATCH.value = value.f069Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  if (!Number.isInteger(value.F070Uint) || value.F070Uint < 0 || value.F070Uint > 2) {
+  if (!Number.isInteger(value.f070Uint) || value.f070Uint < 0 || value.f070Uint > 2) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F070Uint;
+  NUMBER_SCRATCH.value = value.f070Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F071Cf32;
+  NUMBER_SCRATCH.value = value.f071Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.02)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F072Cf32;
+  NUMBER_SCRATCH.value = value.f072Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.01)) {
     return false;
   }
-  if (!Number.isInteger(value.F073Int) || value.F073Int < -4 || value.F073Int > 4) {
+  if (!Number.isInteger(value.f073Int) || value.f073Int < -4 || value.f073Int > 4) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F073Int >>> 0) - (-4 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f073Int >>> 0) - (-4 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.F074Bool;
+  BOOL_SCRATCH.value = value.f074Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.F074Bool) {
-    BIGINT_SCRATCH.value = value.F075U64;
+  if (value.f074Bool) {
+    BIGINT_SCRATCH.value = value.f075U64;
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
-    if (!Number.isInteger(value.F076Int) || value.F076Int < -26218 || value.F076Int > 26218) {
+    if (!Number.isInteger(value.f076Int) || value.f076Int < -26218 || value.f076Int > 26218) {
       return false;
     }
-    NUMBER_SCRATCH.value = ((value.F076Int >>> 0) - (-26218 >>> 0)) >>> 0;
+    NUMBER_SCRATCH.value = ((value.f076Int >>> 0) - (-26218 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
     }
-    if (!Number.isInteger(value.F077Int) || value.F077Int < -17 || value.F077Int > 17) {
+    if (!Number.isInteger(value.f077Int) || value.f077Int < -17 || value.f077Int > 17) {
       return false;
     }
-    NUMBER_SCRATCH.value = ((value.F077Int >>> 0) - (-17 >>> 0)) >>> 0;
+    NUMBER_SCRATCH.value = ((value.f077Int >>> 0) - (-17 >>> 0)) >>> 0;
     if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F078Bits;
+    NUMBER_SCRATCH.value = value.f078Bits;
     if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
       return false;
     }
-    if (!Number.isInteger(value.F079Uint) || value.F079Uint < 0 || value.F079Uint > 17) {
+    if (!Number.isInteger(value.f079Uint) || value.f079Uint < 0 || value.f079Uint > 17) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.F079Uint;
+    NUMBER_SCRATCH.value = value.f079Uint;
     if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
       return false;
     }
   }
-  BOOL_SCRATCH.value = value.F080Bool;
+  BOOL_SCRATCH.value = value.f080Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F081Bits;
+  NUMBER_SCRATCH.value = value.f081Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F082Bits;
+  NUMBER_SCRATCH.value = value.f082Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  if (!Number.isInteger(value.F083Enum) || value.F083Enum < 0 || value.F083Enum > 5) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.f083Enum) || value.f083Enum < 0 || value.f083Enum > 5) { // headroom above the wire range cannot ride
     return false;
   }
-  NUMBER_SCRATCH.value = value.F083Enum;
+  NUMBER_SCRATCH.value = value.f083Enum;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F084Ufixed;
+  NUMBER_SCRATCH.value = value.f084Ufixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 1, 7, 0, 1)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F085Bits;
+  NUMBER_SCRATCH.value = value.f085Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  if (!Number.isInteger(value.F086Uint) || value.F086Uint < 0 || value.F086Uint > 399) {
+  if (!Number.isInteger(value.f086Uint) || value.f086Uint < 0 || value.f086Uint > 399) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F086Uint;
+  NUMBER_SCRATCH.value = value.f086Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F087F64;
+  NUMBER_SCRATCH.value = value.f087F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  if (!Number.isInteger(value.F088Int) || value.F088Int < -694 || value.F088Int > 694) {
+  if (!Number.isInteger(value.f088Int) || value.f088Int < -694 || value.f088Int > 694) {
     return false;
   }
-  NUMBER_SCRATCH.value = ((value.F088Int >>> 0) - (-694 >>> 0)) >>> 0;
+  NUMBER_SCRATCH.value = ((value.f088Int >>> 0) - (-694 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.F089Bits;
+  BIGINT_SCRATCH.value = value.f089Bits;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  if (!Number.isInteger(value.F090Uint) || value.F090Uint < 0 || value.F090Uint > 214) {
+  if (!Number.isInteger(value.f090Uint) || value.f090Uint < 0 || value.f090Uint > 214) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F090Uint;
+  NUMBER_SCRATCH.value = value.f090Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
   {
-    const flagsValue = BigInt.asUintN(64, value.F091Flags);
+    const flagsValue = BigInt.asUintN(64, value.f091Flags);
     if (flagsValue >= 1n << 5n) { // a mask bit above the wire width cannot ride
       return false;
     }
@@ -906,27 +905,27 @@ export function WriteRealPacket(stream, value) {
       return false;
     }
   }
-  BOOL_SCRATCH.value = value.F092Bool;
+  BOOL_SCRATCH.value = value.f092Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.F093Bits;
+  BIGINT_SCRATCH.value = value.f093Bits;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.F094Bool;
+  BOOL_SCRATCH.value = value.f094Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F095Fixed;
+  NUMBER_SCRATCH.value = value.f095Fixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -1577, 1577)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F096Bits;
+  NUMBER_SCRATCH.value = value.f096Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 18)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.F097Bits;
+  NUMBER_SCRATCH.value = value.f097Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
@@ -937,421 +936,421 @@ export function ReadRealPacket(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, -805495, 805495)) {
     return false;
   }
-  value.F001Int = NUMBER_SCRATCH.value;
+  value.f001Int = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F002F64 = NUMBER_SCRATCH.value;
+  value.f002F64 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -835897, 835897)) {
     return false;
   }
-  value.F003Int = NUMBER_SCRATCH.value;
+  value.f003Int = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.1)) {
     return false;
   }
-  value.F004Cf32 = NUMBER_SCRATCH.value;
+  value.f004Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 7316)) {
     return false;
   }
-  value.F005Uint = NUMBER_SCRATCH.value;
+  value.f005Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -1513, 1513)) {
     return false;
   }
-  value.F006Int = NUMBER_SCRATCH.value;
+  value.f006Int = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F007F32 = NUMBER_SCRATCH.value;
+  value.f007F32 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.F008U64 = BIGINT_SCRATCH.value;
+  value.f008U64 = BIGINT_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -22, 22)) {
     return false;
   }
-  value.F009Int = NUMBER_SCRATCH.value;
+  value.f009Int = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F010F32 = NUMBER_SCRATCH.value;
+  value.f010F32 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
   }
-  value.F011Bits = NUMBER_SCRATCH.value;
+  value.f011Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F012Bool = BOOL_SCRATCH.value;
-  if (value.F012Bool) {
+  value.f012Bool = BOOL_SCRATCH.value;
+  if (value.f012Bool) {
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    value.F013F32 = NUMBER_SCRATCH.value;
+    value.f013F32 = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 775)) {
       return false;
     }
-    value.F014Uint = NUMBER_SCRATCH.value;
+    value.f014Uint = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, -21, 21)) {
       return false;
     }
-    value.F015Int = NUMBER_SCRATCH.value;
+    value.f015Int = NUMBER_SCRATCH.value;
     if (!stream.serializeFixed(NUMBER_SCRATCH, 12, 20, -36, 36)) {
       return false;
     }
-    value.F016Fixed = NUMBER_SCRATCH.value;
+    value.f016Fixed = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4606)) {
       return false;
     }
-    value.F017Uint = NUMBER_SCRATCH.value;
+    value.f017Uint = NUMBER_SCRATCH.value;
   } else {
-    value.F013F32 = 0;
-    value.F014Uint = 0;
-    value.F015Int = 0;
-    value.F016Fixed = 0;
-    value.F017Uint = 0;
+    value.f013F32 = 0;
+    value.f014Uint = 0;
+    value.f015Int = 0;
+    value.f016Fixed = 0;
+    value.f017Uint = 0;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, -834, 834)) {
     return false;
   }
-  value.F018Int = NUMBER_SCRATCH.value;
+  value.f018Int = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F019F64 = NUMBER_SCRATCH.value;
+  value.f019F64 = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F020F32 = NUMBER_SCRATCH.value;
+  value.f020F32 = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 20, 12, 0, 25141)) {
     return false;
   }
-  value.F021Ufixed = NUMBER_SCRATCH.value;
+  value.f021Ufixed = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F022F32 = NUMBER_SCRATCH.value;
+  value.f022F32 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  value.F023Bits = NUMBER_SCRATCH.value;
+  value.f023Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F024F32 = NUMBER_SCRATCH.value;
+  value.f024F32 = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 8, 8, -119, 119)) {
     return false;
   }
-  value.F025Fixed = NUMBER_SCRATCH.value;
+  value.f025Fixed = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  value.F026Bits = NUMBER_SCRATCH.value;
+  value.f026Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -2.0, 2.0, 0.25)) {
     return false;
   }
-  value.F027Cf32 = NUMBER_SCRATCH.value;
+  value.f027Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  value.F028Bits = NUMBER_SCRATCH.value;
+  value.f028Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.F029I64 = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.f029I64 = BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F030F32 = NUMBER_SCRATCH.value;
+  value.f030F32 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 1)) {
     return false;
   }
-  value.F031Bits = NUMBER_SCRATCH.value;
+  value.f031Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -3, 3)) {
     return false;
   }
-  value.F032Int = NUMBER_SCRATCH.value;
+  value.f032Int = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 142780)) {
     return false;
   }
-  value.F033Uint = NUMBER_SCRATCH.value;
+  value.f033Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 14149)) {
     return false;
   }
-  value.F034Uint = NUMBER_SCRATCH.value;
+  value.f034Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  value.F035Bits = NUMBER_SCRATCH.value;
+  value.f035Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 5)) {
     return false;
   }
-  value.F036Enum = NUMBER_SCRATCH.value;
+  value.f036Enum = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F037Bool = BOOL_SCRATCH.value;
+  value.f037Bool = BOOL_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F038Bool = BOOL_SCRATCH.value;
+  value.f038Bool = BOOL_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
     return false;
   }
-  value.F039Bits = NUMBER_SCRATCH.value;
+  value.f039Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 4, 12, -5, 5)) {
     return false;
   }
-  value.F040Fixed = NUMBER_SCRATCH.value;
+  value.f040Fixed = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -55, 55)) {
     return false;
   }
-  value.F041Int = NUMBER_SCRATCH.value;
+  value.f041Int = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 30)) {
     return false;
   }
-  value.F042Bits = NUMBER_SCRATCH.value;
+  value.f042Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F043Bool = BOOL_SCRATCH.value;
-  if (value.F043Bool) {
+  value.f043Bool = BOOL_SCRATCH.value;
+  if (value.f043Bool) {
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    value.F044F32 = NUMBER_SCRATCH.value;
+    value.f044F32 = NUMBER_SCRATCH.value;
     if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
       return false;
     }
-    value.F045Bits = NUMBER_SCRATCH.value;
+    value.f045Bits = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 76063)) {
       return false;
     }
-    value.F046Uint = NUMBER_SCRATCH.value;
+    value.f046Uint = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, -430976, 430976)) {
       return false;
     }
-    value.F047Int = NUMBER_SCRATCH.value;
+    value.f047Int = NUMBER_SCRATCH.value;
   } else {
-    value.F044F32 = 0;
-    value.F045Bits = 0;
-    value.F046Uint = 0;
-    value.F047Int = 0;
+    value.f044F32 = 0;
+    value.f045Bits = 0;
+    value.f046Uint = 0;
+    value.f047Int = 0;
   }
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F048F64 = NUMBER_SCRATCH.value;
+  value.f048F64 = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 3)) {
     return false;
   }
-  value.F049Ufixed = NUMBER_SCRATCH.value;
+  value.f049Ufixed = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F050Bool = BOOL_SCRATCH.value;
-  if (value.F050Bool) {
+  value.f050Bool = BOOL_SCRATCH.value;
+  if (value.f050Bool) {
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
     }
-    value.F051Bool = BOOL_SCRATCH.value;
+    value.f051Bool = BOOL_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, -57, 57)) {
       return false;
     }
-    value.F052Int = NUMBER_SCRATCH.value;
+    value.f052Int = NUMBER_SCRATCH.value;
     if (!stream.serializeFloat(NUMBER_SCRATCH)) {
       return false;
     }
-    value.F053F32 = NUMBER_SCRATCH.value;
+    value.f053F32 = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, -35, 35)) {
       return false;
     }
-    value.F054Int = NUMBER_SCRATCH.value;
+    value.f054Int = NUMBER_SCRATCH.value;
   } else {
-    value.F051Bool = false;
-    value.F052Int = 0;
-    value.F053F32 = 0;
-    value.F054Int = 0;
+    value.f051Bool = false;
+    value.f052Int = 0;
+    value.f053F32 = 0;
+    value.f054Int = 0;
   }
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F055Bool = BOOL_SCRATCH.value;
+  value.f055Bool = BOOL_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -13, 13)) {
     return false;
   }
-  value.F056Int = NUMBER_SCRATCH.value;
+  value.f056Int = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -15, 15)) {
     return false;
   }
-  value.F057Int = NUMBER_SCRATCH.value;
+  value.f057Int = NUMBER_SCRATCH.value;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F058F32 = NUMBER_SCRATCH.value;
+  value.f058F32 = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F059F64 = NUMBER_SCRATCH.value;
+  value.f059F64 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
-  value.F060Bits = NUMBER_SCRATCH.value;
+  value.f060Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -90.0, 90.0, 0.5)) {
     return false;
   }
-  value.F061Cf32 = NUMBER_SCRATCH.value;
+  value.f061Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 503)) {
     return false;
   }
-  value.F062Uint = NUMBER_SCRATCH.value;
+  value.f062Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.F063I64 = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+  value.f063I64 = BigInt.asIntN(64, BIGINT_SCRATCH.value);
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 299)) {
     return false;
   }
-  value.F064Uint = NUMBER_SCRATCH.value;
+  value.f064Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 30.0, 0.5)) {
     return false;
   }
-  value.F065Cf32 = NUMBER_SCRATCH.value;
+  value.f065Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 2)) {
     return false;
   }
-  value.F066Ufixed = NUMBER_SCRATCH.value;
+  value.f066Ufixed = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -100.0, 100.0, 0.25)) {
     return false;
   }
-  value.F067Cf32 = NUMBER_SCRATCH.value;
+  value.f067Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 1.0)) {
     return false;
   }
-  value.F068Cf32 = NUMBER_SCRATCH.value;
+  value.f068Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  value.F069Bits = NUMBER_SCRATCH.value;
+  value.f069Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) {
     return false;
   }
-  value.F070Uint = NUMBER_SCRATCH.value;
+  value.f070Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.02)) {
     return false;
   }
-  value.F071Cf32 = NUMBER_SCRATCH.value;
+  value.f071Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.01)) {
     return false;
   }
-  value.F072Cf32 = NUMBER_SCRATCH.value;
+  value.f072Cf32 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -4, 4)) {
     return false;
   }
-  value.F073Int = NUMBER_SCRATCH.value;
+  value.f073Int = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F074Bool = BOOL_SCRATCH.value;
-  if (value.F074Bool) {
+  value.f074Bool = BOOL_SCRATCH.value;
+  if (value.f074Bool) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
-    value.F075U64 = BIGINT_SCRATCH.value;
+    value.f075U64 = BIGINT_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, -26218, 26218)) {
       return false;
     }
-    value.F076Int = NUMBER_SCRATCH.value;
+    value.f076Int = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, -17, 17)) {
       return false;
     }
-    value.F077Int = NUMBER_SCRATCH.value;
+    value.f077Int = NUMBER_SCRATCH.value;
     if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
       return false;
     }
-    value.F078Bits = NUMBER_SCRATCH.value;
+    value.f078Bits = NUMBER_SCRATCH.value;
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 17)) {
       return false;
     }
-    value.F079Uint = NUMBER_SCRATCH.value;
+    value.f079Uint = NUMBER_SCRATCH.value;
   } else {
-    value.F075U64 = 0n;
-    value.F076Int = 0;
-    value.F077Int = 0;
-    value.F078Bits = 0;
-    value.F079Uint = 0;
+    value.f075U64 = 0n;
+    value.f076Int = 0;
+    value.f077Int = 0;
+    value.f078Bits = 0;
+    value.f079Uint = 0;
   }
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F080Bool = BOOL_SCRATCH.value;
+  value.f080Bool = BOOL_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
     return false;
   }
-  value.F081Bits = NUMBER_SCRATCH.value;
+  value.f081Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 25)) {
     return false;
   }
-  value.F082Bits = NUMBER_SCRATCH.value;
+  value.f082Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 5)) {
     return false;
   }
-  value.F083Enum = NUMBER_SCRATCH.value;
+  value.f083Enum = NUMBER_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 1, 7, 0, 1)) {
     return false;
   }
-  value.F084Ufixed = NUMBER_SCRATCH.value;
+  value.f084Ufixed = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 21)) {
     return false;
   }
-  value.F085Bits = NUMBER_SCRATCH.value;
+  value.f085Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 399)) {
     return false;
   }
-  value.F086Uint = NUMBER_SCRATCH.value;
+  value.f086Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.F087F64 = NUMBER_SCRATCH.value;
+  value.f087F64 = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, -694, 694)) {
     return false;
   }
-  value.F088Int = NUMBER_SCRATCH.value;
+  value.f088Int = NUMBER_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
     return false;
   }
-  value.F089Bits = BIGINT_SCRATCH.value;
+  value.f089Bits = BIGINT_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 214)) {
     return false;
   }
-  value.F090Uint = NUMBER_SCRATCH.value;
+  value.f090Uint = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.F091Flags = BigInt(NUMBER_SCRATCH.value);
+  value.f091Flags = BigInt(NUMBER_SCRATCH.value);
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F092Bool = BOOL_SCRATCH.value;
+  value.f092Bool = BOOL_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.F093Bits = BIGINT_SCRATCH.value;
+  value.f093Bits = BIGINT_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.F094Bool = BOOL_SCRATCH.value;
+  value.f094Bool = BOOL_SCRATCH.value;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 16, 16, -1577, 1577)) {
     return false;
   }
-  value.F095Fixed = NUMBER_SCRATCH.value;
+  value.f095Fixed = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 18)) {
     return false;
   }
-  value.F096Bits = NUMBER_SCRATCH.value;
+  value.f096Bits = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 12)) {
     return false;
   }
-  value.F097Bits = NUMBER_SCRATCH.value;
+  value.f097Bits = NUMBER_SCRATCH.value;
   return true;
 }
 

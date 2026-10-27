@@ -88,7 +88,7 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		case target == "js":
 			// the fork, not a statement: the contract lives in the checked
 			// flat writer and the production writer is free of it
-			const want = "value.Shot.Type < 0 || value.Shot.Type > 2"
+			const want = "value.shot.type < 0 || value.shot.type > 2"
 			if got := jsFlatWriter(t, text, "writeVolleyFlatChecked"); !strings.Contains(got, want) {
 				t.Errorf("js: the checked flat writer does not hold the tag, %q absent", want)
 			}

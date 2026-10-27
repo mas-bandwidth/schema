@@ -4296,7 +4296,7 @@ export const TableCookWrite = (() => {
       return writeField(view, at + fd.armAt, arm, value, le, ctx);
     }
     if (value === null || typeof value !== "object") { return false; }
-    const tag = value.Type;
+    const tag = value.type;
     if (!Number.isInteger(tag) || tag < 0 || tag > fd.arms) { return false; }
     if (!putWidth(view, at, fd.tagW, tag, false, le)) { return false; }
     if (tag === 0) { return true; }

@@ -924,18 +924,18 @@ const arep = {};
 if (!m.AnnounceRead(vocab, ann, arep) || !vocab.Announced) process.exit(2);
 let failed = false;
 function checkCase(name, wire, expectOK) {
-  const v0 = new m.Root(); v0.A = -7;
-  const v1 = new m.Root(); v1.A = -7;
+  const v0 = new m.Root(); v0.a = -7;
+  const v1 = new m.Root(); v1.a = -7;
   const values = [v0, v1];
   const rep = {};
   const count = m.RootLoadMessages(values, vocab, wire, rep);
   const ok = rep.Verdict === 0 && !rep.Malformed && !rep.Refused;
   if (expectOK) {
-    if (ok && count === 2 && rep.Unknown === 1 && values[0].A === 42 && values[1].A === 99)
+    if (ok && count === 2 && rep.Unknown === 1 && values[0].a === 42 && values[1].a === 99)
       console.log("PASS " + name);
     else { console.log("FAIL " + name); failed = true; }
   } else {
-    if (!ok && count === 0 && rep.Malformed && !rep.Refused && (values[0].A === 0 || values[0].A === -7) && values[1].A === -7)
+    if (!ok && count === 0 && rep.Malformed && !rep.Refused && (values[0].a === 0 || values[0].a === -7) && values[1].a === -7)
       console.log("PASS " + name);
     else { console.log("FAIL " + name); failed = true; }
   }

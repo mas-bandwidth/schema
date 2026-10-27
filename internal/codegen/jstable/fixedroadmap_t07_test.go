@@ -135,9 +135,9 @@ func TestFixedRoadmapJsT07Writes(t *testing.T) {
 func t07C14(t *testing.T) {
 	_, src := t02Table(t, t07Table)
 	dec := t02Norm(jsFn(src, "TFixedDecode"))
-	t02Has(t, dec, "for (let i = 0; i < value.ItemsCount; i++) {",
+	t02Has(t, dec, "for (let i = 0; i < value.itemsCount; i++) {",
 		"C14 the counted array's bounds pass walks its live count")
-	t02Has(t, dec, "if (value.NumberPresent) {",
+	t02Has(t, dec, "if (value.numberPresent) {",
 		"C14 an optional's payload is walked only when its present byte says so")
 	// The live count, not the declared bound, is the loop bound.
 	if strings.Contains(dec, "for (let i = 0; i < 2; i++) {") {
@@ -153,7 +153,7 @@ func t07C14(t *testing.T) {
 func t07W4(t *testing.T) {
 	_, src := t02Table(t, t07Table)
 	dec := t02Norm(jsFn(src, "TFixedDecode"))
-	live := t02Block(t, dec, "for (let i = 0; i < value.ItemsCount; i++) {", "}")
+	live := t02Block(t, dec, "for (let i = 0; i < value.itemsCount; i++) {", "}")
 	if !strings.Contains(live, "report.clamped++") {
 		t.Error("W4: the range clamp does not stand inside the live loop, so slack would be clamped")
 	}
@@ -188,9 +188,9 @@ func t07W1(t *testing.T) {
 	t02Has(t, save, "bytes.fill(0, at + 8, at + TFixedRecordBytes); // the template's zeros",
 		"W1 each record's declared slack is the template's zeros")
 	write := t02Norm(jsFn(src, "TFixedWriteBody"))
-	t02Has(t, write, "for (let i = 0; i < value.ItemsCount; i++) {",
+	t02Has(t, write, "for (let i = 0; i < value.itemsCount; i++) {",
 		"W1 a counted array writes its live count and stops")
-	t02Has(t, write, "for (let i = 0; i < value.NameLength; i++) {",
+	t02Has(t, write, "for (let i = 0; i < value.nameLength; i++) {",
 		"W1 text writes its used length, never the whole declared span")
 }
 
@@ -210,9 +210,9 @@ func t07W3(t *testing.T) {
 const { PickType } = await import("./Probe.js");
 const { RootFixedRecordBytes } = await import("./ProbeTable.js");
 const v = new T(); InitT(v);
-v.Pick.Type = PickType.Narrow;
-v.Pick.Narrow.A = 0x7E;
-v.Tail = 7;
+v.pick.type = PickType.Narrow;
+v.pick.narrow.a = 0x7E;
+v.tail = 7;
 const buf = new Uint8Array(TMeasure(1));
 buf.fill(0x5A); // THE CANARY: a writer that copied storage would carry it
 if (TSave([v], 1, buf) !== buf.length) { fail("W3: the narrow-arm save"); }
@@ -226,9 +226,9 @@ if (body[5] !== 7 || body[6] !== 0 || body[7] !== 0 || body[8] !== 0) {
   fail("W3: the field past the union is not the writer's 7: " + Array.from(body.subarray(5, 9)));
 }
 const w = new T(); InitT(w);
-w.Pick.Type = PickType.Wide;
-w.Pick.Wide.B = 0x11223344;
-w.Tail = 7;
+w.pick.type = PickType.Wide;
+w.pick.wide.b = 0x11223344;
+w.tail = 7;
 const wbuf = new Uint8Array(TMeasure(1));
 wbuf.fill(0x5A);
 if (TSave([w], 1, wbuf) !== wbuf.length) { fail("W3: the wide-arm save"); }
@@ -303,9 +303,9 @@ func t07W16(t *testing.T) {
 	write := t02Norm(jsFn(src, "RootFixedWriteBody"))
 	dec := t02Norm(jsFn(src, "RootFixedDecode"))
 	t02Has(t, write,
-		"case 1: { view.setUint8(at + 1, value.Pick.Inner.Type); switch (value.Pick.Inner.Type) { case 1: {",
+		"case 1: { view.setUint8(at + 1, value.pick.inner.type); switch (value.pick.inner.type) { case 1: {",
 		"W16 the inner union's WRITE opens inside the outer arm's case 1, so it answers the outer tag")
 	t02Has(t, dec,
-		"case 1: { value.Pick.Inner.Type = view.getUint8(at + 1); if (value.Pick.Inner.Type > 2) {",
+		"case 1: { value.pick.inner.type = view.getUint8(at + 1); if (value.pick.inner.type > 2) {",
 		"W16 the inner union's READ opens inside the outer arm's case 1, so it answers the outer tag")
 }

@@ -33,13 +33,13 @@ fixed table T
 {
     s wstring(10)
 }
-`, `v.S[0] = 0x0041; v.S[1] = 0x00E9; v.S[2] = 0x4E2D;
-v.S[3] = 0xD83D; v.S[4] = 0xDE00; v.S[5] = 1; v.S[6] = 2;
-v.S[7] = 3; v.S[8] = 4; v.S[9] = 5; v.SLength = 10;`,
-			`if (back[0].SLength !== 10) { fail("the used length did not land: " + back[0].SLength); }
-if (back[0].S[0] !== 0x0041 || back[0].S[2] !== 0x4E2D) { fail("a BMP unit did not land: " + show(back[0].S)); }
-if (back[0].S[3] !== 0xD83D || back[0].S[4] !== 0xDE00) { fail("the astral pair did not land: " + show(back[0].S)); }
-if (back[0].S[9] !== 5) { fail("the last unit did not land: " + show(back[0].S)); }`)
+`, `v.s[0] = 0x0041; v.s[1] = 0x00E9; v.s[2] = 0x4E2D;
+v.s[3] = 0xD83D; v.s[4] = 0xDE00; v.s[5] = 1; v.s[6] = 2;
+v.s[7] = 3; v.s[8] = 4; v.s[9] = 5; v.sLength = 10;`,
+			`if (back[0].sLength !== 10) { fail("the used length did not land: " + back[0].sLength); }
+if (back[0].s[0] !== 0x0041 || back[0].s[2] !== 0x4E2D) { fail("a BMP unit did not land: " + show(back[0].s)); }
+if (back[0].s[3] !== 0xD83D || back[0].s[4] !== 0xDE00) { fail("the astral pair did not land: " + show(back[0].s)); }
+if (back[0].s[9] !== 5) { fail("the last unit did not land: " + show(back[0].s)); }`)
 	})
 	t.Run("js/C5", func(t *testing.T) {
 		t.Parallel()
@@ -50,19 +50,19 @@ fixed table T
     s wstring(10)
 }
 `, `const v = new T(); InitT(v);
-v.S[0] = 0xD83D; v.S[1] = 0xDE00; v.SLength = 2;
+v.s[0] = 0xD83D; v.s[1] = 0xDE00; v.sLength = 2;
 const buf = new Uint8Array(TFixedMeasure(1));
 TFixedSave([v], 1, buf);
 const back = [new T()]; InitT(back[0]);
 const report = new TableFixedReport();
 const n = TFixedLoad(back, 1, buf, buf.length, TFixedNewPlan(4096, 4096), report);
 if (n !== 1 || report.refused !== 0) { fail("the astral pair refused: " + TableFixedRefusalName(report.refused)); }
-if (back[0].SLength !== 2) { fail("U+1F600 is not two UTF-16 code units here: " + back[0].SLength); }
-if (back[0].S[0] !== 0xD83D || back[0].S[1] !== 0xDE00) { fail("the pair did not round-trip"); }
+if (back[0].sLength !== 2) { fail("U+1F600 is not two UTF-16 code units here: " + back[0].sLength); }
+if (back[0].s[0] !== 0xD83D || back[0].s[1] !== 0xDE00) { fail("the pair did not round-trip"); }
 // AND EACH REFUSAL IS NAMED: a used run with an interior null is a refusal by
 // its own name, never read as data (§4.12's interior-null rule).
 const bad = new T(); InitT(bad);
-bad.S[0] = 0x0041; bad.S[1] = 0x0000; bad.S[2] = 0x0042; bad.SLength = 3;
+bad.s[0] = 0x0041; bad.s[1] = 0x0000; bad.s[2] = 0x0042; bad.sLength = 3;
 const badBuf = new Uint8Array(TFixedMeasure(1));
 TFixedSave([bad], 1, badBuf);
 const rb = new TableFixedReport();

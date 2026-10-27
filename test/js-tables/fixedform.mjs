@@ -187,7 +187,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const report = new bench.TableFixedReport();
     const n = fixed.FixedTableFixedLoad(values, 1, bytes, bytes.length,
       fixed.FixedTableFixedNewPlan(), report);
-    return { n, report, v: values[0].Value };
+    return { n, report, v: values[0].value };
   };
 
   // THE POSITIVE CONTROL FIRST: an untouched record moves no counter. Without
@@ -199,13 +199,13 @@ function forgedCounts(check, bench, fixed, corpusDir) {
   }
 
   const forged = [
-    ["entities count", AT_ENTITIES, 9999, 8, (v) => v.EntitiesCount],
-    ["entities count, negative", AT_ENTITIES, -1, 0, (v) => v.EntitiesCount],
-    ["stats count", AT_STATS, 0x7fffffff, 80, (v) => v.StatsCount],
-    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength, (bytes) => {
+    ["entities count", AT_ENTITIES, 9999, 8, (v) => v.entitiesCount],
+    ["entities count, negative", AT_ENTITIES, -1, 0, (v) => v.entitiesCount],
+    ["stats count", AT_STATS, 0x7fffffff, 80, (v) => v.statsCount],
+    ["player_name length", AT_NAME, 9999, 15, (v) => v.playerNameLength, (bytes) => {
       bytes.fill(0x41, BODY + AT_NAME + 4, BODY + AT_NAME + 4 + 15);
     }],
-    ["payload length", AT_PAYLOAD, 9999, 16, (v) => v.PayloadLength],
+    ["payload length", AT_PAYLOAD, 9999, 16, (v) => v.payloadLength],
   ];
   for (const [what, at, plant, bound, get, prep] of forged) {
     const bytes = oneRecord();
@@ -235,8 +235,8 @@ function forgedCounts(check, bench, fixed, corpusDir) {
       `IDENTITY REFUSE: a forged player_name length over the writer's zero bytes refuses with TextIllFormed (n=${r.n} refused=${r.report.refused} malformed=${r.report.malformed})`);
     check(r.report.clamped === 0 && r.report.widened === 0,
       `IDENTITY REFUSE: REFUSE is total — clamped and widened stay 0 on player_name length over the writer's zero bytes (clamped=${r.report.clamped} widened=${r.report.widened})`);
-    check(r.v.PlayerNameLength === 0,
-      `IDENTITY REFUSE: REFUSE is total — destination PlayerNameLength stays 0 on player_name length over the writer's zero bytes (got ${r.v.PlayerNameLength})`);
+    check(r.v.playerNameLength === 0,
+      `IDENTITY REFUSE: REFUSE is total — destination PlayerNameLength stays 0 on player_name length over the writer's zero bytes (got ${r.v.playerNameLength})`);
   }
 
   // A COUNT ALREADY IN BOUNDS IS NOT TOUCHED, and the counter does not move
@@ -246,7 +246,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setInt32(BODY + AT_ENTITIES, 8, true);
     const r = read(bytes);
-    check(r.n === 1 && r.v.EntitiesCount === 8 && r.report.clamped === 0,
+    check(r.n === 1 && r.v.entitiesCount === 8 && r.report.clamped === 0,
       "IDENTITY CLAMP: a count AT the bound is not a clamp and moves no counter");
   }
 
@@ -256,7 +256,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const bytes = oneRecord();
     bytes[BODY + AT_HAS_EXTRA] = 2;
     const r = read(bytes);
-    check(r.n === 1 && r.v.HasExtra === true && r.report.clamped === 0,
+    check(r.n === 1 && r.v.hasExtra === true && r.report.clamped === 0,
       "IDENTITY CLAMP: a bool byte of 2 lands as true and moves no counter");
   }
 }
@@ -357,7 +357,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
     const report = new bench.TableFixedReport();
     const n = fixed.FixedTableFixedLoad(values, 1, bytes, bytes.length,
       fixed.FixedTableFixedNewPlan(), report);
-    return { n, report, v: values[0].Value };
+    return { n, report, v: values[0].value };
   };
 
   // THE POSITIVE CONTROL FIRST: untouched storage is in range and moves
@@ -377,8 +377,8 @@ export function fixedPointShiftBits(check, bench, fixed) {
     const r = read(bytes);
     check(r.n === 1 && !r.report.malformed && r.report.refused === 0,
       "C8 F-SHIFT: a fixed(24,8) raw past max<<F is a clamp, not a refusal");
-    check(r.v.ServerTime === 16776960,
-      `C8 F-SHIFT: fixed(24,8) past max 65535 lands at 65535<<8 (got ${r.v.ServerTime})`);
+    check(r.v.serverTime === 16776960,
+      `C8 F-SHIFT: fixed(24,8) past max 65535 lands at 65535<<8 (got ${r.v.serverTime})`);
     check(r.report.clamped === 1,
       `C8 F-SHIFT: and it counts exactly one clamp (got ${r.report.clamped})`);
   }
@@ -387,7 +387,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setInt32(BODY + C8_SERVER_TIME, 16776960, true);
     const r = read(bytes);
-    check(r.n === 1 && r.v.ServerTime === 16776960 && r.report.clamped === 0,
+    check(r.n === 1 && r.v.serverTime === 16776960 && r.report.clamped === 0,
       "C8 F-SHIFT: a raw AT max<<F is in range and counts nothing");
   }
 
@@ -397,8 +397,8 @@ export function fixedPointShiftBits(check, bench, fixed) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setUint16(BODY + C8_PING, 65000, true);
     const r = read(bytes);
-    check(r.v.Ping === 64000,
-      `C8 F-SHIFT: ufixed(8,8) past max 250 lands at 250<<8 (got ${r.v.Ping})`);
+    check(r.v.ping === 64000,
+      `C8 F-SHIFT: ufixed(8,8) past max 250 lands at 250<<8 (got ${r.v.ping})`);
     check(r.report.clamped === 1,
       `C8 F-SHIFT: and the unsigned fixed clamp counts one (got ${r.report.clamped})`);
   }
@@ -407,7 +407,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setUint16(BODY + C8_PING, 64000, true);
     const r = read(bytes);
-    check(r.v.Ping === 64000 && r.report.clamped === 0,
+    check(r.v.ping === 64000 && r.report.clamped === 0,
       "C8 F-SHIFT: a ufixed(8,8) raw AT max<<F counts nothing");
   }
 
@@ -417,8 +417,8 @@ export function fixedPointShiftBits(check, bench, fixed) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setUint32(BODY + C8_CRC_HINT, 0x01000000, true);
     const r = read(bytes);
-    check(r.v.CrcHint === 16777215,
-      `C8 BITS: bits(24) past 2^24-1 lands at 2^24-1 (got ${r.v.CrcHint})`);
+    check(r.v.crcHint === 16777215,
+      `C8 BITS: bits(24) past 2^24-1 lands at 2^24-1 (got ${r.v.crcHint})`);
     check(r.report.clamped === 1,
       `C8 BITS: and it counts exactly one clamp (got ${r.report.clamped})`);
   }
@@ -427,7 +427,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setUint32(BODY + C8_CRC_HINT, 16777215, true);
     const r = read(bytes);
-    check(r.v.CrcHint === 16777215 && r.report.clamped === 0,
+    check(r.v.crcHint === 16777215 && r.report.clamped === 0,
       "C8 BITS: a bits(24) value AT 2^24-1 is in width and counts nothing");
   }
 }
@@ -498,74 +498,74 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
   };
   let allEqual = true;
   for (let k = 0; k < Count; k++) {
-    const v = values[k].Value, o = oracle[k];
+    const v = values[k].value, o = oracle[k];
     let ok = true;
-    ok = eq(v.Sequence, o.sequence, "sequence", k) && ok;
-    ok = eq(v.AckSequence, o.ack_sequence, "ack_sequence", k) && ok;
-    ok = eq(v.AckBits, o.ack_bits, "ack_bits", k) && ok;
-    ok = eq(v.SessionId, BigInt(o.session_id), "session_id", k) && ok;
-    ok = eq(v.ClientId, o.client_id, "client_id", k) && ok;
-    ok = eq(v.Nonce, BigInt(o.nonce), "nonce", k) && ok;
-    ok = eq(v.WorldTime, BigInt(o.world_time), "world_time", k) && ok;
-    ok = eq(v.FrameTick, BigInt(o.frame_tick), "frame_tick", k) && ok;
-    ok = eq(v.ServerTime, o.server_time, "server_time", k) && ok;
-    ok = eq(v.EntitiesCount, o.entities_count, "entities_count", k) && ok;
+    ok = eq(v.sequence, o.sequence, "sequence", k) && ok;
+    ok = eq(v.ackSequence, o.ack_sequence, "ack_sequence", k) && ok;
+    ok = eq(v.ackBits, o.ack_bits, "ack_bits", k) && ok;
+    ok = eq(v.sessionId, BigInt(o.session_id), "session_id", k) && ok;
+    ok = eq(v.clientId, o.client_id, "client_id", k) && ok;
+    ok = eq(v.nonce, BigInt(o.nonce), "nonce", k) && ok;
+    ok = eq(v.worldTime, BigInt(o.world_time), "world_time", k) && ok;
+    ok = eq(v.frameTick, BigInt(o.frame_tick), "frame_tick", k) && ok;
+    ok = eq(v.serverTime, o.server_time, "server_time", k) && ok;
+    ok = eq(v.entitiesCount, o.entities_count, "entities_count", k) && ok;
     for (let i = 0; i < o.entities_count; i++) {
-      const e = v.Entities[i], oe = o.entities[i];
-      ok = eq(e.EntityId, oe.entity_id, `entities[${i}].entity_id`, k) && ok;
-      ok = eq(e.PosX, oe.pos_x, `entities[${i}].pos_x`, k) && ok;
-      ok = eq(e.PosY, oe.pos_y, `entities[${i}].pos_y`, k) && ok;
-      ok = eq(e.PosZ, oe.pos_z, `entities[${i}].pos_z`, k) && ok;
-      ok = eq(e.Yaw, oe.yaw, `entities[${i}].yaw`, k) && ok;
-      ok = eq(e.Pitch, oe.pitch, `entities[${i}].pitch`, k) && ok;
-      ok = eq(e.VelX, oe.vel_x, `entities[${i}].vel_x`, k) && ok;
-      ok = eq(e.VelY, oe.vel_y, `entities[${i}].vel_y`, k) && ok;
-      ok = eq(e.VelZ, oe.vel_z, `entities[${i}].vel_z`, k) && ok;
-      ok = eq(e.Health, oe.health, `entities[${i}].health`, k) && ok;
-      ok = eq(e.Weapon, oe.weapon, `entities[${i}].weapon`, k) && ok;
-      ok = eq(e.Damage, BigInt(oe.damage), `entities[${i}].damage`, k) && ok;
-      ok = eq(e.Moving, oe.moving, `entities[${i}].moving`, k) && ok;
-      ok = eq(e.Firing, oe.firing, `entities[${i}].firing`, k) && ok;
+      const e = v.entities[i], oe = o.entities[i];
+      ok = eq(e.entityId, oe.entity_id, `entities[${i}].entity_id`, k) && ok;
+      ok = eq(e.posX, oe.pos_x, `entities[${i}].pos_x`, k) && ok;
+      ok = eq(e.posY, oe.pos_y, `entities[${i}].pos_y`, k) && ok;
+      ok = eq(e.posZ, oe.pos_z, `entities[${i}].pos_z`, k) && ok;
+      ok = eq(e.yaw, oe.yaw, `entities[${i}].yaw`, k) && ok;
+      ok = eq(e.pitch, oe.pitch, `entities[${i}].pitch`, k) && ok;
+      ok = eq(e.velX, oe.vel_x, `entities[${i}].vel_x`, k) && ok;
+      ok = eq(e.velY, oe.vel_y, `entities[${i}].vel_y`, k) && ok;
+      ok = eq(e.velZ, oe.vel_z, `entities[${i}].vel_z`, k) && ok;
+      ok = eq(e.health, oe.health, `entities[${i}].health`, k) && ok;
+      ok = eq(e.weapon, oe.weapon, `entities[${i}].weapon`, k) && ok;
+      ok = eq(e.damage, BigInt(oe.damage), `entities[${i}].damage`, k) && ok;
+      ok = eq(e.moving, oe.moving, `entities[${i}].moving`, k) && ok;
+      ok = eq(e.firing, oe.firing, `entities[${i}].firing`, k) && ok;
     }
-    ok = eq(v.StatsCount, o.stats_count, "stats_count", k) && ok;
+    ok = eq(v.statsCount, o.stats_count, "stats_count", k) && ok;
     for (let i = 0; i < o.stats_count; i++) {
-      ok = eq(v.Stats[i].StatId, o.stats[i].stat_id, `stats[${i}].stat_id`, k) && ok;
-      ok = eq(v.Stats[i].Delta, o.stats[i].delta, `stats[${i}].delta`, k) && ok;
+      ok = eq(v.stats[i].statId, o.stats[i].stat_id, `stats[${i}].stat_id`, k) && ok;
+      ok = eq(v.stats[i].delta, o.stats[i].delta, `stats[${i}].delta`, k) && ok;
     }
     // the UNION: the tag, then the arm the tag names and only that arm
-    ok = eq(v.GameEvent.Type, o.game_event_type, "game_event.type", k) && ok;
+    ok = eq(v.gameEvent.type, o.game_event_type, "game_event.type", k) && ok;
     if (o.game_event_type === 1) {
-      ok = eq(v.GameEvent.Hit.TargetId, o.hit.target_id, "hit.target_id", k) && ok;
-      ok = eq(v.GameEvent.Hit.Damage, o.hit.damage, "hit.damage", k) && ok;
-      ok = eq(v.GameEvent.Hit.HitKind, o.hit.hit_kind, "hit.hit_kind", k) && ok;
-      ok = eq(v.GameEvent.Hit.Crit, o.hit.crit, "hit.crit", k) && ok;
+      ok = eq(v.gameEvent.hit.targetId, o.hit.target_id, "hit.target_id", k) && ok;
+      ok = eq(v.gameEvent.hit.damage, o.hit.damage, "hit.damage", k) && ok;
+      ok = eq(v.gameEvent.hit.hitKind, o.hit.hit_kind, "hit.hit_kind", k) && ok;
+      ok = eq(v.gameEvent.hit.crit, o.hit.crit, "hit.crit", k) && ok;
     } else if (o.game_event_type === 2) {
-      ok = eq(v.GameEvent.Chat.Channel, o.chat.channel, "chat.channel", k) && ok;
-      ok = eq(v.GameEvent.Chat.Speaker, o.chat.speaker, "chat.speaker", k) && ok;
+      ok = eq(v.gameEvent.chat.channel, o.chat.channel, "chat.channel", k) && ok;
+      ok = eq(v.gameEvent.chat.speaker, o.chat.speaker, "chat.speaker", k) && ok;
     } else if (o.game_event_type === 3) {
-      ok = eq(v.GameEvent.Pickup.ItemId, o.pickup.item_id, "pickup.item_id", k) && ok;
-      ok = eq(v.GameEvent.Pickup.Amount, o.pickup.amount, "pickup.amount", k) && ok;
+      ok = eq(v.gameEvent.pickup.itemId, o.pickup.item_id, "pickup.item_id", k) && ok;
+      ok = eq(v.gameEvent.pickup.amount, o.pickup.amount, "pickup.amount", k) && ok;
     }
-    for (let i = 0; i < 4; i++) ok = eq(v.Loadout[i], o.loadout[i], `loadout[${i}]`, k) && ok;
-    ok = eq(v.PlayerNameLength, o.player_name_length, "player_name_length", k) && ok;
-    for (let i = 0; i < 15; i++) ok = eq(v.PlayerName[i], o.player_name[i], `player_name[${i}]`, k) && ok;
-    ok = eq(v.PayloadLength, o.payload_length, "payload_length", k) && ok;
-    for (let i = 0; i < 16; i++) ok = eq(v.Payload[i], o.payload[i], `payload[${i}]`, k) && ok;
+    for (let i = 0; i < 4; i++) ok = eq(v.loadout[i], o.loadout[i], `loadout[${i}]`, k) && ok;
+    ok = eq(v.playerNameLength, o.player_name_length, "player_name_length", k) && ok;
+    for (let i = 0; i < 15; i++) ok = eq(v.playerName[i], o.player_name[i], `player_name[${i}]`, k) && ok;
+    ok = eq(v.payloadLength, o.payload_length, "payload_length", k) && ok;
+    for (let i = 0; i < 16; i++) ok = eq(v.payload[i], o.payload[i], `payload[${i}]`, k) && ok;
     // FLOATS ARE COMPARED AS BIT PATTERNS: this form carries the IEEE-754 bit
     // pattern with NO canonicalisation, so a NaN payload is part of the value.
-    ok = eq(f32bits(v.AimX), o.aim_x_bits, "aim_x", k) && ok;
-    ok = eq(f32bits(v.AimY), o.aim_y_bits, "aim_y", k) && ok;
-    ok = eq(f32bits(v.AimZ), o.aim_z_bits, "aim_z", k) && ok;
-    ok = eq(f32bits(v.Recoil), o.recoil_bits, "recoil", k) && ok;
-    ok = eq(f64bits(v.Drift), BigInt(o.drift_bits), "drift", k) && ok;
+    ok = eq(f32bits(v.aimX), o.aim_x_bits, "aim_x", k) && ok;
+    ok = eq(f32bits(v.aimY), o.aim_y_bits, "aim_y", k) && ok;
+    ok = eq(f32bits(v.aimZ), o.aim_z_bits, "aim_z", k) && ok;
+    ok = eq(f32bits(v.recoil), o.recoil_bits, "recoil", k) && ok;
+    ok = eq(f64bits(v.drift), BigInt(o.drift_bits), "drift", k) && ok;
     // 128-BIT: the low half then the high, which is this wire's order everywhere
-    ok = eq(v.WideKey, BigInt(o.wide_key_lo) | (BigInt(o.wide_key_hi) << 64n), "wide_key", k) && ok;
-    ok = eq(BigInt.asUintN(128, v.Flux), BigInt(o.flux_lo) | (BigInt(o.flux_hi) << 64n), "flux", k) && ok;
-    ok = eq(v.Ping, o.ping, "ping", k) && ok;
-    ok = eq(v.CrcHint, o.crc_hint, "crc_hint", k) && ok;
-    ok = eq(v.HasExtra, o.has_extra, "has_extra", k) && ok;
-    ok = eq(v.Extra, o.extra, "extra", k) && ok;
-    ok = eq(v.IdleTicks, o.idle_ticks, "idle_ticks", k) && ok;
+    ok = eq(v.wideKey, BigInt(o.wide_key_lo) | (BigInt(o.wide_key_hi) << 64n), "wide_key", k) && ok;
+    ok = eq(BigInt.asUintN(128, v.flux), BigInt(o.flux_lo) | (BigInt(o.flux_hi) << 64n), "flux", k) && ok;
+    ok = eq(v.ping, o.ping, "ping", k) && ok;
+    ok = eq(v.crcHint, o.crc_hint, "crc_hint", k) && ok;
+    ok = eq(v.hasExtra, o.has_extra, "has_extra", k) && ok;
+    ok = eq(v.extra, o.extra, "extra", k) && ok;
+    ok = eq(v.idleTicks, o.idle_ticks, "idle_ticks", k) && ok;
     if (!ok) allEqual = false;
   }
   check(allEqual, `fixed form: every field of all ${Count} records is the value the C++ reference states`);
@@ -866,12 +866,12 @@ export function ordinalWidth8ReadWhole(check, home) {
 function versioning(check, fx1, fx2, fx1home, fx2home) {
   // an FX1 record, every field off its default so nothing passes by accident
   const one = new fx1home.FxRoot();
-  one.Keep = 4242;
-  one.Narrow = 40000;      // a uint16 value the widened read must reproduce
-  one.Renamed = 321;
-  one.Gone = 654;
-  one.Nested.A = 111;
-  one.Nested.B = 222;
+  one.keep = 4242;
+  one.narrow = 40000;      // a uint16 value the widened read must reproduce
+  one.renamed = 321;
+  one.gone = 654;
+  one.nested.a = 111;
+  one.nested.b = 222;
 
   const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(fx1.FxRootFixedSave([one], 1, w1) === w1.length, "FX1 save");
@@ -882,9 +882,9 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(back, 1, w1, w1.length, fx1.FxRootFixedNewPlan(), r);
     check(n === 1, "same schema: one record");
-    check(back[0].Keep === 4242 && back[0].Narrow === 40000 && back[0].Renamed === 321 && back[0].Gone === 654,
+    check(back[0].keep === 4242 && back[0].narrow === 40000 && back[0].renamed === 321 && back[0].gone === 654,
       "same schema: the scalars");
-    check(back[0].Nested.A === 111 && back[0].Nested.B === 222, "same schema: the nesting");
+    check(back[0].nested.a === 111 && back[0].nested.b === 222, "same schema: the nesting");
     check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && !r.malformed && r.refused === 0,
       "same schema: a clean read moves no counter");
   }
@@ -895,13 +895,13 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
     const r = new fx2home.TableFixedReport();
     const n = fx2.FxRootFixedLoad(back, 1, w1, w1.length, fx2.FxRootFixedNewPlan(), r);
     check(n === 1, "older writer: one record");
-    check(back[0].Keep === 4242, "older writer: an unmoved field");
-    check(back[0].Narrow === 40000, "WIDENED: uint16 into uint32, exactly");
+    check(back[0].keep === 4242, "older writer: an unmoved field");
+    check(back[0].narrow === 40000, "WIDENED: uint16 into uint32, exactly");
     check(r.widened === 1, `WIDENED: one widened counts (got ${r.widened})`);
-    check(back[0].RenamedTo === 321, "RENAMED: `was =` keeps the wire id");
-    check(back[0].Added === 11, "MISSING: a field the writer does not carry takes its declared default");
-    check(back[0].Extra.X === 0 && back[0].Extra.Y === 0, "MISSING: a whole nested type takes its defaults");
-    check(back[0].Nested.A === 111 && back[0].Nested.B === 222, "older writer: the nesting");
+    check(back[0].renamedTo === 321, "RENAMED: `was =` keeps the wire id");
+    check(back[0].added === 11, "MISSING: a field the writer does not carry takes its declared default");
+    check(back[0].extra.x === 0 && back[0].extra.y === 0, "MISSING: a whole nested type takes its defaults");
+    check(back[0].nested.a === 111 && back[0].nested.b === 222, "older writer: the nesting");
     check(r.unknown === 1, `older writer: \`gone\` is the one field this reader cannot name (got ${r.unknown})`);
     check(r.kindMismatch === 0 && !r.malformed && r.refused === 0, "older writer: nothing else fired");
   }
@@ -909,14 +909,14 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
   // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
   {
     const two = new fx2home.FxRoot();
-    two.Keep = 5150;
-    two.Narrow = 70000;
-    two.RenamedTo = 808;
-    two.Added = 909;
-    two.Nested.A = 33;
-    two.Nested.B = 44;
-    two.Extra.X = 55;
-    two.Extra.Y = 66;
+    two.keep = 5150;
+    two.narrow = 70000;
+    two.renamedTo = 808;
+    two.added = 909;
+    two.nested.a = 33;
+    two.nested.b = 44;
+    two.extra.x = 55;
+    two.extra.y = 66;
     const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
     check(fx2.FxRootFixedSave([two], 1, w2) === w2.length, "FX2 save");
 
@@ -924,10 +924,10 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(back, 1, w2, w2.length, fx1.FxRootFixedNewPlan(), r);
     check(n === 1, "newer writer: one record");
-    check(back[0].Keep === 5150, "newer writer: an unmoved field lands past the unknowns");
-    check(back[0].Renamed === 808, "newer writer: `was =` reads the other way too");
-    check(back[0].Gone === 9, "newer writer: a field the writer dropped takes its declared default");
-    check(back[0].Nested.A === 33 && back[0].Nested.B === 44,
+    check(back[0].keep === 5150, "newer writer: an unmoved field lands past the unknowns");
+    check(back[0].renamed === 808, "newer writer: `was =` reads the other way too");
+    check(back[0].gone === 9, "newer writer: a field the writer dropped takes its declared default");
+    check(back[0].nested.a === 33 && back[0].nested.b === 44,
       "newer writer: the nesting lands past the unknown type");
     // `added` is an unknown FIELD; `extra` is an unknown nested TYPE, and
     // stepping over it by its block size is what puts `nested` in the right
@@ -936,7 +936,7 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
     // narrow is uint32 THERE and uint16 HERE: coming back DOWN the ladder is a
     // kind that MOVED, reported and never reinterpreted
     check(r.kindMismatch === 1, `newer writer: the narrowed field is a kind mismatch (got ${r.kindMismatch})`);
-    check(back[0].Narrow === 3, "newer writer: a narrowed field keeps its declared default, never a truncation");
+    check(back[0].narrow === 3, "newer writer: a narrowed field keeps its declared default, never a truncation");
   }
 
   // THE PLAN IS COMPILED ONCE PER PEER, NOT ONCE PER RECORD, and the same plan
@@ -944,7 +944,7 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
   {
     const many = Array.from({ length: 4 }, () => {
       const v = new fx1home.FxRoot();
-      v.Keep = 1; v.Narrow = 2; v.Renamed = 3; v.Gone = 4; v.Nested.A = 5; v.Nested.B = 6;
+      v.keep = 1; v.narrow = 2; v.renamed = 3; v.gone = 4; v.nested.a = 5; v.nested.b = 6;
       return v;
     });
     const buf = new Uint8Array(fx1.FxRootFixedMeasure(4));
@@ -989,8 +989,8 @@ function formHeaderProbes(check, fx1, fx1home) {
   // A VALID FORM-3 FILE, one record of this leg's own FX1, to carry the
   // otherwise-good tail for the form-0 and reserved-byte cases.
   const one = new fx1home.FxRoot();
-  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
-  one.Nested.A = 111; one.Nested.B = 222;
+  one.keep = 4242; one.narrow = 40000; one.renamed = 321; one.gone = 654;
+  one.nested.a = 111; one.nested.b = 222;
   const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(fx1.FxRootFixedSave([one], 1, w1) === w1.length,
     "form header: the valid form-3 fixture saves its own length");
@@ -1000,18 +1000,18 @@ function formHeaderProbes(check, fx1, fx1home) {
   // its construction values, so every field takes a sentinel a lawful read
   // never lands (0x5A) and the whole surface is compared after the refusal.
   const poison = (v) => {
-    v.Keep = 0x5A5A5A5A; v.Narrow = 0x5A5A; v.Renamed = 0x5A5A; v.Gone = 0x5A5A;
-    v.Nested.A = 0x5A5A; v.Nested.B = 0x5A5A;
-    v.Label.fill(0x5A); v.LabelLength = 0x5A;
-    v.Marks.fill(0x5A); v.MarksCount = 0x5A;
-    v.Blob.fill(0x5A); v.BlobLength = 0x5A;
+    v.keep = 0x5A5A5A5A; v.narrow = 0x5A5A; v.renamed = 0x5A5A; v.gone = 0x5A5A;
+    v.nested.a = 0x5A5A; v.nested.b = 0x5A5A;
+    v.label.fill(0x5A); v.labelLength = 0x5A;
+    v.marks.fill(0x5A); v.marksCount = 0x5A;
+    v.blob.fill(0x5A); v.blobLength = 0x5A;
   };
   const untouched = (v) =>
-    v.Keep === 0x5A5A5A5A && v.Narrow === 0x5A5A && v.Renamed === 0x5A5A && v.Gone === 0x5A5A &&
-    v.Nested.A === 0x5A5A && v.Nested.B === 0x5A5A &&
-    v.Label.every((b) => b === 0x5A) && v.LabelLength === 0x5A &&
-    v.Marks.every((b) => b === 0x5A) && v.MarksCount === 0x5A &&
-    v.Blob.every((b) => b === 0x5A) && v.BlobLength === 0x5A;
+    v.keep === 0x5A5A5A5A && v.narrow === 0x5A5A && v.renamed === 0x5A5A && v.gone === 0x5A5A &&
+    v.nested.a === 0x5A5A && v.nested.b === 0x5A5A &&
+    v.label.every((b) => b === 0x5A) && v.labelLength === 0x5A &&
+    v.marks.every((b) => b === 0x5A) && v.marksCount === 0x5A &&
+    v.blob.every((b) => b === 0x5A) && v.blobLength === 0x5A;
 
   const refusedByName = (what, bytes, reason) => {
     const values = [new fx1home.FxRoot()];
@@ -1086,8 +1086,8 @@ function refuseTotalProbe(check, fx1, fx1home) {
 
   // a valid form-3 file of this leg's own FX1, to forge the record's hash in
   const one = new fx1home.FxRoot();
-  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
-  one.Nested.A = 111; one.Nested.B = 222;
+  one.keep = 4242; one.narrow = 40000; one.renamed = 321; one.gone = 654;
+  one.nested.a = 111; one.nested.b = 222;
   const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(fx1.FxRootFixedSave([one], 1, w1) === w1.length,
     "refuse total: the valid form-3 fixture saves its own length");
@@ -1106,11 +1106,11 @@ function refuseTotalProbe(check, fx1, fx1home) {
   plan.image.fill(0x5A);
   const values = [new fx1home.FxRoot()];
   const v = values[0];
-  v.Keep = 0x5A5A5A5A; v.Narrow = 0x5A5A; v.Renamed = 0x5A5A; v.Gone = 0x5A5A;
-  v.Nested.A = 0x5A5A; v.Nested.B = 0x5A5A;
-  v.Label.fill(0x5A); v.LabelLength = 0x5A;
-  v.Marks.fill(0x5A); v.MarksCount = 0x5A;
-  v.Blob.fill(0x5A); v.BlobLength = 0x5A;
+  v.keep = 0x5A5A5A5A; v.narrow = 0x5A5A; v.renamed = 0x5A5A; v.gone = 0x5A5A;
+  v.nested.a = 0x5A5A; v.nested.b = 0x5A5A;
+  v.label.fill(0x5A); v.labelLength = 0x5A;
+  v.marks.fill(0x5A); v.marksCount = 0x5A;
+  v.blob.fill(0x5A); v.blobLength = 0x5A;
 
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(values, 1, bad, bad.length, plan, r);
@@ -1121,11 +1121,11 @@ function refuseTotalProbe(check, fx1, fx1home) {
     "REFUSE is total: no counter moves");
   check(plan.image.every((b) => b === 0x5A),
     "REFUSE is total: not one destination byte is written, the prefill included");
-  check(v.Keep === 0x5A5A5A5A && v.Narrow === 0x5A5A && v.Renamed === 0x5A5A && v.Gone === 0x5A5A &&
-    v.Nested.A === 0x5A5A && v.Nested.B === 0x5A5A &&
-    v.Label.every((b) => b === 0x5A) && v.LabelLength === 0x5A &&
-    v.Marks.every((b) => b === 0x5A) && v.MarksCount === 0x5A &&
-    v.Blob.every((b) => b === 0x5A) && v.BlobLength === 0x5A,
+  check(v.keep === 0x5A5A5A5A && v.narrow === 0x5A5A && v.renamed === 0x5A5A && v.gone === 0x5A5A &&
+    v.nested.a === 0x5A5A && v.nested.b === 0x5A5A &&
+    v.label.every((b) => b === 0x5A) && v.labelLength === 0x5A &&
+    v.marks.every((b) => b === 0x5A) && v.marksCount === 0x5A &&
+    v.blob.every((b) => b === 0x5A) && v.blobLength === 0x5A,
     "REFUSE is total: nothing is decoded");
 }
 
@@ -1135,8 +1135,8 @@ function refuseTotalProbe(check, fx1, fx1home) {
 
 function negativeControls(check, fx1, fx2, fx1home, fx2home) {
   const one = new fx1home.FxRoot();
-  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
-  one.Nested.A = 111; one.Nested.B = 222;
+  one.keep = 4242; one.narrow = 40000; one.renamed = 321; one.gone = 654;
+  one.nested.a = 111; one.nested.b = 222;
   const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
   fx1.FxRootFixedSave([one], 1, w1);
 
@@ -1147,8 +1147,8 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
   // against an FX2 record, which is the same loop over the wrong plan.
   {
     const two = new fx2home.FxRoot();
-    two.Keep = 5150; two.Narrow = 70000; two.RenamedTo = 808; two.Added = 909;
-    two.Nested.A = 33; two.Nested.B = 44; two.Extra.X = 55; two.Extra.Y = 66;
+    two.keep = 5150; two.narrow = 70000; two.renamedTo = 808; two.added = 909;
+    two.nested.a = 33; two.nested.b = 44; two.extra.x = 55; two.extra.y = 66;
     const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
     fx2.FxRootFixedSave([two], 1, w2);
 
@@ -1167,8 +1167,8 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0, 1]),
       1, body, bodyView, 0, plan.image, plan.view, null, wr);
     fx1home.FxRootFixedDecode(wrong[0], plan.view, 0, wr);
-    check(wrong[0].Keep !== right[0].Keep || wrong[0].Renamed !== right[0].Renamed ||
-      wrong[0].Nested.A !== right[0].Nested.A || wrong[0].Nested.B !== right[0].Nested.B,
+    check(wrong[0].keep !== right[0].keep || wrong[0].renamed !== right[0].renamed ||
+      wrong[0].nested.a !== right[0].nested.a || wrong[0].nested.b !== right[0].nested.b,
       "NEGATIVE CONTROL: the identity plan run over another writer's record comes out WRONG");
   }
 
@@ -1454,8 +1454,8 @@ function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
   // the layout this reader ACCEPTS, which every case below breaks once: the
   // OTHER generation's file, read by this one, which is the versioning path
   const two = new fx2home.FxRoot();
-  two.Keep = 5150; two.Narrow = 70000; two.RenamedTo = 808; two.Added = 909;
-  two.Nested.A = 33; two.Nested.B = 44; two.Extra.X = 55; two.Extra.Y = 66;
+  two.keep = 5150; two.narrow = 70000; two.renamedTo = 808; two.added = 909;
+  two.nested.a = 33; two.nested.b = 44; two.extra.x = 55; two.extra.y = 66;
   const good = new Uint8Array(fx2.FxRootFixedMeasure(1));
   check(fx2.FxRootFixedSave([two], 1, good) === good.length,
     "layout validation: the unbroken file saves");
@@ -1657,11 +1657,11 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
   //    READER's, and its flavour is neither number.
   {
     const v = new ut2home.UtRoot();
-    v.Head = 41;
-    v.Pick.Type = ut2types.PickType.B;
-    v.Pick.B.LabelLength = setText(v.Pick.B.Label, LABEL);
-    v.Pick.B.M = 55;
-    v.Tail = 66;
+    v.head = 41;
+    v.pick.type = ut2types.PickType.B;
+    v.pick.b.labelLength = setText(v.pick.b.label, LABEL);
+    v.pick.b.m = 55;
+    v.tail = 66;
     const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
     check(ut2.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT2 wrote its arm-b record");
 
@@ -1670,14 +1670,14 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
     const n = ut1.UtRootFixedLoad(out, 1, buf, buf.length, ut1.UtRootFixedNewPlan(), r);
     check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's record through a compiled plan");
     const got = out[0];
-    check(got.Pick.Type === ut1types.PickType.B,
-      `union-arm text: the tag lands on UT1's OWN ordinal for arm b — got ${got.Pick.Type}, want ${ut1types.PickType.B}`);
-    const label = textOf(got.Pick.B.Label, got.Pick.B.LabelLength);
-    check(got.Pick.B.LabelLength === LABEL.length && label === LABEL,
-      `union-arm text: the arm's string survives BOTH the guard and the flavour — got ${got.Pick.B.LabelLength} ${JSON.stringify(label)}, want ${LABEL.length} ${JSON.stringify(LABEL)}`);
-    check(got.Pick.B.M === 55, `union-arm text: the scalar behind the string is 55, got ${got.Pick.B.M}`);
-    check(got.Head === 41 && got.Tail === 66,
-      `union-arm text: the fields either side of the union are 41/66, got ${got.Head}/${got.Tail}`);
+    check(got.pick.type === ut1types.PickType.B,
+      `union-arm text: the tag lands on UT1's OWN ordinal for arm b — got ${got.pick.type}, want ${ut1types.PickType.B}`);
+    const label = textOf(got.pick.b.label, got.pick.b.labelLength);
+    check(got.pick.b.labelLength === LABEL.length && label === LABEL,
+      `union-arm text: the arm's string survives BOTH the guard and the flavour — got ${got.pick.b.labelLength} ${JSON.stringify(label)}, want ${LABEL.length} ${JSON.stringify(LABEL)}`);
+    check(got.pick.b.m === 55, `union-arm text: the scalar behind the string is 55, got ${got.pick.b.m}`);
+    check(got.head === 41 && got.tail === 66,
+      `union-arm text: the fields either side of the union are 41/66, got ${got.head}/${got.tail}`);
   }
 
   // 2. UT2 WRITES ARM `a` — ordinal 1, WHICH IS ALSO A BYTE STRING'S FLAVOUR.
@@ -1686,10 +1686,10 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
   //    sibling arm's storage.
   {
     const v = new ut2home.UtRoot();
-    v.Head = 71;
-    v.Pick.Type = ut2types.PickType.A;
-    v.Pick.A.N = -404;
-    v.Tail = 77;
+    v.head = 71;
+    v.pick.type = ut2types.PickType.A;
+    v.pick.a.n = -404;
+    v.tail = 77;
     const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
     check(ut2.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT2 wrote its arm-a record");
 
@@ -1698,23 +1698,23 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
     const n = ut1.UtRootFixedLoad(out, 1, buf, buf.length, ut1.UtRootFixedNewPlan(), r);
     check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's arm-a record");
     const got = out[0];
-    check(got.Pick.Type === ut1types.PickType.A,
-      `union-arm text: the tag lands on arm a — got ${got.Pick.Type}, want ${ut1types.PickType.A}`);
-    check(got.Pick.A.N === -404,
-      `union-arm text: arm a's scalar is untouched by arm b's text entry — got ${got.Pick.A.N}, want -404`);
-    check(got.Head === 71 && got.Tail === 77,
-      `union-arm text: the fields either side of the union are 71/77, got ${got.Head}/${got.Tail}`);
+    check(got.pick.type === ut1types.PickType.A,
+      `union-arm text: the tag lands on arm a — got ${got.pick.type}, want ${ut1types.PickType.A}`);
+    check(got.pick.a.n === -404,
+      `union-arm text: arm a's scalar is untouched by arm b's text entry — got ${got.pick.a.n}, want -404`);
+    check(got.head === 71 && got.tail === 77,
+      `union-arm text: the fields either side of the union are 71/77, got ${got.head}/${got.tail}`);
   }
 
   // 3. AND THE OTHER DIRECTION, so neither side is the only one proved: UT1
   //    writes arm b at ordinal 2, UT2 reads it as ordinal 3.
   {
     const v = new ut1home.UtRoot();
-    v.Head = 81;
-    v.Pick.Type = ut1types.PickType.B;
-    v.Pick.B.LabelLength = setText(v.Pick.B.Label, "back");
-    v.Pick.B.M = -12;
-    v.Tail = 88;
+    v.head = 81;
+    v.pick.type = ut1types.PickType.B;
+    v.pick.b.labelLength = setText(v.pick.b.label, "back");
+    v.pick.b.m = -12;
+    v.tail = 88;
     const buf = new Uint8Array(ut1.UtRootFixedMeasure(1));
     check(ut1.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT1 wrote its arm-b record");
 
@@ -1723,11 +1723,11 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
     const n = ut2.UtRootFixedLoad(out, 1, buf, buf.length, ut2.UtRootFixedNewPlan(), r);
     check(n === 1 && !r.malformed, "union-arm text: UT2 read UT1's record through a compiled plan");
     const got = out[0];
-    const label = textOf(got.Pick.B.Label, got.Pick.B.LabelLength);
-    check(got.Pick.Type === ut2types.PickType.B && label === "back" && got.Pick.B.M === -12,
-      `union-arm text: the arm's string and scalar land the other way round too — tag ${got.Pick.Type} ${JSON.stringify(label)} ${got.Pick.B.M}`);
-    check(got.Head === 81 && got.Tail === 88,
-      `union-arm text: the fields either side of the union are 81/88, got ${got.Head}/${got.Tail}`);
+    const label = textOf(got.pick.b.label, got.pick.b.labelLength);
+    check(got.pick.type === ut2types.PickType.B && label === "back" && got.pick.b.m === -12,
+      `union-arm text: the arm's string and scalar land the other way round too — tag ${got.pick.type} ${JSON.stringify(label)} ${got.pick.b.m}`);
+    check(got.head === 81 && got.tail === 88,
+      `union-arm text: the fields either side of the union are 81/88, got ${got.head}/${got.tail}`);
   }
 }
 
@@ -1783,20 +1783,20 @@ function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
 
     // the values the reference states, checked INDEPENDENTLY of the bytes: a
     // reader and a writer sharing one offset mistake round trip perfectly
-    check(v[0].Keep === 4242 && v[0].Narrow === 40000 && v[0].Renamed === 321 && v[0].Gone === 654,
-      `reference oracle: fx1 record 0 scalars — got ${v[0].Keep}/${v[0].Narrow}/${v[0].Renamed}/${v[0].Gone}`);
-    check(v[0].Nested.A === 111 && v[0].Nested.B === 222,
-      `reference oracle: fx1 record 0 nested — got ${v[0].Nested.A}/${v[0].Nested.B}`);
-    check(v[0].LabelLength === 3 && textOf(v[0].Label, 3) === "fx1",
-      `reference oracle: fx1 record 0 label — got ${v[0].LabelLength} ${JSON.stringify(textOf(v[0].Label, v[0].LabelLength))}`);
-    check(v[0].MarksCount === 2 && v[0].Marks[0] === 101 && v[0].Marks[1] === 202,
-      `reference oracle: fx1 record 0 marks — got count ${v[0].MarksCount} [${v[0].Marks[0]}, ${v[0].Marks[1]}]`);
-    check(v[0].BlobLength === 4 && v[0].Blob[0] === 0xDE && v[0].Blob[1] === 0xAD &&
-      v[0].Blob[2] === 0xBE && v[0].Blob[3] === 0xEF,
-      `reference oracle: fx1 record 0 blob — got length ${v[0].BlobLength}`);
+    check(v[0].keep === 4242 && v[0].narrow === 40000 && v[0].renamed === 321 && v[0].gone === 654,
+      `reference oracle: fx1 record 0 scalars — got ${v[0].keep}/${v[0].narrow}/${v[0].renamed}/${v[0].gone}`);
+    check(v[0].nested.a === 111 && v[0].nested.b === 222,
+      `reference oracle: fx1 record 0 nested — got ${v[0].nested.a}/${v[0].nested.b}`);
+    check(v[0].labelLength === 3 && textOf(v[0].label, 3) === "fx1",
+      `reference oracle: fx1 record 0 label — got ${v[0].labelLength} ${JSON.stringify(textOf(v[0].label, v[0].labelLength))}`);
+    check(v[0].marksCount === 2 && v[0].marks[0] === 101 && v[0].marks[1] === 202,
+      `reference oracle: fx1 record 0 marks — got count ${v[0].marksCount} [${v[0].marks[0]}, ${v[0].marks[1]}]`);
+    check(v[0].blobLength === 4 && v[0].blob[0] === 0xDE && v[0].blob[1] === 0xAD &&
+      v[0].blob[2] === 0xBE && v[0].blob[3] === 0xEF,
+      `reference oracle: fx1 record 0 blob — got length ${v[0].blobLength}`);
     // record 1: NOTHING USED AT ALL, which is the slack case in full
-    check(v[1].LabelLength === 0 && v[1].MarksCount === 0 && v[1].BlobLength === 0,
-      `reference oracle: fx1 record 1 uses nothing — got ${v[1].LabelLength}/${v[1].MarksCount}/${v[1].BlobLength}`);
+    check(v[1].labelLength === 0 && v[1].marksCount === 0 && v[1].blobLength === 0,
+      `reference oracle: fx1 record 1 uses nothing — got ${v[1].labelLength}/${v[1].marksCount}/${v[1].blobLength}`);
 
     const twin = new Uint8Array(fx1.FxRootFixedMeasure(2));
     check(fx1.FxRootFixedSave(v, 2, twin) === file.length,
@@ -1816,20 +1816,20 @@ function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
     // bytes of live storage behind the used length. A port that wrote the span
     // puts "fx" on the wire under a length that says nothing is there.
     const made = [new fx1home.FxRoot(), new fx1home.FxRoot()];
-    check(made[0].LabelLength === 2 && textOf(made[0].Label, 2) === "fx",
-      `reference oracle: a DECLARED DEFAULT is the value and not just its length — a fresh FxRoot's label is ${made[0].LabelLength} ${JSON.stringify(textOf(made[0].Label, made[0].LabelLength))}, want 2 "fx"`);
+    check(made[0].labelLength === 2 && textOf(made[0].label, 2) === "fx",
+      `reference oracle: a DECLARED DEFAULT is the value and not just its length — a fresh FxRoot's label is ${made[0].labelLength} ${JSON.stringify(textOf(made[0].label, made[0].labelLength))}, want 2 "fx"`);
 
-    made[0].Keep = 4242; made[0].Narrow = 40000; made[0].Renamed = 321; made[0].Gone = 654;
-    made[0].Nested.A = 111; made[0].Nested.B = 222;
-    made[0].LabelLength = setText(made[0].Label, "fx1");
-    made[0].Marks[0] = 101; made[0].Marks[1] = 202; made[0].MarksCount = 2;
-    made[0].Blob[0] = 0xDE; made[0].Blob[1] = 0xAD; made[0].Blob[2] = 0xBE; made[0].Blob[3] = 0xEF;
-    made[0].BlobLength = 4;
-    made[1].Keep = 1; made[1].Narrow = 2; made[1].Renamed = 3; made[1].Gone = 4;
-    made[1].Nested.A = 5; made[1].Nested.B = 6;
-    made[1].LabelLength = 0; // nothing used at all: the WHOLE span is slack,
-    made[1].MarksCount = 0;  // over storage that still holds the default "fx"
-    made[1].BlobLength = 0;
+    made[0].keep = 4242; made[0].narrow = 40000; made[0].renamed = 321; made[0].gone = 654;
+    made[0].nested.a = 111; made[0].nested.b = 222;
+    made[0].labelLength = setText(made[0].label, "fx1");
+    made[0].marks[0] = 101; made[0].marks[1] = 202; made[0].marksCount = 2;
+    made[0].blob[0] = 0xDE; made[0].blob[1] = 0xAD; made[0].blob[2] = 0xBE; made[0].blob[3] = 0xEF;
+    made[0].blobLength = 4;
+    made[1].keep = 1; made[1].narrow = 2; made[1].renamed = 3; made[1].gone = 4;
+    made[1].nested.a = 5; made[1].nested.b = 6;
+    made[1].labelLength = 0; // nothing used at all: the WHOLE span is slack,
+    made[1].marksCount = 0;  // over storage that still holds the default "fx"
+    made[1].blobLength = 0;
 
     const built = new Uint8Array(fx1.FxRootFixedMeasure(2));
     check(fx1.FxRootFixedSave(made, 2, built) === file.length,
@@ -1870,19 +1870,19 @@ function referenceOracleCompiled(check, fx1, fx1home, oracleDir) {
     check(n === 1 && !r.malformed,
       `reference oracle: FX1 reads the reference's FX2 file through a COMPILED plan, got ${n}`);
     if (n !== 1) { return; }
-    check(v[0].Keep === 5150, `reference oracle: fx2's keep lands, got ${v[0].Keep}`);
-    check(v[0].Renamed === 808, `reference oracle: fx2's renamed_to lands under was, got ${v[0].Renamed}`);
+    check(v[0].keep === 5150, `reference oracle: fx2's keep lands, got ${v[0].keep}`);
+    check(v[0].renamed === 808, `reference oracle: fx2's renamed_to lands under was, got ${v[0].renamed}`);
     // narrow is 70000 in FX2 and a uint16 here: a kind that MOVED, not a widening
-    check(v[0].Nested.A === 33 && v[0].Nested.B === 44,
-      `reference oracle: fx2's nested lands, got ${v[0].Nested.A}/${v[0].Nested.B}`);
-    check(v[0].LabelLength === 3 && textOf(v[0].Label, 3) === "fx2",
-      `reference oracle: fx2's short string lands through the plan — got ${v[0].LabelLength} ${JSON.stringify(textOf(v[0].Label, v[0].LabelLength))}`);
-    check(v[0].MarksCount === 1 && v[0].Marks[0] === 303,
-      `reference oracle: fx2's partly-used array lands through the plan — got count ${v[0].MarksCount} [${v[0].Marks[0]}]`);
-    check(v[0].BlobLength === 3 && v[0].Blob[0] === 1 && v[0].Blob[1] === 2 && v[0].Blob[2] === 3,
-      `reference oracle: fx2's partly-used bytes(N) lands through the plan — got length ${v[0].BlobLength}`);
-    check(v[0].Gone === 9,
-      `reference oracle: a field FX2 does not carry keeps its declared default, got ${v[0].Gone}`);
+    check(v[0].nested.a === 33 && v[0].nested.b === 44,
+      `reference oracle: fx2's nested lands, got ${v[0].nested.a}/${v[0].nested.b}`);
+    check(v[0].labelLength === 3 && textOf(v[0].label, 3) === "fx2",
+      `reference oracle: fx2's short string lands through the plan — got ${v[0].labelLength} ${JSON.stringify(textOf(v[0].label, v[0].labelLength))}`);
+    check(v[0].marksCount === 1 && v[0].marks[0] === 303,
+      `reference oracle: fx2's partly-used array lands through the plan — got count ${v[0].marksCount} [${v[0].marks[0]}]`);
+    check(v[0].blobLength === 3 && v[0].blob[0] === 1 && v[0].blob[1] === 2 && v[0].blob[2] === 3,
+      `reference oracle: fx2's partly-used bytes(N) lands through the plan — got length ${v[0].blobLength}`);
+    check(v[0].gone === 9,
+      `reference oracle: a field FX2 does not carry keeps its declared default, got ${v[0].gone}`);
   }
 }
 
@@ -1893,11 +1893,11 @@ function referenceOracleCompiled(check, fx1, fx1home, oracleDir) {
 // would have copied the poison into the object.
 function liveCountSlack(check, fx1, fx1home) {
   const one = new fx1home.FxRoot();
-  one.MarksCount = 1;
-  one.Marks[0] = 42;
-  one.Marks[1] = 999;
-  one.Marks[2] = 888;
-  one.Marks[3] = 777;
+  one.marksCount = 1;
+  one.marks[0] = 42;
+  one.marks[1] = 999;
+  one.marks[2] = 888;
+  one.marks[3] = 777;
   const buf = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(fx1.FxRootFixedSave([one], 1, buf) === buf.length, "live-count: save of count=1");
 
@@ -1919,10 +1919,10 @@ function liveCountSlack(check, fx1, fx1home) {
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(back, 1, buf, buf.length, fx1.FxRootFixedNewPlan(), r);
   check(n === 1 && !r.malformed && r.refused === 0, `live-count: load of the poisoned-slack record, got ${n}`);
-  check(back[0].MarksCount === 1 && back[0].Marks[0] === 42,
-    `live-count: live prefix lands — got count ${back[0].MarksCount} [${back[0].Marks[0]}]`);
-  check(back[0].Marks[1] === 0 && back[0].Marks[2] === 0 && back[0].Marks[3] === 0,
-    `live-count: object slack is template zeros, not the poisoned wire — got [${back[0].Marks[1]}, ${back[0].Marks[2]}, ${back[0].Marks[3]}]`);
+  check(back[0].marksCount === 1 && back[0].marks[0] === 42,
+    `live-count: live prefix lands — got count ${back[0].marksCount} [${back[0].marks[0]}]`);
+  check(back[0].marks[1] === 0 && back[0].marks[2] === 0 && back[0].marks[3] === 0,
+    `live-count: object slack is template zeros, not the poisoned wire — got [${back[0].marks[1]}, ${back[0].marks[2]}, ${back[0].marks[3]}]`);
   check(r.clamped === 0,
     `live-count: clamped counts 0 not 3 (got ${r.clamped})`);
 }
@@ -1956,24 +1956,24 @@ function liveCountSlack(check, fx1, fx1home) {
 // Exported so a sandbox without the C++ reference corpus can run this case
 // directly; checkFixedForm also calls it, which is what the gate runs.
 function fx1HostileIssue(v) {
-  if (!(v.Renamed >= 0 && v.Renamed <= 1000)) { return `renamed ${v.Renamed}`; }
-  if (!(v.Gone >= 0 && v.Gone <= 1000)) { return `gone ${v.Gone}`; }
-  if (!(v.Nested.A >= 0 && v.Nested.A <= 1000)) { return `nested.a ${v.Nested.A}`; }
-  if (!(v.Nested.B >= 0 && v.Nested.B <= 1000)) { return `nested.b ${v.Nested.B}`; }
-  if (!(v.LabelLength >= 0 && v.LabelLength <= 8)) { return `label_length ${v.LabelLength}`; }
-  if (!(v.MarksCount >= 0 && v.MarksCount <= 4)) { return `marks_count ${v.MarksCount}`; }
-  if (!(v.BlobLength >= 0 && v.BlobLength <= 6)) { return `blob_length ${v.BlobLength}`; }
+  if (!(v.renamed >= 0 && v.renamed <= 1000)) { return `renamed ${v.renamed}`; }
+  if (!(v.gone >= 0 && v.gone <= 1000)) { return `gone ${v.gone}`; }
+  if (!(v.nested.a >= 0 && v.nested.a <= 1000)) { return `nested.a ${v.nested.a}`; }
+  if (!(v.nested.b >= 0 && v.nested.b <= 1000)) { return `nested.b ${v.nested.b}`; }
+  if (!(v.labelLength >= 0 && v.labelLength <= 8)) { return `label_length ${v.labelLength}`; }
+  if (!(v.marksCount >= 0 && v.marksCount <= 4)) { return `marks_count ${v.marksCount}`; }
+  if (!(v.blobLength >= 0 && v.blobLength <= 6)) { return `blob_length ${v.blobLength}`; }
   return null;
 }
 
 export function hostileByteSweep(check, fx1, fx1home) {
   const clean = new fx1home.FxRoot();
-  clean.Keep = 4242; clean.Narrow = 40000; clean.Renamed = 321; clean.Gone = 654;
-  clean.Nested.A = 111; clean.Nested.B = 222;
-  clean.LabelLength = setText(clean.Label, "fx1");
-  clean.Marks[0] = 101; clean.Marks[1] = 202; clean.MarksCount = 2;
-  clean.Blob[0] = 0xDE; clean.Blob[1] = 0xAD; clean.Blob[2] = 0xBE; clean.Blob[3] = 0xEF;
-  clean.BlobLength = 4;
+  clean.keep = 4242; clean.narrow = 40000; clean.renamed = 321; clean.gone = 654;
+  clean.nested.a = 111; clean.nested.b = 222;
+  clean.labelLength = setText(clean.label, "fx1");
+  clean.marks[0] = 101; clean.marks[1] = 202; clean.marksCount = 2;
+  clean.blob[0] = 0xDE; clean.blob[1] = 0xAD; clean.blob[2] = 0xBE; clean.blob[3] = 0xEF;
+  clean.blobLength = 4;
   const file = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(fx1.FxRootFixedSave([clean], 1, file) === file.length,
     "P3 hostile bytes: the lawful record saves");
@@ -2056,12 +2056,12 @@ function holePrefillIdentity(check, fx1, fx1home) {
 // retires. Owed on the lineage harness, where the 0x5A poison now lies.
 function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
   const two = new fx2home.FxRoot();
-  two.Keep = 5150;
-  two.Narrow = 70000;
-  two.RenamedTo = 808;
-  two.Added = 909;
-  two.Nested.A = 33;
-  two.Nested.B = 44;
+  two.keep = 5150;
+  two.narrow = 70000;
+  two.renamedTo = 808;
+  two.added = 909;
+  two.nested.a = 33;
+  two.nested.b = 44;
   const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
   check(fx2.FxRootFixedSave([two], 1, w2) === w2.length, "hole prefill: FX2 save");
 
@@ -2070,7 +2070,7 @@ function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(back, 1, w2, w2.length, plan, r);
   check(n === 1, "hole prefill: FX1 reads FX2 through a compiled plan");
-  check(back[0].Gone === 9, `hole prefill: Gone keeps its declared default, got ${back[0].Gone}`);
+  check(back[0].gone === 9, `hole prefill: Gone keeps its declared default, got ${back[0].gone}`);
   const compiledHoles = fx1home.TableFixedHoles(plan.entries, plan.count, plan.cover, plan.holes);
   check(compiledHoles > 0, `hole prefill: compiled FX2→FX1 has holes (Gone), got ${compiledHoles}`);
 
@@ -2079,8 +2079,8 @@ function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
   const r2 = new fx1home.TableFixedReport();
   check(fx1.FxRootFixedLoad(dirty, 1, w2, w2.length, plan, r2) === 1,
     "hole prefill: a second load on a dirty image");
-  check(dirty[0].Gone === 9,
-    `hole prefill: holes restore Gone's default after a dirty image, got ${dirty[0].Gone}`);
+  check(dirty[0].gone === 9,
+    `hole prefill: holes restore Gone's default after a dirty image, got ${dirty[0].gone}`);
 }
 
 // BYTES(N) IS AN ARRAY ROW AND NOT A TEXT ROW (docs/SPEC-TABLES.md §3, §3.4;
@@ -2110,12 +2110,12 @@ function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
 // reader that lost the used length is.
 function bytesArrayConventionIdentity(check, fx1, fx1home) {
   const one = new fx1home.FxRoot();
-  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
-  one.Nested.A = 111; one.Nested.B = 222;
-  one.LabelLength = setText(one.Label, "fx1");
-  one.Marks[0] = 101; one.Marks[1] = 202; one.MarksCount = 2;
-  one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF;
-  one.BlobLength = 4;
+  one.keep = 4242; one.narrow = 40000; one.renamed = 321; one.gone = 654;
+  one.nested.a = 111; one.nested.b = 222;
+  one.labelLength = setText(one.label, "fx1");
+  one.marks[0] = 101; one.marks[1] = 202; one.marksCount = 2;
+  one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
+  one.blobLength = 4;
 
   const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(fx1.FxRootFixedSave([one], 1, w1) === w1.length,
@@ -2127,13 +2127,13 @@ function bytesArrayConventionIdentity(check, fx1, fx1home) {
     "bytes(N) identity: the identity path reads the record");
   check(!ri.malformed && ri.refused === 0,
     "bytes(N) identity: the identity read moves no refusal counter");
-  check(ident[0].BlobLength === 4,
-    `bytes(N) identity: the used length lands, got ${ident[0].BlobLength}`);
-  check(ident[0].Blob[0] === 0xDE && ident[0].Blob[1] === 0xAD &&
-    ident[0].Blob[2] === 0xBE && ident[0].Blob[3] === 0xEF,
+  check(ident[0].blobLength === 4,
+    `bytes(N) identity: the used length lands, got ${ident[0].blobLength}`);
+  check(ident[0].blob[0] === 0xDE && ident[0].blob[1] === 0xAD &&
+    ident[0].blob[2] === 0xBE && ident[0].blob[3] === 0xEF,
     `bytes(N) identity: the blob is the one that was written — got ` +
-    `[${ident[0].Blob[0]}, ${ident[0].Blob[1]}, ${ident[0].Blob[2]}, ${ident[0].Blob[3]}], want [222, 173, 190, 239]`);
-  check(ident[0].Blob[4] === 0 && ident[0].Blob[5] === 0,
+    `[${ident[0].blob[0]}, ${ident[0].blob[1]}, ${ident[0].blob[2]}, ${ident[0].blob[3]}], want [222, 173, 190, 239]`);
+  check(ident[0].blob[4] === 0 && ident[0].blob[5] === 0,
     "bytes(N) identity: the slack behind the used length is zero");
   // W11 ASSERTION: bytes(N) is layout kind 14 (Array), not kind 12 (String),
   // and it takes the ARRAY's plan row (count at aux, not at dst).
@@ -2155,12 +2155,12 @@ function bytesArrayConventionCompiled(check, fx1, fx2, fx1home, fx2home, oracleD
   // length of 4 in the buffer's place would read back as a content byte, and
   // the first four content bytes in the length's place as a length of 4028645
   const one = new fx1home.FxRoot();
-  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
-  one.Nested.A = 111; one.Nested.B = 222;
-  one.LabelLength = setText(one.Label, "fx1");
-  one.Marks[0] = 101; one.Marks[1] = 202; one.MarksCount = 2;
-  one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF;
-  one.BlobLength = 4;
+  one.keep = 4242; one.narrow = 40000; one.renamed = 321; one.gone = 654;
+  one.nested.a = 111; one.nested.b = 222;
+  one.labelLength = setText(one.label, "fx1");
+  one.marks[0] = 101; one.marks[1] = 202; one.marksCount = 2;
+  one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
+  one.blobLength = 4;
 
   const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
   check(fx1.FxRootFixedSave([one], 1, w1) === w1.length, "bytes(N): FX1 save of a partly-used blob");
@@ -2177,21 +2177,21 @@ function bytesArrayConventionCompiled(check, fx1, fx2, fx1home, fx2home, oracleD
   check(fx2.FxRootFixedLoad(comp, 1, w1, w1.length, fx2.FxRootFixedNewPlan(), rc) === 1,
     "bytes(N): the compiled path reads the same record");
 
-  check(ident[0].BlobLength === 4,
-    `bytes(N): identity lands the used length, got ${ident[0].BlobLength}`);
-  check(comp[0].BlobLength === ident[0].BlobLength,
-    `bytes(N): IDENTITY == COMPILED on the used length — identity ${ident[0].BlobLength}, compiled ${comp[0].BlobLength}. ` +
+  check(ident[0].blobLength === 4,
+    `bytes(N): identity lands the used length, got ${ident[0].blobLength}`);
+  check(comp[0].blobLength === ident[0].blobLength,
+    `bytes(N): IDENTITY == COMPILED on the used length — identity ${ident[0].blobLength}, compiled ${comp[0].blobLength}. ` +
     `A text-convention destination row lands the count where the buffer lives and reads a length out of the content`);
   for (let i = 0; i < 6; i++) {
-    check(comp[0].Blob[i] === ident[0].Blob[i],
-      `bytes(N): IDENTITY == COMPILED on blob[${i}] — identity 0x${ident[0].Blob[i].toString(16)}, compiled 0x${comp[0].Blob[i].toString(16)}`);
+    check(comp[0].blob[i] === ident[0].blob[i],
+      `bytes(N): IDENTITY == COMPILED on blob[${i}] — identity 0x${ident[0].blob[i].toString(16)}, compiled 0x${comp[0].blob[i].toString(16)}`);
   }
-  check(ident[0].Blob[0] === 0xDE && ident[0].Blob[1] === 0xAD &&
-    ident[0].Blob[2] === 0xBE && ident[0].Blob[3] === 0xEF,
+  check(ident[0].blob[0] === 0xDE && ident[0].blob[1] === 0xAD &&
+    ident[0].blob[2] === 0xBE && ident[0].blob[3] === 0xEF,
     "bytes(N): and the blob both paths land is the one that was written");
   // the slack behind the used length is the template's zeros on BOTH paths
-  check(ident[0].Blob[4] === 0 && ident[0].Blob[5] === 0 &&
-    comp[0].Blob[4] === 0 && comp[0].Blob[5] === 0,
+  check(ident[0].blob[4] === 0 && ident[0].blob[5] === 0 &&
+    comp[0].blob[4] === 0 && comp[0].blob[5] === 0,
     "bytes(N): the slack behind the used length is zero on both paths");
   check(!rc.malformed && rc.refused === 0,
     "bytes(N): the compiled read moves no refusal counter");
@@ -2211,13 +2211,13 @@ function bytesArrayConventionCompiled(check, fx1, fx2, fx1home, fx2home, oracleD
   check(n === 2 && !r.malformed,
     `bytes(N): FX2 reads the reference's fx1.bin through a compiled plan, got ${n}`);
   if (n !== 2) { return; }
-  check(v[0].BlobLength === 4,
-    `bytes(N): FX2 over fx1.bin lands the reference's used length, got ${v[0].BlobLength}`);
-  check(v[0].Blob[0] === 0xDE && v[0].Blob[1] === 0xAD && v[0].Blob[2] === 0xBE && v[0].Blob[3] === 0xEF,
+  check(v[0].blobLength === 4,
+    `bytes(N): FX2 over fx1.bin lands the reference's used length, got ${v[0].blobLength}`);
+  check(v[0].blob[0] === 0xDE && v[0].blob[1] === 0xAD && v[0].blob[2] === 0xBE && v[0].blob[3] === 0xEF,
     `bytes(N): FX2 over fx1.bin keeps blob[0..3] — got ` +
-    `[${v[0].Blob[0]}, ${v[0].Blob[1]}, ${v[0].Blob[2]}, ${v[0].Blob[3]}], want [222, 173, 190, 239]`);
-  check(v[1].BlobLength === 0 && v[1].Blob[0] === 0,
-    `bytes(N): FX2 over fx1.bin record 1 uses nothing — got length ${v[1].BlobLength}`);
+    `[${v[0].blob[0]}, ${v[0].blob[1]}, ${v[0].blob[2]}, ${v[0].blob[3]}], want [222, 173, 190, 239]`);
+  check(v[1].blobLength === 0 && v[1].blob[0] === 0,
+    `bytes(N): FX2 over fx1.bin record 1 uses nothing — got length ${v[1].blobLength}`);
 }
 
 function setText(buf, s) {
@@ -2234,63 +2234,63 @@ function fo1Values(home) {
   const v = Array.from({ length: 4 }, () => new home.OptRoot());
 
   // 0 — EVERY OPTIONAL PRESENT, the union on its first arm
-  v[0].NameLength = setText(v[0].Name, "all");
-  v[0].Plain = 101;
-  v[0].OptPresent = true;
-  v[0].Opt.V = 11;
-  v[0].Opt.TagLength = setText(v[0].Opt.Tag, "op");
-  v[0].NumberPresent = true;
-  v[0].Number = 12;
-  v[0].MarkPresent = true;
-  v[0].Mark = 2; // Gold — the ordinal is the variant's POSITION IN THE BLOCK, from 1
-  v[0].Wrap.N = 13;
-  v[0].Wrap.LeafPresent = true;
-  v[0].Wrap.Leaf.V = 14;
-  v[0].Wrap.Leaf.TagLength = setText(v[0].Wrap.Leaf.Tag, "wl");
-  v[0].Effect.Type = 1; // Boost
-  v[0].Effect.Boost.Power = 15;
-  v[0].Tail = 16;
+  v[0].nameLength = setText(v[0].name, "all");
+  v[0].plain = 101;
+  v[0].optPresent = true;
+  v[0].opt.v = 11;
+  v[0].opt.tagLength = setText(v[0].opt.tag, "op");
+  v[0].numberPresent = true;
+  v[0].number = 12;
+  v[0].markPresent = true;
+  v[0].mark = 2; // Gold — the ordinal is the variant's POSITION IN THE BLOCK, from 1
+  v[0].wrap.n = 13;
+  v[0].wrap.leafPresent = true;
+  v[0].wrap.leaf.v = 14;
+  v[0].wrap.leaf.tagLength = setText(v[0].wrap.leaf.tag, "wl");
+  v[0].effect.type = 1; // Boost
+  v[0].effect.boost.power = 15;
+  v[0].tail = 16;
 
   // 1 — EVERY OPTIONAL ABSENT, the union on its second arm. Nothing behind a
   // zero flag is set, so every absent payload here is the value's CONSTRUCTION
   // state, which is the declared defaults — and that is what makes this record
   // byte-comparable at all (see optionalBytes below).
-  v[1].NameLength = setText(v[1].Name, "none");
-  v[1].Plain = 201;
-  v[1].Wrap.N = 202;
-  v[1].Effect.Type = 2; // Ward
-  v[1].Effect.Ward.Charge = 0.5;
-  v[1].Tail = 203;
+  v[1].nameLength = setText(v[1].name, "none");
+  v[1].plain = 201;
+  v[1].wrap.n = 202;
+  v[1].effect.type = 2; // Ward
+  v[1].effect.ward.charge = 0.5;
+  v[1].tail = 203;
 
   // 2 — MIXED, the union at None: the ROOT's optional absent while the NESTED
   // table's is present, which is the pair that catches a present byte placed at
   // the root's offsets instead of the nested body's
-  v[2].NameLength = setText(v[2].Name, "mix");
-  v[2].Plain = 301;
-  v[2].OptPresent = false;
-  v[2].NumberPresent = true;
-  v[2].Number = -302;
-  v[2].MarkPresent = true;
-  v[2].Mark = 1; // Bronze
-  v[2].Wrap.N = 303;
-  v[2].Wrap.LeafPresent = true;
-  v[2].Wrap.Leaf.V = -304;
-  v[2].Wrap.Leaf.TagLength = setText(v[2].Wrap.Leaf.Tag, "deep");
-  v[2].Tail = 305;
+  v[2].nameLength = setText(v[2].name, "mix");
+  v[2].plain = 301;
+  v[2].optPresent = false;
+  v[2].numberPresent = true;
+  v[2].number = -302;
+  v[2].markPresent = true;
+  v[2].mark = 1; // Bronze
+  v[2].wrap.n = 303;
+  v[2].wrap.leafPresent = true;
+  v[2].wrap.leaf.v = -304;
+  v[2].wrap.leaf.tagLength = setText(v[2].wrap.leaf.tag, "deep");
+  v[2].tail = 305;
 
   // 3 — THE OTHER WAY ROUND: the root's present, the nested table's absent
-  v[3].NameLength = setText(v[3].Name, "root only");
-  v[3].Plain = 401;
-  v[3].OptPresent = true;
-  v[3].Opt.V = 402;
-  v[3].Opt.TagLength = setText(v[3].Opt.Tag, "r");
-  v[3].NumberPresent = false;
-  v[3].MarkPresent = false;
-  v[3].Wrap.N = 403;
-  v[3].Wrap.LeafPresent = false;
-  v[3].Effect.Type = 2; // Ward
-  v[3].Effect.Ward.Charge = -1.25;
-  v[3].Tail = 404;
+  v[3].nameLength = setText(v[3].name, "root only");
+  v[3].plain = 401;
+  v[3].optPresent = true;
+  v[3].opt.v = 402;
+  v[3].opt.tagLength = setText(v[3].opt.tag, "r");
+  v[3].numberPresent = false;
+  v[3].markPresent = false;
+  v[3].wrap.n = 403;
+  v[3].wrap.leafPresent = false;
+  v[3].effect.type = 2; // Ward
+  v[3].effect.ward.charge = -1.25;
+  v[3].tail = 404;
   return v;
 }
 
@@ -2336,35 +2336,35 @@ function optionalBytes(check, o, dir) {
     check(r.clamped === 0 && r.unknown === 0 && r.kindMismatch === 0 && !r.malformed && r.refused === 0,
       "optionals: a clean read of the reference's own corpus moves no counter");
 
-    check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2 &&
-      back[0].Opt.Tag[0] === 0x6f && back[0].Opt.Tag[1] === 0x70,
+    check(back[0].optPresent && back[0].opt.v === 11 && back[0].opt.tagLength === 2 &&
+      back[0].opt.tag[0] === 0x6f && back[0].opt.tag[1] === 0x70,
       "optionals: a PRESENT nested type lands its whole payload");
-    check(back[0].NumberPresent && back[0].Number === 12, "optionals: a PRESENT scalar lands");
-    check(back[0].MarkPresent && back[0].Mark === 2, "optionals: a PRESENT enum lands its ordinal");
-    check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
+    check(back[0].numberPresent && back[0].number === 12, "optionals: a PRESENT scalar lands");
+    check(back[0].markPresent && back[0].mark === 2, "optionals: a PRESENT enum lands its ordinal");
+    check(back[0].wrap.n === 13 && back[0].wrap.leafPresent && back[0].wrap.leaf.v === 14,
       "optionals: a present flag INSIDE A NESTED TABLE lands at the nested body's own offset");
-    check(back[0].Effect.Type === 1 && back[0].Effect.Boost.Power === 15 && back[0].Tail === 16,
+    check(back[0].effect.type === 1 && back[0].effect.boost.power === 15 && back[0].tail === 16,
       "optionals: the fields BEHIND the optionals land, so every present byte was counted in the layout");
 
     // AN ABSENT FIELD READS ITS DECLARED DEFAULT, never the bytes behind the
     // flag: `Leaf.v = 7` and `Wrap.leaf`'s the same
-    check(!back[1].OptPresent && back[1].Opt.V === 7 && back[1].Opt.TagLength === 0,
+    check(!back[1].optPresent && back[1].opt.v === 7 && back[1].opt.tagLength === 0,
       "optionals: an ABSENT nested type reads absent, at its declared defaults");
-    check(!back[1].NumberPresent && back[1].Number === 0, "optionals: an ABSENT scalar reads absent");
-    check(!back[1].MarkPresent && back[1].Mark === 0, "optionals: an ABSENT enum reads absent, at None");
-    check(back[1].Wrap.N === 202 && !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
+    check(!back[1].numberPresent && back[1].number === 0, "optionals: an ABSENT scalar reads absent");
+    check(!back[1].markPresent && back[1].mark === 0, "optionals: an ABSENT enum reads absent, at None");
+    check(back[1].wrap.n === 202 && !back[1].wrap.leafPresent && back[1].wrap.leaf.v === 7,
       "optionals: an ABSENT flag inside a nested table reads absent");
-    check(back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5 && back[1].Tail === 203,
+    check(back[1].effect.type === 2 && back[1].effect.ward.charge === 0.5 && back[1].tail === 203,
       "optionals: the fields behind four absent optionals still land");
 
-    check(!back[2].OptPresent && back[2].NumberPresent && back[2].Number === -302 &&
-      back[2].MarkPresent && back[2].Mark === 1 &&
-      back[2].Wrap.LeafPresent && back[2].Wrap.Leaf.V === -304 && back[2].Wrap.Leaf.TagLength === 4,
+    check(!back[2].optPresent && back[2].numberPresent && back[2].number === -302 &&
+      back[2].markPresent && back[2].mark === 1 &&
+      back[2].wrap.leafPresent && back[2].wrap.leaf.v === -304 && back[2].wrap.leaf.tagLength === 4,
       "optionals: root ABSENT and nested PRESENT, in the same record");
-    check(back[2].Effect.Type === 0 && back[2].Tail === 305,
+    check(back[2].effect.type === 0 && back[2].tail === 305,
       "optionals: a union at None beside the mixed optionals");
-    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].NumberPresent && !back[3].MarkPresent &&
-      !back[3].Wrap.LeafPresent && back[3].Wrap.N === 403 && back[3].Tail === 404,
+    check(back[3].optPresent && back[3].opt.v === 402 && !back[3].numberPresent && !back[3].markPresent &&
+      !back[3].wrap.leafPresent && back[3].wrap.n === 403 && back[3].tail === 404,
       "optionals: root PRESENT and nested ABSENT, the other way round");
   }
 
@@ -2372,12 +2372,12 @@ function optionalBytes(check, o, dir) {
   {
     const ref = new Uint8Array(readFileSync(resolve(dir, "p3.bin")));
     const two = [new p3home.Chain(), new p3home.Chain()];
-    two[0].NameLength = setText(two[0].Name, "chain");
-    two[0].LinkPresent = true;
-    two[0].Link.Value = 500;
-    two[0].Link.TagLength = setText(two[0].Link.Tag, "v");
-    two[1].NameLength = setText(two[1].Name, "bare");
-    two[1].LinkPresent = false;
+    two[0].nameLength = setText(two[0].name, "chain");
+    two[0].linkPresent = true;
+    two[0].link.value = 500;
+    two[0].link.tagLength = setText(two[0].link.tag, "v");
+    two[1].nameLength = setText(two[1].name, "bare");
+    two[1].linkPresent = false;
     const out = new Uint8Array(p3.ChainFixedMeasure(2));
     check(p3.ChainFixedSave(two, 2, out) === ref.length, "P3: Save wrote the reference's byte count");
     const at = firstDiff(out, ref);
@@ -2389,9 +2389,9 @@ function optionalBytes(check, o, dir) {
     const r = new p3home.TableFixedReport();
     check(p3.ChainFixedLoad(back, 2, ref, ref.length, p3.ChainFixedNewPlan(), r) === 2,
       "P3: the reference's two records read");
-    check(back[0].LinkPresent && back[0].Link.Value === 500 && back[0].NameLength === 5,
+    check(back[0].linkPresent && back[0].link.value === 500 && back[0].nameLength === 5,
       "P3: the present record lands its payload");
-    check(!back[1].LinkPresent && back[1].Link.Value === 0 && back[1].NameLength === 4,
+    check(!back[1].linkPresent && back[1].link.value === 0 && back[1].nameLength === 4,
       "P3: the absent record lands absent, payload at its declared default");
   }
 
@@ -2399,9 +2399,9 @@ function optionalBytes(check, o, dir) {
   {
     const ref = new Uint8Array(readFileSync(resolve(dir, "p1.bin")));
     const one = [new p1home.Chain()];
-    one[0].NameLength = setText(one[0].Name, "chain");
-    one[0].Link.Value = 500;
-    one[0].Link.TagLength = setText(one[0].Link.Tag, "v");
+    one[0].nameLength = setText(one[0].name, "chain");
+    one[0].link.value = 500;
+    one[0].link.tagLength = setText(one[0].link.tag, "v");
     const out = new Uint8Array(p1.ChainFixedMeasure(1));
     check(p1.ChainFixedSave(one, 1, out) === ref.length, "P1: Save wrote the reference's byte count");
     const at = firstDiff(out, ref);
@@ -2432,24 +2432,24 @@ function optionalVersioning(check, o, dir) {
     const r = new fo2home.TableFixedReport();
     const n = fo2.OptRootFixedLoad(back, 4, fo1bin, fo1bin.length, fo2.OptRootFixedNewPlan(), r);
     check(n === 4, `compiled plan: FO2 reads FO1's four records (got ${n})`);
-    check(back[0].Plain2 === 101, "compiled plan: `was =` keeps the wire id across the rename");
-    check(back[0].Added === 77, "compiled plan: the inserted field takes its declared default");
-    check(back[0].OptPresent && back[0].Opt.V === 11 && back[0].Opt.TagLength === 2,
+    check(back[0].plain2 === 101, "compiled plan: `was =` keeps the wire id across the rename");
+    check(back[0].added === 77, "compiled plan: the inserted field takes its declared default");
+    check(back[0].optPresent && back[0].opt.v === 11 && back[0].opt.tagLength === 2,
       "compiled plan: a PRESENT optional's flag AND payload land");
-    check(back[0].NumberPresent && back[0].Number === 12 && back[0].MarkPresent && back[0].Mark === 2,
+    check(back[0].numberPresent && back[0].number === 12 && back[0].markPresent && back[0].mark === 2,
       "compiled plan: an optional scalar and an optional enum land");
-    check(back[0].Wrap.N === 13 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 14,
+    check(back[0].wrap.n === 13 && back[0].wrap.leafPresent && back[0].wrap.leaf.v === 14,
       "compiled plan: a present flag inside a nested table lands past the inserted field");
-    check(back[0].Effect.Type === 1 && back[0].Effect.Boost.Power === 15 && back[0].Tail === 16,
+    check(back[0].effect.type === 1 && back[0].effect.boost.power === 15 && back[0].tail === 16,
       "compiled plan: the fields behind the optionals land");
-    check(!back[1].OptPresent && back[1].Opt.V === 7 && !back[1].NumberPresent && !back[1].MarkPresent &&
-      !back[1].Wrap.LeafPresent && back[1].Wrap.Leaf.V === 7,
+    check(!back[1].optPresent && back[1].opt.v === 7 && !back[1].numberPresent && !back[1].markPresent &&
+      !back[1].wrap.leafPresent && back[1].wrap.leaf.v === 7,
       "compiled plan: an ABSENT optional lands absent, at its declared default");
-    check(back[1].Tail === 203 && back[1].Effect.Type === 2 && back[1].Effect.Ward.Charge === 0.5,
+    check(back[1].tail === 203 && back[1].effect.type === 2 && back[1].effect.ward.charge === 0.5,
       "compiled plan: the record behind four absent optionals is intact");
-    check(!back[2].OptPresent && back[2].Wrap.LeafPresent && back[2].Wrap.Leaf.V === -304,
+    check(!back[2].optPresent && back[2].wrap.leafPresent && back[2].wrap.leaf.v === -304,
       "compiled plan: root absent and nested present, through the plan");
-    check(back[3].OptPresent && back[3].Opt.V === 402 && !back[3].Wrap.LeafPresent,
+    check(back[3].optPresent && back[3].opt.v === 402 && !back[3].wrap.leafPresent,
       "compiled plan: root present and nested absent, through the plan");
     check(r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 && !r.malformed && r.refused === 0,
       `compiled plan: nothing fired reading an older generation (unknown ${r.unknown}, kind ${r.kindMismatch})`);
@@ -2459,17 +2459,17 @@ function optionalVersioning(check, o, dir) {
   // field for — one unknown, and every optional still lands
   {
     const two = Array.from({ length: 1 }, () => new fo2home.OptRoot());
-    two[0].NameLength = setText(two[0].Name, "newer");
-    two[0].Plain2 = 909;
-    two[0].Added = 910;
-    two[0].OptPresent = true;
-    two[0].Opt.V = 911;
-    two[0].NumberPresent = true;
-    two[0].Number = 912;
-    two[0].Wrap.N = 913;
-    two[0].Wrap.LeafPresent = true;
-    two[0].Wrap.Leaf.V = 914;
-    two[0].Tail = 915;
+    two[0].nameLength = setText(two[0].name, "newer");
+    two[0].plain2 = 909;
+    two[0].added = 910;
+    two[0].optPresent = true;
+    two[0].opt.v = 911;
+    two[0].numberPresent = true;
+    two[0].number = 912;
+    two[0].wrap.n = 913;
+    two[0].wrap.leafPresent = true;
+    two[0].wrap.leaf.v = 914;
+    two[0].tail = 915;
     const w = new Uint8Array(fo2.OptRootFixedMeasure(1));
     check(fo2.OptRootFixedSave(two, 1, w) === w.length, "FO2 save");
 
@@ -2477,11 +2477,11 @@ function optionalVersioning(check, o, dir) {
     const r = new fo1home.TableFixedReport();
     check(fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r) === 1,
       "newer writer: one record");
-    check(back[0].Plain === 909, "newer writer: the renamed field reads the other way too");
-    check(back[0].OptPresent && back[0].Opt.V === 911 && back[0].NumberPresent && back[0].Number === 912,
+    check(back[0].plain === 909, "newer writer: the renamed field reads the other way too");
+    check(back[0].optPresent && back[0].opt.v === 911 && back[0].numberPresent && back[0].number === 912,
       "newer writer: the optionals land past the unknown field");
-    check(back[0].Wrap.N === 913 && back[0].Wrap.LeafPresent && back[0].Wrap.Leaf.V === 914 &&
-      back[0].Tail === 915,
+    check(back[0].wrap.n === 913 && back[0].wrap.leafPresent && back[0].wrap.leaf.v === 914 &&
+      back[0].tail === 915,
       "newer writer: the nested present byte lands past the unknown field");
     check(r.unknown === 1, `newer writer: added is the one name this reader lacks (got ${r.unknown})`);
     check(r.kindMismatch === 0 && !r.malformed && r.refused === 0, "newer writer: nothing else fired");
@@ -2498,11 +2498,11 @@ function optionalVersioning(check, o, dir) {
     const r = new p3home.TableFixedReport();
     check(p3.ChainFixedLoad(back, 1, p1bin, p1bin.length, p3.ChainFixedNewPlan(), r) === 1,
       "P3 reads P1: one record");
-    check(back[0].NameLength === 5 && back[0].Name[0] === 0x63,
+    check(back[0].nameLength === 5 && back[0].name[0] === 0x63,
       "P3 reads P1: the plain field lands");
     check(r.kindMismatch === 1,
       `OPTIONAL vs VALUE is a reported kind on this form, never a silent reread (got ${r.kindMismatch})`);
-    check(!back[0].LinkPresent && back[0].Link.Value === 0,
+    check(!back[0].linkPresent && back[0].link.value === 0,
       "P3 reads P1: the optional reads ABSENT at its declared default, not the value one byte over");
   }
 
@@ -2513,11 +2513,11 @@ function optionalVersioning(check, o, dir) {
     const r = new p1home.TableFixedReport();
     check(p1.ChainFixedLoad(back, 2, p3bin, p3bin.length, p1.ChainFixedNewPlan(), r) === 2,
       "P1 reads P3: two records");
-    check(back[0].NameLength === 5 && back[1].NameLength === 4,
+    check(back[0].nameLength === 5 && back[1].nameLength === 4,
       "P1 reads P3: the plain field lands both records");
     check(r.kindMismatch === 1,
       `P1 reads P3: VALUE vs OPTIONAL is the same reported kind, once per plan (got ${r.kindMismatch})`);
-    check(back[0].Link.Value === 0,
+    check(back[0].link.value === 0,
       "P1 reads P3: the nested value keeps its declared default rather than reading the flag as a payload byte");
   }
 }
@@ -2551,8 +2551,8 @@ export function rangedScalarClamp(check, o) {
   // field so a clamp that ran off the end of its own field is visible.
   const read = (planted) => {
     const one = new fo1home.OptRoot();
-    one.Plain = planted;
-    one.Tail = 203;
+    one.plain = planted;
+    one.tail = 203;
     const w = new Uint8Array(fo1.OptRootFixedMeasure(1));
     check(fo1.OptRootFixedSave([one], 1, w) === w.length,
       "C7 RANGED: the record saves");
@@ -2570,14 +2570,14 @@ export function rangedScalarClamp(check, o) {
     const { n, v, r } = read(planted);
     const want = planted < 0 ? 0 : planted > 1000 ? 1000 : planted;
     const wantClamped = planted < 0 || planted > 1000 ? 1 : 0;
-    check(n === 1 && v.Plain === want,
-      `C7 RANGED: a value of ${planted} lands at ${want} (got ${v.Plain})`);
+    check(n === 1 && v.plain === want,
+      `C7 RANGED: a value of ${planted} lands at ${want} (got ${v.plain})`);
     check(r.clamped === wantClamped,
       `C7 RANGED: a value of ${planted} moves clamped ${wantClamped} (got ${r.clamped})`);
     check(!r.malformed && r.refused === 0,
       `C7 RANGED: a value of ${planted} is an event and not a refusal — the record still reads`);
-    check(v.Tail === 203,
-      `C7 RANGED: a value of ${planted} leaves the neighbour behind it untouched (got ${v.Tail})`);
+    check(v.tail === 203,
+      `C7 RANGED: a value of ${planted} leaves the neighbour behind it untouched (got ${v.tail})`);
   };
 
   probe(5000);  // past max
@@ -2617,7 +2617,7 @@ function optionalControls(check, o, dir) {
   // the corpus reads clean one record at a time, before anything is forged
   {
     const { n, v, r } = load(oneRecord(1));
-    check(n === 1 && !v.OptPresent && v.Opt.V === 7 && r.clamped === 0,
+    check(n === 1 && !v.optPresent && v.opt.v === 7 && r.clamped === 0,
       "control base: record 1 alone reads absent and clean");
   }
 
@@ -2634,11 +2634,11 @@ function optionalControls(check, o, dir) {
     bad[b + NUM_PRESENT] = 2;
     bad[b + MARK_PRESENT] = 0x80;
     const { n, v, r } = load(bad);
-    check(n === 1 && v.OptPresent && v.Opt.V === 999,
-      `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.OptPresent}, ${v.Opt.V})`);
-    check(v.Wrap.LeafPresent && v.Wrap.Leaf.V === 42,
+    check(n === 1 && v.optPresent && v.opt.v === 999,
+      `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.optPresent}, ${v.opt.v})`);
+    check(v.wrap.leafPresent && v.wrap.leaf.v === 42,
       "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
-    check(v.NumberPresent && v.MarkPresent,
+    check(v.numberPresent && v.markPresent,
       "NEGATIVE CONTROL: every present byte is a flag, at every kind an optional wraps");
     check(r.clamped === 0 && !r.malformed && r.refused === 0,
       "NEGATIVE CONTROL: a non-canonical present byte is not damage and moves no counter");
@@ -2657,11 +2657,11 @@ function optionalControls(check, o, dir) {
     bad[b + NUM_PRESENT + 1] = 0x7b;                  // number's payload, flag still zero
     bad[b + MARK_PRESENT + 1] = 0x09;                 // an ordinal naming no variant
     const { n, v, r } = load(bad);
-    check(n === 1 && !v.OptPresent && v.Opt.V === 7,
-      `NEGATIVE CONTROL: an ABSENT payload is ignored on read; the field is its declared default (got ${v.Opt.V})`);
-    check(!v.Wrap.LeafPresent && v.Wrap.Leaf.V === 7,
+    check(n === 1 && !v.optPresent && v.opt.v === 7,
+      `NEGATIVE CONTROL: an ABSENT payload is ignored on read; the field is its declared default (got ${v.opt.v})`);
+    check(!v.wrap.leafPresent && v.wrap.leaf.v === 7,
       "NEGATIVE CONTROL: an absent payload inside a nested table is ignored too");
-    check(!v.NumberPresent && v.Number === 0 && !v.MarkPresent && v.Mark === 0,
+    check(!v.numberPresent && v.number === 0 && !v.markPresent && v.mark === 0,
       "NEGATIVE CONTROL: an absent scalar and an absent enum ignore their payloads");
     check(!r.malformed && r.refused === 0 && r.kindMismatch === 0,
       "NEGATIVE CONTROL: ignoring an absent payload is not an event; nothing is counted");
@@ -2675,7 +2675,7 @@ function optionalControls(check, o, dir) {
     bad[b + OPT_PRESENT] = 7;
     bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03;
     const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.OptPresent && v.Opt.V === 999,
+    check(n === 1 && v.optPresent && v.opt.v === 999,
       "NEGATIVE CONTROL: a present byte of 7 reads as present through a COMPILED plan too");
   }
   {
@@ -2683,7 +2683,7 @@ function optionalControls(check, o, dir) {
     const b = body;
     bad[b + OPT_V] = 0xff; bad[b + OPT_V + 1] = 0xff;
     const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && !v.OptPresent && v.Opt.V === 7,
+    check(n === 1 && !v.optPresent && v.opt.v === 7,
       "NEGATIVE CONTROL: an absent payload is ignored through a COMPILED plan too");
   }
 
@@ -2696,12 +2696,12 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(0);
     bad[body + EFFECT_TAG] = 9; // Effect has two arms
     const { n, v, r } = load(bad);
-    check(n === 1 && v.Effect.Type === 0,
-      `NEGATIVE CONTROL: a union tag beyond the arm count lands as None (got ${v.Effect.Type})`);
+    check(n === 1 && v.effect.type === 0,
+      `NEGATIVE CONTROL: a union tag beyond the arm count lands as None (got ${v.effect.type})`);
     check(r.clamped === 1, `NEGATIVE CONTROL: a tag beyond the arms counts one clamped (got ${r.clamped})`);
     check(!r.malformed && r.refused === 0,
       "NEGATIVE CONTROL: a tag beyond the arms is an event and not a refusal — the record still reads");
-    check(v.Tail === 16, "NEGATIVE CONTROL: the rest of the record still lands");
+    check(v.tail === 16, "NEGATIVE CONTROL: the rest of the record still lands");
   }
   {
     // and on the COMPILED path it is already None: an arm's entries run only
@@ -2710,7 +2710,7 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(0);
     bad[body + EFFECT_TAG] = 9;
     const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.Effect.Type === 0,
+    check(n === 1 && v.effect.type === 0,
       "a union tag beyond the arm count is None on the COMPILED path too, by the guard matching nothing");
   }
 
@@ -2721,8 +2721,8 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
     const { n, v, r } = load(bad);
-    check(n === 1 && v.Plain === 1000,
-      `NEGATIVE CONTROL: a ranged integer past max lands as this reader's max (got ${v.Plain})`);
+    check(n === 1 && v.plain === 1000,
+      `NEGATIVE CONTROL: a ranged integer past max lands as this reader's max (got ${v.plain})`);
     check(r.clamped === 1, `NEGATIVE CONTROL: a ranged integer past max counts one clamped (got ${r.clamped})`);
     check(!r.malformed && r.refused === 0,
       "NEGATIVE CONTROL: a ranged clamp is an event and not a refusal — the record still reads");
@@ -2731,14 +2731,14 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     new DataView(bad.buffer).setInt32(body + PLAIN, -1, true);
     const { n, v, r } = load(bad);
-    check(n === 1 && v.Plain === 0 && r.clamped === 1,
-      `NEGATIVE CONTROL: a ranged integer below min lands as this reader's min (got ${v.Plain}, clamped ${r.clamped})`);
+    check(n === 1 && v.plain === 0 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer below min lands as this reader's min (got ${v.plain}, clamped ${r.clamped})`);
   }
   {
     const bad = oneRecord(1);
     new DataView(bad.buffer).setInt32(body + PLAIN, 1000, true);
     const { n, v, r } = load(bad);
-    check(n === 1 && v.Plain === 1000 && r.clamped === 0,
+    check(n === 1 && v.plain === 1000 && r.clamped === 0,
       "NEGATIVE CONTROL: a ranged integer AT the bound is not a clamp and moves no counter");
   }
   {
@@ -2747,16 +2747,16 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
     const { n, v, r } = load(bad, fo2, fo2home);
-    check(n === 1 && v.Plain2 === 1000 && r.clamped === 1,
-      `NEGATIVE CONTROL: a ranged integer past max clamps through a COMPILED plan too (got ${v.Plain2}, clamped ${r.clamped})`);
+    check(n === 1 && v.plain2 === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer past max clamps through a COMPILED plan too (got ${v.plain2}, clamped ${r.clamped})`);
   }
   {
     // a ranged field under a live union arm, identity COPY of the whole body
     const bad = oneRecord(0);
     new DataView(bad.buffer).setInt32(body + BOOST_POWER, 9999, true);
     const { n, v, r } = load(bad);
-    check(n === 1 && v.Effect.Type === 1 && v.Effect.Boost.Power === 1000 && r.clamped === 1,
-      `NEGATIVE CONTROL: a ranged integer under a live arm clamps (got power ${v.Effect.Boost.Power}, clamped ${r.clamped})`);
+    check(n === 1 && v.effect.type === 1 && v.effect.boost.power === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer under a live arm clamps (got power ${v.effect.boost.power}, clamped ${r.clamped})`);
   }
 
   // AN ENUM ORDINAL PAST THE TOP VALUE LANDS None AND COUNTS ONE clamped.
@@ -2765,18 +2765,18 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(0);
     bad[body + MARK] = 9;
     const { n, v, r } = load(bad);
-    check(n === 1 && v.MarkPresent && v.Mark === 0,
-      `NEGATIVE CONTROL: an enum ordinal past the last variant lands as None (got ${v.Mark})`);
+    check(n === 1 && v.markPresent && v.mark === 0,
+      `NEGATIVE CONTROL: an enum ordinal past the last variant lands as None (got ${v.mark})`);
     check(r.clamped === 1, `NEGATIVE CONTROL: an enum ordinal past the last variant counts one clamped (got ${r.clamped})`);
     check(!r.malformed && r.refused === 0,
       "NEGATIVE CONTROL: an enum ordinal past the set is an event and not a refusal — the record still reads");
-    check(v.Tail === 16, "NEGATIVE CONTROL: the rest of the record still lands beside a clamped enum");
+    check(v.tail === 16, "NEGATIVE CONTROL: the rest of the record still lands beside a clamped enum");
   }
   {
     const bad = oneRecord(0);
     bad[body + MARK] = 2;
     const { n, v, r } = load(bad);
-    check(n === 1 && v.MarkPresent && v.Mark === 2 && r.clamped === 0,
+    check(n === 1 && v.markPresent && v.mark === 2 && r.clamped === 0,
       "NEGATIVE CONTROL: an enum ordinal in the set is not a clamp and moves no counter");
   }
   {
@@ -2786,7 +2786,7 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(0);
     bad[body + MARK] = 9;
     const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.MarkPresent && v.Mark === 0,
+    check(n === 1 && v.markPresent && v.mark === 0,
       "NEGATIVE CONTROL: an enum ordinal past the last variant is None on the COMPILED path too");
   }
 }

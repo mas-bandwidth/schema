@@ -14,7 +14,7 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
   const padded = new Uint8Array(wire.length + 8); padded.set(wire);
   const view = new DataView(padded.buffer);
   const r = new ReadStream(wire);
-  const ok = tier === "runtime" ? d.ReadNarrow(r, value) : f.ReadNarrowFlat(value, view, wire.length * 8);
+  const ok = tier === "runtime" ? d.ReadNarrow(r, value) : f.ReadNarrowFlat(view, wire.length * 8, value);
   if (!ok) { console.log("REFUSE"); continue; }
   const w = new WriteStream(new Uint8Array(256));
   assert(d.WriteNarrow(w, value));
@@ -23,12 +23,12 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
   if (tier === "runtime") {
     assert.equal(r.bitsProcessed(), bits);
   } else {
-    assert(f.ReadNarrowFlat(new d.Narrow(), view, bits));
-    assert.equal(f.ReadNarrowFlat(new d.Narrow(), view, bits - 1), false);
+    assert(f.ReadNarrowFlat(view, bits, new d.Narrow()));
+    assert.equal(f.ReadNarrowFlat(view, bits - 1, new d.Narrow()), false);
     const bytes = new Uint8Array(256);
-    const count = f.WriteNarrowFlat(value, new DataView(bytes.buffer));
+    const count = f.WriteNarrowFlat(new DataView(bytes.buffer), value);
     assert.equal(count, Math.ceil(bits / 8));
     encoded = bytes.subarray(0, count);
   }
-  console.log(`OK ${bits} ${hex(value.Text.subarray(0, value.TextLength))} ${bits} ${hex(encoded)}`);
+  console.log(`OK ${bits} ${hex(value.text.subarray(0, value.textLength))} ${bits} ${hex(encoded)}`);
 }

@@ -56,36 +56,36 @@ function f32eq(a, b) {
 function makeTurret(damage, cooldown, gunnerPresent, reaction, tracking) {
   const t = new TurretConfig();
   InitTurretConfig(t);
-  t.Damage = damage;
-  t.Cooldown = cooldown;
-  t.GunnerPresent = gunnerPresent ? 1 : 0;
+  t.damage = damage;
+  t.cooldown = cooldown;
+  t.gunnerPresent = gunnerPresent ? 1 : 0;
   if (gunnerPresent) {
-    t.Gunner.Reaction = reaction;
-    t.Gunner.Tracking = tracking ? 1 : 0;
+    t.gunner.reaction = reaction;
+    t.gunner.tracking = tracking ? 1 : 0;
   }
   return t;
 }
 
 // ---- helper: assert two TurretConfig values match ----
 function assertTurret(a, b, label) {
-  assert(f32eq(a.Damage, b.Damage), label + ": damage " + a.Damage + " === " + b.Damage);
-  assert(f32eq(a.Cooldown, b.Cooldown), label + ": cooldown " + a.Cooldown + " === " + b.Cooldown);
+  assert(f32eq(a.damage, b.damage), label + ": damage " + a.damage + " === " + b.damage);
+  assert(f32eq(a.cooldown, b.cooldown), label + ": cooldown " + a.cooldown + " === " + b.cooldown);
   // GunnerPresent and Tracking are stored as bytes (0/1)
-  assert(Number(a.GunnerPresent) === Number(b.GunnerPresent), label + ": gunnerPresent " + Number(a.GunnerPresent) + " === " + Number(b.GunnerPresent));
-  if (a.GunnerPresent && b.GunnerPresent) {
-    assert(f32eq(a.Gunner.Reaction, b.Gunner.Reaction), label + ": gunner.reaction " + a.Gunner.Reaction + " === " + b.Gunner.Reaction);
-    assert(Number(a.Gunner.Tracking) === Number(b.Gunner.Tracking), label + ": gunner.tracking " + Number(a.Gunner.Tracking) + " === " + Number(b.Gunner.Tracking));
+  assert(Number(a.gunnerPresent) === Number(b.gunnerPresent), label + ": gunnerPresent " + Number(a.gunnerPresent) + " === " + Number(b.gunnerPresent));
+  if (a.gunnerPresent && b.gunnerPresent) {
+    assert(f32eq(a.gunner.reaction, b.gunner.reaction), label + ": gunner.reaction " + a.gunner.reaction + " === " + b.gunner.reaction);
+    assert(Number(a.gunner.tracking) === Number(b.gunner.tracking), label + ": gunner.tracking " + Number(a.gunner.tracking) + " === " + Number(b.gunner.tracking));
   }
 }
 
 // ---- helper: assert two HullConfig values match, including nested keyed turrets ----
 function assertHull(a, b, hullName) {
-  assert(f32eq(a.Health, b.Health), hullName + ": health " + a.Health + " === " + b.Health);
-  assert(f32eq(a.Mass, b.Mass), hullName + ": mass " + a.Mass + " === " + b.Mass);
+  assert(f32eq(a.health, b.health), hullName + ": health " + a.health + " === " + b.health);
+  assert(f32eq(a.mass, b.mass), hullName + ": mass " + a.mass + " === " + b.mass);
   // [Weapon]TurretConfig — 3 slots: 0=Cannon, 1=Missile, 2=Mine
   const wNames = ["Cannon", "Missile", "Mine"];
   for (let w = 0; w < 3; w++) {
-    assertTurret(a.Turrets[w], b.Turrets[w], hullName + "." + wNames[w]);
+    assertTurret(a.turrets[w], b.turrets[w], hullName + "." + wNames[w]);
   }
 }
 
@@ -95,62 +95,62 @@ const cfg = [];
 for (let i = 0; i < 2; i++) { cfg.push(new KeyedConfig()); InitKeyedConfig(cfg[i]); }
 
 // Record 0: set all three hulls, each with all three turrets
-cfg[0].Teams[0].SpawnCount = 5;
-cfg[0].Teams[1].SpawnCount = 3;
-cfg[0].Teams[2].SpawnCount = 7;
+cfg[0].teams[0].spawnCount = 5;
+cfg[0].teams[1].spawnCount = 3;
+cfg[0].teams[2].spawnCount = 7;
 
 // Hull 0 (Interceptor) — every turret with different gunner configs
-cfg[0].Hulls[0].Health = 100.0;
-cfg[0].Hulls[0].Mass = 1.0;
-cfg[0].Hulls[0].Turrets[0] = makeTurret(10.0, 0.5, true, 0.3, true);
-cfg[0].Hulls[0].Turrets[1] = makeTurret(20.0, 1.0, false, 0, false);
-cfg[0].Hulls[0].Turrets[2] = makeTurret(5.0, 0.25, true, 0.1, false);
+cfg[0].hulls[0].health = 100.0;
+cfg[0].hulls[0].mass = 1.0;
+cfg[0].hulls[0].turrets[0] = makeTurret(10.0, 0.5, true, 0.3, true);
+cfg[0].hulls[0].turrets[1] = makeTurret(20.0, 1.0, false, 0, false);
+cfg[0].hulls[0].turrets[2] = makeTurret(5.0, 0.25, true, 0.1, false);
 
 // Hull 1 (Gunship)
-cfg[0].Hulls[1].Health = 200.0;
-cfg[0].Hulls[1].Mass = 3.0;
-cfg[0].Hulls[1].Turrets[0] = makeTurret(15.0, 0.75, true, 0.5, true);
-cfg[0].Hulls[1].Turrets[1] = makeTurret(25.0, 1.5, true, 0.2, false);
-cfg[0].Hulls[1].Turrets[2] = makeTurret(8.0, 0.3, false, 0, false);
+cfg[0].hulls[1].health = 200.0;
+cfg[0].hulls[1].mass = 3.0;
+cfg[0].hulls[1].turrets[0] = makeTurret(15.0, 0.75, true, 0.5, true);
+cfg[0].hulls[1].turrets[1] = makeTurret(25.0, 1.5, true, 0.2, false);
+cfg[0].hulls[1].turrets[2] = makeTurret(8.0, 0.3, false, 0, false);
 
 // Hull 2 (Freighter)
-cfg[0].Hulls[2].Health = 500.0;
-cfg[0].Hulls[2].Mass = 10.0;
-cfg[0].Hulls[2].Turrets[0] = makeTurret(1.0, 2.0, false, 0, false);
-cfg[0].Hulls[2].Turrets[1] = makeTurret(2.0, 3.0, true, 0.8, true);
-cfg[0].Hulls[2].Turrets[2] = makeTurret(0.5, 0.1, true, 0.9, true);
+cfg[0].hulls[2].health = 500.0;
+cfg[0].hulls[2].mass = 10.0;
+cfg[0].hulls[2].turrets[0] = makeTurret(1.0, 2.0, false, 0, false);
+cfg[0].hulls[2].turrets[1] = makeTurret(2.0, 3.0, true, 0.8, true);
+cfg[0].hulls[2].turrets[2] = makeTurret(0.5, 0.1, true, 0.9, true);
 
 // Scores
-cfg[0].Scores.PerTeam[0] = 100;
-cfg[0].Scores.PerTeam[1] = 200;
-cfg[0].Scores.PerTeam[2] = 150;
+cfg[0].scores.perTeam[0] = 100;
+cfg[0].scores.perTeam[1] = 200;
+cfg[0].scores.perTeam[2] = 150;
 
 // Record 1: a second record with different values
-cfg[1].Teams[0].SpawnCount = 10;
-cfg[1].Teams[1].SpawnCount = 8;
-cfg[1].Teams[2].SpawnCount = 12;
+cfg[1].teams[0].spawnCount = 10;
+cfg[1].teams[1].spawnCount = 8;
+cfg[1].teams[2].spawnCount = 12;
 
-cfg[1].Hulls[0].Health = 150.0;
-cfg[1].Hulls[0].Mass = 2.0;
-cfg[1].Hulls[0].Turrets[0] = makeTurret(30.0, 0.1, true, 0.9, true);
-cfg[1].Hulls[0].Turrets[1] = makeTurret(40.0, 0.2, true, 0.7, false);
-cfg[1].Hulls[0].Turrets[2] = makeTurret(10.0, 0.5, false, 0, false);
+cfg[1].hulls[0].health = 150.0;
+cfg[1].hulls[0].mass = 2.0;
+cfg[1].hulls[0].turrets[0] = makeTurret(30.0, 0.1, true, 0.9, true);
+cfg[1].hulls[0].turrets[1] = makeTurret(40.0, 0.2, true, 0.7, false);
+cfg[1].hulls[0].turrets[2] = makeTurret(10.0, 0.5, false, 0, false);
 
-cfg[1].Hulls[1].Health = 300.0;
-cfg[1].Hulls[1].Mass = 5.0;
-cfg[1].Hulls[1].Turrets[0] = makeTurret(12.0, 0.6, false, 0, false);
-cfg[1].Hulls[1].Turrets[1] = makeTurret(18.0, 0.9, true, 0.4, true);
-cfg[1].Hulls[1].Turrets[2] = makeTurret(6.0, 0.15, true, 0.6, false);
+cfg[1].hulls[1].health = 300.0;
+cfg[1].hulls[1].mass = 5.0;
+cfg[1].hulls[1].turrets[0] = makeTurret(12.0, 0.6, false, 0, false);
+cfg[1].hulls[1].turrets[1] = makeTurret(18.0, 0.9, true, 0.4, true);
+cfg[1].hulls[1].turrets[2] = makeTurret(6.0, 0.15, true, 0.6, false);
 
-cfg[1].Hulls[2].Health = 400.0;
-cfg[1].Hulls[2].Mass = 8.0;
-cfg[1].Hulls[2].Turrets[0] = makeTurret(3.0, 1.5, true, 0.3, true);
-cfg[1].Hulls[2].Turrets[1] = makeTurret(4.0, 2.0, false, 0, false);
-cfg[1].Hulls[2].Turrets[2] = makeTurret(1.0, 0.2, true, 0.95, true);
+cfg[1].hulls[2].health = 400.0;
+cfg[1].hulls[2].mass = 8.0;
+cfg[1].hulls[2].turrets[0] = makeTurret(3.0, 1.5, true, 0.3, true);
+cfg[1].hulls[2].turrets[1] = makeTurret(4.0, 2.0, false, 0, false);
+cfg[1].hulls[2].turrets[2] = makeTurret(1.0, 0.2, true, 0.95, true);
 
-cfg[1].Scores.PerTeam[0] = 300;
-cfg[1].Scores.PerTeam[1] = 250;
-cfg[1].Scores.PerTeam[2] = 400;
+cfg[1].scores.perTeam[0] = 300;
+cfg[1].scores.perTeam[1] = 250;
+cfg[1].scores.perTeam[2] = 400;
 
 // ---- WRITE ----
 
@@ -184,18 +184,18 @@ for (let r = 0; r < 2; r++) {
   // Teams: [Team]TeamConfig — 3 slots
   for (let t = 0; t < 3; t++) {
     const tName = ["Red", "Blue", "Green"][t];
-    const a = cfg[r].Teams[t], b = back[r].Teams[t];
-    assert(a.SpawnCount === b.SpawnCount, label + ".Team." + tName + ": spawnCount " + a.SpawnCount + " === " + b.SpawnCount);
+    const a = cfg[r].teams[t], b = back[r].teams[t];
+    assert(a.spawnCount === b.spawnCount, label + ".Team." + tName + ": spawnCount " + a.spawnCount + " === " + b.spawnCount);
   }
   // Hulls: [Hull]HullConfig — 3 slots, each with nested [Weapon]TurretConfig
   for (let h = 0; h < 3; h++) {
     const hName = ["Interceptor", "Gunship", "Freighter"][h];
-    assertHull(cfg[r].Hulls[h], back[r].Hulls[h], label + "." + hName);
+    assertHull(cfg[r].hulls[h], back[r].hulls[h], label + "." + hName);
   }
   // Scores
   for (let s = 0; s < 3; s++) {
     const tName = ["Red", "Blue", "Green"][s];
-    assert(cfg[r].Scores.PerTeam[s] === back[r].Scores.PerTeam[s], label + ".Score." + tName + ": " + cfg[r].Scores.PerTeam[s] + " === " + back[r].Scores.PerTeam[s]);
+    assert(cfg[r].scores.perTeam[s] === back[r].scores.perTeam[s], label + ".Score." + tName + ": " + cfg[r].scores.perTeam[s] + " === " + back[r].scores.perTeam[s]);
   }
 }
 

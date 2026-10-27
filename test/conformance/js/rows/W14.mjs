@@ -259,8 +259,8 @@ TableFixedResetReport(report);
 TableFixedRun(plan.entries, plan.count, src, srcView, 0, plan.image, plan.view, plan.remap, report);
 const value = new TeamConfig();
 TeamConfigFixedDecode(value, plan.view, 0, report);
-check(value.SpawnCount === 42 && value.BannerLength === 3 &&
-  value.Banner[0] === 0x68 && value.Banner[1] === 0x65 && value.Banner[2] === 0x79 &&
+check(value.spawnCount === 42 && value.bannerLength === 3 &&
+  value.banner[0] === 0x68 && value.banner[1] === 0x65 && value.banner[2] === 0x79 &&
   report.clamped === 0 && report.unknown === 0 && report.kindMismatch === 0,
   "plan effect TeamConfig: the permuted writer's values land exactly where this build's decode walk reads them (42, \"hey\")");
 
@@ -268,9 +268,9 @@ check(value.SpawnCount === 42 && value.BannerLength === 3 &&
 
 const caller = keyed.TeamConfigFixedNewPlan(64, 64);
 const out = new TeamConfig();
-out.SpawnCount = 42;
-out.BannerLength = 3;
-out.Banner.set([0x68, 0x65, 0x79], 0); // "hey"
+out.spawnCount = 42;
+out.bannerLength = 3;
+out.banner.set([0x68, 0x65, 0x79], 0); // "hey"
 const file = new Uint8Array(keyed.TeamConfigFixedMeasure(1));
 check(keyed.TeamConfigFixedSave([out], 1, file) === file.length,
   "identity round trip TeamConfig: the artifact's own writer writes its own record");
@@ -278,8 +278,8 @@ const back = new TeamConfig();
 const readReport = new TableFixedReport();
 TableFixedResetReport(readReport);
 const n = keyed.TeamConfigFixedLoad([back], 1, file, file.length, caller, readReport);
-check(n === 1 && back.SpawnCount === 42 && back.BannerLength === 3 &&
-  back.Banner[0] === 0x68 && back.Banner[1] === 0x65 && back.Banner[2] === 0x79,
+check(n === 1 && back.spawnCount === 42 && back.bannerLength === 3 &&
+  back.banner[0] === 0x68 && back.banner[1] === 0x65 && back.banner[2] === 0x79,
   "identity round trip TeamConfig: the artifact's own read lands its own writer's values");
 
 if (failures > 0) {

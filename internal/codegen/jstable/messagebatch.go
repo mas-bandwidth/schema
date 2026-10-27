@@ -19,6 +19,7 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -400,7 +401,7 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		lhs := mem + "[i]"
 		def := fixedElementZero(f)
 		if isUnionRef(f.Type) {
-			lhs += ".Type"
+			lhs += ".type"
 			def = "0"
 		}
 		v := ir.GoExportName(f.Name) + "AllDefault"
@@ -409,7 +410,7 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		return "!" + v
 	}
 	if isUnionRef(f.Type) {
-		return mem + ".Type !== 0"
+		return mem + ".type !== 0"
 	}
 	return mem + " !== " + fixedZeroFor(f)
 }
@@ -425,7 +426,7 @@ func (g *fixedModule) emitMessageKeyedCount(f *ir.Field, mem, ind string) {
 }
 
 func (g *fixedModule) emitMessageWriteField(f *ir.Field, ind string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	mem := "value." + name
 	entry := ir.TableFieldEntry(f)
 	slot := messageSlot(g.unit, entry)
@@ -561,14 +562,14 @@ func (g *fixedModule) emitMessageWriteEnum(f *ir.Field, mem, ind string) {
 
 func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
 	un := f.Type.Ref.(*ir.Union)
-	g.pf("%sswitch (%s.Type) {\n", ind, mem)
+	g.pf("%sswitch (%s.type) {\n", ind, mem)
 	g.pf("%s  case 0: w.Put(0n, TableMessageRefBitsHere); break;\n", ind)
 	for i, v := range un.Variants {
 		g.pf("%s  case %d: {\n", ind, i+1)
 		g.pf("%s    w.Put(%dn, TableMessageRefBitsHere);\n", ind, messageSlot(g.unit, ir.TableArmEntry(v)))
 		if !v.Void() {
 			arm := ir.TableArmEntry(v)
-			g.emitMessageWriteValue(v.F, arm, mem+"."+ir.GoExportName(v.Name), ind+"    ")
+			g.emitMessageWriteValue(v.F, arm, mem+"."+js.MemberName(v.Name), ind+"    ")
 		}
 		g.pf("%s    break;\n%s  }\n", ind, ind)
 	}
@@ -595,11 +596,11 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 }
 
 func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyEntry, ind string) {
-	mem := "value." + ir.GoExportName(f.Name)
+	mem := "value." + js.MemberName(f.Name)
 	g.pf("%sif (entry.Shape.Kind !== %d) { r.Report.KindMismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Malformed = true; return false; } break; }\n", ind, mine.Kind)
 	g.emitMessageReadValue(f, mem, ind, "entry.Shape")
 	if f.Type.Optional {
-		g.pf("%svalue.%sPresent = true;\n", ind, ir.GoExportName(f.Name))
+		g.pf("%svalue.%sPresent = true;\n", ind, js.MemberName(f.Name))
 	}
 }
 
@@ -798,7 +799,7 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string) {
 func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 	un := f.Type.Ref.(*ir.Union)
 	g.pf("%s{ const [ref, ok] = r.Bits.Get(r.RefBits); if (!ok) { r.Report.Malformed = true; return false; }\n", ind)
-	g.pf("%s  if (ref === 0n) { %s.Type = 0; }\n", ind, mem)
+	g.pf("%s  if (ref === 0n) { %s.type = 0; }\n", ind, mem)
 	g.pf("%s  else {\n", ind)
 	g.pf("%s    const arm = tableMessageEntry(r.Vocabulary, ref);\n", ind)
 	g.pf("%s    if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { r.Report.Malformed = true; return false; }\n", ind)
@@ -806,13 +807,13 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 	for i, v := range un.Variants {
 		arm := ir.TableArmEntry(v)
 		g.pf("%s      case 0x%016xn: {\n", ind, arm.Id)
-		g.pf("%s        %s.Type = %d;\n", ind, mem, i+1)
+		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
-			g.emitMessageReadValue(v.F, mem+"."+ir.GoExportName(v.Name), ind+"        ", "arm.Shape")
+			g.emitMessageReadValue(v.F, mem+"."+js.MemberName(v.Name), ind+"        ", "arm.Shape")
 		}
 		g.pf("%s        break;\n%s      }\n", ind, ind)
 	}
-	g.pf("%s      default: { %s.Type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Malformed = true; return false; } }\n", ind, mem)
+	g.pf("%s      default: { %s.type = 0; r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Malformed = true; return false; } }\n", ind, mem)
 	g.pf("%s    }\n", ind)
 	g.pf("%s  }\n%s}\n", ind, ind)
 }

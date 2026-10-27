@@ -80,7 +80,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.X < -5) { value.X = -5; report.clamped++; } else if (value.X > 5) { value.X = 5; report.clamped++; }",
+		"if (value.x < -5) { value.x = -5; report.clamped++; } else if (value.x > 5) { value.x = 5; report.clamped++; }",
 		"C7 a ranged scalar clamps at both declared ends and counts each")
 }
 
@@ -113,7 +113,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.Q < 0) { value.Q = 0; report.clamped++; } else if (value.Q > 1) { value.Q = 1; report.clamped++; }",
+		"if (value.q < 0) { value.q = 0; report.clamped++; } else if (value.q > 1) { value.q = 1; report.clamped++; }",
 		"R30 the compressed float clamps to the reader's min/max, the bounds following the float")
 }
 
@@ -138,7 +138,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.P.Type > 2) { value.P.Type = 0; report.clamped++; }",
+		"if (value.p.type > 2) { value.p.type = 0; report.clamped++; }",
 		"C9 a union tag past the arm count lands None and counts")
 }
 
@@ -162,7 +162,7 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.Tier > 3) { value.Tier = 0; report.clamped++; }",
+		"if (value.tier > 3) { value.tier = 0; report.clamped++; }",
 		"C10 an enum ordinal past the enum's top value lands None and counts")
 }
 
@@ -202,7 +202,7 @@ fixed table T
     b bool
 }
 `, "T")
-	t02Has(t, t02Norm(body), "value.B = view.getUint8(at) !== 0;",
+	t02Has(t, t02Norm(body), "value.b = view.getUint8(at) !== 0;",
 		"C12 a bool byte is normalised byte != 0 -> true, never copied")
 }
 
@@ -219,7 +219,7 @@ fixed table T
     v ?int32
 }
 `, "T")
-	t02Has(t, t02Norm(body), "value.VPresent = view.getUint8(at) !== 0;",
+	t02Has(t, t02Norm(body), "value.vPresent = view.getUint8(at) !== 0;",
 		"C13 the present flag reads byte != 0, so a nonzero byte normalises to present")
 }
 
@@ -240,9 +240,9 @@ fixed table T
 }
 `, "T")
 	n := t02Norm(body)
-	t02Has(t, n, "value.B = view.getUint8(at) !== 0;",
+	t02Has(t, n, "value.b = view.getUint8(at) !== 0;",
 		"R17 a bool byte is normalised byte != 0")
-	t02Has(t, n, "value.VPresent = view.getUint8(at + 1) !== 0;",
+	t02Has(t, n, "value.vPresent = view.getUint8(at + 1) !== 0;",
 		"R17 a present byte is normalised byte != 0")
 	if strings.Contains(body, "report.") {
 		t.Error("R17: the bool or present load moves a counter; a hostile byte counts nothing")

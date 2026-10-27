@@ -136,7 +136,7 @@ func t05RoundTrip(t *testing.T, olderName, newerName, check string) {
 // renamed field's NEW spelling lands the OLD name's bytes.
 func t05E6(t *testing.T) {
 	t05RoundTrip(t, "VOLD_rename_without_was", "VNEW_rename_without_was", `
-if (back[0].B !== 0 || back[0].Seq !== 0) {
+if (back[0].b !== 0 || back[0].seq !== 0) {
   fail("E6: the renamed field did not read the old name's bytes: " + show(back[0]));
 }
 `)
@@ -152,10 +152,10 @@ func t05E8(t *testing.T) {
 	t.Run("append", func(t *testing.T) {
 		t.Parallel()
 		t05RoundTrip(t, "VOLD_field_append", "VNEW_field_append", `
-if (back[0].X !== 0 || back[0].Y !== 0 || back[0].Z !== 0) {
+if (back[0].x !== 0 || back[0].y !== 0 || back[0].z !== 0) {
   fail("E8: the old writer's values did not land: " + show(back[0]));
 }
-if (back[0].W !== 77) {
+if (back[0].w !== 77) {
   fail("E8: the appended field is not its declared default: " + show(back[0]));
 }
 `)
@@ -163,7 +163,7 @@ if (back[0].W !== 77) {
 	t.Run("deprecate", func(t *testing.T) {
 		t.Parallel()
 		t05RoundTrip(t, "VOLD_field_deprecate", "VNEW_field_deprecate", `
-if (back[0].A !== 0 || back[0].B !== 0 || back[0].C !== 0) {
+if (back[0].a !== 0 || back[0].b !== 0 || back[0].c !== 0) {
   fail("E8: a deprecated slot moved a neighbour or the field: " + show(back[0]));
 }
 `)
@@ -285,7 +285,7 @@ fixed table T
 	if !strings.Contains(t02Norm(run), "if (raw > arms) { report.clamped++; }") {
 		t.Error("R16: the compiled plan does not count a forged ordinal remapped to None")
 	}
-	if !strings.Contains(t02Norm(jsFn(src, "TFixedDecode")), "if (value.Rank > 3) { value.Rank = 0; report.clamped++; }") {
+	if !strings.Contains(t02Norm(jsFn(src, "TFixedDecode")), "if (value.rank > 3) { value.rank = 0; report.clamped++; }") {
 		t.Error("R16: the identity projection does not count a forged ordinal remapped to None")
 	}
 

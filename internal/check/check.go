@@ -3830,6 +3830,14 @@ var libcNamespaceScope = func() map[string]bool {
 	return m
 }()
 
+// jsObjectMembers are the members every JavaScript object inherits that a
+// lowerCamelCase field spelling can reach (constructor from `constructor`,
+// toString from `to_string`, and so on).
+var jsObjectMembers = map[string]bool{
+	"constructor": true, "hasOwnProperty": true, "isPrototypeOf": true,
+	"propertyIsEnumerable": true, "toLocaleString": true, "toString": true, "valueOf": true,
+}
+
 // goExportName delegates to the one true mapping (ir.GoExportName), which
 // the Go backend also emits with — two names that collide under it cannot
 // coexist in one type (SPEC §4.6).
@@ -3908,6 +3916,12 @@ func (c *checker) checkTargetNames() {
 					case *ast.Field:
 						checkEscaped(item.Name, item.Pos, "field name")
 						register(item.Pos, item.Name, goExportName(item.Name), "")
+						// JavaScript storage members are lowerCamelCase own
+						// properties of a plain class instance, so a field spelt
+						// as an Object.prototype member would shadow it
+						if jsObjectMembers[ir.DartMemberName(item.Name)] {
+							c.errf(item.Pos, "field %s becomes the JavaScript member %s, which every object inherits from Object.prototype; a field of that name shadows it — rename at the source (SPEC §4.6)", item.Name, ir.DartMemberName(item.Name))
+						}
 						if owner != "" && goExportName(item.Name) == owner {
 							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
 						}
@@ -4040,6 +4054,13 @@ func (c *checker) checkClaimedNames() {
 	// unit-level symbols first, so every collision reports at the DECL side
 	unitPos := ast.Pos{}
 	add("ProtocolId", "the unit's generated ProtocolId", unitPos)
+	// THE JAVASCRIPT MODULE SCOPE: every generated packet module binds these
+	// beside the unit's own declarations (the runtime tier's scratch holders
+	// and text validator, the flat tier's conversion scratch, build switch and
+	// read slack), and an ES module refuses a second binding of one name.
+	for _, gen := range []string{"NUMBER_SCRATCH", "BIGINT_SCRATCH", "BOOL_SCRATCH", "SC", "PRODUCTION", "FLAT_READ_SLACK", "validText"} {
+		add(gen, "a binding every generated JavaScript packet module declares (SPEC §6.1)", unitPos)
+	}
 	// THE VIEW'S OWN UNIT-SCOPE SPELLINGS (docs/SPEC-TABLES.md §8.3, §11),
 	// refused as declaration names in EVERY unit, always. They belong to the
 	// unit rather than to a declaration, so they are claimed once at unit

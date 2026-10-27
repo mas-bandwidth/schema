@@ -121,9 +121,9 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			home := string(out["VdefTable.js"])
 			for _, want := range []string{
-				"this.Name.set([117, 110, 116, 105, 116, 108, 101, 100]);", "this.NameLength = 8;",
-				"this.Tag.set([97, 98]);", "this.TagLength = 2;", "this.Caps = 3n;",
-				"value.Name.set([117, 110, 116, 105, 116, 108, 101, 100]);", "value.Caps = 3n;",
+				"this.name.set([117, 110, 116, 105, 116, 108, 101, 100]);", "this.nameLength = 8;",
+				"this.tag.set([97, 98]);", "this.tagLength = 2;", "this.caps = 3n;",
+				"value.name.set([117, 110, 116, 105, 116, 108, 101, 100]);", "value.caps = 3n;",
 			} {
 				if !strings.Contains(home, want) {
 					t.Errorf("js default output lacks %q", want)
