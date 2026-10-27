@@ -54,8 +54,11 @@ func (g *gen) variableCodecModule() []byte {
 		}
 		fmt.Fprintf(&b, "#[allow(unused_imports)]\nuse super::%s_table::{%s};\n", strings.ToLower(other.Base), strings.Join(syms, ", "))
 	}
+	// the table enums live once per crate (table_enums.rs), not per file; the
+	// import is placed once the body shows it names one (a key enum is only
+	// counted, never named)
+	b.WriteString(enumsImportMark)
 	b.WriteString("\n")
-	g.emitVariableEnums(&b, names)
 	var plain, holding []string
 	for _, n := range names {
 		if structHoldsUnion(vStruct(g.unit, n)) {
@@ -87,8 +90,20 @@ func (g *gen) variableCodecModule() []byte {
 		}
 	}
 	g.emitVariableText(&b)
-	return []byte(b.String())
+	body := b.String()
+	importLine := ""
+	for _, e := range g.collectVariableEnums(names) {
+		if regexp.MustCompile(`\b(` + e.Name + `|` + ir.RustSnake(e.Name) + `_(from_)?json_name)\b`).MatchString(strings.Replace(body, enumsImportMark, "", 1)) {
+			importLine = fmt.Sprintf("use super::%s::*;\n", TableEnumsModule)
+			break
+		}
+	}
+	return []byte(strings.Replace(body, enumsImportMark, importLine, 1))
 }
+
+// enumsImportMark holds the table-enums import's place until the module body
+// is known.
+const enumsImportMark = "\x00table-enums-import\x00"
 
 // rustVariant turns a schema variant's snake_case into the PascalCase Rust
 // enum-variant spelling: flash -> Flash, _reserved -> Reserved.
@@ -444,9 +459,9 @@ func (g *gen) collectVariableEnums(names []string) []*ir.Enum {
 	return out
 }
 
-// emitVariableEnums emits each enum the file's emitted tables reach, once.
-func (g *gen) emitVariableEnums(b *strings.Builder, names []string) {
-	for _, e := range g.collectVariableEnums(names) {
+// emitVariableEnums emits the given table enums.
+func emitVariableEnums(b *strings.Builder, enums []*ir.Enum) {
+	for _, e := range enums {
 		fmt.Fprintf(b, "/// %s — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).\n", e.Name)
 		for _, v := range e.Variants {
 			if r := rustVariant(v); len(r) > 1 && strings.ToUpper(r) == r {

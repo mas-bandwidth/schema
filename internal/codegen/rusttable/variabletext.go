@@ -27,9 +27,6 @@ func (g *gen) emitVariableText(b *strings.Builder) {
 	}
 	b.WriteString("\n// ---- the JSON text form (docs/SPEC-TABLES.md §16, §16.2, §16.7) ----\n")
 
-	for _, e := range g.collectVariableEnums(names) {
-		g.emitEnumText(b, e)
-	}
 	g.emitUnionText(b, names)
 
 	for _, n := range names {
@@ -773,7 +770,7 @@ impl<'a> Jr<'a> {
 // emitEnumText emits one enum's JSON name maps: variant -> schema name for the
 // writer, schema name -> variant for the reader (docs/SPEC-TABLES.md §16.2, the
 // enum row's "the variant NAME").
-func (g *gen) emitEnumText(b *strings.Builder, e *ir.Enum) {
+func emitEnumText(b *strings.Builder, e *ir.Enum) {
 	write := fn(e.Name, "json_name")
 	fmt.Fprintf(b, "#[allow(dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: %s) -> &'static str {\n", write, e.Name)

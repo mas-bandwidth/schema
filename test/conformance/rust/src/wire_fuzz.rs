@@ -22,6 +22,7 @@
 mod variable_runtime;
 mod card_table;
 mod card_variable;
+mod table_enums;
 use variable_runtime::*;
 use card_table::*;
 

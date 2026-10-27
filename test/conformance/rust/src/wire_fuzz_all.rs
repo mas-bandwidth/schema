@@ -8,7 +8,7 @@
 //
 // It is a STANDALONE binary built with rustc, the way wire_fuzz.rs is: each
 // unit is a module directory holding that unit's generated variable-wire
-// modules (variable_runtime.rs, <file>_table.rs, <file>_variable.rs) and a
+// modules (variable_runtime.rs, table_enums.rs, <file>_table.rs, <file>_variable.rs) and a
 // mod.rs the make target writes (make/rust.mk, tables-rust-wire-fuzz-all). A
 // unit's TableReport and TableRetain are its OWN types, so each root's arm
 // names its unit's module and nothing is shared across units.

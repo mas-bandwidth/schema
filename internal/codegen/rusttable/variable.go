@@ -84,6 +84,9 @@ func variableModules(u *ir.Unit) map[string][]byte {
 	if d := variableDescriptorModule(u); d != nil {
 		out[VariableDescriptorModule+".rs"] = d
 	}
+	if body := tableEnumsModule(u, vc); body != nil {
+		out[TableEnumsModule+".rs"] = body
+	}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: ir.TableClosure(u), vc: vc}
 		if body := g.variableModule(); body != nil {
@@ -1426,4 +1429,42 @@ func (g *gen) emitVariableConstants(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    pub const %s: (u64, u8) = (0x%016x, %d);\n", strings.ToUpper(ir.RustSnake(f.Name)), id, kind)
 	}
 	b.WriteString("}\n")
+}
+
+// TableEnumsModule holds every enum the unit's variable tables reach, with its
+// JSON name maps, ONCE per crate: each file's table module imports it rather
+// than declaring its own copy, so one schema enum is one Rust type across the
+// table layer (docs/SPEC-TABLES.md, the Rust backend's notes).
+const TableEnumsModule = "table_enums"
+
+// tableEnumsModule emits TableEnumsModule; nil when no carried table reaches an
+// enum. The order is the files' declaration order, then first reach.
+func tableEnumsModule(u *ir.Unit, vc *variableClass) []byte {
+	seen := map[string]bool{}
+	var enums []*ir.Enum
+	for _, f := range u.Files {
+		g := &gen{unit: u, file: f, closure: ir.TableClosure(u), vc: vc}
+		names := cardVariableTableNames(g)
+		if len(names) == 0 {
+			continue
+		}
+		for _, e := range g.collectVariableEnums(names) {
+			if !seen[e.Name] {
+				seen[e.Name] = true
+				enums = append(enums, e)
+			}
+		}
+	}
+	if len(enums) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString(header(runtimeSourceName(u), u.Package, "the table layer's enums and their JSON names, once per crate (docs/SPEC-TABLES.md §3, §16.2)"))
+	b.WriteString("\n")
+	emitVariableEnums(&b, enums)
+	b.WriteString("// ---- the JSON text form's names (docs/SPEC-TABLES.md §16.2) ----\n\n")
+	for _, e := range enums {
+		emitEnumText(&b, e)
+	}
+	return []byte(b.String())
 }

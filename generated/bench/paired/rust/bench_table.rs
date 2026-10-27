@@ -17,28 +17,7 @@ use std::rc::Rc;
 const ID_TABLE_PROBE_BOUND: usize = 4096;
 #[allow(dead_code)]
 const ID_TABLE_PROBE_SLOTS: usize = 8192;
-
-/// MixedWeapon — an enum on the variable wire (docs/SPEC-TABLES.md §3, §5).
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub enum MixedWeapon {
-    #[default]
-    None,
-    Fists,
-    Pistol,
-    Shotgun,
-    Rifle,
-    Sniper,
-    Smg,
-    Rocket,
-    Grenade,
-    Plasma,
-    Railgun,
-    Flamer,
-    Mine,
-    Turret,
-    Drone,
-    Repair,
-}
+use super::table_enums::*;
 
 /// MixedChatEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
 #[derive(Clone, Debug, Default)]
@@ -826,51 +805,6 @@ fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k:
 
 
 // ---- the JSON text form (docs/SPEC-TABLES.md §16, §16.2, §16.7) ----
-#[allow(dead_code)]
-pub fn mixed_weapon_json_name(v: MixedWeapon) -> &'static str {
-    match v {
-        MixedWeapon::None => "None",
-        MixedWeapon::Fists => "Fists",
-        MixedWeapon::Pistol => "Pistol",
-        MixedWeapon::Shotgun => "Shotgun",
-        MixedWeapon::Rifle => "Rifle",
-        MixedWeapon::Sniper => "Sniper",
-        MixedWeapon::Smg => "Smg",
-        MixedWeapon::Rocket => "Rocket",
-        MixedWeapon::Grenade => "Grenade",
-        MixedWeapon::Plasma => "Plasma",
-        MixedWeapon::Railgun => "Railgun",
-        MixedWeapon::Flamer => "Flamer",
-        MixedWeapon::Mine => "Mine",
-        MixedWeapon::Turret => "Turret",
-        MixedWeapon::Drone => "Drone",
-        MixedWeapon::Repair => "Repair",
-    }
-}
-
-#[allow(dead_code)]
-pub fn mixed_weapon_from_json_name(s: &str) -> Option<MixedWeapon> {
-    match s {
-        "None" => Some(MixedWeapon::None),
-        "Fists" => Some(MixedWeapon::Fists),
-        "Pistol" => Some(MixedWeapon::Pistol),
-        "Shotgun" => Some(MixedWeapon::Shotgun),
-        "Rifle" => Some(MixedWeapon::Rifle),
-        "Sniper" => Some(MixedWeapon::Sniper),
-        "Smg" => Some(MixedWeapon::Smg),
-        "Rocket" => Some(MixedWeapon::Rocket),
-        "Grenade" => Some(MixedWeapon::Grenade),
-        "Plasma" => Some(MixedWeapon::Plasma),
-        "Railgun" => Some(MixedWeapon::Railgun),
-        "Flamer" => Some(MixedWeapon::Flamer),
-        "Mine" => Some(MixedWeapon::Mine),
-        "Turret" => Some(MixedWeapon::Turret),
-        "Drone" => Some(MixedWeapon::Drone),
-        "Repair" => Some(MixedWeapon::Repair),
-        _ => None,
-    }
-}
-
 #[allow(unused_variables, dead_code)]
 pub fn mixed_chat_event_json_count(v: &MixedChatEvent, w: &mut Jw) {
 }

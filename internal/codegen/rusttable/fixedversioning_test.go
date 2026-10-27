@@ -1101,10 +1101,11 @@ func versionWriteCrate(t *testing.T, root, serialize string, p versionProbe) {
 	if err != nil {
 		t.Fatalf("%s: GenerateLineage: %v", p.name, err)
 	}
+	shadowed := rust.ShadowedTypes(files, tables)
 	maps.Copy(files, tables)
 	// The crate root is a generated index, exactly as compiler/target_rust.go
 	// builds it, plus the one module this test adds.
-	lib, err := rust.Lib(u, Modules(tables))
+	lib, err := rust.Lib(u, Modules(tables), shadowed)
 	if err != nil {
 		t.Fatalf("%s: rust.Lib: %v", p.name, err)
 	}

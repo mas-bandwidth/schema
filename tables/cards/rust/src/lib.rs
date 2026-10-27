@@ -17,8 +17,10 @@ mod card_table;
 mod card_variable_constants;
 mod variable_runtime;
 mod card_descriptors;
+mod table_enums;
 
 pub use card_table::*;
+pub use table_enums::*;
 pub use variable_runtime::*;
 
 /// The customer ceiling on one card's opaque body (docs/SPEC-TABLES.md §2.5).

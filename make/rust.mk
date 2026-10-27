@@ -825,6 +825,7 @@ build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_
 	@mkdir -p build/cards-rust-fuzz
 	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust-fuzz/
 	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust-fuzz/
+	@cp build/tables-generated-rust/cards/src/table_enums.rs build/cards-rust-fuzz/
 	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust-fuzz/
 	@cp test/conformance/rust/src/wire_fuzz.rs build/cards-rust-fuzz/main.rs
 	@rustc --edition 2024 -O -o build/conformance-rust-card build/cards-rust-fuzz/main.rs
@@ -876,6 +877,7 @@ cards-rust-test: cards-rust-generate
 	@mkdir -p build/cards-rust
 	@cp build/tables-generated-rust/cards/src/variable_runtime.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card_table.rs build/cards-rust/
+	@cp build/tables-generated-rust/cards/src/table_enums.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card_variable.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card_records.rs build/cards-rust/
 	@cp build/tables-generated-rust/cards/src/card.rs build/cards-rust/
