@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -1245,7 +1246,17 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 				v.Name, d.Name, prev, exported)
 			continue
 		}
+		// the Go target's struct member spells the arm with Go's
+		// initialisms (internal/goname), so two arms the shared mapping
+		// keeps apart (id, i_d) may still be one Go member
+		goSpelled := "\x00go:" + goname.Member(v.Name)
+		if prev, dup := seen[goSpelled]; dup {
+			c.errf(v.Pos, "duplicate variant %s in union %s (first at %s; names are unique AFTER export mapping — both become %s in the generated Go) (SPEC §4.8)",
+				v.Name, d.Name, prev, goname.Member(v.Name))
+			continue
+		}
 		seen[exported] = v.Pos
+		seen[goSpelled] = v.Pos
 
 		arm := c.resolveArm(d.Name, v)
 		if arm == nil && v.Arm != nil {
@@ -3857,9 +3868,24 @@ func (c *checker) checkTargetNames() {
 			var walkBlock func(b *ast.Block, owner string, export map[string]claim)
 			walkBlock = func(b *ast.Block, owner string, export map[string]claim) {
 				register := func(pos ast.Pos, fieldName, exp, as string) {
+					// the Go target spells members with Go's initialisms
+					// (internal/goname): ObjectId and ObjectID are two
+					// members everywhere else and ONE Go field, so the Go
+					// spelling is claimed in its own key space beside the
+					// shared one, and refused when only it collides
+					goKey := "\x00go:" + goname.Initialisms(exp)
 					prev, ok := export[exp]
+					where := "generated code"
+					if !ok {
+						if prevGo, okGo := export[goKey]; okGo && prevGo.field != fieldName {
+							prev, ok = prevGo, true
+							where = "the generated Go"
+							exp = goname.Initialisms(exp)
+						}
+					}
 					if !ok {
 						export[exp] = claim{field: fieldName, as: as}
+						export[goKey] = claim{field: fieldName, as: as}
 						return
 					}
 					if prev.field == fieldName {
@@ -3874,8 +3900,8 @@ func (c *checker) checkTargetNames() {
 						}
 						return cl.as + " of field " + cl.field
 					}
-					c.errf(pos, "%s collides with %s (both become %s in generated code) — rename at the source (SPEC §4.6)",
-						describe(claim{field: fieldName, as: as}), describe(prev), exp)
+					c.errf(pos, "%s collides with %s (both become %s in %s) — rename at the source (SPEC §4.6)",
+						describe(claim{field: fieldName, as: as}), describe(prev), exp, where)
 				}
 				for _, item := range b.Items {
 					switch item := item.(type) {
@@ -3998,7 +4024,17 @@ func (c *checker) checkClaimedNames() {
 				what, prev.what, name)
 			return
 		}
+		// Go spells top-level names with its initialisms (internal/goname),
+		// so ProbeId and ProbeID are one Go symbol: claimed in a key space
+		// of their own beside the shared one
+		goKey := "\x00go:" + goname.Initialisms(name)
+		if prev, ok := registry[goKey]; ok {
+			c.errf(pos, "%s collides with %s — both generate the Go symbol %s; rename at the source (SPEC §4.6)",
+				what, prev.what, goname.Initialisms(name))
+			return
+		}
 		registry[name] = origin{what: what, pos: pos}
+		registry[goKey] = origin{what: what, pos: pos}
 	}
 
 	// unit-level symbols first, so every collision reports at the DECL side

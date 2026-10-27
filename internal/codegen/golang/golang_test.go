@@ -118,13 +118,11 @@ func TestEnumExtentEmitted(t *testing.T) {
 	}
 
 	goFiles, goErr := Generate(u)
-	// go/format aligns const blocks, so the symbol and its value are asserted
-	// as separate needles rather than one whitespace-sensitive line
-	addTarget("Go", goFiles, goErr,
-		expectation{"WeaponMax", 1},
-		expectation{"ShapeTypeMax", 1},
-		expectation{"= 15 // the exported extent (SPEC §4.2)", 1},
-		expectation{"= 2 // the exported extent (SPEC §4.2)", 1})
+	// go/format aligns const blocks, so the columns are collapsed and each
+	// extent is asserted as its whole declaration line
+	addTarget("Go", collapseColumns(goFiles), goErr,
+		expectation{"WeaponMax Weapon = 15\n", 1},
+		expectation{"ShapeTypeMax ShapeType = 2\n", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
 		expectation{"pub const MAX: Weapon = Weapon(15);", 1},
@@ -207,7 +205,7 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 	addTarget("Go", collapseColumns(goFiles), goErr,
 		expectation{"WeaponCount", 0},
 		expectation{"TeamCount", 0},
-		expectation{"WeaponMax Weapon = 15 // the exported extent (SPEC §4.2)", 1})
+		expectation{"WeaponMax Weapon = 15\n", 1})
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
 		expectation{"pub const COUNT: Weapon = Weapon(2);", 1},
@@ -302,9 +300,9 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	}
 
 	goFiles, goErr := Generate(u)
-	addTarget("Go", goFiles, goErr,
+	addTarget("Go", collapseColumns(goFiles), goErr,
 		expectation{"type ShapeType uint8", 1},
-		expectation{"ShapeTypeMax", 1},
+		expectation{"ShapeTypeMax ShapeType = 2\n", 1},
 		expectation{"type Shape struct", 1},
 		expectation{"func WriteShape(stream *serialize.WriteStream, value *Shape) error", 1},
 		expectation{"func ReadShape(stream *serialize.ReadStream, value *Shape) error", 1},
@@ -498,7 +496,7 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 	// A fixed scalar array whose elements each fill a whole chunk: flattening
 	// removes no stream call, so the run falls back — over ONE item.
 	files := generateGo(t, "Span", "package t\n\ntype Pair { values [2]float64 }\n")
-	if got := countAcross(files, "for i := int(0); i < 2; i++ {"); got != 2 {
+	if got := countAcross(files, "for i := 0; i < 2; i++ {"); got != 2 {
 		t.Errorf("[2]float64 emitted %d element loops, want 2 (one write, one read) — "+
 			"a fallback over pieces emits the loop once per element and doubles the wire", got)
 	}

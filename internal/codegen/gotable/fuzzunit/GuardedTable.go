@@ -21,7 +21,7 @@ func PatrolReset(value *Patrol) {
 	value.Active = false
 	value.Speed = 1.0
 	value.HasTarget = false
-	value.TargetId = 0
+	value.TargetID = 0
 	value.Wander = 0.5
 	clear(value.Note[:])
 	value.NoteLength = 0
@@ -81,14 +81,14 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 	}
 	if value.Active && value.HasTarget {
 		{
-			if value.TargetId != 0 {
+			if value.TargetID != 0 {
 				if ref := w.Ids.refAtHit(103, 0xb7bc9ac015a25050); !w.headerPair(ref, 4) {
 					w.headerRest(ref, 4)
 				}
-				if value.TargetId < 0 || value.TargetId > 1000 {
+				if value.TargetID < 0 || value.TargetID > 1000 {
 					return false
 				}
-				w.Put32(uint32(value.TargetId))
+				w.Put32(uint32(value.TargetID))
 			}
 		}
 	}
@@ -260,7 +260,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetID = int32(v)
 					}
 					r.Report.Widened++
 					break
@@ -287,7 +287,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				}
-				value.TargetId = int32(v)
+				value.TargetID = int32(v)
 			}
 		case 0xb8c758d8bd1845d4: // wander
 			if kind != 10 {
@@ -421,14 +421,14 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 	}
 	if value.Active && value.HasTarget {
 		{
-			if value.TargetId != 0 {
+			if value.TargetID != 0 {
 				if ref := w.Ids.refAtHit(103, 0xb7bc9ac015a25050); !w.headerPair(ref, 4) {
 					w.headerRest(ref, 4)
 				}
-				if value.TargetId < 0 || value.TargetId > 1000 {
+				if value.TargetID < 0 || value.TargetID > 1000 {
 					return false
 				}
-				w.Put32(uint32(value.TargetId))
+				w.Put32(uint32(value.TargetID))
 			}
 		}
 	}
@@ -604,7 +604,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetID = int32(v)
 					}
 					r.Report.Widened++
 					break
@@ -631,7 +631,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 					r.Report.Clamped++
 					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 				}
-				value.TargetId = int32(v)
+				value.TargetID = int32(v)
 			}
 		case 0xb8c758d8bd1845d4: // wander
 			if kind != 10 {
@@ -909,7 +909,7 @@ var PatrolTableFields = []TableFieldInfo{
 		Guard: "active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "target_id", Json: "target_id", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xb7bc9ac015a25050, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,

@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
 
@@ -10,16 +11,17 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// type DefaultArm
+// DefaultArm is the storage of schema type DefaultArm; WriteDefaultArm and
+// ReadDefaultArm carry it on the wire.
 type DefaultArm struct {
 	Entries      [2]ProbeConfig // used count beside it; wire count in [0, 2]
 	EntriesCount int32
 	Marker       uint8 // wire [0, 7]
 }
 
-// NewDefaultArm returns a DefaultArm with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewDefaultArm returns a DefaultArm with its specified defaults applied. The
+// plain zero value is the all-zero form: a specified default is the only thing
+// that overrides zero initialization.
 func NewDefaultArm() DefaultArm {
 	var value DefaultArm
 	for i := range value.Entries {
@@ -28,57 +30,56 @@ func NewDefaultArm() DefaultArm {
 	return value
 }
 
-// DefaultArmMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// DefaultArmMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// DefaultArmMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const DefaultArmMaxBits = 77
+
+// DefaultArmMaxBytes is DefaultArmMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const DefaultArmMaxBytes = 16
 
+// WriteDefaultArm writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteDefaultArm(stream *serialize.WriteStream, value *DefaultArm) error {
 	if value.EntriesCount < 0 || value.EntriesCount > 2 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.EntriesCount)
-		stream.SerializeBits(&offsetValue, 2)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.EntriesCount)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.EntriesCount; i++ {
-		enumValue1 := int32(value.Entries[i].Preferred)
-		if enumValue1 < 0 || enumValue1 > 15 {
+		if value.Entries[i].Preferred > 15 {
 			return serialize.ErrValueOutOfRange
 		}
-		f0 := (uint64(uint32(value.Entries[i].Retries))) & 0xffffffff
-		f1 := (uint64(uint32(enumValue1))) & 0xf
-		w0 := f0 | (f1 << 32)
+		f0 := uint64(value.Entries[i].Retries) & 0xffffffff
+		f1 := uint64(value.Entries[i].Preferred) & 0xf
+		w0 := f0 | f1<<32
 		stream.SerializeBits64(&w0, 36)
 	}
-	{
-		rangeValue := int32(value.Marker)
-		if rangeValue < 0 || rangeValue > 7 {
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			offsetValue := uint32(rangeValue)
-			stream.SerializeBits(&offsetValue, 3)
-		}
+	if value.Marker > 7 {
+		return serialize.ErrValueOutOfRange
 	}
+	offsetValue2 := uint32(value.Marker)
+	stream.SerializeBits(&offsetValue2, 3)
 	return stream.Err()
 }
 
+// ReadDefaultArm reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadDefaultArm(stream *serialize.ReadStream, value *DefaultArm) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.EntriesCount = int32(offsetValue)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.EntriesCount = int32(offsetValue)
 	for i := int32(0); i < value.EntriesCount; i++ {
 		c0 := uint64(0)
 		stream.SerializeBits64(&c0, 36)
@@ -88,33 +89,34 @@ func ReadDefaultArm(stream *serialize.ReadStream, value *DefaultArm) error {
 		v0 := c0 & 0xffffffff
 		value.Entries[i].Retries = int32(v0)
 		v1 := (c0 >> 32) & 0xf
-		value.Entries[i].Preferred = Weapon(int32(v1))
+		value.Entries[i].Preferred = Weapon(v1)
 	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 3)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		value.Marker = uint8(int32(offsetValue))
+	offsetValue2 := uint32(0)
+	stream.SerializeBits(&offsetValue2, 3)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	value.Marker = uint8(offsetValue2)
 	return stream.Err()
 }
 
-// DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
+// DefaultChoiceType is the tag of union DefaultChoice: None = 0, then each arm
+// in declared order.
 type DefaultChoiceType uint8
 
+// The DefaultChoiceType tags. DefaultChoiceTypeMax is the highest tag a read
+// accepts.
 const (
 	DefaultChoiceTypeNone   DefaultChoiceType = 0
 	DefaultChoiceTypeFirst  DefaultChoiceType = 1
 	DefaultChoiceTypeSecond DefaultChoiceType = 2
-	DefaultChoiceTypeMax    DefaultChoiceType = 2 // the exported extent (SPEC §4.2)
+	DefaultChoiceTypeMax    DefaultChoiceType = 2
 )
 
-// EnumNameDefaultChoiceType: debug/log/tooling name for any DefaultChoiceType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameDefaultChoiceType(value DefaultChoiceType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to DefaultChoiceTypeMax).
+func (v DefaultChoiceType) String() string {
+	switch v {
 	case DefaultChoiceTypeNone:
 		return "None"
 	case DefaultChoiceTypeFirst:
@@ -125,72 +127,94 @@ func EnumNameDefaultChoiceType(value DefaultChoiceType) string {
 	return "???"
 }
 
-// DefaultChoice — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read constructs the selected arm with its defaults before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
-// reused-storage discipline. Consumers read the selected arm only.
+// EnumNameDefaultChoiceType returns the variant name of value, or "???" for a
+// value outside the declared variants. It is value.String() under the name
+// every target gives its debug-name function.
+func EnumNameDefaultChoiceType(value DefaultChoiceType) string {
+	return value.String()
+}
+
+// DefaultChoice is union DefaultChoice: at most one arm, and Type says which.
+//
+// The zero value is the empty union, None. The struct holds every arm side by
+// side rather than one arm behind an interface: an interface value would
+// heap-allocate per value, and generated storage never allocates. A read
+// constructs the selected arm with its defaults before decoding it; unselected
+// arms keep what they last held, so read only the arm Type selects.
 type DefaultChoice struct {
 	Type   DefaultChoiceType
 	First  DefaultArm
 	Second DefaultArm
 }
 
-// DefaultChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-// DefaultChoiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// DefaultChoiceMaxBits is the tag plus the largest arm, in bits; None costs the
+// tag only.
 const DefaultChoiceMaxBits = 79
+
+// DefaultChoiceMaxBytes is DefaultChoiceMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const DefaultChoiceMaxBytes = 16
 
+// WriteDefaultChoice writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteDefaultChoice(stream *serialize.WriteStream, value *DefaultChoice) error {
-	tagValue := int32(value.Type)
-	if tagValue < 0 || tagValue > 2 { // the tag validates BEFORE it rides (SPEC §4.8)
+	if value.Type > DefaultChoiceTypeMax { // the tag validates BEFORE it rides
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(tagValue)
-		stream.SerializeBits(&offsetValue, 2)
-	}
+	tagValue := uint32(value.Type)
+	stream.SerializeBits(&tagValue, 2)
 	switch value.Type {
 	case DefaultChoiceTypeFirst:
 		return WriteDefaultArm(stream, &value.First)
 	case DefaultChoiceTypeSecond:
 		return WriteDefaultArm(stream, &value.Second)
 	}
-	return stream.Err() // None — the tag is the whole wire (SPEC §4.8)
+	return stream.Err() // None — the tag is the whole wire
 }
 
+// ReadDefaultChoice reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadDefaultChoice(stream *serialize.ReadStream, value *DefaultChoice) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Type = DefaultChoiceType(int32(offsetValue))
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Type = DefaultChoiceType(offsetValue)
 	switch value.Type {
 	case DefaultChoiceTypeFirst:
-		value.First = NewDefaultArm() // fresh payload on every selection (SPEC §4.8)
+		value.First = NewDefaultArm() // fresh payload on every selection
 		return ReadDefaultArm(stream, &value.First)
 	case DefaultChoiceTypeSecond:
-		value.Second = NewDefaultArm() // fresh payload on every selection (SPEC §4.8)
+		value.Second = NewDefaultArm() // fresh payload on every selection
 		return ReadDefaultArm(stream, &value.Second)
 	}
 	return stream.Err() // None
 }
 
-// type DefaultChoicePacket
+// DefaultChoicePacket is the storage of schema type DefaultChoicePacket;
+// WriteDefaultChoicePacket and ReadDefaultChoicePacket carry it on the wire.
 type DefaultChoicePacket struct {
 	Choice DefaultChoice
 }
 
-// DefaultChoicePacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// DefaultChoicePacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// DefaultChoicePacketMaxBits is the longest wire path in bits, alignment
+// padding at its worst case.
 const DefaultChoicePacketMaxBits = 79
+
+// DefaultChoicePacketMaxBytes is DefaultChoicePacketMaxBits in bytes, rounded
+// up to the 8-byte write-buffer granularity: size write buffers from it.
 const DefaultChoicePacketMaxBytes = 16
 
+// WriteDefaultChoicePacket writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteDefaultChoicePacket(stream *serialize.WriteStream, value *DefaultChoicePacket) error {
 	if err := WriteDefaultChoice(stream, &value.Choice); err != nil {
 		return err
@@ -198,6 +222,9 @@ func WriteDefaultChoicePacket(stream *serialize.WriteStream, value *DefaultChoic
 	return stream.Err()
 }
 
+// ReadDefaultChoicePacket reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadDefaultChoicePacket(stream *serialize.ReadStream, value *DefaultChoicePacket) error {
 	if err := ReadDefaultChoice(stream, &value.Choice); err != nil {
 		return err
@@ -205,27 +232,35 @@ func ReadDefaultChoicePacket(stream *serialize.ReadStream, value *DefaultChoiceP
 	return stream.Err()
 }
 
-// type DefaultBulkArm
+// DefaultBulkArm is the storage of schema type DefaultBulkArm;
+// WriteDefaultBulkArm and ReadDefaultBulkArm carry it on the wire.
 type DefaultBulkArm struct {
 	Payload    DefaultArm
-	Data       [2]byte // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
+	Data       [2]byte // bytes(2): fixed buffer, used length beside it
 	DataLength int32
 }
 
-// NewDefaultBulkArm returns a DefaultBulkArm with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewDefaultBulkArm returns a DefaultBulkArm with its specified defaults
+// applied. The plain zero value is the all-zero form: a specified default is
+// the only thing that overrides zero initialization.
 func NewDefaultBulkArm() DefaultBulkArm {
 	var value DefaultBulkArm
 	value.Payload = NewDefaultArm()
 	return value
 }
 
-// DefaultBulkArmMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// DefaultBulkArmMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// DefaultBulkArmMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const DefaultBulkArmMaxBits = 102
+
+// DefaultBulkArmMaxBytes is DefaultBulkArmMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const DefaultBulkArmMaxBytes = 16
 
+// WriteDefaultBulkArm writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteDefaultBulkArm(stream *serialize.WriteStream, value *DefaultBulkArm) error {
 	if err := WriteDefaultArm(stream, &value.Payload); err != nil {
 		return err
@@ -233,50 +268,52 @@ func WriteDefaultBulkArm(stream *serialize.WriteStream, value *DefaultBulkArm) e
 	if value.DataLength < 0 || value.DataLength > 2 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.DataLength)
-		stream.SerializeBits(&offsetValue, 2)
-	}
-	if stream.Err() != nil { // the length guards the slice (§6.3)
+	offsetValue := uint32(value.DataLength)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.Data[:value.DataLength])
 	return stream.Err()
 }
 
+// ReadDefaultBulkArm reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadDefaultBulkArm(stream *serialize.ReadStream, value *DefaultBulkArm) error {
 	if err := ReadDefaultArm(stream, &value.Payload); err != nil {
 		return err
 	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.DataLength = int32(offsetValue)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.DataLength = int32(offsetValue)
 	stream.SerializeBytes(value.Data[:value.DataLength])
 	return stream.Err()
 }
 
-// DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
+// DefaultBulkChoiceType is the tag of union DefaultBulkChoice: None = 0, then
+// each arm in declared order.
 type DefaultBulkChoiceType uint8
 
+// The DefaultBulkChoiceType tags. DefaultBulkChoiceTypeMax is the highest tag a
+// read accepts.
 const (
 	DefaultBulkChoiceTypeNone   DefaultBulkChoiceType = 0
 	DefaultBulkChoiceTypeFirst  DefaultBulkChoiceType = 1
 	DefaultBulkChoiceTypeSecond DefaultBulkChoiceType = 2
-	DefaultBulkChoiceTypeMax    DefaultBulkChoiceType = 2 // the exported extent (SPEC §4.2)
+	DefaultBulkChoiceTypeMax    DefaultBulkChoiceType = 2
 )
 
-// EnumNameDefaultBulkChoiceType: debug/log/tooling name for any DefaultBulkChoiceType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameDefaultBulkChoiceType(value DefaultBulkChoiceType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to DefaultBulkChoiceTypeMax).
+func (v DefaultBulkChoiceType) String() string {
+	switch v {
 	case DefaultBulkChoiceTypeNone:
 		return "None"
 	case DefaultBulkChoiceTypeFirst:
@@ -287,57 +324,73 @@ func EnumNameDefaultBulkChoiceType(value DefaultBulkChoiceType) string {
 	return "???"
 }
 
-// DefaultBulkChoice — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read constructs the selected arm with its defaults before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
-// reused-storage discipline. Consumers read the selected arm only.
+// EnumNameDefaultBulkChoiceType returns the variant name of value, or "???" for
+// a value outside the declared variants. It is value.String() under the name
+// every target gives its debug-name function.
+func EnumNameDefaultBulkChoiceType(value DefaultBulkChoiceType) string {
+	return value.String()
+}
+
+// DefaultBulkChoice is union DefaultBulkChoice: at most one arm, and Type says
+// which.
+//
+// The zero value is the empty union, None. The struct holds every arm side by
+// side rather than one arm behind an interface: an interface value would
+// heap-allocate per value, and generated storage never allocates. A read
+// constructs the selected arm with its defaults before decoding it; unselected
+// arms keep what they last held, so read only the arm Type selects.
 type DefaultBulkChoice struct {
 	Type   DefaultBulkChoiceType
 	First  DefaultBulkArm
 	Second DefaultBulkArm
 }
 
-// DefaultBulkChoiceMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-// DefaultBulkChoiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// DefaultBulkChoiceMaxBits is the tag plus the largest arm, in bits; None costs
+// the tag only.
 const DefaultBulkChoiceMaxBits = 104
+
+// DefaultBulkChoiceMaxBytes is DefaultBulkChoiceMaxBits in bytes, rounded up to
+// the 8-byte write-buffer granularity: size write buffers from it.
 const DefaultBulkChoiceMaxBytes = 16
 
+// WriteDefaultBulkChoice writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteDefaultBulkChoice(stream *serialize.WriteStream, value *DefaultBulkChoice) error {
-	tagValue := int32(value.Type)
-	if tagValue < 0 || tagValue > 2 { // the tag validates BEFORE it rides (SPEC §4.8)
+	if value.Type > DefaultBulkChoiceTypeMax { // the tag validates BEFORE it rides
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(tagValue)
-		stream.SerializeBits(&offsetValue, 2)
-	}
+	tagValue := uint32(value.Type)
+	stream.SerializeBits(&tagValue, 2)
 	switch value.Type {
 	case DefaultBulkChoiceTypeFirst:
 		return WriteDefaultBulkArm(stream, &value.First)
 	case DefaultBulkChoiceTypeSecond:
 		return WriteDefaultBulkArm(stream, &value.Second)
 	}
-	return stream.Err() // None — the tag is the whole wire (SPEC §4.8)
+	return stream.Err() // None — the tag is the whole wire
 }
 
+// ReadDefaultBulkChoice reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadDefaultBulkChoice(stream *serialize.ReadStream, value *DefaultBulkChoice) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Type = DefaultBulkChoiceType(int32(offsetValue))
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Type = DefaultBulkChoiceType(offsetValue)
 	switch value.Type {
 	case DefaultBulkChoiceTypeFirst:
-		value.First = NewDefaultBulkArm() // fresh payload on every selection (SPEC §4.8)
+		value.First = NewDefaultBulkArm() // fresh payload on every selection
 		return ReadDefaultBulkArm(stream, &value.First)
 	case DefaultBulkChoiceTypeSecond:
-		value.Second = NewDefaultBulkArm() // fresh payload on every selection (SPEC §4.8)
+		value.Second = NewDefaultBulkArm() // fresh payload on every selection
 		return ReadDefaultBulkArm(stream, &value.Second)
 	}
 	return stream.Err() // None

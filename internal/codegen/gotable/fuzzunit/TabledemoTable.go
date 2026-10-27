@@ -478,7 +478,7 @@ type PatrolRow struct {
 	Speed      float32
 	HasTarget  bool
 	_          [3]byte // generated padding
-	TargetId   int32
+	TargetID   int32
 	Wander     float32
 	Note       [9]byte // string(8): buffer, used length beside it
 	_          [3]byte // generated padding

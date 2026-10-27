@@ -302,7 +302,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "session_id", Json: "session_id", TypeName: "uint64", DeclaredTypeName: "uint64", Id: 0xb7d7b5650a590b05, Kind: 9, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BenchMixed{}.SessionId)), ElemSize: uint32(unsafe.Sizeof(BenchMixed{}.SessionId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BenchMixed{}.SessionID)), ElemSize: uint32(unsafe.Sizeof(BenchMixed{}.SessionID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
@@ -313,7 +313,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "client_id", Json: "client_id", TypeName: "uint32", DeclaredTypeName: "uint32", Id: 0x6d7b98e2d095967e, Kind: 8, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BenchMixed{}.ClientId)), ElemSize: uint32(unsafe.Sizeof(BenchMixed{}.ClientId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BenchMixed{}.ClientID)), ElemSize: uint32(unsafe.Sizeof(BenchMixed{}.ClientID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
@@ -753,7 +753,7 @@ func init() {
 	}}
 	tableViewPacketTypes[5] = TableTypeInfo{Name: "MixedEntity", Size: uint32(unsafe.Sizeof(MixedEntity{})), NumFields: 14, Reset: func(p unsafe.Pointer) { *(*MixedEntity)(p) = MixedEntity{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "entity_id", Json: "entity_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0x23fcfd6678e36712, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedEntity{}.EntityId)), ElemSize: uint32(unsafe.Sizeof(MixedEntity{}.EntityId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedEntity{}.EntityID)), ElemSize: uint32(unsafe.Sizeof(MixedEntity{}.EntityID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
@@ -909,7 +909,7 @@ func init() {
 	}}
 	tableViewPacketTypes[6] = TableTypeInfo{Name: "MixedHitEvent", Size: uint32(unsafe.Sizeof(MixedHitEvent{})), NumFields: 4, Reset: func(p unsafe.Pointer) { *(*MixedHitEvent)(p) = MixedHitEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "target_id", Json: "target_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", Id: 0xb7bc9ac015a25050, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId)), ElemSize: uint32(unsafe.Sizeof(MixedHitEvent{}.TargetId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedHitEvent{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(MixedHitEvent{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
@@ -955,7 +955,7 @@ func init() {
 	}}
 	tableViewPacketTypes[7] = TableTypeInfo{Name: "MixedPickupEvent", Size: uint32(unsafe.Sizeof(MixedPickupEvent{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*MixedPickupEvent)(p) = MixedPickupEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "item_id", Json: "item_id", TypeName: "bits(10)", DeclaredTypeName: "bits(10)", Id: 0x9e7fd06d864fbd56, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId)), ElemSize: uint32(unsafe.Sizeof(MixedPickupEvent{}.ItemId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemID)), ElemSize: uint32(unsafe.Sizeof(MixedPickupEvent{}.ItemID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, RangeUintMin: 0, RangeUintMax: 1023, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,
@@ -979,7 +979,7 @@ func init() {
 	}}
 	tableViewPacketTypes[8] = TableTypeInfo{Name: "MixedStat", Size: uint32(unsafe.Sizeof(MixedStat{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*MixedStat)(p) = MixedStat{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "stat_id", Json: "stat_id", TypeName: "bits(8)", DeclaredTypeName: "bits(8)", Id: 0x80ab75f0866dbf65, Kind: 6, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedStat{}.StatId)), ElemSize: uint32(unsafe.Sizeof(MixedStat{}.StatId)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(MixedStat{}.StatID)), ElemSize: uint32(unsafe.Sizeof(MixedStat{}.StatID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeUintMin: 0, RangeUintMax: 255, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 			EnumName:    nil,

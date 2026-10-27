@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
 
@@ -10,319 +11,410 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// type Vec2
+// Vec2 is the storage of schema type Vec2; WriteVec2 and ReadVec2 carry it on
+// the wire.
 type Vec2 struct {
 	X float64
 	Y float64
 }
 
-// Vec2MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// Vec2MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// Vec2MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const Vec2MaxBits = 128
+
+// Vec2MaxBytes is Vec2MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const Vec2MaxBytes = 16
 
+// WriteVec2 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteVec2(stream *serialize.WriteStream, value *Vec2) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
 	return stream.Err()
 }
 
+// ReadVec2 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadVec2(stream *serialize.ReadStream, value *Vec2) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
 	return stream.Err()
 }
 
-// type SpanF64
+// SpanF64 is the storage of schema type SpanF64; WriteSpanF64 and ReadSpanF64
+// carry it on the wire.
 type SpanF64 struct {
 	Values [2]float64
 }
 
-// SpanF64MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SpanF64MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SpanF64MaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const SpanF64MaxBits = 128
+
+// SpanF64MaxBytes is SpanF64MaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const SpanF64MaxBytes = 16
 
+// WriteSpanF64 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanF64(stream *serialize.WriteStream, value *SpanF64) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	return stream.Err()
 }
 
+// ReadSpanF64 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSpanF64(stream *serialize.ReadStream, value *SpanF64) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	return stream.Err()
 }
 
-// type SpanU64
+// SpanU64 is the storage of schema type SpanU64; WriteSpanU64 and ReadSpanU64
+// carry it on the wire.
 type SpanU64 struct {
 	Values [2]uint64
 }
 
-// SpanU64MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SpanU64MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SpanU64MaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const SpanU64MaxBits = 128
+
+// SpanU64MaxBytes is SpanU64MaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const SpanU64MaxBytes = 16
 
+// WriteSpanU64 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanU64(stream *serialize.WriteStream, value *SpanU64) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeBits64(&value.Values[i], 64)
 	}
 	return stream.Err()
 }
 
+// ReadSpanU64 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSpanU64(stream *serialize.ReadStream, value *SpanU64) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeBits64(&value.Values[i], 64)
 	}
 	return stream.Err()
 }
 
-// type SpanI64
+// SpanI64 is the storage of schema type SpanI64; WriteSpanI64 and ReadSpanI64
+// carry it on the wire.
 type SpanI64 struct {
 	Values [2]int64
 }
 
-// SpanI64MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SpanI64MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SpanI64MaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const SpanI64MaxBits = 128
+
+// SpanI64MaxBytes is SpanI64MaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const SpanI64MaxBytes = 16
 
+// WriteSpanI64 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanI64(stream *serialize.WriteStream, value *SpanI64) error {
-	for i := int(0); i < 2; i++ {
-		{
-			rawValue := uint64(value.Values[i])
-			stream.SerializeBits64(&rawValue, 64)
-		}
+	for i := 0; i < 2; i++ {
+		rawValue := uint64(value.Values[i])
+		stream.SerializeBits64(&rawValue, 64)
 	}
 	return stream.Err()
 }
 
+// ReadSpanI64 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSpanI64(stream *serialize.ReadStream, value *SpanI64) error {
-	for i := int(0); i < 2; i++ {
-		{
-			rawValue := uint64(0)
-			stream.SerializeBits64(&rawValue, 64)
-			value.Values[i] = int64(rawValue)
-		}
+	for i := 0; i < 2; i++ {
+		rawValue := uint64(0)
+		stream.SerializeBits64(&rawValue, 64)
+		value.Values[i] = int64(rawValue)
 	}
 	return stream.Err()
 }
 
-// type SpanOne
+// SpanOne is the storage of schema type SpanOne; WriteSpanOne and ReadSpanOne
+// carry it on the wire.
 type SpanOne struct {
 	Values [1]uint64
 }
 
-// SpanOneMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SpanOneMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SpanOneMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const SpanOneMaxBits = 64
+
+// SpanOneMaxBytes is SpanOneMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const SpanOneMaxBytes = 8
 
+// WriteSpanOne writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanOne(stream *serialize.WriteStream, value *SpanOne) error {
-	for i := int(0); i < 1; i++ {
+	for i := 0; i < 1; i++ {
 		stream.SerializeBits64(&value.Values[i], 64)
 	}
 	return stream.Err()
 }
 
+// ReadSpanOne reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSpanOne(stream *serialize.ReadStream, value *SpanOne) error {
-	for i := int(0); i < 1; i++ {
+	for i := 0; i < 1; i++ {
 		stream.SerializeBits64(&value.Values[i], 64)
 	}
 	return stream.Err()
 }
 
-// type SpanChunk
+// SpanChunk is the storage of schema type SpanChunk; WriteSpanChunk and
+// ReadSpanChunk carry it on the wire.
 type SpanChunk struct {
 	Values [4]uint16
 }
 
-// SpanChunkMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SpanChunkMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SpanChunkMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const SpanChunkMaxBits = 64
+
+// SpanChunkMaxBytes is SpanChunkMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const SpanChunkMaxBytes = 8
 
+// WriteSpanChunk writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanChunk(stream *serialize.WriteStream, value *SpanChunk) error {
-	{
-		f0 := (uint64(value.Values[0])) & 0xffff
-		f1 := (uint64(value.Values[1])) & 0xffff
-		f2 := (uint64(value.Values[2])) & 0xffff
-		f3 := (uint64(value.Values[3])) & 0xffff
-		w0 := f0 | (f1 << 16) | (f2 << 32) | (f3 << 48)
-		stream.SerializeBits64(&w0, 64)
-	}
+	f0 := uint64(value.Values[0]) & 0xffff
+	f1 := uint64(value.Values[1]) & 0xffff
+	f2 := uint64(value.Values[2]) & 0xffff
+	f3 := uint64(value.Values[3]) & 0xffff
+	w0 := f0 | f1<<16 | f2<<32 | f3<<48
+	stream.SerializeBits64(&w0, 64)
 	return stream.Err()
 }
 
+// ReadSpanChunk reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSpanChunk(stream *serialize.ReadStream, value *SpanChunk) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffff
-		value.Values[0] = uint16(v0)
-		v1 := (c0 >> 16) & 0xffff
-		value.Values[1] = uint16(v1)
-		v2 := (c0 >> 32) & 0xffff
-		value.Values[2] = uint16(v2)
-		v3 := (c0 >> 48) & 0xffff
-		value.Values[3] = uint16(v3)
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xffff
+	value.Values[0] = uint16(v0)
+	v1 := (c0 >> 16) & 0xffff
+	value.Values[1] = uint16(v1)
+	v2 := (c0 >> 32) & 0xffff
+	value.Values[2] = uint16(v2)
+	v3 := (c0 >> 48) & 0xffff
+	value.Values[3] = uint16(v3)
 	return stream.Err()
 }
 
-// type SpanTail
+// SpanTail is the storage of schema type SpanTail; WriteSpanTail and
+// ReadSpanTail carry it on the wire.
 type SpanTail struct {
 	Values [2]float64
 	Tail   uint32
 }
 
-// SpanTailMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SpanTailMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SpanTailMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const SpanTailMaxBits = 160
+
+// SpanTailMaxBytes is SpanTailMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const SpanTailMaxBytes = 24
 
+// WriteSpanTail writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanTail(stream *serialize.WriteStream, value *SpanTail) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	stream.SerializeBits(&value.Tail, 32)
 	return stream.Err()
 }
 
+// ReadSpanTail reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSpanTail(stream *serialize.ReadStream, value *SpanTail) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.Values[i])
 	}
 	stream.SerializeBits(&value.Tail, 32)
 	return stream.Err()
 }
 
-// type SpanTwice
+// SpanTwice is the storage of schema type SpanTwice; WriteSpanTwice and
+// ReadSpanTwice carry it on the wire.
 type SpanTwice struct {
 	A [2]float64
 	B [2]float64
 }
 
-// SpanTwiceMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SpanTwiceMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SpanTwiceMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const SpanTwiceMaxBits = 256
+
+// SpanTwiceMaxBytes is SpanTwiceMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const SpanTwiceMaxBytes = 32
 
+// WriteSpanTwice writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSpanTwice(stream *serialize.WriteStream, value *SpanTwice) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.A[i])
 	}
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.B[i])
 	}
 	return stream.Err()
 }
 
+// ReadSpanTwice reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSpanTwice(stream *serialize.ReadStream, value *SpanTwice) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.A[i])
 	}
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.B[i])
 	}
 	return stream.Err()
 }
 
-// type Trio
+// Trio is the storage of schema type Trio; WriteTrio and ReadTrio carry it on
+// the wire.
 type Trio struct {
 	A uint32
 	B uint32
 	C uint32
 }
 
-// TrioMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// TrioMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// TrioMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const TrioMaxBits = 64
+
+// TrioMaxBytes is TrioMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const TrioMaxBytes = 8
 
+// WriteTrio writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrio(stream *serialize.WriteStream, value *Trio) error {
-	{
-		f0 := (uint64(value.A)) & 0xfffff
-		f1 := (uint64(value.B)) & 0xfffff
-		f2 := (uint64(value.C)) & 0xffffff
-		w0 := f0 | (f1 << 20) | (f2 << 40)
-		stream.SerializeBits64(&w0, 64)
-	}
+	f0 := uint64(value.A) & 0xfffff
+	f1 := uint64(value.B) & 0xfffff
+	f2 := uint64(value.C) & 0xffffff
+	w0 := f0 | f1<<20 | f2<<40
+	stream.SerializeBits64(&w0, 64)
 	return stream.Err()
 }
 
+// ReadTrio reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadTrio(stream *serialize.ReadStream, value *Trio) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xfffff
-		value.A = uint32(v0)
-		v1 := (c0 >> 20) & 0xfffff
-		value.B = uint32(v1)
-		v2 := (c0 >> 40) & 0xffffff
-		value.C = uint32(v2)
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xfffff
+	value.A = uint32(v0)
+	v1 := (c0 >> 20) & 0xfffff
+	value.B = uint32(v1)
+	v2 := (c0 >> 40) & 0xffffff
+	value.C = uint32(v2)
 	return stream.Err()
 }
 
-// type TrioSole
+// TrioSole is the storage of schema type TrioSole; WriteTrioSole and
+// ReadTrioSole carry it on the wire.
 type TrioSole struct {
 	Inner Trio
 }
 
-// TrioSoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// TrioSoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// TrioSoleMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const TrioSoleMaxBits = 64
+
+// TrioSoleMaxBytes is TrioSoleMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const TrioSoleMaxBytes = 8
 
+// WriteTrioSole writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrioSole(stream *serialize.WriteStream, value *TrioSole) error {
-	{
-		f0 := (uint64(value.Inner.A)) & 0xfffff
-		f1 := (uint64(value.Inner.B)) & 0xfffff
-		f2 := (uint64(value.Inner.C)) & 0xffffff
-		w0 := f0 | (f1 << 20) | (f2 << 40)
-		stream.SerializeBits64(&w0, 64)
-	}
+	f0 := uint64(value.Inner.A) & 0xfffff
+	f1 := uint64(value.Inner.B) & 0xfffff
+	f2 := uint64(value.Inner.C) & 0xffffff
+	w0 := f0 | f1<<20 | f2<<40
+	stream.SerializeBits64(&w0, 64)
 	return stream.Err()
 }
 
+// ReadTrioSole reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadTrioSole(stream *serialize.ReadStream, value *TrioSole) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xfffff
-		value.Inner.A = uint32(v0)
-		v1 := (c0 >> 20) & 0xfffff
-		value.Inner.B = uint32(v1)
-		v2 := (c0 >> 40) & 0xffffff
-		value.Inner.C = uint32(v2)
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xfffff
+	value.Inner.A = uint32(v0)
+	v1 := (c0 >> 20) & 0xfffff
+	value.Inner.B = uint32(v1)
+	v2 := (c0 >> 40) & 0xffffff
+	value.Inner.C = uint32(v2)
 	return stream.Err()
 }
 
-// type Vec3Sole
+// Vec3Sole is the storage of schema type Vec3Sole; WriteVec3Sole and
+// ReadVec3Sole carry it on the wire.
 type Vec3Sole struct {
 	V Vec3
 }
 
-// Vec3SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// Vec3SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// Vec3SoleMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const Vec3SoleMaxBits = 192
+
+// Vec3SoleMaxBytes is Vec3SoleMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const Vec3SoleMaxBytes = 24
 
+// WriteVec3Sole writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteVec3Sole(stream *serialize.WriteStream, value *Vec3Sole) error {
 	if err := WriteVec3(stream, &value.V); err != nil {
 		return err
@@ -330,6 +422,9 @@ func WriteVec3Sole(stream *serialize.WriteStream, value *Vec3Sole) error {
 	return stream.Err()
 }
 
+// ReadVec3Sole reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadVec3Sole(stream *serialize.ReadStream, value *Vec3Sole) error {
 	if err := ReadVec3(stream, &value.V); err != nil {
 		return err
@@ -337,54 +432,61 @@ func ReadVec3Sole(stream *serialize.ReadStream, value *Vec3Sole) error {
 	return stream.Err()
 }
 
-// type TrioFirst
+// TrioFirst is the storage of schema type TrioFirst; WriteTrioFirst and
+// ReadTrioFirst carry it on the wire.
 type TrioFirst struct {
 	Inner   Trio
 	Trailer uint32
 }
 
-// TrioFirstMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// TrioFirstMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// TrioFirstMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const TrioFirstMaxBits = 80
+
+// TrioFirstMaxBytes is TrioFirstMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const TrioFirstMaxBytes = 16
 
+// WriteTrioFirst writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrioFirst(stream *serialize.WriteStream, value *TrioFirst) error {
-	{
-		f0 := (uint64(value.Inner.A)) & 0xfffff
-		f1 := (uint64(value.Inner.B)) & 0xfffff
-		f2 := (uint64(value.Inner.C)) & 0xffffff
-		f3 := (uint64(value.Trailer)) & 0xffff
-		w0 := f0 | (f1 << 20) | (f2 << 40)
-		stream.SerializeBits64(&w0, 64)
-		w1 := uint32(f3)
-		stream.SerializeBits(&w1, 16)
-	}
+	f0 := uint64(value.Inner.A) & 0xfffff
+	f1 := uint64(value.Inner.B) & 0xfffff
+	f2 := uint64(value.Inner.C) & 0xffffff
+	f3 := uint64(value.Trailer) & 0xffff
+	w0 := f0 | f1<<20 | f2<<40
+	stream.SerializeBits64(&w0, 64)
+	w1 := uint32(f3)
+	stream.SerializeBits(&w1, 16)
 	return stream.Err()
 }
 
+// ReadTrioFirst reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadTrioFirst(stream *serialize.ReadStream, value *TrioFirst) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		n1 := uint32(0)
-		stream.SerializeBits(&n1, 16)
-		c1 := uint64(n1)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xfffff
-		value.Inner.A = uint32(v0)
-		v1 := (c0 >> 20) & 0xfffff
-		value.Inner.B = uint32(v1)
-		v2 := (c0 >> 40) & 0xffffff
-		value.Inner.C = uint32(v2)
-		v3 := c1 & 0xffff
-		value.Trailer = uint32(v3)
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	n1 := uint32(0)
+	stream.SerializeBits(&n1, 16)
+	c1 := uint64(n1)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xfffff
+	value.Inner.A = uint32(v0)
+	v1 := (c0 >> 20) & 0xfffff
+	value.Inner.B = uint32(v1)
+	v2 := (c0 >> 40) & 0xffffff
+	value.Inner.C = uint32(v2)
+	v3 := c1 & 0xffff
+	value.Trailer = uint32(v3)
 	return stream.Err()
 }
 
-// type TrioStraddle
+// TrioStraddle is the storage of schema type TrioStraddle; WriteTrioStraddle
+// and ReadTrioStraddle carry it on the wire.
 type TrioStraddle struct {
 	Pad0  uint64
 	Pad1  uint64
@@ -395,11 +497,17 @@ type TrioStraddle struct {
 	Inner Trio
 }
 
-// TrioStraddleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// TrioStraddleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// TrioStraddleMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const TrioStraddleMaxBits = 408
+
+// TrioStraddleMaxBytes is TrioStraddleMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const TrioStraddleMaxBytes = 56
 
+// WriteTrioStraddle writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTrioStraddle(stream *serialize.WriteStream, value *TrioStraddle) error {
 	stream.SerializeBits64(&value.Pad0, 64)
 	stream.SerializeBits64(&value.Pad1, 64)
@@ -407,16 +515,17 @@ func WriteTrioStraddle(stream *serialize.WriteStream, value *TrioStraddle) error
 	stream.SerializeBits64(&value.Pad3, 64)
 	stream.SerializeBits64(&value.Pad4, 64)
 	stream.SerializeBits(&value.Pad5, 24)
-	{
-		f0 := (uint64(value.Inner.A)) & 0xfffff
-		f1 := (uint64(value.Inner.B)) & 0xfffff
-		f2 := (uint64(value.Inner.C)) & 0xffffff
-		w0 := f0 | (f1 << 20) | (f2 << 40)
-		stream.SerializeBits64(&w0, 64)
-	}
+	f0 := uint64(value.Inner.A) & 0xfffff
+	f1 := uint64(value.Inner.B) & 0xfffff
+	f2 := uint64(value.Inner.C) & 0xffffff
+	w0 := f0 | f1<<20 | f2<<40
+	stream.SerializeBits64(&w0, 64)
 	return stream.Err()
 }
 
+// ReadTrioStraddle reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadTrioStraddle(stream *serialize.ReadStream, value *TrioStraddle) error {
 	stream.SerializeBits64(&value.Pad0, 64)
 	stream.SerializeBits64(&value.Pad1, 64)
@@ -424,18 +533,16 @@ func ReadTrioStraddle(stream *serialize.ReadStream, value *TrioStraddle) error {
 	stream.SerializeBits64(&value.Pad3, 64)
 	stream.SerializeBits64(&value.Pad4, 64)
 	stream.SerializeBits(&value.Pad5, 24)
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xfffff
-		value.Inner.A = uint32(v0)
-		v1 := (c0 >> 20) & 0xfffff
-		value.Inner.B = uint32(v1)
-		v2 := (c0 >> 40) & 0xffffff
-		value.Inner.C = uint32(v2)
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xfffff
+	value.Inner.A = uint32(v0)
+	v1 := (c0 >> 20) & 0xfffff
+	value.Inner.B = uint32(v1)
+	v2 := (c0 >> 40) & 0xffffff
+	value.Inner.C = uint32(v2)
 	return stream.Err()
 }

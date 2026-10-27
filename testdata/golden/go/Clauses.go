@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
 
@@ -12,478 +13,602 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// type W13
+// W13 is the storage of schema type W13; WriteW13 and ReadW13 carry it on the
+// wire.
 type W13 struct {
 	Items      [12]uint16 // used count beside it; wire count in [0, 12]
 	ItemsCount int32
 }
 
-// W13MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// W13MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// W13MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const W13MaxBits = 160
+
+// W13MaxBytes is W13MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const W13MaxBytes = 24
 
+// WriteW13 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteW13(stream *serialize.WriteStream, value *W13) error {
 	if value.ItemsCount < 0 || value.ItemsCount > 12 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 4)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			rangeValue := int32(value.Items[i])
-			if rangeValue < 0 || rangeValue > 8191 {
-				return serialize.ErrValueOutOfRange
-			}
-			{
-				offsetValue := uint32(rangeValue)
-				stream.SerializeBits(&offsetValue, 13)
-			}
+		if value.Items[i] > 8191 {
+			return serialize.ErrValueOutOfRange
 		}
+		offsetValue2 := uint32(value.Items[i])
+		stream.SerializeBits(&offsetValue2, 13)
 	}
 	return stream.Err()
 }
 
+// ReadW13 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadW13(stream *serialize.ReadStream, value *W13) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 4)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 12 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ItemsCount = int32(offsetValue)
+	for i := int32(0); i < value.ItemsCount; i++ {
+		offsetValue2 := uint32(0)
+		stream.SerializeBits(&offsetValue2, 13)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if offsetValue > 12 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ItemsCount = int32(offsetValue)
-	}
-	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			offsetValue := uint32(0)
-			stream.SerializeBits(&offsetValue, 13)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Items[i] = uint16(int32(offsetValue))
-		}
+		value.Items[i] = uint16(offsetValue2)
 	}
 	return stream.Err()
 }
 
-// type W17
+// W17 is the storage of schema type W17; WriteW17 and ReadW17 carry it on the
+// wire.
 type W17 struct {
 	Items      [9]uint32 // used count beside it; wire count in [0, 9]
 	ItemsCount int32
 }
 
-// W17MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// W17MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// W17MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const W17MaxBits = 157
+
+// W17MaxBytes is W17MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const W17MaxBytes = 24
 
+// WriteW17 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteW17(stream *serialize.WriteStream, value *W17) error {
 	if value.ItemsCount < 0 || value.ItemsCount > 9 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 4)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			rangeValue := int32(value.Items[i])
-			if rangeValue < 0 || rangeValue > 131071 {
-				return serialize.ErrValueOutOfRange
-			}
-			{
-				offsetValue := uint32(rangeValue)
-				stream.SerializeBits(&offsetValue, 17)
-			}
+		if value.Items[i] > 131071 {
+			return serialize.ErrValueOutOfRange
 		}
+		offsetValue2 := uint32(value.Items[i])
+		stream.SerializeBits(&offsetValue2, 17)
 	}
 	return stream.Err()
 }
 
+// ReadW17 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadW17(stream *serialize.ReadStream, value *W17) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 4)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 9 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ItemsCount = int32(offsetValue)
+	for i := int32(0); i < value.ItemsCount; i++ {
+		offsetValue2 := uint32(0)
+		stream.SerializeBits(&offsetValue2, 17)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if offsetValue > 9 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ItemsCount = int32(offsetValue)
-	}
-	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			offsetValue := uint32(0)
-			stream.SerializeBits(&offsetValue, 17)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Items[i] = uint32(int32(offsetValue))
-		}
+		value.Items[i] = uint32(offsetValue2)
 	}
 	return stream.Err()
 }
 
-// type W26
+// W26 is the storage of schema type W26; WriteW26 and ReadW26 carry it on the
+// wire.
 type W26 struct {
 	Items      [6]uint32 // used count beside it; wire count in [0, 6]
 	ItemsCount int32
 }
 
-// W26MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// W26MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// W26MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const W26MaxBits = 159
+
+// W26MaxBytes is W26MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const W26MaxBytes = 24
 
+// WriteW26 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteW26(stream *serialize.WriteStream, value *W26) error {
 	if value.ItemsCount < 0 || value.ItemsCount > 6 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 3)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 3)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			rangeValue := int32(value.Items[i])
-			if rangeValue < 0 || rangeValue > 67108863 {
-				return serialize.ErrValueOutOfRange
-			}
-			{
-				offsetValue := uint32(rangeValue)
-				stream.SerializeBits(&offsetValue, 26)
-			}
+		if value.Items[i] > 67108863 {
+			return serialize.ErrValueOutOfRange
 		}
+		offsetValue2 := uint32(value.Items[i])
+		stream.SerializeBits(&offsetValue2, 26)
 	}
 	return stream.Err()
 }
 
+// ReadW26 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadW26(stream *serialize.ReadStream, value *W26) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 3)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 3)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 6 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ItemsCount = int32(offsetValue)
+	for i := int32(0); i < value.ItemsCount; i++ {
+		offsetValue2 := uint32(0)
+		stream.SerializeBits(&offsetValue2, 26)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if offsetValue > 6 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ItemsCount = int32(offsetValue)
-	}
-	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			offsetValue := uint32(0)
-			stream.SerializeBits(&offsetValue, 26)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Items[i] = uint32(int32(offsetValue))
-		}
+		value.Items[i] = uint32(offsetValue2)
 	}
 	return stream.Err()
 }
 
-// type W1
+// W1 is the storage of schema type W1; WriteW1 and ReadW1 carry it on the wire.
 type W1 struct {
 	Items      [20]uint8 // used count beside it; wire count in [0, 20]
 	ItemsCount int32
 }
 
-// W1MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// W1MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// W1MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const W1MaxBits = 25
+
+// W1MaxBytes is W1MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const W1MaxBytes = 8
 
+// WriteW1 writes value to stream in wire order. It returns the first write-side
+// refusal (serialize.ErrValueOutOfRange for a value the wire cannot carry) or
+// the stream's error; the size written is stream.BitsProcessed().
 func WriteW1(stream *serialize.WriteStream, value *W1) error {
 	if value.ItemsCount < 0 || value.ItemsCount > 20 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 5)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 5)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			rangeValue := int32(value.Items[i])
-			if rangeValue < 0 || rangeValue > 1 {
-				return serialize.ErrValueOutOfRange
-			}
-			{
-				offsetValue := uint32(rangeValue)
-				stream.SerializeBits(&offsetValue, 1)
-			}
+		if value.Items[i] > 1 {
+			return serialize.ErrValueOutOfRange
 		}
+		offsetValue2 := uint32(value.Items[i])
+		stream.SerializeBits(&offsetValue2, 1)
 	}
 	return stream.Err()
 }
 
+// ReadW1 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadW1(stream *serialize.ReadStream, value *W1) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 5)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 5)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 20 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ItemsCount = int32(offsetValue)
+	for i := int32(0); i < value.ItemsCount; i++ {
+		offsetValue2 := uint32(0)
+		stream.SerializeBits(&offsetValue2, 1)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if offsetValue > 20 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ItemsCount = int32(offsetValue)
-	}
-	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			offsetValue := uint32(0)
-			stream.SerializeBits(&offsetValue, 1)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Items[i] = uint8(int32(offsetValue))
-		}
+		value.Items[i] = uint8(offsetValue2)
 	}
 	return stream.Err()
 }
 
-// type W52
+// W52 is the storage of schema type W52; WriteW52 and ReadW52 carry it on the
+// wire.
 type W52 struct {
 	Items      [3]uint64 // used count beside it; wire count in [0, 3]
 	ItemsCount int32
 }
 
-// W52MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// W52MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// W52MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const W52MaxBits = 158
+
+// W52MaxBytes is W52MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const W52MaxBytes = 24
 
+// WriteW52 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteW52(stream *serialize.WriteStream, value *W52) error {
 	if value.ItemsCount < 0 || value.ItemsCount > 3 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 2)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			rangeValue := int64(value.Items[i])
-			if rangeValue < 0 || rangeValue > 4503599627370495 {
-				return serialize.ErrValueOutOfRange
-			}
-			{
-				offsetValue := uint64(rangeValue)
-				stream.SerializeBits64(&offsetValue, 52)
-			}
+		if value.Items[i] > 4503599627370495 {
+			return serialize.ErrValueOutOfRange
 		}
+		offsetValue2 := uint64(value.Items[i])
+		stream.SerializeBits64(&offsetValue2, 52)
 	}
 	return stream.Err()
 }
 
+// ReadW52 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadW52(stream *serialize.ReadStream, value *W52) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	value.ItemsCount = int32(offsetValue)
+	for i := int32(0); i < value.ItemsCount; i++ {
+		offsetValue2 := uint64(0)
+		stream.SerializeBits64(&offsetValue2, 52)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		value.ItemsCount = int32(offsetValue)
-	}
-	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			offsetValue := uint64(0)
-			stream.SerializeBits64(&offsetValue, 52)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Items[i] = uint64(int64(offsetValue))
-		}
+		value.Items[i] = uint64(offsetValue2)
 	}
 	return stream.Err()
 }
 
-// type W50
+// W50 is the storage of schema type W50; WriteW50 and ReadW50 carry it on the
+// wire.
 type W50 struct {
 	Items      [3]uint64 // used count beside it; wire count in [0, 3]
 	ItemsCount int32
 }
 
-// W50MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// W50MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// W50MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const W50MaxBits = 152
+
+// W50MaxBytes is W50MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const W50MaxBytes = 24
 
+// WriteW50 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteW50(stream *serialize.WriteStream, value *W50) error {
 	if value.ItemsCount < 0 || value.ItemsCount > 3 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 2)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			rangeValue := int64(value.Items[i])
-			if rangeValue < 0 || rangeValue > 1125899906842623 {
-				return serialize.ErrValueOutOfRange
-			}
-			{
-				offsetValue := uint64(rangeValue)
-				stream.SerializeBits64(&offsetValue, 50)
-			}
+		if value.Items[i] > 1125899906842623 {
+			return serialize.ErrValueOutOfRange
 		}
+		offsetValue2 := uint64(value.Items[i])
+		stream.SerializeBits64(&offsetValue2, 50)
 	}
 	return stream.Err()
 }
 
+// ReadW50 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadW50(stream *serialize.ReadStream, value *W50) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	value.ItemsCount = int32(offsetValue)
+	for i := int32(0); i < value.ItemsCount; i++ {
+		offsetValue2 := uint64(0)
+		stream.SerializeBits64(&offsetValue2, 50)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		value.ItemsCount = int32(offsetValue)
-	}
-	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			offsetValue := uint64(0)
-			stream.SerializeBits64(&offsetValue, 50)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Items[i] = uint64(int64(offsetValue))
-		}
+		value.Items[i] = uint64(offsetValue2)
 	}
 	return stream.Err()
 }
 
-// type F13
+// F13 is the storage of schema type F13; WriteF13 and ReadF13 carry it on the
+// wire.
 type F13 struct {
 	Items [7]uint16 // wire [0, 8191]
 }
 
-// F13MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// F13MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// F13MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const F13MaxBits = 91
+
+// F13MaxBytes is F13MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const F13MaxBytes = 16
 
+// WriteF13 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteF13(stream *serialize.WriteStream, value *F13) error {
-	{
-		rangeValue0 := int32(value.Items[0])
-		if rangeValue0 < 0 || rangeValue0 > 8191 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue1 := int32(value.Items[1])
-		if rangeValue1 < 0 || rangeValue1 > 8191 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue2 := int32(value.Items[2])
-		if rangeValue2 < 0 || rangeValue2 > 8191 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue3 := int32(value.Items[3])
-		if rangeValue3 < 0 || rangeValue3 > 8191 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue4 := int32(value.Items[4])
-		if rangeValue4 < 0 || rangeValue4 > 8191 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue5 := int32(value.Items[5])
-		if rangeValue5 < 0 || rangeValue5 > 8191 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue6 := int32(value.Items[6])
-		if rangeValue6 < 0 || rangeValue6 > 8191 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(rangeValue0))) & 0x1fff
-		f1 := (uint64(uint32(rangeValue1))) & 0x1fff
-		f2 := (uint64(uint32(rangeValue2))) & 0x1fff
-		f3 := (uint64(uint32(rangeValue3))) & 0x1fff
-		f4 := (uint64(uint32(rangeValue4))) & 0x1fff
-		f5 := (uint64(uint32(rangeValue5))) & 0x1fff
-		f6 := (uint64(uint32(rangeValue6))) & 0x1fff
-		w0 := f0 | (f1 << 13) | (f2 << 26) | (f3 << 39) | (f4 << 52)
-		stream.SerializeBits64(&w0, 64)
-		w1 := uint32((f4 >> 12) | (f5 << 1) | (f6 << 14))
-		stream.SerializeBits(&w1, 27)
+	if value.Items[0] > 8191 {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.Items[1] > 8191 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Items[2] > 8191 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Items[3] > 8191 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Items[4] > 8191 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Items[5] > 8191 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Items[6] > 8191 {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.Items[0]) & 0x1fff
+	f1 := uint64(value.Items[1]) & 0x1fff
+	f2 := uint64(value.Items[2]) & 0x1fff
+	f3 := uint64(value.Items[3]) & 0x1fff
+	f4 := uint64(value.Items[4]) & 0x1fff
+	f5 := uint64(value.Items[5]) & 0x1fff
+	f6 := uint64(value.Items[6]) & 0x1fff
+	w0 := f0 | f1<<13 | f2<<26 | f3<<39 | f4<<52
+	stream.SerializeBits64(&w0, 64)
+	w1 := uint32(f4>>12 | f5<<1 | f6<<14)
+	stream.SerializeBits(&w1, 27)
 	return stream.Err()
 }
 
+// ReadF13 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadF13(stream *serialize.ReadStream, value *F13) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		n1 := uint32(0)
-		stream.SerializeBits(&n1, 27)
-		c1 := uint64(n1)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x1fff
-		value.Items[0] = uint16(int32(v0))
-		v1 := (c0 >> 13) & 0x1fff
-		value.Items[1] = uint16(int32(v1))
-		v2 := (c0 >> 26) & 0x1fff
-		value.Items[2] = uint16(int32(v2))
-		v3 := (c0 >> 39) & 0x1fff
-		value.Items[3] = uint16(int32(v3))
-		v4 := ((c0 >> 52) | (c1 << 12)) & 0x1fff
-		value.Items[4] = uint16(int32(v4))
-		v5 := (c1 >> 1) & 0x1fff
-		value.Items[5] = uint16(int32(v5))
-		v6 := (c1 >> 14) & 0x1fff
-		value.Items[6] = uint16(int32(v6))
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	n1 := uint32(0)
+	stream.SerializeBits(&n1, 27)
+	c1 := uint64(n1)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x1fff
+	value.Items[0] = uint16(v0)
+	v1 := (c0 >> 13) & 0x1fff
+	value.Items[1] = uint16(v1)
+	v2 := (c0 >> 26) & 0x1fff
+	value.Items[2] = uint16(v2)
+	v3 := (c0 >> 39) & 0x1fff
+	value.Items[3] = uint16(v3)
+	v4 := (c0>>52 | c1<<12) & 0x1fff
+	value.Items[4] = uint16(v4)
+	v5 := (c1 >> 1) & 0x1fff
+	value.Items[5] = uint16(v5)
+	v6 := (c1 >> 14) & 0x1fff
+	value.Items[6] = uint16(v6)
 	return stream.Err()
 }
 
-// type Tri3
+// Tri3 is the storage of schema type Tri3; WriteTri3 and ReadTri3 carry it on
+// the wire.
 type Tri3 struct {
 	A uint32
 	B uint32
 }
 
-// Tri3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// Tri3MaxBytes is rounded up to the 8-byte write-buffer granularity.
+// Tri3MaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const Tri3MaxBits = 3
+
+// Tri3MaxBytes is Tri3MaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const Tri3MaxBytes = 8
 
+// WriteTri3 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTri3(stream *serialize.WriteStream, value *Tri3) error {
-	{
-		f0 := (uint64(value.A)) & 0x1
-		f1 := (uint64(value.B)) & 0x3
-		w0 := uint32(f0 | (f1 << 1))
+	f0 := uint64(value.A) & 0x1
+	f1 := uint64(value.B) & 0x3
+	w0 := uint32(f0 | f1<<1)
+	stream.SerializeBits(&w0, 3)
+	return stream.Err()
+}
+
+// ReadTri3 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
+func ReadTri3(stream *serialize.ReadStream, value *Tri3) error {
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 3)
+	c0 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	v0 := c0 & 0x1
+	value.A = uint32(v0)
+	v1 := (c0 >> 1) & 0x3
+	value.B = uint32(v1)
+	return stream.Err()
+}
+
+// ArrTri3 is the storage of schema type ArrTri3; WriteArrTri3 and ReadArrTri3
+// carry it on the wire.
+type ArrTri3 struct {
+	Items      [10]Tri3 // used count beside it; wire count in [0, 10]
+	ItemsCount int32
+}
+
+// ArrTri3MaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
+const ArrTri3MaxBits = 34
+
+// ArrTri3MaxBytes is ArrTri3MaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
+const ArrTri3MaxBytes = 8
+
+// WriteArrTri3 writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+func WriteArrTri3(stream *serialize.WriteStream, value *ArrTri3) error {
+	if value.ItemsCount < 0 || value.ItemsCount > 10 {
+		return serialize.ErrValueOutOfRange
+	}
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil { // the count guards the loop
+		return stream.Err()
+	}
+	i := int32(0)
+	for ; i+8 <= value.ItemsCount; i += 8 {
+		f0 := uint64(value.Items[i].A) & 0x1
+		f1 := uint64(value.Items[i].B) & 0x3
+		f2 := uint64(value.Items[i+1].A) & 0x1
+		f3 := uint64(value.Items[i+1].B) & 0x3
+		f4 := uint64(value.Items[i+2].A) & 0x1
+		f5 := uint64(value.Items[i+2].B) & 0x3
+		f6 := uint64(value.Items[i+3].A) & 0x1
+		f7 := uint64(value.Items[i+3].B) & 0x3
+		f8 := uint64(value.Items[i+4].A) & 0x1
+		f9 := uint64(value.Items[i+4].B) & 0x3
+		f10 := uint64(value.Items[i+5].A) & 0x1
+		f11 := uint64(value.Items[i+5].B) & 0x3
+		f12 := uint64(value.Items[i+6].A) & 0x1
+		f13 := uint64(value.Items[i+6].B) & 0x3
+		f14 := uint64(value.Items[i+7].A) & 0x1
+		f15 := uint64(value.Items[i+7].B) & 0x3
+		w0 := uint32(f0 | f1<<1 | f2<<3 | f3<<4 | f4<<6 | f5<<7 | f6<<9 | f7<<10 | f8<<12 | f9<<13 | f10<<15 | f11<<16 | f12<<18 | f13<<19 | f14<<21 | f15<<22)
+		stream.SerializeBits(&w0, 24)
+	}
+	for ; i < value.ItemsCount; i++ {
+		f0 := uint64(value.Items[i].A) & 0x1
+		f1 := uint64(value.Items[i].B) & 0x3
+		w0 := uint32(f0 | f1<<1)
 		stream.SerializeBits(&w0, 3)
 	}
 	return stream.Err()
 }
 
-func ReadTri3(stream *serialize.ReadStream, value *Tri3) error {
-	{
+// ReadArrTri3 reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
+func ReadArrTri3(stream *serialize.ReadStream, value *ArrTri3) error {
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 10 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ItemsCount = int32(offsetValue)
+	i := int32(0)
+	for ; i+8 <= value.ItemsCount; i += 8 {
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 24)
+		c0 := uint64(n0)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x1
+		value.Items[i].A = uint32(v0)
+		v1 := (c0 >> 1) & 0x3
+		value.Items[i].B = uint32(v1)
+		v2 := (c0 >> 3) & 0x1
+		value.Items[i+1].A = uint32(v2)
+		v3 := (c0 >> 4) & 0x3
+		value.Items[i+1].B = uint32(v3)
+		v4 := (c0 >> 6) & 0x1
+		value.Items[i+2].A = uint32(v4)
+		v5 := (c0 >> 7) & 0x3
+		value.Items[i+2].B = uint32(v5)
+		v6 := (c0 >> 9) & 0x1
+		value.Items[i+3].A = uint32(v6)
+		v7 := (c0 >> 10) & 0x3
+		value.Items[i+3].B = uint32(v7)
+		v8 := (c0 >> 12) & 0x1
+		value.Items[i+4].A = uint32(v8)
+		v9 := (c0 >> 13) & 0x3
+		value.Items[i+4].B = uint32(v9)
+		v10 := (c0 >> 15) & 0x1
+		value.Items[i+5].A = uint32(v10)
+		v11 := (c0 >> 16) & 0x3
+		value.Items[i+5].B = uint32(v11)
+		v12 := (c0 >> 18) & 0x1
+		value.Items[i+6].A = uint32(v12)
+		v13 := (c0 >> 19) & 0x3
+		value.Items[i+6].B = uint32(v13)
+		v14 := (c0 >> 21) & 0x1
+		value.Items[i+7].A = uint32(v14)
+		v15 := (c0 >> 22) & 0x3
+		value.Items[i+7].B = uint32(v15)
+	}
+	for ; i < value.ItemsCount; i++ {
 		n0 := uint32(0)
 		stream.SerializeBits(&n0, 3)
 		c0 := uint64(n0)
@@ -491,160 +616,131 @@ func ReadTri3(stream *serialize.ReadStream, value *Tri3) error {
 			return stream.Err()
 		}
 		v0 := c0 & 0x1
-		value.A = uint32(v0)
+		value.Items[i].A = uint32(v0)
 		v1 := (c0 >> 1) & 0x3
-		value.B = uint32(v1)
+		value.Items[i].B = uint32(v1)
 	}
 	return stream.Err()
 }
 
-// type ArrTri3
-type ArrTri3 struct {
-	Items      [10]Tri3 // used count beside it; wire count in [0, 10]
-	ItemsCount int32
-}
-
-// ArrTri3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ArrTri3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-const ArrTri3MaxBits = 34
-const ArrTri3MaxBytes = 8
-
-func WriteArrTri3(stream *serialize.WriteStream, value *ArrTri3) error {
-	if value.ItemsCount < 0 || value.ItemsCount > 10 {
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 4)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
-	}
-	{
-		i := int32(0)
-		for ; i+8 <= value.ItemsCount; i += 8 {
-			f0 := (uint64(value.Items[i].A)) & 0x1
-			f1 := (uint64(value.Items[i].B)) & 0x3
-			f2 := (uint64(value.Items[i+1].A)) & 0x1
-			f3 := (uint64(value.Items[i+1].B)) & 0x3
-			f4 := (uint64(value.Items[i+2].A)) & 0x1
-			f5 := (uint64(value.Items[i+2].B)) & 0x3
-			f6 := (uint64(value.Items[i+3].A)) & 0x1
-			f7 := (uint64(value.Items[i+3].B)) & 0x3
-			f8 := (uint64(value.Items[i+4].A)) & 0x1
-			f9 := (uint64(value.Items[i+4].B)) & 0x3
-			f10 := (uint64(value.Items[i+5].A)) & 0x1
-			f11 := (uint64(value.Items[i+5].B)) & 0x3
-			f12 := (uint64(value.Items[i+6].A)) & 0x1
-			f13 := (uint64(value.Items[i+6].B)) & 0x3
-			f14 := (uint64(value.Items[i+7].A)) & 0x1
-			f15 := (uint64(value.Items[i+7].B)) & 0x3
-			w0 := uint32(f0 | (f1 << 1) | (f2 << 3) | (f3 << 4) | (f4 << 6) | (f5 << 7) | (f6 << 9) | (f7 << 10) | (f8 << 12) | (f9 << 13) | (f10 << 15) | (f11 << 16) | (f12 << 18) | (f13 << 19) | (f14 << 21) | (f15 << 22))
-			stream.SerializeBits(&w0, 24)
-		}
-		for ; i < value.ItemsCount; i++ {
-			f0 := (uint64(value.Items[i].A)) & 0x1
-			f1 := (uint64(value.Items[i].B)) & 0x3
-			w0 := uint32(f0 | (f1 << 1))
-			stream.SerializeBits(&w0, 3)
-		}
-	}
-	return stream.Err()
-}
-
-func ReadArrTri3(stream *serialize.ReadStream, value *ArrTri3) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 4)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 10 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ItemsCount = int32(offsetValue)
-	}
-	{
-		i := int32(0)
-		for ; i+8 <= value.ItemsCount; i += 8 {
-			n0 := uint32(0)
-			stream.SerializeBits(&n0, 24)
-			c0 := uint64(n0)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0 & 0x1
-			value.Items[i].A = uint32(v0)
-			v1 := (c0 >> 1) & 0x3
-			value.Items[i].B = uint32(v1)
-			v2 := (c0 >> 3) & 0x1
-			value.Items[i+1].A = uint32(v2)
-			v3 := (c0 >> 4) & 0x3
-			value.Items[i+1].B = uint32(v3)
-			v4 := (c0 >> 6) & 0x1
-			value.Items[i+2].A = uint32(v4)
-			v5 := (c0 >> 7) & 0x3
-			value.Items[i+2].B = uint32(v5)
-			v6 := (c0 >> 9) & 0x1
-			value.Items[i+3].A = uint32(v6)
-			v7 := (c0 >> 10) & 0x3
-			value.Items[i+3].B = uint32(v7)
-			v8 := (c0 >> 12) & 0x1
-			value.Items[i+4].A = uint32(v8)
-			v9 := (c0 >> 13) & 0x3
-			value.Items[i+4].B = uint32(v9)
-			v10 := (c0 >> 15) & 0x1
-			value.Items[i+5].A = uint32(v10)
-			v11 := (c0 >> 16) & 0x3
-			value.Items[i+5].B = uint32(v11)
-			v12 := (c0 >> 18) & 0x1
-			value.Items[i+6].A = uint32(v12)
-			v13 := (c0 >> 19) & 0x3
-			value.Items[i+6].B = uint32(v13)
-			v14 := (c0 >> 21) & 0x1
-			value.Items[i+7].A = uint32(v14)
-			v15 := (c0 >> 22) & 0x3
-			value.Items[i+7].B = uint32(v15)
-		}
-		for ; i < value.ItemsCount; i++ {
-			n0 := uint32(0)
-			stream.SerializeBits(&n0, 3)
-			c0 := uint64(n0)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0 & 0x1
-			value.Items[i].A = uint32(v0)
-			v1 := (c0 >> 1) & 0x3
-			value.Items[i].B = uint32(v1)
-		}
-	}
-	return stream.Err()
-}
-
-// type Eleven
+// Eleven is the storage of schema type Eleven; WriteEleven and ReadEleven carry
+// it on the wire.
 type Eleven struct {
 	A uint32
 	B uint32
 }
 
-// ElevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ElevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ElevenMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ElevenMaxBits = 11
+
+// ElevenMaxBytes is ElevenMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ElevenMaxBytes = 8
 
+// WriteEleven writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteEleven(stream *serialize.WriteStream, value *Eleven) error {
-	{
-		f0 := (uint64(value.A)) & 0x7
-		f1 := (uint64(value.B)) & 0xff
-		w0 := uint32(f0 | (f1 << 3))
+	f0 := uint64(value.A) & 0x7
+	f1 := uint64(value.B) & 0xff
+	w0 := uint32(f0 | f1<<3)
+	stream.SerializeBits(&w0, 11)
+	return stream.Err()
+}
+
+// ReadEleven reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
+func ReadEleven(stream *serialize.ReadStream, value *Eleven) error {
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 11)
+	c0 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	v0 := c0 & 0x7
+	value.A = uint32(v0)
+	v1 := (c0 >> 3) & 0xff
+	value.B = uint32(v1)
+	return stream.Err()
+}
+
+// ArrEleven is the storage of schema type ArrEleven; WriteArrEleven and
+// ReadArrEleven carry it on the wire.
+type ArrEleven struct {
+	Items [9]Eleven
+}
+
+// ArrElevenMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
+const ArrElevenMaxBits = 99
+
+// ArrElevenMaxBytes is ArrElevenMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
+const ArrElevenMaxBytes = 16
+
+// WriteArrEleven writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+func WriteArrEleven(stream *serialize.WriteStream, value *ArrEleven) error {
+	i := 0
+	for ; i+5 <= 9; i += 5 {
+		f0 := uint64(value.Items[i].A) & 0x7
+		f1 := uint64(value.Items[i].B) & 0xff
+		f2 := uint64(value.Items[i+1].A) & 0x7
+		f3 := uint64(value.Items[i+1].B) & 0xff
+		f4 := uint64(value.Items[i+2].A) & 0x7
+		f5 := uint64(value.Items[i+2].B) & 0xff
+		f6 := uint64(value.Items[i+3].A) & 0x7
+		f7 := uint64(value.Items[i+3].B) & 0xff
+		f8 := uint64(value.Items[i+4].A) & 0x7
+		f9 := uint64(value.Items[i+4].B) & 0xff
+		w0 := f0 | f1<<3 | f2<<11 | f3<<14 | f4<<22 | f5<<25 | f6<<33 | f7<<36 | f8<<44 | f9<<47
+		stream.SerializeBits64(&w0, 55)
+	}
+	for ; i < 9; i++ {
+		f0 := uint64(value.Items[i].A) & 0x7
+		f1 := uint64(value.Items[i].B) & 0xff
+		w0 := uint32(f0 | f1<<3)
 		stream.SerializeBits(&w0, 11)
 	}
 	return stream.Err()
 }
 
-func ReadEleven(stream *serialize.ReadStream, value *Eleven) error {
-	{
+// ReadArrEleven reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
+func ReadArrEleven(stream *serialize.ReadStream, value *ArrEleven) error {
+	i := 0
+	for ; i+5 <= 9; i += 5 {
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 55)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0 & 0x7
+		value.Items[i].A = uint32(v0)
+		v1 := (c0 >> 3) & 0xff
+		value.Items[i].B = uint32(v1)
+		v2 := (c0 >> 11) & 0x7
+		value.Items[i+1].A = uint32(v2)
+		v3 := (c0 >> 14) & 0xff
+		value.Items[i+1].B = uint32(v3)
+		v4 := (c0 >> 22) & 0x7
+		value.Items[i+2].A = uint32(v4)
+		v5 := (c0 >> 25) & 0xff
+		value.Items[i+2].B = uint32(v5)
+		v6 := (c0 >> 33) & 0x7
+		value.Items[i+3].A = uint32(v6)
+		v7 := (c0 >> 36) & 0xff
+		value.Items[i+3].B = uint32(v7)
+		v8 := (c0 >> 44) & 0x7
+		value.Items[i+4].A = uint32(v8)
+		v9 := (c0 >> 47) & 0xff
+		value.Items[i+4].B = uint32(v9)
+	}
+	for ; i < 9; i++ {
 		n0 := uint32(0)
 		stream.SerializeBits(&n0, 11)
 		c0 := uint64(n0)
@@ -652,148 +748,87 @@ func ReadEleven(stream *serialize.ReadStream, value *Eleven) error {
 			return stream.Err()
 		}
 		v0 := c0 & 0x7
-		value.A = uint32(v0)
+		value.Items[i].A = uint32(v0)
 		v1 := (c0 >> 3) & 0xff
-		value.B = uint32(v1)
+		value.Items[i].B = uint32(v1)
 	}
 	return stream.Err()
 }
 
-// type ArrEleven
-type ArrEleven struct {
-	Items [9]Eleven
-}
-
-// ArrElevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ArrElevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-const ArrElevenMaxBits = 99
-const ArrElevenMaxBytes = 16
-
-func WriteArrEleven(stream *serialize.WriteStream, value *ArrEleven) error {
-	{
-		i := int(0)
-		for ; i+5 <= 9; i += 5 {
-			f0 := (uint64(value.Items[i].A)) & 0x7
-			f1 := (uint64(value.Items[i].B)) & 0xff
-			f2 := (uint64(value.Items[i+1].A)) & 0x7
-			f3 := (uint64(value.Items[i+1].B)) & 0xff
-			f4 := (uint64(value.Items[i+2].A)) & 0x7
-			f5 := (uint64(value.Items[i+2].B)) & 0xff
-			f6 := (uint64(value.Items[i+3].A)) & 0x7
-			f7 := (uint64(value.Items[i+3].B)) & 0xff
-			f8 := (uint64(value.Items[i+4].A)) & 0x7
-			f9 := (uint64(value.Items[i+4].B)) & 0xff
-			w0 := f0 | (f1 << 3) | (f2 << 11) | (f3 << 14) | (f4 << 22) | (f5 << 25) | (f6 << 33) | (f7 << 36) | (f8 << 44) | (f9 << 47)
-			stream.SerializeBits64(&w0, 55)
-		}
-		for ; i < 9; i++ {
-			f0 := (uint64(value.Items[i].A)) & 0x7
-			f1 := (uint64(value.Items[i].B)) & 0xff
-			w0 := uint32(f0 | (f1 << 3))
-			stream.SerializeBits(&w0, 11)
-		}
-	}
-	return stream.Err()
-}
-
-func ReadArrEleven(stream *serialize.ReadStream, value *ArrEleven) error {
-	{
-		i := int(0)
-		for ; i+5 <= 9; i += 5 {
-			c0 := uint64(0)
-			stream.SerializeBits64(&c0, 55)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0 & 0x7
-			value.Items[i].A = uint32(v0)
-			v1 := (c0 >> 3) & 0xff
-			value.Items[i].B = uint32(v1)
-			v2 := (c0 >> 11) & 0x7
-			value.Items[i+1].A = uint32(v2)
-			v3 := (c0 >> 14) & 0xff
-			value.Items[i+1].B = uint32(v3)
-			v4 := (c0 >> 22) & 0x7
-			value.Items[i+2].A = uint32(v4)
-			v5 := (c0 >> 25) & 0xff
-			value.Items[i+2].B = uint32(v5)
-			v6 := (c0 >> 33) & 0x7
-			value.Items[i+3].A = uint32(v6)
-			v7 := (c0 >> 36) & 0xff
-			value.Items[i+3].B = uint32(v7)
-			v8 := (c0 >> 44) & 0x7
-			value.Items[i+4].A = uint32(v8)
-			v9 := (c0 >> 47) & 0xff
-			value.Items[i+4].B = uint32(v9)
-		}
-		for ; i < 9; i++ {
-			n0 := uint32(0)
-			stream.SerializeBits(&n0, 11)
-			c0 := uint64(n0)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0 & 0x7
-			value.Items[i].A = uint32(v0)
-			v1 := (c0 >> 3) & 0xff
-			value.Items[i].B = uint32(v1)
-		}
-	}
-	return stream.Err()
-}
-
-// type EmptyA
+// EmptyA is the storage of schema type EmptyA; WriteEmptyA and ReadEmptyA carry
+// it on the wire.
 type EmptyA struct {
 }
 
-// EmptyAMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// EmptyAMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// EmptyAMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const EmptyAMaxBits = 0
+
+// EmptyAMaxBytes is EmptyAMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const EmptyAMaxBytes = 0
 
+// WriteEmptyA writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteEmptyA(stream *serialize.WriteStream, value *EmptyA) error {
-	_ = value // empty body — presence is the payload (SPEC §4.6)
+	_ = value // empty body — presence is the payload
 	return stream.Err()
 }
 
+// ReadEmptyA reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadEmptyA(stream *serialize.ReadStream, value *EmptyA) error {
 	_ = value
 	return stream.Err()
 }
 
-// type EmptyB
+// EmptyB is the storage of schema type EmptyB; WriteEmptyB and ReadEmptyB carry
+// it on the wire.
 type EmptyB struct {
 }
 
-// EmptyBMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// EmptyBMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// EmptyBMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const EmptyBMaxBits = 0
+
+// EmptyBMaxBytes is EmptyBMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const EmptyBMaxBytes = 0
 
+// WriteEmptyB writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteEmptyB(stream *serialize.WriteStream, value *EmptyB) error {
-	_ = value // empty body — presence is the payload (SPEC §4.6)
+	_ = value // empty body — presence is the payload
 	return stream.Err()
 }
 
+// ReadEmptyB reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadEmptyB(stream *serialize.ReadStream, value *EmptyB) error {
 	_ = value
 	return stream.Err()
 }
 
-// EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
+// EmptyUnionType is the tag of union EmptyUnion: None = 0, then each arm in
+// declared order.
 type EmptyUnionType uint8
 
+// The EmptyUnionType tags. EmptyUnionTypeMax is the highest tag a read accepts.
 const (
 	EmptyUnionTypeNone EmptyUnionType = 0
 	EmptyUnionTypeA    EmptyUnionType = 1
 	EmptyUnionTypeB    EmptyUnionType = 2
-	EmptyUnionTypeMax  EmptyUnionType = 2 // the exported extent (SPEC §4.2)
+	EmptyUnionTypeMax  EmptyUnionType = 2
 )
 
-// EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameEmptyUnionType(value EmptyUnionType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to EmptyUnionTypeMax).
+func (v EmptyUnionType) String() string {
+	switch v {
 	case EmptyUnionTypeNone:
 		return "None"
 	case EmptyUnionTypeA:
@@ -804,74 +839,96 @@ func EnumNameEmptyUnionType(value EmptyUnionType) string {
 	return "???"
 }
 
-// EmptyUnion — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read constructs the selected arm with its defaults before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
-// reused-storage discipline. Consumers read the selected arm only.
+// EnumNameEmptyUnionType returns the variant name of value, or "???" for a
+// value outside the declared variants. It is value.String() under the name
+// every target gives its debug-name function.
+func EnumNameEmptyUnionType(value EmptyUnionType) string {
+	return value.String()
+}
+
+// EmptyUnion is union EmptyUnion: at most one arm, and Type says which.
+//
+// The zero value is the empty union, None. The struct holds every arm side by
+// side rather than one arm behind an interface: an interface value would
+// heap-allocate per value, and generated storage never allocates. A read
+// constructs the selected arm with its defaults before decoding it; unselected
+// arms keep what they last held, so read only the arm Type selects.
 type EmptyUnion struct {
 	Type EmptyUnionType
 	A    EmptyA
 	B    EmptyB
 }
 
-// EmptyUnionMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-// EmptyUnionMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// EmptyUnionMaxBits is the tag plus the largest arm, in bits; None costs the
+// tag only.
 const EmptyUnionMaxBits = 2
+
+// EmptyUnionMaxBytes is EmptyUnionMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const EmptyUnionMaxBytes = 8
 
+// WriteEmptyUnion writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteEmptyUnion(stream *serialize.WriteStream, value *EmptyUnion) error {
-	tagValue := int32(value.Type)
-	if tagValue < 0 || tagValue > 2 { // the tag validates BEFORE it rides (SPEC §4.8)
+	if value.Type > EmptyUnionTypeMax { // the tag validates BEFORE it rides
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(tagValue)
-		stream.SerializeBits(&offsetValue, 2)
-	}
+	tagValue := uint32(value.Type)
+	stream.SerializeBits(&tagValue, 2)
 	switch value.Type {
 	case EmptyUnionTypeA:
 		return WriteEmptyA(stream, &value.A)
 	case EmptyUnionTypeB:
 		return WriteEmptyB(stream, &value.B)
 	}
-	return stream.Err() // None — the tag is the whole wire (SPEC §4.8)
+	return stream.Err() // None — the tag is the whole wire
 }
 
+// ReadEmptyUnion reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadEmptyUnion(stream *serialize.ReadStream, value *EmptyUnion) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Type = EmptyUnionType(int32(offsetValue))
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Type = EmptyUnionType(offsetValue)
 	switch value.Type {
 	case EmptyUnionTypeA:
-		value.A = EmptyA{} // fresh payload on every selection (SPEC §4.8)
+		value.A = EmptyA{} // fresh payload on every selection
 		return ReadEmptyA(stream, &value.A)
 	case EmptyUnionTypeB:
-		value.B = EmptyB{} // fresh payload on every selection (SPEC §4.8)
+		value.B = EmptyB{} // fresh payload on every selection
 		return ReadEmptyB(stream, &value.B)
 	}
 	return stream.Err() // None
 }
 
-// type HoldsEmptyUnion
+// HoldsEmptyUnion is the storage of schema type HoldsEmptyUnion;
+// WriteHoldsEmptyUnion and ReadHoldsEmptyUnion carry it on the wire.
 type HoldsEmptyUnion struct {
 	Lead uint32
 	U    EmptyUnion
 	Tail uint32
 }
 
-// HoldsEmptyUnionMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// HoldsEmptyUnionMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// HoldsEmptyUnionMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const HoldsEmptyUnionMaxBits = 14
+
+// HoldsEmptyUnionMaxBytes is HoldsEmptyUnionMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const HoldsEmptyUnionMaxBytes = 8
 
+// WriteHoldsEmptyUnion writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteHoldsEmptyUnion(stream *serialize.WriteStream, value *HoldsEmptyUnion) error {
 	stream.SerializeBits(&value.Lead, 5)
 	if err := WriteEmptyUnion(stream, &value.U); err != nil {
@@ -881,6 +938,9 @@ func WriteHoldsEmptyUnion(stream *serialize.WriteStream, value *HoldsEmptyUnion)
 	return stream.Err()
 }
 
+// ReadHoldsEmptyUnion reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadHoldsEmptyUnion(stream *serialize.ReadStream, value *HoldsEmptyUnion) error {
 	stream.SerializeBits(&value.Lead, 5)
 	if err := ReadEmptyUnion(stream, &value.U); err != nil {
@@ -890,42 +950,45 @@ func ReadHoldsEmptyUnion(stream *serialize.ReadStream, value *HoldsEmptyUnion) e
 	return stream.Err()
 }
 
-// type Strs
+// Strs is the storage of schema type Strs; WriteStrs and ReadStrs carry it on
+// the wire.
 type Strs struct {
 	Lead    uint32
-	S       [8]byte // string(8): max length, used length beside it (SPEC §4.7)
+	S       [8]byte // string(8): max length, used length beside it
 	SLength int32
-	B       [8]byte // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
+	B       [8]byte // bytes(8): fixed buffer, used length beside it
 	BLength int32
 	Tail    uint32
 }
 
-// StrsMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// StrsMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// StrsMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const StrsMaxBits = 158
+
+// StrsMaxBytes is StrsMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const StrsMaxBytes = 24
 
+// WriteStrs writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteStrs(stream *serialize.WriteStream, value *Strs) error {
 	stream.SerializeBits(&value.Lead, 5)
 	if value.SLength < 0 || value.SLength > 8 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.SLength)
-		stream.SerializeBits(&offsetValue, 4)
-	}
-	if stream.Err() != nil { // the length guards the slice (§6.3)
+	offsetValue := uint32(value.SLength)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.S[:value.SLength])
 	if value.BLength < 0 || value.BLength > 8 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.BLength)
-		stream.SerializeBits(&offsetValue, 4)
-	}
-	if stream.Err() != nil { // the length guards the slice (§6.3)
+	offsetValue2 := uint32(value.BLength)
+	stream.SerializeBits(&offsetValue2, 4)
+	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.B[:value.BLength])
@@ -933,48 +996,48 @@ func WriteStrs(stream *serialize.WriteStream, value *Strs) error {
 	return stream.Err()
 }
 
+// ReadStrs reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadStrs(stream *serialize.ReadStream, value *Strs) error {
 	stream.SerializeBits(&value.Lead, 5)
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 4)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 8 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.SLength = int32(offsetValue)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 4)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 8 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.SLength = int32(offsetValue)
 	stream.SerializeBytes(value.S[:value.SLength])
 	if stream.Err() != nil {
 		return stream.Err()
 	}
 	if !utf8.Valid(value.S[:value.SLength]) {
-		return ErrValidation // malformed UTF-8 (SPEC §4.7)
+		return ErrValidation // malformed UTF-8
 	}
 	for i := int32(0); i < value.SLength; i++ {
 		if value.S[i] == 0 {
 			return ErrValidation
 		}
 	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 4)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 8 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.BLength = int32(offsetValue)
+	offsetValue2 := uint32(0)
+	stream.SerializeBits(&offsetValue2, 4)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue2 > 8 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.BLength = int32(offsetValue2)
 	stream.SerializeBytes(value.B[:value.BLength])
 	stream.SerializeBits(&value.Tail, 3)
 	return stream.Err()
 }
 
-// type ArrNested
+// ArrNested is the storage of schema type ArrNested; WriteArrNested and
+// ReadArrNested carry it on the wire.
 type ArrNested struct {
 	Lead       uint32
 	Items      [4]Eleven // used count beside it; wire count in [0, 4]
@@ -982,118 +1045,129 @@ type ArrNested struct {
 	Tail       uint32
 }
 
-// ArrNestedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ArrNestedMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ArrNestedMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ArrNestedMaxBits = 55
+
+// ArrNestedMaxBytes is ArrNestedMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ArrNestedMaxBytes = 8
 
+// WriteArrNested writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteArrNested(stream *serialize.WriteStream, value *ArrNested) error {
 	stream.SerializeBits(&value.Lead, 5)
 	if value.ItemsCount < 0 || value.ItemsCount > 4 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 3)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 3)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
-	{
-		i := int32(0)
-		for ; i+4 <= value.ItemsCount; i += 4 {
-			f0 := (uint64(value.Items[i].A)) & 0x7
-			f1 := (uint64(value.Items[i].B)) & 0xff
-			f2 := (uint64(value.Items[i+1].A)) & 0x7
-			f3 := (uint64(value.Items[i+1].B)) & 0xff
-			f4 := (uint64(value.Items[i+2].A)) & 0x7
-			f5 := (uint64(value.Items[i+2].B)) & 0xff
-			f6 := (uint64(value.Items[i+3].A)) & 0x7
-			f7 := (uint64(value.Items[i+3].B)) & 0xff
-			w0 := f0 | (f1 << 3) | (f2 << 11) | (f3 << 14) | (f4 << 22) | (f5 << 25) | (f6 << 33) | (f7 << 36)
-			stream.SerializeBits64(&w0, 44)
-		}
-		for ; i < value.ItemsCount; i++ {
-			f0 := (uint64(value.Items[i].A)) & 0x7
-			f1 := (uint64(value.Items[i].B)) & 0xff
-			w0 := uint32(f0 | (f1 << 3))
-			stream.SerializeBits(&w0, 11)
-		}
+	i := int32(0)
+	for ; i+4 <= value.ItemsCount; i += 4 {
+		f0 := uint64(value.Items[i].A) & 0x7
+		f1 := uint64(value.Items[i].B) & 0xff
+		f2 := uint64(value.Items[i+1].A) & 0x7
+		f3 := uint64(value.Items[i+1].B) & 0xff
+		f4 := uint64(value.Items[i+2].A) & 0x7
+		f5 := uint64(value.Items[i+2].B) & 0xff
+		f6 := uint64(value.Items[i+3].A) & 0x7
+		f7 := uint64(value.Items[i+3].B) & 0xff
+		w0 := f0 | f1<<3 | f2<<11 | f3<<14 | f4<<22 | f5<<25 | f6<<33 | f7<<36
+		stream.SerializeBits64(&w0, 44)
+	}
+	for ; i < value.ItemsCount; i++ {
+		f0 := uint64(value.Items[i].A) & 0x7
+		f1 := uint64(value.Items[i].B) & 0xff
+		w0 := uint32(f0 | f1<<3)
+		stream.SerializeBits(&w0, 11)
 	}
 	stream.SerializeBits(&value.Tail, 3)
 	return stream.Err()
 }
 
+// ReadArrNested reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadArrNested(stream *serialize.ReadStream, value *ArrNested) error {
 	stream.SerializeBits(&value.Lead, 5)
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 3)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 3)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 4 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ItemsCount = int32(offsetValue)
+	i := int32(0)
+	for ; i+4 <= value.ItemsCount; i += 4 {
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 44)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		if offsetValue > 4 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ItemsCount = int32(offsetValue)
+		v0 := c0 & 0x7
+		value.Items[i].A = uint32(v0)
+		v1 := (c0 >> 3) & 0xff
+		value.Items[i].B = uint32(v1)
+		v2 := (c0 >> 11) & 0x7
+		value.Items[i+1].A = uint32(v2)
+		v3 := (c0 >> 14) & 0xff
+		value.Items[i+1].B = uint32(v3)
+		v4 := (c0 >> 22) & 0x7
+		value.Items[i+2].A = uint32(v4)
+		v5 := (c0 >> 25) & 0xff
+		value.Items[i+2].B = uint32(v5)
+		v6 := (c0 >> 33) & 0x7
+		value.Items[i+3].A = uint32(v6)
+		v7 := (c0 >> 36) & 0xff
+		value.Items[i+3].B = uint32(v7)
 	}
-	{
-		i := int32(0)
-		for ; i+4 <= value.ItemsCount; i += 4 {
-			c0 := uint64(0)
-			stream.SerializeBits64(&c0, 44)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0 & 0x7
-			value.Items[i].A = uint32(v0)
-			v1 := (c0 >> 3) & 0xff
-			value.Items[i].B = uint32(v1)
-			v2 := (c0 >> 11) & 0x7
-			value.Items[i+1].A = uint32(v2)
-			v3 := (c0 >> 14) & 0xff
-			value.Items[i+1].B = uint32(v3)
-			v4 := (c0 >> 22) & 0x7
-			value.Items[i+2].A = uint32(v4)
-			v5 := (c0 >> 25) & 0xff
-			value.Items[i+2].B = uint32(v5)
-			v6 := (c0 >> 33) & 0x7
-			value.Items[i+3].A = uint32(v6)
-			v7 := (c0 >> 36) & 0xff
-			value.Items[i+3].B = uint32(v7)
+	for ; i < value.ItemsCount; i++ {
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 11)
+		c0 := uint64(n0)
+		if stream.Err() != nil {
+			return stream.Err()
 		}
-		for ; i < value.ItemsCount; i++ {
-			n0 := uint32(0)
-			stream.SerializeBits(&n0, 11)
-			c0 := uint64(n0)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0 & 0x7
-			value.Items[i].A = uint32(v0)
-			v1 := (c0 >> 3) & 0xff
-			value.Items[i].B = uint32(v1)
-		}
+		v0 := c0 & 0x7
+		value.Items[i].A = uint32(v0)
+		v1 := (c0 >> 3) & 0xff
+		value.Items[i].B = uint32(v1)
 	}
 	stream.SerializeBits(&value.Tail, 3)
 	return stream.Err()
 }
 
-// type Sole
+// Sole is the storage of schema type Sole; WriteSole and ReadSole carry it on
+// the wire.
 type Sole struct {
 	Only uint32
 }
 
-// SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// SoleMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const SoleMaxBits = 13
+
+// SoleMaxBytes is SoleMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const SoleMaxBytes = 8
 
+// WriteSole writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteSole(stream *serialize.WriteStream, value *Sole) error {
 	stream.SerializeBits(&value.Only, 13)
 	return stream.Err()
 }
 
+// ReadSole reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadSole(stream *serialize.ReadStream, value *Sole) error {
 	stream.SerializeBits(&value.Only, 13)
 	return stream.Err()

@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
 
@@ -14,29 +15,35 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-const ProbeId uint64 = 0xDEADBEEFCAFE
+// ProbeID is a schema constant.
+const ProbeID uint64 = 0xDEADBEEFCAFE
 
+// HalfTurn is a schema constant.
 const HalfTurn float64 = 180.0
 
+// TickRate is a schema constant.
 const TickRate float32 = 60.0
 
+// SpinRate is a schema constant.
 const SpinRate float64 = 1.5
 
-// Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
+// Weapon is an enum: None = 0, then the variants densely from 1; the wire
+// carries [0, 15].
 type Weapon uint8
 
+// The Weapon variants. WeaponMax is the highest value a read accepts.
 const (
 	WeaponNone    Weapon = 0
 	WeaponLaser   Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponRailgun Weapon = 3
-	WeaponMax     Weapon = 15 // the exported extent (SPEC §4.2)
+	WeaponMax     Weapon = 15
 )
 
-// EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameWeapon(value Weapon) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to WeaponMax).
+func (v Weapon) String() string {
+	switch v {
 	case WeaponNone:
 		return "None"
 	case WeaponLaser:
@@ -49,21 +56,29 @@ func EnumNameWeapon(value Weapon) string {
 	return "???"
 }
 
-// ProbeFlags — one bit per variant, consumed as masks; storage uint64 in every
-// target, wire 8 bits (SPEC §4.2)
+// EnumNameWeapon returns the variant name of value, or "???" for a value
+// outside the declared variants. It is value.String() under the name every
+// target gives its debug-name function.
+func EnumNameWeapon(value Weapon) string {
+	return value.String()
+}
+
+// ProbeFlags is a flags set: one bit per variant, consumed as masks, stored as
+// uint64 and carried in 8 wire bits.
 type ProbeFlags uint64
 
+// The ProbeFlags masks, one bit per variant.
 const (
 	ProbeFlagsArmed   ProbeFlags = 1 << 0
 	ProbeFlagsCloaked ProbeFlags = 1 << 1
 	ProbeFlagsDamaged ProbeFlags = 1 << 2
 )
 
-// ProbeFlagsCount is the declared variant count (SPEC §4.2).
+// ProbeFlagsCount is the declared variant count.
 const ProbeFlagsCount = 3
 
-// FlagNameProbeFlags: debug/log/tooling name for bit i of ProbeFlags —
-// out-of-range bits name as "???"
+// FlagNameProbeFlags returns the name of bit i of ProbeFlags, or "???" for a
+// bit past the declared variants.
 func FlagNameProbeFlags(bit int) string {
 	switch bit {
 	case 0:
@@ -76,9 +91,9 @@ func FlagNameProbeFlags(bit int) string {
 	return "???"
 }
 
-// FlagNamesProbeFlags renders the set bits of value as "A|B" — "0" for the
-// empty set, bits past the declared variants as hex
-func FlagNamesProbeFlags(value uint64) string {
+// FlagNamesProbeFlags renders the set bits of value as "A|B": "0" for the empty
+// set, bits past the declared variants as hex.
+func FlagNamesProbeFlags(value ProbeFlags) string {
 	names := ""
 	if value&(1<<0) != 0 {
 		names += "|Armed"
@@ -90,7 +105,7 @@ func FlagNamesProbeFlags(value uint64) string {
 		names += "|Damaged"
 	}
 	if rest := value >> 3; rest != 0 {
-		names += "|0x" + strconv.FormatUint(rest<<3, 16)
+		names += "|0x" + strconv.FormatUint(uint64(rest<<3), 16)
 	}
 	if names == "" {
 		return "0"
@@ -98,55 +113,67 @@ func FlagNamesProbeFlags(value uint64) string {
 	return names[1:]
 }
 
-// type ProbeHeader
+// String renders the set bits of v as FlagNamesProbeFlags does.
+func (v ProbeFlags) String() string {
+	return FlagNamesProbeFlags(v)
+}
+
+// ProbeHeader is the storage of schema type ProbeHeader; WriteProbeHeader and
+// ReadProbeHeader carry it on the wire.
 type ProbeHeader struct {
 	Version uint32
-	ProbeId uint64
+	ProbeID uint64
 }
 
-// ProbeHeaderMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeHeaderMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeHeaderMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeHeaderMaxBits = 87
+
+// ProbeHeaderMaxBytes is ProbeHeaderMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeHeaderMaxBytes = 16
 
+// WriteProbeHeader writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeHeader(stream *serialize.WriteStream, value *ProbeHeader) error {
-	{
-		f0 := (uint64(171)) & 0xff // const(171, 8) — SPEC §4.3
-		f1 := (uint64(value.Version)) & 0x7
-		f2 := (uint64(0)) & 0x1f // reserved(5) — zeros on the wire
-		w0 := uint32(f0 | (f1 << 8) | (f2 << 11))
-		stream.SerializeBits(&w0, 16)
-	}
+	f0 := uint64(171) & 0xff // const(171, 8)
+	f1 := uint64(value.Version) & 0x7
+	f2 := uint64(0) & 0x1f // reserved(5) — zeros on the wire
+	w0 := uint32(f0 | f1<<8 | f2<<11)
+	stream.SerializeBits(&w0, 16)
 	stream.SerializeAlign()
-	stream.SerializeBits64(&value.ProbeId, 64)
+	stream.SerializeBits64(&value.ProbeID, 64)
 	return stream.Err()
 }
 
+// ReadProbeHeader reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadProbeHeader(stream *serialize.ReadStream, value *ProbeHeader) error {
-	{
-		n0 := uint32(0)
-		stream.SerializeBits(&n0, 16)
-		c0 := uint64(n0)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xff
-		if v0 != 171 { // const(171, 8): a read rejects any other value (SPEC §4.3)
-			return ErrValidation
-		}
-		v1 := (c0 >> 8) & 0x7
-		value.Version = uint32(v1)
-		v2 := (c0 >> 11) & 0x1f
-		if v2 != 0 { // reserved(5): a read rejects nonzero (SPEC §4.3)
-			return ErrValidation
-		}
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 16)
+	c0 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
-	stream.SerializeAlign() // rejects nonzero padding (SPEC §4.3)
-	stream.SerializeBits64(&value.ProbeId, 64)
+	v0 := c0 & 0xff
+	if v0 != 171 { // const(171, 8): a read rejects any other value
+		return ErrValidation
+	}
+	v1 := (c0 >> 8) & 0x7
+	value.Version = uint32(v1)
+	v2 := (c0 >> 11) & 0x1f
+	if v2 != 0 { // reserved(5): a read rejects nonzero
+		return ErrValidation
+	}
+	stream.SerializeAlign() // rejects nonzero padding
+	stream.SerializeBits64(&value.ProbeID, 64)
 	return stream.Err()
 }
 
-// type ProbeBits
+// ProbeBits is the storage of schema type ProbeBits; WriteProbeBits and
+// ReadProbeBits carry it on the wire.
 type ProbeBits struct {
 	Small    uint32
 	Boundary uint64
@@ -155,63 +182,65 @@ type ProbeBits struct {
 	Nonce    uint64 // wire [0, 18446744073709551615]
 }
 
-// ProbeBitsMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeBitsMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeBitsMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeBitsMaxBits = 202
+
+// ProbeBitsMaxBytes is ProbeBitsMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeBitsMaxBytes = 32
 
+// WriteProbeBits writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeBits(stream *serialize.WriteStream, value *ProbeBits) error {
-	{
-		rangeValue3 := int64(value.Sensor)
-		if rangeValue3 < 0 || rangeValue3 > 4294967295 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(value.Small)) & 0x1ff
-		f1 := (uint64(value.Boundary)) & 0x1ffffffff
-		f2 := uint64(value.Wide)
-		f3 := (uint64(rangeValue3)) & 0xffffffff
-		f4 := value.Nonce
-		w0 := f0 | (f1 << 9) | (f2 << 42)
-		stream.SerializeBits64(&w0, 64)
-		w1 := (f2 >> 22) | (f3 << 42)
-		stream.SerializeBits64(&w1, 64)
-		w2 := (f3 >> 22) | (f4 << 10)
-		stream.SerializeBits64(&w2, 64)
-		w3 := uint32((f4 >> 54))
-		stream.SerializeBits(&w3, 10)
-	}
+	f0 := uint64(value.Small) & 0x1ff
+	f1 := value.Boundary & 0x1ffffffff
+	f2 := value.Wide
+	f3 := uint64(value.Sensor) & 0xffffffff
+	f4 := value.Nonce
+	w0 := f0 | f1<<9 | f2<<42
+	stream.SerializeBits64(&w0, 64)
+	w1 := f2>>22 | f3<<42
+	stream.SerializeBits64(&w1, 64)
+	w2 := f3>>22 | f4<<10
+	stream.SerializeBits64(&w2, 64)
+	w3 := uint32(f4 >> 54)
+	stream.SerializeBits(&w3, 10)
 	return stream.Err()
 }
 
+// ReadProbeBits reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadProbeBits(stream *serialize.ReadStream, value *ProbeBits) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		n3 := uint32(0)
-		stream.SerializeBits(&n3, 10)
-		c3 := uint64(n3)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x1ff
-		value.Small = uint32(v0)
-		v1 := (c0 >> 9) & 0x1ffffffff
-		value.Boundary = v1
-		v2 := (c0 >> 42) | (c1 << 22)
-		value.Wide = v2
-		v3 := ((c1 >> 42) | (c2 << 22)) & 0xffffffff
-		value.Sensor = uint32(int64(v3))
-		v4 := (c2 >> 10) | (c3 << 54)
-		value.Nonce = v4
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	c1 := uint64(0)
+	stream.SerializeBits64(&c1, 64)
+	c2 := uint64(0)
+	stream.SerializeBits64(&c2, 64)
+	n3 := uint32(0)
+	stream.SerializeBits(&n3, 10)
+	c3 := uint64(n3)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x1ff
+	value.Small = uint32(v0)
+	v1 := (c0 >> 9) & 0x1ffffffff
+	value.Boundary = v1
+	v2 := c0>>42 | c1<<22
+	value.Wide = v2
+	v3 := (c1>>42 | c2<<22) & 0xffffffff
+	value.Sensor = uint32(v3)
+	v4 := c2>>10 | c3<<54
+	value.Nonce = v4
 	return stream.Err()
 }
 
-// type ProbeSample
+// ProbeSample is the storage of schema type ProbeSample; WriteProbeSample and
+// ReadProbeSample carry it on the wire.
 type ProbeSample struct {
 	Active      bool    // = true in New* (zero value otherwise)
 	Orientation float32 // compressed float [-180.0, 180.0] @ 0.01
@@ -219,25 +248,25 @@ type ProbeSample struct {
 	BigDelta    int64
 
 	// active — wire branch; storage holds both sides, a read zeroes the
-	// untaken side (SPEC §5)
+	// untaken side
 	Weapon    Weapon
 	HasTarget bool
 
 	// active && has_target — wire branch; storage holds both sides, a read zeroes the
-	// untaken side (SPEC §5)
-	TargetId uint16
+	// untaken side
+	TargetID uint16
 
 	// !active — wire branch; storage holds both sides, a read zeroes the
-	// untaken side (SPEC §5)
+	// untaken side
 	IdleTicks uint32
 
 	Samples      [8]uint16 // used count beside it; wire count in [1, 8]
 	SamplesCount int32
 }
 
-// NewProbeSample returns a ProbeSample with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewProbeSample returns a ProbeSample with its specified defaults applied. The
+// plain zero value is the all-zero form: a specified default is the only thing
+// that overrides zero initialization.
 func NewProbeSample() ProbeSample {
 	var value ProbeSample
 	value.Active = true
@@ -245,53 +274,50 @@ func NewProbeSample() ProbeSample {
 	return value
 }
 
-// ProbeSampleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeSampleMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeSampleMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeSampleMaxBits = 276
+
+// ProbeSampleMaxBytes is ProbeSampleMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeSampleMaxBytes = 40
 
+// WriteProbeSample writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
-	{
-		f0 := uint64(0)
-		if value.Active {
-			f0 = 1
-		}
-		f1 := uint64(0)
-		{
-			normalizedValue := (value.Orientation - (-180.0)) / 360.0
-			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-				normalizedValue = 0
-			} else if !(normalizedValue <= 1) {
-				normalizedValue = 1
-			}
-			f1 = (uint64(uint32(float32(normalizedValue*36000.0) + 0.5))) & 0xffff
-		}
-		f2 := (uint64(uint32(value.RawDelta))) & 0xffffffff
-		f3 := uint64(value.BigDelta)
-		w0 := f0 | (f1 << 1) | (f2 << 17) | (f3 << 49)
-		stream.SerializeBits64(&w0, 64)
-		w1 := (f3 >> 15)
-		stream.SerializeBits64(&w1, 49)
-	}
+	f0 := uint64(0)
 	if value.Active {
-		{
-			enumValue0 := int32(value.Weapon)
-			if enumValue0 < 0 || enumValue0 > 15 {
-				return serialize.ErrValueOutOfRange
-			}
-			f0 := (uint64(uint32(enumValue0))) & 0xf
-			f1 := uint64(0)
-			if value.HasTarget {
-				f1 = 1
-			}
-			w0 := uint32(f0 | (f1 << 4))
-			stream.SerializeBits(&w0, 5)
+		f0 = 1
+	}
+	f1 := uint64(0)
+	normalizedValue := (value.Orientation + 180.0) / 360.0
+	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+		normalizedValue = 0
+	} else if !(normalizedValue <= 1) {
+		normalizedValue = 1
+	}
+	f1 = uint64(uint32(float32(normalizedValue*36000.0)+0.5)) & 0xffff
+	f2 := uint64(value.RawDelta) & 0xffffffff
+	f3 := uint64(value.BigDelta)
+	w0 := f0 | f1<<1 | f2<<17 | f3<<49
+	stream.SerializeBits64(&w0, 64)
+	w1 := f3 >> 15
+	stream.SerializeBits64(&w1, 49)
+	if value.Active {
+		if value.Weapon > 15 {
+			return serialize.ErrValueOutOfRange
 		}
+		f4 := uint64(value.Weapon) & 0xf
+		f5 := uint64(0)
 		if value.HasTarget {
-			{
-				rawValue := uint32(value.TargetId)
-				stream.SerializeBits(&rawValue, 16)
-			}
+			f5 = 1
+		}
+		w2 := uint32(f4 | f5<<4)
+		stream.SerializeBits(&w2, 5)
+		if value.HasTarget {
+			rawValue := uint32(value.TargetID)
+			stream.SerializeBits(&rawValue, 16)
 		}
 	} else {
 		stream.SerializeBits(&value.IdleTicks, 32)
@@ -299,179 +325,178 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	if value.SamplesCount < 1 || value.SamplesCount > 8 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.SamplesCount - (1))
-		stream.SerializeBits(&offsetValue, 3)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.SamplesCount - 1)
+	stream.SerializeBits(&offsetValue, 3)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.SamplesCount; i++ {
-		{
-			rawValue := uint32(value.Samples[i])
-			stream.SerializeBits(&rawValue, 16)
-		}
+		rawValue2 := uint32(value.Samples[i])
+		stream.SerializeBits(&rawValue2, 16)
 	}
 	return stream.Err()
 }
 
+// ReadProbeSample reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadProbeSample(stream *serialize.ReadStream, value *ProbeSample) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 49)
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	c1 := uint64(0)
+	stream.SerializeBits64(&c1, 49)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	v0 := c0 & 0x1
+	value.Active = v0 != 0
+	v1 := (c0 >> 1) & 0xffff
+	if v1 > 36000 { // a value smuggled into the bit headroom is refused
+		return ErrValidation
+	}
+	normalizedValue := float32(v1) / 36000.0
+	value.Orientation = float32(normalizedValue*360.0) - 180.0
+	v2 := (c0 >> 17) & 0xffffffff
+	value.RawDelta = int32(v2)
+	v3 := c0>>49 | c1<<15
+	value.BigDelta = int64(v3)
+	if value.Active {
+		n0 := uint32(0)
+		stream.SerializeBits(&n0, 5)
+		c2 := uint64(n0)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		v0 := c0 & 0x1
-		value.Active = v0 != 0
-		v1 := (c0 >> 1) & 0xffff
-		if v1 > 36000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return ErrValidation
-		}
-		{
-			normalizedValue := float32(v1) / 36000.0
-			value.Orientation = float32(normalizedValue*360.0) + (-180.0)
-		}
-		v2 := (c0 >> 17) & 0xffffffff
-		value.RawDelta = int32(v2)
-		v3 := (c0 >> 49) | (c1 << 15)
-		value.BigDelta = int64(v3)
-	}
-	if value.Active {
-		{
-			n0 := uint32(0)
-			stream.SerializeBits(&n0, 5)
-			c0 := uint64(n0)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0 & 0xf
-			value.Weapon = Weapon(int32(v0))
-			v1 := (c0 >> 4) & 0x1
-			value.HasTarget = v1 != 0
-		}
+		v4 := c2 & 0xf
+		value.Weapon = Weapon(v4)
+		v5 := (c2 >> 4) & 0x1
+		value.HasTarget = v5 != 0
 		if value.HasTarget {
-			{
-				rawValue := uint32(0)
-				stream.SerializeBits(&rawValue, 16)
-				value.TargetId = uint16(rawValue)
-			}
+			rawValue := uint32(0)
+			stream.SerializeBits(&rawValue, 16)
+			value.TargetID = uint16(rawValue)
 		} else {
-			value.TargetId = 0
+			value.TargetID = 0
 		}
 		value.IdleTicks = 0
 	} else {
 		stream.SerializeBits(&value.IdleTicks, 32)
 		value.Weapon = WeaponNone
 		value.HasTarget = false
-		value.TargetId = 0
+		value.TargetID = 0
 	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 3)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		lowValue := int32(1)
-		value.SamplesCount = int32(offsetValue + uint32(lowValue))
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 3)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	value.SamplesCount = int32(offsetValue) + 1
 	for i := int32(0); i < value.SamplesCount; i++ {
-		{
-			rawValue := uint32(0)
-			stream.SerializeBits(&rawValue, 16)
-			value.Samples[i] = uint16(rawValue)
-		}
+		rawValue2 := uint32(0)
+		stream.SerializeBits(&rawValue2, 16)
+		value.Samples[i] = uint16(rawValue2)
 	}
 	return stream.Err()
 }
 
-// type ProbeRing
+// ProbeRing is the storage of schema type ProbeRing; WriteProbeRing and
+// ReadProbeRing carry it on the wire.
 type ProbeRing struct {
 	Radius uint16
 }
 
-// ProbeRingMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeRingMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeRingMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeRingMaxBits = 16
+
+// ProbeRingMaxBytes is ProbeRingMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeRingMaxBytes = 8
 
+// WriteProbeRing writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeRing(stream *serialize.WriteStream, value *ProbeRing) error {
-	{
-		rawValue := uint32(value.Radius)
-		stream.SerializeBits(&rawValue, 16)
-	}
+	rawValue := uint32(value.Radius)
+	stream.SerializeBits(&rawValue, 16)
 	return stream.Err()
 }
 
+// ReadProbeRing reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadProbeRing(stream *serialize.ReadStream, value *ProbeRing) error {
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 16)
-		value.Radius = uint16(rawValue)
-	}
+	rawValue := uint32(0)
+	stream.SerializeBits(&rawValue, 16)
+	value.Radius = uint16(rawValue)
 	return stream.Err()
 }
 
-// type ProbeSlab
+// ProbeSlab is the storage of schema type ProbeSlab; WriteProbeSlab and
+// ReadProbeSlab carry it on the wire.
 type ProbeSlab struct {
 	Width  uint8 // wire [0, 100]
 	Height uint8
 }
 
-// ProbeSlabMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeSlabMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeSlabMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeSlabMaxBits = 15
+
+// ProbeSlabMaxBytes is ProbeSlabMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeSlabMaxBytes = 8
 
+// WriteProbeSlab writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeSlab(stream *serialize.WriteStream, value *ProbeSlab) error {
-	{
-		rangeValue0 := int32(value.Width)
-		if rangeValue0 < 0 || rangeValue0 > 100 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(rangeValue0))) & 0x7f
-		f1 := (uint64(value.Height)) & 0xff
-		w0 := uint32(f0 | (f1 << 7))
-		stream.SerializeBits(&w0, 15)
+	if value.Width > 100 {
+		return serialize.ErrValueOutOfRange
 	}
+	f0 := uint64(value.Width) & 0x7f
+	f1 := uint64(value.Height) & 0xff
+	w0 := uint32(f0 | f1<<7)
+	stream.SerializeBits(&w0, 15)
 	return stream.Err()
 }
 
+// ReadProbeSlab reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadProbeSlab(stream *serialize.ReadStream, value *ProbeSlab) error {
-	{
-		n0 := uint32(0)
-		stream.SerializeBits(&n0, 15)
-		c0 := uint64(n0)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x7f
-		if v0 > 100 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Width = uint8(int32(v0))
-		v1 := (c0 >> 7) & 0xff
-		value.Height = uint8(v1)
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 15)
+	c0 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x7f
+	if v0 > 100 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Width = uint8(v0)
+	v1 := (c0 >> 7) & 0xff
+	value.Height = uint8(v1)
 	return stream.Err()
 }
 
-// ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
+// ProbeShapeType is the tag of union ProbeShape: None = 0, then each arm in
+// declared order.
 type ProbeShapeType uint8
 
+// The ProbeShapeType tags. ProbeShapeTypeMax is the highest tag a read accepts.
 const (
 	ProbeShapeTypeNone ProbeShapeType = 0
 	ProbeShapeTypeRing ProbeShapeType = 1
 	ProbeShapeTypeSlab ProbeShapeType = 2
-	ProbeShapeTypeMax  ProbeShapeType = 2 // the exported extent (SPEC §4.2)
+	ProbeShapeTypeMax  ProbeShapeType = 2
 )
 
-// EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
-// out-of-set values (wire-legal up to the declared max) name as "???"
-func EnumNameProbeShapeType(value ProbeShapeType) string {
-	switch value {
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to ProbeShapeTypeMax).
+func (v ProbeShapeType) String() string {
+	switch v {
 	case ProbeShapeTypeNone:
 		return "None"
 	case ProbeShapeTypeRing:
@@ -482,63 +507,78 @@ func EnumNameProbeShapeType(value ProbeShapeType) string {
 	return "???"
 }
 
-// ProbeShape — at most one of the arms; Type says which. The zero value is the
-// empty union (None). A read constructs the selected arm with its defaults before
-// decoding it (SPEC §5); unselected arms keep what they last held — the
-// reused-storage discipline. Consumers read the selected arm only.
+// EnumNameProbeShapeType returns the variant name of value, or "???" for a
+// value outside the declared variants. It is value.String() under the name
+// every target gives its debug-name function.
+func EnumNameProbeShapeType(value ProbeShapeType) string {
+	return value.String()
+}
+
+// ProbeShape is union ProbeShape: at most one arm, and Type says which.
+//
+// The zero value is the empty union, None. The struct holds every arm side by
+// side rather than one arm behind an interface: an interface value would
+// heap-allocate per value, and generated storage never allocates. A read
+// constructs the selected arm with its defaults before decoding it; unselected
+// arms keep what they last held, so read only the arm Type selects.
 type ProbeShape struct {
 	Type ProbeShapeType
 	Ring ProbeRing
 	Slab ProbeSlab
 }
 
-// ProbeShapeMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
-// ProbeShapeMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeShapeMaxBits is the tag plus the largest arm, in bits; None costs the
+// tag only.
 const ProbeShapeMaxBits = 18
+
+// ProbeShapeMaxBytes is ProbeShapeMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeShapeMaxBytes = 8
 
+// WriteProbeShape writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeShape(stream *serialize.WriteStream, value *ProbeShape) error {
-	tagValue := int32(value.Type)
-	if tagValue < 0 || tagValue > 2 { // the tag validates BEFORE it rides (SPEC §4.8)
+	if value.Type > ProbeShapeTypeMax { // the tag validates BEFORE it rides
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(tagValue)
-		stream.SerializeBits(&offsetValue, 2)
-	}
+	tagValue := uint32(value.Type)
+	stream.SerializeBits(&tagValue, 2)
 	switch value.Type {
 	case ProbeShapeTypeRing:
 		return WriteProbeRing(stream, &value.Ring)
 	case ProbeShapeTypeSlab:
 		return WriteProbeSlab(stream, &value.Slab)
 	}
-	return stream.Err() // None — the tag is the whole wire (SPEC §4.8)
+	return stream.Err() // None — the tag is the whole wire
 }
 
+// ReadProbeShape reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadProbeShape(stream *serialize.ReadStream, value *ProbeShape) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Type = ProbeShapeType(int32(offsetValue))
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Type = ProbeShapeType(offsetValue)
 	switch value.Type {
 	case ProbeShapeTypeRing:
-		value.Ring = ProbeRing{} // fresh payload on every selection (SPEC §4.8)
+		value.Ring = ProbeRing{} // fresh payload on every selection
 		return ReadProbeRing(stream, &value.Ring)
 	case ProbeShapeTypeSlab:
-		value.Slab = ProbeSlab{} // fresh payload on every selection (SPEC §4.8)
+		value.Slab = ProbeSlab{} // fresh payload on every selection
 		return ReadProbeSlab(stream, &value.Slab)
 	}
 	return stream.Err() // None
 }
 
-// type ProbeCollider
+// ProbeCollider is the storage of schema type ProbeCollider; WriteProbeCollider
+// and ReadProbeCollider carry it on the wire.
 type ProbeCollider struct {
 	Armor       uint8
 	Shape       ProbeShape
@@ -547,16 +587,20 @@ type ProbeCollider struct {
 	ExtrasCount int32
 }
 
-// ProbeColliderMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeColliderMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeColliderMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const ProbeColliderMaxBits = 82
+
+// ProbeColliderMaxBytes is ProbeColliderMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const ProbeColliderMaxBytes = 16
 
+// WriteProbeCollider writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeCollider(stream *serialize.WriteStream, value *ProbeCollider) error {
-	{
-		rawValue := uint32(value.Armor)
-		stream.SerializeBits(&rawValue, 8)
-	}
+	rawValue := uint32(value.Armor)
+	stream.SerializeBits(&rawValue, 8)
 	if err := WriteProbeShape(stream, &value.Shape); err != nil {
 		return err
 	}
@@ -566,11 +610,9 @@ func WriteProbeCollider(stream *serialize.WriteStream, value *ProbeCollider) err
 	if value.ExtrasCount < 0 || value.ExtrasCount > 2 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ExtrasCount)
-		stream.SerializeBits(&offsetValue, 2)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ExtrasCount)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ExtrasCount; i++ {
@@ -581,29 +623,28 @@ func WriteProbeCollider(stream *serialize.WriteStream, value *ProbeCollider) err
 	return stream.Err()
 }
 
+// ReadProbeCollider reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadProbeCollider(stream *serialize.ReadStream, value *ProbeCollider) error {
-	{
-		rawValue := uint32(0)
-		stream.SerializeBits(&rawValue, 8)
-		value.Armor = uint8(rawValue)
-	}
+	rawValue := uint32(0)
+	stream.SerializeBits(&rawValue, 8)
+	value.Armor = uint8(rawValue)
 	if err := ReadProbeShape(stream, &value.Shape); err != nil {
 		return err
 	}
 	if err := ReadProbeShape(stream, &value.Backup); err != nil {
 		return err
 	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 2)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ExtrasCount = int32(offsetValue)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 2)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ExtrasCount = int32(offsetValue)
 	for i := int32(0); i < value.ExtrasCount; i++ {
 		if err := ReadProbeShape(stream, &value.Extras[i]); err != nil {
 			return err
@@ -612,15 +653,16 @@ func ReadProbeCollider(stream *serialize.ReadStream, value *ProbeCollider) error
 	return stream.Err()
 }
 
-// type ProbeConfig
+// ProbeConfig is the storage of schema type ProbeConfig; WriteProbeConfig and
+// ReadProbeConfig carry it on the wire.
 type ProbeConfig struct {
 	Retries   int32  // = -1 in New* (zero value otherwise)
 	Preferred Weapon // = WeaponRailgun in New* (zero value otherwise)
 }
 
-// NewProbeConfig returns a ProbeConfig with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewProbeConfig returns a ProbeConfig with its specified defaults applied. The
+// plain zero value is the all-zero form: a specified default is the only thing
+// that overrides zero initialization.
 func NewProbeConfig() ProbeConfig {
 	var value ProbeConfig
 	value.Retries = -1
@@ -628,49 +670,54 @@ func NewProbeConfig() ProbeConfig {
 	return value
 }
 
-// ProbeConfigMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeConfigMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeConfigMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeConfigMaxBits = 36
+
+// ProbeConfigMaxBytes is ProbeConfigMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeConfigMaxBytes = 8
 
+// WriteProbeConfig writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeConfig(stream *serialize.WriteStream, value *ProbeConfig) error {
-	{
-		enumValue1 := int32(value.Preferred)
-		if enumValue1 < 0 || enumValue1 > 15 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(value.Retries))) & 0xffffffff
-		f1 := (uint64(uint32(enumValue1))) & 0xf
-		w0 := f0 | (f1 << 32)
-		stream.SerializeBits64(&w0, 36)
+	if value.Preferred > 15 {
+		return serialize.ErrValueOutOfRange
 	}
+	f0 := uint64(value.Retries) & 0xffffffff
+	f1 := uint64(value.Preferred) & 0xf
+	w0 := f0 | f1<<32
+	stream.SerializeBits64(&w0, 36)
 	return stream.Err()
 }
 
+// ReadProbeConfig reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadProbeConfig(stream *serialize.ReadStream, value *ProbeConfig) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 36)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffffffff
-		value.Retries = int32(v0)
-		v1 := (c0 >> 32) & 0xf
-		value.Preferred = Weapon(int32(v1))
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 36)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xffffffff
+	value.Retries = int32(v0)
+	v1 := (c0 >> 32) & 0xf
+	value.Preferred = Weapon(v1)
 	return stream.Err()
 }
 
-// type ProbeArray
+// ProbeArray is the storage of schema type ProbeArray; WriteProbeArray and
+// ReadProbeArray carry it on the wire.
 type ProbeArray struct {
 	Samples [2]ProbeSample
 	Config  ProbeConfig
 }
 
-// NewProbeArray returns a ProbeArray with its specified defaults applied; the plain zero
-// value is the all-zero form (SPEC §4.2: zero initialization unless a
-// specified default overrides it).
+// NewProbeArray returns a ProbeArray with its specified defaults applied. The
+// plain zero value is the all-zero form: a specified default is the only thing
+// that overrides zero initialization.
 func NewProbeArray() ProbeArray {
 	var value ProbeArray
 	for i := range value.Samples {
@@ -680,70 +727,85 @@ func NewProbeArray() ProbeArray {
 	return value
 }
 
-// ProbeArrayMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeArrayMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeArrayMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeArrayMaxBits = 588
+
+// ProbeArrayMaxBytes is ProbeArrayMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeArrayMaxBytes = 80
 
+// WriteProbeArray writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeArray(stream *serialize.WriteStream, value *ProbeArray) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		if err := WriteProbeSample(stream, &value.Samples[i]); err != nil {
 			return err
 		}
 	}
-	{
-		enumValue1 := int32(value.Config.Preferred)
-		if enumValue1 < 0 || enumValue1 > 15 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(value.Config.Retries))) & 0xffffffff
-		f1 := (uint64(uint32(enumValue1))) & 0xf
-		w0 := f0 | (f1 << 32)
-		stream.SerializeBits64(&w0, 36)
+	if value.Config.Preferred > 15 {
+		return serialize.ErrValueOutOfRange
 	}
+	f0 := uint64(value.Config.Retries) & 0xffffffff
+	f1 := uint64(value.Config.Preferred) & 0xf
+	w0 := f0 | f1<<32
+	stream.SerializeBits64(&w0, 36)
 	return stream.Err()
 }
 
+// ReadProbeArray reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadProbeArray(stream *serialize.ReadStream, value *ProbeArray) error {
-	for i := int(0); i < 2; i++ {
+	for i := 0; i < 2; i++ {
 		if err := ReadProbeSample(stream, &value.Samples[i]); err != nil {
 			return err
 		}
 	}
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 36)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffffffff
-		value.Config.Retries = int32(v0)
-		v1 := (c0 >> 32) & 0xf
-		value.Config.Preferred = Weapon(int32(v1))
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 36)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xffffffff
+	value.Config.Retries = int32(v0)
+	v1 := (c0 >> 32) & 0xf
+	value.Config.Preferred = Weapon(v1)
 	return stream.Err()
 }
 
-// type Heartbeat
+// Heartbeat is the storage of schema type Heartbeat; WriteHeartbeat and
+// ReadHeartbeat carry it on the wire.
 type Heartbeat struct {
 }
 
-// HeartbeatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// HeartbeatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// HeartbeatMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const HeartbeatMaxBits = 0
+
+// HeartbeatMaxBytes is HeartbeatMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const HeartbeatMaxBytes = 0
 
+// WriteHeartbeat writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteHeartbeat(stream *serialize.WriteStream, value *Heartbeat) error {
-	_ = value // empty body — presence is the payload (SPEC §4.6)
+	_ = value // empty body — presence is the payload
 	return stream.Err()
 }
 
+// ReadHeartbeat reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadHeartbeat(stream *serialize.ReadStream, value *Heartbeat) error {
 	_ = value
 	return stream.Err()
 }
 
-// type Test
+// Test is the storage of schema type Test; WriteTest and ReadTest carry it on
+// the wire.
 type Test struct {
 	TestA uint16
 	TestB int16 // wire [0, 1000]
@@ -751,149 +813,163 @@ type Test struct {
 	TestD int16 // wire [0, 1000]
 }
 
-// TestMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// TestMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// TestMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const TestMaxBits = 46
+
+// TestMaxBytes is TestMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const TestMaxBytes = 8
 
+// WriteTest writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTest(stream *serialize.WriteStream, value *Test) error {
-	{
-		rangeValue1 := int32(value.TestB)
-		if rangeValue1 < 0 || rangeValue1 > 1000 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue2 := int32(value.TestC)
-		if rangeValue2 < 0 || rangeValue2 > 1000 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue3 := int32(value.TestD)
-		if rangeValue3 < 0 || rangeValue3 > 1000 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(value.TestA)) & 0xffff
-		f1 := (uint64(uint32(rangeValue1))) & 0x3ff
-		f2 := (uint64(uint32(rangeValue2))) & 0x3ff
-		f3 := (uint64(uint32(rangeValue3))) & 0x3ff
-		w0 := f0 | (f1 << 16) | (f2 << 26) | (f3 << 36)
-		stream.SerializeBits64(&w0, 46)
+	if value.TestB < 0 || value.TestB > 1000 {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.TestC < 0 || value.TestC > 1000 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.TestD < 0 || value.TestD > 1000 {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.TestA) & 0xffff
+	f1 := uint64(value.TestB) & 0x3ff
+	f2 := uint64(value.TestC) & 0x3ff
+	f3 := uint64(value.TestD) & 0x3ff
+	w0 := f0 | f1<<16 | f2<<26 | f3<<36
+	stream.SerializeBits64(&w0, 46)
 	return stream.Err()
 }
 
+// ReadTest reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadTest(stream *serialize.ReadStream, value *Test) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 46)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffff
-		value.TestA = uint16(v0)
-		v1 := (c0 >> 16) & 0x3ff
-		if v1 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.TestB = int16(int32(v1))
-		v2 := (c0 >> 26) & 0x3ff
-		if v2 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.TestC = int16(int32(v2))
-		v3 := (c0 >> 36) & 0x3ff
-		if v3 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.TestD = int16(int32(v3))
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 46)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xffff
+	value.TestA = uint16(v0)
+	v1 := (c0 >> 16) & 0x3ff
+	if v1 > 1000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.TestB = int16(v1)
+	v2 := (c0 >> 26) & 0x3ff
+	if v2 > 1000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.TestC = int16(v2)
+	v3 := (c0 >> 36) & 0x3ff
+	if v3 > 1000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.TestD = int16(v3)
 	return stream.Err()
 }
 
-// type Block
+// Block is the storage of schema type Block; WriteBlock and ReadBlock carry it
+// on the wire.
 type Block struct {
-	Data       [MaxBlockSize]byte // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
+	Data       [MaxBlockSize]byte // bytes(MaxBlockSize): fixed buffer, used length beside it
 	DataLength int32
 }
 
-// BlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// BlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// BlockMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const BlockMaxBits = 16018
+
+// BlockMaxBytes is BlockMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const BlockMaxBytes = 2008
 
+// WriteBlock writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteBlock(stream *serialize.WriteStream, value *Block) error {
 	if value.DataLength < 0 || value.DataLength > MaxBlockSize {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.DataLength)
-		stream.SerializeBits(&offsetValue, 11)
-	}
-	if stream.Err() != nil { // the length guards the slice (§6.3)
+	offsetValue := uint32(value.DataLength)
+	stream.SerializeBits(&offsetValue, 11)
+	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.Data[:value.DataLength])
 	return stream.Err()
 }
 
+// ReadBlock reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadBlock(stream *serialize.ReadStream, value *Block) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 11)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 2000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.DataLength = int32(offsetValue)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 11)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 2000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.DataLength = int32(offsetValue)
 	stream.SerializeBytes(value.Data[:value.DataLength])
 	return stream.Err()
 }
 
-// type Chat
+// Chat is the storage of schema type Chat; WriteChat and ReadChat carry it on
+// the wire.
 type Chat struct {
-	Text       [MaxChatLength]byte // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
+	Text       [MaxChatLength]byte // string(MaxChatLength): max length, used length beside it
 	TextLength int32
 }
 
-// ChatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ChatMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ChatMaxBits is the longest wire path in bits, alignment padding at its worst
+// case.
 const ChatMaxBits = 2064
+
+// ChatMaxBytes is ChatMaxBits in bytes, rounded up to the 8-byte write-buffer
+// granularity: size write buffers from it.
 const ChatMaxBytes = 264
 
+// WriteChat writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteChat(stream *serialize.WriteStream, value *Chat) error {
 	if value.TextLength < 0 || value.TextLength > MaxChatLength {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.TextLength)
-		stream.SerializeBits(&offsetValue, 9)
-	}
-	if stream.Err() != nil { // the length guards the slice (§6.3)
+	offsetValue := uint32(value.TextLength)
+	stream.SerializeBits(&offsetValue, 9)
+	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	return stream.Err()
 }
 
+// ReadChat reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadChat(stream *serialize.ReadStream, value *Chat) error {
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 9)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 256 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.TextLength = int32(offsetValue)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 9)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	if offsetValue > 256 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.TextLength = int32(offsetValue)
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	if stream.Err() != nil {
 		return stream.Err()
 	}
 	if !utf8.Valid(value.Text[:value.TextLength]) {
-		return ErrValidation // malformed UTF-8 (SPEC §4.7)
+		return ErrValidation // malformed UTF-8
 	}
 	for i := int32(0); i < value.TextLength; i++ {
 		if value.Text[i] == 0 {
@@ -903,83 +979,87 @@ func ReadChat(stream *serialize.ReadStream, value *Chat) error {
 	return stream.Err()
 }
 
-// type ProbeReport
+// ProbeReport is the storage of schema type ProbeReport; WriteProbeReport and
+// ReadProbeReport carry it on the wire.
 type ProbeReport struct {
 	Header ProbeHeader
 	Flags  ProbeFlags
 	Echo   Test
 }
 
-// ProbeReportMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// ProbeReportMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// ProbeReportMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const ProbeReportMaxBits = 141
+
+// ProbeReportMaxBytes is ProbeReportMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const ProbeReportMaxBytes = 24
 
+// WriteProbeReport writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeReport(stream *serialize.WriteStream, value *ProbeReport) error {
 	if err := WriteProbeHeader(stream, &value.Header); err != nil {
 		return err
 	}
-	{
-		if value.Flags >= 1<<8 { // a mask bit above the wire width cannot ride
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue2 := int32(value.Echo.TestB)
-		if rangeValue2 < 0 || rangeValue2 > 1000 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue3 := int32(value.Echo.TestC)
-		if rangeValue3 < 0 || rangeValue3 > 1000 {
-			return serialize.ErrValueOutOfRange
-		}
-		rangeValue4 := int32(value.Echo.TestD)
-		if rangeValue4 < 0 || rangeValue4 > 1000 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(value.Flags)) & 0xff
-		f1 := (uint64(value.Echo.TestA)) & 0xffff
-		f2 := (uint64(uint32(rangeValue2))) & 0x3ff
-		f3 := (uint64(uint32(rangeValue3))) & 0x3ff
-		f4 := (uint64(uint32(rangeValue4))) & 0x3ff
-		w0 := f0 | (f1 << 8) | (f2 << 24) | (f3 << 34) | (f4 << 44)
-		stream.SerializeBits64(&w0, 54)
+	if value.Flags >= 1<<8 { // a mask bit above the wire width cannot ride
+		return serialize.ErrValueOutOfRange
 	}
+	if value.Echo.TestB < 0 || value.Echo.TestB > 1000 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Echo.TestC < 0 || value.Echo.TestC > 1000 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Echo.TestD < 0 || value.Echo.TestD > 1000 {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.Flags) & 0xff
+	f1 := uint64(value.Echo.TestA) & 0xffff
+	f2 := uint64(value.Echo.TestB) & 0x3ff
+	f3 := uint64(value.Echo.TestC) & 0x3ff
+	f4 := uint64(value.Echo.TestD) & 0x3ff
+	w0 := f0 | f1<<8 | f2<<24 | f3<<34 | f4<<44
+	stream.SerializeBits64(&w0, 54)
 	return stream.Err()
 }
 
+// ReadProbeReport reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
 func ReadProbeReport(stream *serialize.ReadStream, value *ProbeReport) error {
 	if err := ReadProbeHeader(stream, &value.Header); err != nil {
 		return err
 	}
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 54)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xff
-		value.Flags = ProbeFlags(v0)
-		v1 := (c0 >> 8) & 0xffff
-		value.Echo.TestA = uint16(v1)
-		v2 := (c0 >> 24) & 0x3ff
-		if v2 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Echo.TestB = int16(int32(v2))
-		v3 := (c0 >> 34) & 0x3ff
-		if v3 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Echo.TestC = int16(int32(v3))
-		v4 := (c0 >> 44) & 0x3ff
-		if v4 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.Echo.TestD = int16(int32(v4))
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 54)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0xff
+	value.Flags = ProbeFlags(v0)
+	v1 := (c0 >> 8) & 0xffff
+	value.Echo.TestA = uint16(v1)
+	v2 := (c0 >> 24) & 0x3ff
+	if v2 > 1000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Echo.TestB = int16(v2)
+	v3 := (c0 >> 34) & 0x3ff
+	if v3 > 1000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Echo.TestC = int16(v3)
+	v4 := (c0 >> 44) & 0x3ff
+	if v4 > 1000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Echo.TestD = int16(v4)
 	return stream.Err()
 }
 
-// type TestData
+// TestData is the storage of schema type TestData; WriteTestData and
+// ReadTestData carry it on the wire.
 type TestData struct {
 	A                    int32 // wire [-100, 100]
 	B                    int32 // wire [-100, 100]
@@ -1002,239 +1082,212 @@ type TestData struct {
 	Int64Full            int64
 	Int64Range           int64 // wire [-1000000000000, 1000000000000]
 	FixedBytes           [17]uint8
-	Text                 [255]byte // string(255): max length, used length beside it (SPEC §4.7)
+	Text                 [255]byte // string(255): max length, used length beside it
 	TextLength           int32
 }
 
-// TestDataMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// TestDataMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// TestDataMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
 const TestDataMaxBits = 2735
+
+// TestDataMaxBytes is TestDataMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
 const TestDataMaxBytes = 344
 
+// WriteTestData writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
-	{
-		if value.A < -100 || value.A > 100 {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.B < -100 || value.B > 100 {
-			return serialize.ErrValueOutOfRange
-		}
-		if value.C < -100 || value.C > 150 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(uint32(value.A - (-100)))) & 0xff
-		f1 := (uint64(uint32(value.B - (-100)))) & 0xff
-		f2 := (uint64(uint32(value.C - (-100)))) & 0xff
-		f3 := (uint64(value.D)) & 0xff
-		f4 := (uint64(value.E)) & 0xff
-		f5 := (uint64(value.F)) & 0xff
-		f6 := uint64(0)
-		if value.G {
-			f6 = 1
-		}
-		w0 := f0 | (f1 << 8) | (f2 << 16) | (f3 << 24) | (f4 << 32) | (f5 << 40) | (f6 << 48)
-		stream.SerializeBits64(&w0, 49)
+	if value.A < -100 || value.A > 100 {
+		return serialize.ErrValueOutOfRange
 	}
+	if value.B < -100 || value.B > 100 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.C < -100 || value.C > 150 {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := uint64(value.A+100) & 0xff
+	f1 := uint64(value.B+100) & 0xff
+	f2 := uint64(value.C+100) & 0xff
+	f3 := uint64(value.D) & 0xff
+	f4 := uint64(value.E) & 0xff
+	f5 := uint64(value.F) & 0xff
+	f6 := uint64(0)
+	if value.G {
+		f6 = 1
+	}
+	w0 := f0 | f1<<8 | f2<<16 | f3<<24 | f4<<32 | f5<<40 | f6<<48
+	stream.SerializeBits64(&w0, 49)
 	if value.ItemsCount < 0 || value.ItemsCount > 16 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.ItemsCount)
-		stream.SerializeBits(&offsetValue, 5)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
+	offsetValue := uint32(value.ItemsCount)
+	stream.SerializeBits(&offsetValue, 5)
+	if stream.Err() != nil { // the count guards the loop
 		return stream.Err()
 	}
 	for i := int32(0); i < value.ItemsCount; i++ {
 		if value.Items[i] < 0 || value.Items[i] > 255 {
 			return serialize.ErrValueOutOfRange
 		}
-		{
-			offsetValue := uint32(value.Items[i])
-			stream.SerializeBits(&offsetValue, 8)
-		}
+		offsetValue2 := uint32(value.Items[i])
+		stream.SerializeBits(&offsetValue2, 8)
 	}
-	{
-		if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
-			return serialize.ErrValueOutOfRange
-		}
-		f0 := (uint64(math.Float32bits(value.FloatValue))) & 0xffffffff
-		f1 := uint64(0)
-		{
-			normalizedValue := value.CompressedFloatValue / 10.0
-			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-				normalizedValue = 0
-			} else if !(normalizedValue <= 1) {
-				normalizedValue = 1
-			}
-			f1 = (uint64(uint32(float32(normalizedValue*1000.0) + 0.5))) & 0x3ff
-		}
-		f2 := math.Float64bits(value.DoubleValue)
-		f3 := (uint64(uint8(value.Int8Value))) & 0xff
-		f4 := (uint64(uint16(value.Int16Value))) & 0xffff
-		f5 := (uint64(value.Uint8Value)) & 0xff
-		f6 := (uint64(value.Uint16Value)) & 0xffff
-		f7 := (uint64(value.Uint32Value)) & 0xffffffff
-		f8 := value.Uint64Value
-		f9 := uint64(value.Int64Full)
-		f10 := (uint64(value.Int64Range - (-1000000000000))) & 0x1ffffffffff
-		w0 := f0 | (f1 << 32) | (f2 << 42)
-		stream.SerializeBits64(&w0, 64)
-		w1 := (f2 >> 22) | (f3 << 42) | (f4 << 50)
-		stream.SerializeBits64(&w1, 64)
-		w2 := (f4 >> 14) | (f5 << 2) | (f6 << 10) | (f7 << 26) | (f8 << 58)
-		stream.SerializeBits64(&w2, 64)
-		w3 := (f8 >> 6) | (f9 << 58)
-		stream.SerializeBits64(&w3, 64)
-		w4 := (f9 >> 6) | (f10 << 58)
-		stream.SerializeBits64(&w4, 64)
-		w5 := (f10 >> 6)
-		stream.SerializeBits64(&w5, 35)
+	if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
+		return serialize.ErrValueOutOfRange
 	}
+	f11 := uint64(math.Float32bits(value.FloatValue)) & 0xffffffff
+	f12 := uint64(0)
+	normalizedValue := value.CompressedFloatValue / 10.0
+	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+		normalizedValue = 0
+	} else if !(normalizedValue <= 1) {
+		normalizedValue = 1
+	}
+	f12 = uint64(uint32(float32(normalizedValue*1000.0)+0.5)) & 0x3ff
+	f13 := math.Float64bits(value.DoubleValue)
+	f14 := uint64(value.Int8Value) & 0xff
+	f15 := uint64(value.Int16Value) & 0xffff
+	f16 := uint64(value.Uint8Value) & 0xff
+	f17 := uint64(value.Uint16Value) & 0xffff
+	f7 := uint64(value.Uint32Value) & 0xffffffff
+	f8 := value.Uint64Value
+	f9 := uint64(value.Int64Full)
+	f10 := uint64(value.Int64Range+1000000000000) & 0x1ffffffffff
+	w6 := f11 | f12<<32 | f13<<42
+	stream.SerializeBits64(&w6, 64)
+	w1 := f13>>22 | f14<<42 | f15<<50
+	stream.SerializeBits64(&w1, 64)
+	w2 := f15>>14 | f16<<2 | f17<<10 | f7<<26 | f8<<58
+	stream.SerializeBits64(&w2, 64)
+	w3 := f8>>6 | f9<<58
+	stream.SerializeBits64(&w3, 64)
+	w4 := f9>>6 | f10<<58
+	stream.SerializeBits64(&w4, 64)
+	w5 := f10 >> 6
+	stream.SerializeBits64(&w5, 35)
 	stream.SerializeAlign()
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
 	if value.TextLength < 0 || value.TextLength > 255 {
 		return serialize.ErrValueOutOfRange
 	}
-	{
-		offsetValue := uint32(value.TextLength)
-		stream.SerializeBits(&offsetValue, 8)
-	}
-	if stream.Err() != nil { // the length guards the slice (§6.3)
+	offsetValue3 := uint32(value.TextLength)
+	stream.SerializeBits(&offsetValue3, 8)
+	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	return stream.Err()
 }
 
+// ReadTestData reads value from stream, validating every field. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 49)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xff
-		if v0 > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-100)
-			value.A = int32(uint32(v0) + uint32(lowValue))
-		}
-		v1 := (c0 >> 8) & 0xff
-		if v1 > 200 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-100)
-			value.B = int32(uint32(v1) + uint32(lowValue))
-		}
-		v2 := (c0 >> 16) & 0xff
-		if v2 > 250 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int32(-100)
-			value.C = int32(uint32(v2) + uint32(lowValue))
-		}
-		v3 := (c0 >> 24) & 0xff
-		value.D = uint32(v3)
-		v4 := (c0 >> 32) & 0xff
-		value.E = uint32(v4)
-		v5 := (c0 >> 40) & 0xff
-		value.F = uint32(v5)
-		v6 := (c0 >> 48) & 0x1
-		value.G = v6 != 0
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 49)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 5)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 16 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.ItemsCount = int32(offsetValue)
+	v0 := c0 & 0xff
+	if v0 > 200 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
 	}
+	value.A = int32(v0) - 100
+	v1 := (c0 >> 8) & 0xff
+	if v1 > 200 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.B = int32(v1) - 100
+	v2 := (c0 >> 16) & 0xff
+	if v2 > 250 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.C = int32(v2) - 100
+	v3 := (c0 >> 24) & 0xff
+	value.D = uint32(v3)
+	v4 := (c0 >> 32) & 0xff
+	value.E = uint32(v4)
+	v5 := (c0 >> 40) & 0xff
+	value.F = uint32(v5)
+	v6 := (c0 >> 48) & 0x1
+	value.G = v6 != 0
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 5)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 16 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.ItemsCount = int32(offsetValue)
 	for i := int32(0); i < value.ItemsCount; i++ {
-		{
-			offsetValue := uint32(0)
-			stream.SerializeBits(&offsetValue, 8)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Items[i] = int32(offsetValue)
-		}
-	}
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		c1 := uint64(0)
-		stream.SerializeBits64(&c1, 64)
-		c2 := uint64(0)
-		stream.SerializeBits64(&c2, 64)
-		c3 := uint64(0)
-		stream.SerializeBits64(&c3, 64)
-		c4 := uint64(0)
-		stream.SerializeBits64(&c4, 64)
-		c5 := uint64(0)
-		stream.SerializeBits64(&c5, 35)
+		offsetValue2 := uint32(0)
+		stream.SerializeBits(&offsetValue2, 8)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
-		v0 := c0 & 0xffffffff
-		value.FloatValue = math.Float32frombits(uint32(v0))
-		v1 := (c0 >> 32) & 0x3ff
-		if v1 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return ErrValidation
-		}
-		{
-			normalizedValue := float32(v1) / 1000.0
-			value.CompressedFloatValue = float32(normalizedValue * 10.0)
-		}
-		v2 := (c0 >> 42) | (c1 << 22)
-		value.DoubleValue = math.Float64frombits(v2)
-		v3 := (c1 >> 42) & 0xff
-		value.Int8Value = int8(uint8(v3))
-		v4 := ((c1 >> 50) | (c2 << 14)) & 0xffff
-		value.Int16Value = int16(uint16(v4))
-		v5 := (c2 >> 2) & 0xff
-		value.Uint8Value = uint8(v5)
-		v6 := (c2 >> 10) & 0xffff
-		value.Uint16Value = uint16(v6)
-		v7 := (c2 >> 26) & 0xffffffff
-		value.Uint32Value = uint32(v7)
-		v8 := (c2 >> 58) | (c3 << 6)
-		value.Uint64Value = v8
-		v9 := (c3 >> 58) | (c4 << 6)
-		value.Int64Full = int64(v9)
-		v10 := ((c4 >> 58) | (c5 << 6)) & 0x1ffffffffff
-		if v10 > 2000000000000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			lowValue := int64(-1000000000000)
-			value.Int64Range = int64(v10 + uint64(lowValue))
-		}
+		value.Items[i] = int32(offsetValue2)
 	}
-	stream.SerializeAlign()                    // rejects nonzero padding (SPEC §4.3)
+	c6 := uint64(0)
+	stream.SerializeBits64(&c6, 64)
+	c1 := uint64(0)
+	stream.SerializeBits64(&c1, 64)
+	c2 := uint64(0)
+	stream.SerializeBits64(&c2, 64)
+	c3 := uint64(0)
+	stream.SerializeBits64(&c3, 64)
+	c4 := uint64(0)
+	stream.SerializeBits64(&c4, 64)
+	c5 := uint64(0)
+	stream.SerializeBits64(&c5, 35)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	v11 := c6 & 0xffffffff
+	value.FloatValue = math.Float32frombits(uint32(v11))
+	v12 := (c6 >> 32) & 0x3ff
+	if v12 > 1000 { // a value smuggled into the bit headroom is refused
+		return ErrValidation
+	}
+	normalizedValue := float32(v12) / 1000.0
+	value.CompressedFloatValue = float32(normalizedValue * 10.0)
+	v13 := c6>>42 | c1<<22
+	value.DoubleValue = math.Float64frombits(v13)
+	v14 := (c1 >> 42) & 0xff
+	value.Int8Value = int8(uint8(v14))
+	v15 := (c1>>50 | c2<<14) & 0xffff
+	value.Int16Value = int16(uint16(v15))
+	v16 := (c2 >> 2) & 0xff
+	value.Uint8Value = uint8(v16)
+	v17 := (c2 >> 10) & 0xffff
+	value.Uint16Value = uint16(v17)
+	v7 := (c2 >> 26) & 0xffffffff
+	value.Uint32Value = uint32(v7)
+	v8 := c2>>58 | c3<<6
+	value.Uint64Value = v8
+	v9 := c3>>58 | c4<<6
+	value.Int64Full = int64(v9)
+	v10 := (c4>>58 | c5<<6) & 0x1ffffffffff
+	if v10 > 2000000000000 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.Int64Range = int64(v10) - 1000000000000
+	stream.SerializeAlign()                    // rejects nonzero padding
 	stream.SerializeBytes(value.FixedBytes[:]) // byte-aligned [N]uint8 — bulk copy, wire-identical to the per-byte loop
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 8)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		value.TextLength = int32(offsetValue)
+	offsetValue3 := uint32(0)
+	stream.SerializeBits(&offsetValue3, 8)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	value.TextLength = int32(offsetValue3)
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	if stream.Err() != nil {
 		return stream.Err()
 	}
 	if !utf8.Valid(value.Text[:value.TextLength]) {
-		return ErrValidation // malformed UTF-8 (SPEC §4.7)
+		return ErrValidation // malformed UTF-8
 	}
 	for i := int32(0); i < value.TextLength; i++ {
 		if value.Text[i] == 0 {
@@ -1244,69 +1297,68 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 	return stream.Err()
 }
 
-// type CompressedProbe
+// CompressedProbe is the storage of schema type CompressedProbe;
+// WriteCompressedProbe and ReadCompressedProbe carry it on the wire.
 type CompressedProbe struct {
 	Boundary float32 // compressed float [0.0, 10.0] @ 0.01
 	Offset   float32 // compressed float [-5.0, 5.0] @ 0.001
 }
 
-// CompressedProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// CompressedProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// CompressedProbeMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const CompressedProbeMaxBits = 24
+
+// CompressedProbeMaxBytes is CompressedProbeMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const CompressedProbeMaxBytes = 8
 
+// WriteCompressedProbe writes value to stream in wire order. It returns the
+// first write-side refusal (serialize.ErrValueOutOfRange for a value the wire
+// cannot carry) or the stream's error; the size written is
+// stream.BitsProcessed().
 func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe) error {
-	{
-		f0 := uint64(0)
-		{
-			normalizedValue := value.Boundary / 10.0
-			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-				normalizedValue = 0
-			} else if !(normalizedValue <= 1) {
-				normalizedValue = 1
-			}
-			f0 = (uint64(uint32(float32(normalizedValue*1000.0) + 0.5))) & 0x3ff
-		}
-		f1 := uint64(0)
-		{
-			normalizedValue := (value.Offset - (-5.0)) / 10.0
-			if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
-				normalizedValue = 0
-			} else if !(normalizedValue <= 1) {
-				normalizedValue = 1
-			}
-			f1 = (uint64(uint32(float32(normalizedValue*10000.0) + 0.5))) & 0x3fff
-		}
-		w0 := uint32(f0 | (f1 << 10))
-		stream.SerializeBits(&w0, 24)
+	f0 := uint64(0)
+	normalizedValue := value.Boundary / 10.0
+	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
+		normalizedValue = 0
+	} else if !(normalizedValue <= 1) {
+		normalizedValue = 1
 	}
+	f0 = uint64(uint32(float32(normalizedValue*1000.0)+0.5)) & 0x3ff
+	f1 := uint64(0)
+	normalizedValue2 := (value.Offset + 5.0) / 10.0
+	if !(normalizedValue2 >= 0) { // the runtime's clamp form — it forces NaN into range too
+		normalizedValue2 = 0
+	} else if !(normalizedValue2 <= 1) {
+		normalizedValue2 = 1
+	}
+	f1 = uint64(uint32(float32(normalizedValue2*10000.0)+0.5)) & 0x3fff
+	w0 := uint32(f0 | f1<<10)
+	stream.SerializeBits(&w0, 24)
 	return stream.Err()
 }
 
+// ReadCompressedProbe reads value from stream, validating every field. It
+// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
+// for a wire the schema refuses.
 func ReadCompressedProbe(stream *serialize.ReadStream, value *CompressedProbe) error {
-	{
-		n0 := uint32(0)
-		stream.SerializeBits(&n0, 24)
-		c0 := uint64(n0)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0x3ff
-		if v0 > 1000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return ErrValidation
-		}
-		{
-			normalizedValue := float32(v0) / 1000.0
-			value.Boundary = float32(normalizedValue * 10.0)
-		}
-		v1 := (c0 >> 10) & 0x3fff
-		if v1 > 10000 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return ErrValidation
-		}
-		{
-			normalizedValue := float32(v1) / 10000.0
-			value.Offset = float32(normalizedValue*10.0) + (-5.0)
-		}
+	n0 := uint32(0)
+	stream.SerializeBits(&n0, 24)
+	c0 := uint64(n0)
+	if stream.Err() != nil {
+		return stream.Err()
 	}
+	v0 := c0 & 0x3ff
+	if v0 > 1000 { // a value smuggled into the bit headroom is refused
+		return ErrValidation
+	}
+	normalizedValue := float32(v0) / 1000.0
+	value.Boundary = float32(normalizedValue * 10.0)
+	v1 := (c0 >> 10) & 0x3fff
+	if v1 > 10000 { // a value smuggled into the bit headroom is refused
+		return ErrValidation
+	}
+	normalizedValue2 := float32(v1) / 10000.0
+	value.Offset = float32(normalizedValue2*10.0) - 5.0
 	return stream.Err()
 }

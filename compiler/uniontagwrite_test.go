@@ -73,7 +73,7 @@ var tagGoneFromRelease = map[string][]string{
 // are the only two left.
 var tagRefusesEveryBuild = map[string][]string{
 	"elixir": {`raise ArgumentError, "value.type is above the wire maximum"`},
-	"go":     {"if tagValue < 0 || tagValue > 2 {"},
+	"go":     {"if value.Type > ShotTypeMax {"},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the

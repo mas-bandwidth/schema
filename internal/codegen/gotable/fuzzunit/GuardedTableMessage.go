@@ -190,7 +190,7 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetID = int32(v)
 					}
 				}
 				if widened {
@@ -320,9 +320,9 @@ func PatrolSaveMessageBody(w *TableMessageWriter, value *Patrol) bool {
 	}
 	{
 		if value.Active && value.HasTarget {
-			if value.TargetId != 0 {
+			if value.TargetID != 0 {
 				w.Put(35, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TargetId), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TargetID), uint64(0))
 			}
 		}
 	}
@@ -526,7 +526,7 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
 						}
-						value.TargetId = int32(v)
+						value.TargetID = int32(v)
 					}
 				}
 				if widened {

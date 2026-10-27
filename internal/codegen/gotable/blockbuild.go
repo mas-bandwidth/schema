@@ -1,6 +1,9 @@
 package gotable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import (
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 const blockBuildRuntime = `// TableBlockAllocator supplies exactly one allocation per storage lifetime.
 // Both functions are required; the free receives the original, unsliced buffer.
@@ -25,7 +28,7 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	n := bl.Table.Name
 	g.hf("// %sCounts is gathered before Begin; clamping is the caller's policy.\ntype %sCounts struct {\n", n, n)
 	for _, a := range bl.Arrays {
-		g.hf("%s int32\n", ir.GoExportName(a.Field.Name))
+		g.hf("%s int32\n", goname.Member(a.Field.Name))
 	}
 	g.hf("}\n\n")
 	g.hf("// %sBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.\n", n)
@@ -42,21 +45,21 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	g.hf("func %sBlockBegin(b *%sBlock,s *%sBlockStorage,c %sCounts,refusal *TableBlockRefusal) bool {\n", n, n, n, n)
 	g.hf("if refusal!=nil {*refusal=TableBlockRefusal{}};if b==nil {return false}\n")
 	for _, a := range bl.Arrays {
-		field := ir.GoExportName(a.Field.Name)
+		field := goname.Member(a.Field.Name)
 		g.hf("if c.%s<0 || c.%s>%d {if refusal!=nil {*refusal=TableBlockRefusal{Array:%q,Count:int64(c.%s),Maximum:%d}};return false}\n", field, field, a.Max, a.Field.Name, field, a.Max)
 	}
 	g.hf("if s==nil || s.base==nil {return false}\n")
 	g.hf("p:=(*%sBlockProjection)(s.base);p.Magic=TableBlockMagic;p.BuildVersion=BuildVersion;p.ByteOrder=TableBlockByteOrder\n", n)
 	g.hf("offset:=int64(%d)\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
-		field := ir.GoExportName(a.Field.Name)
+		field := goname.Member(a.Field.Name)
 		g.hf("offset=(offset+%d)&^int64(%d)\n", blockStartAlign(a)-1, blockStartAlign(a)-1)
 		g.hf("p.%s=TableBlockTriple{OffsetOf:uint64(offset),Count:uint32(c.%s),Stride:%d};offset+=int64(c.%s)*%d\n", field, field, a.Stride, field, a.Stride)
 	}
 	g.hf("*b=%sBlock{Base:s.base,Projection:p,Bytes:(offset+63)&^int64(63)};return true\n}\n\n", n)
 	g.hf("func %sBlockBytes(b *%sBlock) int64 {if b==nil || b.Projection==nil {return 0};used:=int64(%d)\n", n, n, bl.Projection.Size)
 	for _, a := range bl.Arrays {
-		field := ir.GoExportName(a.Field.Name)
+		field := goname.Member(a.Field.Name)
 		g.hf("if end:=int64(b.Projection.%s.OffsetOf)+int64(b.Projection.%s.Count)*int64(b.Projection.%s.Stride);end>used {used=end}\n", field, field, field)
 	}
 	g.hf("return (used+63)&^int64(63)\n}\n// ---- block fill path: end ----\n\n")

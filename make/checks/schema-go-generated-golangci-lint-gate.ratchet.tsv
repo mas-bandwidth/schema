@@ -13,7 +13,7 @@
 # pin records the residue so the gate catches new ones (see the card's
 # report).
 example	errcheck	-	402
-example	gosec	G115	75
+example	gosec	G115	47
 ludicrous	errcheck	-	58
 ludicrous	gosec	G115	1
 tables	errcheck	-	130

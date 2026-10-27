@@ -36,6 +36,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -728,21 +729,21 @@ func (g *tableGen) emitFixedArmLeaves(v ir.UnionVariant, unionName, src, dst str
 		return
 	}
 	ind := strings.Repeat("\t", tabs)
-	valueDst := dst + " + " + g.offGo(unionName, ir.GoExportName(v.Name))
+	valueDst := dst + " + " + g.offGo(unionName, goname.Member(v.Name))
 	switch {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedArmLoop(f, src, valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			ind, src, dst+" + "+g.offGo(unionName, ir.GoExportName(v.Name)+"Count"), f.ArrayBound, v.Name)
+			ind, src, dst+" + "+g.offGo(unionName, goname.Member(v.Name)+"Count"), f.ArrayBound, v.Name)
 		g.pf("%sn++\n", ind)
 		g.emitFixedArmLoop(f, src+" + "+strconv.FormatInt(fixedCountBytes, 10), valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Type.Kind == ir.TString:
-		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, ir.GoExportName(v.Name), f.Type.Size, 1)
+		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, goname.Member(v.Name), f.Type.Size, 1)
 	case f.Type.Kind == ir.TWString:
-		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, ir.GoExportName(v.Name), 2*f.Type.Size, 2)
+		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, goname.Member(v.Name), 2*f.Type.Size, 2)
 	case f.Type.Kind == ir.TBytes:
-		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, ir.GoExportName(v.Name), f.Type.Size, 3)
+		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, goname.Member(v.Name), f.Type.Size, 3)
 	default:
 		g.emitFixedElementLeavesAt(f, src, valueDst, tabs)
 	}
@@ -957,7 +958,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, depth, 
 					continue
 				}
 				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
-				g.emitFixedWriteArm(v, fmt.Sprintf("%s[%d:]", dest, tag), expr+"."+ir.GoExportName(v.Name), depth, tabs+1, defaultMode)
+				g.emitFixedWriteArm(v, fmt.Sprintf("%s[%d:]", dest, tag), expr+"."+goname.Member(v.Name), depth, tabs+1, defaultMode)
 			}
 			g.pf("%s}\n", ind)
 			return

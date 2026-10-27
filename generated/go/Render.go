@@ -3,6 +3,7 @@
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
+// The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
 
@@ -10,45 +11,225 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
+// RenderBlockMaxSprites is a schema constant.
 const RenderBlockMaxSprites = 64
 
-// type RenderSprite
+// RenderSprite is the storage of schema type RenderSprite; WriteRenderSprite
+// and ReadRenderSprite carry it on the wire.
 type RenderSprite struct {
 	SortKey    uint64
-	MeshId     uint32
-	MaterialId uint32
+	MeshID     uint32
+	MaterialID uint32
 	Layer      uint8
 	Team       Team
 }
 
-// RenderSpriteMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// RenderSpriteMaxBytes is rounded up to the 8-byte write-buffer granularity.
+// RenderSpriteMaxBits is the longest wire path in bits, alignment padding at
+// its worst case.
 const RenderSpriteMaxBits = 138
+
+// RenderSpriteMaxBytes is RenderSpriteMaxBits in bytes, rounded up to the
+// 8-byte write-buffer granularity: size write buffers from it.
 const RenderSpriteMaxBytes = 24
 
+// WriteRenderSprite writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteRenderSprite(stream *serialize.WriteStream, value *RenderSprite) error {
-	{
-		enumValue4 := int32(value.Team)
-		if enumValue4 < 0 || enumValue4 > 2 {
+	if value.Team > 2 {
+		return serialize.ErrValueOutOfRange
+	}
+	f0 := value.SortKey
+	f1 := uint64(value.MeshID) & 0xffffffff
+	f2 := uint64(value.MaterialID) & 0xffffffff
+	f3 := uint64(value.Layer) & 0xff
+	f4 := uint64(value.Team) & 0x3
+	w0 := f0
+	stream.SerializeBits64(&w0, 64)
+	w1 := f1 | f2<<32
+	stream.SerializeBits64(&w1, 64)
+	w2 := uint32(f3 | f4<<8)
+	stream.SerializeBits(&w2, 10)
+	return stream.Err()
+}
+
+// ReadRenderSprite reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
+func ReadRenderSprite(stream *serialize.ReadStream, value *RenderSprite) error {
+	c0 := uint64(0)
+	stream.SerializeBits64(&c0, 64)
+	c1 := uint64(0)
+	stream.SerializeBits64(&c1, 64)
+	n2 := uint32(0)
+	stream.SerializeBits(&n2, 10)
+	c2 := uint64(n2)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	v0 := c0
+	value.SortKey = v0
+	v1 := c1 & 0xffffffff
+	value.MeshID = uint32(v1)
+	v2 := (c1 >> 32) & 0xffffffff
+	value.MaterialID = uint32(v2)
+	v3 := c2 & 0xff
+	value.Layer = uint8(v3)
+	v4 := (c2 >> 8) & 0x3
+	if v4 > 2 {
+		return serialize.ErrValueOutOfRange
+	}
+	value.Team = Team(v4)
+	return stream.Err()
+}
+
+// RenderBlock is the storage of schema type RenderBlock; WriteRenderBlock and
+// ReadRenderBlock carry it on the wire.
+type RenderBlock struct {
+	WorkerIndex     uint32
+	SpriteCountHint uint32
+	Sprites         [RenderBlockMaxSprites]RenderSprite // used count beside it; wire count in [0, RenderBlockMaxSprites]
+	SpritesCount    int32
+}
+
+// RenderBlockMaxBits is the longest wire path in bits, alignment padding at its
+// worst case.
+const RenderBlockMaxBits = 8903
+
+// RenderBlockMaxBytes is RenderBlockMaxBits in bytes, rounded up to the 8-byte
+// write-buffer granularity: size write buffers from it.
+const RenderBlockMaxBytes = 1120
+
+// WriteRenderBlock writes value to stream in wire order. It returns the first
+// write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
+// carry) or the stream's error; the size written is stream.BitsProcessed().
+func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
+	f10 := uint64(value.WorkerIndex) & 0xffffffff
+	f11 := uint64(value.SpriteCountHint) & 0xffffffff
+	w5 := f10 | f11<<32
+	stream.SerializeBits64(&w5, 64)
+	if value.SpritesCount < 0 || value.SpritesCount > RenderBlockMaxSprites {
+		return serialize.ErrValueOutOfRange
+	}
+	offsetValue := uint32(value.SpritesCount)
+	stream.SerializeBits(&offsetValue, 7)
+	if stream.Err() != nil { // the count guards the loop
+		return stream.Err()
+	}
+	i := int32(0)
+	for ; i+2 <= value.SpritesCount; i += 2 {
+		if value.Sprites[i].Team > 2 {
 			return serialize.ErrValueOutOfRange
 		}
-		f0 := value.SortKey
-		f1 := (uint64(value.MeshId)) & 0xffffffff
-		f2 := (uint64(value.MaterialId)) & 0xffffffff
-		f3 := (uint64(value.Layer)) & 0xff
-		f4 := (uint64(uint32(enumValue4))) & 0x3
+		if value.Sprites[i+1].Team > 2 {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := value.Sprites[i].SortKey
+		f1 := uint64(value.Sprites[i].MeshID) & 0xffffffff
+		f2 := uint64(value.Sprites[i].MaterialID) & 0xffffffff
+		f3 := uint64(value.Sprites[i].Layer) & 0xff
+		f4 := uint64(value.Sprites[i].Team) & 0x3
+		f5 := value.Sprites[i+1].SortKey
+		f6 := uint64(value.Sprites[i+1].MeshID) & 0xffffffff
+		f7 := uint64(value.Sprites[i+1].MaterialID) & 0xffffffff
+		f8 := uint64(value.Sprites[i+1].Layer) & 0xff
+		f9 := uint64(value.Sprites[i+1].Team) & 0x3
 		w0 := f0
 		stream.SerializeBits64(&w0, 64)
-		w1 := f1 | (f2 << 32)
+		w1 := f1 | f2<<32
 		stream.SerializeBits64(&w1, 64)
-		w2 := uint32(f3 | (f4 << 8))
+		w2 := f3 | f4<<8 | f5<<10
+		stream.SerializeBits64(&w2, 64)
+		w3 := f5>>54 | f6<<10 | f7<<42
+		stream.SerializeBits64(&w3, 64)
+		w4 := uint32(f7>>22 | f8<<10 | f9<<18)
+		stream.SerializeBits(&w4, 20)
+	}
+	for ; i < value.SpritesCount; i++ {
+		if value.Sprites[i].Team > 2 {
+			return serialize.ErrValueOutOfRange
+		}
+		f0 := value.Sprites[i].SortKey
+		f1 := uint64(value.Sprites[i].MeshID) & 0xffffffff
+		f2 := uint64(value.Sprites[i].MaterialID) & 0xffffffff
+		f3 := uint64(value.Sprites[i].Layer) & 0xff
+		f4 := uint64(value.Sprites[i].Team) & 0x3
+		w0 := f0
+		stream.SerializeBits64(&w0, 64)
+		w1 := f1 | f2<<32
+		stream.SerializeBits64(&w1, 64)
+		w2 := uint32(f3 | f4<<8)
 		stream.SerializeBits(&w2, 10)
 	}
 	return stream.Err()
 }
 
-func ReadRenderSprite(stream *serialize.ReadStream, value *RenderSprite) error {
-	{
+// ReadRenderBlock reads value from stream, validating every field. It returns
+// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
+// wire the schema refuses.
+func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
+	c5 := uint64(0)
+	stream.SerializeBits64(&c5, 64)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	v10 := c5 & 0xffffffff
+	value.WorkerIndex = uint32(v10)
+	v11 := (c5 >> 32) & 0xffffffff
+	value.SpriteCountHint = uint32(v11)
+	offsetValue := uint32(0)
+	stream.SerializeBits(&offsetValue, 7)
+	if stream.Err() != nil {
+		return stream.Err()
+	}
+	if offsetValue > 64 { // a value smuggled into the bit headroom is refused
+		return serialize.ErrValueOutOfRange
+	}
+	value.SpritesCount = int32(offsetValue)
+	i := int32(0)
+	for ; i+2 <= value.SpritesCount; i += 2 {
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 64)
+		c1 := uint64(0)
+		stream.SerializeBits64(&c1, 64)
+		c2 := uint64(0)
+		stream.SerializeBits64(&c2, 64)
+		c3 := uint64(0)
+		stream.SerializeBits64(&c3, 64)
+		n4 := uint32(0)
+		stream.SerializeBits(&n4, 20)
+		c4 := uint64(n4)
+		if stream.Err() != nil {
+			return stream.Err()
+		}
+		v0 := c0
+		value.Sprites[i].SortKey = v0
+		v1 := c1 & 0xffffffff
+		value.Sprites[i].MeshID = uint32(v1)
+		v2 := (c1 >> 32) & 0xffffffff
+		value.Sprites[i].MaterialID = uint32(v2)
+		v3 := c2 & 0xff
+		value.Sprites[i].Layer = uint8(v3)
+		v4 := (c2 >> 8) & 0x3
+		if v4 > 2 {
+			return serialize.ErrValueOutOfRange
+		}
+		value.Sprites[i].Team = Team(v4)
+		v5 := c2>>10 | c3<<54
+		value.Sprites[i+1].SortKey = v5
+		v6 := (c3 >> 10) & 0xffffffff
+		value.Sprites[i+1].MeshID = uint32(v6)
+		v7 := (c3>>42 | c4<<22) & 0xffffffff
+		value.Sprites[i+1].MaterialID = uint32(v7)
+		v8 := (c4 >> 10) & 0xff
+		value.Sprites[i+1].Layer = uint8(v8)
+		v9 := (c4 >> 18) & 0x3
+		if v9 > 2 {
+			return serialize.ErrValueOutOfRange
+		}
+		value.Sprites[i+1].Team = Team(v9)
+	}
+	for ; i < value.SpritesCount; i++ {
 		c0 := uint64(0)
 		stream.SerializeBits64(&c0, 64)
 		c1 := uint64(0)
@@ -60,197 +241,18 @@ func ReadRenderSprite(stream *serialize.ReadStream, value *RenderSprite) error {
 			return stream.Err()
 		}
 		v0 := c0
-		value.SortKey = v0
+		value.Sprites[i].SortKey = v0
 		v1 := c1 & 0xffffffff
-		value.MeshId = uint32(v1)
+		value.Sprites[i].MeshID = uint32(v1)
 		v2 := (c1 >> 32) & 0xffffffff
-		value.MaterialId = uint32(v2)
+		value.Sprites[i].MaterialID = uint32(v2)
 		v3 := c2 & 0xff
-		value.Layer = uint8(v3)
+		value.Sprites[i].Layer = uint8(v3)
 		v4 := (c2 >> 8) & 0x3
 		if v4 > 2 {
 			return serialize.ErrValueOutOfRange
 		}
-		value.Team = Team(int32(v4))
-	}
-	return stream.Err()
-}
-
-// type RenderBlock
-type RenderBlock struct {
-	WorkerIndex     uint32
-	SpriteCountHint uint32
-	Sprites         [RenderBlockMaxSprites]RenderSprite // used count beside it; wire count in [0, RenderBlockMaxSprites]
-	SpritesCount    int32
-}
-
-// RenderBlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-// RenderBlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
-const RenderBlockMaxBits = 8903
-const RenderBlockMaxBytes = 1120
-
-func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
-	{
-		f0 := (uint64(value.WorkerIndex)) & 0xffffffff
-		f1 := (uint64(value.SpriteCountHint)) & 0xffffffff
-		w0 := f0 | (f1 << 32)
-		stream.SerializeBits64(&w0, 64)
-	}
-	if value.SpritesCount < 0 || value.SpritesCount > RenderBlockMaxSprites {
-		return serialize.ErrValueOutOfRange
-	}
-	{
-		offsetValue := uint32(value.SpritesCount)
-		stream.SerializeBits(&offsetValue, 7)
-	}
-	if stream.Err() != nil { // the count guards the loop (§6.3)
-		return stream.Err()
-	}
-	{
-		i := int32(0)
-		for ; i+2 <= value.SpritesCount; i += 2 {
-			enumValue4 := int32(value.Sprites[i].Team)
-			if enumValue4 < 0 || enumValue4 > 2 {
-				return serialize.ErrValueOutOfRange
-			}
-			enumValue9 := int32(value.Sprites[i+1].Team)
-			if enumValue9 < 0 || enumValue9 > 2 {
-				return serialize.ErrValueOutOfRange
-			}
-			f0 := value.Sprites[i].SortKey
-			f1 := (uint64(value.Sprites[i].MeshId)) & 0xffffffff
-			f2 := (uint64(value.Sprites[i].MaterialId)) & 0xffffffff
-			f3 := (uint64(value.Sprites[i].Layer)) & 0xff
-			f4 := (uint64(uint32(enumValue4))) & 0x3
-			f5 := value.Sprites[i+1].SortKey
-			f6 := (uint64(value.Sprites[i+1].MeshId)) & 0xffffffff
-			f7 := (uint64(value.Sprites[i+1].MaterialId)) & 0xffffffff
-			f8 := (uint64(value.Sprites[i+1].Layer)) & 0xff
-			f9 := (uint64(uint32(enumValue9))) & 0x3
-			w0 := f0
-			stream.SerializeBits64(&w0, 64)
-			w1 := f1 | (f2 << 32)
-			stream.SerializeBits64(&w1, 64)
-			w2 := f3 | (f4 << 8) | (f5 << 10)
-			stream.SerializeBits64(&w2, 64)
-			w3 := (f5 >> 54) | (f6 << 10) | (f7 << 42)
-			stream.SerializeBits64(&w3, 64)
-			w4 := uint32((f7 >> 22) | (f8 << 10) | (f9 << 18))
-			stream.SerializeBits(&w4, 20)
-		}
-		for ; i < value.SpritesCount; i++ {
-			enumValue4 := int32(value.Sprites[i].Team)
-			if enumValue4 < 0 || enumValue4 > 2 {
-				return serialize.ErrValueOutOfRange
-			}
-			f0 := value.Sprites[i].SortKey
-			f1 := (uint64(value.Sprites[i].MeshId)) & 0xffffffff
-			f2 := (uint64(value.Sprites[i].MaterialId)) & 0xffffffff
-			f3 := (uint64(value.Sprites[i].Layer)) & 0xff
-			f4 := (uint64(uint32(enumValue4))) & 0x3
-			w0 := f0
-			stream.SerializeBits64(&w0, 64)
-			w1 := f1 | (f2 << 32)
-			stream.SerializeBits64(&w1, 64)
-			w2 := uint32(f3 | (f4 << 8))
-			stream.SerializeBits(&w2, 10)
-		}
-	}
-	return stream.Err()
-}
-
-func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
-	{
-		c0 := uint64(0)
-		stream.SerializeBits64(&c0, 64)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		v0 := c0 & 0xffffffff
-		value.WorkerIndex = uint32(v0)
-		v1 := (c0 >> 32) & 0xffffffff
-		value.SpriteCountHint = uint32(v1)
-	}
-	{
-		offsetValue := uint32(0)
-		stream.SerializeBits(&offsetValue, 7)
-		if stream.Err() != nil {
-			return stream.Err()
-		}
-		if offsetValue > 64 { // a value smuggled into the bit headroom is refused (SPEC §4.3)
-			return serialize.ErrValueOutOfRange
-		}
-		value.SpritesCount = int32(offsetValue)
-	}
-	{
-		i := int32(0)
-		for ; i+2 <= value.SpritesCount; i += 2 {
-			c0 := uint64(0)
-			stream.SerializeBits64(&c0, 64)
-			c1 := uint64(0)
-			stream.SerializeBits64(&c1, 64)
-			c2 := uint64(0)
-			stream.SerializeBits64(&c2, 64)
-			c3 := uint64(0)
-			stream.SerializeBits64(&c3, 64)
-			n4 := uint32(0)
-			stream.SerializeBits(&n4, 20)
-			c4 := uint64(n4)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0
-			value.Sprites[i].SortKey = v0
-			v1 := c1 & 0xffffffff
-			value.Sprites[i].MeshId = uint32(v1)
-			v2 := (c1 >> 32) & 0xffffffff
-			value.Sprites[i].MaterialId = uint32(v2)
-			v3 := c2 & 0xff
-			value.Sprites[i].Layer = uint8(v3)
-			v4 := (c2 >> 8) & 0x3
-			if v4 > 2 {
-				return serialize.ErrValueOutOfRange
-			}
-			value.Sprites[i].Team = Team(int32(v4))
-			v5 := (c2 >> 10) | (c3 << 54)
-			value.Sprites[i+1].SortKey = v5
-			v6 := (c3 >> 10) & 0xffffffff
-			value.Sprites[i+1].MeshId = uint32(v6)
-			v7 := ((c3 >> 42) | (c4 << 22)) & 0xffffffff
-			value.Sprites[i+1].MaterialId = uint32(v7)
-			v8 := (c4 >> 10) & 0xff
-			value.Sprites[i+1].Layer = uint8(v8)
-			v9 := (c4 >> 18) & 0x3
-			if v9 > 2 {
-				return serialize.ErrValueOutOfRange
-			}
-			value.Sprites[i+1].Team = Team(int32(v9))
-		}
-		for ; i < value.SpritesCount; i++ {
-			c0 := uint64(0)
-			stream.SerializeBits64(&c0, 64)
-			c1 := uint64(0)
-			stream.SerializeBits64(&c1, 64)
-			n2 := uint32(0)
-			stream.SerializeBits(&n2, 10)
-			c2 := uint64(n2)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			v0 := c0
-			value.Sprites[i].SortKey = v0
-			v1 := c1 & 0xffffffff
-			value.Sprites[i].MeshId = uint32(v1)
-			v2 := (c1 >> 32) & 0xffffffff
-			value.Sprites[i].MaterialId = uint32(v2)
-			v3 := c2 & 0xff
-			value.Sprites[i].Layer = uint8(v3)
-			v4 := (c2 >> 8) & 0x3
-			if v4 > 2 {
-				return serialize.ErrValueOutOfRange
-			}
-			value.Sprites[i].Team = Team(int32(v4))
-		}
+		value.Sprites[i].Team = Team(v4)
 	}
 	return stream.Err()
 }

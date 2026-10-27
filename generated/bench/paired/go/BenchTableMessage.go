@@ -734,9 +734,9 @@ func tableMessageBatchClose(r *TableMessageReader) bool {
 }
 func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool {
 	{
-		if value.EntityId != 0 {
+		if value.EntityID != 0 {
 			w.Put(31, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.EntityId), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.EntityID), uint64(0))
 		}
 	}
 	{
@@ -890,7 +890,7 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "MixedEntity.entity_id")
 						}
-						value.EntityId = uint32(v)
+						value.EntityID = uint32(v)
 					}
 				}
 				if widened {
@@ -1451,9 +1451,9 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 }
 func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	{
-		if value.StatId != 0 {
+		if value.StatID != 0 {
 			w.Put(51, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.StatId), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.StatID), uint64(0))
 		}
 	}
 	{
@@ -1515,7 +1515,7 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "MixedStat.stat_id")
 						}
-						value.StatId = uint32(v)
+						value.StatID = uint32(v)
 					}
 				}
 				if widened {
@@ -1577,9 +1577,9 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 }
 func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) bool {
 	{
-		if value.TargetId != 0 {
+		if value.TargetID != 0 {
 			w.Put(45, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TargetId), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TargetID), uint64(0))
 		}
 	}
 	{
@@ -1657,7 +1657,7 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "MixedHitEvent.target_id")
 						}
-						value.TargetId = uint32(v)
+						value.TargetID = uint32(v)
 					}
 				}
 				if widened {
@@ -1930,9 +1930,9 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 }
 func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEvent) bool {
 	{
-		if value.ItemId != 0 {
+		if value.ItemID != 0 {
 			w.Put(49, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ItemId), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ItemID), uint64(0))
 		}
 	}
 	{
@@ -1994,7 +1994,7 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 							r.Report.Clamped++
 							tableTextClamped(&r.Report.ClampedField, "MixedPickupEvent.item_id")
 						}
-						value.ItemId = uint32(v)
+						value.ItemID = uint32(v)
 					}
 				}
 				if widened {
@@ -2074,15 +2074,15 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 		}
 	}
 	{
-		if value.SessionId != 0 {
+		if value.SessionID != 0 {
 			w.Put(4, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SessionId), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SessionID), uint64(0))
 		}
 	}
 	{
-		if value.ClientId != 0 {
+		if value.ClientID != 0 {
 			w.Put(5, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ClientId), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ClientID), uint64(0))
 		}
 	}
 	{
@@ -2469,7 +2469,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					}
 					{
 						v := payload42.Unsigned(entry.Shape.Kind)
-						value.SessionId = uint64(v)
+						value.SessionID = uint64(v)
 					}
 				}
 				if widened {
@@ -2504,7 +2504,7 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 					}
 					{
 						v := payload43.Unsigned(entry.Shape.Kind)
-						value.ClientId = uint32(v)
+						value.ClientID = uint32(v)
 					}
 				}
 				if widened {

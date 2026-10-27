@@ -28,7 +28,7 @@ func buildInitialCard(t *testing.T) (wire, json []byte) {
 	}
 	defer b.Shutdown()
 	root := b.GetRoot()
-	setStr(root.Id[:], &root.IdLength, "initial-card")
+	setStr(root.ID[:], &root.IDLength, "initial-card")
 	setStr(root.Sha[:], &root.ShaLength, strings.Repeat("a", 40))
 	root.Tier = cardsinitial.Tierheavy
 	setStr(root.Repo[:], &root.RepoLength, "mas-bandwidth/schema")
@@ -115,7 +115,7 @@ func buildConsumersCard(t *testing.T) (wire, json []byte) {
 	}
 	defer b.Shutdown()
 	root := b.GetRoot()
-	setStr(root.Id[:], &root.IdLength, "consumers-card")
+	setStr(root.ID[:], &root.IDLength, "consumers-card")
 	setStr(root.Sha[:], &root.ShaLength, strings.Repeat("b", 40))
 	root.Tier = Tierpro
 	setStr(root.Repo[:], &root.RepoLength, "mas-bandwidth/schema")
@@ -173,7 +173,7 @@ func buildEmptyConsumersCard(t *testing.T) (wire, json []byte) {
 	}
 	defer b.Shutdown()
 	root := b.GetRoot()
-	setStr(root.Id[:], &root.IdLength, "empty-consumers")
+	setStr(root.ID[:], &root.IDLength, "empty-consumers")
 	setStr(root.Sha[:], &root.ShaLength, strings.Repeat("d", 40))
 	root.Tier = Tierflash
 	setStr(root.Repo[:], &root.RepoLength, "mas-bandwidth/schema")

@@ -184,7 +184,7 @@ func main() {
 
 	// ---- ProbeHeader: const/reserved/align on the wire; corruption rejected ----
 	{
-		in := example.ProbeHeader{Version: 5, ProbeId: 0x1122334455667788}
+		in := example.ProbeHeader{Version: 5, ProbeID: 0x1122334455667788}
 		ws, _ := newWriteStream()
 		checkErr(example.WriteProbeHeader(ws, &in), "write ProbeHeader")
 		ws.Flush()
@@ -384,7 +384,7 @@ func main() {
 		in.BigDelta = -1234567890123
 		in.Weapon = example.WeaponLaser
 		in.HasTarget = true
-		in.TargetId = 777
+		in.TargetID = 777
 		in.IdleTicks = 12345 // untaken side on the wire — must read back ZERO
 		in.SamplesCount = 1
 		in.Samples[0] = 42
@@ -395,7 +395,7 @@ func main() {
 		out := example.ProbeSample{}
 		rs := serialize.NewReadStream(ws.Data())
 		checkErr(example.ReadProbeSample(rs, &out), "read ProbeSample active")
-		check(out.Active && out.Weapon == example.WeaponLaser && out.HasTarget && out.TargetId == 777,
+		check(out.Active && out.Weapon == example.WeaponLaser && out.HasTarget && out.TargetID == 777,
 			"the taken branch round-trips, nested branch included")
 		check(out.IdleTicks == 0, "the untaken else side reads as zero (SPEC §5)")
 		check(out.Orientation == 90.0, "compressed float round-trips exactly at its resolution")
@@ -408,7 +408,7 @@ func main() {
 		rs2 := serialize.NewReadStream(ws2.Data())
 		checkErr(example.ReadProbeSample(rs2, &out), "read ProbeSample idle")
 		check(!out.Active && out.IdleTicks == 12345, "the else branch round-trips")
-		check(out.Weapon == example.WeaponNone && !out.HasTarget && out.TargetId == 0,
+		check(out.Weapon == example.WeaponNone && !out.HasTarget && out.TargetID == 0,
 			"the whole untaken then side reads as zero, nested branch included (SPEC §5)")
 	}
 
@@ -425,7 +425,7 @@ func main() {
 		in.Samples[0].BigDelta = -1234567890123
 		in.Samples[0].Weapon = example.WeaponLaser
 		in.Samples[0].HasTarget = true
-		in.Samples[0].TargetId = 777
+		in.Samples[0].TargetID = 777
 		in.Samples[0].SamplesCount = 1
 		in.Samples[0].Samples[0] = 42
 		in.Samples[1].Active = false
@@ -457,7 +457,7 @@ func main() {
 	{
 		in := example.ProbeReport{}
 		in.Header.Version = 3
-		in.Header.ProbeId = 0xCAFEBABE
+		in.Header.ProbeID = 0xCAFEBABE
 		in.Flags = example.ProbeFlagsArmed | example.ProbeFlagsDamaged
 		in.Echo.TestA = 555
 		in.Echo.TestB = 1000

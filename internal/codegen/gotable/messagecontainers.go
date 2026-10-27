@@ -1,10 +1,13 @@
 package gotable
 
-import "github.com/mas-bandwidth/schema/v2/ir"
+import (
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 func (g *tableGen) emitMessageArmReset(un *ir.Union, v ir.UnionVariant, expr string) {
 	if g.regional {
-		g.pf("{value:=%s.%s();", expr, ir.GoExportName(v.Name))
+		g.pf("{value:=%s.%s();", expr, goname.Member(v.Name))
 		f := *v.F
 		f.Name = "value"
 		g.emitTableResetField(&f)

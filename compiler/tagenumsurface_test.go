@@ -91,7 +91,7 @@ var tagEnumSurface = map[string]tagEnumClaim{
 	},
 	"go": {
 		max:      "WeaponFireTypeMax",
-		nameFunc: "func EnumNameWeaponFireType(value WeaponFireType) string {",
+		nameFunc: "func (v WeaponFireType) String() string {",
 	},
 	"java": {
 		count:    "        public static final byte count = 2;",

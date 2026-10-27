@@ -194,7 +194,7 @@ func init() {
 	tableCookLayoutOffset("PatrolRow.Active", unsafe.Offsetof(PatrolRow{}.Active), 0)
 	tableCookLayoutOffset("PatrolRow.Speed", unsafe.Offsetof(PatrolRow{}.Speed), 4)
 	tableCookLayoutOffset("PatrolRow.HasTarget", unsafe.Offsetof(PatrolRow{}.HasTarget), 8)
-	tableCookLayoutOffset("PatrolRow.TargetId", unsafe.Offsetof(PatrolRow{}.TargetId), 12)
+	tableCookLayoutOffset("PatrolRow.TargetID", unsafe.Offsetof(PatrolRow{}.TargetID), 12)
 	tableCookLayoutOffset("PatrolRow.Wander", unsafe.Offsetof(PatrolRow{}.Wander), 16)
 	tableCookLayoutOffset("PatrolRow.Note", unsafe.Offsetof(PatrolRow{}.Note), 20)
 	tableCookLayoutSize("ProfileConfigRow", unsafe.Sizeof(ProfileConfigRow{}), 304)
