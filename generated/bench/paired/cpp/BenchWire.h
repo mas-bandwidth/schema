@@ -339,7 +339,7 @@ SCHEMA_READ_INLINE bool ReadMixedEntity( serialize::ReadStream & stream, MixedEn
     read_int( stream, value.health, 0, 1000 );
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( MixedWeapon::Max ) );
+        read_int( stream, enum_value, 0, 15 ); // MixedWeapon::Max
         value.weapon = MixedWeapon( enum_value );
     }
     read_bits( stream, value.damage, 8 );
@@ -439,7 +439,7 @@ SCHEMA_WRITE_INLINE bool WriteMixedEvent( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEvent & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, int32_t( MixedEventType::Max ) ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 3 ); // MixedEventType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = MixedEventType( tag_value );
     switch ( value.type )
     {

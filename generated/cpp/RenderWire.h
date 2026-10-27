@@ -103,7 +103,7 @@ SCHEMA_READ_INLINE bool ReadRenderSprite( serialize::ReadStream & stream, Render
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( Team::Max ) );
+        read_int( stream, enum_value, 0, 2 ); // Team::Max
         value.team = Team( enum_value );
     }
     return true;

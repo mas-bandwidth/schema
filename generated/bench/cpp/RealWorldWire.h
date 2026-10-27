@@ -336,7 +336,7 @@ SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPack
     read_bits( stream, value.f035_bits, 9 );
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( PacketMode::Max ) );
+        read_int( stream, enum_value, 0, 5 ); // PacketMode::Max
         value.f036_enum = PacketMode( enum_value );
     }
     read_bool( stream, value.f037_bool );
@@ -470,7 +470,7 @@ SCHEMA_READ_INLINE bool ReadRealPacket( serialize::ReadStream & stream, RealPack
     read_bits( stream, value.f082_bits, 25 );
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( PacketMode::Max ) );
+        read_int( stream, enum_value, 0, 5 ); // PacketMode::Max
         value.f083_enum = PacketMode( enum_value );
     }
     read_fixed( stream, value.f084_ufixed, 1, 7, 0, 1 );

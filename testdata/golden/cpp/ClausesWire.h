@@ -473,7 +473,7 @@ SCHEMA_WRITE_INLINE bool WriteEmptyUnion( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadEmptyUnion( serialize::ReadStream & stream, EmptyUnion & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, int32_t( EmptyUnionType::Max ) ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // EmptyUnionType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = EmptyUnionType( tag_value );
     switch ( value.type )
     {

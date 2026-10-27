@@ -301,7 +301,7 @@ SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSa
     {
         {
             int32_t enum_value = 0;
-            read_int( stream, enum_value, 0, int32_t( Weapon::Max ) );
+            read_int( stream, enum_value, 0, 15 ); // Weapon::Max
             value.weapon = Weapon( enum_value );
         }
         read_bool( stream, value.has_target );
@@ -400,7 +400,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeShape( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeShape & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, int32_t( ProbeShapeType::Max ) ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // ProbeShapeType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = ProbeShapeType( tag_value );
     switch ( value.type )
     {
@@ -464,7 +464,7 @@ SCHEMA_READ_INLINE bool ReadProbeConfig( serialize::ReadStream & stream, ProbeCo
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( Weapon::Max ) );
+        read_int( stream, enum_value, 0, 15 ); // Weapon::Max
         value.preferred = Weapon( enum_value );
     }
     return true;

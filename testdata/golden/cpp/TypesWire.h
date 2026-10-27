@@ -339,7 +339,7 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
 {
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( ShipType::Max ) );
+        read_int( stream, enum_value, 0, 5 ); // ShipType::Max
         value.ship_type = ShipType( enum_value );
     }
     schema_read_object( stream, ReadQuantizedPosition, value.position );
@@ -356,7 +356,7 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( Team::Max ) );
+        read_int( stream, enum_value, 0, 2 ); // Team::Max
         value.team = Team( enum_value );
     }
     {
@@ -371,7 +371,7 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( Pending::Max ) );
+        read_int( stream, enum_value, 0, 0 ); // Pending::Max
         value.pending = Pending( enum_value );
     }
     return true;

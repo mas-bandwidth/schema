@@ -100,7 +100,10 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		return
 	}
 	g.pf("    int32_t tag_value = 0;\n")
-	g.pf("    read_int( stream, tag_value, 0, int32_t( %s::Max ) ); // rejects a tag above the count (SPEC §4.8)\n", tag)
+	// the bound is the folded literal with the constant it folds named beside
+	// it: read_int asserts min <= max, and GCC's -Wtype-limits calls
+	// 0 <= int32_t( E::Max ) always true through the enum's unsigned storage
+	g.pf("    read_int( stream, tag_value, 0, %d ); // %s::Max — rejects a tag above the count (SPEC §4.8)\n", d.Max, tag)
 	g.pf("    value.type = %s( tag_value );\n", tag)
 	g.pf("    switch ( value.type )\n    {\n")
 	g.pf("        case %s::None:\n            return true;\n", tag)
@@ -854,7 +857,9 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			g.pf("%s{\n%s    int32_t enum_value = 0;\n", ind, ind)
-			g.pf("%s    read_int( stream, enum_value, 0, int32_t( %s::Max ) );\n", ind, ref.Name)
+			// folded, with the constant named: see emitUnionWire for why the
+			// read bound cannot be the enumerator under GCC -Wtype-limits
+			g.pf("%s    read_int( stream, enum_value, 0, %d ); // %s::Max\n", ind, ref.Max, ref.Name)
 			g.pf("%s    %s = %s( enum_value );\n%s}\n", ind, name, f.Type.Name, ind)
 		case *ir.Flags:
 			g.pf("%sread_bits( stream, %s, %d );\n", ind, name, ref.WireBits)

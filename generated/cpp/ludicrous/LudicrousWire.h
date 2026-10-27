@@ -213,7 +213,7 @@ SCHEMA_READ_INLINE bool ReadLudicrousState( serialize::ReadStream & stream, Ludi
 {
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, int32_t( DriveMode::Max ) );
+        read_int( stream, enum_value, 0, 3 ); // DriveMode::Max
         value.mode = DriveMode( enum_value );
     }
     schema_read_object( stream, ReadFixedProbe, value.probe );

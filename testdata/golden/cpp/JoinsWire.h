@@ -489,7 +489,7 @@ SCHEMA_WRITE_INLINE bool WriteUneven( serialize::WriteStream & stream, const Une
 SCHEMA_READ_INLINE bool ReadUneven( serialize::ReadStream & stream, Uneven & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, int32_t( UnevenType::Max ) ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // UnevenType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = UnevenType( tag_value );
     switch ( value.type )
     {

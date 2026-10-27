@@ -132,7 +132,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultChoice( serialize::WriteStream & stream, co
 SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, DefaultChoice & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, int32_t( DefaultChoiceType::Max ) ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // DefaultChoiceType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = DefaultChoiceType( tag_value );
     switch ( value.type )
     {
@@ -200,7 +200,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultBulkChoice( serialize::WriteStream & stream
 SCHEMA_READ_INLINE bool ReadDefaultBulkChoice( serialize::ReadStream & stream, DefaultBulkChoice & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, int32_t( DefaultBulkChoiceType::Max ) ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // DefaultBulkChoiceType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = DefaultBulkChoiceType( tag_value );
     switch ( value.type )
     {

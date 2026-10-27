@@ -107,8 +107,8 @@ type Holder {
 
 // TestRangeAssertsDropTautologies pins the write-side range asserts: a half
 // that can never fire over the storage (or the cast) is left out, a half
-// that can is kept, and an enum's bound is its own Max constant on both the
-// write assert and the read.
+// that can is kept, and an enum's bound is its own Max constant on the write
+// assert; the read folds it (GCC -Wtype-limits) and names it in a comment.
 func TestRangeAssertsDropTautologies(t *testing.T) {
 	t.Parallel()
 	_, w := generateOne(t, "Taut", `package t
@@ -132,7 +132,7 @@ type Taut {
 		"serialize_assert( int32_t( value.wide ) >= int32_t( 0 ) && int32_t( value.wide ) <= int32_t( 100 ) );",
 		"serialize_assert( int64_t( value.floor ) <= int64_t( 100 ) );",
 		"serialize_assert( int32_t( value.kind ) <= int32_t( Kind::Max ) );",
-		"read_int( stream, enum_value, 0, int32_t( Kind::Max ) );",
+		"read_int( stream, enum_value, 0, 3 ); // Kind::Max",
 	} {
 		if !strings.Contains(w, want) {
 			t.Errorf("TautWire.h: want %q in\n%s", want, w)
@@ -143,7 +143,7 @@ type Taut {
 		"int32_t( value.low ) >= ",
 		"( -9223372036854775807ll - 1 ) ) &&",
 		"int32_t( value.kind ) >= ",
-		"read_int( stream, enum_value, 0, 3 )",
+		"read_int( stream, enum_value, 0, int32_t( Kind::Max ) )", // 0 <= that is -Wtype-limits under GCC
 	} {
 		if strings.Contains(w, bad) {
 			t.Errorf("TautWire.h carries a tautological or literal bound (%q)", bad)
