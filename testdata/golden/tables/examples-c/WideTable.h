@@ -10,6 +10,7 @@
 #ifndef SCHEMA_TABLEDEMO_WIDETABLE_H
 #define SCHEMA_TABLEDEMO_WIDETABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */

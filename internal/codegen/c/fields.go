@@ -106,7 +106,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, expr, ind string) {
 			// same guard the C++ backend folds in (SPEC §5). The low half is
 			// vacuous where the enum's underlying type is unsigned, which is
 			// what the emitted storage asks for.
-			g.pf("%sserialize_assert( %s <= %d );\n", ind, expr, ref.Max)
+			g.pf("%sserialize_assert( %s <= %s_MAX );\n", ind, expr, screaming(f.Type.Name))
 			if bits > 0 {
 				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %s, %d )", expr, bits))
 			}
@@ -168,16 +168,28 @@ func (g *gen) emitWriteRangedInt(f *ir.Field, expr, ind string) {
 	if bits == 0 {
 		return // degenerate range: the value is the range
 	}
-	offset := expr
-	if f.IntMin.Sign() != 0 {
-		offset = fmt.Sprintf("(%s) - (%s)", expr, g.renderInt(f.IntMinExpr, f.IntMin))
-	}
+	// The offset is taken in UNSIGNED arithmetic, both operands cast first,
+	// exactly as the C++ backend writes uint64_t( value ) - uint64_t( min ).
+	// Subtracting in the storage's signed type overflows — undefined
+	// behaviour — whenever value - min exceeds the type's maximum: any
+	// value >= 0 against an INT64_MIN floor, or an int32 spanning more than
+	// 2^31. Unsigned subtraction wraps modulo 2^N by definition, and the true
+	// offset is in [0, 2^bits), so the low bits are exact. A field of 32 wire
+	// bits or fewer subtracts in 32-bit unsigned arithmetic, the rest in 64.
 	if bits <= 32 {
-		g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( %s ), %d )", offset, bits))
+		offset := fmt.Sprintf("(serialize_uint32_t) ( %s )", expr)
+		if f.IntMin.Sign() != 0 {
+			offset = fmt.Sprintf("(serialize_uint32_t) %s - (serialize_uint32_t) %s", expr, paren(g.renderInt(f.IntMinExpr, f.IntMin)))
+		}
+		g.call(ind, fmt.Sprintf("serialize_write_bits( stream, %s, %d )", offset, bits))
 		return
 	}
+	offset := "(serialize_uint64_t) " + expr
+	if f.IntMin.Sign() != 0 {
+		offset = fmt.Sprintf("(serialize_uint64_t) %s - (serialize_uint64_t) %s", expr, paren(g.renderInt(f.IntMinExpr, f.IntMin)))
+	}
 	// low 32 first, then the remainder -- the same split serialize_bits uses
-	g.pf("%s{\n%s    serialize_uint64_t offset_value = (serialize_uint64_t) ( %s );\n", ind, ind, offset)
+	g.pf("%s{\n%s    serialize_uint64_t offset_value = %s;\n", ind, ind, offset)
 	g.call(ind+"    ", "serialize_write_bits( stream, (serialize_uint32_t) ( offset_value & 0xFFFFFFFFu ), 32 )")
 	g.call(ind+"    ", fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( offset_value >> 32 ), %d )", bits-32))
 	g.pf("%s}\n", ind)
@@ -272,11 +284,11 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 		g.call(ind, fmt.Sprintf("serialize_read_int( stream, &value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_read_bytes( stream, (serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 		g.pf("%sif ( !schema_utf8_valid_( (const serialize_uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)
-		g.pf("%s    return 0; /* malformed UTF-8 is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
+		g.pf("%s    return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
 		// the interior-null rule is generated-code validation (SPEC §4.7);
 		// the word-wise scan lives in schema_interior_null_ (nullscan.go)
 		g.pf("%sif ( schema_interior_null_( (const serialize_uint8_t *) value->%s, value->%s_length ) )\n%s{\n", ind, f.Name, f.Name, ind)
-		g.pf("%s    return 0; /* an interior null is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
+		g.pf("%s    return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */\n%s}\n", ind, ind)
 		// the terminator is not transmitted; the reader supplies it
 		g.pf("%svalue->%s[value->%s_length] = 0;\n", ind, f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
@@ -301,10 +313,10 @@ func (g *gen) emitReadField(f *ir.Field, ind string) {
 func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 	switch f.Type.Kind {
 	case ir.TBool:
-		// serialize_read_bool takes int *; storage is uint8_t
+		// serialize_read_bool takes int *; storage is bool
 		g.pf("%s{\n%s    int bool_value = 0;\n", ind, ind)
 		g.call(ind+"    ", "serialize_read_bool( stream, &bool_value )")
-		g.pf("%s    %s = (uint8_t) bool_value;\n%s}\n", ind, expr, ind)
+		g.pf("%s    %s = bool_value != 0;\n%s}\n", ind, expr, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			// read twin of the write-side fold: same generation-time
@@ -341,7 +353,9 @@ func (g *gen) emitReadScalar(f *ir.Field, expr, ind string) {
 			}
 			g.pf("%s{\n%s    serialize_uint32_t enum_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &enum_value, %d )", bits))
-			g.pf("%s    if ( enum_value > %d )\n%s    {\n%s        return 0; /* not a wire-legal value */\n%s    }\n", ind, ref.Max, ind, ind, ind)
+			if uint64(ref.Max) < uint64(1)<<uint(bits)-1 {
+				g.pf("%s    if ( enum_value > %s_MAX )\n%s    {\n%s        return serialize_read_fail( stream ); /* not a wire-legal value */\n%s    }\n", ind, screaming(f.Type.Name), ind, ind, ind)
+			}
 			g.pf("%s    %s = (%s) enum_value;\n%s}\n", ind, expr, f.Type.Name, ind)
 		case *ir.Flags:
 			if ref.WireBits > 32 {
@@ -398,15 +412,78 @@ func (g *gen) emitReadRangedInt(f *ir.Field, expr, ind string) {
 	}
 	// A successful read bounds the offset to its encoded width. Reject encodings
 	// only when the declared span leaves headroom in that encoded width.
+	// The refusal latches the stream (serialize_read_fail), so the documented
+	// "check once at the end" holds for a value refused here as it does for a
+	// buffer that ran out.
 	maxOffset := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 	if span.Cmp(maxOffset) < 0 {
-		g.pf("%s    if ( offset_value > %sULL )\n%s    {\n%s        return 0;\n%s    }\n", ind, span.String(), ind, ind, ind)
+		g.pf("%s    if ( offset_value > %s )\n%s    {\n%s        return serialize_read_fail( stream );\n%s    }\n", ind, g.spanBound(f, span), ind, ind, ind)
 	}
 	if f.IntMin.Sign() == 0 {
 		g.pf("%s    %s = (%s) offset_value;\n%s}\n", ind, expr, g.storageType(f), ind)
 	} else {
-		g.pf("%s    %s = (%s) ( offset_value + (%s) );\n%s}\n", ind, expr, g.storageType(f), g.renderInt(f.IntMinExpr, f.IntMin), ind)
+		g.pf("%s    %s = (%s) ( offset_value + (serialize_uint64_t) %s );\n%s}\n", ind, expr, g.storageType(f), paren(g.renderInt(f.IntMinExpr, f.IntMin)), ind)
 	}
+}
+
+// spanBound renders the largest legal wire offset, max - min, for the read
+// side's refusal. It is spelled from the SAME symbolic bounds the write side
+// asserts against (MAX_OBJECTS - 1, -MAX_POSITION_UNITS), so the two halves
+// read as one declaration; the difference is taken in unsigned 64-bit
+// arithmetic, which cannot overflow because the span is in [0, 2^64). A
+// bound with no legal symbolic spelling folds, and when both fold the span is
+// the one literal it always was.
+func (g *gen) spanBound(f *ir.Field, span *big.Int) string {
+	hiSym, loSym := g.symbolic(f.IntMaxExpr), g.symbolic(f.IntMinExpr)
+	if !hiSym && !loSym {
+		return span.String() + "ULL"
+	}
+	hi := "(serialize_uint64_t) " + paren(g.renderInt(f.IntMaxExpr, f.IntMax))
+	if f.IntMin.Sign() == 0 {
+		return hi
+	}
+	return hi + " - (serialize_uint64_t) " + paren(g.renderInt(f.IntMinExpr, f.IntMin))
+}
+
+// paren wraps s in one pair of parentheses unless it already is a single
+// parenthesized group or a bare identifier or literal, so a folded
+// ( -9223372036854775807LL - 1 ) or a #define's own (( … )) never doubles.
+func paren(s string) string {
+	if wrapped(s) {
+		return s
+	}
+	bare := true
+	for _, r := range s {
+		if !(r == '_' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+			bare = false
+			break
+		}
+	}
+	if bare {
+		return s
+	}
+	return "( " + s + " )"
+}
+
+// wrapped reports whether s is ONE parenthesized group: its first '(' closes
+// at its last byte. "(a) - (b)" starts and ends with parentheses and is not.
+func wrapped(s string) bool {
+	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
+		return false
+	}
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && i != len(s)-1 {
+				return false
+			}
+		}
+	}
+	return depth == 0
 }
 
 func (g *gen) emitReadBits(f *ir.Field, expr, ind string) {

@@ -851,7 +851,7 @@ FloatExpr   = float expression over float literals, int literals and const names
     an `enum`'s is, would drop every bit above the older build's own last one
     on the way in, and nothing could report it, because a mask is the wire's
     one positional vocabulary and no counter can see a bit that is not there
-    (SPEC-TABLES.md §4.1). The cost is fifty-six bytes of storage nobody uses
+    (SPEC-TABLES.md §4.1). The cost is fifty-six bits of storage nobody uses
     in a three-variant declaration, and it buys the one property the
     append-at-the-end law is worth having.
   - **The derived-range rule:** a field that indexes a declared set derives
@@ -2498,7 +2498,8 @@ Per `type`, per target:
    | `[Min..N]T` | as `[..N]T`, count born at Min and validated to [Min, N] | as `[..N]T` | as `[..N]T` | as `[..N]T` |
    | `f Inner` (a named type) | `Inner` | `Inner` | `Inner` | `Inner` |
 
-   The C target mirrors the C++ storage rules in C's own types; JavaScript
+   The C target mirrors the C++ storage rules in C's own types (`bool` is
+   C99's, from `<stdbool.h>`); JavaScript
    storage is `Number` for wire widths of 32 bits or fewer and `BigInt` for
    64 and 128 (the serialize.js value-domain seam). `wstring(N)` storage in
    all nine targets, and the conversion rule each one carries at the
@@ -2869,7 +2870,7 @@ and write through a serialize-family runtime:
 | | C | C++ | C# | Go | JavaScript | Rust |
 |---|---|---|---|---|---|---|
 | emits against | `serialize_write_stream_t`/`serialize_read_stream_t` free functions | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | methods on the stream parameter — generated JS never imports the runtime | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
-| error idiom | `int` 1/0 early-out; the stream latches the error | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
+| error idiom | `int` 1/0 early-out; the stream latches the error, generated validation refusals included (`serialize_read_fail`) | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
 | buffer contract | write buffers multiple of 8; read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | caller-owned DataViews; the flat tier requires ≥8 bytes read slack past the payload | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
 
 The three self-contained targets — no runtime library, so there is no stream

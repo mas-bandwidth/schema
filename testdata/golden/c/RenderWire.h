@@ -71,7 +71,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_wr
     {
         return 0;
     }
-    serialize_assert( value->team <= 2 );
+    serialize_assert( value->team <= TEAM_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
     {
         return 0;
@@ -126,9 +126,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_sprite( serialize_read
         {
             return 0;
         }
-        if ( enum_value > 2 )
+        if ( enum_value > TEAM_MAX )
         {
-            return 0; /* not a wire-legal value */
+            return serialize_read_fail( stream ); /* not a wire-legal value */
         }
         value->team = (Team) enum_value;
     }

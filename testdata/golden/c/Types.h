@@ -7,6 +7,7 @@
 #ifndef SCHEMA_EXAMPLE_TYPES_H
 #define SCHEMA_EXAMPLE_TYPES_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 #include <math.h>     /* floor — the quantize pair */
@@ -34,7 +35,7 @@ typedef struct Vec3 {
 } Vec3;
 
 #define VEC3_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC3_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define VEC3_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type Quat */
@@ -46,7 +47,7 @@ typedef struct Quat {
 } Quat;
 
 #define QUAT_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUAT_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define QUAT_MAX_BYTES 32
 
 
 /* type Handle */
@@ -56,7 +57,7 @@ typedef struct Handle {
 } Handle;
 
 #define HANDLE_MAX_BITS 22   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HANDLE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define HANDLE_MAX_BYTES 8
 
 
 /* type QuantizedPosition */
@@ -67,7 +68,7 @@ typedef struct QuantizedPosition {
 } QuantizedPosition;
 
 #define QUANTIZED_POSITION_MAX_BITS 75   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_POSITION_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define QUANTIZED_POSITION_MAX_BYTES 16
 
 
 /* type QuantizedVelocity */
@@ -78,7 +79,7 @@ typedef struct QuantizedVelocity {
 } QuantizedVelocity;
 
 #define QUANTIZED_VELOCITY_MAX_BITS 69   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_VELOCITY_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define QUANTIZED_VELOCITY_MAX_BYTES 16
 
 
 /* type QuantizedRotation */
@@ -90,20 +91,20 @@ typedef struct QuantizedRotation {
 } QuantizedRotation;
 
 #define QUANTIZED_ROTATION_MAX_BITS 48   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_ROTATION_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define QUANTIZED_ROTATION_MAX_BYTES 8
 
 
 /* type RigidBody */
 typedef struct RigidBody {
     Vec3 position;
     Quat orientation;
-    uint8_t at_rest;
+    bool at_rest;
     Vec3 linear_velocity;
     Vec3 angular_velocity;
 } RigidBody;
 
 #define RIGID_BODY_MAX_BITS 833   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RIGID_BODY_MAX_BYTES 112  /* 8-byte write granularity; read slack per the contract above */
+#define RIGID_BODY_MAX_BYTES 112
 
 
 /* type Input */
@@ -113,18 +114,18 @@ typedef struct Input {
     float throttle;
     float yaw;
     float pitch;
-    uint8_t fire;
-    uint8_t alt_fire;
-    uint8_t boost;
-    uint8_t brake;
-    uint8_t aim;
-    uint8_t lock_on;
-    uint8_t zoom;
-    uint8_t ping;
+    bool fire;
+    bool alt_fire;
+    bool boost;
+    bool brake;
+    bool aim;
+    bool lock_on;
+    bool zoom;
+    bool ping;
 } Input;
 
 #define INPUT_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define INPUT_MAX_BYTES 24
 
 
 /* type InputPacket */
@@ -137,7 +138,7 @@ typedef struct InputPacket {
 } InputPacket;
 
 #define INPUT_PACKET_MAX_BITS 2837   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_PACKET_MAX_BYTES 360  /* 8-byte write granularity; read slack per the contract above */
+#define INPUT_PACKET_MAX_BYTES 360
 
 
 /* type ShipCreate */
@@ -146,7 +147,7 @@ typedef struct ShipCreate {
     QuantizedPosition position;
     QuantizedRotation rotation;
     QuantizedVelocity linear_velocity;
-    uint8_t has_flags;
+    bool has_flags;
     ShipFlags flags;
     Team team;
     int16_t health;
@@ -155,7 +156,7 @@ typedef struct ShipCreate {
 } ShipCreate;
 
 #define SHIP_CREATE_MAX_BITS 219   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SHIP_CREATE_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define SHIP_CREATE_MAX_BYTES 32
 
 
 /* type ExpressionProbe */
@@ -165,9 +166,9 @@ typedef struct ExpressionProbe {
 } ExpressionProbe;
 
 #define EXPRESSION_PROBE_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXPRESSION_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define EXPRESSION_PROBE_MAX_BYTES 8
 
-/* Returns a ExpressionProbe with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new ExpressionProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED ExpressionProbe new_expression_probe( void )
@@ -178,7 +179,7 @@ static SCHEMA_UNUSED ExpressionProbe new_expression_probe( void )
     return value;
 }
 
-#define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))
+#define FLOOR_LIMIT ( -9223372036854775807LL - 1 )
 #define CEILING_COUNT (18446744073709551615ULL)
 
 /* type ExtremeProbe */
@@ -191,9 +192,9 @@ typedef struct ExtremeProbe {
 } ExtremeProbe;
 
 #define EXTREME_PROBE_MAX_BITS 320   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_PROBE_MAX_BYTES 40  /* 8-byte write granularity; read slack per the contract above */
+#define EXTREME_PROBE_MAX_BYTES 40
 
-/* Returns a ExtremeProbe with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new ExtremeProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED ExtremeProbe new_extreme_probe( void )
@@ -216,9 +217,9 @@ typedef struct ExtremeRow {
 } ExtremeRow;
 
 #define EXTREME_ROW_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_ROW_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define EXTREME_ROW_MAX_BYTES 32
 
-/* Returns a ExtremeRow with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new ExtremeRow with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED ExtremeRow new_extreme_row( void )

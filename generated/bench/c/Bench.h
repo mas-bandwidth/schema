@@ -7,6 +7,7 @@
 #ifndef SCHEMA_BENCH_BENCH_H
 #define SCHEMA_BENCH_BENCH_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 #include "serialize.h"   /* serialize_int128_t: C has no 128-bit builtin */
@@ -36,7 +37,7 @@ typedef struct BenchPacket {
     uint32_t bits7;
     uint32_t bits13;
     uint32_t bits23;
-    uint8_t flag;
+    bool flag;
     float x;
     float y;
     float z;
@@ -45,7 +46,7 @@ typedef struct BenchPacket {
 } BenchPacket;
 
 #define BENCH_PACKET_MAX_BITS 392   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BENCH_PACKET_MAX_BYTES 56  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define BENCH_PACKET_MAX_BYTES 56  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type BenchInts */
@@ -63,7 +64,7 @@ typedef struct BenchInts {
 } BenchInts;
 
 #define BENCH_INTS_MAX_BITS 110   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BENCH_INTS_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define BENCH_INTS_MAX_BYTES 16
 
 
 /* type BenchBits */
@@ -79,7 +80,7 @@ typedef struct BenchBits {
 } BenchBits;
 
 #define BENCH_BITS_MAX_BITS 156   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BENCH_BITS_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define BENCH_BITS_MAX_BYTES 24
 
 
 /* enum MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15]
@@ -265,12 +266,12 @@ typedef struct MixedEntity {
     int32_t health;
     MixedWeapon weapon;
     MixedDamage damage;
-    uint8_t moving;
-    uint8_t firing;
+    bool moving;
+    bool firing;
 } MixedEntity;
 
 #define MIXED_ENTITY_MAX_BITS 135   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define MIXED_ENTITY_MAX_BYTES 24  /* 8-byte write granularity; read slack per the contract above */
+#define MIXED_ENTITY_MAX_BYTES 24
 
 
 /* type MixedStat */
@@ -280,7 +281,7 @@ typedef struct MixedStat {
 } MixedStat;
 
 #define MIXED_STAT_MAX_BITS 18   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define MIXED_STAT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define MIXED_STAT_MAX_BYTES 8
 
 
 /* type MixedHitEvent */
@@ -288,11 +289,11 @@ typedef struct MixedHitEvent {
     uint32_t target_id;
     int32_t damage;
     int32_t hit_kind;
-    uint8_t crit;
+    bool crit;
 } MixedHitEvent;
 
 #define MIXED_HIT_EVENT_MAX_BITS 28   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define MIXED_HIT_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define MIXED_HIT_EVENT_MAX_BYTES 8
 
 
 /* type MixedChatEvent */
@@ -302,7 +303,7 @@ typedef struct MixedChatEvent {
 } MixedChatEvent;
 
 #define MIXED_CHAT_EVENT_MAX_BITS 14   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define MIXED_CHAT_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define MIXED_CHAT_EVENT_MAX_BYTES 8
 
 
 /* type MixedPickupEvent */
@@ -312,7 +313,7 @@ typedef struct MixedPickupEvent {
 } MixedPickupEvent;
 
 #define MIXED_PICKUP_EVENT_MAX_BITS 18   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define MIXED_PICKUP_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define MIXED_PICKUP_EVENT_MAX_BYTES 8
 
 
 /* union MixedEvent — first-class one-of (SPEC §4.8): the tag says which arm is
@@ -348,7 +349,7 @@ typedef struct MixedEvent {
 } MixedEvent;
 
 #define MIXED_EVENT_MAX_BITS 30   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define MIXED_EVENT_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define MIXED_EVENT_MAX_BYTES 8
 
 /* Selectors for MixedEvent: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
@@ -405,15 +406,15 @@ typedef struct BenchMixed {
     serialize_int128_t flux;
     uint16_t ping;
     uint32_t crc_hint;
-    uint8_t has_extra;
+    bool has_extra;
     int32_t extra;
     int32_t idle_ticks;
 } BenchMixed;
 
 #define BENCH_MIXED_MAX_BITS 3630   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BENCH_MIXED_MAX_BYTES 456  /* 8-byte write granularity; read slack per the contract above */
+#define BENCH_MIXED_MAX_BYTES 456
 
-/* Returns a BenchMixed with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new BenchMixed with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED BenchMixed new_bench_mixed( void )
@@ -421,7 +422,7 @@ static SCHEMA_UNUSED BenchMixed new_bench_mixed( void )
     BenchMixed value;
     memset( &value, 0, sizeof( value ) );
     value.entities_count = 1;
-    value.has_extra = 1;
+    value.has_extra = true;
     return value;
 }
 

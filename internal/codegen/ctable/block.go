@@ -280,7 +280,7 @@ func blockHeader(u *ir.Unit, f *ir.File, g *tableGen, formed int) []byte {
 	h.WriteString("   many there are and how far apart they sit — and then those rows, each array\n")
 	h.WriteString("   at a fixed pitch. The other side reads those three facts and points. */\n\n")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
-	h.WriteString("#include <stdint.h>\n#include <stddef.h> /* offsetof, and ptrdiff_t for the row pitch */\n#include <string.h>\n#include <stdlib.h> /* the DEFAULT allocator pair, for a caller with none of its own */\n")
+	h.WriteString("#include <stdbool.h>\n#include <stdint.h>\n#include <stddef.h> /* offsetof, and ptrdiff_t for the row pitch */\n#include <string.h>\n#include <stdlib.h> /* the DEFAULT allocator pair, for a caller with none of its own */\n")
 	fmt.Fprintf(&h, "\n#include \"%sTable.h\"\n", f.Base)
 	names := make([]string, 0, len(g.includes))
 	for n := range g.includes {

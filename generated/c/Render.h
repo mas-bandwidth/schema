@@ -26,7 +26,7 @@ typedef struct RenderSprite {
 } RenderSprite;
 
 #define RENDER_SPRITE_MAX_BITS 138   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RENDER_SPRITE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define RENDER_SPRITE_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type RenderBlock */
@@ -38,7 +38,7 @@ typedef struct RenderBlock {
 } RenderBlock;
 
 #define RENDER_BLOCK_MAX_BITS 8903   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RENDER_BLOCK_MAX_BYTES 1120  /* 8-byte write granularity; read slack per the contract above */
+#define RENDER_BLOCK_MAX_BYTES 1120
 
 #ifdef __cplusplus
 }

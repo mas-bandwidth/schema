@@ -21,7 +21,7 @@ func (g *gen) emitMaxBits(st *ir.Struct) {
 	bits := ir.MaxBitsStruct(st)
 	g.pf("#define %s_MAX_BITS %d   /* longest wire path; align pads at worst case (SPEC §6.1) */\n",
 		screaming(st.Name), bits)
-	g.pf("#define %s_MAX_BYTES %d  %s\n\n",
+	g.pf("#define %s_MAX_BYTES %d%s\n\n",
 		screaming(st.Name), ir.MaxBytes(bits), g.maxBytesTail())
 }
 
@@ -60,7 +60,7 @@ func (g *gen) emitConstructor(st *ir.Struct) {
 	if !structHasDefaults(st) {
 		return
 	}
-	g.pf("/* Returns a %s with its SPECIFIED defaults applied. A memset to zero is\n", st.Name)
+	g.pf("/* Returns a new %s with its SPECIFIED defaults applied. A memset to zero is\n", st.Name)
 	g.pf("   the schema's own default (SPEC §4.2: zero initialization unless a\n")
 	g.pf("   specified default overrides it), so only types carrying one get this. */\n")
 	g.pf("static SCHEMA_UNUSED %s new_%s( void )\n{\n", st.Name, snake(st.Name))
@@ -112,7 +112,7 @@ func (g *gen) emitDefaultInit(f *ir.Field) {
 		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
 	case f.Type.Kind == ir.TBool:
 		if f.DefBool {
-			g.pf("    value.%s = 1;\n", f.Name)
+			g.pf("    value.%s = true;\n", f.Name)
 		}
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		g.pf("    value.%s = %s;\n", f.Name, formatFloat(f.DefFloat))

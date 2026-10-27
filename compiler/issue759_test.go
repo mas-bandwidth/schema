@@ -13,7 +13,8 @@ import (
 // Issue #759: packet C stored bool as int, four bytes, while table C stored
 // uint8_t. A table of a packet type with two adjacent bools then failed its
 // own offsetof assert (firing at 4, layout says 1). A trailing-only bool can
-// hide behind padding. Storage is always uint8_t so adding a table does not
+// hide behind padding. Storage is always one byte — C99's bool from
+// <stdbool.h> since 2026-10-27, uint8_t before it — so adding a table does not
 // move packet headers. serialize_read_bool still takes int *.
 
 const issue759Packet = `package probe
@@ -43,15 +44,15 @@ func TestIssue759PacketBoolLayoutAgreesWithTable(t *testing.T) {
 
 	header := string(files["Probe.h"])
 	for _, want := range []string{
-		"uint8_t moving;",
-		"uint8_t firing;",
-		"uint8_t flags[2];",
+		"bool moving;",
+		"bool firing;",
+		"bool flags[2];",
 	} {
 		if !strings.Contains(header, want) {
-			t.Errorf("packet bool storage must be uint8_t: want %q in:\n%s", want, header)
+			t.Errorf("packet bool storage must be bool: want %q in:\n%s", want, header)
 		}
 	}
-	if strings.Contains(header, "int firing;") {
+	if strings.Contains(header, "int firing;") || strings.Contains(header, "uint8_t firing;") {
 		t.Error("packet bool storage must not be int")
 	}
 
@@ -67,8 +68,8 @@ func TestIssue759PacketBoolLayoutAgreesWithTable(t *testing.T) {
 	for _, want := range []string{
 		"int bool_value = 0;",
 		"if ( !serialize_read_bool( stream, &bool_value ) )",
-		"value->firing = (uint8_t) bool_value;",
-		"value->flags[i] = (uint8_t) bool_value;",
+		"value->firing = bool_value != 0;",
+		"value->flags[i] = bool_value != 0;",
 		"serialize_write_bool( stream, value->firing )",
 		"serialize_write_bool( stream, value->flags[i] )",
 	} {
@@ -78,7 +79,7 @@ func TestIssue759PacketBoolLayoutAgreesWithTable(t *testing.T) {
 	}
 	if strings.Contains(wire, "serialize_read_bool( stream, &value->firing )") ||
 		strings.Contains(wire, "serialize_read_bool( stream, &value->flags[i] )") {
-		t.Error("serialize_read_bool must not take the address of uint8_t storage")
+		t.Error("serialize_read_bool must not take the address of bool storage")
 	}
 
 	runCTableWireProbe(t, u, `#include "ProbeTable.h"
@@ -107,8 +108,8 @@ func TestIssue759PacketBoolUnchangedWhenATableIsAdded(t *testing.T) {
 		t.Fatal(err)
 	}
 	packet := string(without["Probe.h"])
-	if !strings.Contains(packet, "uint8_t firing;") {
-		t.Fatalf("packet-only bool storage must already be uint8_t:\n%s", packet)
+	if !strings.Contains(packet, "bool firing;") {
+		t.Fatalf("packet-only bool storage must already be bool:\n%s", packet)
 	}
 	for name, data := range without {
 		if strings.Contains(name, "View") {

@@ -10,6 +10,7 @@
 #ifndef SCHEMA_BLOCKDEMO_PADDEDTABLE_H
 #define SCHEMA_BLOCKDEMO_PADDEDTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
@@ -3211,7 +3212,7 @@ static SCHEMA_UNUSED int table_message_blob_scan(TableMessageReader * r,uint64_t
 typedef struct PaddedRow {
     uint8_t tag;
     double value;
-    uint8_t flag;
+    bool flag;
     uint32_t id;
     char label[15 + 1]; /* string(15): N + 1 for the terminator the wire does not carry */
     int32_t label_length;

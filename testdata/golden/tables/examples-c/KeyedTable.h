@@ -10,6 +10,7 @@
 #ifndef SCHEMA_TABLEDEMO_KEYEDTABLE_H
 #define SCHEMA_TABLEDEMO_KEYEDTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
@@ -4820,7 +4821,7 @@ typedef struct TeamConfig {
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct GunnerConfig {
     float reaction;
-    uint8_t tracking;
+    bool tracking;
 } GunnerConfig;
 
 /* table TurretConfig — TABLE-wire storage: relocatable, bounded. C has no member

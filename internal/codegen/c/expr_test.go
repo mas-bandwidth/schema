@@ -216,7 +216,7 @@ func TestExtremeLiterals(t *testing.T) {
 	data, wire := generateExtremesCorpus(t)
 	for _, want := range []string{
 		// #define bodies: the C twin of C++'s emitConst guards
-		"#define FLOOR_LIMIT (( -9223372036854775807LL - 1 ))",
+		"#define FLOOR_LIMIT ( -9223372036854775807LL - 1 )\n",
 		"#define CEILING_COUNT (18446744073709551615ULL)",
 		// defaults fold through the same guard
 		"value.floor_default = ( -9223372036854775807LL - 1 );",
@@ -229,13 +229,16 @@ func TestExtremeLiterals(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		// the wire offset arithmetic folds the INT64_MIN bound guarded
-		"(value->floor_bound) - (( -9223372036854775807LL - 1 ))",
-		"offset_value + (( -9223372036854775807LL - 1 ))",
+		// the wire offset arithmetic folds the INT64_MIN bound guarded, and
+		// subtracts in UNSIGNED 64-bit arithmetic: in int64 the difference
+		// overflows for every value >= 0 (TestRangedOffsetsSubtractUnsigned)
+		"(serialize_uint64_t) value->floor_bound - (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
+		"offset_value + (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
 		// the doubled minus AT the extreme folds too: the intermediate
 		// -(-9223372036854775808) overflows the long long carrier even
 		// though the final value fits (two extreme classes meet)
-		"(value->doubled_floor) - (( -9223372036854775807LL - 1 ))",
+		"(serialize_uint64_t) value->doubled_floor - (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
+		"(serialize_uint64_t) value->clamped_floor - (serialize_uint64_t) ( -9223372036854775807LL - 1 )",
 		// a 128-bit fixed bound that fits int64 rides from_int64, guarded
 		"serialize_write_fixed128( stream, fixed_value, 128, 0, ( -9223372036854775807LL - 1 ), 0 )",
 	} {

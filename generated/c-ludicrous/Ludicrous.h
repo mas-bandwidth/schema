@@ -7,6 +7,7 @@
 #ifndef SCHEMA_LUDICROUS_LUDICROUS_H
 #define SCHEMA_LUDICROUS_LUDICROUS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 #include "serialize.h"   /* serialize_int128_t: C has no 128-bit builtin */
@@ -65,7 +66,7 @@ typedef struct FixedProbe {
 } FixedProbe;
 
 #define FIXED_PROBE_MAX_BITS 156   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_PROBE_MAX_BYTES 24  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define FIXED_PROBE_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type UnsignedProbe */
@@ -80,9 +81,9 @@ typedef struct UnsignedProbe {
 } UnsignedProbe;
 
 #define UNSIGNED_PROBE_MAX_BITS 196   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define UNSIGNED_PROBE_MAX_BYTES 32  /* 8-byte write granularity; read slack per the contract above */
+#define UNSIGNED_PROBE_MAX_BYTES 32
 
-/* Returns a UnsignedProbe with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new UnsignedProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED UnsignedProbe new_unsigned_probe( void )
@@ -104,9 +105,9 @@ typedef struct WideProbe {
 } WideProbe;
 
 #define WIDE_PROBE_MAX_BITS 403   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_PROBE_MAX_BYTES 56  /* 8-byte write granularity; read slack per the contract above */
+#define WIDE_PROBE_MAX_BYTES 56
 
-/* Returns a WideProbe with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new WideProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED WideProbe new_wide_probe( void )
@@ -126,14 +127,14 @@ typedef struct LudicrousState {
     WideProbe wide;
     serialize_uint128_t keys[4];
     int32_t keys_count;
-    uint8_t has_target;
+    bool has_target;
     serialize_uint128_t target_id;
 } LudicrousState;
 
 #define LUDICROUS_STATE_MAX_BITS 1205   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define LUDICROUS_STATE_MAX_BYTES 152  /* 8-byte write granularity; read slack per the contract above */
+#define LUDICROUS_STATE_MAX_BYTES 152
 
-/* Returns a LudicrousState with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new LudicrousState with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED LudicrousState new_ludicrous_state( void )
@@ -154,9 +155,9 @@ typedef struct DegenerateProbe {
 } DegenerateProbe;
 
 #define DEGENERATE_PROBE_MAX_BITS 8   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEGENERATE_PROBE_MAX_BYTES 8  /* 8-byte write granularity; read slack per the contract above */
+#define DEGENERATE_PROBE_MAX_BYTES 8
 
-/* Returns a DegenerateProbe with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new DegenerateProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED DegenerateProbe new_degenerate_probe( void )
@@ -178,7 +179,7 @@ typedef struct FixedVec {
 } FixedVec;
 
 #define FIXED_VEC_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_VEC_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define FIXED_VEC_MAX_BYTES 16
 
 
 /* type FixedQuat */
@@ -190,9 +191,9 @@ typedef struct FixedQuat {
 } FixedQuat;
 
 #define FIXED_QUAT_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_QUAT_MAX_BYTES 16  /* 8-byte write granularity; read slack per the contract above */
+#define FIXED_QUAT_MAX_BYTES 16
 
-/* Returns a FixedQuat with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new FixedQuat with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED FixedQuat new_fixed_quat( void )

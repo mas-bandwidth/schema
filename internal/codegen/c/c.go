@@ -91,9 +91,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 }
 
 type gen struct {
-	unit     *ir.Unit
-	errs     []error
-	needs128 bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
+	unit      *ir.Unit
+	errs      []error
+	needs128  bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
+	needsBool bool // a bool storage member needs <stdbool.h> in the DATA header
 
 	saidReadSlack  bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
 	saidFlagAppend bool // the flag_names_* append helpers are emitted once per file
@@ -144,6 +145,9 @@ func (g *gen) assembleHeader() []byte {
 	// carries an include nothing in it uses (a contains check can only ever
 	// keep one too many, never drop one in use)
 	body := g.body.String()
+	if g.needsBool {
+		h.WriteString("#include <stdbool.h>\n")
+	}
 	h.WriteString("#include <stdint.h>\n")
 	if strings.Contains(body, "memset") {
 		h.WriteString("#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n")
@@ -266,7 +270,12 @@ func (g *gen) constValue(d *ir.Const) string {
 		return "0"
 	}
 	// parenthesised so a #define used inside an expression cannot reassociate
-	return "(" + g.renderInt(d.Expr, d.Int) + ")"
+	// — once: a folded INT64_MIN is already its own group
+	v := g.renderInt(d.Expr, d.Int)
+	if wrapped(v) {
+		return v
+	}
+	return "(" + v + ")"
 }
 
 func formatFloat(v float64) string {
@@ -467,7 +476,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 
 	maxBits := ir.MaxBitsUnion(d)
 	g.pf("#define %s_MAX_BITS %d   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */\n", screaming(d.Name), maxBits)
-	g.pf("#define %s_MAX_BYTES %d  %s\n\n", screaming(d.Name), ir.MaxBytes(maxBits), g.maxBytesTail())
+	g.pf("#define %s_MAX_BYTES %d%s\n\n", screaming(d.Name), ir.MaxBytes(maxBits), g.maxBytesTail())
 	g.emitUnionSelectors(d)
 }
 
@@ -515,14 +524,14 @@ func armInit(v ir.UnionVariant) string {
 	return fmt.Sprintf("memset( &value->as.%s, 0, sizeof( value->as.%s ) );", v.Name, v.Name)
 }
 
-// maxBytesTail is the comment after a MAX_BYTES define: the whole buffer
-// contract on the file's first, the short form after.
+// maxBytesTail is the comment after a MAX_BYTES define: the buffer contract,
+// said ONCE per file on its first MAX_BYTES, and nothing after it.
 func (g *gen) maxBytesTail() string {
 	if g.saidReadSlack {
-		return "/* 8-byte write granularity; read slack per the contract above */"
+		return ""
 	}
 	g.saidReadSlack = true
-	return "/* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */"
+	return "  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */"
 }
 
 func (g *gen) emitField(f *ir.Field) {
@@ -555,10 +564,13 @@ func (g *gen) emitField(f *ir.Field) {
 func (g *gen) storageType(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
-		// C has no bool in C99 without <stdbool.h>, and the layout
-		// contract pins a bool to ONE byte. uint8_t is that byte,
-		// spelled the way every other width in this family is.
-		return "uint8_t"
+		// C99's own bool, from <stdbool.h>: one byte, alignment one, on
+		// every ABI this family builds for — which is what the layout model
+		// pins a bool to (docs/SPEC-TABLES.md §19.3, §20.3), and the table
+		// emitter's layout asserts refuse a compiler that disagrees at build
+		// time. Matches the C++ target's bool.
+		g.needsBool = true
+		return "bool"
 	case ir.TInt:
 		if f.Type.Width == 128 {
 			// C has no int128_t. serialize.c models it as two 64-bit lanes,
@@ -725,7 +737,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 	}
 	g.pf("    {\n        serialize_uint32_t tag_value = 0;\n")
 	g.call("        ", fmt.Sprintf("serialize_read_bits( stream, &tag_value, %d )", bits))
-	g.pf("        if ( tag_value > %s_MAX )\n        {\n            return 0; /* not a wire-legal tag */\n        }\n", screaming(tag))
+	g.pf("        if ( tag_value > %s_MAX )\n        {\n            return serialize_read_fail( stream ); /* not a wire-legal tag */\n        }\n", screaming(tag))
 	g.pf("        value->type = (%s) tag_value;\n    }\n", tag)
 	g.pf("    switch ( value->type )\n    {\n")
 	for i, v := range d.Variants {
@@ -858,12 +870,12 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 			// a desynchronized stream, refused rather than ignored
 			g.pf("%s{\n%s    serialize_uint32_t const_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &const_value, %d )", n.Bits))
-			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return 0;\n%s    }\n%s}\n",
+			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return serialize_read_fail( stream );\n%s    }\n%s}\n",
 				ind, n.Value.String(), ind, ind, ind, ind)
 		case *ir.ReservedItem:
 			g.pf("%s{\n%s    serialize_uint32_t reserved_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &reserved_value, %d )", n.Bits))
-			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return 0;\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
+			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return serialize_read_fail( stream );\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
 		case *ir.AlignItem:
 			g.call(ind, "serialize_read_align( stream )")
 		case *ir.Branch:

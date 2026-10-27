@@ -10,6 +10,7 @@
 #ifndef SCHEMA_BLOCKDEMO_RENDERTABLE_H
 #define SCHEMA_BLOCKDEMO_RENDERTABLE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
@@ -3229,8 +3230,8 @@ typedef struct RenderShip {
     uint8_t object_sequence;
     ShipType ship_type;
     Team team;
-    uint8_t has_target_lock;
-    uint8_t predicted_explode;
+    bool has_target_lock;
+    bool predicted_explode;
 } RenderShip;
 
 /* table RenderTurret — TABLE-wire storage: relocatable, bounded. C has no member
@@ -3245,7 +3246,7 @@ typedef struct RenderTurret {
     uint32_t target_object_id;
     uint8_t object_sequence;
     Team team;
-    uint8_t has_target_lock;
+    bool has_target_lock;
 } RenderTurret;
 
 /* table RenderMissile — TABLE-wire storage: relocatable, bounded. C has no member

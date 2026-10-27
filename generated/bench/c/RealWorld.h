@@ -7,6 +7,7 @@
 #ifndef SCHEMA_REALWORLD_REAL_WORLD_H
 #define SCHEMA_REALWORLD_REAL_WORLD_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 
@@ -171,7 +172,7 @@ typedef struct RealPacket {
     int8_t f009_int;
     float f010_f32;
     uint32_t f011_bits;
-    uint8_t f012_bool;
+    bool f012_bool;
     float f013_f32;
     uint16_t f014_uint;
     int8_t f015_int;
@@ -196,25 +197,25 @@ typedef struct RealPacket {
     uint16_t f034_uint;
     uint32_t f035_bits;
     PacketMode f036_enum;
-    uint8_t f037_bool;
-    uint8_t f038_bool;
+    bool f037_bool;
+    bool f038_bool;
     uint32_t f039_bits;
     int16_t f040_fixed;
     int8_t f041_int;
     uint32_t f042_bits;
-    uint8_t f043_bool;
+    bool f043_bool;
     float f044_f32;
     uint32_t f045_bits;
     uint32_t f046_uint;
     int32_t f047_int;
     double f048_f64;
     uint16_t f049_ufixed;
-    uint8_t f050_bool;
-    uint8_t f051_bool;
+    bool f050_bool;
+    bool f051_bool;
     int8_t f052_int;
     float f053_f32;
     int8_t f054_int;
-    uint8_t f055_bool;
+    bool f055_bool;
     int8_t f056_int;
     int8_t f057_int;
     float f058_f32;
@@ -233,13 +234,13 @@ typedef struct RealPacket {
     float f071_cf32;
     float f072_cf32;
     int8_t f073_int;
-    uint8_t f074_bool;
+    bool f074_bool;
     uint64_t f075_u64;
     int16_t f076_int;
     int8_t f077_int;
     uint32_t f078_bits;
     uint8_t f079_uint;
-    uint8_t f080_bool;
+    bool f080_bool;
     uint32_t f081_bits;
     uint32_t f082_bits;
     PacketMode f083_enum;
@@ -251,26 +252,26 @@ typedef struct RealPacket {
     uint64_t f089_bits;
     uint8_t f090_uint;
     PacketFlags f091_flags;
-    uint8_t f092_bool;
+    bool f092_bool;
     uint64_t f093_bits;
-    uint8_t f094_bool;
+    bool f094_bool;
     int32_t f095_fixed;
     uint32_t f096_bits;
     uint32_t f097_bits;
 } RealPacket;
 
 #define REAL_PACKET_MAX_BITS 1810   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define REAL_PACKET_MAX_BYTES 232  /* rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define REAL_PACKET_MAX_BYTES 232  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
-/* Returns a RealPacket with its SPECIFIED defaults applied. A memset to zero is
+/* Returns a new RealPacket with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
 static SCHEMA_UNUSED RealPacket new_real_packet( void )
 {
     RealPacket value;
     memset( &value, 0, sizeof( value ) );
-    value.f012_bool = 1;
-    value.f050_bool = 1;
+    value.f012_bool = true;
+    value.f050_bool = true;
     return value;
 }
 

@@ -138,7 +138,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_choice( serialize_rea
         }
         if ( tag_value > DEFAULT_CHOICE_TYPE_MAX )
         {
-            return 0; /* not a wire-legal tag */
+            return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
         value->type = (DefaultChoiceType) tag_value;
     }
@@ -241,7 +241,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_bulk_choice( serializ
         }
         if ( tag_value > DEFAULT_BULK_CHOICE_TYPE_MAX )
         {
-            return 0; /* not a wire-legal tag */
+            return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
         value->type = (DefaultBulkChoiceType) tag_value;
     }

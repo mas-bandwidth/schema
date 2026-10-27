@@ -16,6 +16,7 @@
 #ifndef SCHEMA_BENCHTABLE_BENCHTABLEBLOCK_H
 #define SCHEMA_BENCHTABLE_BENCHTABLEBLOCK_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h> /* offsetof, and ptrdiff_t for the row pitch */
 #include <string.h>
@@ -321,8 +322,8 @@ typedef struct TableEntityBlockProjection
     int32_t health;
     TableWeapon weapon;
     TableDamage damage;
-    uint8_t moving;
-    uint8_t firing;
+    bool moving;
+    bool firing;
 } TableEntityBlockProjection;
 
 /* The block: one extent, 64-byte aligned at its base, the PROJECTION at
