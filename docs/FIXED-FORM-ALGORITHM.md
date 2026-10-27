@@ -184,7 +184,7 @@ constants, so measuring never reads a value.
 | `int8`..`uint64`, and a RANGED integer | the declared storage width | the bounds do not ride |
 | `int128` / `uint128` | 16 | the low 64-bit half, then the high |
 | `bits(N)` | 4 for `N <= 32`, else 8 | — |
-| `float32` / `float64`, and a COMPRESSED float | 4 / 8, and 4 | the IEEE-754 bit pattern, no canonicalisation; a compressed float rides as the float and never as a quantized index |
+| `float32` / `float64`, and a COMPRESSED float | 4 / 8, and 4 | the IEEE-754 bit pattern of a FINITE value (a NaN or an infinity is refused on write and read as `non_finite_float`, SPEC-TABLES.md §3.3); a compressed float rides as the float and never as a quantized index |
 | `fixed(I,F)` / `ufixed(I,F)`, `flags` | the storage width, and 8 | the raw scaled integer; the raw mask |
 | an ENUM | the ordinal width `1/2/4/8`, from the enum's top wire value (note a) | the ordinal is the variant's POSITION FROM `1`; `0` is `None` |
 | a nested `table` / `type` `T` | `C(T)` | inline; no length, no terminator |
@@ -382,7 +382,7 @@ The reader validates on load in **every** build, release included; a count or le
 | `count` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE count_over_bound` — before any destination byte is written. Else `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
 | `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)`; if `v < 0` or `v > cap` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
-| `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
+| `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction (a non-finite f32 never reaches `widenf`: the read refuses it, SPEC-TABLES.md §3.3) |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
 | a `bool` or a PRESENT FLAG | lands as **`byte != 0`**, normalised to the language's own true. `0x02` is not a bool a reader stores verbatim (fix 2) |
 

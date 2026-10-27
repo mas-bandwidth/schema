@@ -1234,8 +1234,8 @@ it (§4.6).
   moves, that target still carries the 1.1 behaviour (every pattern rides).
   Java, Dart and Elixir carry the 1.1 behaviour until their own landings. A
   *quantized* `float32` is a different field: its wire is the step index and
-  not the pattern, per its row below. The table forms keep their own float
-  rule (SPEC-TABLES.md §3), which this paragraph does not change.
+  not the pattern, per its row below. The table forms take the same rule
+  (SPEC-TABLES.md §3.3; Glenn, 2026-10-27).
 
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.
