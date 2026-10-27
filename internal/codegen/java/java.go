@@ -5,50 +5,61 @@
 // nested static classes for the file's types and unions, static constants,
 // and the static monomorphic wire functions. Every file of a unit shares
 // `package <unitpackage>;`, so cross-file references are plain qualified
-// names — Types.Vec3, Constants.maxChatLength — and generated files never
+// names — Types.Vec3, Constants.MAX_CHAT_LENGTH — and generated files never
 // import each other.
 //
 // The target is Java 17 on the JVM. Generated code is SELF-CONTAINED: it
-// references only java.lang, java.lang.invoke.VarHandle word access and
-// java.util.Arrays, never a runtime package. The serialize.java port
+// imports only java.lang.invoke (VarHandle word access), java.nio.ByteOrder
+// and java.util.Arrays, never a runtime package. The serialize.java port
 // measured the JVM's failure modes against the C++ reference and each is a
 // directive here (issue #156): separate monomorphic write/read functions
 // per type that never dispatch through a stream interface (the unified
-// pattern measured ~2x), the family bitpacker INLINED at every field with
-// literal constant bit widths and masks (a literal-width probe ran +40%
-// write / +85% read over array-driven widths), and writer contracts in ONE
-// `assert checkWriteX(value, data)` predicate call per function — dormant
-// assert bodies count against C2's inline thresholds even with -ea absent,
-// so the hot bodies carry a single small call and the contract walk lives
-// in a private predicate (the port's assert-predicate shape). Zero
-// allocation on the hot paths; the 128-bit storage widths ride the emitted
-// immutable Int128/UInt128 pair, which allocates per value exactly as the
-// port's Int128Value/UInt128Value do.
+// pattern measured ~2x), the family bitpacker at every field with literal
+// constant bit widths and masks (a literal-width probe ran +40% write /
+// +85% read over array-driven widths) through small static helpers the JIT
+// inlines, and writer contracts in ONE `assert checkWriteX(value, data,
+// bitOffset)` predicate call per function — dormant assert bodies count
+// against C2's inline thresholds even with -ea absent, so the hot bodies
+// carry a single small call and the contract walk lives in a private
+// predicate (the port's assert-predicate shape). Zero allocation on the hot
+// paths; the 128-bit storage widths ride the emitted immutable
+// Int128/UInt128 pair, which allocates per value exactly as the port's
+// Int128Value/UInt128Value do.
+//
+// Naming is Java's own: classes PascalCase, members and methods lowerCamel —
+// the first-letter-lowered form of the same ir.GoExportName mapping the
+// Go/C#/JS/Dart targets share, a bijection on it, so the checker's existing
+// collision detection covers Java without a second registry — and every
+// static final constant UPPER_SNAKE (schema consts, enum variants as
+// Weapon.LASER, flag masks, <NAME>_MAX_BITS, PROTOCOL_ID), the Rust target's
+// constant mapping.
 //
 // Storage is the §6.1 storage principle in Java's value domain: classes
-// with public fields, member names in lowerCamelCase — the first-letter-
-// lowered form of the same ir.GoExportName mapping the Go/C#/JS/Dart
-// targets share, a bijection on it, so the checker's existing collision
-// detection covers Java without a second registry. Java has no unsigned
-// types: integer storage is the same-width signed type, bit-transparent
-// (the protobuf convention), with masks applied after widening wherever an
-// unsigned value enters 64-bit wire arithmetic and Long.compareUnsigned
-// wherever unsigned ordering matters. float32 stores float (Java's native
-// single), float64 double, flags long (uint64 patterns), and the 128-bit
-// widths the emulated (hi, lo) pair — Int128.java/UInt128.java emitted
-// beside the unit exactly when a 128-bit field exists.
+// with public fields. Java has no unsigned types: signed integers store the
+// same-width signed type; unsigned ones store the next type that holds every
+// value (uint8/uint16 in int, uint32 and bits(N <= 32) in long), so they
+// read as their values; uint64, bits(N > 32) and flags store long, two's
+// complement, with Long.compareUnsigned wherever unsigned ordering matters.
+// Enums and union tags keep their narrow storage types (byte for most), as
+// integer constants. A [N]uint8 array is a byte[]. float32 stores float
+// (Java's native single), float64 double, and the 128-bit widths the
+// emulated (hi, lo) pair — Int128.java/UInt128.java emitted beside the unit
+// exactly when a 128-bit field exists.
 //
 // Functions per type, static on the declaring file's class:
-// write<Name>(value, data) -> bytes written (trusted writer, contracts
-// asserted through the predicate); read<Name>(value, data, numBits) ->
-// boolean (the family read verdict — reads validate EVERYTHING and never
-// throw on hostile bytes); measure<Name>(value) -> exact wire bits (static
-// runs folded to one literal at generation time); zero<Name>(value) -> the
-// §5 zero form. Buffers are caller-owned byte arrays: write buffers hold
-// <name>MaxBytes (a multiple of 8 — the family write-buffer granularity);
-// read buffers need NO slack past the payload — the reader prices its
-// 64-bit windows inside the buffer via the assembled tail window, the same
-// no-slack stance the Dart target ships.
+// write<Name>Bits(value, data, bitOffset) -> the bit position after value
+// (trusted writer, contracts asserted through the predicate);
+// read<Name>Bits(value, data, bitOffset, numBits) -> the bit position after
+// value or -1 (the family read verdict — reads validate EVERYTHING and never
+// throw on hostile bytes); write<Name>(value, data) -> bytes written and
+// read<Name>(value, data, numBits) -> boolean, the offset-0 wrappers;
+// zero<Name>(value) -> the §5 zero form. There is no measure function
+// (SPEC §6.1): the write returns the size and <NAME>_MAX_BYTES sizes
+// buffers. Buffers are caller-owned byte arrays: write buffers are a
+// multiple of 8 bytes (the family write-buffer granularity) holding the
+// value's MAX_BITS past its offset; read buffers need NO slack past the
+// payload — the reader prices its 64-bit windows inside the buffer via the
+// assembled tail window, the same no-slack stance the Dart target ships.
 package java
 
 import (
@@ -186,15 +197,6 @@ func javaName(name string) string {
 	return strings.ToLower(s[:1]) + s[1:]
 }
 
-// lowerFirst lowers the first letter of an already-exported name (type names
-// feeding function/constant spellings: ShipCreate -> shipCreate...).
-func lowerFirst(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToLower(s[:1]) + s[1:]
-}
-
 // checkNames refuses any declaration whose Java spelling lands on a reserved
 // word or a shadow-hazard name — mangling silently would make the Java
 // surface diverge from every sibling target's naming.
@@ -221,26 +223,11 @@ func checkNames(u *ir.Unit) error {
 		}
 		return nil
 	}
-	for _, c := range u.Consts {
-		if err := check("const", "", c.Name, javaName(c.Name)); err != nil {
-			return err
-		}
-	}
+	// constants, enum variants and flag masks are UPPER_SNAKE (constName),
+	// and no Java reserved word is upper case: only types and members check
 	for _, e := range u.Enums {
 		if err := checkType("enum", e.Name); err != nil {
 			return err
-		}
-		for _, v := range e.Variants {
-			if err := check("variant", e.Name, v, javaName(v)); err != nil {
-				return err
-			}
-		}
-	}
-	for _, fl := range u.Flags {
-		for _, v := range fl.Variants {
-			if err := check("variant", fl.Name, v, javaName(fl.Name+v)); err != nil {
-				return err
-			}
 		}
 	}
 	for _, st := range u.Structs {
@@ -282,14 +269,114 @@ type gen struct {
 	bulkBytes map[*ir.Field]bool
 
 	// per-function emission state (functions.go)
-	fn        strings.Builder
-	loopDepth int
-	needV     bool // the group value temp
-	needLo    bool // the wide-lane accumulator (33..64-bit reads, 128 lanes)
-	needHi    bool // the high 64-bit lane (128-bit-storage reads)
-	usesRead  bool // read side: the window machinery is used
+	fn          strings.Builder
+	loopDepth   int
+	needV       bool // the group value temp
+	needLo      bool // the wide-lane accumulator (33..64-bit reads, 128 lanes)
+	needHi      bool // the high 64-bit lane (128-bit-storage reads)
+	usesRead    bool // read side: the body checks bounds against numBits
+	usesPeek    bool // read side: the body loads windows (tailBase, tailWord)
+	inElem      bool // emitting an array element (uint8 elements are bytes)
+	stored      bool // write side: data holds the partial word, scratch is stale
+	usesScratch bool // write side: the body loads the scratch word
 
-	usesWire bool // the file emitted wire functions: the VarHandle rides
+	usesWire   bool            // the file emitted wire functions: the VarHandle rides
+	usesArrays bool            // the file calls Arrays.fill
+	helpers    map[string]bool // the bitpacker helpers the file's bodies call
+}
+
+// use records that a body calls the named bitpacker helper, so the file
+// carries it (javaHelpers, in their fixed order).
+func (g *gen) use(helper string) {
+	if g.helpers == nil {
+		g.helpers = map[string]bool{}
+	}
+	g.helpers[helper] = true
+}
+
+// javaHelpers is the bitpacker, one small private static method a step, in
+// the order a file carries them. Each sits far under C2's inline threshold
+// (FreqInlineSize), so the bodies that call them compile to the inlined
+// word arithmetic; the wire is the family bitpacker's exactly.
+var javaHelpers = []struct{ name, src string }{
+	{"putBits", `    // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
+    // pos, storing the word to data once it fills, and returns the new scratch word. The
+    // caller advances pos by bits.
+    private static long putBits(byte[] data, int pos, long scratch, long v, int bits) {
+        final int used = pos & 63;
+        scratch |= v << used;
+        if (used + bits >= 64) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+            return v >>> (64 - used);
+        }
+        return scratch;
+    }
+`},
+	{"alignBits", `    // alignBits zero-pads the write to the next byte boundary and returns the new scratch
+    // word; the caller rounds pos up to a multiple of 8.
+    private static long alignBits(byte[] data, int pos, long scratch) {
+        if ((pos & 63) > 56) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+            return 0;
+        }
+        return scratch;
+    }
+`},
+	{"flushBits", `    // flushBits stores the partial scratch word at bit pos — before a bulk copy, a nested
+    // write, or the end of the value.
+    private static void flushBits(byte[] data, int pos, long scratch) {
+        if ((pos & 63) != 0) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+        }
+    }
+`},
+	{"loadBits", `    // loadBits is the scratch word for writing on from bit pos: the bits data already
+    // holds below pos, zero above it.
+    private static long loadBits(byte[] data, int pos) {
+        final int used = pos & 63;
+        if (used == 0) {
+            return 0;
+        }
+        return (long) LONG_LE.get(data, (pos >>> 6) * 8) & ((1L << used) - 1);
+    }
+`},
+	{"loadTail", `    // loadTail assembles the buffer's last 64-bit window, once per read (the whole buffer,
+    // zero-extended, when it is shorter than eight bytes).
+    private static long loadTail(byte[] data) {
+        if (data.length >= 8) {
+            return (long) LONG_LE.get(data, data.length - 8);
+        }
+        long word = 0;
+        for (int i = data.length - 1; i >= 0; i--) {
+            word = (word << 8) | (data[i] & 0xffL);
+        }
+        return word;
+    }
+`},
+	{"peekBits", `    // peekBits is the stream from bit pos on, low bit first, in a 64-bit window that never
+    // loads past the buffer: positions in its last eight bytes read the tail word.
+    private static long peekBits(byte[] data, int pos, int tailBase, long tailWord) {
+        final int at = pos >>> 3;
+        if (at < tailBase) {
+            return (long) LONG_LE.get(data, at) >>> (pos & 7);
+        }
+        return tailWord >>> (pos - tailBase * 8);
+    }
+`},
+	{"alignRead", `    // alignRead skips the padding to the next byte boundary and returns the new position,
+    // or -1 for padding that is nonzero or runs past numBits (SPEC §4.3).
+    private static int alignRead(byte[] data, int pos, int numBits) {
+        final int pad = pos & 7;
+        if (pad == 0) {
+            return pos;
+        }
+        final int next = pos + 8 - pad;
+        if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
+            return -1;
+        }
+        return next;
+    }
+`},
 }
 
 func (g *gen) bpf(format string, args ...any) {
@@ -325,26 +412,41 @@ func (g *gen) assemble() []byte {
 		// per unit, not once per file
 		h.WriteString("//\n")
 		h.WriteString("// The shipped Java wire path (issue #156): the serialize.java bitpacker\n")
-		h.WriteString("// inlined at every field, literal constant widths and masks, monomorphic\n")
-		h.WriteString("// write/read/measure functions per type, zero runtime dependencies.\n")
+		h.WriteString("// at every field, literal constant widths and masks, monomorphic\n")
+		h.WriteString("// write/read functions per type, zero runtime dependencies.\n")
 		h.WriteString("//\n")
-		h.WriteString("// write<Name>(value, data) -> bytes written. The writer TRUSTS the caller\n")
-		h.WriteString("// (the C++ stance): contracts live in one assert-predicate call — active\n")
-		h.WriteString("// under -ea, dormant bytecode otherwise — and width masks stay, as wire\n")
-		h.WriteString("// arithmetic. The buffer must hold <name>MaxBytes (a multiple of 8).\n")
+		h.WriteString("// write<Name>Bits(value, data, bitOffset) -> the bit position after value.\n")
+		h.WriteString("// The writer TRUSTS the caller (the C++ stance): contracts live in one\n")
+		h.WriteString("// assert-predicate call — active under -ea, dormant bytecode otherwise —\n")
+		h.WriteString("// and width masks stay, as wire arithmetic. write<Name>(value, data) is\n")
+		h.WriteString("// the offset-0 form and returns bytes; its buffer holds <NAME>_MAX_BYTES.\n")
 		h.WriteString("//\n")
-		h.WriteString("// read<Name>(value, data, numBits) -> boolean, the family read verdict.\n")
-		h.WriteString("// The wire is a trust boundary: reads validate everything — bounds fused\n")
-		h.WriteString("// per static run, ranges, wire constants, reserved and align padding,\n")
-		h.WriteString("// union tags — and NEVER throw on hostile bytes. No slack past the\n")
-		h.WriteString("// payload is required: the reader prices its 64-bit windows inside the\n")
-		h.WriteString("// buffer.\n")
+		h.WriteString("// read<Name>Bits(value, data, bitOffset, numBits) -> the bit position\n")
+		h.WriteString("// after value, or -1: the family read verdict. The wire is a trust\n")
+		h.WriteString("// boundary: reads validate everything — bounds fused per static run,\n")
+		h.WriteString("// ranges, wire constants, reserved and align padding, union tags — and\n")
+		h.WriteString("// NEVER throw on hostile bytes. No slack past the payload is required.\n")
+		h.WriteString("// read<Name>(value, data, numBits) is the offset-0 form, a boolean.\n")
 		h.WriteString("//\n")
-		h.WriteString("// measure<Name>(value) -> exact wire bits for that value (trusted, like\n")
-		h.WriteString("// the writer). zero<Name>(value) -> the §5 zero form.\n")
+		h.WriteString("// The Bits entries compose: nested types call them, and hand-written\n")
+		h.WriteString("// bit code shares the buffer between them. zero<Name>(value) -> the §5\n")
+		h.WriteString("// zero form.\n")
 	}
 	h.WriteString("\n")
 	fmt.Fprintf(&h, "package %s;\n\n", g.unit.Package)
+	var imports []string
+	if g.usesWire {
+		imports = append(imports, "java.lang.invoke.MethodHandles", "java.lang.invoke.VarHandle", "java.nio.ByteOrder")
+	}
+	if g.usesArrays {
+		imports = append(imports, "java.util.Arrays")
+	}
+	for _, imp := range imports {
+		fmt.Fprintf(&h, "import %s;\n", imp)
+	}
+	if len(imports) > 0 {
+		h.WriteString("\n")
+	}
 	fmt.Fprintf(&h, "// %s carries every generated declaration of %s.schema — Java has no\n", g.file.Base, g.file.Base)
 	h.WriteString("// top-level functions or constants, so the file's one public class is their\n")
 	h.WriteString("// home; types nest inside it (SPEC §6.1 naming).\n")
@@ -353,9 +455,14 @@ func (g *gen) assemble() []byte {
 	if g.usesWire {
 		h.WriteString("    // 64-bit little-endian word access into byte[] — the proven-fast JVM\n")
 		h.WriteString("    // form (VarHandle byteArrayViewVarHandle, serialize.java's own).\n")
-		h.WriteString("    private static final java.lang.invoke.VarHandle LONG_LE =\n")
-		h.WriteString("            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(\n")
-		h.WriteString("                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);\n\n")
+		h.WriteString("    private static final VarHandle LONG_LE =\n")
+		h.WriteString("            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);\n\n")
+		for _, helper := range javaHelpers {
+			if g.helpers[helper.name] {
+				h.WriteString(helper.src)
+				h.WriteString("\n")
+			}
+		}
 	}
 	h.WriteString(strings.TrimRight(g.body.String(), "\n"))
 	h.WriteString("\n}\n")
@@ -366,7 +473,7 @@ func (g *gen) emitFile() {
 	if g.home {
 		g.bpf("    // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two\n")
 		g.bpf("    // sides at the same id speak identical bits; there is no other versioning.\n")
-		g.bpf("    public static final long protocolId = 0x%016xL;\n\n", g.unit.ProtocolId)
+		g.bpf("    public static final long PROTOCOL_ID = 0x%016xL;\n\n", g.unit.ProtocolId)
 	}
 
 	// EmissionOrder, not declaration order: a static-final initializer
@@ -394,7 +501,7 @@ func (g *gen) emitFile() {
 // fits (so they serve as array dimensions directly), long past that; float
 // constants as float/double per storage.
 func (g *gen) emitConst(d *ir.Const) {
-	name := javaName(d.Name)
+	name := constName(d.Name)
 	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
 	if d.IsFloat {
 		if d.Storage == "float32" {
@@ -446,15 +553,15 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 	g.bpf("    // %s: %s\n", name, comment)
 	g.bpf("    public static final class %s {\n", name)
 	g.bpf("        private %s() {}\n\n", name)
-	g.bpf("        public static final %s none = 0;\n", typ)
+	g.bpf("        public static final %s NONE = 0;\n", typ)
 	for i, m := range members {
 		g.bpf("%s", ir.DocComment(docs[i], "        ", "//"))
-		g.bpf("        public static final %s %s = %s;\n", typ, javaName(m), narrowLit(typ, big.NewInt(int64(i+1))))
+		g.bpf("        public static final %s %s = %s;\n", typ, constName(m), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the declared variant count (SPEC §4.2)\n")
-	g.bpf("        public static final %s count = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(members)))))
+	g.bpf("        public static final %s COUNT = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(members)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
-	g.bpf("        public static final %s max = %s;\n", typ, narrowLit(typ, big.NewInt(max)))
+	g.bpf("        public static final %s MAX = %s;\n", typ, narrowLit(typ, big.NewInt(max)))
 	g.bpf("    }\n\n")
 
 	// the tag enum's name surface is a declared enum's, member for member: a
@@ -463,9 +570,9 @@ func (g *gen) emitTagEnum(name, typ string, members, docs []string, max int64, c
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", name, name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
 	g.bpf("    public static String enumName%s(long value) {\n", name)
-	g.bpf("        if (value == %s.none) {\n            return \"None\";\n        }\n", name)
+	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", name)
 	for _, m := range members {
-		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", name, javaName(m), m)
+		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", name, constName(m), m)
 	}
 	g.bpf("        return \"???\";\n    }\n\n")
 }
@@ -479,23 +586,23 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.bpf("    // headroom values have no Java enum member to be\n")
 	g.bpf("    public static final class %s {\n", d.Name)
 	g.bpf("        private %s() {}\n\n", d.Name)
-	g.bpf("        public static final %s none = 0;\n", typ)
+	g.bpf("        public static final %s NONE = 0;\n", typ)
 	for i, v := range d.Variants {
 		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "        ", "//"))
-		g.bpf("        public static final %s %s = %s;\n", typ, javaName(v), narrowLit(typ, big.NewInt(int64(i+1))))
+		g.bpf("        public static final %s %s = %s;\n", typ, constName(v), narrowLit(typ, big.NewInt(int64(i+1))))
 	}
 	g.bpf("        // the declared variant count (SPEC §4.2)\n")
-	g.bpf("        public static final %s count = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(d.Variants)))))
+	g.bpf("        public static final %s COUNT = %s;\n", typ, narrowLit(typ, big.NewInt(int64(len(d.Variants)))))
 	g.bpf("        // the exported extent (SPEC §4.2)\n")
-	g.bpf("        public static final %s max = %s;\n", typ, narrowLit(typ, big.NewInt(d.Max)))
+	g.bpf("        public static final %s MAX = %s;\n", typ, narrowLit(typ, big.NewInt(d.Max)))
 	g.bpf("    }\n\n")
 
 	g.bpf("    // enumName%s: debug/log/tooling name for any %s storage value —\n", d.Name, d.Name)
 	g.bpf("    // out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
 	g.bpf("    public static String enumName%s(long value) {\n", d.Name)
-	g.bpf("        if (value == %s.none) {\n            return \"None\";\n        }\n", d.Name)
+	g.bpf("        if (value == %s.NONE) {\n            return \"None\";\n        }\n", d.Name)
 	for _, v := range d.Variants {
-		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", d.Name, javaName(v), v)
+		g.bpf("        if (value == %s.%s) {\n            return \"%s\";\n        }\n", d.Name, constName(v), v)
 	}
 	g.bpf("        return \"???\";\n    }\n\n")
 }
@@ -504,13 +611,13 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	g.bpf("%s", ir.DocComment(d.Doc, "    ", "//"))
 	g.bpf("    // %s — one bit per variant, consumed as masks; flags-typed fields store\n", d.Name)
 	g.bpf("    // uint64 in every target — a bit-transparent long here — wire %d bits\n", d.WireBits)
-	g.bpf("    // (SPEC §4.2). Mask names are the family's flat spelling, lowerCamel.\n")
+	g.bpf("    // (SPEC §4.2). Mask names are the family's flat spelling, UPPER_SNAKE.\n")
 	for i, v := range d.Variants {
 		g.bpf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
-		g.bpf("    public static final long %s = 1L << %d;\n", javaName(d.Name+v), i)
+		g.bpf("    public static final long %s = 1L << %d;\n", constName(d.Name+v), i)
 	}
 	g.bpf("    // the declared variant count (SPEC §4.2)\n")
-	g.bpf("    public static final int %sCount = %d;\n", lowerFirst(d.Name), len(d.Variants))
+	g.bpf("    public static final int %s = %d;\n", constName(d.Name+"Count"), len(d.Variants))
 	g.bpf("\n")
 
 	g.bpf("    // flagName%s: debug/log/tooling name for bit i of %s —\n", d.Name, d.Name)
@@ -613,7 +720,8 @@ func (g *gen) emitStorageField(f *ir.Field) []string {
 			}
 			g.bpf("        public final %s[] %s = new %s[%s];\n", typ, name, typ, bound)
 			ctor = append(ctor,
-				fmt.Sprintf("            java.util.Arrays.fill(%s, %s.zero);\n", name, typ))
+				fmt.Sprintf("            Arrays.fill(%s, %s.zero);\n", name, typ))
+			g.usesArrays = true
 		default:
 			g.bpf("        public final %s[] %s = new %s[%s];\n", scalarJavaType(f.Type), name, scalarJavaType(f.Type), bound)
 		}
@@ -691,7 +799,7 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 		}
 		return typ, typ + ".zero"
 	case t.Kind == ir.TFixed:
-		typ = intJavaType(t.Width)
+		typ = intStorage(t)
 		if f.HasDefault {
 			// DefInt is ALREADY the raw scaled integer (the C++ target pins
 			// this); fixed storage is that raw value (STANDARD.md, fixed)
@@ -703,7 +811,7 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 		case *ir.Enum:
 			typ = enumJavaType(ref.StorageBits)
 			if f.DefVariant != "" {
-				return typ, g.qualifyType(t.Name) + "." + javaName(f.DefVariant)
+				return typ, g.qualifyType(t.Name) + "." + constName(f.DefVariant)
 			}
 			return typ, ""
 		case *ir.Flags:
@@ -716,18 +824,16 @@ func (g *gen) scalarStorage(f *ir.Field) (typ, init string) {
 			return "final " + q, "new " + q + "()"
 		}
 	case t.Kind == ir.TBits:
-		if t.Width <= 32 {
-			typ = "int"
-		} else {
-			typ = "long"
-		}
+		// bits(N) stores uint32 (N <= 32) or uint64: a long either way, so a
+		// 32-bit pattern reads as its value
 		if f.HasDefault {
-			return typ, narrowLit(typ, f.DefInt)
+			return "long", narrowLit("long", f.DefInt)
 		}
-		return typ, ""
+		return "long", ""
 	}
-	// integer storage in the same-width signed type, bit-transparent
-	typ = intJavaType(t.Width)
+	// signed integers in the same-width signed type; unsigned ones one size
+	// up, so they read as their values (intStorage)
+	typ = intStorage(t)
 	if f.HasDefault {
 		if s := g.renderNarrowInt(typ, f.DefExpr, f.DefInt); s != "" {
 			return typ, s
@@ -750,9 +856,43 @@ func (g *gen) renderNarrowInt(typ string, e ast.Expr, folded *big.Int) string {
 	return g.renderInt(e, folded)
 }
 
+// intStorage is the Java storage type of an integer or fixed-point value.
+// Signed widths take the same-width signed type. Java has no unsigned types,
+// so unsigned widths take the next signed type that holds every value —
+// uint8 and uint16 in int, uint32 in long — and read as their values with no
+// masking. uint64 stays long, two's complement: values past
+// Long.MAX_VALUE read negative, and Long.compareUnsigned, Long.divideUnsigned
+// and Long.toUnsignedString are its unsigned operations.
+func intStorage(t ir.FieldType) string {
+	switch {
+	case t.Signed:
+		return intJavaType(t.Width)
+	case t.Width <= 16:
+		return "int"
+	}
+	return "long"
+}
+
+// intType is intStorage where the emitter stands: a uint8 ARRAY element is
+// the one exception, a byte — a [N]uint8 is a byte[], the byte-buffer idiom
+// the bulk copy and System.arraycopy take.
+func (g *gen) intType(t ir.FieldType) string {
+	if g.inElem {
+		return elemIntStorage(t)
+	}
+	return intStorage(t)
+}
+
+// elemIntStorage is intStorage for an array element: uint8 elements are bytes.
+func elemIntStorage(t ir.FieldType) string {
+	if !t.Signed && t.Width <= 8 {
+		return "byte"
+	}
+	return intStorage(t)
+}
+
 // intJavaType is the same-width signed Java type for an integer storage
-// width (Java has no unsigned types; unsigned values ride bit-transparent,
-// the protobuf convention).
+// width.
 func intJavaType(width int) string {
 	switch {
 	case width <= 8:
@@ -770,11 +910,8 @@ func intJavaType(width int) string {
 func scalarJavaType(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TInt, ir.TFixed:
-		return intJavaType(t.Width)
+		return elemIntStorage(t)
 	case ir.TBits:
-		if t.Width <= 32 {
-			return "int"
-		}
 		return "long"
 	case ir.TFloat32:
 		return "float"
@@ -829,7 +966,7 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.bpf("    // construction defaults; unselected arms keep what they last held — the\n")
 	g.bpf("    // reused-storage discipline. Consumers read the selected arm only.\n")
 	g.bpf("    public static final class %s {\n", d.Name)
-	g.bpf("        public %s type = %sType.none;\n", typ, d.Name)
+	g.bpf("        public %s type = %sType.NONE;\n", typ, d.Name)
 	for _, v := range d.Variants {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
@@ -1048,8 +1185,8 @@ func (g *gen) renderable(e ast.Expr) bool {
 	return true
 }
 
-// renderExpr renders an expression in Java form: constants keep the schema
-// spelling in the lowerCamel mapping, qualified where they live in another
+// renderExpr renders an expression in Java form: constants in their
+// UPPER_SNAKE spelling, qualified where they live in another
 // file of the unit.
 func (g *gen) renderExpr(e ast.Expr) string {
 	switch e := e.(type) {
@@ -1065,7 +1202,7 @@ func (g *gen) renderExpr(e ast.Expr) string {
 	case *ast.IntLit:
 		return e.Value.String()
 	case *ast.IdentExpr:
-		return g.qualify(e.Name, javaName(e.Name))
+		return g.qualify(e.Name, constName(e.Name))
 	}
 	return ir.RenderExpr(e) // unreachable for renderable expressions
 }

@@ -5,25 +5,31 @@
 // package realworld — protocol id 0x1922430092518648
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
-// inlined at every field, literal constant widths and masks, monomorphic
-// write/read/measure functions per type, zero runtime dependencies.
+// at every field, literal constant widths and masks, monomorphic
+// write/read functions per type, zero runtime dependencies.
 //
-// write<Name>(value, data) -> bytes written. The writer TRUSTS the caller
-// (the C++ stance): contracts live in one assert-predicate call — active
-// under -ea, dormant bytecode otherwise — and width masks stay, as wire
-// arithmetic. The buffer must hold <name>MaxBytes (a multiple of 8).
+// write<Name>Bits(value, data, bitOffset) -> the bit position after value.
+// The writer TRUSTS the caller (the C++ stance): contracts live in one
+// assert-predicate call — active under -ea, dormant bytecode otherwise —
+// and width masks stay, as wire arithmetic. write<Name>(value, data) is
+// the offset-0 form and returns bytes; its buffer holds <NAME>_MAX_BYTES.
 //
-// read<Name>(value, data, numBits) -> boolean, the family read verdict.
-// The wire is a trust boundary: reads validate everything — bounds fused
-// per static run, ranges, wire constants, reserved and align padding,
-// union tags — and NEVER throw on hostile bytes. No slack past the
-// payload is required: the reader prices its 64-bit windows inside the
-// buffer.
+// read<Name>Bits(value, data, bitOffset, numBits) -> the bit position
+// after value, or -1: the family read verdict. The wire is a trust
+// boundary: reads validate everything — bounds fused per static run,
+// ranges, wire constants, reserved and align padding, union tags — and
+// NEVER throw on hostile bytes. No slack past the payload is required.
+// read<Name>(value, data, numBits) is the offset-0 form, a boolean.
 //
-// measure<Name>(value) -> exact wire bits for that value (trusted, like
-// the writer). zero<Name>(value) -> the §5 zero form.
+// The Bits entries compose: nested types call them, and hand-written
+// bit code shares the buffer between them. zero<Name>(value) -> the §5
+// zero form.
 
 package realworld;
+
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
+import java.nio.ByteOrder;
 
 // RealWorld carries every generated declaration of RealWorld.schema — Java has no
 // top-level functions or constants, so the file's one public class is their
@@ -33,13 +39,66 @@ public final class RealWorld {
 
     // 64-bit little-endian word access into byte[] — the proven-fast JVM
     // form (VarHandle byteArrayViewVarHandle, serialize.java's own).
-    private static final java.lang.invoke.VarHandle LONG_LE =
-            java.lang.invoke.MethodHandles.byteArrayViewVarHandle(
-                    long[].class, java.nio.ByteOrder.LITTLE_ENDIAN);
+    private static final VarHandle LONG_LE =
+            MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
+
+    // putBits merges v (already masked to bits, at most 32) into the scratch word at bit
+    // pos, storing the word to data once it fills, and returns the new scratch word. The
+    // caller advances pos by bits.
+    private static long putBits(byte[] data, int pos, long scratch, long v, int bits) {
+        final int used = pos & 63;
+        scratch |= v << used;
+        if (used + bits >= 64) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+            return v >>> (64 - used);
+        }
+        return scratch;
+    }
+
+    // flushBits stores the partial scratch word at bit pos — before a bulk copy, a nested
+    // write, or the end of the value.
+    private static void flushBits(byte[] data, int pos, long scratch) {
+        if ((pos & 63) != 0) {
+            LONG_LE.set(data, (pos >>> 6) * 8, scratch);
+        }
+    }
+
+    // loadBits is the scratch word for writing on from bit pos: the bits data already
+    // holds below pos, zero above it.
+    private static long loadBits(byte[] data, int pos) {
+        final int used = pos & 63;
+        if (used == 0) {
+            return 0;
+        }
+        return (long) LONG_LE.get(data, (pos >>> 6) * 8) & ((1L << used) - 1);
+    }
+
+    // loadTail assembles the buffer's last 64-bit window, once per read (the whole buffer,
+    // zero-extended, when it is shorter than eight bytes).
+    private static long loadTail(byte[] data) {
+        if (data.length >= 8) {
+            return (long) LONG_LE.get(data, data.length - 8);
+        }
+        long word = 0;
+        for (int i = data.length - 1; i >= 0; i--) {
+            word = (word << 8) | (data[i] & 0xffL);
+        }
+        return word;
+    }
+
+    // peekBits is the stream from bit pos on, low bit first, in a 64-bit window that never
+    // loads past the buffer: positions in its last eight bytes read the tail word.
+    private static long peekBits(byte[] data, int pos, int tailBase, long tailWord) {
+        final int at = pos >>> 3;
+        if (at < tailBase) {
+            return (long) LONG_LE.get(data, at) >>> (pos & 7);
+        }
+        return tailWord >>> (pos - tailBase * 8);
+    }
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0x1922430092518648L;
+    public static final long PROTOCOL_ID = 0x1922430092518648L;
 
     // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
     // an int-constant namespace — the Java translation of the family's integer-
@@ -48,37 +107,37 @@ public final class RealWorld {
     public static final class PacketMode {
         private PacketMode() {}
 
-        public static final byte none = 0;
-        public static final byte idle = 1;
-        public static final byte active = 2;
-        public static final byte combat = 3;
-        public static final byte docked = 4;
-        public static final byte warping = 5;
+        public static final byte NONE = 0;
+        public static final byte IDLE = 1;
+        public static final byte ACTIVE = 2;
+        public static final byte COMBAT = 3;
+        public static final byte DOCKED = 4;
+        public static final byte WARPING = 5;
         // the declared variant count (SPEC §4.2)
-        public static final byte count = 5;
+        public static final byte COUNT = 5;
         // the exported extent (SPEC §4.2)
-        public static final byte max = 5;
+        public static final byte MAX = 5;
     }
 
     // enumNamePacketMode: debug/log/tooling name for any PacketMode storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNamePacketMode(long value) {
-        if (value == PacketMode.none) {
+        if (value == PacketMode.NONE) {
             return "None";
         }
-        if (value == PacketMode.idle) {
+        if (value == PacketMode.IDLE) {
             return "Idle";
         }
-        if (value == PacketMode.active) {
+        if (value == PacketMode.ACTIVE) {
             return "Active";
         }
-        if (value == PacketMode.combat) {
+        if (value == PacketMode.COMBAT) {
             return "Combat";
         }
-        if (value == PacketMode.docked) {
+        if (value == PacketMode.DOCKED) {
             return "Docked";
         }
-        if (value == PacketMode.warping) {
+        if (value == PacketMode.WARPING) {
             return "Warping";
         }
         return "???";
@@ -86,14 +145,14 @@ public final class RealWorld {
 
     // PacketFlags — one bit per variant, consumed as masks; flags-typed fields store
     // uint64 in every target — a bit-transparent long here — wire 5 bits
-    // (SPEC §4.2). Mask names are the family's flat spelling, lowerCamel.
-    public static final long packetFlagsShielded = 1L << 0;
-    public static final long packetFlagsCloaked = 1L << 1;
-    public static final long packetFlagsOverheated = 1L << 2;
-    public static final long packetFlagsLowPower = 1L << 3;
-    public static final long packetFlagsJamming = 1L << 4;
+    // (SPEC §4.2). Mask names are the family's flat spelling, UPPER_SNAKE.
+    public static final long PACKET_FLAGS_SHIELDED = 1L << 0;
+    public static final long PACKET_FLAGS_CLOAKED = 1L << 1;
+    public static final long PACKET_FLAGS_OVERHEATED = 1L << 2;
+    public static final long PACKET_FLAGS_LOW_POWER = 1L << 3;
+    public static final long PACKET_FLAGS_JAMMING = 1L << 4;
     // the declared variant count (SPEC §4.2)
-    public static final int packetFlagsCount = 5;
+    public static final int PACKET_FLAGS_COUNT = 5;
 
     // flagNamePacketFlags: debug/log/tooling name for bit i of PacketFlags —
     // out-of-range bits name as "???"
@@ -168,7 +227,7 @@ public final class RealWorld {
         // compressed float [0.0, 2000.0] @ 0.1
         public float f004Cf32;
         // wire [0, 7316]
-        public short f005Uint;
+        public int f005Uint;
         // wire [-1513, 1513]
         public short f006Int;
         public float f007F32;
@@ -176,7 +235,7 @@ public final class RealWorld {
         // wire [-22, 22]
         public byte f009Int;
         public float f010F32;
-        public int f011Bits;
+        public long f011Bits;
         // specified default at construction; zero* gives the §5 zero form
         public boolean f012Bool = true;
 
@@ -184,63 +243,63 @@ public final class RealWorld {
         // untaken side (SPEC §5)
         public float f013F32;
         // wire [0, 775]
-        public short f014Uint;
+        public int f014Uint;
         // wire [-21, 21]
         public byte f015Int;
         // wire [-36, 36]
         public int f016Fixed;
         // wire [0, 4606]
-        public short f017Uint;
+        public int f017Uint;
 
         // wire [-834, 834]
         public short f018Int;
         public double f019F64;
         public float f020F32;
         // wire [0, 25141]
-        public int f021Ufixed;
+        public long f021Ufixed;
         public float f022F32;
-        public int f023Bits;
+        public long f023Bits;
         public float f024F32;
         // wire [-119, 119]
         public short f025Fixed;
-        public int f026Bits;
+        public long f026Bits;
         // compressed float [-2.0, 2.0] @ 0.25
         public float f027Cf32;
-        public int f028Bits;
+        public long f028Bits;
         public long f029I64;
         public float f030F32;
-        public int f031Bits;
+        public long f031Bits;
         // wire [-3, 3]
         public byte f032Int;
         // wire [0, 142780]
-        public int f033Uint;
+        public long f033Uint;
         // wire [0, 14149]
-        public short f034Uint;
-        public int f035Bits;
+        public int f034Uint;
+        public long f035Bits;
         public byte f036Enum;
         public boolean f037Bool;
         public boolean f038Bool;
-        public int f039Bits;
+        public long f039Bits;
         // wire [-5, 5]
         public short f040Fixed;
         // wire [-55, 55]
         public byte f041Int;
-        public int f042Bits;
+        public long f042Bits;
         // specified default at construction; zero* gives the §5 zero form
         public boolean f043Bool;
 
         // f043_bool — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
         public float f044F32;
-        public int f045Bits;
+        public long f045Bits;
         // wire [0, 76063]
-        public int f046Uint;
+        public long f046Uint;
         // wire [-430976, 430976]
         public int f047Int;
 
         public double f048F64;
         // wire [0, 3]
-        public short f049Ufixed;
+        public int f049Ufixed;
         // specified default at construction; zero* gives the §5 zero form
         public boolean f050Bool = true;
 
@@ -260,25 +319,25 @@ public final class RealWorld {
         public byte f057Int;
         public float f058F32;
         public double f059F64;
-        public int f060Bits;
+        public long f060Bits;
         // compressed float [-90.0, 90.0] @ 0.5
         public float f061Cf32;
         // wire [0, 503]
-        public short f062Uint;
+        public int f062Uint;
         public long f063I64;
         // wire [0, 299]
-        public short f064Uint;
+        public int f064Uint;
         // compressed float [0.0, 30.0] @ 0.5
         public float f065Cf32;
         // wire [0, 2]
-        public short f066Ufixed;
+        public int f066Ufixed;
         // compressed float [-100.0, 100.0] @ 0.25
         public float f067Cf32;
         // compressed float [0.0, 2000.0] @ 1.0
         public float f068Cf32;
-        public int f069Bits;
+        public long f069Bits;
         // wire [0, 2]
-        public byte f070Uint;
+        public int f070Uint;
         // compressed float [0.0, 10.0] @ 0.02
         public float f071Cf32;
         // compressed float [0.0, 100.0] @ 0.01
@@ -295,25 +354,25 @@ public final class RealWorld {
         public short f076Int;
         // wire [-17, 17]
         public byte f077Int;
-        public int f078Bits;
+        public long f078Bits;
         // wire [0, 17]
-        public byte f079Uint;
+        public int f079Uint;
 
         public boolean f080Bool;
-        public int f081Bits;
-        public int f082Bits;
+        public long f081Bits;
+        public long f082Bits;
         public byte f083Enum;
         // wire [0, 1]
-        public byte f084Ufixed;
-        public int f085Bits;
+        public int f084Ufixed;
+        public long f085Bits;
         // wire [0, 399]
-        public short f086Uint;
+        public int f086Uint;
         public double f087F64;
         // wire [-694, 694]
         public short f088Int;
         public long f089Bits;
         // wire [0, 214]
-        public byte f090Uint;
+        public int f090Uint;
         // PacketFlags — consumed as masks, uint64 storage (SPEC §4.2)
         public long f091Flags;
         public boolean f092Bool;
@@ -321,14 +380,14 @@ public final class RealWorld {
         public boolean f094Bool;
         // wire [-1577, 1577]
         public int f095Fixed;
-        public int f096Bits;
-        public int f097Bits;
+        public long f096Bits;
+        public long f097Bits;
     }
 
-    // realPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
-    // realPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int realPacketMaxBits = 1810;
-    public static final int realPacketMaxBytes = 232;
+    // REAL_PACKET_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
+    // REAL_PACKET_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
+    public static final int REAL_PACKET_MAX_BITS = 1810;
+    public static final int REAL_PACKET_MAX_BYTES = 232;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
     // construction.
@@ -533,47 +592,48 @@ public final class RealWorld {
         value.f097Bits = 0;
     }
 
-    // checkWriteRealPacket is writeRealPacket's contract walk, called once through assert —
-    // the predicate-extraction form: dormant assert bodies count against the
+    // checkWriteRealPacket is the contract walk of writeRealPacketBits, called once
+    // through assert — the predicate-extraction form: dormant assert bodies count against the
     // JIT's inline thresholds, so the hot body carries one small call and the
     // contracts live here (issue #156).
-    private static boolean checkWriteRealPacket(RealPacket value, byte[] data) {
+    private static boolean checkWriteRealPacket(RealPacket value, byte[] data, int bitOffset) {
         assert data.length % 8 == 0;
-        assert data.length >= realPacketMaxBytes;
+        assert bitOffset >= 0;
+        assert (long) data.length * 8 >= (long) bitOffset + REAL_PACKET_MAX_BITS;
         assert value.f001Int >= -805495;
         assert value.f001Int <= 805495;
         assert value.f003Int >= -835897;
         assert value.f003Int <= 835897;
         assert value.f004Cf32 - value.f004Cf32 == 0.0f; // finite: NaN and both infinities fail this
-        assert (value.f005Uint & 0xffffL) >= 0;
-        assert (value.f005Uint & 0xffffL) <= 7316;
+        assert value.f005Uint >= 0;
+        assert value.f005Uint <= 7316;
         assert value.f006Int >= -1513;
         assert value.f006Int <= 1513;
         assert value.f009Int >= -22;
         assert value.f009Int <= 22;
         if (value.f012Bool) {
-            assert (value.f014Uint & 0xffffL) >= 0;
-            assert (value.f014Uint & 0xffffL) <= 775;
+            assert value.f014Uint >= 0;
+            assert value.f014Uint <= 775;
             assert value.f015Int >= -21;
             assert value.f015Int <= 21;
             assert value.f016Fixed >= -37748736;
             assert value.f016Fixed <= 37748736;
-            assert (value.f017Uint & 0xffffL) >= 0;
-            assert (value.f017Uint & 0xffffL) <= 4606;
+            assert value.f017Uint >= 0;
+            assert value.f017Uint <= 4606;
         }
         assert value.f018Int >= -834;
         assert value.f018Int <= 834;
-        assert (value.f021Ufixed & 0xffffffffL) >= 0;
-        assert (value.f021Ufixed & 0xffffffffL) <= 102977536;
+        assert value.f021Ufixed >= 0;
+        assert value.f021Ufixed <= 102977536;
         assert value.f025Fixed >= -30464;
         assert value.f025Fixed <= 30464;
         assert value.f027Cf32 - value.f027Cf32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f032Int >= -3;
         assert value.f032Int <= 3;
-        assert (value.f033Uint & 0xffffffffL) >= 0;
-        assert (value.f033Uint & 0xffffffffL) <= 142780;
-        assert (value.f034Uint & 0xffffL) >= 0;
-        assert (value.f034Uint & 0xffffL) <= 14149;
+        assert value.f033Uint >= 0;
+        assert value.f033Uint <= 142780;
+        assert value.f034Uint >= 0;
+        assert value.f034Uint <= 14149;
         assert (value.f036Enum & 0xffL) >= 0;
         assert (value.f036Enum & 0xffL) <= 5;
         assert value.f040Fixed >= -20480;
@@ -581,13 +641,13 @@ public final class RealWorld {
         assert value.f041Int >= -55;
         assert value.f041Int <= 55;
         if (value.f043Bool) {
-            assert (value.f046Uint & 0xffffffffL) >= 0;
-            assert (value.f046Uint & 0xffffffffL) <= 76063;
+            assert value.f046Uint >= 0;
+            assert value.f046Uint <= 76063;
             assert value.f047Int >= -430976;
             assert value.f047Int <= 430976;
         }
-        assert (value.f049Ufixed & 0xffffL) >= 0;
-        assert (value.f049Ufixed & 0xffffL) <= 49152;
+        assert value.f049Ufixed >= 0;
+        assert value.f049Ufixed <= 49152;
         if (value.f050Bool) {
             assert value.f052Int >= -57;
             assert value.f052Int <= 57;
@@ -599,17 +659,17 @@ public final class RealWorld {
         assert value.f057Int >= -15;
         assert value.f057Int <= 15;
         assert value.f061Cf32 - value.f061Cf32 == 0.0f; // finite: NaN and both infinities fail this
-        assert (value.f062Uint & 0xffffL) >= 0;
-        assert (value.f062Uint & 0xffffL) <= 503;
-        assert (value.f064Uint & 0xffffL) >= 0;
-        assert (value.f064Uint & 0xffffL) <= 299;
+        assert value.f062Uint >= 0;
+        assert value.f062Uint <= 503;
+        assert value.f064Uint >= 0;
+        assert value.f064Uint <= 299;
         assert value.f065Cf32 - value.f065Cf32 == 0.0f; // finite: NaN and both infinities fail this
-        assert (value.f066Ufixed & 0xffffL) >= 0;
-        assert (value.f066Ufixed & 0xffffL) <= 32768;
+        assert value.f066Ufixed >= 0;
+        assert value.f066Ufixed <= 32768;
         assert value.f067Cf32 - value.f067Cf32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f068Cf32 - value.f068Cf32 == 0.0f; // finite: NaN and both infinities fail this
-        assert (value.f070Uint & 0xffL) >= 0;
-        assert (value.f070Uint & 0xffL) <= 2;
+        assert value.f070Uint >= 0;
+        assert value.f070Uint <= 2;
         assert value.f071Cf32 - value.f071Cf32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f072Cf32 - value.f072Cf32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f073Int >= -4;
@@ -619,73 +679,46 @@ public final class RealWorld {
             assert value.f076Int <= 26218;
             assert value.f077Int >= -17;
             assert value.f077Int <= 17;
-            assert (value.f079Uint & 0xffL) >= 0;
-            assert (value.f079Uint & 0xffL) <= 17;
+            assert value.f079Uint >= 0;
+            assert value.f079Uint <= 17;
         }
         assert (value.f083Enum & 0xffL) >= 0;
         assert (value.f083Enum & 0xffL) <= 5;
-        assert (value.f084Ufixed & 0xffL) >= 0;
-        assert (value.f084Ufixed & 0xffL) <= 128;
-        assert (value.f086Uint & 0xffffL) >= 0;
-        assert (value.f086Uint & 0xffffL) <= 399;
+        assert value.f084Ufixed >= 0;
+        assert value.f084Ufixed <= 128;
+        assert value.f086Uint >= 0;
+        assert value.f086Uint <= 399;
         assert value.f088Int >= -694;
         assert value.f088Int <= 694;
-        assert (value.f090Uint & 0xffL) >= 0;
-        assert (value.f090Uint & 0xffL) <= 214;
+        assert value.f090Uint >= 0;
+        assert value.f090Uint <= 214;
         assert value.f091Flags >>> 5 == 0;
         assert value.f095Fixed >= -103350272;
         assert value.f095Fixed <= 103350272;
         return true;
     }
 
-    // writeRealPacket packs value into data — the trusted writer (contracts in the
-    // checkWriteRealPacket predicate, one dormant assert call without -ea). The buffer
-    // must hold realPacketMaxBytes. Returns the bytes written.
-    public static int writeRealPacket(RealPacket value, byte[] data) {
-        assert checkWriteRealPacket(value, data);
-        long scratch = 0;
-        int scratchBits = 0;
-        int wordIndex = 0;
-        long v = 0;
-        v = (value.f001Int + 805495) & 0x1fffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 21;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (21 - scratchBits);
-        }
+    // writeRealPacketBits packs value into data from bit bitOffset on and returns the bit
+    // position after it — the trusted writer (contracts in the checkWriteRealPacket
+    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
+    // data must be a multiple of 8 bytes long and hold bitOffset + REAL_PACKET_MAX_BITS.
+    public static int writeRealPacketBits(RealPacket value, byte[] data, int bitOffset) {
+        assert checkWriteRealPacket(value, data, bitOffset);
+        int pos = bitOffset;
+        long scratch;
+        long v;
+        scratch = loadBits(data, pos);
+        scratch = putBits(data, pos, scratch, (value.f001Int + 805495) & 0x1fffffL, 21);
+        pos += 21;
         {
             final long b = Double.doubleToRawLongBits(value.f002F64);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
+            pos += 32;
         }
-        v = (value.f003Int + 835897) & 0x1fffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 21;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (21 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, (value.f003Int + 835897) & 0x1fffffL, 21);
+        pos += 21;
         {
             float n = (value.f004Cf32 - 0.0f) / 2000.0f;
             if (!(n >= 0.0f)) {
@@ -698,235 +731,97 @@ public final class RealWorld {
             v = (long) Math.floor(n * 20000.0f + 0.5f);
             if (v > 20000L) v = 20000L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 15;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (15 - scratchBits);
-        }
-        v = ((value.f005Uint & 0xffffL)) & 0x1fffL;
-        scratch |= v << scratchBits;
-        scratchBits += 13;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (13 - scratchBits);
-        }
-        v = (value.f006Int + 1513) & 0xfffL;
-        scratch |= v << scratchBits;
-        scratchBits += 12;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (12 - scratchBits);
-        }
-        v = Float.floatToRawIntBits(value.f007F32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.f008U64 & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.f008U64 >>> 32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.f009Int + 22) & 0x3fL;
-        scratch |= v << scratchBits;
-        scratchBits += 6;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (6 - scratchBits);
-        }
-        v = Float.floatToRawIntBits(value.f010F32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.f011Bits & 0x3ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 10;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (10 - scratchBits);
-        }
-        v = value.f012Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 15);
+        pos += 15;
+        scratch = putBits(data, pos, scratch, (value.f005Uint) & 0x1fffL, 13);
+        pos += 13;
+        scratch = putBits(data, pos, scratch, (value.f006Int + 1513) & 0xfffL, 12);
+        pos += 12;
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        Float.floatToRawIntBits(value.f007F32) & 0xffffffffL,
+                        32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.f008U64 & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f008U64 >>> 32) & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f009Int + 22) & 0x3fL, 6);
+        pos += 6;
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        Float.floatToRawIntBits(value.f010F32) & 0xffffffffL,
+                        32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.f011Bits & 0x3ffL, 10);
+        pos += 10;
+        scratch = putBits(data, pos, scratch, value.f012Bool ? 1 : 0, 1);
+        pos += 1;
         if (value.f012Bool) {
-            v = Float.floatToRawIntBits(value.f013F32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = ((value.f014Uint & 0xffffL)) & 0x3ffL;
-            scratch |= v << scratchBits;
-            scratchBits += 10;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (10 - scratchBits);
-            }
-            v = (value.f015Int + 21) & 0x3fL;
-            scratch |= v << scratchBits;
-            scratchBits += 6;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (6 - scratchBits);
-            }
-            v = (value.f016Fixed + 37748736) & 0x7ffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 27;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (27 - scratchBits);
-            }
-            v = ((value.f017Uint & 0xffffL)) & 0x1fffL;
-            scratch |= v << scratchBits;
-            scratchBits += 13;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (13 - scratchBits);
-            }
+            scratch =
+                    putBits(
+                            data,
+                            pos,
+                            scratch,
+                            Float.floatToRawIntBits(value.f013F32) & 0xffffffffL,
+                            32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (value.f014Uint) & 0x3ffL, 10);
+            pos += 10;
+            scratch = putBits(data, pos, scratch, (value.f015Int + 21) & 0x3fL, 6);
+            pos += 6;
+            scratch = putBits(data, pos, scratch, (value.f016Fixed + 37748736) & 0x7ffffffL, 27);
+            pos += 27;
+            scratch = putBits(data, pos, scratch, (value.f017Uint) & 0x1fffL, 13);
+            pos += 13;
         }
-        v = (value.f018Int + 834) & 0x7ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 11;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (11 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, (value.f018Int + 834) & 0x7ffL, 11);
+        pos += 11;
         {
             final long b = Double.doubleToRawLongBits(value.f019F64);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
+            pos += 32;
         }
-        v = Float.floatToRawIntBits(value.f020F32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = ((value.f021Ufixed & 0xffffffffL)) & 0x7ffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 27;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (27 - scratchBits);
-        }
-        v = Float.floatToRawIntBits(value.f022F32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.f023Bits & 0x1ffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 25;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (25 - scratchBits);
-        }
-        v = Float.floatToRawIntBits(value.f024F32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.f025Fixed + 30464) & 0xffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 16;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (16 - scratchBits);
-        }
-        v = value.f026Bits & 0x1ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 9;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (9 - scratchBits);
-        }
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        Float.floatToRawIntBits(value.f020F32) & 0xffffffffL,
+                        32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f021Ufixed) & 0x7ffffffL, 27);
+        pos += 27;
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        Float.floatToRawIntBits(value.f022F32) & 0xffffffffL,
+                        32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.f023Bits & 0x1ffffffL, 25);
+        pos += 25;
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        Float.floatToRawIntBits(value.f024F32) & 0xffffffffL,
+                        32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f025Fixed + 30464) & 0xffffL, 16);
+        pos += 16;
+        scratch = putBits(data, pos, scratch, value.f026Bits & 0x1ffL, 9);
+        pos += 9;
         {
             float n = (value.f027Cf32 - -2.0f) / 4.0f;
             if (!(n >= 0.0f)) {
@@ -939,348 +834,114 @@ public final class RealWorld {
             v = (long) Math.floor(n * 16.0f + 0.5f);
             if (v > 16L) v = 16L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
-        v = value.f028Bits & 0xfL;
-        scratch |= v << scratchBits;
-        scratchBits += 4;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (4 - scratchBits);
-        }
-        v = value.f029I64 & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.f029I64 >>> 32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = Float.floatToRawIntBits(value.f030F32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.f031Bits & 0x1L;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = (value.f032Int + 3) & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        v = ((value.f033Uint & 0xffffffffL)) & 0x3ffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 18;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (18 - scratchBits);
-        }
-        v = ((value.f034Uint & 0xffffL)) & 0x3fffL;
-        scratch |= v << scratchBits;
-        scratchBits += 14;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (14 - scratchBits);
-        }
-        v = value.f035Bits & 0x1ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 9;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (9 - scratchBits);
-        }
-        v = value.f036Enum & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        v = value.f037Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = value.f038Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = value.f039Bits & 0x7ffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 19;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (19 - scratchBits);
-        }
-        v = (value.f040Fixed + 20480) & 0xffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 16;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (16 - scratchBits);
-        }
-        v = (value.f041Int + 55) & 0x7fL;
-        scratch |= v << scratchBits;
-        scratchBits += 7;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (7 - scratchBits);
-        }
-        v = value.f042Bits & 0x3fffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 30;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (30 - scratchBits);
-        }
-        v = value.f043Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 5);
+        pos += 5;
+        scratch = putBits(data, pos, scratch, value.f028Bits & 0xfL, 4);
+        pos += 4;
+        scratch = putBits(data, pos, scratch, value.f029I64 & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f029I64 >>> 32) & 0xffffffffL, 32);
+        pos += 32;
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        Float.floatToRawIntBits(value.f030F32) & 0xffffffffL,
+                        32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.f031Bits & 0x1L, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, (value.f032Int + 3) & 0x7L, 3);
+        pos += 3;
+        scratch = putBits(data, pos, scratch, (value.f033Uint) & 0x3ffffL, 18);
+        pos += 18;
+        scratch = putBits(data, pos, scratch, (value.f034Uint) & 0x3fffL, 14);
+        pos += 14;
+        scratch = putBits(data, pos, scratch, value.f035Bits & 0x1ffL, 9);
+        pos += 9;
+        scratch = putBits(data, pos, scratch, value.f036Enum & 0x7L, 3);
+        pos += 3;
+        scratch = putBits(data, pos, scratch, value.f037Bool ? 1 : 0, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, value.f038Bool ? 1 : 0, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, value.f039Bits & 0x7ffffL, 19);
+        pos += 19;
+        scratch = putBits(data, pos, scratch, (value.f040Fixed + 20480) & 0xffffL, 16);
+        pos += 16;
+        scratch = putBits(data, pos, scratch, (value.f041Int + 55) & 0x7fL, 7);
+        pos += 7;
+        scratch = putBits(data, pos, scratch, value.f042Bits & 0x3fffffffL, 30);
+        pos += 30;
+        scratch = putBits(data, pos, scratch, value.f043Bool ? 1 : 0, 1);
+        pos += 1;
         if (value.f043Bool) {
-            v = Float.floatToRawIntBits(value.f044F32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = value.f045Bits & 0xfffL;
-            scratch |= v << scratchBits;
-            scratchBits += 12;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (12 - scratchBits);
-            }
-            v = ((value.f046Uint & 0xffffffffL)) & 0x1ffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 17;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (17 - scratchBits);
-            }
-            v = (value.f047Int + 430976) & 0xfffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 20;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (20 - scratchBits);
-            }
+            scratch =
+                    putBits(
+                            data,
+                            pos,
+                            scratch,
+                            Float.floatToRawIntBits(value.f044F32) & 0xffffffffL,
+                            32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, value.f045Bits & 0xfffL, 12);
+            pos += 12;
+            scratch = putBits(data, pos, scratch, (value.f046Uint) & 0x1ffffL, 17);
+            pos += 17;
+            scratch = putBits(data, pos, scratch, (value.f047Int + 430976) & 0xfffffL, 20);
+            pos += 20;
         }
         {
             final long b = Double.doubleToRawLongBits(value.f048F64);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
+            pos += 32;
         }
-        v = ((value.f049Ufixed & 0xffffL)) & 0xffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 16;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (16 - scratchBits);
-        }
-        v = value.f050Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, (value.f049Ufixed) & 0xffffL, 16);
+        pos += 16;
+        scratch = putBits(data, pos, scratch, value.f050Bool ? 1 : 0, 1);
+        pos += 1;
         if (value.f050Bool) {
-            v = value.f051Bool ? 1 : 0;
-            scratch |= v << scratchBits;
-            scratchBits += 1;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (1 - scratchBits);
-            }
-            v = (value.f052Int + 57) & 0x7fL;
-            scratch |= v << scratchBits;
-            scratchBits += 7;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (7 - scratchBits);
-            }
-            v = Float.floatToRawIntBits(value.f053F32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (value.f054Int + 35) & 0x7fL;
-            scratch |= v << scratchBits;
-            scratchBits += 7;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (7 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, value.f051Bool ? 1 : 0, 1);
+            pos += 1;
+            scratch = putBits(data, pos, scratch, (value.f052Int + 57) & 0x7fL, 7);
+            pos += 7;
+            scratch =
+                    putBits(
+                            data,
+                            pos,
+                            scratch,
+                            Float.floatToRawIntBits(value.f053F32) & 0xffffffffL,
+                            32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (value.f054Int + 35) & 0x7fL, 7);
+            pos += 7;
         }
-        v = value.f055Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = (value.f056Int + 13) & 0x1fL;
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
-        v = (value.f057Int + 15) & 0x1fL;
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
-        v = Float.floatToRawIntBits(value.f058F32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, value.f055Bool ? 1 : 0, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, (value.f056Int + 13) & 0x1fL, 5);
+        pos += 5;
+        scratch = putBits(data, pos, scratch, (value.f057Int + 15) & 0x1fL, 5);
+        pos += 5;
+        scratch =
+                putBits(
+                        data,
+                        pos,
+                        scratch,
+                        Float.floatToRawIntBits(value.f058F32) & 0xffffffffL,
+                        32);
+        pos += 32;
         {
             final long b = Double.doubleToRawLongBits(value.f059F64);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
+            pos += 32;
         }
-        v = value.f060Bits & 0xffL;
-        scratch |= v << scratchBits;
-        scratchBits += 8;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (8 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, value.f060Bits & 0xffL, 8);
+        pos += 8;
         {
             float n = (value.f061Cf32 - -90.0f) / 180.0f;
             if (!(n >= 0.0f)) {
@@ -1293,50 +954,16 @@ public final class RealWorld {
             v = (long) Math.floor(n * 360.0f + 0.5f);
             if (v > 360L) v = 360L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 9;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (9 - scratchBits);
-        }
-        v = ((value.f062Uint & 0xffffL)) & 0x1ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 9;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (9 - scratchBits);
-        }
-        v = value.f063I64 & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.f063I64 >>> 32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = ((value.f064Uint & 0xffffL)) & 0x1ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 9;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (9 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 9);
+        pos += 9;
+        scratch = putBits(data, pos, scratch, (value.f062Uint) & 0x1ffL, 9);
+        pos += 9;
+        scratch = putBits(data, pos, scratch, value.f063I64 & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f063I64 >>> 32) & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f064Uint) & 0x1ffL, 9);
+        pos += 9;
         {
             float n = (value.f065Cf32 - 0.0f) / 30.0f;
             if (!(n >= 0.0f)) {
@@ -1349,23 +976,10 @@ public final class RealWorld {
             v = (long) Math.floor(n * 60.0f + 0.5f);
             if (v > 60L) v = 60L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 6;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (6 - scratchBits);
-        }
-        v = ((value.f066Ufixed & 0xffffL)) & 0xffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 16;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (16 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 6);
+        pos += 6;
+        scratch = putBits(data, pos, scratch, (value.f066Ufixed) & 0xffffL, 16);
+        pos += 16;
         {
             float n = (value.f067Cf32 - -100.0f) / 200.0f;
             if (!(n >= 0.0f)) {
@@ -1378,14 +992,8 @@ public final class RealWorld {
             v = (long) Math.floor(n * 800.0f + 0.5f);
             if (v > 800L) v = 800L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 10;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (10 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 10);
+        pos += 10;
         {
             float n = (value.f068Cf32 - 0.0f) / 2000.0f;
             if (!(n >= 0.0f)) {
@@ -1398,32 +1006,12 @@ public final class RealWorld {
             v = (long) Math.floor(n * 2000.0f + 0.5f);
             if (v > 2000L) v = 2000L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 11;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (11 - scratchBits);
-        }
-        v = value.f069Bits & 0x7ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 11;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (11 - scratchBits);
-        }
-        v = ((value.f070Uint & 0xffL)) & 0x3L;
-        scratch |= v << scratchBits;
-        scratchBits += 2;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (2 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 11);
+        pos += 11;
+        scratch = putBits(data, pos, scratch, value.f069Bits & 0x7ffL, 11);
+        pos += 11;
+        scratch = putBits(data, pos, scratch, (value.f070Uint) & 0x3L, 2);
+        pos += 2;
         {
             float n = (value.f071Cf32 - 0.0f) / 10.0f;
             if (!(n >= 0.0f)) {
@@ -1436,14 +1024,8 @@ public final class RealWorld {
             v = (long) Math.floor(n * 500.0f + 0.5f);
             if (v > 500L) v = 500L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 9;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (9 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 9);
+        pos += 9;
         {
             float n = (value.f072Cf32 - 0.0f) / 100.0f;
             if (!(n >= 0.0f)) {
@@ -1456,539 +1038,193 @@ public final class RealWorld {
             v = (long) Math.floor(n * 10000.0f + 0.5f);
             if (v > 10000L) v = 10000L;
         }
-        scratch |= v << scratchBits;
-        scratchBits += 14;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (14 - scratchBits);
-        }
-        v = (value.f073Int + 4) & 0xfL;
-        scratch |= v << scratchBits;
-        scratchBits += 4;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (4 - scratchBits);
-        }
-        v = value.f074Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, v, 14);
+        pos += 14;
+        scratch = putBits(data, pos, scratch, (value.f073Int + 4) & 0xfL, 4);
+        pos += 4;
+        scratch = putBits(data, pos, scratch, value.f074Bool ? 1 : 0, 1);
+        pos += 1;
         if (value.f074Bool) {
-            v = value.f075U64 & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (value.f075U64 >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (value.f076Int + 26218) & 0xffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 16;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (16 - scratchBits);
-            }
-            v = (value.f077Int + 17) & 0x3fL;
-            scratch |= v << scratchBits;
-            scratchBits += 6;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (6 - scratchBits);
-            }
-            v = value.f078Bits & 0x1ffL;
-            scratch |= v << scratchBits;
-            scratchBits += 9;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (9 - scratchBits);
-            }
-            v = ((value.f079Uint & 0xffL)) & 0x1fL;
-            scratch |= v << scratchBits;
-            scratchBits += 5;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (5 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, value.f075U64 & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (value.f075U64 >>> 32) & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (value.f076Int + 26218) & 0xffffL, 16);
+            pos += 16;
+            scratch = putBits(data, pos, scratch, (value.f077Int + 17) & 0x3fL, 6);
+            pos += 6;
+            scratch = putBits(data, pos, scratch, value.f078Bits & 0x1ffL, 9);
+            pos += 9;
+            scratch = putBits(data, pos, scratch, (value.f079Uint) & 0x1fL, 5);
+            pos += 5;
         }
-        v = value.f080Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = value.f081Bits & 0x1fffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 29;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (29 - scratchBits);
-        }
-        v = value.f082Bits & 0x1ffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 25;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (25 - scratchBits);
-        }
-        v = value.f083Enum & 0x7L;
-        scratch |= v << scratchBits;
-        scratchBits += 3;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (3 - scratchBits);
-        }
-        v = ((value.f084Ufixed & 0xffL)) & 0xffL;
-        scratch |= v << scratchBits;
-        scratchBits += 8;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (8 - scratchBits);
-        }
-        v = value.f085Bits & 0x1fffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 21;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (21 - scratchBits);
-        }
-        v = ((value.f086Uint & 0xffffL)) & 0x1ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 9;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (9 - scratchBits);
-        }
+        scratch = putBits(data, pos, scratch, value.f080Bool ? 1 : 0, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, value.f081Bits & 0x1fffffffL, 29);
+        pos += 29;
+        scratch = putBits(data, pos, scratch, value.f082Bits & 0x1ffffffL, 25);
+        pos += 25;
+        scratch = putBits(data, pos, scratch, value.f083Enum & 0x7L, 3);
+        pos += 3;
+        scratch = putBits(data, pos, scratch, (value.f084Ufixed) & 0xffL, 8);
+        pos += 8;
+        scratch = putBits(data, pos, scratch, value.f085Bits & 0x1fffffL, 21);
+        pos += 21;
+        scratch = putBits(data, pos, scratch, (value.f086Uint) & 0x1ffL, 9);
+        pos += 9;
         {
             final long b = Double.doubleToRawLongBits(value.f087F64);
-            v = b & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
-            v = (b >>> 32) & 0xffffffffL;
-            scratch |= v << scratchBits;
-            scratchBits += 32;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (32 - scratchBits);
-            }
+            scratch = putBits(data, pos, scratch, b & 0xffffffffL, 32);
+            pos += 32;
+            scratch = putBits(data, pos, scratch, (b >>> 32) & 0xffffffffL, 32);
+            pos += 32;
         }
-        v = (value.f088Int + 694) & 0x7ffL;
-        scratch |= v << scratchBits;
-        scratchBits += 11;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (11 - scratchBits);
-        }
-        v = value.f089Bits & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.f089Bits >>> 32) & 0xffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 16;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (16 - scratchBits);
-        }
-        v = ((value.f090Uint & 0xffL)) & 0xffL;
-        scratch |= v << scratchBits;
-        scratchBits += 8;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (8 - scratchBits);
-        }
-        v = value.f091Flags & 0x1fL;
-        scratch |= v << scratchBits;
-        scratchBits += 5;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (5 - scratchBits);
-        }
-        v = value.f092Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = value.f093Bits & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = (value.f093Bits >>> 32) & 0xffffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 32;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (32 - scratchBits);
-        }
-        v = value.f094Bool ? 1 : 0;
-        scratch |= v << scratchBits;
-        scratchBits += 1;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (1 - scratchBits);
-        }
-        v = (value.f095Fixed + 103350272) & 0xfffffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 28;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (28 - scratchBits);
-        }
-        v = value.f096Bits & 0x3ffffL;
-        scratch |= v << scratchBits;
-        scratchBits += 18;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (18 - scratchBits);
-        }
-        v = value.f097Bits & 0xfffL;
-        scratch |= v << scratchBits;
-        scratchBits += 12;
-        if (scratchBits >= 64) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-            wordIndex++;
-            scratchBits -= 64;
-            scratch = v >>> (12 - scratchBits);
-        }
-        if (scratchBits != 0) {
-            LONG_LE.set(data, wordIndex * 8, scratch);
-        }
-        return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+        scratch = putBits(data, pos, scratch, (value.f088Int + 694) & 0x7ffL, 11);
+        pos += 11;
+        scratch = putBits(data, pos, scratch, value.f089Bits & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f089Bits >>> 32) & 0xffffL, 16);
+        pos += 16;
+        scratch = putBits(data, pos, scratch, (value.f090Uint) & 0xffL, 8);
+        pos += 8;
+        scratch = putBits(data, pos, scratch, value.f091Flags & 0x1fL, 5);
+        pos += 5;
+        scratch = putBits(data, pos, scratch, value.f092Bool ? 1 : 0, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, value.f093Bits & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, (value.f093Bits >>> 32) & 0xffffffffL, 32);
+        pos += 32;
+        scratch = putBits(data, pos, scratch, value.f094Bool ? 1 : 0, 1);
+        pos += 1;
+        scratch = putBits(data, pos, scratch, (value.f095Fixed + 103350272) & 0xfffffffL, 28);
+        pos += 28;
+        scratch = putBits(data, pos, scratch, value.f096Bits & 0x3ffffL, 18);
+        pos += 18;
+        scratch = putBits(data, pos, scratch, value.f097Bits & 0xfffL, 12);
+        pos += 12;
+        flushBits(data, pos, scratch);
+        return pos;
     }
 
-    // readRealPacket decodes value from the first numBits of data — the family read
-    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
-    // hostile bytes never throw. No slack past the payload is required.
-    public static boolean readRealPacket(RealPacket value, byte[] data, int numBits) {
-        if (numBits > (long) data.length * 8) {
-            return false; // the payload cannot exceed the buffer behind data
+    // writeRealPacket packs value into data from its start and returns the bytes written;
+    // data must hold REAL_PACKET_MAX_BYTES.
+    public static int writeRealPacket(RealPacket value, byte[] data) {
+        return (writeRealPacketBits(value, data, 0) + 7) >>> 3;
+    }
+
+    // readRealPacketBits decodes value from data starting at bit bitOffset, the payload
+    // ending at bit numBits, and returns the bit position after it — or -1, the
+    // family read verdict refusing the wire (bounds, ranges, wire constants,
+    // padding). Hostile bytes never throw. No slack past the payload is required.
+    public static int readRealPacketBits(
+            RealPacket value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
         // the buffer (the family's no-slack reader stance)
-        int tailBase = data.length - 8;
-        long tailWord = 0;
-        if (tailBase >= 0) {
-            tailWord = (long) LONG_LE.get(data, tailBase);
-        } else {
-            tailBase = 0;
-            for (int i = data.length - 1; i >= 0; i--) {
-                tailWord = (tailWord << 8) | (data[i] & 0xffL);
-            }
-        }
-        int bitsRead = 0;
-        long window = 0;
-        int shift = 0;
-        long v = 0;
-        long lo = 0;
+        final int tailBase = Math.max(data.length - 8, 0);
+        final long tailWord = loadTail(data);
+        int bitsRead = bitOffset;
+        long v;
+        long lo;
         if (bitsRead + 291 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffL;
         bitsRead += 21;
         if (v > 1610990) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f001Int = (int) (v + -805495);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f002F64 = Double.longBitsToDouble(lo);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffL;
         bitsRead += 21;
         if (v > 1671794) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f003Int = (int) (v + -835897);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7fffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fffL;
         bitsRead += 15;
         if (v > 20000L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f004Cf32 = (float) v / 20000.0f * 2000.0f + 0.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffL;
         bitsRead += 13;
         if (v > 7316) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f005Uint = (short) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfffL;
+        value.f005Uint = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
         bitsRead += 12;
         if (v > 3026) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f006Int = (short) (v + -1513);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.f007F32 = Float.intBitsToFloat((int) v);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f008U64 = lo;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fL;
         bitsRead += 6;
         if (v > 44) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f009Int = (byte) (v + -22);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.f010F32 = Float.intBitsToFloat((int) v);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
         bitsRead += 10;
-        value.f011Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        value.f011Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f012Bool = v != 0;
         if (value.f012Bool) {
             if (bitsRead + 88 > numBits) {
-                return false;
+                return -1;
             }
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             value.f013F32 = Float.intBitsToFloat((int) v);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x3ffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
             bitsRead += 10;
             if (v > 775) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
-            value.f014Uint = (short) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x3fL;
+            value.f014Uint = (int) v;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fL;
             bitsRead += 6;
             if (v > 42) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
             value.f015Int = (byte) (v + -21);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x7ffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffffffL;
             bitsRead += 27;
             if (v > 75497472) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
             value.f016Fixed = (int) (v + -37748736);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1fffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffL;
             bitsRead += 13;
             if (v > 4606) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
-            value.f017Uint = (short) v;
+            value.f017Uint = (int) v;
         } else {
             value.f013F32 = 0.0f;
             value.f014Uint = 0;
@@ -1997,368 +1233,144 @@ public final class RealWorld {
             value.f017Uint = 0;
         }
         if (bitsRead + 476 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
         bitsRead += 11;
         if (v > 1668) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f018Int = (short) (v + -834);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f019F64 = Double.longBitsToDouble(lo);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.f020F32 = Float.intBitsToFloat((int) v);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7ffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffffffL;
         bitsRead += 27;
         if (v > 102977536) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f021Ufixed = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        value.f021Ufixed = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.f022F32 = Float.intBitsToFloat((int) v);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffffL;
         bitsRead += 25;
-        value.f023Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        value.f023Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.f024F32 = Float.intBitsToFloat((int) v);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
         if (v > 60928) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f025Fixed = (short) (v + -30464);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
         bitsRead += 9;
-        value.f026Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        value.f026Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         if (v > 16L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f027Cf32 = (float) v / 16.0f * 4.0f + -2.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
         bitsRead += 4;
-        value.f028Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        value.f028Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f029I64 = lo;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.f030F32 = Float.intBitsToFloat((int) v);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
-        value.f031Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        value.f031Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         if (v > 6) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f032Int = (byte) (v + -3);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3ffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffffL;
         bitsRead += 18;
         if (v > 142780) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f033Uint = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3fffL;
+        value.f033Uint = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fffL;
         bitsRead += 14;
         if (v > 14149) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f034Uint = (short) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffL;
+        value.f034Uint = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
         bitsRead += 9;
-        value.f035Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        value.f035Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         if (v > 5) {
-            return false; // headroom above the wire range is refused
+            return -1; // headroom above the wire range is refused
         }
         value.f036Enum = (byte) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f037Bool = v != 0;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f038Bool = v != 0;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7ffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffffL;
         bitsRead += 19;
-        value.f039Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffL;
+        value.f039Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
         if (v > 40960) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f040Fixed = (short) (v + -20480);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
         bitsRead += 7;
         if (v > 110) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f041Int = (byte) (v + -55);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3fffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fffffffL;
         bitsRead += 30;
-        value.f042Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        value.f042Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f043Bool = v != 0;
         if (value.f043Bool) {
             if (bitsRead + 81 > numBits) {
-                return false;
+                return -1;
             }
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             value.f044F32 = Float.intBitsToFloat((int) v);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xfffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
             bitsRead += 12;
-            value.f045Bits = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1ffffL;
+            value.f045Bits = v;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffL;
             bitsRead += 17;
             if (v > 76063) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
-            value.f046Uint = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xfffffL;
+            value.f046Uint = v;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffffL;
             bitsRead += 20;
             if (v > 861952) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
             value.f047Int = (int) (v + -430976);
         } else {
@@ -2368,100 +1380,44 @@ public final class RealWorld {
             value.f047Int = 0;
         }
         if (bitsRead + 81 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f048F64 = Double.longBitsToDouble(lo);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
         if (v > 49152) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f049Ufixed = (short) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        value.f049Ufixed = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f050Bool = v != 0;
         if (value.f050Bool) {
             if (bitsRead + 47 > numBits) {
-                return false;
+                return -1;
             }
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1L;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
             bitsRead += 1;
             value.f051Bool = v != 0;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x7fL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
             bitsRead += 7;
             if (v > 114) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
             value.f052Int = (byte) (v + -57);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             value.f053F32 = Float.intBitsToFloat((int) v);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x7fL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
             bitsRead += 7;
             if (v > 70) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
             value.f054Int = (byte) (v + -35);
         } else {
@@ -2471,343 +1427,147 @@ public final class RealWorld {
             value.f054Int = 0;
         }
         if (bitsRead + 290 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f055Bool = v != 0;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         if (v > 26) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f056Int = (byte) (v + -13);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         if (v > 30) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f057Int = (byte) (v + -15);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         value.f058F32 = Float.intBitsToFloat((int) v);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f059F64 = Double.longBitsToDouble(lo);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;
-        value.f060Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffL;
+        value.f060Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
         bitsRead += 9;
         if (v > 360L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f061Cf32 = (float) v / 360.0f * 180.0f + -90.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
         bitsRead += 9;
         if (v > 503) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f062Uint = (short) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        value.f062Uint = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f063I64 = lo;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
         bitsRead += 9;
         if (v > 299) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f064Uint = (short) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3fL;
+        value.f064Uint = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fL;
         bitsRead += 6;
         if (v > 60L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f065Cf32 = (float) v / 60.0f * 30.0f + 0.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
         if (v > 32768) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f066Ufixed = (short) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3ffL;
+        value.f066Ufixed = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
         bitsRead += 10;
         if (v > 800L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f067Cf32 = (float) v / 800.0f * 200.0f + -100.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
         bitsRead += 11;
         if (v > 2000L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f068Cf32 = (float) v / 2000.0f * 2000.0f + 0.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
         bitsRead += 11;
-        value.f069Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3L;
+        value.f069Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
         if (v > 2) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f070Uint = (byte) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffL;
+        value.f070Uint = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
         bitsRead += 9;
         if (v > 500L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f071Cf32 = (float) v / 500.0f * 10.0f + 0.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3fffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fffL;
         bitsRead += 14;
         if (v > 10000L) {
-            return false; // headroom above the quantum count is refused
+            return -1; // headroom above the quantum count is refused
         }
         value.f072Cf32 = (float) v / 10000.0f * 100.0f + 0.0f;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
         bitsRead += 4;
         if (v > 8) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f073Int = (byte) (v + -4);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f074Bool = v != 0;
         if (value.f074Bool) {
             if (bitsRead + 100 > numBits) {
-                return false;
+                return -1;
             }
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo = v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo |= v << 32;
             value.f075U64 = lo;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
             bitsRead += 16;
             if (v > 52436) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
             value.f076Int = (short) (v + -26218);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x3fL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fL;
             bitsRead += 6;
             if (v > 34) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
             value.f077Int = (byte) (v + -17);
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1ffL;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
             bitsRead += 9;
-            value.f078Bits = (int) v;
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0x1fL;
+            value.f078Bits = v;
+            v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
             bitsRead += 5;
             if (v > 17) {
-                return false; // a smuggled offset is refused
+                return -1; // a smuggled offset is refused
             }
-            value.f079Uint = (byte) v;
+            value.f079Uint = (int) v;
         } else {
             value.f075U64 = 0;
             value.f076Int = 0;
@@ -2816,263 +1576,98 @@ public final class RealWorld {
             value.f079Uint = 0;
         }
         if (bitsRead + 356 > numBits) {
-            return false;
+            return -1;
         }
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f080Bool = v != 0;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffffL;
         bitsRead += 29;
-        value.f081Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffffffL;
+        value.f081Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffffL;
         bitsRead += 25;
-        value.f082Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7L;
+        value.f082Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         if (v > 5) {
-            return false; // headroom above the wire range is refused
+            return -1; // headroom above the wire range is refused
         }
         value.f083Enum = (byte) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;
         if (v > 128) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f084Ufixed = (byte) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fffffL;
+        value.f084Ufixed = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffL;
         bitsRead += 21;
-        value.f085Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1ffL;
+        value.f085Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
         bitsRead += 9;
         if (v > 399) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f086Uint = (short) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        value.f086Uint = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f087F64 = Double.longBitsToDouble(lo);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x7ffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
         bitsRead += 11;
         if (v > 1388) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f088Int = (short) (v + -694);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
         lo |= v << 32;
         value.f089Bits = lo;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;
         if (v > 214) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
-        value.f090Uint = (byte) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1fL;
+        value.f090Uint = (int) v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         value.f091Flags = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f092Bool = v != 0;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo = v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xffffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
         value.f093Bits = lo;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x1L;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
         value.f094Bool = v != 0;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfffffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffffffL;
         bitsRead += 28;
         if (v > 206700544) {
-            return false; // a smuggled offset is refused
+            return -1; // a smuggled offset is refused
         }
         value.f095Fixed = (int) (v + -103350272);
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0x3ffffL;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffffL;
         bitsRead += 18;
-        value.f096Bits = (int) v;
-        if (bitsRead >>> 3 < tailBase) {
-            window = (long) LONG_LE.get(data, bitsRead >>> 3);
-            shift = bitsRead & 7;
-        } else {
-            window = tailWord;
-            shift = bitsRead - tailBase * 8;
-        }
-        v = (window >>> shift) & 0xfffL;
+        value.f096Bits = v;
+        v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
         bitsRead += 12;
-        value.f097Bits = (int) v;
-        return true;
+        value.f097Bits = v;
+        return bitsRead;
     }
 
-    // measureRealPacket is the exact wire bits writeRealPacket would produce for value —
-    // trusted like the writer; static runs fold to literals at generation time.
-    public static int measureRealPacket(RealPacket value) {
-        int bits = 0;
-        bits += 291;
-        if (value.f012Bool) {
-            bits += 88;
-        }
-        bits += 476;
-        if (value.f043Bool) {
-            bits += 81;
-        }
-        bits += 81;
-        if (value.f050Bool) {
-            bits += 47;
-        }
-        bits += 290;
-        if (value.f074Bool) {
-            bits += 100;
-        }
-        bits += 356;
-        return bits;
+    // readRealPacket decodes value from the first numBits of data — the family read
+    // verdict: false refuses the wire.
+    public static boolean readRealPacket(RealPacket value, byte[] data, int numBits) {
+        return readRealPacketBits(value, data, 0, numBits) >= 0;
     }
 }

@@ -834,8 +834,8 @@ FloatExpr   = float expression over float literals, int literals and const names
     because mask tests are how flag state is consumed, **plus the `Count`
     constant** — the declared variant count, the one `.Count` in the
     language — the spelling is each target's own, and all nine emit it:
-    `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C and Rust;
-    `capsCount` in Dart and Java; `caps_count/0` in Elixir.
+    `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C, Rust and Java;
+    `capsCount` in Dart; `caps_count/0` in Elixir.
     **`flags` is a
     contextual keyword, not reserved** — it introduces a declaration at file
     scope only, so a *field* named `flags` stays fully legal; declarations at
@@ -1171,7 +1171,7 @@ enum and the generated `<Union>Type` tag enums — carries its
 extent as a member named `Max` in the target's own convention: `E::Max`
 (C++), `Schema.EMax` (C#, a typed constant beside the enum, never a member
 a variant's value could alias), `EMax` (Go), `E::MAX` (Rust), `EMax` (JS), `E_MAX`
-(C), `E.max` (Dart and Java), `E.max/0` (Elixir). Its value is the enum's
+(C), `E.max` (Dart), `E.MAX` (Java), `E.max/0` (Elixir). Its value is the enum's
 max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
 sentinel-zero convention is the count of real variants. Application code
@@ -2568,7 +2568,11 @@ Per `type`, per target:
    object behind the first in one buffer, the next one beginning at
    `div(bits_read + 7, 8)` bytes in. The name is claimed like any other
    generated name, so a `type FrameBits` beside a `type Frame` is refused
-   rather than silently taking the same binding (§4.11).
+   rather than silently taking the same binding (§4.11). **In JAVA it is a
+   second entry too**: `read<Name>Bits(value, data, bitOffset, numBits)`
+   returns the bit position after the value, or `-1`, and its twin
+   `write<Name>Bits(value, data, bitOffset)` writes from any bit; `read<Name>`
+   and `write<Name>` are the offset-0 forms.
 4. **`MaxBits` / `MaxBytes`** — constants: the longest path through the
    schema, with worst-case (7-bit) padding assumed at each alignment point.
    Size write buffers from `MaxBytes`; conservative is correct for a buffer
@@ -2974,7 +2978,7 @@ object to emit against; the bit reader and writer live in the generated code:
 |---|---|---|---|
 | emits against | free functions over a caller-owned `ByteData` view | `static` methods on the file's class over a caller-owned `byte[]` | module functions over a binary; read and write thread the output, scratch and bit position as rebound accumulators — no stream struct |
 | error idiom | `bool` early-out | `boolean` early-out | `{:ok, value}` or `:error`; the body throws `:invalid` to a catch at the surface |
-| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | `write_<name>!/1` returns the binary and raises `ArgumentError` on a contract violation, `write_<name>/1` returns `{:ok, binary}` or `{:error, message}`; read buffers need NO slack past the payload |
+| buffer contract | write buffers hold `<name>MaxBytes` (a multiple of 8); read buffers need NO slack past the payload | write buffers hold `<NAME>_MAX_BYTES` (a multiple of 8); read buffers need NO slack past the payload | `write_<name>!/1` returns the binary and raises `ArgumentError` on a contract violation, `write_<name>/1` returns `{:ok, binary}` or `{:error, message}`; read buffers need NO slack past the payload |
 
 **Dart runs on the VM, AOT and dart2wasm, not on dart2js.** The generated
 Dart holds 64-bit values bit-transparently in `int` and moves them through

@@ -1,16 +1,31 @@
-// Wire-function emission: write/read/measure/zero per type, the issue #156
-// prescription — the family bitpacker inlined at every field with literal
-// constant widths and masks, nested types inlined into the caller's body
-// (one monomorphic function per top-level operation, zero dispatch), bounds
-// checks fused per maximal static run on the read side, and the measure
-// side's static runs folded to literals at generation time.
+// Wire-function emission: write/read/zero/init per type, the issue #156
+// prescription — the family bitpacker at every field with literal constant
+// widths and masks, monomorphic static functions per type (zero dispatch),
+// and bounds checks fused per maximal static run on the read side.
+//
+// Every type and union gets TWO entries per direction (SPEC §6.1, stream
+// composition): write<Name>Bits(value, data, bitOffset) and
+// read<Name>Bits(value, data, bitOffset, numBits) start at any bit position
+// and return the bit position after the value (-1 on a refused read), so a
+// type works standalone, nested, and beside hand-written bit code on the
+// same buffer; write<Name>(value, data) and read<Name>(value, data, numBits)
+// are the offset-0 wrappers. A nested type CALLS its own Bits entry: the
+// caller stores its partial scratch word, the callee merges into it, and the
+// caller reloads it after.
+//
+// The bit position is a plain int and the write scratch a plain long, both
+// locals: C2 keeps them in registers, where a stream object would live in
+// memory unless escape analysis scalar-replaced it through every call.
+// The bitpacker steps are small private static helpers on the file's class
+// (putBits, peekBits, alignBits, ...), each under the JIT's inline threshold,
+// so the bodies read one line per field and compile to the inlined code.
 //
 // The wire math transliterates the Dart backend's kernels (themselves the
 // flat JS tier's probe-proven forms) into Java's value domain: one 64-bit
 // long carries every lane through width 64, the emitted Int128/UInt128 pair
 // carries the 128-bit storage widths, and the 32-bit group structure (least
 // significant first — serialize's own) is preserved exactly, so the wire is
-// byte-identical to the other seven targets by construction and proven by
+// byte-identical to the other eight targets by construction and proven by
 // the golden legs. The word stores and window loads go through the VarHandle
 // little-endian view — serialize.java's measured-fast form — and statically
 // byte-aligned [N]uint8 arrays and string/bytes payloads take the port's
@@ -18,10 +33,11 @@
 // per-byte merge.
 //
 // Writer contracts live in one private checkWrite<Name> predicate per type,
-// invoked as `assert checkWriteX(value, data)` — issue #156 item 3: dormant
-// assert bodies count against C2's inline thresholds, so the hot body
-// carries a single small call and the contract walk (the same branch/loop
-// structure as the write walk, asserts only) stays out of it.
+// invoked as `assert checkWriteX(value, data, bitOffset)` — issue #156 item
+// 3: dormant assert bodies count against C2's inline thresholds, so the hot
+// body carries a single small call and the contract walk (the same
+// branch/loop structure as the write walk, asserts only) stays out of it. A
+// nested type's contracts are its own predicate's, asserted by its own entry.
 package java
 
 import (
@@ -45,10 +61,12 @@ func maskHexL(bits int64) string {
 }
 
 // loadInt renders an integer storage expression widened to value semantics
-// in a long context: signed storage sign-extends on its own; unsigned
-// narrow storage masks after widening (the bit-transparent discipline).
-func loadInt(t ir.FieldType, expr string) string {
-	if t.Signed || t.Width >= 64 {
+// in a long context. Signed storage sign-extends on its own and unsigned
+// storage is WIDER than its width (uint8/uint16 in int, uint32 in long), so
+// both already hold the value; only a uint8 array element, which stays a
+// byte[] (the byte-buffer idiom and the bulk copy), masks after widening.
+func (g *gen) loadInt(t ir.FieldType, expr string) string {
+	if t.Signed || t.Width >= 64 || g.intType(t) != "byte" {
 		return expr
 	}
 	return fmt.Sprintf("(%s & %s)", expr, maskHexL(int64(t.Width)))
@@ -73,35 +91,86 @@ func storeCast(typ string) string {
 	return "(" + typ + ") "
 }
 
-// mergeW merges v (already masked to bits) into the write scratch —
-// the family bitpacker's writeBits inlined, constant width. bits in [1,32].
-func (g *gen) mergeW(bits int64, ind string) {
-	g.needV = true
-	g.pf("%sscratch |= v << scratchBits;\n", ind)
-	g.pf("%sscratchBits += %d;\n", ind, bits)
-	g.pf("%sif (scratchBits >= 64) {\n", ind)
-	g.pf("%s    LONG_LE.set(data, wordIndex * 8, scratch);\n", ind)
-	g.pf("%s    wordIndex++;\n", ind)
-	g.pf("%s    scratchBits -= 64;\n", ind)
-	g.pf("%s    scratch = v >>> (%d - scratchBits);\n", ind, bits)
-	g.pf("%s}\n", ind)
+// putW merges expr (a long-context value already masked to bits, bits in
+// [1,32]) at the write position — the family bitpacker's writeBits through
+// the putBits helper, constant width.
+func (g *gen) putW(expr string, bits int64, ind string) {
+	g.settle(ind)
+	g.use("putBits")
+	g.pf("%sscratch = putBits(data, pos, scratch, %s, %d);\n", ind, expr, bits)
+	g.pf("%spos += %d;\n", ind, bits)
 }
 
 // readR reads bits (in [1,32]) from the 64-bit window at bitsRead into v,
-// masked — the family bitpacker's readBits inlined, with the tail window
-// pricing the loads inside the buffer (no slack contract).
+// masked — the family bitpacker's readBits through the peekBits helper, with
+// the tail window keeping every load inside the buffer (no slack contract).
 func (g *gen) readR(bits int64, ind string) {
 	g.needV = true
 	g.usesRead = true
-	g.pf("%sif (bitsRead >>> 3 < tailBase) {\n", ind)
-	g.pf("%s    window = (long) LONG_LE.get(data, bitsRead >>> 3);\n", ind)
-	g.pf("%s    shift = bitsRead & 7;\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s    window = tailWord;\n", ind)
-	g.pf("%s    shift = bitsRead - tailBase * 8;\n", ind)
-	g.pf("%s}\n", ind)
-	g.pf("%sv = (window >>> shift) & %s;\n", ind, maskHexL(bits))
+	g.usesPeek = true
+	g.use("peekBits")
+	g.pf("%sv = peekBits(data, bitsRead, tailBase, tailWord) & %s;\n", ind, maskHexL(bits))
 	g.pf("%sbitsRead += %d;\n", ind, bits)
+}
+
+// failRead is the refusal every read check takes: -1 out of the Bits entry.
+const failRead = "return -1;"
+
+// boundRead emits the bounds check `bitsRead + need > numBits` -> refuse.
+func (g *gen) boundRead(need, ind string) {
+	g.usesRead = true
+	g.pf("%sif (bitsRead + %s > numBits) {\n%s    %s\n%s}\n", ind, need, ind, failRead, ind)
+}
+
+// ---- nested types: a call to the callee's own Bits entry ----
+
+// settle reloads the scratch word after nested writes left data holding the
+// value so far (stored): before a merge, and at every block boundary, so
+// each path into and out of a block agrees on where the partial word lives.
+// Back-to-back nested writes skip the reload and store between them.
+func (g *gen) settle(ind string) {
+	if g.stored {
+		g.use("loadBits")
+		g.pf("%sscratch = loadBits(data, pos);\n", ind)
+		g.stored = false
+		g.usesScratch = true
+	}
+}
+
+// store hands the partial scratch word to data ahead of a nested write or a
+// bulk copy, unless it is there already.
+func (g *gen) store(ind string) {
+	if !g.stored {
+		g.use("flushBits")
+		g.pf("%sflushBits(data, pos, scratch);\n", ind)
+		g.stored = true
+	}
+}
+
+// bitsFn is the qualified Bits entry of a type or union for a verb.
+func (g *gen) bitsFn(verb, typeName string) string {
+	return g.qualify(typeName, verb+typeName+"Bits")
+}
+
+// emitWriteCall writes a nested type or union through its own entry: the
+// partial scratch word goes to data first, the callee merges at pos, and
+// the caller reloads the word it left when it next merges (settle).
+func (g *gen) emitWriteCall(typeName, expr, ind string) {
+	g.store(ind)
+	g.pf("%spos = %s(%s, data, pos);\n", ind, g.bitsFn("write", typeName), expr)
+}
+
+// emitReadCall reads a nested type or union through its own entry, passing
+// a refusal straight out.
+func (g *gen) emitReadCall(typeName, expr, ind string) {
+	g.pf("%sbitsRead = %s(%s, data, bitsRead, numBits);\n", ind, g.bitsFn("read", typeName), expr)
+	g.pf("%sif (bitsRead < 0) {\n%s    %s\n%s}\n", ind, ind, failRead, ind)
+}
+
+// isNested reports a named struct or union reference: the field kinds that
+// serialize through their own declaration's entries.
+func isNested(t ir.FieldType) bool {
+	return t.Kind == ir.TNamed && isClassRef(t.Ref)
 }
 
 // ---- static wire-width analysis for run fusing ----
@@ -197,21 +266,31 @@ func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 
 // ---- per-struct emission ----
 
+// constName is the UPPER_SNAKE spelling of a generated constant — Java's
+// static-final convention, and the same mapping the Rust target shares
+// (ShipCreateMaxBits -> SHIP_CREATE_MAX_BITS), so the checker's registry for
+// Rust constants covers these.
+func constName(name string) string {
+	return ir.RustConstName(name)
+}
+
+func (g *gen) emitBounds(name, what string, maxBits int64) {
+	bits, bytes := constName(name+"MaxBits"), constName(name+"MaxBytes")
+	g.bpf("    // %s is %s (SPEC §6.1).\n", bits, what)
+	g.bpf("    // %s is rounded up to the 8-byte write-buffer granularity.\n", bytes)
+	g.bpf("    public static final int %s = %d;\n", bits, maxBits)
+	g.bpf("    public static final int %s = %d;\n\n", bytes, ir.MaxBytes(maxBits))
+}
+
 func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.usesWire = true
-	maxBits := ir.MaxBitsStruct(st)
-	low := lowerFirst(st.Name)
-	g.bpf("    // %sMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).\n", low)
-	g.bpf("    // %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", low)
-	g.bpf("    public static final int %sMaxBits = %d;\n", low, maxBits)
-	g.bpf("    public static final int %sMaxBytes = %d;\n\n", low, ir.MaxBytes(maxBits))
+	g.emitBounds(st.Name, "the longest wire path; align pads at worst case", ir.MaxBitsStruct(st))
 
 	g.emitZeroFunction(st.Name, st.Fields)
 	g.emitInitFunction(st.Name, st.Fields)
-	g.emitCheckFunction(st.Name, low, st.Items)
-	g.emitWriteFunction(st.Name, low, st.Items)
-	g.emitReadFunction(st.Name, st.Items)
-	g.emitMeasureFunction(st.Name, st.Items)
+	g.emitCheckFunction(st.Name, func(ind string) { g.emitCheckItems(st.Items, "value", ind) })
+	g.emitWriteFunction(st.Name, func(ind string) { g.emitWriteItems(st.Items, "value", ind) })
+	g.emitReadFunction(st.Name, func(ind string) { g.emitReadItems(st.Items, "value", ind, false) })
 }
 
 // emitUnionFunctions emits the union's bounds and the same function surface
@@ -219,110 +298,120 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 // (SPEC §4.8).
 func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.usesWire = true
-	maxBits := ir.MaxBitsUnion(d)
-	low := lowerFirst(d.Name)
-	g.bpf("    // %sMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).\n", low)
-	g.bpf("    // %sMaxBytes is rounded up to the 8-byte write-buffer granularity.\n", low)
-	g.bpf("    public static final int %sMaxBits = %d;\n", low, maxBits)
-	g.bpf("    public static final int %sMaxBytes = %d;\n\n", low, ir.MaxBytes(maxBits))
+	g.emitBounds(d.Name, "the tag plus the largest arm; None costs the tag only", ir.MaxBitsUnion(d))
 
 	g.bpf("    // zero%s resets value to the §5 zero form — the empty union. The tag alone\n", d.Name)
 	g.bpf("    // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm\n")
 	g.bpf("    // is unselected at None; an arm initializes at its next selection.\n")
 	g.bpf("    public static void zero%s(%s value) {\n", d.Name, d.Name)
-	g.bpf("        value.type = %sType.none;\n    }\n\n", d.Name)
+	g.bpf("        value.type = %sType.NONE;\n    }\n\n", d.Name)
 
-	item := unionItem(d)
-	g.emitCheckFunction(d.Name, low, []ir.Item{item})
-	g.emitWriteFunction(d.Name, low, []ir.Item{item})
-	g.emitReadFunction(d.Name, []ir.Item{item})
-	g.emitMeasureFunction(d.Name, []ir.Item{item})
-}
-
-// unionItem wraps a union as a self-typed field item so the standalone
-// union functions reuse the field emission with path "value" — the same
-// bodies a union field inlines.
-func unionItem(d *ir.Union) ir.Item {
-	return &ir.FieldItem{F: &ir.Field{Name: "", Type: ir.FieldType{
-		Kind: ir.TNamed, Name: d.Name, Ref: d,
-	}}}
+	g.emitCheckFunction(d.Name, func(ind string) {
+		// the tag contract; each arm's own contracts bind in its own entry
+		g.assertRange(loadUnsignedWidth(enumStorageBitsForTag(d.Max), "value.type"), big.NewInt(0), big.NewInt(d.Max), true, ind)
+	})
+	g.emitWriteFunction(d.Name, func(ind string) { g.emitWriteUnion(d, "value", ind) })
+	g.emitReadFunction(d.Name, func(ind string) { g.emitReadUnion(d, "value", ind) })
 }
 
 func (g *gen) resetFn() {
 	g.fn.Reset()
 	g.loopDepth = 0
-	g.needV, g.needLo, g.needHi, g.usesRead = false, false, false, false
+	g.needV, g.needLo, g.needHi, g.usesRead, g.usesPeek = false, false, false, false, false
+	g.stored, g.usesScratch = false, false
 }
 
 const bodyInd = "        " // function bodies sit two levels inside the outer class
 
-func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
+func (g *gen) emitWriteFunction(name string, walk func(ind string)) {
 	g.resetFn()
-	g.emitWriteItems(items, "value", bodyInd)
+	// a write starts with data holding everything below bitOffset — the
+	// stored state: the first merge loads the partial word (settle), and a
+	// value that starts with a nested type hands data straight on
+	g.stored = true
+	walk(bodyInd)
 	body := g.fn.String()
-
-	g.bpf("    // write%s packs value into data — the trusted writer (contracts in the\n", name)
-	g.bpf("    // checkWrite%s predicate, one dormant assert call without -ea). The buffer\n", name)
-	g.bpf("    // must hold %sMaxBytes. Returns the bytes written.\n", low)
-	g.bpf("    public static int write%s(%s value, byte[] data) {\n", name, name)
-	g.bpf("        assert checkWrite%s(value, data);\n", name)
-	g.bpf("        long scratch = 0;\n")
-	g.bpf("        int scratchBits = 0;\n")
-	g.bpf("        int wordIndex = 0;\n")
-	if g.needV {
-		g.bpf("        long v = 0;\n")
+	if !g.stored {
+		g.use("flushBits")
 	}
+	maxBytes := constName(name + "MaxBytes")
+
+	g.bpf("    // write%sBits packs value into data from bit bitOffset on and returns the bit\n", name)
+	g.bpf("    // position after it — the trusted writer (contracts in the checkWrite%s\n", name)
+	g.bpf("    // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;\n")
+	g.bpf("    // data must be a multiple of 8 bytes long and hold bitOffset + %s.\n", constName(name+"MaxBits"))
+	g.bpf("    public static int write%sBits(%s value, byte[] data, int bitOffset) {\n", name, name)
+	g.bpf("        assert checkWrite%s(value, data, bitOffset);\n", name)
 	if body == "" {
 		g.bpf("        // empty body — presence is the payload (SPEC §4.6)\n")
+		g.bpf("        return bitOffset;\n")
+	} else {
+		g.bpf("        int pos = bitOffset;\n")
+		if g.usesScratch {
+			g.bpf("        long scratch;\n")
+		}
+		if g.needV {
+			g.bpf("        long v;\n")
+		}
+		g.body.WriteString(body)
+		if !g.stored {
+			g.bpf("        flushBits(data, pos, scratch);\n")
+		}
+		g.bpf("        return pos;\n")
 	}
-	g.body.WriteString(body)
-	g.bpf("        if (scratchBits != 0) {\n")
-	g.bpf("            LONG_LE.set(data, wordIndex * 8, scratch);\n")
-	g.bpf("        }\n")
-	g.bpf("        return wordIndex * 8 + ((scratchBits + 7) >>> 3);\n")
+	g.bpf("    }\n\n")
+
+	g.bpf("    // write%s packs value into data from its start and returns the bytes written;\n", name)
+	g.bpf("    // data must hold %s.\n", maxBytes)
+	g.bpf("    public static int write%s(%s value, byte[] data) {\n", name, name)
+	g.bpf("        return (write%sBits(value, data, 0) + 7) >>> 3;\n", name)
 	g.bpf("    }\n\n")
 }
 
-func (g *gen) emitReadFunction(name string, items []ir.Item) {
+func (g *gen) emitReadFunction(name string, walk func(ind string)) {
 	g.resetFn()
-	g.emitReadItems(items, "value", bodyInd, false)
+	walk(bodyInd)
 	body := g.fn.String()
 
-	g.bpf("    // read%s decodes value from the first numBits of data — the family read\n", name)
-	g.bpf("    // verdict: false rejects the wire (bounds, ranges, wire constants, padding);\n")
-	g.bpf("    // hostile bytes never throw. No slack past the payload is required.\n")
-	g.bpf("    public static boolean read%s(%s value, byte[] data, int numBits) {\n", name, name)
+	g.bpf("    // read%sBits decodes value from data starting at bit bitOffset, the payload\n", name)
+	g.bpf("    // ending at bit numBits, and returns the bit position after it — or -1, the\n")
+	g.bpf("    // family read verdict refusing the wire (bounds, ranges, wire constants,\n")
+	g.bpf("    // padding). Hostile bytes never throw. No slack past the payload is required.\n")
+	g.bpf("    public static int read%sBits(%s value, byte[] data, int bitOffset, int numBits) {\n", name, name)
 	if g.usesRead {
-		g.bpf("        if (numBits > (long) data.length * 8) {\n")
-		g.bpf("            return false; // the payload cannot exceed the buffer behind data\n")
+		g.bpf("        if (bitOffset < 0 || numBits > (long) data.length * 8) {\n")
+		g.bpf("            return -1; // the payload cannot exceed the buffer behind data\n")
 		g.bpf("        }\n")
+	}
+	if g.usesPeek {
+		g.use("loadTail")
 		g.bpf("        // the final 64-bit window, assembled once so every load stays inside\n")
 		g.bpf("        // the buffer (the family's no-slack reader stance)\n")
-		g.bpf("        int tailBase = data.length - 8;\n")
-		g.bpf("        long tailWord = 0;\n")
-		g.bpf("        if (tailBase >= 0) {\n")
-		g.bpf("            tailWord = (long) LONG_LE.get(data, tailBase);\n")
-		g.bpf("        } else {\n")
-		g.bpf("            tailBase = 0;\n")
-		g.bpf("            for (int i = data.length - 1; i >= 0; i--) {\n")
-		g.bpf("                tailWord = (tailWord << 8) | (data[i] & 0xffL);\n")
-		g.bpf("            }\n")
-		g.bpf("        }\n")
-		g.bpf("        int bitsRead = 0;\n")
-		g.bpf("        long window = 0;\n")
-		g.bpf("        int shift = 0;\n")
+		g.bpf("        final int tailBase = Math.max(data.length - 8, 0);\n")
+		g.bpf("        final long tailWord = loadTail(data);\n")
 	}
-	if g.needV {
-		g.bpf("        long v = 0;\n")
+	if body == "" {
+		g.bpf("        return bitOffset;\n")
+	} else {
+		g.bpf("        int bitsRead = bitOffset;\n")
+		if g.needV {
+			g.bpf("        long v;\n")
+		}
+		if g.needLo {
+			g.bpf("        long lo;\n")
+		}
+		if g.needHi {
+			g.bpf("        long hi;\n")
+		}
+		g.body.WriteString(body)
+		g.bpf("        return bitsRead;\n")
 	}
-	if g.needLo {
-		g.bpf("        long lo = 0;\n")
-	}
-	if g.needHi {
-		g.bpf("        long hi = 0;\n")
-	}
-	g.body.WriteString(body)
-	g.bpf("        return true;\n")
+	g.bpf("    }\n\n")
+
+	g.bpf("    // read%s decodes value from the first numBits of data — the family read\n", name)
+	g.bpf("    // verdict: false refuses the wire.\n")
+	g.bpf("    public static boolean read%s(%s value, byte[] data, int numBits) {\n", name, name)
+	g.bpf("        return read%sBits(value, data, 0, numBits) >= 0;\n", name)
 	g.bpf("    }\n\n")
 }
 
@@ -338,7 +427,7 @@ func (g *gen) emitZeroFunction(name string, fields []*ir.Field) {
 	}
 	g.resetFn()
 	for _, f := range fields {
-		g.emitZeroField(f, "value", bodyInd, true)
+		g.emitZeroField(f, "value", bodyInd)
 	}
 	g.body.WriteString(g.fn.String())
 	g.bpf("    }\n\n")
@@ -354,7 +443,7 @@ func (g *gen) emitInitFunction(name string, fields []*ir.Field) {
 	}
 	g.resetFn()
 	for _, f := range fields {
-		g.emitInitializeField(f, "value", "        ", true, true)
+		g.emitInitializeField(f, "value", bodyInd, true)
 	}
 	g.body.WriteString(g.fn.String())
 	g.bpf("    }\n\n")
@@ -364,21 +453,23 @@ func (g *gen) emitInitFunction(name string, fields []*ir.Field) {
 
 // emitCheckFunction emits checkWrite<Name>: the writer's whole contract walk
 // in one private predicate, so the hot write body carries a single dormant
-// `assert checkWriteX(value, data)` instead of every assert's bytecode.
-// The walk mirrors the write walk's branch/loop/switch structure — only the
-// taken side's contracts bind, exactly as the interleaved asserts would.
-func (g *gen) emitCheckFunction(name, low string, items []ir.Item) {
+// `assert checkWriteX(value, data, bitOffset)` instead of every assert's
+// bytecode. The walk mirrors the write walk's branch/loop/switch structure —
+// only the taken side's contracts bind, exactly as the interleaved asserts
+// would. Nested types assert their own contracts in their own entries.
+func (g *gen) emitCheckFunction(name string, walk func(ind string)) {
 	g.resetFn()
-	g.emitCheckItems(items, "value", bodyInd)
+	walk(bodyInd)
 	body := g.fn.String()
 
-	g.bpf("    // checkWrite%s is write%s's contract walk, called once through assert —\n", name, name)
-	g.bpf("    // the predicate-extraction form: dormant assert bodies count against the\n")
+	g.bpf("    // checkWrite%s is the contract walk of write%sBits, called once\n", name, name)
+	g.bpf("    // through assert — the predicate-extraction form: dormant assert bodies count against the\n")
 	g.bpf("    // JIT's inline thresholds, so the hot body carries one small call and the\n")
 	g.bpf("    // contracts live here (issue #156).\n")
-	g.bpf("    private static boolean checkWrite%s(%s value, byte[] data) {\n", name, name)
+	g.bpf("    private static boolean checkWrite%s(%s value, byte[] data, int bitOffset) {\n", name, name)
 	g.bpf("        assert data.length %% 8 == 0;\n")
-	g.bpf("        assert data.length >= %sMaxBytes;\n", low)
+	g.bpf("        assert bitOffset >= 0;\n")
+	g.bpf("        assert (long) data.length * 8 >= (long) bitOffset + %s;\n", constName(name+"MaxBits"))
 	g.body.WriteString(body)
 	g.bpf("        return true;\n")
 	g.bpf("    }\n\n")
@@ -417,7 +508,7 @@ func (g *gen) hasCheckScalar(f *ir.Field) bool {
 	case ir.TFixed:
 		return true
 	case ir.TInt:
-		return f.HasIntRange
+		return f.HasIntRange || g.widened(f)
 	case ir.TFloat32:
 		return f.HasFloatRange
 	case ir.TNamed:
@@ -426,13 +517,22 @@ func (g *gen) hasCheckScalar(f *ir.Field) bool {
 			return true
 		case *ir.Flags:
 			return ref.WireBits < 64
-		case *ir.Struct:
-			return g.hasCheckItems(ref.Items)
-		case *ir.Union:
-			return true // the tag contract always binds
 		}
+		// a nested type or union asserts its own contracts in its own entry
 	}
 	return false
+}
+
+// widened reports a bare unsigned integer whose storage is wider than its
+// width (uint8/uint16 in int, uint32 in long): the storage admits values the
+// wire cannot carry, so the width's range is a writer contract. A uint8
+// array element stays a byte and needs none.
+func (g *gen) widened(f *ir.Field) bool {
+	t := f.Type
+	if t.Kind != ir.TInt || t.Signed || t.Width >= 64 || f.HasIntRange {
+		return false
+	}
+	return f.Array == ir.ArrayNone || t.Width > 8
 }
 
 func (g *gen) emitCheckItems(items []ir.Item, path, ind string) {
@@ -496,21 +596,9 @@ func (g *gen) emitCheckField(f *ir.Field, path, ind string) {
 }
 
 func (g *gen) emitCheckElem(f *ir.Field, name, iv, ind string) {
-	if f.Type.Kind == ir.TNamed {
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			g.emitCheckItems(ref.Items, ev, ind)
-			return
-		case *ir.Union:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			g.emitCheckUnion(ref, ev, ind)
-			return
-		}
-	}
+	g.inElem = true
 	g.emitCheckScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind)
+	g.inElem = false
 }
 
 func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
@@ -523,7 +611,7 @@ func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 			g.emitCheck128Ranged(f.Type.Signed, name, rawMin, rawMax, ind)
 			return
 		}
-		loaded := loadInt(f.Type, name)
+		loaded := g.loadInt(f.Type, name)
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate: zero bits — the contract is the whole write (SPEC §4.6)
 			g.pf("%sassert %s == %s;\n", ind, loaded, javaIntLit(rawMin))
@@ -538,9 +626,14 @@ func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 			return
 		}
 		if !f.HasIntRange {
+			if g.intType(f.Type) != "byte" && !f.Type.Signed && f.Type.Width < 64 {
+				// the width's own range: wider storage admits more (SPEC §6.1)
+				max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+				g.assertRange(name, big.NewInt(0), max, true, ind)
+			}
 			return
 		}
-		loaded := loadInt(f.Type, name)
+		loaded := g.loadInt(f.Type, name)
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			g.pf("%sassert %s == %s;\n", ind, loaded, javaIntLit(f.IntMin))
 			return
@@ -560,37 +653,8 @@ func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 				// a mask bit above the wire width cannot ride
 				g.pf("%sassert %s >>> %d == 0;\n", ind, name, ref.WireBits)
 			}
-		case *ir.Struct:
-			g.emitCheckItems(ref.Items, name, ind)
-		case *ir.Union:
-			g.emitCheckUnion(ref, name, ind)
 		}
 	}
-}
-
-// emitCheckUnion asserts the tag contract, then each arm's contracts under
-// the same switch shape the write walk takes — the selected arm's contracts
-// bind, exactly as the interleaved asserts would.
-func (g *gen) emitCheckUnion(u *ir.Union, expr, ind string) {
-	tagWidth := enumStorageBitsForTag(u.Max)
-	g.assertRange(loadUnsignedWidth(tagWidth, expr+".type"), big.NewInt(0), big.NewInt(u.Max), true, ind)
-	var armed []int
-	for i, vr := range u.Variants {
-		if !vr.Void() && g.hasCheckItems(vr.Ref.Items) {
-			armed = append(armed, i)
-		}
-	}
-	if len(armed) == 0 {
-		return
-	}
-	g.pf("%sswitch (%s) {\n", ind, tagSwitchExpr(u, expr))
-	for _, i := range armed {
-		vr := u.Variants[i]
-		g.pf("%s    case %d:\n", ind, i+1)
-		g.emitCheckItems(vr.Ref.Items, expr+"."+javaName(vr.Name), ind+"        ")
-		g.pf("%s        break;\n", ind)
-	}
-	g.pf("%s}\n", ind)
 }
 
 // emitCheck128Ranged asserts the pair bounds of a ranged 128-bit-storage
@@ -699,11 +763,14 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 			if item.Neg {
 				neg = "!"
 			}
+			g.settle(ind)
 			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, javaName(item.Cond))
 			g.emitWriteItems(item.Then, path, ind+"    ")
+			g.settle(ind + "    ")
 			if item.Else != nil {
 				g.pf("%s} else {\n", ind)
 				g.emitWriteItems(item.Else, path, ind+"    ")
+				g.settle(ind + "    ")
 			}
 			g.pf("%s}\n", ind)
 		}
@@ -715,55 +782,35 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 func (g *gen) emitWriteRaw(value *big.Int, bits int64, ind string) {
 	masked := new(big.Int).And(value, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1)))
 	if bits <= 32 {
-		g.pf("%sv = %s;\n", ind, javaIntLit(masked))
-		g.mergeW(bits, ind)
+		g.putW(javaIntLit(masked), bits, ind)
 		return
 	}
 	lo := new(big.Int).And(masked, new(big.Int).SetUint64(0xffffffff))
 	hi := new(big.Int).Rsh(masked, 32)
-	g.pf("%sv = %s;\n", ind, javaIntLit(lo))
-	g.mergeW(32, ind)
-	g.pf("%sv = %s;\n", ind, javaIntLit(hi))
-	g.mergeW(bits-32, ind)
+	g.putW(javaIntLit(lo), 32, ind)
+	g.putW(javaIntLit(hi), bits-32, ind)
 }
 
 // emitWriteAlign pads the write position to the next byte boundary with
-// zeros (nothing merges, so only the counter moves — with the flush kept,
+// zeros (nothing merges, so only the position moves — with the flush kept,
 // exactly as the merge would keep it).
 func (g *gen) emitWriteAlign(ind string) {
-	g.pf("%s{\n", ind)
-	g.pf("%s    final int pad = scratchBits & 7;\n", ind)
-	g.pf("%s    if (pad != 0) {\n", ind)
-	g.pf("%s        scratchBits += 8 - pad;\n", ind)
-	g.pf("%s        if (scratchBits >= 64) {\n", ind)
-	g.pf("%s            LONG_LE.set(data, wordIndex * 8, scratch);\n", ind)
-	g.pf("%s            wordIndex++;\n", ind)
-	g.pf("%s            scratchBits -= 64;\n", ind)
-	g.pf("%s            scratch = 0;\n", ind)
-	g.pf("%s        }\n", ind)
-	g.pf("%s    }\n", ind)
-	g.pf("%s}\n", ind)
+	g.settle(ind)
+	g.use("alignBits")
+	g.pf("%sscratch = alignBits(data, pos, scratch);\n", ind)
+	g.pf("%spos = (pos + 7) & -8;\n", ind)
 }
 
 // emitWriteBulk lands a byte-aligned payload with the fused bulk copy —
-// the port's writeBytes: flush the partial scratch word, arraycopy the
-// payload at the byte cursor, reload the trailing partial word masked to
-// its tail bits. Wire-identical to the per-byte merge.
+// the port's writeBytes: store the partial scratch word, arraycopy the
+// payload at the byte cursor, reload the trailing partial word. Wire-
+// identical to the per-byte merge.
 func (g *gen) emitWriteBulk(src, lenBytes, lenBits, ind string) {
 	g.pf("%s// byte-aligned payload — the fused bulk copy (flush, copy, reload),\n", ind)
 	g.pf("%s// wire-identical to the per-byte merge\n", ind)
-	g.pf("%sif (scratchBits != 0) {\n", ind)
-	g.pf("%s    LONG_LE.set(data, wordIndex * 8, scratch);\n", ind)
-	g.pf("%s}\n", ind)
-	g.pf("%sSystem.arraycopy(%s, 0, data, wordIndex * 8 + (scratchBits >>> 3), %s);\n", ind, src, lenBytes)
-	g.pf("%sscratchBits += %s;\n", ind, lenBits)
-	g.pf("%swordIndex += scratchBits >>> 6;\n", ind)
-	g.pf("%sscratchBits &= 63;\n", ind)
-	g.pf("%sif (scratchBits != 0) {\n", ind)
-	g.pf("%s    scratch = (long) LONG_LE.get(data, wordIndex * 8) & ((1L << scratchBits) - 1);\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s    scratch = 0;\n", ind)
-	g.pf("%s}\n", ind)
+	g.store(ind)
+	g.pf("%sSystem.arraycopy(%s, 0, data, pos >>> 3, %s);\n", ind, src, lenBytes)
+	g.pf("%spos += %s;\n", ind, lenBits)
 }
 
 func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
@@ -778,46 +825,43 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 			g.emitWriteBulk(name, fmt.Sprintf("%d", f.ArrayBound), fmt.Sprintf("%d", f.ArrayBound*8), ind)
 			return
 		}
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-		g.emitWriteElem(f, name, iv, ind+"    ")
-		g.pf("%s}\n", ind)
-		g.loopDepth--
+		g.emitWriteLoop(f, name, fmt.Sprintf("%d", f.ArrayBound), ind)
 	case ir.ArrayCounted:
 		count := name + "Count"
 		// the count guards the loop; its range is a writer contract like any
 		// other, asserted in the checkWrite predicate and gone without -ea
 		// (SPEC §4.6, §5)
 		g.emitWriteOffset(count, big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), ind)
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
-		g.emitWriteElem(f, name, iv, ind+"    ")
-		g.pf("%s}\n", ind)
-		g.loopDepth--
+		g.emitWriteLoop(f, name, count, ind)
 	default:
 		g.emitWriteScalar(f, name, ind)
 	}
 }
 
-// emitWriteElem writes one array element; class elements hoist a final ref.
-func (g *gen) emitWriteElem(f *ir.Field, name, iv, ind string) {
-	if f.Type.Kind == ir.TNamed {
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			g.emitWriteItems(ref.Items, ev, ind)
-			return
-		case *ir.Union:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			g.emitWriteUnion(ref, ev, ind)
-			return
-		}
+// emitWriteLoop writes an array's elements. Nested elements call their own
+// entry, the scratch word stored once before the loop and reloaded once
+// after it — nothing in between touches it.
+func (g *gen) emitWriteLoop(f *ir.Field, name, bound, ind string) {
+	iv := fmt.Sprintf("i%d", g.loopDepth)
+	g.loopDepth++
+	nested := isNested(f.Type)
+	if nested {
+		g.store(ind) // the loop body never touches the scratch word
+	} else {
+		g.settle(ind)
 	}
-	g.emitWriteScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind)
+	g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, bound, iv)
+	elem := fmt.Sprintf("%s[%s]", name, iv)
+	if nested {
+		g.pf("%s    pos = %s(%s, data, pos);\n", ind, g.bitsFn("write", f.Type.Name), elem)
+	} else {
+		g.inElem = true
+		g.emitWriteScalar(f, elem, ind+"    ")
+		g.inElem = false
+		g.settle(ind + "    ")
+	}
+	g.pf("%s}\n", ind)
+	g.loopDepth--
 }
 
 // emitWriteOffset merges (expr - min) in the folded bit count for a range
@@ -843,8 +887,7 @@ func (g *gen) emitWriteOffset(expr string, min, max *big.Int, ind string) {
 		}
 	}
 	if bits <= 32 {
-		g.pf("%sv = (%s) & %s;\n", ind, off, maskHexL(bits))
-		g.mergeW(bits, ind)
+		g.putW(fmt.Sprintf("(%s) & %s", off, maskHexL(bits)), bits, ind)
 		return
 	}
 	if min.Sign() != 0 {
@@ -860,10 +903,8 @@ func (g *gen) emitWriteOffset(expr string, min, max *big.Int, ind string) {
 // emitWriteWide64 merges the low `bits` bits (33..64) of a long expression
 // as two groups, low dword first.
 func (g *gen) emitWriteWide64(expr string, bits int64, ind string) {
-	g.pf("%sv = %s & 0xffffffffL;\n", ind, expr)
-	g.mergeW(32, ind)
-	g.pf("%sv = (%s >>> 32) & %s;\n", ind, expr, maskHexL(bits-32))
-	g.mergeW(bits-32, ind)
+	g.putW(expr+" & 0xffffffffL", 32, ind)
+	g.putW(fmt.Sprintf("(%s >>> 32) & %s", expr, maskHexL(bits-32)), bits-32, ind)
 }
 
 // emitWriteWide128 merges the low `bits` bits (1..128) of a (hi, lo) pair
@@ -871,14 +912,12 @@ func (g *gen) emitWriteWide64(expr string, bits int64, ind string) {
 func (g *gen) emitWriteWide128(loExpr, hiExpr string, bits int64, ind string) {
 	switch {
 	case bits <= 32:
-		g.pf("%sv = %s & %s;\n", ind, loExpr, maskHexL(bits))
-		g.mergeW(bits, ind)
+		g.putW(loExpr+" & "+maskHexL(bits), bits, ind)
 	case bits <= 64:
 		g.emitWriteWide64(loExpr, bits, ind)
 	case bits <= 96:
 		g.emitWriteWide64(loExpr, 64, ind)
-		g.pf("%sv = %s & %s;\n", ind, hiExpr, maskHexL(bits-64))
-		g.mergeW(bits-64, ind)
+		g.putW(hiExpr+" & "+maskHexL(bits-64), bits-64, ind)
 	default:
 		g.emitWriteWide64(loExpr, 64, ind)
 		g.emitWriteWide64(hiExpr, bits-64, ind)
@@ -894,22 +933,19 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TBits:
 		w := int64(f.Type.Width)
 		if w <= 32 {
-			g.pf("%sv = %s & %s;\n", ind, name, maskHexL(w))
-			g.mergeW(w, ind)
+			g.putW(name+" & "+maskHexL(w), w, ind)
 			return
 		}
 		g.emitWriteWide64(name, w, ind)
 	case ir.TBool:
-		g.pf("%sv = %s ? 1 : 0;\n", ind, name)
-		g.mergeW(1, ind)
+		g.putW(name+" ? 1 : 0", 1, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			g.emitWriteCompressedFloat(f, name, ind)
 			return
 		}
 		// bit transparent: raw bits preserve every NaN payload
-		g.pf("%sv = Float.floatToRawIntBits(%s) & 0xffffffffL;\n", ind, name)
-		g.mergeW(32, ind)
+		g.putW(fmt.Sprintf("Float.floatToRawIntBits(%s) & 0xffffffffL", name), 32, ind)
 	case ir.TFloat64:
 		g.pf("%s{\n", ind)
 		g.pf("%s    final long b = Double.doubleToRawLongBits(%s);\n", ind, name)
@@ -925,10 +961,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteEnum(ref, name, ind)
 		case *ir.Flags:
 			g.emitWriteFlags(ref, name, ind)
-		case *ir.Struct:
-			g.emitWriteItems(ref.Items, name, ind)
-		case *ir.Union:
-			g.emitWriteUnion(ref, name, ind)
+		case *ir.Struct, *ir.Union:
+			g.emitWriteCall(f.Type.Name, name, ind)
 		}
 	}
 }
@@ -961,7 +995,7 @@ func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.pf("%s    if (v > %dL) v = %dL;\n", ind, maxInt, maxInt)
 	g.pf("%s}\n", ind)
 	g.needV = true
-	g.mergeW(bits, ind)
+	g.putW("v", bits, ind)
 }
 
 // fixedRaw derives a fixed field's raw wire parameters: the whole-unit
@@ -985,7 +1019,7 @@ func (g *gen) emitWriteFixed(f *ir.Field, name, ind string) {
 		// write (SPEC §4.6)
 		return
 	}
-	g.emitWriteOffset(loadInt(f.Type, name), rawMin, rawMax, ind)
+	g.emitWriteOffset(g.loadInt(f.Type, name), rawMin, rawMax, ind)
 }
 
 func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
@@ -1004,7 +1038,7 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 			// degenerate range: ZERO bits — the contract is the whole write
 			return
 		}
-		g.emitWriteOffset(loadInt(f.Type, name), f.IntMin, f.IntMax, ind)
+		g.emitWriteOffset(g.loadInt(f.Type, name), f.IntMin, f.IntMax, ind)
 		return
 	}
 	// bare integer at storage width; the width mask lands the same-width
@@ -1014,8 +1048,7 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 		g.emitWriteWide64(name, 64, ind)
 		return
 	}
-	g.pf("%sv = %s & %s;\n", ind, name, maskHexL(w))
-	g.mergeW(w, ind)
+	g.putW(name+" & "+maskHexL(w), w, ind)
 }
 
 // emitWrite128Ranged writes a ranged 128-bit-storage value (int128/uint128,
@@ -1050,15 +1083,13 @@ func (g *gen) emitWriteEnum(ref *ir.Enum, name, ind string) {
 	if bits == 0 {
 		return // degenerate [0, 0]: zero bits; the contract still binds in checkWrite
 	}
-	g.pf("%sv = %s & %s;\n", ind, name, maskHexL(bits))
-	g.mergeW(bits, ind)
+	g.putW(name+" & "+maskHexL(bits), bits, ind)
 }
 
 func (g *gen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 	wb := int64(ref.WireBits)
 	if wb <= 32 {
-		g.pf("%sv = %s & %s;\n", ind, name, maskHexL(wb))
-		g.mergeW(wb, ind)
+		g.putW(name+" & "+maskHexL(wb), wb, ind)
 		return
 	}
 	g.emitWriteWide64(name, wb, ind)
@@ -1075,16 +1106,16 @@ func (g *gen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	g.emitWriteBulk(name, length, length+" * 8", ind)
 }
 
-// emitWriteUnion inlines a union (SPEC §4.8): the tag in minimal bits, then
-// a switch inlines each arm's items — the struct-inlining move, per arm.
-// The tag contract is asserted in checkWrite BEFORE anything rides.
+// emitWriteUnion is a union's own write body (SPEC §4.8): the tag in
+// minimal bits, then the selected arm through its type's own entry. The tag
+// contract is asserted in checkWrite BEFORE anything rides.
 func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	if u.Max == 0 {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.pf("%sv = %s.type & %s;\n", ind, expr, maskHexL(bits))
-	g.mergeW(bits, ind)
+	g.putW(fmt.Sprintf("%s.type & %s", expr, maskHexL(bits)), bits, ind)
+	g.store(ind) // every arm writes through its own entry
 	g.pf("%sswitch (%s) {\n", ind, tagSwitchExpr(u, expr))
 	for i, vr := range u.Variants {
 		g.pf("%s    case %d:\n", ind, i+1)
@@ -1096,7 +1127,7 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 			g.pf("%s        break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
 			continue
 		}
-		g.emitWriteItems(vr.Ref.Items, expr+"."+javaName(vr.Name), ind+"        ")
+		g.emitWriteCall(vr.Type, expr+"."+javaName(vr.Name), ind+"        ")
 		g.pf("%s        break;\n", ind)
 	}
 	g.pf("%s}\n", ind)
@@ -1122,8 +1153,7 @@ func (g *gen) emitReadItems(items []ir.Item, path, ind string, bounded bool) {
 				j++
 			}
 			if !bounded && total > 0 {
-				g.usesRead = true
-				g.pf("%sif (bitsRead + %d > numBits) {\n%s    return false;\n%s}\n", ind, total, ind, ind)
+				g.boundRead(fmt.Sprint(total), ind)
 			}
 			for ; i < j; i++ {
 				g.emitReadStaticItem(items[i], path, ind)
@@ -1188,18 +1218,9 @@ func (g *gen) emitReadDynamicItem(item ir.Item, path, ind string) {
 // emitReadAlign verifies zero padding to the byte boundary and advances.
 func (g *gen) emitReadAlign(ind string) {
 	g.usesRead = true
-	g.pf("%s{\n", ind)
-	g.pf("%s    final int pad = bitsRead & 7;\n", ind)
-	g.pf("%s    if (pad != 0) {\n", ind)
-	g.pf("%s        if (bitsRead + (8 - pad) > numBits) {\n", ind)
-	g.pf("%s            return false;\n", ind)
-	g.pf("%s        }\n", ind)
-	g.pf("%s        if ((data[bitsRead >>> 3] & 0xff) >>> pad != 0) {\n", ind)
-	g.pf("%s            return false; // nonzero padding is refused (SPEC §4.3)\n", ind)
-	g.pf("%s        }\n", ind)
-	g.pf("%s        bitsRead += 8 - pad;\n", ind)
-	g.pf("%s    }\n", ind)
-	g.pf("%s}\n", ind)
+	g.use("alignRead")
+	g.pf("%sbitsRead = alignRead(data, bitsRead, numBits);\n", ind)
+	g.pf("%sif (bitsRead < 0) {\n%s    %s\n%s}\n", ind, ind, failRead, ind)
 }
 
 // emitReadRaw reads a const/reserved item and rejects any other value.
@@ -1211,11 +1232,11 @@ func (g *gen) emitReadRaw(value *big.Int, bits int64, isConst bool, ind string) 
 	masked := new(big.Int).And(value, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1)))
 	if bits <= 32 {
 		g.readR(bits, ind)
-		g.pf("%sif (v != %s) {\n%s    return false; // %s (SPEC §4.3)\n%s}\n", ind, javaIntLit(masked), ind, what, ind)
+		g.pf("%sif (v != %s) {\n%s    return -1; // %s (SPEC §4.3)\n%s}\n", ind, javaIntLit(masked), ind, what, ind)
 		return
 	}
 	g.emitReadWide64(bits, ind)
-	g.pf("%sif (lo != %s) {\n%s    return false; // %s (SPEC §4.3)\n%s}\n", ind, javaIntLit(masked), ind, what, ind)
+	g.pf("%sif (lo != %s) {\n%s    return -1; // %s (SPEC §4.3)\n%s}\n", ind, javaIntLit(masked), ind, what, ind)
 }
 
 func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
@@ -1232,37 +1253,31 @@ func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
 			g.pf("%sbitsRead += %d;\n", ind, f.ArrayBound*8)
 			return
 		}
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-		g.emitReadElem(f, name, iv, ind+"    ", true)
-		g.pf("%s}\n", ind)
-		g.loopDepth--
+		g.emitReadLoop(f, name, fmt.Sprint(f.ArrayBound), ind, true)
 		return
 	}
 	g.emitReadScalar(f, name, ind, true)
 }
 
-func (g *gen) emitReadElem(f *ir.Field, name, iv, ind string, bounded bool) {
-	if f.Type.Kind == ir.TNamed {
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			g.emitReadItems(ref.Items, ev, ind, bounded)
-			return
-		case *ir.Union:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			g.emitReadUnion(ref, ev, ind, bounded)
-			return
-		}
+// emitReadLoop reads an array's elements; nested elements call their own
+// entry.
+func (g *gen) emitReadLoop(f *ir.Field, name, bound, ind string, bounded bool) {
+	iv := fmt.Sprintf("i%d", g.loopDepth)
+	g.loopDepth++
+	g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, bound, iv)
+	elem := fmt.Sprintf("%s[%s]", name, iv)
+	switch {
+	case isNested(f.Type):
+		g.emitReadCall(f.Type.Name, elem, ind+"    ")
+	case is128(f.Type):
+		g.emitRead128Scalar(f, elem+" = ", ind+"    ")
+	default:
+		g.inElem = true
+		g.emitReadScalar(f, elem, ind+"    ", bounded)
+		g.inElem = false
 	}
-	if is128(f.Type) {
-		g.emitRead128Scalar(f, fmt.Sprintf("%s[%s] = ", name, iv), ind)
-		return
-	}
-	g.emitReadScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind, bounded)
+	g.pf("%s}\n", ind)
+	g.loopDepth--
 }
 
 func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
@@ -1279,12 +1294,11 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		count := name + "Count"
 		countBits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
 		if countBits > 0 {
-			g.usesRead = true
-			g.pf("%sif (bitsRead + %d > numBits) {\n%s    return false;\n%s}\n", ind, countBits, ind, ind)
+			g.boundRead(fmt.Sprint(countBits), ind)
 			g.readR(countBits, ind)
 			diff := f.ArrayBound - f.ArrayMin
 			if diff != (int64(1)<<countBits)-1 {
-				g.pf("%sif (v > %d) {\n%s    return false; // the count guards the loop — reject, never clamp\n%s}\n", ind, diff, ind, ind)
+				g.pf("%sif (v > %d) {\n%s    return -1; // the count guards the loop — reject, never clamp\n%s}\n", ind, diff, ind, ind)
 			}
 			if f.ArrayMin == 0 {
 				g.pf("%s%s = (int) v;\n", ind, count)
@@ -1294,40 +1308,22 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		} else {
 			g.pf("%s%s = %d;\n", ind, count, f.ArrayMin)
 		}
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
 		if elemBits, ok := g.staticBitsScalar(f); ok {
 			if elemBits > 0 {
-				g.usesRead = true
-				g.pf("%sif (bitsRead + %s * %dL > numBits) {\n%s    return false;\n%s}\n", ind, count, elemBits, ind, ind)
+				g.boundRead(fmt.Sprintf("%s * %dL", count, elemBits), ind)
 			}
-			g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
-			g.emitReadElem(f, name, iv, ind+"    ", true)
-			g.pf("%s}\n", ind)
+			g.emitReadLoop(f, name, count, ind, true)
 		} else {
-			g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
-			g.emitReadElem(f, name, iv, ind+"    ", false)
-			g.pf("%s}\n", ind)
+			g.emitReadLoop(f, name, count, ind, false)
 		}
-		g.loopDepth--
 	case f.Array == ir.ArrayFixed:
 		// a fixed array of dynamically-sized elements (branches, unions,
 		// strings)
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-		g.emitReadElem(f, name, iv, ind+"    ", false)
-		g.pf("%s}\n", ind)
-		g.loopDepth--
+		g.emitReadLoop(f, name, fmt.Sprint(f.ArrayBound), ind, false)
 	default:
 		// a scalar whose size is dynamic: a nested struct with dynamic
 		// items, or a union
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			g.emitReadItems(ref.Items, name, ind, false)
-		case *ir.Union:
-			g.emitReadUnion(ref, name, ind, false)
-		}
+		g.emitReadCall(f.Type.Name, name, ind)
 	}
 }
 
@@ -1338,14 +1334,14 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.usesRead = true
 	length := name + "Length"
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-	g.pf("%sif (bitsRead + %d > numBits) {\n%s    return false;\n%s}\n", ind, lenBits, ind, ind)
+	g.boundRead(fmt.Sprint(lenBits), ind)
 	g.readR(lenBits, ind)
 	if f.Type.Size != (int64(1)<<lenBits)-1 {
-		g.pf("%sif (v > %d) {\n%s    return false; // the length guards the copy — reject, never clamp\n%s}\n", ind, f.Type.Size, ind, ind)
+		g.pf("%sif (v > %d) {\n%s    return -1; // the length guards the copy — reject, never clamp\n%s}\n", ind, f.Type.Size, ind, ind)
 	}
 	g.pf("%s%s = (int) v;\n", ind, length)
 	g.emitReadAlign(ind)
-	g.pf("%sif (bitsRead + %s * 8L > numBits) {\n%s    return false;\n%s}\n", ind, length, ind, ind)
+	g.boundRead(length+" * 8L", ind)
 	g.pf("%sSystem.arraycopy(data, bitsRead >>> 3, %s, 0, %s);\n", ind, name, length)
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
 	if f.Type.Kind == ir.TString {
@@ -1354,7 +1350,7 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 		g.loopDepth++
 		g.pf("%sfor (int %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
 		g.pf("%s    if (%s[%s] == 0) {\n", ind, name, iv)
-		g.pf("%s        return false; // an interior null is content the read refuses (SPEC §4.7)\n", ind)
+		g.pf("%s        return -1; // an interior null is content the read refuses (SPEC §4.7)\n", ind)
 		g.pf("%s    }\n", ind)
 		g.pf("%s}\n", ind)
 		g.loopDepth--
@@ -1407,7 +1403,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		w := int64(f.Type.Width)
 		if w <= 32 {
 			g.readR(w, ind)
-			g.pf("%s%s = %sv;\n", ind, name, storeCast(bitsJavaType(w)))
+			g.pf("%s%s = v;\n", ind, name)
 			return
 		}
 		g.emitReadWide64(w, ind)
@@ -1435,7 +1431,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			}
 			g.readR(bits, ind)
 			if ref.Max != (int64(1)<<bits)-1 {
-				g.pf("%sif (v > %d) {\n%s    return false; // headroom above the wire range is refused\n%s}\n", ind, ref.Max, ind, ind)
+				g.pf("%sif (v > %d) {\n%s    return -1; // headroom above the wire range is refused\n%s}\n", ind, ref.Max, ind, ind)
 			}
 			g.pf("%s%s = %sv;\n", ind, name, storeCast(enumJavaType(ref.StorageBits)))
 		case *ir.Flags:
@@ -1447,19 +1443,10 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			}
 			g.emitReadWide64(wb, ind)
 			g.pf("%s%s = lo;\n", ind, name)
-		case *ir.Struct:
-			g.emitReadItems(ref.Items, name, ind, bounded)
-		case *ir.Union:
-			g.emitReadUnion(ref, name, ind, bounded)
+		case *ir.Struct, *ir.Union:
+			g.emitReadCall(f.Type.Name, name, ind)
 		}
 	}
-}
-
-func bitsJavaType(w int64) string {
-	if w <= 32 {
-		return "int"
-	}
-	return "long"
 }
 
 func (g *gen) emitReadCompressedFloat(f *ir.Field, name, ind string) {
@@ -1469,7 +1456,7 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, name, ind string) {
 	mivF := float32(maxInt)
 	g.readR(bits, ind)
 	if maxInt != (uint64(1)<<bits)-1 {
-		g.pf("%sif (v > %dL) {\n%s    return false; // headroom above the quantum count is refused\n%s}\n", ind, maxInt, ind, ind)
+		g.pf("%sif (v > %dL) {\n%s    return -1; // headroom above the quantum count is refused\n%s}\n", ind, maxInt, ind, ind)
 	}
 	// every step rounds to float32: the quotient, the product BEFORE min is
 	// added, and the sum — no widening, no fused multiply-add (SPEC §4.3)
@@ -1486,10 +1473,10 @@ func (g *gen) emitReadFixed(f *ir.Field, name, ind string) {
 	if f.IntMin.Cmp(f.IntMax) == 0 {
 		// degenerate: zero bits — the value is the range, raw min << F,
 		// materialized with no wire read (SPEC §4.6)
-		g.pf("%s%s = %s;\n", ind, name, narrowLit(intJavaType(f.Type.Width), rawMin))
+		g.pf("%s%s = %s;\n", ind, name, narrowLit(g.intType(f.Type), rawMin))
 		return
 	}
-	g.emitReadOffset(name, intJavaType(f.Type.Width), rawMin, rawMax, bits, ind)
+	g.emitReadOffset(name, g.intType(f.Type), rawMin, rawMax, bits, ind)
 }
 
 // emitReadOffset decodes a ranged value inside the 64-bit domain: the
@@ -1508,10 +1495,10 @@ func (g *gen) emitReadOffset(name, styp string, min, max *big.Int, bits int64, i
 	}
 	if diff.Cmp(full) != 0 {
 		if bits == 64 {
-			g.pf("%sif (Long.compareUnsigned(%s, %s) > 0) {\n%s    return false; // a smuggled offset is refused\n%s}\n",
+			g.pf("%sif (Long.compareUnsigned(%s, %s) > 0) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
 				ind, src, javaIntLit(diff), ind, ind)
 		} else {
-			g.pf("%sif (%s > %s) {\n%s    return false; // a smuggled offset is refused\n%s}\n",
+			g.pf("%sif (%s > %s) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
 				ind, src, javaIntLit(diff), ind, ind)
 		}
 	}
@@ -1524,7 +1511,7 @@ func (g *gen) emitReadOffset(name, styp string, min, max *big.Int, bits int64, i
 
 func (g *gen) emitReadInt(f *ir.Field, name, ind string) {
 	w := int64(f.Type.Width)
-	styp := intJavaType(int(w))
+	styp := g.intType(f.Type)
 	if f.HasIntRange {
 		if f.IntMin.Cmp(f.IntMax) == 0 {
 			// degenerate range: zero bits — the value is the range,
@@ -1584,10 +1571,10 @@ func (g *gen) emitRead128Ranged(signed bool, assign string, min, max *big.Int, b
 		}
 		if diff.Cmp(full) != 0 {
 			if bits == 64 {
-				g.pf("%sif (Long.compareUnsigned(%s, %s) > 0) {\n%s    return false; // a smuggled offset is refused\n%s}\n",
+				g.pf("%sif (Long.compareUnsigned(%s, %s) > 0) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
 					ind, src, javaIntLit(new(big.Int).And(diff, maxUint64Big)), ind, ind)
 			} else {
-				g.pf("%sif (%s > %s) {\n%s    return false; // a smuggled offset is refused\n%s}\n",
+				g.pf("%sif (%s > %s) {\n%s    return -1; // a smuggled offset is refused\n%s}\n",
 					ind, src, javaIntLit(diff), ind, ind)
 			}
 		}
@@ -1597,7 +1584,7 @@ func (g *gen) emitRead128Ranged(signed bool, assign string, min, max *big.Int, b
 	g.emitReadWide128(bits, ind)
 	if diff.Cmp(full) != 0 {
 		g.pf("%sif (%s.compareUnsigned(new UInt128(hi, lo)) < 0) {\n", ind, pairCtor(false, diff))
-		g.pf("%s    return false; // a smuggled offset is refused\n", ind)
+		g.pf("%s    return -1; // a smuggled offset is refused\n", ind)
 		g.pf("%s}\n", ind)
 	}
 	g.emitAssign128(assign, signed, min, "hi", "lo", ind)
@@ -1622,48 +1609,40 @@ func (g *gen) emitAssign128(assign string, signed bool, min *big.Int, hiExpr, lo
 	}
 }
 
-// emitReadUnion is the union read half: the tag reads in minimal bits and a
-// value above the count is refused (SPEC §4.8); the selected arm
-// starts from construction defaults, then its items inline.
-func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
+// emitReadUnion is a union's own read body: the tag reads in minimal bits
+// and a value above the count is refused (SPEC §4.8); the selected arm
+// starts from construction defaults, then reads through its type's own
+// entry, whose -1 is the union's.
+func (g *gen) emitReadUnion(u *ir.Union, expr, ind string) {
 	if u.Max == 0 {
 		g.pf("%s%s.type = 0; // zero wire bits — only None exists (SPEC §4.8)\n", ind, expr)
 		return
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	if !bounded {
-		g.usesRead = true
-		g.pf("%sif (bitsRead + %d > numBits) {\n%s    return false;\n%s}\n", ind, bits, ind, ind)
-	}
+	g.boundRead(fmt.Sprint(bits), ind)
 	g.readR(bits, ind)
 	if u.Max != (int64(1)<<bits)-1 {
-		g.pf("%sif (v > %d) {\n%s    return false; // not a wire-legal tag (SPEC §4.8)\n%s}\n", ind, u.Max, ind, ind)
+		g.pf("%sif (v > %d) {\n%s    %s // not a wire-legal tag (SPEC §4.8)\n%s}\n", ind, u.Max, ind, failRead, ind)
 	}
 	g.pf("%s%s.type = %sv;\n", ind, expr, storeCast(tagJavaType(u.Max)))
 	g.pf("%sswitch (%s) {\n", ind, tagSwitchExpr(u, expr))
 	for i, vr := range u.Variants {
 		arm := expr + "." + javaName(vr.Name)
 		g.pf("%s    case %d:\n", ind, i+1)
-		if vr.Void() {
+		switch {
+		case vr.Void():
 			g.pf("%s        break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
+			continue
+		case len(vr.Ref.Fields) == 0 && len(vr.Ref.Items) == 0:
+			g.pf("%s        break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
 			continue
 		}
 		// every selection starts from construction defaults
-		empty := true
-		for _, nf := range vr.Ref.Fields {
-			g.emitInitializeField(nf, arm, ind+"        ", false, true)
-			empty = false
+		g.pf("%s        %s(%s);\n", ind, g.qualify(vr.Type, "init"+vr.Type), arm)
+		if len(vr.Ref.Items) > 0 {
+			g.pf("%s        bitsRead = %s(%s, data, bitsRead, numBits);\n", ind, g.bitsFn("read", vr.Type), arm)
 		}
-		before := g.fn.Len()
-		g.emitReadItems(vr.Ref.Items, arm, ind+"        ", false)
-		if g.fn.Len() > before {
-			empty = false
-		}
-		if empty {
-			g.pf("%s        break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
-		} else {
-			g.pf("%s        break;\n", ind)
-		}
+		g.pf("%s        break;\n", ind)
 	}
 	g.pf("%s}\n", ind)
 }
@@ -1674,7 +1653,7 @@ func (g *gen) emitZeroItems(items []ir.Item, path, ind string) {
 	for _, item := range items {
 		switch item := item.(type) {
 		case *ir.FieldItem:
-			g.emitZeroField(item.F, path, ind, false)
+			g.emitZeroField(item.F, path, ind)
 		case *ir.Branch:
 			g.emitZeroItems(item.Then, path, ind)
 			g.emitZeroItems(item.Else, path, ind)
@@ -1682,16 +1661,16 @@ func (g *gen) emitZeroItems(items []ir.Item, path, ind string) {
 	}
 }
 
-// emitZeroField zeroes one field's storage. viaCalls selects the zero*
-// helper for named types (the standalone zero functions); the wire bodies
-// inline recursively instead, keeping read paths call-free.
-func (g *gen) emitZeroField(f *ir.Field, path, ind string, viaCalls bool) {
-	g.emitInitializeField(f, path, ind, viaCalls, false)
+// emitZeroField zeroes one field's storage; a nested type through its own
+// zero<Name>.
+func (g *gen) emitZeroField(f *ir.Field, path, ind string) {
+	g.emitInitializeField(f, path, ind, false)
 }
 
-// emitInitializeField shares the recursive storage walk between explicit zero
-// resets and construction initialization. Nested unions reset only their tags.
-func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defaults bool) {
+// emitInitializeField shares the storage walk between explicit zero resets
+// and construction initialization: nested types call their own zero<Name> or
+// init<Name>, nested unions reset only their tags.
+func (g *gen) emitInitializeField(f *ir.Field, path, ind string, defaults bool) {
 	structInit := "zero"
 	if defaults {
 		structInit = "init"
@@ -1699,9 +1678,11 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 	name := path + "." + javaName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TWString:
-		g.pf("%sjava.util.Arrays.fill(%s, (char) 0);\n%s%sLength = 0;\n", ind, name, ind, name)
+		g.usesArrays = true
+		g.pf("%sArrays.fill(%s, (char) 0);\n%s%sLength = 0;\n", ind, name, ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, name)
+		g.usesArrays = true
+		g.pf("%sArrays.fill(%s, (byte) 0);\n", ind, name)
 		g.pf("%s%sLength = 0;\n", ind, name)
 		if defaults {
 			for _, line := range byteDefaultLines(f, name, ind) {
@@ -1709,20 +1690,12 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 			}
 		}
 	case f.Array != ir.ArrayNone:
-		switch ref := f.Type.Ref.(type) {
+		switch f.Type.Ref.(type) {
 		case *ir.Struct:
 			iv := fmt.Sprintf("i%d", g.loopDepth)
 			g.loopDepth++
 			g.pf("%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-			if viaCalls {
-				g.pf("%s    %s(%s[%s]);\n", ind, g.qualify(f.Type.Name, structInit+f.Type.Name), name, iv)
-			} else {
-				ev := fmt.Sprintf("e%d", g.loopDepth-1)
-				g.pf("%s    final %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-				for _, nf := range ref.Fields {
-					g.emitInitializeField(nf, ev, ind+"    ", false, defaults)
-				}
-			}
+			g.pf("%s    %s(%s[%s]);\n", ind, g.qualify(f.Type.Name, structInit+f.Type.Name), name, iv)
 			g.pf("%s}\n", ind)
 			g.loopDepth--
 		case *ir.Union:
@@ -1735,7 +1708,8 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 			g.pf("%s}\n", ind)
 			g.loopDepth--
 		default:
-			g.pf("%sjava.util.Arrays.fill(%s, %s);\n", ind, name, zeroElem(f.Type))
+			g.usesArrays = true
+			g.pf("%sArrays.fill(%s, %s);\n", ind, name, zeroElem(f.Type))
 		}
 		if f.Array == ir.ArrayCounted {
 			count := int64(0)
@@ -1752,20 +1726,12 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 				return
 			}
 		}
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			if f.Type.Kind == ir.TNamed {
-				if viaCalls {
-					g.pf("%s%s(%s);\n", ind, g.qualify(f.Type.Name, structInit+f.Type.Name), name)
-				} else {
-					for _, nf := range ref.Fields {
-						g.emitInitializeField(nf, name, ind, false, defaults)
-					}
-				}
+		if f.Type.Kind == ir.TNamed {
+			switch f.Type.Ref.(type) {
+			case *ir.Struct:
+				g.pf("%s%s(%s);\n", ind, g.qualify(f.Type.Name, structInit+f.Type.Name), name)
 				return
-			}
-		case *ir.Union:
-			if f.Type.Kind == ir.TNamed {
+			case *ir.Union:
 				// zero IS None: the tag resets; arms are unspecified at None
 				g.pf("%s%s.type = 0;\n", ind, name)
 				return
@@ -1811,184 +1777,4 @@ func zeroScalar(t ir.FieldType) string {
 		return pairType(t.Signed) + ".zero"
 	}
 	return "0"
-}
-
-// ---- measure emission ----
-
-// emitMeasureFunction emits measure<Name>: exact wire bits for a value,
-// static runs folded to generation-time literals; a fully static type folds
-// to a single return.
-func (g *gen) emitMeasureFunction(name string, items []ir.Item) {
-	g.resetFn()
-	pending := int64(0)
-	g.emitMeasureItems(items, "value", bodyInd, &pending)
-	body := g.fn.String()
-
-	g.bpf("    // measure%s is the exact wire bits write%s would produce for value —\n", name, name)
-	g.bpf("    // trusted like the writer; static runs fold to literals at generation time.\n")
-	if body == "" {
-		// fully static: the whole wire folded to one constant
-		g.bpf("    public static int measure%s(%s value) {\n", name, name)
-		g.bpf("        return %d;\n    }\n\n", pending)
-		return
-	}
-	g.bpf("    public static int measure%s(%s value) {\n", name, name)
-	g.bpf("        int bits = 0;\n")
-	g.body.WriteString(body)
-	if pending != 0 {
-		g.bpf("        bits += %d;\n", pending)
-	}
-	g.bpf("        return bits;\n")
-	g.bpf("    }\n\n")
-}
-
-// flushMeasure adds the pending folded bits before dynamic code that needs
-// the running position.
-func (g *gen) flushMeasure(pending *int64, ind string) {
-	if *pending != 0 {
-		g.pf("%sbits += %d;\n", ind, *pending)
-		*pending = 0
-	}
-}
-
-func (g *gen) emitMeasureItems(items []ir.Item, path, ind string, pending *int64) {
-	for _, item := range items {
-		if bits, ok := g.staticBitsItem(item); ok {
-			*pending += bits
-			continue
-		}
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitMeasureField(item.F, path, ind, pending)
-		case *ir.AlignItem:
-			g.flushMeasure(pending, ind)
-			g.pf("%sbits += (8 - (bits & 7)) & 7;\n", ind)
-		case *ir.Branch:
-			g.flushMeasure(pending, ind)
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, javaName(item.Cond))
-			thenPending := int64(0)
-			g.emitMeasureItems(item.Then, path, ind+"    ", &thenPending)
-			if thenPending != 0 {
-				g.pf("%s    bits += %d;\n", ind, thenPending)
-			}
-			if item.Else != nil {
-				g.pf("%s} else {\n", ind)
-				elsePending := int64(0)
-				g.emitMeasureItems(item.Else, path, ind+"    ", &elsePending)
-				if elsePending != 0 {
-					g.pf("%s    bits += %d;\n", ind, elsePending)
-				}
-			}
-			g.pf("%s}\n", ind)
-		}
-	}
-}
-
-func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
-	name := path + "." + javaName(f.Name)
-	if f.Name == "" {
-		name = path
-	}
-	switch {
-	case f.Type.Kind == ir.TWString:
-		*pending += ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-		g.flushMeasure(pending, ind)
-		g.pf("%sbits += %sLength * 32;\n", ind, name)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-		*pending += lenBits
-		g.flushMeasure(pending, ind)
-		g.pf("%sbits += (8 - (bits & 7)) & 7;\n", ind)
-		g.pf("%sbits += %sLength * 8;\n", ind, name)
-	case f.Array == ir.ArrayCounted:
-		countBits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
-		*pending += countBits
-		if elemBits, ok := g.staticBitsScalar(f); ok {
-			g.flushMeasure(pending, ind)
-			g.pf("%sbits += %sCount * %d;\n", ind, name, elemBits)
-			return
-		}
-		g.flushMeasure(pending, ind)
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (int %s = 0; %s < %sCount; %s++) {\n", ind, iv, iv, name, iv)
-		g.emitMeasureElem(f, name, iv, ind+"    ", pending)
-		g.pf("%s}\n", ind)
-		g.loopDepth--
-	case f.Array == ir.ArrayFixed:
-		// a fixed array of dynamically-sized elements
-		g.flushMeasure(pending, ind)
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (int %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-		g.emitMeasureElem(f, name, iv, ind+"    ", pending)
-		g.pf("%s}\n", ind)
-		g.loopDepth--
-	default:
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			g.emitMeasureItems(ref.Items, name, ind, pending)
-		case *ir.Union:
-			g.flushMeasure(pending, ind)
-			g.emitMeasureUnion(ref, name, ind)
-		}
-	}
-}
-
-func (g *gen) emitMeasureElem(f *ir.Field, name, iv, ind string, pending *int64) {
-	if f.Type.Kind == ir.TNamed {
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			inner := int64(0)
-			g.emitMeasureItems(ref.Items, ev, ind, &inner)
-			if inner != 0 {
-				g.pf("%sbits += %d;\n", ind, inner)
-			}
-			return
-		case *ir.Union:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s %s = %s[%s];\n", ind, g.qualifyType(f.Type.Name), ev, name, iv)
-			g.emitMeasureUnion(ref, ev, ind)
-			return
-		}
-	}
-	// unreachable: every dynamically-sized element is a named type — the
-	// checker refuses arrays of string/bytes/bits (SPEC §4.6)
-	_ = pending
-}
-
-// emitMeasureUnion measures tag + selected arm through a switch.
-func (g *gen) emitMeasureUnion(u *ir.Union, expr, ind string) {
-	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	if u.Max == 0 {
-		return // zero wire bits — only None exists (SPEC §4.8)
-	}
-	g.pf("%sbits += %d;\n", ind, bits)
-	g.pf("%sswitch (%s) {\n", ind, tagSwitchExpr(u, expr))
-	for i, vr := range u.Variants {
-		arm := expr + "." + javaName(vr.Name)
-		g.pf("%s    case %d:\n", ind, i+1)
-		if vr.Void() {
-			g.pf("%s        break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
-			continue
-		}
-		inner := int64(0)
-		before := g.fn.Len()
-		g.emitMeasureItems(vr.Ref.Items, arm, ind+"        ", &inner)
-		if inner != 0 {
-			g.pf("%s        bits += %d;\n", ind, inner)
-		}
-		if inner == 0 && g.fn.Len() == before {
-			g.pf("%s        break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
-		} else {
-			g.pf("%s        break;\n", ind)
-		}
-	}
-	g.pf("%s}\n", ind)
 }

@@ -19,25 +19,25 @@ public final class Enums {
     public static final class Team {
         private Team() {}
 
-        public static final byte none = 0;
-        public static final byte red = 1;
-        public static final byte blue = 2;
+        public static final byte NONE = 0;
+        public static final byte RED = 1;
+        public static final byte BLUE = 2;
         // the declared variant count (SPEC §4.2)
-        public static final byte count = 2;
+        public static final byte COUNT = 2;
         // the exported extent (SPEC §4.2)
-        public static final byte max = 2;
+        public static final byte MAX = 2;
     }
 
     // enumNameTeam: debug/log/tooling name for any Team storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNameTeam(long value) {
-        if (value == Team.none) {
+        if (value == Team.NONE) {
             return "None";
         }
-        if (value == Team.red) {
+        if (value == Team.RED) {
             return "Red";
         }
-        if (value == Team.blue) {
+        if (value == Team.BLUE) {
             return "Blue";
         }
         return "???";
@@ -50,37 +50,37 @@ public final class Enums {
     public static final class ShipType {
         private ShipType() {}
 
-        public static final byte none = 0;
-        public static final byte fighter = 1;
-        public static final byte corvette = 2;
-        public static final byte bomber = 3;
-        public static final byte destroyer = 4;
-        public static final byte carrier = 5;
+        public static final byte NONE = 0;
+        public static final byte FIGHTER = 1;
+        public static final byte CORVETTE = 2;
+        public static final byte BOMBER = 3;
+        public static final byte DESTROYER = 4;
+        public static final byte CARRIER = 5;
         // the declared variant count (SPEC §4.2)
-        public static final byte count = 5;
+        public static final byte COUNT = 5;
         // the exported extent (SPEC §4.2)
-        public static final byte max = 5;
+        public static final byte MAX = 5;
     }
 
     // enumNameShipType: debug/log/tooling name for any ShipType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNameShipType(long value) {
-        if (value == ShipType.none) {
+        if (value == ShipType.NONE) {
             return "None";
         }
-        if (value == ShipType.fighter) {
+        if (value == ShipType.FIGHTER) {
             return "Fighter";
         }
-        if (value == ShipType.corvette) {
+        if (value == ShipType.CORVETTE) {
             return "Corvette";
         }
-        if (value == ShipType.bomber) {
+        if (value == ShipType.BOMBER) {
             return "Bomber";
         }
-        if (value == ShipType.destroyer) {
+        if (value == ShipType.DESTROYER) {
             return "Destroyer";
         }
-        if (value == ShipType.carrier) {
+        if (value == ShipType.CARRIER) {
             return "Carrier";
         }
         return "???";
@@ -93,29 +93,29 @@ public final class Enums {
     public static final class MissileType {
         private MissileType() {}
 
-        public static final byte none = 0;
-        public static final byte heatseeker = 1;
-        public static final byte torpedo = 2;
-        public static final byte nuke = 3;
+        public static final byte NONE = 0;
+        public static final byte HEATSEEKER = 1;
+        public static final byte TORPEDO = 2;
+        public static final byte NUKE = 3;
         // the declared variant count (SPEC §4.2)
-        public static final byte count = 3;
+        public static final byte COUNT = 3;
         // the exported extent (SPEC §4.2)
-        public static final byte max = 3;
+        public static final byte MAX = 3;
     }
 
     // enumNameMissileType: debug/log/tooling name for any MissileType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNameMissileType(long value) {
-        if (value == MissileType.none) {
+        if (value == MissileType.NONE) {
             return "None";
         }
-        if (value == MissileType.heatseeker) {
+        if (value == MissileType.HEATSEEKER) {
             return "Heatseeker";
         }
-        if (value == MissileType.torpedo) {
+        if (value == MissileType.TORPEDO) {
             return "Torpedo";
         }
-        if (value == MissileType.nuke) {
+        if (value == MissileType.NUKE) {
             return "Nuke";
         }
         return "???";
@@ -128,41 +128,41 @@ public final class Enums {
     public static final class PropType {
         private PropType() {}
 
-        public static final byte none = 0;
-        public static final byte asteroid = 1;
-        public static final byte chunk = 2;
-        public static final byte fragment = 3;
-        public static final byte sphere = 4;
-        public static final byte blackHole = 5;
-        public static final byte dysonPanel = 6;
+        public static final byte NONE = 0;
+        public static final byte ASTEROID = 1;
+        public static final byte CHUNK = 2;
+        public static final byte FRAGMENT = 3;
+        public static final byte SPHERE = 4;
+        public static final byte BLACK_HOLE = 5;
+        public static final byte DYSON_PANEL = 6;
         // the declared variant count (SPEC §4.2)
-        public static final byte count = 6;
+        public static final byte COUNT = 6;
         // the exported extent (SPEC §4.2)
-        public static final byte max = 6;
+        public static final byte MAX = 6;
     }
 
     // enumNamePropType: debug/log/tooling name for any PropType storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNamePropType(long value) {
-        if (value == PropType.none) {
+        if (value == PropType.NONE) {
             return "None";
         }
-        if (value == PropType.asteroid) {
+        if (value == PropType.ASTEROID) {
             return "Asteroid";
         }
-        if (value == PropType.chunk) {
+        if (value == PropType.CHUNK) {
             return "Chunk";
         }
-        if (value == PropType.fragment) {
+        if (value == PropType.FRAGMENT) {
             return "Fragment";
         }
-        if (value == PropType.sphere) {
+        if (value == PropType.SPHERE) {
             return "Sphere";
         }
-        if (value == PropType.blackHole) {
+        if (value == PropType.BLACK_HOLE) {
             return "BlackHole";
         }
-        if (value == PropType.dysonPanel) {
+        if (value == PropType.DYSON_PANEL) {
             return "DysonPanel";
         }
         return "???";
@@ -175,17 +175,17 @@ public final class Enums {
     public static final class Pending {
         private Pending() {}
 
-        public static final byte none = 0;
+        public static final byte NONE = 0;
         // the declared variant count (SPEC §4.2)
-        public static final byte count = 0;
+        public static final byte COUNT = 0;
         // the exported extent (SPEC §4.2)
-        public static final byte max = 0;
+        public static final byte MAX = 0;
     }
 
     // enumNamePending: debug/log/tooling name for any Pending storage value —
     // out-of-set values (wire-legal up to the declared max) name as "???"
     public static String enumNamePending(long value) {
-        if (value == Pending.none) {
+        if (value == Pending.NONE) {
             return "None";
         }
         return "???";
@@ -193,13 +193,13 @@ public final class Enums {
 
     // ShipFlags — one bit per variant, consumed as masks; flags-typed fields store
     // uint64 in every target — a bit-transparent long here — wire 4 bits
-    // (SPEC §4.2). Mask names are the family's flat spelling, lowerCamel.
-    public static final long shipFlagsFiringLaser = 1L << 0;
-    public static final long shipFlagsBoosting = 1L << 1;
-    public static final long shipFlagsBraking = 1L << 2;
-    public static final long shipFlagsAiming = 1L << 3;
+    // (SPEC §4.2). Mask names are the family's flat spelling, UPPER_SNAKE.
+    public static final long SHIP_FLAGS_FIRING_LASER = 1L << 0;
+    public static final long SHIP_FLAGS_BOOSTING = 1L << 1;
+    public static final long SHIP_FLAGS_BRAKING = 1L << 2;
+    public static final long SHIP_FLAGS_AIMING = 1L << 3;
     // the declared variant count (SPEC §4.2)
-    public static final int shipFlagsCount = 4;
+    public static final int SHIP_FLAGS_COUNT = 4;
 
     // flagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
     // out-of-range bits name as "???"

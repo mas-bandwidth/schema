@@ -241,9 +241,9 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 		expectation{"static const int max = 15;", 1})
 	javaFiles, javaErr := java.Generate(u)
 	addTarget("Java", javaFiles, javaErr,
-		expectation{"public static final byte count = 2;", 1},
-		expectation{"public static final byte count = 3;", 1},
-		expectation{"public static final byte max = 15;", 1})
+		expectation{"public static final byte COUNT = 2;", 1},
+		expectation{"public static final byte COUNT = 3;", 1},
+		expectation{"public static final byte MAX = 15;", 1})
 	elixirFiles, elixirErr := elixir.Generate(u)
 	addTarget("Elixir", elixirFiles, elixirErr,
 		expectation{"def count, do: 2", 1},

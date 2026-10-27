@@ -5,23 +5,25 @@
 // package example — protocol id 0xeb26c970fde3fd71
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
-// inlined at every field, literal constant widths and masks, monomorphic
-// write/read/measure functions per type, zero runtime dependencies.
+// at every field, literal constant widths and masks, monomorphic
+// write/read functions per type, zero runtime dependencies.
 //
-// write<Name>(value, data) -> bytes written. The writer TRUSTS the caller
-// (the C++ stance): contracts live in one assert-predicate call — active
-// under -ea, dormant bytecode otherwise — and width masks stay, as wire
-// arithmetic. The buffer must hold <name>MaxBytes (a multiple of 8).
+// write<Name>Bits(value, data, bitOffset) -> the bit position after value.
+// The writer TRUSTS the caller (the C++ stance): contracts live in one
+// assert-predicate call — active under -ea, dormant bytecode otherwise —
+// and width masks stay, as wire arithmetic. write<Name>(value, data) is
+// the offset-0 form and returns bytes; its buffer holds <NAME>_MAX_BYTES.
 //
-// read<Name>(value, data, numBits) -> boolean, the family read verdict.
-// The wire is a trust boundary: reads validate everything — bounds fused
-// per static run, ranges, wire constants, reserved and align padding,
-// union tags — and NEVER throw on hostile bytes. No slack past the
-// payload is required: the reader prices its 64-bit windows inside the
-// buffer.
+// read<Name>Bits(value, data, bitOffset, numBits) -> the bit position
+// after value, or -1: the family read verdict. The wire is a trust
+// boundary: reads validate everything — bounds fused per static run,
+// ranges, wire constants, reserved and align padding, union tags — and
+// NEVER throw on hostile bytes. No slack past the payload is required.
+// read<Name>(value, data, numBits) is the offset-0 form, a boolean.
 //
-// measure<Name>(value) -> exact wire bits for that value (trusted, like
-// the writer). zero<Name>(value) -> the §5 zero form.
+// The Bits entries compose: nested types call them, and hand-written
+// bit code shares the buffer between them. zero<Name>(value) -> the §5
+// zero form.
 
 package example;
 
@@ -33,35 +35,35 @@ public final class Constants {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0xeb26c970fde3fd71L;
+    public static final long PROTOCOL_ID = 0xeb26c970fde3fd71L;
 
-    public static final int positionUnits = 1024;
+    public static final int POSITION_UNITS = 1024;
 
-    public static final int velocityUnits = 1024;
+    public static final int VELOCITY_UNITS = 1024;
 
-    public static final int rotationUnits = 1024;
+    public static final int ROTATION_UNITS = 1024;
 
-    public static final int maxWorldMeters = 8192;
+    public static final int MAX_WORLD_METERS = 8192;
 
-    public static final int maxPositionUnits = maxWorldMeters * positionUnits;
+    public static final int MAX_POSITION_UNITS = MAX_WORLD_METERS * POSITION_UNITS;
 
-    public static final int maxSpeedMeters = 2048;
+    public static final int MAX_SPEED_METERS = 2048;
 
-    public static final int maxVelocityUnits = maxSpeedMeters * velocityUnits;
+    public static final int MAX_VELOCITY_UNITS = MAX_SPEED_METERS * VELOCITY_UNITS;
 
-    public static final int maxHealth = 1000;
+    public static final int MAX_HEALTH = 1000;
 
-    public static final int maxObjects = 10000;
+    public static final int MAX_OBJECTS = 10000;
 
-    public static final int shipMaxLasers = 16;
+    public static final int SHIP_MAX_LASERS = 16;
 
-    public static final int shipMaxMissiles = 16;
+    public static final int SHIP_MAX_MISSILES = 16;
 
-    public static final int numTeams = 2; // = Team.Max
+    public static final int NUM_TEAMS = 2; // = Team.Max
 
-    public static final int maxInputsPerPacket = 16;
+    public static final int MAX_INPUTS_PER_PACKET = 16;
 
-    public static final int maxBlockSize = 2000;
+    public static final int MAX_BLOCK_SIZE = 2000;
 
-    public static final int maxChatLength = 256;
+    public static final int MAX_CHAT_LENGTH = 256;
 }
