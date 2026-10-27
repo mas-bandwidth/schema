@@ -429,8 +429,6 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp maybe_align(%{kind: 6}, r), do: align(r)
   defp maybe_align(_elem, r), do: {:ok, r}
 
-  defp read_elements(vocab, shape, elem, n, r, acc, depth \\ 0)
-
   defp read_elements(_vocab, _shape, _elem, 0, r, acc, _depth), do: {:ok, Enum.reverse(acc), r}
 
   # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a

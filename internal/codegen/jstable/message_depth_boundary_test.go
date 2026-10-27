@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -79,16 +80,16 @@ func depthBoundaryEncodeBatch(t *testing.T, family string, depth, refBits int) [
 	t.Helper()
 	var bits []uint8
 	put := func(val uint64, width int) {
-		for b := 0; b < width; b++ {
+		for b := range width {
 			bits = append(bits, uint8((val>>b)&1))
 		}
 	}
 	switch family {
 	case "body":
-		for i := 0; i < depth; i++ {
+		for range depth {
 			put(2, refBits)
 		}
-		for i := 0; i < depth; i++ {
+		for range depth {
 			put(0, refBits)
 		}
 	case "union":
@@ -267,6 +268,7 @@ function checkCase(name, wire, expectOK) {
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "node (it runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runJSDepthBoundaryProbe(t, u, ann, cases, nil)
 	if err != nil {

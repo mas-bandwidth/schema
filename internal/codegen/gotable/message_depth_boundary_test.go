@@ -82,16 +82,16 @@ func depthBoundaryEncodeBatch(t *testing.T, family string, depth, refBits int) [
 	t.Helper()
 	var bits []uint8
 	put := func(val uint64, width int) {
-		for b := 0; b < width; b++ {
+		for b := range width {
 			bits = append(bits, uint8((val>>b)&1))
 		}
 	}
 	switch family {
 	case "body":
-		for i := 0; i < depth; i++ {
+		for range depth {
 			put(2, refBits)
 		}
-		for i := 0; i < depth; i++ {
+		for range depth {
 			put(0, refBits)
 		}
 	case "union":
@@ -282,6 +282,7 @@ func runGoDepthBoundaryProbe(t *testing.T, u *ir.Unit, testSrc string, edit func
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	src := depthBoundaryGoSource(ann, cases)
 	out, err := runGoDepthBoundaryProbe(t, u, src, nil)

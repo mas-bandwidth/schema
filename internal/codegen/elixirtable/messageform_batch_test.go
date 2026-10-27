@@ -488,8 +488,8 @@ Probe.run()
 func assertElixirBoundsSource(t *testing.T, src, module string) {
 	t.Helper()
 	header := src
-	if i := strings.Index(src, "\npackage "); i >= 0 {
-		header = src[:i]
+	if before, _, ok := strings.Cut(src, "\npackage "); ok {
+		header = before
 	}
 	for _, bad := range []string{
 		"ANNOUNCEMENT SURFACE only",
@@ -631,7 +631,7 @@ func sabotageCountLoop(t *testing.T, module []byte) []byte {
           raise "count-driven zero-progress materialization"
         end
 
-        read_elements(vocab, shape, elem, n - 1, rest, [v | acc])`
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)`
 	return replaceModuleOnce(t, module, have, restored, "count-driven zero-progress materialization")
 }
 

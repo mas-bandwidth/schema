@@ -206,9 +206,9 @@ func messageCarrierSection(spec string) string {
 		return ""
 	}
 	rest := spec[i:]
-	j := strings.Index(rest, "#### THE SURFACE")
-	if j < 0 {
+	before, _, ok := strings.Cut(rest, "#### THE SURFACE")
+	if !ok {
 		return ""
 	}
-	return rest[:j]
+	return before
 }

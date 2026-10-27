@@ -961,13 +961,15 @@ defmodule Bench.TableMessage do
   defp read_bodies(_vocab, r, 0, acc), do: {:ok, Enum.reverse(acc), r}
 
   defp read_bodies(vocab, r, n, acc) do
-    case read_body(vocab, r, []) do
+    case read_body(vocab, r, [], 0) do
       {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc])
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
 
-  defp read_body(vocab, r, acc) do
+  defp read_body(_vocab, _r, _acc, depth) when depth > 128, do: :malformed
+
+  defp read_body(vocab, r, acc, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
@@ -975,8 +977,10 @@ defmodule Bench.TableMessage do
       {:ok, ref, rest} ->
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
-              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc])
+            elem = Map.get(entry, :element)
+
+            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
+              {:ok, value, rest2} -> read_body(vocab, rest2, [{ref, value} | acc], depth)
               :malformed -> :malformed
             end
 
@@ -988,6 +992,18 @@ defmodule Bench.TableMessage do
         :malformed
     end
   end
+
+  defp read_value(_vocab, _kind, _shape, _elem, _r, depth) when depth > 128, do: :malformed
+
+  defp read_value(vocab, 13, _shape, _elem, r, depth), do: read_body(vocab, r, [], depth + 1)
+
+  defp read_value(vocab, 14, shape, elem, r, depth),
+    do: read_array(vocab, shape, elem, r, depth)
+
+  defp read_value(vocab, 15, _shape, _elem, r, depth), do: read_union(vocab, r, depth)
+
+  defp read_value(vocab, kind, shape, elem, r, _depth),
+    do: read_value(vocab, kind, shape, elem, r)
 
   defp read_value(_vocab, 0, _shape, _elem, r), do: {:ok, :name, r}
   defp read_value(_vocab, 32, _shape, _elem, r), do: {:ok, :none, r}
@@ -1008,12 +1024,6 @@ defmodule Bench.TableMessage do
   end
 
   defp read_value(_vocab, 12, shape, _elem, r), do: read_string(shape, r)
-
-  defp read_value(vocab, 13, _shape, _elem, r), do: read_body(vocab, r, [])
-
-  defp read_value(vocab, 14, shape, elem, r), do: read_array(vocab, shape, elem, r)
-
-  defp read_value(vocab, 15, _shape, _elem, r), do: read_union(vocab, r)
 
   defp read_value(vocab, 30, _shape, _elem, r), do: read_enum(vocab, r)
 
@@ -1047,19 +1057,23 @@ defmodule Bench.TableMessage do
     end
   end
 
-  defp read_array(vocab, shape, elem, r) do
+  defp read_array(vocab, shape, elem, r, depth) do
     with {:ok, offset, rest} <- get_bits(r, bit_length(shape.max - shape.min)),
          {:ok, rest2} <- maybe_align(elem, rest) do
-      read_elements(vocab, shape, elem, shape.min + offset, rest2, [])
+      next_depth = elem_depth(elem, depth)
+      read_elements(vocab, shape, elem, shape.min + offset, rest2, [], next_depth)
     else
       _ -> :malformed
     end
   end
 
+  defp elem_depth(%{kind: kind}, depth) when kind in [12, 13, 14, 15, 16, 17, 30], do: depth + 1
+  defp elem_depth(_elem, depth), do: depth
+
   defp maybe_align(%{kind: 6}, r), do: align(r)
   defp maybe_align(_elem, r), do: {:ok, r}
 
-  defp read_elements(_vocab, _shape, _elem, 0, r, acc), do: {:ok, Enum.reverse(acc), r}
+  defp read_elements(_vocab, _shape, _elem, 0, r, acc, _depth), do: {:ok, Enum.reverse(acc), r}
 
   # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
@@ -1069,20 +1083,20 @@ defmodule Bench.TableMessage do
   # bits the batch still holds (internal/tablewire/messagedecode.go) before any
   # cell is allocated. A fixed or bounded array's count is a declared capacity,
   # not a wire claim, so it is materialized without that limit.
-  defp read_elements(vocab, shape, elem, n, r, acc) when is_map(elem) and n > 0 do
-    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r) do
+  defp read_elements(vocab, shape, elem, n, r, acc, depth) when is_map(elem) and n > 0 do
+    case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth) do
       {:ok, v, ^r} ->
         zero_width_run(vocab, shape, n, r, acc, v)
 
       {:ok, v, rest} ->
-        read_elements(vocab, shape, elem, n - 1, rest, [v | acc])
+        read_elements(vocab, shape, elem, n - 1, rest, [v | acc], depth)
 
       :malformed ->
         :malformed
     end
   end
 
-  defp read_elements(_vocab, _shape, _elem, n, _r, _acc) when n > 0, do: :malformed
+  defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth) when n > 0, do: :malformed
 
   defp zero_width_run(_vocab, shape, n, r, acc, v) do
     # A fixed or bounded array (shape.max < 0xFFFFFFFF) declares its count in
@@ -1105,7 +1119,7 @@ defmodule Bench.TableMessage do
   defp bits_left({_int, off, total}) when total > off, do: total - off
   defp bits_left({_int, _off, _total}), do: 0
 
-  defp read_union(vocab, r) do
+  defp read_union(vocab, r, depth) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, :none, rest}
@@ -1113,7 +1127,9 @@ defmodule Bench.TableMessage do
       {:ok, ref, rest} ->
         case entry_at(vocab, ref) do
           {:ok, entry} when entry.kind != 0 and entry.id < 0xFFFFFFFFFFFFFFFD ->
-            case read_value(vocab, entry.kind, entry.shape, Map.get(entry, :element), rest) do
+            elem = Map.get(entry, :element)
+
+            case read_value(vocab, entry.kind, entry.shape, elem, rest, depth + 1) do
               {:ok, value, rest2} -> {:ok, {ref, value}, rest2}
               :malformed -> :malformed
             end

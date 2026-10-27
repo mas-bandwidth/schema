@@ -96,16 +96,16 @@ func depthBoundaryEncodeBatch(t *testing.T, family string, depth, refBits int) [
 	t.Helper()
 	var bits []uint8
 	put := func(val uint64, width int) {
-		for b := 0; b < width; b++ {
+		for b := range width {
 			bits = append(bits, uint8((val>>b)&1))
 		}
 	}
 	switch family {
 	case "body":
-		for i := 0; i < depth; i++ {
+		for range depth {
 			put(2, refBits)
 		}
-		for i := 0; i < depth; i++ {
+		for range depth {
 			put(0, refBits)
 		}
 	case "union":
@@ -1054,6 +1054,7 @@ func shiftCGuard(t *testing.T, files map[string][]byte) {
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the c compiler (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runCDepthBoundaryProbe(t, u, ann, cases, nil)
 	shiftedOut, shiftedErr := runCDepthBoundaryProbe(t, u, ann, cases, func(files map[string][]byte) {
@@ -1064,6 +1065,7 @@ func TestGeneratedMessageDepthBoundary(t *testing.T) {
 
 func TestGeneratedMessageDepthBoundaryAllRuntimes(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "every runtime's toolchain (it compiles and runs the depth probe in all nine)")
 	u, ann, cases := depthBoundaryFixtures(t)
 
 	runtimes := []struct {
@@ -1151,7 +1153,6 @@ func TestGeneratedMessageDepthBoundaryAllRuntimes(t *testing.T) {
 	}
 
 	for _, rt := range runtimes {
-		rt := rt
 		t.Run(rt.name, func(t *testing.T) {
 			t.Parallel()
 			out, err := rt.run(t, u, ann, cases, nil)
