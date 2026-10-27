@@ -52,7 +52,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_hit_event( s
     /* fixed 28-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 28 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -115,7 +115,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_chat_event( 
     /* fixed 14-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 14 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -160,7 +160,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_pickup_event
     /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 18 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -216,7 +216,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_event( seria
         }
         if ( tag_value > BENCHTABLE_TABLE_EVENT_TYPE_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal tag */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */
         }
         value->type = (benchtable_table_event_type_t) tag_value;
     }

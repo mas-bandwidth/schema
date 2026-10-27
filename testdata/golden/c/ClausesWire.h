@@ -357,7 +357,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_f13( serialize_read_s
     /* fixed 91-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 91 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -399,7 +399,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_tri3( serialize_read_
     /* fixed 3-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 3 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -482,7 +482,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_eleven( serialize_rea
     /* fixed 11-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 11 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -526,7 +526,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_eleven( serialize
     /* fixed 99-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 99 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -604,7 +604,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_empty_union( serializ
         }
         if ( tag_value > EXAMPLE_EMPTY_UNION_TYPE_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal tag */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */
         }
         value->type = (example_empty_union_type_t) tag_value;
     }
@@ -723,11 +723,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_strs( serialize_read_
     }
     if ( !schema_utf8_valid_( (const uint8_t *) value->s, value->s_length ) )
     {
-        return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_INVALID_UTF8 ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const uint8_t *) value->s, value->s_length ) )
     {
-        return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_EMBEDDED_NUL ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
     value->s[value->s_length] = 0;
     if ( !serialize_read_int( stream, &value->b_length, 0, 8 ) )
@@ -830,7 +830,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_sole( serialize_read_
     /* fixed 13-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 13 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {

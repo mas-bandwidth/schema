@@ -143,11 +143,11 @@ type Refuse {
 		}
 	}
 	for _, want := range []string{
-		"return serialize_read_fail( stream ); /* not a wire-legal value */",
-		"return serialize_read_fail( stream ); /* not a wire-legal tag */",
-		"return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */",
-		"return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */",
-		"if ( low != expect_low ) { return serialize_read_fail( stream ); }",
+		"return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal value */",
+		"return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */",
+		"return serialize_read_fail( stream, SERIALIZE_REFUSAL_INVALID_UTF8 ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */",
+		"return serialize_read_fail( stream, SERIALIZE_REFUSAL_EMBEDDED_NUL ); /* an interior null is content the read refuses (SPEC §4.7) */",
+		"if ( low != expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); }",
 	} {
 		if !strings.Contains(wire, want) {
 			t.Errorf("want %q in:\n%s", want, wire)

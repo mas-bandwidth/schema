@@ -464,11 +464,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_align( serialize_
         }
         if ( !schema_utf8_valid_( (const uint8_t *) value->s, value->s_length ) )
         {
-            return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_INVALID_UTF8 ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
         }
         if ( schema_interior_null_( (const uint8_t *) value->s, value->s_length ) )
         {
-            return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_EMBEDDED_NUL ); /* an interior null is content the read refuses (SPEC §4.7) */
         }
         value->s[value->s_length] = 0;
         value->b = 0;
@@ -624,7 +624,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_narrow( serialize_rea
     /* fixed 3-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 3 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -661,7 +661,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_wide( serialize_read_
     /* fixed 37-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 37 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -710,7 +710,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_uneven( serialize_rea
         }
         if ( tag_value > EXAMPLE_UNEVEN_TYPE_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal tag */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */
         }
         value->type = (example_uneven_type_t) tag_value;
     }
@@ -934,11 +934,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_regain_after_align( s
     }
     if ( !schema_utf8_valid_( (const uint8_t *) value->s, value->s_length ) )
     {
-        return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_INVALID_UTF8 ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const uint8_t *) value->s, value->s_length ) )
     {
-        return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_EMBEDDED_NUL ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
     value->s[value->s_length] = 0;
     {

@@ -75,7 +75,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_probe( serial
     /* fixed 156-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 156 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -190,7 +190,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( ser
     /* fixed 196-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 196 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -283,7 +283,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_wide_probe( seriali
     /* fixed 403-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 403 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !serialize_read_uint128( stream, &value->entity_id ) )
@@ -428,7 +428,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_degenerate_probe( s
     /* fixed 8-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 8 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     value->locked_fixed = (int32_t) -196608LL;
@@ -478,7 +478,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_vec( serializ
     /* fixed 102-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 102 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -551,7 +551,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_quat( seriali
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {

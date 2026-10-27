@@ -48,7 +48,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_vec3( serialize_read_
     /* fixed 192-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 192 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !serialize_read_double( stream, &value->x ) )
@@ -94,7 +94,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quat( serialize_read_
     /* fixed 256-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 256 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !serialize_read_double( stream, &value->x ) )
@@ -137,7 +137,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_handle( serialize_rea
     /* fixed 22-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 22 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -150,7 +150,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_handle( serialize_rea
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) ( EXAMPLE_MAX_OBJECTS - 1 ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->object_id = (int32_t) offset_value;
     }
@@ -192,7 +192,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_position( s
     /* fixed 75-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 75 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -205,7 +205,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_position( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_MAX_POSITION_UNITS - (serialize_uint64_t) ( -EXAMPLE_MAX_POSITION_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->x = (int32_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_MAX_POSITION_UNITS ) );
     }
@@ -219,7 +219,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_position( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_MAX_POSITION_UNITS - (serialize_uint64_t) ( -EXAMPLE_MAX_POSITION_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->y = (int32_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_MAX_POSITION_UNITS ) );
     }
@@ -233,7 +233,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_position( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_MAX_POSITION_UNITS - (serialize_uint64_t) ( -EXAMPLE_MAX_POSITION_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->z = (int32_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_MAX_POSITION_UNITS ) );
     }
@@ -267,7 +267,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_velocity( s
     /* fixed 69-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 69 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -280,7 +280,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_velocity( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_MAX_VELOCITY_UNITS - (serialize_uint64_t) ( -EXAMPLE_MAX_VELOCITY_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->x = (int32_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_MAX_VELOCITY_UNITS ) );
     }
@@ -294,7 +294,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_velocity( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_MAX_VELOCITY_UNITS - (serialize_uint64_t) ( -EXAMPLE_MAX_VELOCITY_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->y = (int32_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_MAX_VELOCITY_UNITS ) );
     }
@@ -308,7 +308,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_velocity( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_MAX_VELOCITY_UNITS - (serialize_uint64_t) ( -EXAMPLE_MAX_VELOCITY_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->z = (int32_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_MAX_VELOCITY_UNITS ) );
     }
@@ -347,7 +347,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_rotation( s
     /* fixed 48-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 48 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -360,7 +360,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_rotation( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_ROTATION_UNITS - (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->x = (int16_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) );
     }
@@ -374,7 +374,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_rotation( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_ROTATION_UNITS - (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->y = (int16_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) );
     }
@@ -388,7 +388,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_rotation( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_ROTATION_UNITS - (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->z = (int16_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) );
     }
@@ -402,7 +402,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_quantized_rotation( s
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_ROTATION_UNITS - (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->w = (int16_t) ( offset_value + (serialize_uint64_t) ( -EXAMPLE_ROTATION_UNITS ) );
     }
@@ -540,7 +540,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_input( serialize_read
     /* fixed 168-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 168 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !serialize_read_float( stream, &value->stick_x ) )
@@ -769,7 +769,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_ship_create( serializ
         }
         if ( enum_value > EXAMPLE_SHIP_TYPE_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal value */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal value */
         }
         value->ship_type = (example_ship_type_t) enum_value;
     }
@@ -816,7 +816,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_ship_create( serializ
         }
         if ( enum_value > EXAMPLE_TEAM_MAX )
         {
-            return serialize_read_fail( stream ); /* not a wire-legal value */
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal value */
         }
         value->team = (example_team_t) enum_value;
     }
@@ -830,7 +830,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_ship_create( serializ
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) EXAMPLE_MAX_HEALTH )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->health = (int16_t) offset_value;
     }
@@ -844,7 +844,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_ship_create( serializ
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) 100 )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->thrust = (int8_t) offset_value;
     }
@@ -874,7 +874,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_expression_probe( ser
     /* fixed 16-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 16 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -897,7 +897,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_expression_probe( ser
         offset_value = raw;
         if ( offset_value > (serialize_uint64_t) ( EXAMPLE_ROTATION_UNITS * 2 ) - (serialize_uint64_t) ( -( -EXAMPLE_ROTATION_UNITS ) ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->spin_rate = (int32_t) ( offset_value + (serialize_uint64_t) ( -( -EXAMPLE_ROTATION_UNITS ) ) );
     }
@@ -960,7 +960,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_probe( serial
     /* fixed 320-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 320 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -978,7 +978,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_probe( serial
         offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
         if ( offset_value > (serialize_uint64_t) 100 - (serialize_uint64_t) ( -9223372036854775807LL - 1 ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->floor_bound = (int64_t) ( offset_value + (serialize_uint64_t) ( -9223372036854775807LL - 1 ) );
     }
@@ -997,7 +997,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_probe( serial
         offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
         if ( offset_value > (serialize_uint64_t) 100 - (serialize_uint64_t) ( -9223372036854775807LL - 1 ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->doubled_floor = (int64_t) ( offset_value + (serialize_uint64_t) ( -9223372036854775807LL - 1 ) );
     }
@@ -1016,7 +1016,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_probe( serial
         offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
         if ( offset_value > (serialize_uint64_t) 18446744073709551615ULL - (serialize_uint64_t) 1 )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->ceiling_range = (uint64_t) ( offset_value + (serialize_uint64_t) 1 );
     }
@@ -1083,7 +1083,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_row( serializ
     /* fixed 256-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 256 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -1101,7 +1101,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_row( serializ
         offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
         if ( offset_value > (serialize_uint64_t) 100 - (serialize_uint64_t) ( -9223372036854775807LL - 1 ) )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->clamped_floor = (int64_t) ( offset_value + (serialize_uint64_t) ( -9223372036854775807LL - 1 ) );
     }
@@ -1120,7 +1120,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_row( serializ
         offset_value = (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 );
         if ( offset_value > (serialize_uint64_t) 18446744073709551614ULL - (serialize_uint64_t) 1 )
         {
-            return serialize_read_fail( stream );
+            return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );
         }
         value->clamped_ceiling = (uint64_t) ( offset_value + (serialize_uint64_t) 1 );
     }

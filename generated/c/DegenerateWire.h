@@ -42,7 +42,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_vec2( serialize_read_
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !serialize_read_double( stream, &value->x ) )
@@ -78,7 +78,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_f64( serialize_r
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -116,7 +116,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_u64( serialize_r
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -158,7 +158,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_i64( serialize_r
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -200,7 +200,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_one( serialize_r
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -242,7 +242,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_chunk( serialize
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -288,7 +288,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_tail( serialize_
     /* fixed 160-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 160 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -344,7 +344,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_twice( serialize
     /* fixed 256-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 256 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -394,7 +394,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio( serialize_read_
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {
@@ -440,7 +440,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio_sole( serialize_
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !example_read_trio( stream, &value->inner ) )
@@ -466,7 +466,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_vec3_sole( serialize_
     /* fixed 192-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 192 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !example_read_vec3( stream, &value->v ) )
@@ -496,7 +496,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio_first( serialize
     /* fixed 80-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 80 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     if ( !example_read_trio( stream, &value->inner ) )
@@ -589,7 +589,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio_straddle( serial
     /* fixed 408-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 408 )
     {
-        return serialize_read_fail( stream );
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_PAST_END );
     }
 
     {

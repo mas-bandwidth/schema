@@ -61,14 +61,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int wide_read_wide_seven( serialize_re
             {
                 return 0;
             }
-            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream ); }
+            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); }
             high = group >= 0xD800 && group <= 0xDBFF;
             low = group >= 0xDC00 && group <= 0xDFFF;
-            if ( low != expect_low ) { return serialize_read_fail( stream ); } /* unpaired surrogate (SPEC §4.12) */
+            if ( low != expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); } /* unpaired surrogate (SPEC §4.12) */
             expect_low = high;
             value->text[i] = (uint16_t) group;
         }
-        if ( expect_low ) { return serialize_read_fail( stream ); } /* final high surrogate */
+        if ( expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); } /* final high surrogate */
     }
     value->text[value->text_length] = 0;
     return 1;
@@ -114,14 +114,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int wide_read_wide_four( serialize_rea
             {
                 return 0;
             }
-            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream ); }
+            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); }
             high = group >= 0xD800 && group <= 0xDBFF;
             low = group >= 0xDC00 && group <= 0xDFFF;
-            if ( low != expect_low ) { return serialize_read_fail( stream ); } /* unpaired surrogate (SPEC §4.12) */
+            if ( low != expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); } /* unpaired surrogate (SPEC §4.12) */
             expect_low = high;
             value->text[i] = (uint16_t) group;
         }
-        if ( expect_low ) { return serialize_read_fail( stream ); } /* final high surrogate */
+        if ( expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); } /* final high surrogate */
     }
     value->text[value->text_length] = 0;
     return 1;
@@ -161,11 +161,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int wide_read_narrow_fifteen( serializ
     }
     if ( !schema_utf8_valid_( (const uint8_t *) value->text, value->text_length ) )
     {
-        return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_INVALID_UTF8 ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
     if ( schema_interior_null_( (const uint8_t *) value->text, value->text_length ) )
     {
-        return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
+        return serialize_read_fail( stream, SERIALIZE_REFUSAL_EMBEDDED_NUL ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
     value->text[value->text_length] = 0;
     return 1;
@@ -211,14 +211,14 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int wide_read_wide_interop( serialize_
             {
                 return 0;
             }
-            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream ); }
+            if ( group == 0 || group > 0xFFFF ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); }
             high = group >= 0xD800 && group <= 0xDBFF;
             low = group >= 0xDC00 && group <= 0xDFFF;
-            if ( low != expect_low ) { return serialize_read_fail( stream ); } /* unpaired surrogate (SPEC §4.12) */
+            if ( low != expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); } /* unpaired surrogate (SPEC §4.12) */
             expect_low = high;
             value->caption[i] = (uint16_t) group;
         }
-        if ( expect_low ) { return serialize_read_fail( stream ); } /* final high surrogate */
+        if ( expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); } /* final high surrogate */
     }
     value->caption[value->caption_length] = 0;
     return 1;
