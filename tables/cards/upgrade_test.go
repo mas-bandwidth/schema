@@ -54,7 +54,7 @@ func buildFutureCard(t *testing.T, archived bool) []byte {
 	}
 	defer b.Shutdown()
 	root := b.GetRoot()
-	setStr(root.Id[:], &root.IdLength, "future-card")
+	setStr(root.ID[:], &root.IDLength, "future-card")
 	setStr(root.Sha[:], &root.ShaLength, strings.Repeat("e", 40))
 	root.Tier = cardsfuture.Tierpro
 	setStr(root.Repo[:], &root.RepoLength, "mas-bandwidth/schema")
@@ -185,7 +185,7 @@ func TestUpgradeRefusesOversize(t *testing.T) {
 		}
 		defer b.Shutdown()
 		root := b.GetRoot()
-		setStr(root.Id[:], &root.IdLength, "oversize")
+		setStr(root.ID[:], &root.IDLength, "oversize")
 		setStr(root.Sha[:], &root.ShaLength, strings.Repeat("f", 40))
 		for i := 0; i < paths; i++ {
 			e := CardPathsAdd(&b.Main, &root.Paths)

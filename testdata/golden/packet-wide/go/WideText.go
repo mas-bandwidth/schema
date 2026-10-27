@@ -16,9 +16,9 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// ProtocolId is the unit's protocol id, the hash of its wire shape. Two
+// ProtocolID is the unit's protocol id, the hash of its wire shape. Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0x53835dbf9f05e4d9
+const ProtocolID uint64 = 0x53835dbf9f05e4d9
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string.

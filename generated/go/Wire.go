@@ -15,8 +15,8 @@ import (
 	"github.com/mas-bandwidth/serialize.go"
 )
 
-// ProbeId is a schema constant.
-const ProbeId uint64 = 0xDEADBEEFCAFE
+// ProbeID is a schema constant.
+const ProbeID uint64 = 0xDEADBEEFCAFE
 
 // HalfTurn is a schema constant.
 const HalfTurn float64 = 180.0

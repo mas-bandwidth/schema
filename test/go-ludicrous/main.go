@@ -95,7 +95,7 @@ func main() {
 	check(ludicrous.FixedProbeMaxBits == 156, "FixedProbe worst case")
 	check(ludicrous.WideProbeMaxBits == 403, "WideProbe worst case")
 	check(ludicrous.LudicrousStateMaxBits == 1205, "LudicrousState worst case")
-	check(ludicrous.ProtocolId != 0, "the unit has a protocol id")
+	check(ludicrous.ProtocolID != 0, "the unit has a protocol id")
 
 	// zero initialization with specified defaults (SPEC §4.2), sentinel-zero
 	// composition: New* starts at DriveMode None — the null rides in-band —

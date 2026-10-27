@@ -231,3 +231,42 @@ func f() int {
 		t.Errorf("tidy left a blank line where a brace stood:\n%s", got)
 	}
 }
+
+// TestGoInitialismsOnTopLevelNames: a declaration and every name derived from
+// it take Go's initialisms too, in code and in the comments naming it; the
+// strings that carry the schema's own spelling do not change.
+func TestGoInitialismsOnTopLevelNames(t *testing.T) {
+	files := collapseColumns(generateGo(t, "Ids", `package t
+
+const ProbeId = 7
+
+type UserId { n uint8 }
+
+union Pick
+{
+    id UserId
+    other UserId
+}
+`))
+	text := string(files["Ids.go"])
+	for _, want := range []string{
+		"const ProbeID = 7",
+		"const ProtocolID uint64",
+		"type UserID struct",
+		"func WriteUserID(stream *serialize.WriteStream, value *UserID) error",
+		"const UserIDMaxBits",
+		"PickTypeID PickType = 1",
+		"ID UserID",
+		"// WriteUserID writes value",
+		`return "Id"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("generated Go does not carry %q", want)
+		}
+	}
+	for _, gone := range []string{"ProbeId", "ProtocolId", "UserId", "PickTypeId"} {
+		if strings.Contains(strings.ReplaceAll(text, `"Id"`, ""), gone) {
+			t.Errorf("generated Go still spells %q", gone)
+		}
+	}
+}

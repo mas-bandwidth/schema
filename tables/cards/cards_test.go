@@ -46,7 +46,7 @@ func buildPopulated(t *testing.T) []byte {
 	}
 	defer b.Shutdown()
 	root := b.GetRoot()
-	setStr(root.Id[:], &root.IdLength, "card-1234")
+	setStr(root.ID[:], &root.IDLength, "card-1234")
 	setStr(root.Sha[:], &root.ShaLength, strings.Repeat("a", 40))
 	root.Tier = Tierheavy
 	setStr(root.Repo[:], &root.RepoLength, "mas-bandwidth/schema")
@@ -286,7 +286,7 @@ func fixtureCard(t *testing.T) (wire, json []byte) {
 	}
 	defer b.Shutdown()
 	root := b.GetRoot()
-	setStr(root.Id[:], &root.IdLength, "populated")
+	setStr(root.ID[:], &root.IDLength, "populated")
 	setStr(root.Sha[:], &root.ShaLength, "0123456789012345678901234567890123456789")
 	root.Tier = Tierflash
 	setStr(root.Repo[:], &root.RepoLength, "repo")

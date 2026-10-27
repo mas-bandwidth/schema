@@ -7,6 +7,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -65,6 +66,22 @@ func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage)
 			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>.schema beside <X minus Table>.schema with tables collides on the Table source; rename one file (SPEC-TABLES.md)", name)
 		}
 		files[name] = data
+	}
+	// top-level names take Go's initialisms (ProbeId -> ProbeID) across the
+	// packet and table files together, the table runtime's API excepted
+	var keep, fields map[string]bool
+	if len(tables) > 0 {
+		if keep, fields, err = gotable.RuntimeNames(); err != nil {
+			return nil, err
+		}
+		// and every name the registry records the Go table emitter
+		// defining at unit scope, shared or not (the text walk's helpers)
+		for _, n := range tablenames.DefinedBy(tablenames.Go) {
+			keep[n] = true
+		}
+	}
+	if err := golang.Respell(files, golang.SchemaWords(u), keep, fields); err != nil {
+		return nil, fmt.Errorf("respelling the generated Go: %w", err)
 	}
 	return files, nil
 }

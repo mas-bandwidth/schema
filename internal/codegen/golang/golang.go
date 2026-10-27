@@ -49,6 +49,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[f.Base+".go"] = src
 	}
+	// top-level names take Go's initialisms over the whole unit at once
+	// (respell.go); the target respells again over the table files too
+	if err := Respell(out, SchemaWords(u), nil, nil); err != nil {
+		return nil, fmt.Errorf("respelling the generated Go: %w", err)
+	}
 	return out, nil
 }
 

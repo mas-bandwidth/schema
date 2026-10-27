@@ -2564,7 +2564,10 @@ storage members are PascalCase via the same mapping as the Go target — not
 camelCase — so the checker's collision registry covers JS with zero new
 rules; the generated function names are the family's own
 `WriteX`/`ReadX`/`ZeroX` (the runtime's methods stay camelCase —
-the seam is the stream parameter).
+the seam is the stream parameter). Go then spells the schema's words in every
+generated name with Go's initialisms, `object_id` as `ObjectID`, `ProbeId` as
+`ProbeID`, `ProtocolId` as `ProtocolID`; the checker claims that spelling
+too, so two names it would merge are refused.
 
 **There is no generated measure function.** `Write` returns the actual size,
 `MaxBytes` sizes buffers, and that covers the real uses. Anyone who genuinely

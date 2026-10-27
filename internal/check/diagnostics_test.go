@@ -428,6 +428,8 @@ func TestDiagnostics(t *testing.T) {
 			src: "package t\ntype T {\n    at_rest bool\n    atRest bool\n}\n"},
 		{name: "Go initialism collision", want: "both become ObjectID in the generated Go",
 			src: "package t\ntype T {\n    object_id bool\n    object_i_d bool\n}\n"},
+		{name: "Go initialism collision between declarations", want: "both generate the Go symbol ProbeID",
+			src: "package t\nconst ProbeId = 1\nconst ProbeID = 2\n"},
 		{name: "a decl collides with an enum's flat variant constant (Go)", want: "variant constant",
 			src: "package t\nenum Team { Red }\ntype TeamRed { x uint8 }\n"},
 		{name: "a decl collides with a flags mask constant", want: "mask constant",

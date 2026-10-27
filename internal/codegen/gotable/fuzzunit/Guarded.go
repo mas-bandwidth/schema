@@ -13,9 +13,9 @@ import (
 	"errors"
 )
 
-// ProtocolId is the unit's protocol id, the hash of its wire shape. Two
+// ProtocolID is the unit's protocol id, the hash of its wire shape. Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0xba7b344f28584d33
+const ProtocolID uint64 = 0xba7b344f28584d33
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string.

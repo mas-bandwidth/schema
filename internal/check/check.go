@@ -4024,7 +4024,17 @@ func (c *checker) checkClaimedNames() {
 				what, prev.what, name)
 			return
 		}
+		// Go spells top-level names with its initialisms (internal/goname),
+		// so ProbeId and ProbeID are one Go symbol: claimed in a key space
+		// of their own beside the shared one
+		goKey := "\x00go:" + goname.Initialisms(name)
+		if prev, ok := registry[goKey]; ok {
+			c.errf(pos, "%s collides with %s — both generate the Go symbol %s; rename at the source (SPEC §4.6)",
+				what, prev.what, goname.Initialisms(name))
+			return
+		}
 		registry[name] = origin{what: what, pos: pos}
+		registry[goKey] = origin{what: what, pos: pos}
 	}
 
 	// unit-level symbols first, so every collision reports at the DECL side
