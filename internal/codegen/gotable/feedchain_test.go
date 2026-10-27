@@ -58,7 +58,7 @@ func TestFeedChain(t *testing.T){
  size:=FeedMeasure(v);out:=make([]byte,max(size,0));if size<0||FeedSave(v,out)!=size{t.Fatalf("save %%d",size)}
  if !bytes.Equal(out,want){i:=0;for i<len(out)&&i<len(want)&&out[i]==want[i]{i++};t.Fatalf("the Go load saved %%d bytes where the oracle encodes %%d, first difference at byte %%d\n go     %%x\n oracle %%x\n go     %%s\n oracle %%s",len(out),len(want),i,out,want,feedChainText(v),%q)}
 }
-func feedChainText(v *Feed) string { n:=FeedToJsonMeasure(v);if n<0{return "?"};b:=make([]byte,n);FeedToJson(v,b);return string(b)
+func feedChainText(v *Feed) string { n:=FeedToJSONMeasure(v);if n<0{return "?"};b:=make([]byte,n);FeedToJSON(v,b);return string(b)
 }
 `, wire, want, report.Unknown, report.KindMismatch, report.Widened, report.Clamped, report.Duplicate, report.Malformed, report.Refused, fmt.Sprintf("%+v", report), text)
 	runGenerated(t, string(source), test)

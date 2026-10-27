@@ -70,12 +70,12 @@ func TestEnumWords(t *testing.T) {
 			t.Fatalf("wire round trip %s: %+v %+v", tc.word, got, r)
 		}
 		a := make([]byte, 128)
-		na := RootToJson(&v, a)
+		na := RootToJSON(&v, a)
 		if na < 0 || !bytes.Contains(a[:na], []byte("\"kind\": \""+tc.word+"\"")) {
 			t.Fatalf("json %s: %d %s", tc.word, na, a)
 		}
 		var j Root
-		if !RootFromJson(&j, a[:na], &r) || j.Kind != tc.kind {
+		if !RootFromJSON(&j, a[:na], &r) || j.Kind != tc.kind {
 			t.Fatalf("json round trip %s: %+v %+v", tc.word, j, r)
 		}
 		b64, err := RootSaveText(&v)

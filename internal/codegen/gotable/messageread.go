@@ -10,7 +10,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	if g.retain {
 		g.pf("r.Retain.discard(r.Path,false,0);\n")
 	}
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Malformed=true;return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.Id>=0xfffffffffffffffd {r.Report.Malformed=true;return false};switch entry.Id {\n")
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Malformed=true;return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Malformed=true;return false};switch entry.ID {\n")
 	for ordinal, f := range st.Fields {
 		g.retainOrdinal = ordinal
 		g.retainIndex = ""
@@ -77,7 +77,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.pf("%s{index,ok:=r.Bits.Get(r.IndexBits);if !ok||r.IndexBits<=0{%s};r.Nodes.Resolve(&%s,index,0x%016x,&r.Report)}\n", ind, bad, expr, pointerTargetId(f))
 	case f.Type.Kind == ir.TString:
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUtf8Valid(text){%s};kept:=tableUtf8Clamp(text,min(int64(n),int64(%d)));if kept<int64(n){r.Report.Clamped++};clear(%s[:]);copy(%s[:],text[:kept]);%sLength=int32(kept)}\n", ind, entry, bad, bad, bad, f.Type.Size, expr, expr, expr)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};kept:=tableUTF8Clamp(text,min(int64(n),int64(%d)));if kept<int64(n){r.Report.Clamped++};clear(%s[:]);copy(%s[:],text[:kept]);%sLength=int32(kept)}\n", ind, entry, bad, bad, bad, f.Type.Size, expr, expr, expr)
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};kept:=min(n,uint64(%d));if kept<n{r.Report.Clamped++};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(kept)]);%sLength=int32(kept)}\n", ind, entry, bad, bad, f.Type.Size, expr, expr, expr)
 	case f.Type.Kind == ir.TWString:
@@ -107,7 +107,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 		}
 		un := f.Type.Ref.(*ir.Union)
 		arm := g.nextWireWriter()
-		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s.Type=%sTypeNone}else{%s,ok:=r.Vocabulary.Entry(ref);if !ok||%s.Id>=0xfffffffffffffffd||%s.Shape.Kind==0{%s};switch %s.Id{\n", ind, bad, expr, un.Name, arm, arm, arm, bad, arm)
+		g.pf("%s{ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};if ref==0{%s.Type=%sTypeNone}else{%s,ok:=r.Vocabulary.Entry(ref);if !ok||%s.ID>=0xfffffffffffffffd||%s.Shape.Kind==0{%s};switch %s.ID{\n", ind, bad, expr, un.Name, arm, arm, arm, bad, arm)
 		for ordinal, v := range un.Variants {
 			mine := ir.TableArmEntry(v)
 			g.pf("case 0x%016x:{\n", mine.Id)

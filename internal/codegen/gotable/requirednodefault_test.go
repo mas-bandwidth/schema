@@ -62,10 +62,10 @@ func TestReq(t *testing.T){
 	if !jb.Init() { t.Fatal("builder init") }
 	defer jb.Shutdown()
 	var rep TableReport
-	if ExactFromJson(&jb, []byte("{\"hp\":5}"), &rep) { t.Fatal("JSON without ver was accepted") }
+	if ExactFromJSON(&jb, []byte("{\"hp\":5}"), &rep) { t.Fatal("JSON without ver was accepted") }
 	if !errors.As(rep.Err(), &m) || m.Fields != "ver" { t.Fatalf("JSON missing field error %v (%T), want TableMissingRequired{ver}", rep.Err(), rep.Err()) }
 	rep = TableReport{}
-	if !ExactFromJson(&jb, []byte("{\"ver\":7}"), &rep) || rep.Err() != nil { t.Fatalf("JSON with ver refused: %+v", rep) }
+	if !ExactFromJSON(&jb, []byte("{\"ver\":7}"), &rep) || rep.Err() != nil { t.Fatalf("JSON with ver refused: %+v", rep) }
 	// CROSS-TABLE: a required field is per field per table. Other's ver is
 	// NOT required, and it shares only a NAME with Exact's required ver, so
 	// an empty Other reads clean (§2.3).
@@ -73,17 +73,17 @@ func TestReq(t *testing.T){
 	if !ob.Init() { t.Fatal("other builder init") }
 	defer ob.Shutdown()
 	var orep TableReport
-	if !OtherFromJson(&ob, []byte("{}"), &orep) || orep.Err() != nil { t.Fatalf("Other {} wrongly refused (name collision): %+v", orep) }
+	if !OtherFromJSON(&ob, []byte("{}"), &orep) || orep.Err() != nil { t.Fatalf("Other {} wrongly refused (name collision): %+v", orep) }
 	// NESTED: a required field inside a nested table is enforced at ITS
 	// object, never at the enclosing one.
 	var out OuterBuilder
 	if !out.Init() { t.Fatal("outer builder init") }
 	defer out.Shutdown()
 	var nrep TableReport
-	if OuterFromJson(&out, []byte("{\"inner\":{}}"), &nrep) { t.Fatal("nested inner without id accepted") }
+	if OuterFromJSON(&out, []byte("{\"inner\":{}}"), &nrep) { t.Fatal("nested inner without id accepted") }
 	if !errors.As(nrep.Err(), &m) || !strings.Contains(m.Fields, "id") { t.Fatalf("nested missing error %v (%T), want TableMissingRequired naming id", nrep.Err(), nrep.Err()) }
 	nrep = TableReport{}
-	if !OuterFromJson(&out, []byte("{\"inner\":{\"id\":5}}"), &nrep) || nrep.Err() != nil { t.Fatalf("nested inner with id refused: %+v", nrep) }
+	if !OuterFromJSON(&out, []byte("{\"inner\":{\"id\":5}}"), &nrep) || nrep.Err() != nil { t.Fatalf("nested inner with id refused: %+v", nrep) }
 }
 `
 	runGenerated(t, schema, body)

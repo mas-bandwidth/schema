@@ -4,7 +4,7 @@
 // a size-class-rounded heap object, so an overread crosses an allocation
 // boundary that -race's checkptr refuses (the copy alone has size-class slack
 // that hides a one-byte overread). When the opened value's cook is written and
-// opened again, the two values' ToJson text is equal. Open validates only the
+// opened again, the two values' ToJSON text is equal. Open validates only the
 // header, so a forged region the cook writer refuses is a defect found, recorded
 // as a saved finding, never a case silently skipped.
 package tabledemo_test
@@ -75,114 +75,114 @@ var openTargets = []openTarget{
 		func(c *tabledemo.PatrolCook) *tabledemo.Patrol { return c.Root() },
 		func(v *tabledemo.Patrol) int64 { return tabledemo.PatrolCookMeasure(v) },
 		func(v *tabledemo.Patrol, b []byte) bool { return tabledemo.PatrolCookFrom(v, b, openOrder) },
-		func(v *tabledemo.Patrol) int64 { return tabledemo.PatrolToJsonMeasure(v) },
-		func(v *tabledemo.Patrol, b []byte) int64 { return tabledemo.PatrolToJson(v, b) }),
+		func(v *tabledemo.Patrol) int64 { return tabledemo.PatrolToJSONMeasure(v) },
+		func(v *tabledemo.Patrol, b []byte) int64 { return tabledemo.PatrolToJSON(v, b) }),
 	cookTarget("TeamConfig", tabledemo.TeamConfigReset, tabledemo.TeamConfigOpen,
 		func(c *tabledemo.TeamConfigCook) *tabledemo.TeamConfig { return c.Root() },
 		tabledemo.TeamConfigCookMeasure,
 		func(v *tabledemo.TeamConfig, b []byte) bool { return tabledemo.TeamConfigCookFrom(v, b, openOrder) },
-		tabledemo.TeamConfigToJsonMeasure, tabledemo.TeamConfigToJson),
+		tabledemo.TeamConfigToJSONMeasure, tabledemo.TeamConfigToJSON),
 	cookTarget("GunnerConfig", tabledemo.GunnerConfigReset, tabledemo.GunnerConfigOpen,
 		func(c *tabledemo.GunnerConfigCook) *tabledemo.GunnerConfig { return c.Root() },
 		tabledemo.GunnerConfigCookMeasure,
 		func(v *tabledemo.GunnerConfig, b []byte) bool { return tabledemo.GunnerConfigCookFrom(v, b, openOrder) },
-		tabledemo.GunnerConfigToJsonMeasure, tabledemo.GunnerConfigToJson),
+		tabledemo.GunnerConfigToJSONMeasure, tabledemo.GunnerConfigToJSON),
 	cookTarget("TurretConfig", tabledemo.TurretConfigReset, tabledemo.TurretConfigOpen,
 		func(c *tabledemo.TurretConfigCook) *tabledemo.TurretConfig { return c.Root() },
 		tabledemo.TurretConfigCookMeasure,
 		func(v *tabledemo.TurretConfig, b []byte) bool { return tabledemo.TurretConfigCookFrom(v, b, openOrder) },
-		tabledemo.TurretConfigToJsonMeasure, tabledemo.TurretConfigToJson),
+		tabledemo.TurretConfigToJSONMeasure, tabledemo.TurretConfigToJSON),
 	cookTarget("HullConfig", tabledemo.HullConfigReset, tabledemo.HullConfigOpen,
 		func(c *tabledemo.HullConfigCook) *tabledemo.HullConfig { return c.Root() },
 		tabledemo.HullConfigCookMeasure,
 		func(v *tabledemo.HullConfig, b []byte) bool { return tabledemo.HullConfigCookFrom(v, b, openOrder) },
-		tabledemo.HullConfigToJsonMeasure, tabledemo.HullConfigToJson),
+		tabledemo.HullConfigToJSONMeasure, tabledemo.HullConfigToJSON),
 	cookTarget("KeyedConfig", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigOpen,
 		func(c *tabledemo.KeyedConfigCook) *tabledemo.KeyedConfig { return c.Root() },
 		tabledemo.KeyedConfigCookMeasure,
 		func(v *tabledemo.KeyedConfig, b []byte) bool { return tabledemo.KeyedConfigCookFrom(v, b, openOrder) },
-		tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson),
+		tabledemo.KeyedConfigToJSONMeasure, tabledemo.KeyedConfigToJSON),
 	cookTarget("ArchiveConfig", tabledemo.ArchiveConfigReset, tabledemo.ArchiveConfigOpen,
 		func(c *tabledemo.ArchiveConfigCook) *tabledemo.ArchiveConfig { return c.Root() },
 		tabledemo.ArchiveConfigCookMeasure,
 		func(v *tabledemo.ArchiveConfig, b []byte) bool {
 			return tabledemo.ArchiveConfigCookFrom(v, b, openOrder)
 		},
-		tabledemo.ArchiveConfigToJsonMeasure, tabledemo.ArchiveConfigToJson),
+		tabledemo.ArchiveConfigToJSONMeasure, tabledemo.ArchiveConfigToJSON),
 	cookTarget("GunnerSettings", tabledemo.GunnerSettingsReset, tabledemo.GunnerSettingsOpen,
 		func(c *tabledemo.GunnerSettingsCook) *tabledemo.GunnerSettings { return c.Root() },
 		tabledemo.GunnerSettingsCookMeasure,
 		func(v *tabledemo.GunnerSettings, b []byte) bool {
 			return tabledemo.GunnerSettingsCookFrom(v, b, openOrder)
 		},
-		tabledemo.GunnerSettingsToJsonMeasure, tabledemo.GunnerSettingsToJson),
+		tabledemo.GunnerSettingsToJSONMeasure, tabledemo.GunnerSettingsToJSON),
 	cookTarget("ShipEntry", tabledemo.ShipEntryReset, tabledemo.ShipEntryOpen,
 		func(c *tabledemo.ShipEntryCook) *tabledemo.ShipEntry { return c.Root() },
 		tabledemo.ShipEntryCookMeasure,
 		func(v *tabledemo.ShipEntry, b []byte) bool { return tabledemo.ShipEntryCookFrom(v, b, openOrder) },
-		tabledemo.ShipEntryToJsonMeasure, tabledemo.ShipEntryToJson),
+		tabledemo.ShipEntryToJSONMeasure, tabledemo.ShipEntryToJSON),
 	cookTarget("GlobalSettings", tabledemo.GlobalSettingsReset, tabledemo.GlobalSettingsOpen,
 		func(c *tabledemo.GlobalSettingsCook) *tabledemo.GlobalSettings { return c.Root() },
 		tabledemo.GlobalSettingsCookMeasure,
 		func(v *tabledemo.GlobalSettings, b []byte) bool {
 			return tabledemo.GlobalSettingsCookFrom(v, b, openOrder)
 		},
-		tabledemo.GlobalSettingsToJsonMeasure, tabledemo.GlobalSettingsToJson),
+		tabledemo.GlobalSettingsToJSONMeasure, tabledemo.GlobalSettingsToJSON),
 	cookTarget("PackConfig", tabledemo.PackConfigReset, tabledemo.PackConfigOpen,
 		func(c *tabledemo.PackConfigCook) *tabledemo.PackConfig { return c.Root() },
 		tabledemo.PackConfigCookMeasure,
 		func(v *tabledemo.PackConfig, b []byte) bool { return tabledemo.PackConfigCookFrom(v, b, openOrder) },
-		tabledemo.PackConfigToJsonMeasure, tabledemo.PackConfigToJson),
+		tabledemo.PackConfigToJSONMeasure, tabledemo.PackConfigToJSON),
 	cookTarget("RangedSigned", tabledemo.RangedSignedReset, tabledemo.RangedSignedOpen,
 		func(c *tabledemo.RangedSignedCook) *tabledemo.RangedSigned { return c.Root() },
 		tabledemo.RangedSignedCookMeasure,
 		func(v *tabledemo.RangedSigned, b []byte) bool {
 			return tabledemo.RangedSignedCookFrom(v, b, openOrder)
 		},
-		tabledemo.RangedSignedToJsonMeasure, tabledemo.RangedSignedToJson),
+		tabledemo.RangedSignedToJSONMeasure, tabledemo.RangedSignedToJSON),
 	cookTarget("RangedUnsigned", tabledemo.RangedUnsignedReset, tabledemo.RangedUnsignedOpen,
 		func(c *tabledemo.RangedUnsignedCook) *tabledemo.RangedUnsigned { return c.Root() },
 		tabledemo.RangedUnsignedCookMeasure,
 		func(v *tabledemo.RangedUnsigned, b []byte) bool {
 			return tabledemo.RangedUnsignedCookFrom(v, b, openOrder)
 		},
-		tabledemo.RangedUnsignedToJsonMeasure, tabledemo.RangedUnsignedToJson),
+		tabledemo.RangedUnsignedToJSONMeasure, tabledemo.RangedUnsignedToJSON),
 	cookTarget("RangedWidths", tabledemo.RangedWidthsReset, tabledemo.RangedWidthsOpen,
 		func(c *tabledemo.RangedWidthsCook) *tabledemo.RangedWidths { return c.Root() },
 		tabledemo.RangedWidthsCookMeasure,
 		func(v *tabledemo.RangedWidths, b []byte) bool {
 			return tabledemo.RangedWidthsCookFrom(v, b, openOrder)
 		},
-		tabledemo.RangedWidthsToJsonMeasure, tabledemo.RangedWidthsToJson),
+		tabledemo.RangedWidthsToJSONMeasure, tabledemo.RangedWidthsToJSON),
 	cookTarget("RootConfig", tabledemo.RootConfigReset, tabledemo.RootConfigOpen,
 		func(c *tabledemo.RootConfigCook) *tabledemo.RootConfig { return c.Root() },
 		tabledemo.RootConfigCookMeasure,
 		func(v *tabledemo.RootConfig, b []byte) bool { return tabledemo.RootConfigCookFrom(v, b, openOrder) },
-		tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson),
+		tabledemo.RootConfigToJSONMeasure, tabledemo.RootConfigToJSON),
 	cookTarget("WeaponConfig", tabledemo.WeaponConfigReset, tabledemo.WeaponConfigOpen,
 		func(c *tabledemo.WeaponConfigCook) *tabledemo.WeaponConfig { return c.Root() },
 		tabledemo.WeaponConfigCookMeasure,
 		func(v *tabledemo.WeaponConfig, b []byte) bool { return tabledemo.WeaponConfigCookFrom(v, b, openOrder) },
-		tabledemo.WeaponConfigToJsonMeasure, tabledemo.WeaponConfigToJson),
+		tabledemo.WeaponConfigToJSONMeasure, tabledemo.WeaponConfigToJSON),
 	cookTarget("LoadoutConfig", tabledemo.LoadoutConfigReset, tabledemo.LoadoutConfigOpen,
 		func(c *tabledemo.LoadoutConfigCook) *tabledemo.LoadoutConfig { return c.Root() },
 		tabledemo.LoadoutConfigCookMeasure,
 		func(v *tabledemo.LoadoutConfig, b []byte) bool {
 			return tabledemo.LoadoutConfigCookFrom(v, b, openOrder)
 		},
-		tabledemo.LoadoutConfigToJsonMeasure, tabledemo.LoadoutConfigToJson),
+		tabledemo.LoadoutConfigToJSONMeasure, tabledemo.LoadoutConfigToJSON),
 	cookTarget("ProfileConfig", tabledemo.ProfileConfigReset, tabledemo.ProfileConfigOpen,
 		func(c *tabledemo.ProfileConfigCook) *tabledemo.ProfileConfig { return c.Root() },
 		tabledemo.ProfileConfigCookMeasure,
 		func(v *tabledemo.ProfileConfig, b []byte) bool {
 			return tabledemo.ProfileConfigCookFrom(v, b, openOrder)
 		},
-		tabledemo.ProfileConfigToJsonMeasure, tabledemo.ProfileConfigToJson),
+		tabledemo.ProfileConfigToJSONMeasure, tabledemo.ProfileConfigToJSON),
 	cookTarget("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobOpen,
 		func(c *tabledemo.WideBlobCook) *tabledemo.WideBlob { return c.Root() },
 		tabledemo.WideBlobCookMeasure,
 		func(v *tabledemo.WideBlob, b []byte) bool { return tabledemo.WideBlobCookFrom(v, b, openOrder) },
-		tabledemo.WideBlobToJsonMeasure, tabledemo.WideBlobToJson),
+		tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
 }
 
 // FuzzOpen hands each input to one table's Open after a byte chooses the table,
@@ -238,11 +238,11 @@ func reCookOpens(t *testing.T, target openTarget, value any) {
 		return
 	}
 	// A forged value may hold a float JSON cannot spell (NaN, an infinity) or
-	// string bytes that are not UTF-8; ToJson refuses those. The re-save
+	// string bytes that are not UTF-8; ToJSON refuses those. The re-save
 	// equality is still checked, on the cook image itself.
 	againImage, ok := openImage(target, again)
 	if !ok || !bytes.Equal(image, againImage) {
-		t.Fatalf("%s: re-cook round trip differs and ToJson cannot represent the value", target.name)
+		t.Fatalf("%s: re-cook round trip differs and ToJSON cannot represent the value", target.name)
 	}
 	runtime.KeepAlive(image)
 }

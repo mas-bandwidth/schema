@@ -63,7 +63,7 @@ func TestGoEmitsPointeredTables(t *testing.T) {
 	for file, need := range map[string][]string{
 		"ProbeTable.go":     {"type Node = NodeRow", "type NodeRow struct", "NodeLoadMeasure", "NodeLoad(", "NodeBuilder", "type TableArena struct"},
 		"ProbeCook.go":      {"NodeOpen"},
-		"ProbeTableJson.go": {"NodeFromJson", "&node"},
+		"ProbeTableJson.go": {"NodeFromJSON", "&node"},
 	} {
 		for _, name := range need {
 			if !strings.Contains(string(files[file]), name) {

@@ -21,7 +21,7 @@ package main
 // has no direct value assertion there (see the `unsure:` line of this card's
 // RESULT.md), which is why the wire half below pins values, not just
 // counters. On the wire an enum rides under its variant NAME's hash, not an
-// ordinal (the generated TableEnumId in build/tables-generated-go/k1/K1.go),
+// ordinal (the generated TableEnumID in build/tables-generated-go/k1/K1.go),
 // so "the list being a prefix" has no wire meaning — what the wire owes is
 // that a mid-list vocabulary insert never slides identity, and that an enum
 // never aliases its storage integer. Both are asserted.

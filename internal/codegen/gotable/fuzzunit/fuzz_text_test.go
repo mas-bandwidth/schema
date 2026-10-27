@@ -24,7 +24,7 @@ type textTarget struct {
 }
 
 // keyedTextOf adapts the fixed-value entry points `<T>LoadText` and
-// `<T>FromJson(value, text, report)`.
+// `<T>FromJSON(value, text, report)`.
 func keyedTextOf[T any](name string, reset func(*T),
 	loadText func(string, *tabledemo.TableReport) (*T, error),
 	fromJson func(*T, []byte, *tabledemo.TableReport) bool,
@@ -66,60 +66,60 @@ var textTargets = []textTarget{
 			if !b.Init() {
 				return nil, func() {}, false
 			}
-			if !tabledemo.PatrolFromJson(&b, text, &tabledemo.TableReport{}) {
+			if !tabledemo.PatrolFromJSON(&b, text, &tabledemo.TableReport{}) {
 				b.Shutdown()
 				return nil, func() {}, false
 			}
 			return b.GetRoot(), b.Shutdown, true
 		},
 		saveText:    func(v any) (string, error) { return tabledemo.PatrolSaveText(v.(*tabledemo.Patrol)) },
-		jsonMeasure: func(v any) int64 { return tabledemo.PatrolToJsonMeasure(v.(*tabledemo.Patrol)) },
-		jsonDump:    func(v any, b []byte) int64 { return tabledemo.PatrolToJson(v.(*tabledemo.Patrol), b) },
+		jsonMeasure: func(v any) int64 { return tabledemo.PatrolToJSONMeasure(v.(*tabledemo.Patrol)) },
+		jsonDump:    func(v any, b []byte) int64 { return tabledemo.PatrolToJSON(v.(*tabledemo.Patrol), b) },
 	},
-	keyedTextOf("TeamConfig", tabledemo.TeamConfigReset, tabledemo.TeamConfigLoadText, tabledemo.TeamConfigFromJson,
-		tabledemo.TeamConfigSaveText, tabledemo.TeamConfigToJsonMeasure, tabledemo.TeamConfigToJson),
-	keyedTextOf("GunnerConfig", tabledemo.GunnerConfigReset, tabledemo.GunnerConfigLoadText, tabledemo.GunnerConfigFromJson,
-		tabledemo.GunnerConfigSaveText, tabledemo.GunnerConfigToJsonMeasure, tabledemo.GunnerConfigToJson),
-	keyedTextOf("TurretConfig", tabledemo.TurretConfigReset, tabledemo.TurretConfigLoadText, tabledemo.TurretConfigFromJson,
-		tabledemo.TurretConfigSaveText, tabledemo.TurretConfigToJsonMeasure, tabledemo.TurretConfigToJson),
-	keyedTextOf("HullConfig", tabledemo.HullConfigReset, tabledemo.HullConfigLoadText, tabledemo.HullConfigFromJson,
-		tabledemo.HullConfigSaveText, tabledemo.HullConfigToJsonMeasure, tabledemo.HullConfigToJson),
-	keyedTextOf("KeyedConfig", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigLoadText, tabledemo.KeyedConfigFromJson,
-		tabledemo.KeyedConfigSaveText, tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson),
-	keyedTextOf("ScoreBoard", tabledemo.ScoreBoardReset, tabledemo.ScoreBoardLoadText, tabledemo.ScoreBoardFromJson,
-		tabledemo.ScoreBoardSaveText, tabledemo.ScoreBoardToJsonMeasure, tabledemo.ScoreBoardToJson),
-	keyedTextOf("ArchiveConfig", tabledemo.ArchiveConfigReset, tabledemo.ArchiveConfigLoadText, tabledemo.ArchiveConfigFromJson,
-		tabledemo.ArchiveConfigSaveText, tabledemo.ArchiveConfigToJsonMeasure, tabledemo.ArchiveConfigToJson),
-	keyedTextOf("GunnerSettings", tabledemo.GunnerSettingsReset, tabledemo.GunnerSettingsLoadText, tabledemo.GunnerSettingsFromJson,
-		tabledemo.GunnerSettingsSaveText, tabledemo.GunnerSettingsToJsonMeasure, tabledemo.GunnerSettingsToJson),
-	keyedTextOf("ShipEntry", tabledemo.ShipEntryReset, tabledemo.ShipEntryLoadText, tabledemo.ShipEntryFromJson,
-		tabledemo.ShipEntrySaveText, tabledemo.ShipEntryToJsonMeasure, tabledemo.ShipEntryToJson),
-	keyedTextOf("GlobalSettings", tabledemo.GlobalSettingsReset, tabledemo.GlobalSettingsLoadText, tabledemo.GlobalSettingsFromJson,
-		tabledemo.GlobalSettingsSaveText, tabledemo.GlobalSettingsToJsonMeasure, tabledemo.GlobalSettingsToJson),
-	keyedTextOf("PackConfig", tabledemo.PackConfigReset, tabledemo.PackConfigLoadText, tabledemo.PackConfigFromJson,
-		tabledemo.PackConfigSaveText, tabledemo.PackConfigToJsonMeasure, tabledemo.PackConfigToJson),
-	keyedTextOf("RangedSigned", tabledemo.RangedSignedReset, tabledemo.RangedSignedLoadText, tabledemo.RangedSignedFromJson,
-		tabledemo.RangedSignedSaveText, tabledemo.RangedSignedToJsonMeasure, tabledemo.RangedSignedToJson),
-	keyedTextOf("RangedUnsigned", tabledemo.RangedUnsignedReset, tabledemo.RangedUnsignedLoadText, tabledemo.RangedUnsignedFromJson,
-		tabledemo.RangedUnsignedSaveText, tabledemo.RangedUnsignedToJsonMeasure, tabledemo.RangedUnsignedToJson),
-	keyedTextOf("RangedWidths", tabledemo.RangedWidthsReset, tabledemo.RangedWidthsLoadText, tabledemo.RangedWidthsFromJson,
-		tabledemo.RangedWidthsSaveText, tabledemo.RangedWidthsToJsonMeasure, tabledemo.RangedWidthsToJson),
-	keyedTextOf("RootConfig", tabledemo.RootConfigReset, tabledemo.RootConfigLoadText, tabledemo.RootConfigFromJson,
-		tabledemo.RootConfigSaveText, tabledemo.RootConfigToJsonMeasure, tabledemo.RootConfigToJson),
-	keyedTextOf("WeaponConfig", tabledemo.WeaponConfigReset, tabledemo.WeaponConfigLoadText, tabledemo.WeaponConfigFromJson,
-		tabledemo.WeaponConfigSaveText, tabledemo.WeaponConfigToJsonMeasure, tabledemo.WeaponConfigToJson),
-	keyedTextOf("LoadoutConfig", tabledemo.LoadoutConfigReset, tabledemo.LoadoutConfigLoadText, tabledemo.LoadoutConfigFromJson,
-		tabledemo.LoadoutConfigSaveText, tabledemo.LoadoutConfigToJsonMeasure, tabledemo.LoadoutConfigToJson),
-	keyedTextOf("ProfileConfig", tabledemo.ProfileConfigReset, tabledemo.ProfileConfigLoadText, tabledemo.ProfileConfigFromJson,
-		tabledemo.ProfileConfigSaveText, tabledemo.ProfileConfigToJsonMeasure, tabledemo.ProfileConfigToJson),
-	keyedTextOf("Attachment", tabledemo.AttachmentReset, tabledemo.AttachmentLoadText, tabledemo.AttachmentFromJson,
-		tabledemo.AttachmentSaveText, tabledemo.AttachmentToJsonMeasure, tabledemo.AttachmentToJson),
-	keyedTextOf("Buff", tabledemo.BuffReset, tabledemo.BuffLoadText, tabledemo.BuffFromJson,
-		tabledemo.BuffSaveText, tabledemo.BuffToJsonMeasure, tabledemo.BuffToJson),
-	keyedTextOf("Debuff", tabledemo.DebuffReset, tabledemo.DebuffLoadText, tabledemo.DebuffFromJson,
-		tabledemo.DebuffSaveText, tabledemo.DebuffToJsonMeasure, tabledemo.DebuffToJson),
-	keyedTextOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoadText, tabledemo.WideBlobFromJson,
-		tabledemo.WideBlobSaveText, tabledemo.WideBlobToJsonMeasure, tabledemo.WideBlobToJson),
+	keyedTextOf("TeamConfig", tabledemo.TeamConfigReset, tabledemo.TeamConfigLoadText, tabledemo.TeamConfigFromJSON,
+		tabledemo.TeamConfigSaveText, tabledemo.TeamConfigToJSONMeasure, tabledemo.TeamConfigToJSON),
+	keyedTextOf("GunnerConfig", tabledemo.GunnerConfigReset, tabledemo.GunnerConfigLoadText, tabledemo.GunnerConfigFromJSON,
+		tabledemo.GunnerConfigSaveText, tabledemo.GunnerConfigToJSONMeasure, tabledemo.GunnerConfigToJSON),
+	keyedTextOf("TurretConfig", tabledemo.TurretConfigReset, tabledemo.TurretConfigLoadText, tabledemo.TurretConfigFromJSON,
+		tabledemo.TurretConfigSaveText, tabledemo.TurretConfigToJSONMeasure, tabledemo.TurretConfigToJSON),
+	keyedTextOf("HullConfig", tabledemo.HullConfigReset, tabledemo.HullConfigLoadText, tabledemo.HullConfigFromJSON,
+		tabledemo.HullConfigSaveText, tabledemo.HullConfigToJSONMeasure, tabledemo.HullConfigToJSON),
+	keyedTextOf("KeyedConfig", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigLoadText, tabledemo.KeyedConfigFromJSON,
+		tabledemo.KeyedConfigSaveText, tabledemo.KeyedConfigToJSONMeasure, tabledemo.KeyedConfigToJSON),
+	keyedTextOf("ScoreBoard", tabledemo.ScoreBoardReset, tabledemo.ScoreBoardLoadText, tabledemo.ScoreBoardFromJSON,
+		tabledemo.ScoreBoardSaveText, tabledemo.ScoreBoardToJSONMeasure, tabledemo.ScoreBoardToJSON),
+	keyedTextOf("ArchiveConfig", tabledemo.ArchiveConfigReset, tabledemo.ArchiveConfigLoadText, tabledemo.ArchiveConfigFromJSON,
+		tabledemo.ArchiveConfigSaveText, tabledemo.ArchiveConfigToJSONMeasure, tabledemo.ArchiveConfigToJSON),
+	keyedTextOf("GunnerSettings", tabledemo.GunnerSettingsReset, tabledemo.GunnerSettingsLoadText, tabledemo.GunnerSettingsFromJSON,
+		tabledemo.GunnerSettingsSaveText, tabledemo.GunnerSettingsToJSONMeasure, tabledemo.GunnerSettingsToJSON),
+	keyedTextOf("ShipEntry", tabledemo.ShipEntryReset, tabledemo.ShipEntryLoadText, tabledemo.ShipEntryFromJSON,
+		tabledemo.ShipEntrySaveText, tabledemo.ShipEntryToJSONMeasure, tabledemo.ShipEntryToJSON),
+	keyedTextOf("GlobalSettings", tabledemo.GlobalSettingsReset, tabledemo.GlobalSettingsLoadText, tabledemo.GlobalSettingsFromJSON,
+		tabledemo.GlobalSettingsSaveText, tabledemo.GlobalSettingsToJSONMeasure, tabledemo.GlobalSettingsToJSON),
+	keyedTextOf("PackConfig", tabledemo.PackConfigReset, tabledemo.PackConfigLoadText, tabledemo.PackConfigFromJSON,
+		tabledemo.PackConfigSaveText, tabledemo.PackConfigToJSONMeasure, tabledemo.PackConfigToJSON),
+	keyedTextOf("RangedSigned", tabledemo.RangedSignedReset, tabledemo.RangedSignedLoadText, tabledemo.RangedSignedFromJSON,
+		tabledemo.RangedSignedSaveText, tabledemo.RangedSignedToJSONMeasure, tabledemo.RangedSignedToJSON),
+	keyedTextOf("RangedUnsigned", tabledemo.RangedUnsignedReset, tabledemo.RangedUnsignedLoadText, tabledemo.RangedUnsignedFromJSON,
+		tabledemo.RangedUnsignedSaveText, tabledemo.RangedUnsignedToJSONMeasure, tabledemo.RangedUnsignedToJSON),
+	keyedTextOf("RangedWidths", tabledemo.RangedWidthsReset, tabledemo.RangedWidthsLoadText, tabledemo.RangedWidthsFromJSON,
+		tabledemo.RangedWidthsSaveText, tabledemo.RangedWidthsToJSONMeasure, tabledemo.RangedWidthsToJSON),
+	keyedTextOf("RootConfig", tabledemo.RootConfigReset, tabledemo.RootConfigLoadText, tabledemo.RootConfigFromJSON,
+		tabledemo.RootConfigSaveText, tabledemo.RootConfigToJSONMeasure, tabledemo.RootConfigToJSON),
+	keyedTextOf("WeaponConfig", tabledemo.WeaponConfigReset, tabledemo.WeaponConfigLoadText, tabledemo.WeaponConfigFromJSON,
+		tabledemo.WeaponConfigSaveText, tabledemo.WeaponConfigToJSONMeasure, tabledemo.WeaponConfigToJSON),
+	keyedTextOf("LoadoutConfig", tabledemo.LoadoutConfigReset, tabledemo.LoadoutConfigLoadText, tabledemo.LoadoutConfigFromJSON,
+		tabledemo.LoadoutConfigSaveText, tabledemo.LoadoutConfigToJSONMeasure, tabledemo.LoadoutConfigToJSON),
+	keyedTextOf("ProfileConfig", tabledemo.ProfileConfigReset, tabledemo.ProfileConfigLoadText, tabledemo.ProfileConfigFromJSON,
+		tabledemo.ProfileConfigSaveText, tabledemo.ProfileConfigToJSONMeasure, tabledemo.ProfileConfigToJSON),
+	keyedTextOf("Attachment", tabledemo.AttachmentReset, tabledemo.AttachmentLoadText, tabledemo.AttachmentFromJSON,
+		tabledemo.AttachmentSaveText, tabledemo.AttachmentToJSONMeasure, tabledemo.AttachmentToJSON),
+	keyedTextOf("Buff", tabledemo.BuffReset, tabledemo.BuffLoadText, tabledemo.BuffFromJSON,
+		tabledemo.BuffSaveText, tabledemo.BuffToJSONMeasure, tabledemo.BuffToJSON),
+	keyedTextOf("Debuff", tabledemo.DebuffReset, tabledemo.DebuffLoadText, tabledemo.DebuffFromJSON,
+		tabledemo.DebuffSaveText, tabledemo.DebuffToJSONMeasure, tabledemo.DebuffToJSON),
+	keyedTextOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoadText, tabledemo.WideBlobFromJSON,
+		tabledemo.WideBlobSaveText, tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
 }
 
 func FuzzLoadText(f *testing.F) {
@@ -141,7 +141,7 @@ func FuzzLoadText(f *testing.F) {
 	})
 }
 
-func FuzzFromJson(f *testing.F) {
+func FuzzFromJSON(f *testing.F) {
 	seedTextTargets(f, textImage)
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) == 0 {
@@ -199,7 +199,7 @@ func reSaveReadsBackText(t *testing.T, target textTarget, value any) {
 	}
 	againText, err := target.saveText(again)
 	if err != nil || againText != text {
-		t.Fatalf("%s: re-save round trip differs and ToJson cannot represent the value", target.name)
+		t.Fatalf("%s: re-save round trip differs and ToJSON cannot represent the value", target.name)
 	}
 }
 

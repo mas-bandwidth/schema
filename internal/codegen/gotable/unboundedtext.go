@@ -38,7 +38,7 @@ func (g *tableGen) unboundedHolder(f *ir.Field) string {
 func (g *tableGen) emitReadUnboundedText(f *ir.Field, expr, ind string) {
 	holder := g.unboundedHolder(f)
 	g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); return false }\n", ind, holder)
-	g.pf("%sif !tableUtf8Valid(sub.Buffer) { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); %s = 0; break }\n", ind, holder, expr)
+	g.pf("%sif !tableUTF8Valid(sub.Buffer) { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); %s = 0; break }\n", ind, holder, expr)
 	g.pf("%sif !tableTextPlace(&r.Nodes.Carve, &%s, sub.Buffer) { if r.Nodes.Carve.Refused { return false }; r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, expr, holder)
 }
 
@@ -49,7 +49,7 @@ func (g *tableGen) emitReadUnboundedTextElement(f *ir.Field, expr, ind string) {
 	value := expr + "." + member(v)
 	holder := f.TextListElem().MapEntryOf
 	g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, holder)
-	g.pf("%sif !tableUtf8Valid(elem.Buffer) { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); %sReset(&%s); break }\n", ind, holder, f.Type.Name, expr)
+	g.pf("%sif !tableUTF8Valid(elem.Buffer) { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); %sReset(&%s); break }\n", ind, holder, f.Type.Name, expr)
 	g.pf("%sif !tableTextPlace(&sub.Nodes.Carve, &%s, elem.Buffer) { if sub.Nodes.Carve.Refused { r.Take(sub); return false }; r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, value, holder)
 }
 
@@ -82,7 +82,7 @@ func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
 	}
 	// the write-side text rule (§2.13, §2.13.1): a zero byte and ill-formed
 	// UTF-8 are refused at the append, as Save refuses them; no length bound
-	valid := "if !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text),len(text))){return false};"
+	valid := "if !tableUTF8Valid(unsafe.Slice(unsafe.StringData(text),len(text))){return false};"
 	g.needsUnsafe()
 	g.pf("// %sAppend appends one element to %s.%s, false past the count bound or when\n", name, st.Name, f.Name)
 	g.pf("// the arena refuses (docs/SPEC-TABLES.md §2.13.1).\n")
@@ -149,7 +149,7 @@ func unboundedTextRuntime(u *ir.Unit, s string) string {
 	s = tableSourceReplace(s, "type TableFieldInfo struct {\n", "type TableFieldInfo struct {\nUnbounded bool // unbounded text (docs/SPEC-TABLES.md §2.13.1): the slot names a blob record\n", 1)
 	s = tableSourceReplace(s, "if r.Malformed {return TableRefuseMalformed}", "if r.Malformed {const p=\"malformed: \";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableMalformedField{Field:r.Reason[len(p):]}};return TableRefuseMalformed}", 1)
 	s = tableSourceReplace(s, "type tableMapKey struct { text []byte; raw uint64 }", "type tableMapKey struct { text []byte; raw uint64; blob TableRef }", 1)
-	s = tableSourceReplace(s, "return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}", "return f.Kind!=12||k.raw==0&&(f.Unbounded&&uint64(len(k.text))<=0xffffffff&&tableUtf8Valid(k.text)||!f.Unbounded&&len(k.text)<=int(f.ArrayBound))}", 1)
+	s = tableSourceReplace(s, "return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}", "return f.Kind!=12||k.raw==0&&(f.Unbounded&&uint64(len(k.text))<=0xffffffff&&tableUTF8Valid(k.text)||!f.Unbounded&&len(k.text)<=int(f.ArrayBound))}", 1)
 	s = tableSourceReplace(s, "func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {", "func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo,arena ...*TableArena)tableMapKey {key:=tableMapKey{};if f.Unbounded {t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,f.Offset)),tableOptionalArena(arena));if !ok{return tableMapKey{raw:1}};key.text=t;return key};if f.Kind==12 {", 1)
 	return s + unboundedTextRuntimeSource
 }
@@ -183,8 +183,8 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 	if !walk {
 		return s
 	}
-	s = tableSourceReplace(s, "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.Unbounded{t,ok:=tableTextBytes((*TableRef)(storage),nil);if !ok{return false};tableJsonWriteString(out,t);return true}\n", 1)
-	s = tableSourceReplace(s, " if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", " if f.Unbounded {return tableJsonReadText(in,(*TableRef)(storage))}\n if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", 1)
+	s = tableSourceReplace(s, "func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.Unbounded{t,ok:=tableTextBytes((*TableRef)(storage),nil);if !ok{return false};tableJSONWriteString(out,t);return true}\n", 1)
+	s = tableSourceReplace(s, " if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", " if f.Unbounded {return tableJSONReadText(in,(*TableRef)(storage))}\n if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", 1)
 	// The write-element anchor lives in textListJsonSource, which textListJson
 	// inserts only for a unit that uses text forms; a unit whose only unbounded
 	// text is a map key carries it zero times, so that count is stated here.
@@ -192,7 +192,7 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 	if !unitUsesTextForms(u) {
 		textListCount = 0
 	}
-	s = tableSourceReplace(s, "n:=tableJsonCount(p,v);if n<0||n>v.ArrayBound{return false};tableJsonWriteString(out,tableJsonBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", "if v.Unbounded{t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,uintptr(v.Offset))),nil);if !ok{return false};tableJsonWriteString(out,t);return true};n:=tableJsonCount(p,v);if n<0||n>v.ArrayBound{return false};tableJsonWriteString(out,tableJsonBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", textListCount)
+	s = tableSourceReplace(s, "n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", "if v.Unbounded{t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,uintptr(v.Offset))),nil);if !ok{return false};tableJSONWriteString(out,t);return true};n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", textListCount)
 	s = tableSourceReplace(s, "if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{", "if key.Kind==12 {if key.Unbounded {memory,ref:=in.graph.alloc(9+int64(n));if memory==nil{in.bad=true;return false};*(*TableBlob)(memory)=TableBlob{Length:uint32(n)};k.text=unsafe.Slice((*byte)(unsafe.Add(memory,8)),int(n));k.blob=ref;_,ok=in.scanString(k.text)}else if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{", 1)
 	s = tableSourceReplace(s, "entry.Reset(slot);tableMapStoreKey(slot,key,k);", "entry.Reset(slot);if !tableMapStoreKeyed(slot,key,k,nil){in.bad=true;return false};", 1)
 	s = tableSourceReplace(s, "// ---- json walk: end ----", unboundedTextJsonSource+"// ---- json walk: end ----", 1)
@@ -202,7 +202,7 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 // unboundedTextJsonSource reads one unbounded string into a blob record the
 // graph's arena holds (§16.2): never clamped.
 const unboundedTextJsonSource = `
-func tableJsonReadText(in *tableJsonIn,slot *TableRef)bool{*slot=0;probe:=*in;n,ok:=probe.scanString(nil);if !ok{in.bad=true;return false};if n==0{_,ok=in.scanString(nil);return ok};if in.graph==nil||in.graph.alloc==nil{in.bad=true;return false};memory,ref:=in.graph.alloc(9+int64(n));if memory==nil{in.bad=true;return false};*(*TableBlob)(memory)=TableBlob{Length:uint32(n)};if _,ok=in.scanString(unsafe.Slice((*byte)(unsafe.Add(memory,8)),int(n)));!ok{return false};*slot=ref;return true}
+func tableJSONReadText(in *tableJSONIn,slot *TableRef)bool{*slot=0;probe:=*in;n,ok:=probe.scanString(nil);if !ok{in.bad=true;return false};if n==0{_,ok=in.scanString(nil);return ok};if in.graph==nil||in.graph.alloc==nil{in.bad=true;return false};memory,ref:=in.graph.alloc(9+int64(n));if memory==nil{in.bad=true;return false};*(*TableBlob)(memory)=TableBlob{Length:uint32(n)};if _,ok=in.scanString(unsafe.Slice((*byte)(unsafe.Add(memory,8)),int(n)));!ok{return false};*slot=ref;return true}
 `
 
 // unboundedTextCook is the cook writer with the slot packed into the extent,

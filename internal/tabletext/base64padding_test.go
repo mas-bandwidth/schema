@@ -102,7 +102,7 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 		var v Blob
 		BlobReset(&v)
 		var r TableReport
-		ok := BlobFromJsonTolerant(&v, []byte(c.text), &r)
+		ok := BlobFromJSONTolerant(&v, []byte(c.text), &r)
 		got := append([]byte(nil), v.Data[:v.DataLength]...)
 		if ok != c.ok || !bytes.Equal(got, c.data) || r.KindMismatch != c.km || r.Clamped != c.cl || r.Malformed != c.mal {
 			t.Fatalf("%q: walk ok=%t data=%x km=%d cl=%d mal=%t; text ok=%t data=%x km=%d cl=%d mal=%t",

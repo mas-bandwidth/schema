@@ -13807,7 +13807,11 @@ in build version (§20.5).
   claims is refused to everything else. A member `X` claims `X` followed by
   each of the suffixes listed here, and a declaration spelling one of them is
   refused naming the collision — the block form's nine and the C backend's
-  seven follow below. The registry and its two-way name gate hold the complete set:
+  seven follow below. Go spells every word of them with Go's initialisms
+  (`FromJSON`, `ToJSONMeasure`), as it spells the table runtime's own names
+  (`TableJSONOptions`, `TableRetainID`, `UnitViewInfo.ProtocolID`), and the
+  checker claims that spelling beside this one. The registry and its two-way
+  name gate hold the complete set:
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody

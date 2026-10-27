@@ -76,20 +76,20 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 				var hi, z uint64
 				p := value.Label[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Label[n-8:])
+						x := tableUTF8Word(value.Label[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -100,7 +100,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Label[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Label[:n]) {
 					return false
 				}
 			}
@@ -248,7 +248,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Label[:])
 				value.LabelLength = 0
@@ -256,7 +256,7 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 70000 {
-				keep = tableUtf8Clamp(sub.Buffer, 70000)
+				keep = tableUTF8Clamp(sub.Buffer, 70000)
 				r.Report.Clamped++
 			}
 			clear(value.Label[:])
@@ -517,20 +517,20 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 				var hi, z uint64
 				p := value.Label[:n]
 				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
 					hi |= x | y
 					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
 					p = p[16:]
 				}
 				if len(p) >= 8 {
-					x := tableUtf8Word(p)
+					x := tableUTF8Word(p)
 					hi |= x
 					z |= (x - 0x0101010101010101) &^ x
 					p = p[8:]
 				}
 				if len(p) > 0 {
 					if n >= 8 {
-						x := tableUtf8Word(value.Label[n-8:])
+						x := tableUTF8Word(value.Label[n-8:])
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 					} else {
@@ -541,7 +541,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 						}
 					}
 				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Label[:n]) {
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Label[:n]) {
 					return false
 				}
 			}
@@ -679,7 +679,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Label[:])
 				value.LabelLength = 0
@@ -687,7 +687,7 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 70000 {
-				keep = tableUtf8Clamp(sub.Buffer, 70000)
+				keep = tableUTF8Clamp(sub.Buffer, 70000)
 				r.Report.Clamped++
 			}
 			clear(value.Label[:])
@@ -815,39 +815,39 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 
 // WideBlobTableFields is WideBlob's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WideBlobTableFields = []TableFieldInfo{
-	{Name: "label", Json: "label", TypeName: "string", DeclaredTypeName: "string", Id: 0x39f7fcec8fcb623d, Kind: 12, IsArray: false, Counted: true, Optional: false,
+	{Name: "label", JSON: "label", TypeName: "string", DeclaredTypeName: "string", ID: 0x39f7fcec8fcb623d, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Label)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Label)), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.LabelLength)), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 70004, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "payload", Json: "payload", TypeName: "bytes", DeclaredTypeName: "bytes", Id: 0xcfb8a9d063b5e9e5, Kind: 6, IsArray: true, Counted: true, Optional: false,
+	{Name: "payload", JSON: "payload", TypeName: "bytes", DeclaredTypeName: "bytes", ID: 0xcfb8a9d063b5e9e5, Kind: 6, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Payload)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Payload[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.PayloadLength)), PresentOffset: 0xffffffff,
 		CookOffset: 70008, CookElemSize: 1, CookCountOffset: 140008, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "samples", Json: "samples", TypeName: "uint16", DeclaredTypeName: "uint16", Id: 0xe3b1ca6a3b48dddc, Kind: 7, IsArray: true, Counted: true, Optional: false,
+	{Name: "samples", JSON: "samples", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0xe3b1ca6a3b48dddc, Kind: 7, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 70000, Offset: uint32(unsafe.Offsetof(WideBlob{}.Samples)), ElemSize: uint32(unsafe.Sizeof(WideBlob{}.Samples[0])), CountOffset: uint32(unsafe.Offsetof(WideBlob{}.SamplesCount)), PresentOffset: 0xffffffff,
 		CookOffset: 140012, CookElemSize: 2, CookCountOffset: 280012, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -857,7 +857,7 @@ var WideBlobTableFields = []TableFieldInfo{
 var WideBlobTableInfo TableTypeInfo
 
 func init() {
-	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CookSize: 280016, CookAlign: 4}
+	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CookSize: 280016, CookAlign: 4}
 }
 
 // WideBlobTableType returns WideBlob's reflection descriptor.

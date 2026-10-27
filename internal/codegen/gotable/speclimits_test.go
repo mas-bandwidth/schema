@@ -332,7 +332,7 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 	}
 	fixedRemapMax := extractRegexpUint(t, fixedRuntimeSrc, `const tableFixedRemapMax uint32 = (0x[0-9A-Fa-f]+|\d+)`, "fixed_remap_max")
 	retainWalkDepth := extractRegexpUint(t, goRetainRuntime, `const tableRetainWalkDepthMax = (\d+)`, "retain_walk_depth")
-	jsonMaxDepth := extractRegexpUint(t, jsonSrc, `tableJsonMaxDepth\s*=\s*(\d+)`, "json_max_depth")
+	jsonMaxDepth := extractRegexpUint(t, jsonSrc, `tableJSONMaxDepth\s*=\s*(\d+)`, "json_max_depth")
 	textFormMaxDepth := extractRegexpUint(t, tableTextFormSource, `const tableTextFormMaxDepth = (\d+)`, "tableTextFormMaxDepth")
 	if jsonMaxDepth != textFormMaxDepth {
 		t.Fatalf("json_max_depth=%d != tableTextFormMaxDepth=%d", jsonMaxDepth, textFormMaxDepth)

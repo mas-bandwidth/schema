@@ -68,7 +68,7 @@ func upgrade(wire []byte, retainBytes, retainIDs int) ([]byte, Report, error) {
 		return nil, report, fmt.Errorf("cards: upgrade: measured region %d overflows the host", n)
 	}
 	region := alignedRegion(n)
-	retain := TableRetain{Bytes: make([]byte, retainBytes), Ids: make([]TableRetainId, retainIDs)}
+	retain := TableRetain{Bytes: make([]byte, retainBytes), Ids: make([]TableRetainID, retainIDs)}
 	root := CardLoadRetain(region, wire, &retain, &report)
 	if root == nil {
 		return nil, report, errors.New("cards: upgrade: wire is malformed")

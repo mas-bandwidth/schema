@@ -660,7 +660,7 @@ func (w *tableCookWriter) header(data, nodes, align int64) {
 func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
 	for i := range t.Fields {
 		f := &t.Fields[i]
-		rides := live && tableJsonGuardHolds(p, t, f.Guard)
+		rides := live && tableJSONGuardHolds(p, t, f.Guard)
 		if f.Optional {
 			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
 		}
@@ -695,7 +695,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
 		for i := range used {
-			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
+			v := tableJSONGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
 			w.put(dest+int64(i)*int64(width), v, width)
 		}
 		return true
@@ -719,7 +719,7 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 	}
 	if f.Arms != nil {
 		u := f.Arms()
-		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
+		tag := tableJSONGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
 		if tag >= uint64(len(u.Arms)) {
 			return false
 		}
@@ -743,7 +743,7 @@ func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, l
 		w.put(at+8, hi, 8)
 		return true
 	}
-	value := tableJsonGetRaw(p, f.ElemSize)
+	value := tableJSONGetRaw(p, f.ElemSize)
 	if f.EnumDeprecated != nil && f.EnumDeprecated(value) {
 		return false
 	}
@@ -777,7 +777,7 @@ func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order Tab
 		return false
 	}
 	w.put(64+data, 0, 8)
-	w.put(64+data+8, t.Id, 8)
+	w.put(64+data+8, t.ID, 8)
 	return true
 }
 func (w *tableCookWriter) reference(slot *int64, at int64) bool { return *slot == 0 }

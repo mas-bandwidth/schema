@@ -1418,7 +1418,7 @@ func (g *tableGen) emitFixedCheckBodyFn(st *ir.Struct) {
 	g.pf("\tif hi&0x8080808080808080 != 0 {\n\t\treturn %sFixedCheckBodyExact(value)\n\t}\n", st.Name)
 	g.pf("\treturn true\n}\n\n")
 	g.pf("// %sFixedCheckBodyExact is %sFixedCheckBody with each string asked by\n", st.Name, st.Name)
-	g.pf("// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).\n")
+	g.pf("// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).\n")
 	g.pf("func %sFixedCheckBodyExact(value *%s) bool {\n", st.Name, g.fixedStorage(st.Name))
 	g.pf("\t_ = value\n")
 	for _, f := range st.Fields {
@@ -1561,7 +1561,7 @@ const (
 	// word test of emitFixedTextCheck.
 	fixedPassCheck
 	// fixedPassExact is the same check with each string asked exactly, one
-	// tableFixedUtf8Ok per string (<T>FixedCheckBodyExact): the fast pass
+	// tableFixedUTF8Ok per string (<T>FixedCheckBodyExact): the fast pass
 	// hands a body to it only when some used byte is at or past 0x80.
 	fixedPassExact
 )
@@ -1728,7 +1728,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 			if pass == fixedPassCheck {
 				g.emitFixedTextCheck(expr, f.Type.Size, ind)
 			} else {
-				g.pf("%sif uint32(%sLength) > %d || !tableFixedUtf8Ok(%s[:%sLength]) { return false }\n",
+				g.pf("%sif uint32(%sLength) > %d || !tableFixedUTF8Ok(%s[:%sLength]) { return false }\n",
 					ind, expr, f.Type.Size, expr, expr)
 			}
 			return
@@ -1773,7 +1773,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 // the used bytes, with 0x01 (neither zero nor high) in the lanes past n. A
 // zero anywhere refuses; text with no high bit anywhere is ASCII and passes;
 // a body with a byte at or past 0x80 is asked again by its exact twin, one
-// tableFixedUtf8Ok per string. The answer is exactly utf8.Valid plus a NUL
+// tableFixedUTF8Ok per string. The answer is exactly utf8.Valid plus a NUL
 // scan over the used bytes of every string.
 func (g *tableGen) emitFixedTextCheck(expr string, size int64, ind string) {
 	g.pf("%sif n := int(%sLength); uint(n) > %d {\n%s\treturn false\n%s} else {\n", ind, expr, size, ind, ind)

@@ -239,12 +239,12 @@ func decode(t testing.TB, b []byte) map[string]any {
 
 func docJSON(t testing.TB, v *Document) map[string]any {
 	t.Helper()
-	n := DocumentToJsonMeasure(v)
+	n := DocumentToJSONMeasure(v)
 	if n < 0 {
 		t.Fatal("the value read from a document does not write as JSON")
 	}
 	b := make([]byte, n)
-	if DocumentToJson(v, b) != n {
+	if DocumentToJSON(v, b) != n {
 		t.Fatal("json write")
 	}
 	return decode(t, b)
@@ -765,12 +765,12 @@ import (
 
 func graphJSON(t *testing.T, v *Graph) map[string]any {
 	t.Helper()
-	n := GraphToJsonMeasure(v)
+	n := GraphToJSONMeasure(v)
 	if n < 0 {
 		t.Fatal("graph json measure")
 	}
 	b := make([]byte, n)
-	if GraphToJson(v, b) != n {
+	if GraphToJSON(v, b) != n {
 		t.Fatal("graph json write")
 	}
 	return decode(t, b)

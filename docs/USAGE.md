@@ -3710,11 +3710,11 @@ And the same three in Go, package-level over a `*T` and a `[]byte`:
 ```go
 var report example.TableReport
 var ship example.ShipConfig
-example.ShipConfigFromJson(&ship, text, &report)     // fills ONE instance
+example.ShipConfigFromJSON(&ship, text, &report)     // fills ONE instance
 
-size := example.ShipConfigToJsonMeasure(&ship)       // exact, writes nothing
+size := example.ShipConfigToJSONMeasure(&ship)       // exact, writes nothing
 buffer := make([]byte, size)
-example.ShipConfigToJson(&ship, buffer)
+example.ShipConfigToJSON(&ship, buffer)
 ```
 
 Nothing to add to a Go build either, for C#'s reason: a package compiles as a
@@ -3727,10 +3727,10 @@ Go also takes a text `encoding/json` wrote, and writes one back in its
 habits, through three options passed to the `With` calls (SPEC-TABLES §16.2):
 
 ```go
-legacy := example.TableJsonOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
-example.ShipConfigFromJsonWith(&ship, text, &report, legacy) // "tags": null reads as []
-buffer = make([]byte, example.ShipConfigToJsonMeasureWith(&ship, legacy))
-example.ShipConfigToJsonWith(&ship, buffer, legacy)          // {"hull":3}, no newline
+legacy := example.TableJSONOptions{NullAsEmpty: true, OmitDefaults: true, Compact: true}
+example.ShipConfigFromJSONWith(&ship, text, &report, legacy) // "tags": null reads as []
+buffer = make([]byte, example.ShipConfigToJSONMeasureWith(&ship, legacy))
+example.ShipConfigToJSONWith(&ship, buffer, legacy)          // {"hull":3}, no newline
 ```
 
 `NullAsEmpty` reads `null` as an empty list or map instead of a kind
@@ -3876,12 +3876,12 @@ loaded, err := example.ShipConfigLoadText(text, &report)
 if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | clamped | ... */ }
 
 // A person: the JSON form, for reading, diffing or editing.
-buf := make([]byte, example.ShipConfigToJsonMeasure(&ship))
-n := example.ShipConfigToJson(&ship, buf)
+buf := make([]byte, example.ShipConfigToJSONMeasure(&ship))
+n := example.ShipConfigToJSON(&ship, buf)
 var edited example.ShipConfigBuilder // ShipConfig is a plain table: a builder
 if !edited.Init() { /* allocation_failed */ }
 defer edited.Shutdown()
-if !example.ShipConfigFromJson(&edited, buf[:n], &report) {
+if !example.ShipConfigFromJSON(&edited, buf[:n], &report) {
 	// report.Malformed: the JSON document is damaged.
 }
 ```

@@ -159,7 +159,7 @@ func t05GoR24(t *testing.T) {
 	if ill == "" {
 		t.Fatal("t05: the emitted runtime carries no tableFixedTextIllFormed")
 	}
-	t05Has(t, ill, "case tableFixedTextUtf8:", "the narrow content rule is UTF-8 over the used bytes (§4.5)")
+	t05Has(t, ill, "case tableFixedTextUTF8:", "the narrow content rule is UTF-8 over the used bytes (§4.5)")
 	t05Has(t, ill, "!utf8.Valid(p[:used])", "UTF-8 validity over the USED bytes, the packet reader's own rule (§4.5, §5.4 fix 11)")
 	t05Has(t, ill, "case tableFixedTextWide:", "the wide content rule is over the used code units (§4.5)")
 	t05Has(t, refusal, "tableFixedTextIllFormed(", "the pre-scan consults the content gate (§5.8)")

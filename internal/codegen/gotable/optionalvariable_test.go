@@ -323,13 +323,13 @@ func saveOuter(t *testing.T, v *Outer, arena ...*TableArena) []byte {
 
 func outerJson(t *testing.T, v *Outer) []byte {
 	t.Helper()
-	n := OuterToJsonMeasure(v)
+	n := OuterToJSONMeasure(v)
 	if n < 0 {
-		t.Fatal("ToJsonMeasure refused")
+		t.Fatal("ToJSONMeasure refused")
 	}
 	buf := make([]byte, n)
-	if OuterToJson(v, buf) != n {
-		t.Fatal("ToJson")
+	if OuterToJSON(v, buf) != n {
+		t.Fatal("ToJSON")
 	}
 	return buf
 }
@@ -392,8 +392,8 @@ func roundTrip(t *testing.T, name string, v *Outer, arena *TableArena, present b
 	}
 	defer jb.Shutdown()
 	report = TableReport{}
-	if !OuterFromJson(&jb, jtext, &report) || report != (TableReport{}) {
-		t.Fatalf("%s: FromJson %+v: %s", name, report, jtext)
+	if !OuterFromJSON(&jb, jtext, &report) || report != (TableReport{}) {
+		t.Fatalf("%s: FromJSON %+v: %s", name, report, jtext)
 	}
 	if jb.GetRoot().InnerPresent != present {
 		t.Fatalf("%s: JSON presence %v: %s", name, jb.GetRoot().InnerPresent, jtext)
@@ -456,7 +456,7 @@ func TestOptionalVariableClosure(t *testing.T) {
 		t.Fatalf("absent wire\n got %s\nwant %s", got, absentGolden)
 	}
 	if got := compactText(t, outerJson(t, fv)); got != ` + "`" + `{"tail":5}` + "`" + ` {
-		t.Fatalf("absent ToJson %s", got)
+		t.Fatalf("absent ToJSON %s", got)
 	}
 	// the JSON reader leaves T absent, at its defaults, on null (§16.2)
 	var nb OuterBuilder
@@ -465,8 +465,8 @@ func TestOptionalVariableClosure(t *testing.T) {
 	}
 	defer nb.Shutdown()
 	nreport := TableReport{}
-	if !OuterFromJson(&nb, []byte(` + "`" + `{"inner":null,"tail":5}` + "`" + `), &nreport) || nreport != (TableReport{}) {
-		t.Fatalf("null FromJson %+v", nreport)
+	if !OuterFromJSON(&nb, []byte(` + "`" + `{"inner":null,"tail":5}` + "`" + `), &nreport) || nreport != (TableReport{}) {
+		t.Fatalf("null FromJSON %+v", nreport)
 	}
 	if nb.GetRoot().InnerPresent || nb.GetRoot().Inner.Text != 0 || !bytes.Equal(saveOuter(t, nb.GetRoot(), &nb.Arena), absent) {
 		t.Fatal("inner null did not read absent")
@@ -497,8 +497,8 @@ func TestOptionalVariableClosure(t *testing.T) {
 	}
 	defer e.Shutdown()
 	report := TableReport{}
-	if !OuterFromJson(&e, []byte(` + "`" + `{"inner":{"text":""},"tail":5}` + "`" + `), &report) || report != (TableReport{}) {
-		t.Fatalf("empty text FromJson %+v", report)
+	if !OuterFromJSON(&e, []byte(` + "`" + `{"inner":{"text":""},"tail":5}` + "`" + `), &report) || report != (TableReport{}) {
+		t.Fatalf("empty text FromJSON %+v", report)
 	}
 	ev := e.GetRoot()
 	if !ev.InnerPresent || ev.Inner.Text == 0 {
@@ -534,7 +534,7 @@ func TestOptionalVariableClosure(t *testing.T) {
 		t.Fatalf("cleared region %d want %d", OuterLoadMeasure(cleared), absentRegion)
 	}
 	if got := compactText(t, outerJson(t, v)); got != ` + "`" + `{"tail":5}` + "`" + ` {
-		t.Fatalf("cleared ToJson %s", got)
+		t.Fatalf("cleared ToJSON %s", got)
 	}
 	if n := OuterCookMeasure(v, &b.Arena); n != absentCook {
 		t.Fatalf("cleared cook measure %d want %d", n, absentCook)

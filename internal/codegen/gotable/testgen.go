@@ -602,8 +602,8 @@ func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples 
 	fmt.Fprintf(b, "\t\t\tgot, err := %sReadStrict(wire)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"binary: ReadStrict: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"binary\", got)\n", n)
 	fmt.Fprintf(b, "\t\t\ttext, err := %sSaveText(v)\n\t\t\tif err != nil || text != base64.StdEncoding.EncodeToString(wire) {\n\t\t\t\tt.Fatalf(\"base64: SaveText is not the base64 of the wire: %%v\", err)\n\t\t\t}\n", n)
 	fmt.Fprintf(b, "\t\t\tgot, err = %sLoadText(text, nil)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"base64: LoadText: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"base64\", got)\n", n)
-	testgenFromJson(b, n, variable, "jsonText", "j", "jr")
-	b.WriteString("\t\t\tif !ok || jr != (TableReport{}) {\n\t\t\t\tt.Fatalf(\"json: FromJson of ToJson's text: report %+v\", jr)\n\t\t\t}\n\t\t\tsame(\"json\", j)\n")
+	testgenFromJSON(b, n, variable, "jsonText", "j", "jr")
+	b.WriteString("\t\t\tif !ok || jr != (TableReport{}) {\n\t\t\t\tt.Fatalf(\"json: FromJSON of ToJSON's text: report %+v\", jr)\n\t\t\t}\n\t\t\tsame(\"json\", j)\n")
 	b.WriteString("\t\t})\n\t}\n}\n")
 }
 
@@ -632,8 +632,8 @@ func testgenDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []t
 	b.WriteString("\tfor _, bad := range []string{\"!\" + text[1:], text[:len(text)-1]} {\n")
 	fmt.Fprintf(b, "\t\tif got, err := %sLoadText(bad, nil); got != nil || err == nil || err.Error() != \"base64_damaged\" {\n", n)
 	b.WriteString("\t\t\tt.Fatalf(\"base64 damage: %v, want base64_damaged\", err)\n\t\t}\n\t}\n")
-	fmt.Fprintf(b, "\tjsonText := make([]byte, %sToJsonMeasure(v))\n\tif %sToJson(v, jsonText) != int64(len(jsonText)) {\n\t\tt.Fatal(\"ToJson of the high sample\")\n\t}\n", n, n)
-	testgenFromJsonAt(b, "\t", n, variable, "jsonText[:len(jsonText)-2]", "", "jr")
+	fmt.Fprintf(b, "\tjsonText := make([]byte, %sToJSONMeasure(v))\n\tif %sToJSON(v, jsonText) != int64(len(jsonText)) {\n\t\tt.Fatal(\"ToJSON of the high sample\")\n\t}\n", n, n)
+	testgenFromJSONAt(b, "\t", n, variable, "jsonText[:len(jsonText)-2]", "", "jr")
 	b.WriteString("\tif ok || !jr.Malformed || !errors.Is(jr.Err(), TableRefuseMalformed) {\n\t\tt.Fatalf(\"a JSON document cut off inside its value: report %+v, want malformed\", jr)\n\t}\n}\n")
 }
 
@@ -641,7 +641,7 @@ func testgenDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []t
 func testgenSave(b *strings.Builder, n string) {
 	b.WriteString("\t\t\tsave := func(leg string, value *" + n + ") ([]byte, []byte) {\n\t\t\t\tt.Helper()\n")
 	fmt.Fprintf(b, "\t\t\t\twire := make([]byte, max(%sMeasure(value), 0))\n\t\t\t\tif %sSave(value, wire) != int64(len(wire)) || len(wire) == 0 {\n\t\t\t\t\tt.Fatalf(\"%%s: Save refused\", leg)\n\t\t\t\t}\n", n, n)
-	fmt.Fprintf(b, "\t\t\t\tjsonText := make([]byte, max(%sToJsonMeasure(value), 0))\n\t\t\t\tif %sToJson(value, jsonText) != int64(len(jsonText)) || len(jsonText) == 0 {\n\t\t\t\t\tt.Fatalf(\"%%s: ToJson refused\", leg)\n\t\t\t\t}\n", n, n)
+	fmt.Fprintf(b, "\t\t\t\tjsonText := make([]byte, max(%sToJSONMeasure(value), 0))\n\t\t\t\tif %sToJSON(value, jsonText) != int64(len(jsonText)) || len(jsonText) == 0 {\n\t\t\t\t\tt.Fatalf(\"%%s: ToJSON refused\", leg)\n\t\t\t\t}\n", n, n)
 	b.WriteString("\t\t\t\treturn wire, jsonText\n\t\t\t}\n")
 }
 
@@ -654,25 +654,25 @@ func testgenSample(b *strings.Builder, n string, variable bool, text string) {
 func testgenSampleAt(b *strings.Builder, in, n string, variable bool, text string) {
 	if variable {
 		fmt.Fprintf(b, "%svar sb %sBuilder\n%sif !sb.Init() {\n%s\tt.Fatal(\"builder init\")\n%s}\n%sdefer sb.Shutdown()\n", in, n, in, in, in, in)
-		fmt.Fprintf(b, "%sif !%sFromJson(&sb, []byte(%s), &r) || r != (TableReport{}) || !sb.Lock() {\n", in, n, text)
-		fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJson of the sample: report %%+v\", r)\n%s}\n%sv := sb.AsConst()\n", in, in, in)
+		fmt.Fprintf(b, "%sif !%sFromJSON(&sb, []byte(%s), &r) || r != (TableReport{}) || !sb.Lock() {\n", in, n, text)
+		fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJSON of the sample: report %%+v\", r)\n%s}\n%sv := sb.AsConst()\n", in, in, in)
 		return
 	}
-	fmt.Fprintf(b, "%sv := &%s{}\n%sif !%sFromJson(v, []byte(%s), &r) || r != (TableReport{}) {\n", in, n, in, n, text)
-	fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJson of the sample: report %%+v\", r)\n%s}\n", in, in)
+	fmt.Fprintf(b, "%sv := &%s{}\n%sif !%sFromJSON(v, []byte(%s), &r) || r != (TableReport{}) {\n", in, n, in, n, text)
+	fmt.Fprintf(b, "%s\tt.Fatalf(\"FromJSON of the sample: report %%+v\", r)\n%s}\n", in, in)
 }
 
-// testgenFromJson writes a JSON read of text into a fresh value named v,
+// testgenFromJSON writes a JSON read of text into a fresh value named v,
 // leaving ok and the report jr.
-func testgenFromJson(b *strings.Builder, n string, variable bool, text, v, jr string) {
-	testgenFromJsonAt(b, "\t\t\t", n, variable, text, v, jr)
+func testgenFromJSON(b *strings.Builder, n string, variable bool, text, v, jr string) {
+	testgenFromJSONAt(b, "\t\t\t", n, variable, text, v, jr)
 }
 
-func testgenFromJsonAt(b *strings.Builder, in, n string, variable bool, text, v, jr string) {
+func testgenFromJSONAt(b *strings.Builder, in, n string, variable bool, text, v, jr string) {
 	fmt.Fprintf(b, "%svar %s TableReport\n", in, jr)
 	if variable {
 		fmt.Fprintf(b, "%svar jb %sBuilder\n%sif !jb.Init() {\n%s\tt.Fatal(\"builder init\")\n%s}\n%sdefer jb.Shutdown()\n", in, n, in, in, in, in)
-		fmt.Fprintf(b, "%sok := %sFromJson(&jb, %s, &%s) && jb.Lock()\n", in, n, text, jr)
+		fmt.Fprintf(b, "%sok := %sFromJSON(&jb, %s, &%s) && jb.Lock()\n", in, n, text, jr)
 		if v != "" {
 			fmt.Fprintf(b, "%s%s := jb.AsConst()\n", in, v)
 		}
@@ -684,5 +684,5 @@ func testgenFromJsonAt(b *strings.Builder, in, n string, variable bool, text, v,
 	} else {
 		fmt.Fprintf(b, "%s%s := &%s{}\n", in, v, n)
 	}
-	fmt.Fprintf(b, "%sok := %sFromJson(%s, %s, &%s)\n", in, n, target, text, jr)
+	fmt.Fprintf(b, "%sok := %sFromJSON(%s, %s, &%s)\n", in, n, target, text, jr)
 }

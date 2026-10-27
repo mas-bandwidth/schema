@@ -11,7 +11,7 @@ import (
 //   - a table with []string, [..4]?string, [..2]string and map[string]int32
 //     round-trips through the binary wire, base64 (§16.8) and JSON (§16.2)
 //     with short values, its wire pinned byte for byte AND equal to the
-//     string(8) twin's (the wire moves no byte), its ToJson the plain shape;
+//     string(8) twin's (the wire moves no byte), its ToJSON the plain shape;
 //   - with LONG values: a 70 KB element in each list, a 70 KB key and a
 //     second sharing all but its last byte (two entries, key order kept),
 //     each equal through binary, base64, JSON, the cook (§7) and
@@ -85,13 +85,13 @@ func compact(t *testing.T, text []byte) string {
 
 func toJson(t *testing.T, v *Where) []byte {
 	t.Helper()
-	n := WhereToJsonMeasure(v)
+	n := WhereToJSONMeasure(v)
 	if n < 0 {
-		t.Fatal("ToJsonMeasure refused")
+		t.Fatal("ToJSONMeasure refused")
 	}
 	buf := make([]byte, n)
-	if WhereToJson(v, buf) != n {
-		t.Fatal("ToJson")
+	if WhereToJSON(v, buf) != n {
+		t.Fatal("ToJSON")
 	}
 	return buf
 }
@@ -255,8 +255,8 @@ func roundTrip(t *testing.T, what string, in whereText) []byte {
 	jb.Init()
 	defer jb.Shutdown()
 	report = TableReport{}
-	if !WhereFromJson(&jb, jtext, &report) || report != (TableReport{}) {
-		t.Fatalf("%s: FromJson %+v", what, report)
+	if !WhereFromJSON(&jb, jtext, &report) || report != (TableReport{}) {
+		t.Fatalf("%s: FromJSON %+v", what, report)
 	}
 	same(t, what+" json", textOf(t, jb.GetRoot(), &jb.Arena), in)
 	if !bytes.Equal(save(t, jb.GetRoot(), &jb.Arena), wire) {
@@ -361,7 +361,7 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	}
 	got, _ := load(t, wire)
 	if j := compact(t, toJson(t, got)); j != ` + "`" + `{"rules":["a","b"],"first":["x",null],"capped":["c"],"byname":{"k1":1,"k2":2}}` + "`" + ` {
-		t.Fatalf("ToJson %s", j)
+		t.Fatalf("ToJSON %s", j)
 	}
 
 	// LONG VALUES: 70 KB elements and keys, two keys sharing all but the last byte
@@ -400,9 +400,9 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	}
 
 	// HAND-BUILT IMAGES, each by its framing
-	ids := map[string]uint64{"rules": WhereTableFields[0].Id, "first": WhereTableFields[1].Id, "capped": WhereTableFields[2].Id, "byname": WhereTableFields[3].Id}
+	ids := map[string]uint64{"rules": WhereTableFields[0].ID, "first": WhereTableFields[1].ID, "capped": WhereTableFields[2].ID, "byname": WhereTableFields[3].ID}
 	entry := WhereTableFields[3].Table()
-	keyId, valueId, valueKind := entry.Fields[0].Id, entry.Fields[1].Id, entry.Fields[1].Kind
+	keyId, valueId, valueKind := entry.Fields[0].ID, entry.Fields[1].ID, entry.Fields[1].Kind
 	type elem struct {
 		raw   string
 		claim int // an L that claims more than raw holds
@@ -428,7 +428,7 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 				body = append(body, leb(uint64(n))...)
 				body = append(body, e.raw...)
 			}
-			w.Id(ids[field])
+			w.ID(ids[field])
 			w.Put8(14)
 			w.PutLeb(uint64(len(body)))
 			w.Raw(body)
@@ -462,18 +462,18 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 				if k.claim > 0 {
 					n = k.claim
 				}
-				e.Id(keyId)
+				e.ID(keyId)
 				e.Put8(12)
 				e.PutLeb(uint64(n))
 				e.Raw([]byte(k.raw))
-				e.Id(valueId)
+				e.ID(valueId)
 				e.Put8(valueKind)
 				e.Raw([]byte{byte(i + 1), 0, 0, 0})
 				e.Put8(0)
 				inner.PutLeb(uint64(e.Offset))
 				inner.Raw(ebuf[:e.Offset])
 			}
-			w.Id(ids["byname"])
+			w.ID(ids["byname"])
 			w.Put8(14)
 			w.PutLeb(uint64(inner.Offset))
 			w.Raw(scratch[:inner.Offset])

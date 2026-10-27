@@ -17,7 +17,7 @@ import "testing"
 // back through ReadStrict and writes the same JSON text. A \u0001 control in
 // the same place reads clean and round-trips, and a zero the read only SKIPS
 // (an unknown key's value, an object key naming no field) is not the event.
-// Red at BASE: FromJson accepted every zero row silently, and Save or
+// Red at BASE: FromJSON accepted every zero row silently, and Save or
 // ReadStrict then refused what the read produced.
 func TestGoTextZeroByteTakesOneRuleInEveryForm(t *testing.T) {
 	t.Parallel()
@@ -56,13 +56,13 @@ import (
 
 func toJson(t *testing.T, what string, v *Root) []byte {
 	t.Helper()
-	n := RootToJsonMeasure(v)
+	n := RootToJSONMeasure(v)
 	if n < 0 {
-		t.Fatalf("%s: ToJsonMeasure refused", what)
+		t.Fatalf("%s: ToJSONMeasure refused", what)
 	}
 	buf := make([]byte, n)
-	if RootToJson(v, buf) != n {
-		t.Fatalf("%s: ToJson", what)
+	if RootToJSON(v, buf) != n {
+		t.Fatalf("%s: ToJSON", what)
 	}
 	return buf
 }
@@ -82,7 +82,7 @@ func save(t *testing.T, what string, b *RootBuilder) []byte {
 }
 
 // carry saves what a read left, reads it back strictly, and holds the text:
-// the strict value's ToJson reads clean, saves the same wire and writes the
+// the strict value's ToJSON reads clean, saves the same wire and writes the
 // same text again. It answers that text.
 func carry(t *testing.T, what string, b *RootBuilder) []byte {
 	t.Helper()
@@ -98,7 +98,7 @@ func carry(t *testing.T, what string, b *RootBuilder) []byte {
 	}
 	defer again.Shutdown()
 	var report TableReport
-	if !RootFromJson(&again, text, &report) || report != (TableReport{}) {
+	if !RootFromJSON(&again, text, &report) || report != (TableReport{}) {
 		t.Fatalf("%s: the strict value's text did not read clean (%+v)\n%s", what, report, text)
 	}
 	if !bytes.Equal(save(t, what+" again", &again), wire) {
@@ -144,8 +144,8 @@ func TestTextZero(t *testing.T) {
 				t.Fatal("init")
 			}
 			var report TableReport
-			if RootFromJson(&b, []byte(text), &report) {
-				t.Fatalf("%s: FromJson accepted a zero in text (%+v)", what, report)
+			if RootFromJSON(&b, []byte(text), &report) {
+				t.Fatalf("%s: FromJSON accepted a zero in text (%+v)", what, report)
 			}
 			if !report.Malformed || report.Reason != reason(f.name) ||
 				report.Clamped != 0 || report.KindMismatch != 0 || report.Unknown != 0 {
@@ -163,7 +163,7 @@ func TestTextZero(t *testing.T) {
 				t.Fatal("init")
 			}
 			report = TableReport{}
-			if !RootFromJson(&c, []byte(control), &report) || report != (TableReport{}) {
+			if !RootFromJSON(&c, []byte(control), &report) || report != (TableReport{}) {
 				t.Fatalf("%s: the control did not read clean (%+v)", control, report)
 			}
 			if got := carry(t, control, &c); !bytes.Contains(got, []byte(strings.Replace(at, "\\u0000", "\\u0001", 1))) {
@@ -183,8 +183,8 @@ func TestTextZero(t *testing.T) {
 			t.Fatal("init")
 		}
 		var report TableReport
-		if RootFromJson(&b, []byte(k.text), &report) {
-			t.Fatalf("%s: FromJson accepted a zero in a dropped key (%+v)", k.text, report)
+		if RootFromJSON(&b, []byte(k.text), &report) {
+			t.Fatalf("%s: FromJSON accepted a zero in a dropped key (%+v)", k.text, report)
 		}
 		if !report.Malformed || report.Reason != "text_holds_zero: "+k.field ||
 			report.Clamped != 0 || report.KindMismatch != 0 {
@@ -200,7 +200,7 @@ func TestTextZero(t *testing.T) {
 			t.Fatal("init")
 		}
 		var report TableReport
-		if !RootFromJson(&b, []byte(text), &report) || report.Malformed || report.Unknown != 1 {
+		if !RootFromJSON(&b, []byte(text), &report) || report.Malformed || report.Unknown != 1 {
 			t.Fatalf("%s: a skipped zero %+v", text, report)
 		}
 		carry(t, text, &b)

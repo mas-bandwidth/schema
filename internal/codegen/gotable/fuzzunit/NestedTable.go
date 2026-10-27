@@ -526,27 +526,27 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 
 // ArchiveConfigTableFields is ArchiveConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ArchiveConfigTableFields = []TableFieldInfo{
-	{Name: "root", Json: "root", TypeName: "RootConfig", DeclaredTypeName: "RootConfig", Id: 0xa354fd1ff0c467c5, Kind: 13, IsArray: false, Counted: false, Optional: false,
+	{Name: "root", JSON: "root", TypeName: "RootConfig", DeclaredTypeName: "RootConfig", ID: 0xa354fd1ff0c467c5, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Root)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Root)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1480, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: RootConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "count", Json: "count", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xb1e5e28e4479a274, Kind: 4, IsArray: false, Counted: false, Optional: false,
+	{Name: "count", JSON: "count", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xb1e5e28e4479a274, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ArchiveConfig{}.Count)), ElemSize: uint32(unsafe.Sizeof(ArchiveConfig{}.Count)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 1480, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -556,7 +556,7 @@ var ArchiveConfigTableFields = []TableFieldInfo{
 var ArchiveConfigTableInfo TableTypeInfo
 
 func init() {
-	ArchiveConfigTableInfo = TableTypeInfo{Name: "ArchiveConfig", Size: uint32(unsafe.Sizeof(ArchiveConfig{})), NumFields: 2, Fields: ArchiveConfigTableFields, Reset: func(storage unsafe.Pointer) { ArchiveConfigReset((*ArchiveConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x413e7bcf261bc3c7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ArchiveConfigSaveBody(w, (*ArchiveConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ArchiveConfigLoadBody(&r, (*ArchiveConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ArchiveConfigTableInfo = TableTypeInfo{Name: "ArchiveConfig", Size: uint32(unsafe.Sizeof(ArchiveConfig{})), NumFields: 2, Fields: ArchiveConfigTableFields, Reset: func(storage unsafe.Pointer) { ArchiveConfigReset((*ArchiveConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x413e7bcf261bc3c7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ArchiveConfigSaveBody(w, (*ArchiveConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ArchiveConfigLoadBody(&r, (*ArchiveConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return ArchiveConfigSaveBodyRetain(w, (*ArchiveConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ArchiveConfigLoadBodyRetain(&r, (*ArchiveConfig)(p))

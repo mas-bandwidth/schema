@@ -4041,8 +4041,10 @@ func (c *checker) checkClaimedNames() {
 		// Go spells top-level names with its initialisms (internal/goname),
 		// so ProbeId and ProbeID are one Go symbol: claimed in a key space
 		// of their own beside the shared one
+		// (two of the compiler's own unit-level names, one per backend's
+		// spelling of a shared runtime name, are not a user's collision)
 		goKey := "\x00go:" + goname.Initialisms(name)
-		if prev, ok := registry[goKey]; ok {
+		if prev, ok := registry[goKey]; ok && (prev.pos != ast.Pos{} || pos != ast.Pos{}) {
 			c.errf(pos, "%s collides with %s — both generate the Go symbol %s; rename at the source (SPEC §4.6)",
 				what, prev.what, goname.Initialisms(name))
 			return

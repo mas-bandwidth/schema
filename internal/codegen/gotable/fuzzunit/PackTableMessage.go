@@ -28,11 +28,11 @@ func GunnerSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gun
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
 				widened := false
@@ -139,11 +139,11 @@ func GunnerSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gun
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(24)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(24)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -255,11 +255,11 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
 				widened := false
@@ -366,11 +366,11 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(24)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(24)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -449,11 +449,11 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x2d21d7cd66bd5a5d:
 			{
 				widened := false
@@ -481,11 +481,11 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(32)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -806,11 +806,11 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x2d21d7cd66bd5a5d:
 			{
 				widened := false
@@ -838,11 +838,11 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(32)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -1098,11 +1098,11 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xa65f859b617deaf3:
 			{
 				widened := false
@@ -1215,11 +1215,11 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(48)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(48)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -1330,7 +1330,7 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 			if value.Difficulty == DifficultyNone {
 				w.Put(0, TableMessageRefBitsHere)
 			} else {
-				id, named := value.Difficulty.TableEnumId()
+				id, named := value.Difficulty.TableEnumID()
 				if !named {
 					return false
 				}
@@ -1432,11 +1432,11 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xa65f859b617deaf3:
 			{
 				widened := false
@@ -1546,11 +1546,11 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
+					if !tableUTF8Valid(text) {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(48)))
+					kept := tableUTF8Clamp(text, min(int64(n), int64(48)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -1700,11 +1700,11 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xbb62c62c9808ea37:
 			{
 				widened := false
@@ -2047,7 +2047,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				if !(probe.Bits > TableMessageRefBitsHere) {
 					continue
 				}
-				id, named := ShipType(i + 1).TableEnumId()
+				id, named := ShipType(i + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -2082,7 +2082,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				if !(value.Thresholds[i] != 0) {
 					continue
 				}
-				id, named := Difficulty(i + 1).TableEnumId()
+				id, named := Difficulty(i + 1).TableEnumID()
 				if !named {
 					return false
 				}
@@ -2173,11 +2173,11 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0xbb62c62c9808ea37:
 			{
 				widened := false

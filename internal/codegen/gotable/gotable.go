@@ -48,6 +48,7 @@ import (
 	"unicode"
 
 	schemacheck "github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	schemaparser "github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -657,7 +658,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		}
 		maps.Copy(out, view)
 	}
-	return out, forms, nil
+	return out, forms, goname.RespellFiles(out) // every identifier in Go's initialisms
 }
 
 // emitForm assembles one optional form's buffer into its own file, when the
@@ -1084,12 +1085,12 @@ type TableFieldInfo struct {
 	// enum's value -> name, a union's tag -> arm name, a FLAGS field's bit
 	// index -> variant name. nil for every other kind.
 	EnumName func(value uint64) string
-	// VariantId is the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for
+	// VariantID is the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for
 	// an enum, the hash of the variant's name; for a union, the hash of the
 	// arm's name. Hash zero is an ordinary id; ordinal zero is None. nil
 	// for every other kind — a FLAGS field's variants have no per-variant wire
 	// id (§4), so a nil here beside a non-nil EnumName is what says "flags".
-	VariantId func(value uint64) uint64
+	VariantID func(value uint64) uint64
 	// EnumDefault is the ordinal an enum read lands when the wire or text names
 	// a variant marked | deprecated (docs/SPEC-TABLES.md §2.15): the FIELD's
 	// declared default, or 0 (None) for an array, list, map or keyed ELEMENT.
@@ -1101,12 +1102,12 @@ type TableFieldInfo struct {
 
 	// an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4, §8): the array has one slot
 	// per variant of KeyTypeName, indexed by the variant's value, and its
-	// slots ride under variant ids rather than positions. KeyName and KeyId
+	// slots ride under variant ids rather than positions. KeyName and KeyID
 	// are the key's vocabulary — walk [0, ArrayBound) to print slots by name.
 	// All three are nil/"" on every other field.
 	KeyTypeName string
 	KeyName     func(value uint64) string
-	KeyId       func(value uint64) uint64
+	KeyID       func(value uint64) uint64
 
 	// Arms is a union field's shape: the tag and the arms indexed by it, behind
 	// a function so a descriptor graph needs no initialization order. nil for
@@ -1133,7 +1134,7 @@ type TableFieldInfo struct {
 
 // TableUnionArmInfo is one arm of a union field: where its payload sits inside
 // the union's storage and what its payload looks like. The arm's NAME and its
-// table-wire id come from the field's EnumName/VariantId functions at the same
+// table-wire id come from the field's EnumName/VariantID functions at the same
 // tag, so nothing is spelled twice (docs/SPEC-TABLES.md §8).
 type TableUnionArmInfo struct {
  Field TableFieldInfo // arm shape; offsets are relative to union storage
@@ -1184,13 +1185,13 @@ type TableTypeInfo struct {
 // evaluate the same guards, so they are declared here, once, and the text
 // form's own file only adds its walk (docs/SPEC-TABLES.md, "GO's optional forms").
 
-type tableJsonGraphNode struct { refs int; label uint64; written bool }
+type tableJSONGraphNode struct { refs int; label uint64; written bool }
 
 // ---- storage access: the descriptors give an offset and a width, and the
 // ---- storage is the HOST's, so every load and store goes through a width
 // ---- switch rather than a copy into the low bytes of a wider word
 
-func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func tableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	switch width {
 	case 1:
 		return uint64(*(*uint8)(storage))
@@ -1204,7 +1205,7 @@ func tableJsonGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	return 0
 }
 
-func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func tableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	switch width {
 	case 1:
 		*(*uint8)(storage) = uint8(value)
@@ -1217,8 +1218,8 @@ func tableJsonSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	}
 }
 
-func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
-	raw := tableJsonGetRaw(storage, width)
+func tableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
+	raw := tableJSONGetRaw(storage, width)
 	if width < 8 {
 		sign := uint64(1) << (width*8 - 1)
 		if raw&sign != 0 {
@@ -1230,8 +1231,8 @@ func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
 
 type tableMapKey struct { text []byte; raw uint64 }
 func tableMapKeyValid(k tableMapKey,f *TableFieldInfo)bool {return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}
-func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {n:=*(*int32)(unsafe.Add(p,f.CountOffset));if n<0||n>f.ArrayBound{return tableMapKey{text:nil,raw:1}};key.text=unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(n))}else{key.raw=tableJsonGetRaw(unsafe.Add(p,f.Offset),f.ElemSize);if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(tableJsonGetSigned(unsafe.Add(p,f.Offset),f.ElemSize))}};return key}
-func tableMapStoreKey(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey) {if f.Kind==12 {clear(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(f.ArrayBound)+1));copy(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),len(k.text)),k.text);*(*int32)(unsafe.Add(p,f.CountOffset))=int32(len(k.text))}else{tableJsonSetRaw(unsafe.Add(p,f.Offset),f.ElemSize,k.raw)}}
+func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {n:=*(*int32)(unsafe.Add(p,f.CountOffset));if n<0||n>f.ArrayBound{return tableMapKey{text:nil,raw:1}};key.text=unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(n))}else{key.raw=tableJSONGetRaw(unsafe.Add(p,f.Offset),f.ElemSize);if f.Kind>=2&&f.Kind<=5 {key.raw=uint64(tableJSONGetSigned(unsafe.Add(p,f.Offset),f.ElemSize))}};return key}
+func tableMapStoreKey(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey) {if f.Kind==12 {clear(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),int(f.ArrayBound)+1));copy(unsafe.Slice((*byte)(unsafe.Add(p,f.Offset)),len(k.text)),k.text);*(*int32)(unsafe.Add(p,f.CountOffset))=int32(len(k.text))}else{tableJSONSetRaw(unsafe.Add(p,f.Offset),f.ElemSize,k.raw)}}
 func tableMapKeyOrder(a,b tableMapKey,f *TableFieldInfo)int {if f.Kind==12 {for i:=0;i<len(a.text)&&i<len(b.text);i++ {if a.text[i]<b.text[i]{return -1};if a.text[i]>b.text[i]{return 1}};if len(a.text)<len(b.text){return -1};if len(a.text)>len(b.text){return 1};return 0};if f.Kind>=2&&f.Kind<=5 {if int64(a.raw)<int64(b.raw){return -1};if int64(a.raw)>int64(b.raw){return 1};return 0};if a.raw<b.raw{return -1};if a.raw>b.raw{return 1};return 0}
 
 // A guarded group rides only when its guard reads true — the wire's own elision
@@ -1241,7 +1242,7 @@ func tableMapKeyOrder(a,b tableMapKey,f *TableFieldInfo)int {if f.Kind==12 {for 
 // evaluating it is a walk of the same descriptor. Nothing is inferred in the
 // other direction: reading places every key it can name, and the guard is a
 // plain bool key (§16.2).
-func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
+func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string) bool {
 	p := 0
 	for {
 		for p < len(guard) && (guard[p] == ' ' || guard[p] == '&') {
@@ -1264,7 +1265,7 @@ func tableJsonGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 		for i := range info.Fields {
 			f := &info.Fields[i]
 			if f.Name == name {
-				value = tableJsonGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
+				value = tableJSONGetRaw(unsafe.Add(base, uintptr(f.Offset)), f.ElemSize) != 0
 				break
 			}
 		}

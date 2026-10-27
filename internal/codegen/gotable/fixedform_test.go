@@ -1486,7 +1486,7 @@ func TestOldArgLaneControl(t *testing.T) {
 			continue
 		}
 		found = true
-		if plan[i].Arg != 2 || plan[i].Meta != tableFixedTextUtf8 {
+		if plan[i].Arg != 2 || plan[i].Meta != tableFixedTextUTF8 {
 			t.Fatalf("text entry is not arm-2/utf8: Arg=%d Meta=%d", plan[i].Arg, plan[i].Meta)
 		}
 		// OLD ENCODING: flavour in Arg, Meta unused
@@ -1726,21 +1726,21 @@ func TestRecordBound(t *testing.T) {
 	if why != "" {
 		t.Fatalf("W10: my own layout does not parse: %s", why)
 	}
-	rootID := tableFixedEntryAt(mine, 0).Id
+	rootID := tableFixedEntryAt(mine, 0).ID
 	var keepID, blobID, blobElemID, labelID uint64
 	for i := int32(1); i < mine.Count; i++ {
 		e := tableFixedEntryAt(mine, i)
 		if e.Kind == 8 && e.Size == 4 && keepID == 0 {
-			keepID = e.Id // keep, a uint32
+			keepID = e.ID // keep, a uint32
 		}
 		if e.Kind == 12 && labelID == 0 {
-			labelID = e.Id // label, a string(8)
+			labelID = e.ID // label, a string(8)
 		}
 		if e.Kind == 14 && i+1 < mine.Count {
 			el := tableFixedEntryAt(mine, i+1)
 			if el.Kind == 6 && el.Size == 1 {
-				blobID = e.Id     // blob, bytes(6): an array of u8
-				blobElemID = el.Id // the u8 element; may be zero
+				blobID = e.ID     // blob, bytes(6): an array of u8
+				blobElemID = el.ID // the u8 element; may be zero
 			}
 		}
 	}

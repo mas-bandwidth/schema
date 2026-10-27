@@ -1221,7 +1221,7 @@ func BenchMixedFixedCheckBody(value *BenchMixed) bool {
 }
 
 // BenchMixedFixedCheckBodyExact is BenchMixedFixedCheckBody with each string asked by
-// tableFixedUtf8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
 func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
 	_ = value
 	if value.Sequence > 65535 {
@@ -1272,7 +1272,7 @@ func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
 			return false
 		}
 	}
-	if uint32(value.PlayerNameLength) > 15 || !tableFixedUtf8Ok(value.PlayerName[:value.PlayerNameLength]) {
+	if uint32(value.PlayerNameLength) > 15 || !tableFixedUTF8Ok(value.PlayerName[:value.PlayerNameLength]) {
 		return false
 	}
 	if value.PayloadLength < 0 || value.PayloadLength > 16 {
@@ -1815,15 +1815,15 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 
 // FixedTableTableFields is FixedTable's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var FixedTableTableFields = []TableFieldInfo{
-	{Name: "value", Json: "value", TypeName: "BenchMixed", DeclaredTypeName: "BenchMixed", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
+	{Name: "value", JSON: "value", TypeName: "BenchMixed", DeclaredTypeName: "BenchMixed", ID: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FixedTable{}.Value)), ElemSize: uint32(unsafe.Sizeof(FixedTable{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1376, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: BenchMixedTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -1833,7 +1833,7 @@ var FixedTableTableFields = []TableFieldInfo{
 var FixedTableTableInfo TableTypeInfo
 
 func init() {
-	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16}
+	FixedTableTableInfo = TableTypeInfo{Name: "FixedTable", Size: uint32(unsafe.Sizeof(FixedTable{})), NumFields: 1, Fields: FixedTableTableFields, Reset: func(storage unsafe.Pointer) { FixedTableReset((*FixedTable)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x85df369cdca746b3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FixedTableSaveBody(w, (*FixedTable)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FixedTableLoadBody(&r, (*FixedTable)(p)) }, CookSize: 1376, CookAlign: 16}
 }
 
 // FixedTableTableType returns FixedTable's reflection descriptor.

@@ -148,7 +148,7 @@ import("testing";"unsafe")
 func TestRetainUnknownRoundTrip(t *testing.T){
  wire:=%#v
  n:=RootLoadMeasure(wire);if n<0{t.Fatal("measure")};raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
- retain:=TableRetain{Bytes:make([]byte,1<<12),Ids:make([]TableRetainId,64)};var report TableReport
+ retain:=TableRetain{Bytes:make([]byte,1<<12),Ids:make([]TableRetainID,64)};var report TableReport
  kept:=RootLoadRetain(region,wire,&retain,&report);if kept==nil||report.Malformed||report.Unknown!=1||report.Retained!=1||report.RetainLost!=0||retain.Count!=1{t.Fatalf("retain load %%+v count %%d",report,retain.Count)}
  out:=make([]byte,RootMeasureRetain(kept,&retain));report=TableReport{};if got:=RootSaveRetain(kept,&retain,out,&report);got!=int64(len(out))||report.RetainLost!=0{t.Fatalf("retain save %%d %%+v",got,report)}
  size:=RootLoadMeasure(out);if size<0{t.Fatal("reload measure")};raw2:=make([]byte,size+63);off2:=(-uintptr(unsafe.Pointer(&raw2[0])))&63;report=TableReport{};again:=RootLoad(raw2[off2:off2+uintptr(size)],out,&report);if again==nil||again.B!=5||report.Unknown!=1{t.Fatalf("reload %%+v",report)}

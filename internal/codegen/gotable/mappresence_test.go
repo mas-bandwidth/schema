@@ -89,13 +89,13 @@ func compact(t *testing.T, text []byte) string {
 
 func toJson(t *testing.T, v *M) []byte {
 	t.Helper()
-	n := MToJsonMeasure(v)
+	n := MToJSONMeasure(v)
 	if n < 0 {
-		t.Fatal("ToJsonMeasure refused")
+		t.Fatal("ToJSONMeasure refused")
 	}
 	buf := make([]byte, n)
-	if MToJson(v, buf) != n {
-		t.Fatal("ToJson")
+	if MToJSON(v, buf) != n {
+		t.Fatal("ToJSON")
 	}
 	return buf
 }
@@ -222,16 +222,16 @@ func TestMapPresence(t *testing.T) {
 		// THE JSON TEXT (§16.2): absent omits the key, empty is {}
 		jtext := toJson(t, got)
 		if c := compact(t, jtext); c != tc.json {
-			t.Errorf("%s: ToJson %s want %s", tc.shape, c, tc.json)
+			t.Errorf("%s: ToJSON %s want %s", tc.shape, c, tc.json)
 		}
 		var jb MBuilder
 		jb.Init()
 		report = TableReport{}
-		if !MFromJson(&jb, jtext, &report) || report != (TableReport{}) {
-			t.Fatalf("%s: FromJson %+v", tc.shape, report)
+		if !MFromJSON(&jb, jtext, &report) || report != (TableReport{}) {
+			t.Fatalf("%s: FromJSON %+v", tc.shape, report)
 		}
 		if d := describe(jb.GetRoot(), &jb.Arena); d != tc.shape {
-			t.Errorf("%s: FromJson reads back %s", tc.shape, d)
+			t.Errorf("%s: FromJSON reads back %s", tc.shape, d)
 		}
 		if !jb.Lock() || !bytes.Equal(saveIn(t, jb.AsConst()), wire) {
 			t.Errorf("%s: JSON round trip moved the wire", tc.shape)
@@ -276,8 +276,8 @@ func TestMapPresence(t *testing.T) {
 	nb.Init()
 	defer nb.Shutdown()
 	var report TableReport
-	if !MFromJson(&nb, []byte("{\"id\":1,\"tags\":null}"), &report) || report != (TableReport{}) {
-		t.Fatalf("null FromJson %+v", report)
+	if !MFromJSON(&nb, []byte("{\"id\":1,\"tags\":null}"), &report) || report != (TableReport{}) {
+		t.Fatalf("null FromJSON %+v", report)
 	}
 	if d := describe(nb.GetRoot(), &nb.Arena); d != "absent" {
 		t.Fatalf("null reads back %s", d)
@@ -293,8 +293,8 @@ func TestMapPresence(t *testing.T) {
 	rb.Init()
 	defer rb.Shutdown()
 	report = TableReport{}
-	if !MFromJson(&rb, []byte("{\"id\":1,\"tags\":{\"a\":5},\"tags\":null}"), &report) || report.Duplicate != 1 {
-		t.Fatalf("repeated null FromJson %+v", report)
+	if !MFromJSON(&rb, []byte("{\"id\":1,\"tags\":{\"a\":5},\"tags\":null}"), &report) || report.Duplicate != 1 {
+		t.Fatalf("repeated null FromJSON %+v", report)
 	}
 	if d := describe(rb.GetRoot(), &rb.Arena); d != "absent" {
 		t.Fatalf("repeated null reads back %s", d)

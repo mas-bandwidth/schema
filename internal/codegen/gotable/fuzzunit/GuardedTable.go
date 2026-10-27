@@ -119,14 +119,14 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 					var hi, z uint64
 					p := value.Note[:n]
 					if len(p) >= 8 {
-						x := tableUtf8Word(p)
+						x := tableUTF8Word(p)
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 						p = p[8:]
 					}
 					if len(p) > 0 {
 						if n >= 8 {
-							x := tableUtf8Word(value.Note[n-8:])
+							x := tableUTF8Word(value.Note[n-8:])
 							hi |= x
 							z |= (x - 0x0101010101010101) &^ x
 						} else {
@@ -137,7 +137,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 							}
 						}
 					}
-					if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Note[:n]) {
+					if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Note[:n]) {
 						return false
 					}
 				}
@@ -323,7 +323,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Note[:])
 				value.NoteLength = 0
@@ -331,7 +331,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 8 {
-				keep = tableUtf8Clamp(sub.Buffer, 8)
+				keep = tableUTF8Clamp(sub.Buffer, 8)
 				r.Report.Clamped++
 			}
 			clear(value.Note[:])
@@ -459,14 +459,14 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 					var hi, z uint64
 					p := value.Note[:n]
 					if len(p) >= 8 {
-						x := tableUtf8Word(p)
+						x := tableUTF8Word(p)
 						hi |= x
 						z |= (x - 0x0101010101010101) &^ x
 						p = p[8:]
 					}
 					if len(p) > 0 {
 						if n >= 8 {
-							x := tableUtf8Word(value.Note[n-8:])
+							x := tableUTF8Word(value.Note[n-8:])
 							hi |= x
 							z |= (x - 0x0101010101010101) &^ x
 						} else {
@@ -477,7 +477,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 							}
 						}
 					}
-					if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Note[:n]) {
+					if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Note[:n]) {
 						return false
 					}
 				}
@@ -667,7 +667,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				r.Report.Malformed = true
 				return false
 			}
-			if !tableUtf8Valid(sub.Buffer) {
+			if !tableUTF8Valid(sub.Buffer) {
 				r.Report.Malformed = true
 				clear(value.Note[:])
 				value.NoteLength = 0
@@ -675,7 +675,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 			}
 			keep := int64(len(sub.Buffer))
 			if keep > 8 {
-				keep = tableUtf8Clamp(sub.Buffer, 8)
+				keep = tableUTF8Clamp(sub.Buffer, 8)
 				r.Report.Clamped++
 			}
 			clear(value.Note[:])
@@ -872,75 +872,75 @@ func (b *PatrolBuilder) Shutdown() {
 
 // PatrolTableFields is Patrol's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var PatrolTableFields = []TableFieldInfo{
-	{Name: "active", Json: "active", TypeName: "bool", DeclaredTypeName: "bool", Id: 0x6580790b036f0c6f, Kind: 1, IsArray: false, Counted: false, Optional: false,
+	{Name: "active", JSON: "active", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x6580790b036f0c6f, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Active)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Active)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "speed", Json: "speed", TypeName: "float32", DeclaredTypeName: "float32", Id: 0x2281498aa0200e40, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "speed", JSON: "speed", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x2281498aa0200e40, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Speed)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Speed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "has_target", Json: "has_target", TypeName: "bool", DeclaredTypeName: "bool", Id: 0x247f0e7f55aacfbd, Kind: 1, IsArray: false, Counted: false, Optional: false,
+	{Name: "has_target", JSON: "has_target", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x247f0e7f55aacfbd, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.HasTarget)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.HasTarget)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "target_id", Json: "target_id", TypeName: "int32", DeclaredTypeName: "int32", Id: 0xb7bc9ac015a25050, Kind: 4, IsArray: false, Counted: false, Optional: false,
+	{Name: "target_id", JSON: "target_id", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xb7bc9ac015a25050, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "active && has_target", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "wander", Json: "wander", TypeName: "float32", DeclaredTypeName: "float32", Id: 0xb8c758d8bd1845d4, Kind: 10, IsArray: false, Counted: false, Optional: false,
+	{Name: "wander", JSON: "wander", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb8c758d8bd1845d4, Kind: 10, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Patrol{}.Wander)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Wander)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "active && !has_target", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "note", Json: "note", TypeName: "string", DeclaredTypeName: "string", Id: 0x3bf8fbbad1587cdd, Kind: 12, IsArray: false, Counted: true, Optional: false,
+	{Name: "note", JSON: "note", TypeName: "string", DeclaredTypeName: "string", ID: 0x3bf8fbbad1587cdd, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(Patrol{}.Note)), ElemSize: uint32(unsafe.Sizeof(Patrol{}.Note)), CountOffset: uint32(unsafe.Offsetof(Patrol{}.NoteLength)), PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 1, CookCountOffset: 32, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 		EnumName:    nil,
-		VariantId:   nil,
+		VariantID:   nil,
 		EnumDefault: 0, EnumDeprecated: nil,
-		KeyTypeName: "", KeyName: nil, KeyId: nil,
+		KeyTypeName: "", KeyName: nil, KeyID: nil,
 		Arms:  nil,
 		Guard: "!active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -950,7 +950,7 @@ var PatrolTableFields = []TableFieldInfo{
 var PatrolTableInfo TableTypeInfo
 
 func init() {
-	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
+	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil

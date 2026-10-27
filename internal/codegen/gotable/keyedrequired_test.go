@@ -27,7 +27,7 @@ func TestRequiredKeyedArrayRoundTrips(t *testing.T){
 	var b RootBuilder
 	if !b.Init(){t.Fatal("init")};defer b.Shutdown()
 	var report TableReport
-	if !RootFromJson(&b,[]byte(%q),&report)||report!=(TableReport{}){t.Fatalf("json %%+v",report)}
+	if !RootFromJSON(&b,[]byte(%q),&report)||report!=(TableReport{}){t.Fatalf("json %%+v",report)}
 	v:=b.GetRoot()
 
 	w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}}

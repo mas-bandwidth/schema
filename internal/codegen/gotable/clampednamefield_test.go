@@ -14,7 +14,7 @@ table Inner { n int32 = 1 | min = 0, max = 10 }
 table Root { inside Inner }
 `, `package probe
 import("errors";"testing")
-func clampedWire() []byte{var ids TableIds;buf:=make([]byte,128);w:=TableWriter{Buffer:buf,Ids:&ids};w.Put8(1);w.Id(RootTableFields[0].Id);w.Put8(13);s:=TableWriter{Buffer:make([]byte,64),Ids:&ids};s.Id(InnerTableFields[0].Id);s.Put8(4);s.Put32(100);s.Put8(0);w.PutLeb(uint64(s.Offset));w.Raw(s.Buffer[:s.Offset]);w.Put8(0);w.Trailer();return buf[:w.Offset]}
+func clampedWire() []byte{var ids TableIds;buf:=make([]byte,128);w:=TableWriter{Buffer:buf,Ids:&ids};w.Put8(1);w.ID(RootTableFields[0].ID);w.Put8(13);s:=TableWriter{Buffer:make([]byte,64),Ids:&ids};s.ID(InnerTableFields[0].ID);s.Put8(4);s.Put32(100);s.Put8(0);w.PutLeb(uint64(s.Offset));w.Raw(s.Buffer[:s.Offset]);w.Put8(0);w.Trailer();return buf[:w.Offset]}
 func TestClampedNamesField(t *testing.T){
  wire:=clampedWire()
  got,err:=RootReadStrict(wire);if got!=nil{t.Fatal("ReadStrict answered a value for a past-bound wire")};if !errors.Is(err,TableRefuseClamped){t.Fatalf("ReadStrict err %v, want the clamped refusal",err)}

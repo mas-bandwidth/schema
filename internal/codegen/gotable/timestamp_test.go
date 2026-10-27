@@ -70,7 +70,7 @@ func TestTimestampKindInGo(t *testing.T) {
 			t.Errorf("the generated tables lack %q", want)
 		}
 	}
-	for _, want := range []string{"func tableJsonWriteTimestamp(", "func tableJsonReadTimestamp(", "time.RFC3339Nano", "timestamp_not_rfc3339", "type TableTimestampError struct", "func tableTimestampNanos(t time.Time) (int64, bool)"} {
+	for _, want := range []string{"func tableJSONWriteTimestamp(", "func tableJSONReadTimestamp(", "time.RFC3339Nano", "timestamp_not_rfc3339", "type TableTimestampError struct", "func tableTimestampNanos(t time.Time) (int64, bool)"} {
 		if !strings.Contains(jsonGo, want) {
 			t.Errorf("the generated text form lacks %q", want)
 		}
@@ -194,22 +194,22 @@ func TestFixedForm(t *testing.T) {
 func TestJson(t *testing.T) {
  for _, c := range tsCases {
   v := Session{Started: c.n}
-  text := make([]byte, SessionToJsonMeasure(&v))
-  if SessionToJson(&v, text) != int64(len(text)) { t.Fatalf("%s: write", c.name) }
+  text := make([]byte, SessionToJSONMeasure(&v))
+  if SessionToJSON(&v, text) != int64(len(text)) { t.Fatalf("%s: write", c.name) }
   var got Session
   var r TableReport
-  if !SessionFromJsonTolerant(&got, text, &r) || r != (TableReport{}) || got != v { t.Fatalf("%s: read %q %+v %+v", c.name, text, r, got) }
+  if !SessionFromJSONTolerant(&got, text, &r) || r != (TableReport{}) || got != v { t.Fatalf("%s: read %q %+v %+v", c.name, text, r, got) }
  }
  // the spelling: RFC 3339 with nanoseconds and a Z, the zero time as the epoch
  v := Session{Started: 1760531645123456789}
- text := make([]byte, SessionToJsonMeasure(&v))
- SessionToJson(&v, text)
+ text := make([]byte, SessionToJSONMeasure(&v))
+ SessionToJSON(&v, text)
  if !strings.Contains(string(text), "\"started\": \"2025-10-15T12:34:05.123456789Z\"") { t.Fatalf("text: %s", text) }
  if !strings.Contains(string(text), "\"ended\": \"1970-01-01T00:00:00Z\"") { t.Fatalf("zero text: %s", text) }
  // an offset spelling of the same instant lands as the same count
  var got Session
  var r TableReport
- if !SessionFromJsonTolerant(&got, []byte("{\"started\":\"1970-01-01T01:00:00.000000001+01:00\"}"), &r) || got.Started != 1 { t.Fatalf("offset spelling: %d %+v", got.Started, r) }
+ if !SessionFromJSONTolerant(&got, []byte("{\"started\":\"1970-01-01T01:00:00.000000001+01:00\"}"), &r) || got.Started != 1 { t.Fatalf("offset spelling: %d %+v", got.Started, r) }
 }
 
 func TestJsonRefusesByName(t *testing.T) {
@@ -222,13 +222,13 @@ func TestJsonRefusesByName(t *testing.T) {
  } {
   got := Session{N: 9}
   var r TableReport
-  if SessionFromJsonTolerant(&got, []byte(bad), &r) { t.Fatalf("%s accepted", bad) }
+  if SessionFromJSONTolerant(&got, []byte(bad), &r) { t.Fatalf("%s accepted", bad) }
   if !r.Malformed || !strings.HasPrefix(r.Reason, "timestamp_not_rfc3339: started") { t.Fatalf("%s: unnamed refusal %+v", bad, r) }
  }
  // a number token is the wrong JSON type: skipped and counted, never coerced
  var got Session
  var r TableReport
- if !SessionFromJsonTolerant(&got, []byte("{\"started\":1760531645123456789}"), &r) || r.KindMismatch != 1 || got.Started != 0 { t.Fatalf("number: %+v %d", r, got.Started) }
+ if !SessionFromJSONTolerant(&got, []byte("{\"started\":1760531645123456789}"), &r) || r.KindMismatch != 1 || got.Started != 0 { t.Fatalf("number: %+v %d", r, got.Started) }
 }
 
 // the kind is its own on the variable wire: an int64 count under kind 5 is a
@@ -253,8 +253,8 @@ func TestKindIsItsOwn(t *testing.T) {
  b2 := make([]byte, SessionMeasure(&v2))
  SessionSave(&v2, b2)
  // swap the first id in the trailer to n's id so reference 1 (kind 36) targets n (int32)
- nId := SessionTableFields[0].Id
- sId := SessionTableFields[1].Id
+ nId := SessionTableFields[0].ID
+ sId := SessionTableFields[1].ID
  var sBytes, nBytes [8]byte
  for k := 0; k < 8; k++ { sBytes[k] = byte(sId >> (8 * k)); nBytes[k] = byte(nId >> (8 * k)) }
  idIdx := bytes.Index(b2, sBytes[:])

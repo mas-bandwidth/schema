@@ -1,6 +1,7 @@
 package check
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -256,7 +257,11 @@ func TestEmitterTemplatesNameOnlyClaimedSuffixes(t *testing.T) {
 					pos := fset.Position(a.Pos())
 					for _, m := range matches {
 						suffix := m[3]
-						claimed := slices.Contains(tableGeneratedVerbs, suffix)
+						// the Go table emitter spells a verb with Go's initialisms
+						// (FromJSON for FromJson); the checker claims that spelling
+						claimed := slices.ContainsFunc(tableGeneratedVerbs, func(v string) bool {
+							return v == suffix || goname.Initialisms(v) == suffix
+						})
 						if !claimed {
 							t.Errorf("%s:%d: package-level Go table suffix %s is not in tableGeneratedVerbs", path, pos.Line, suffix)
 						}

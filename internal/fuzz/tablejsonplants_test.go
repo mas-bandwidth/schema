@@ -5,7 +5,7 @@ package fuzz_test
 // from randomSchema it generates the Go leg with compiler.New().Generate(u,
 // "go", nil), builds a valid randomJSON text of the unit, plants each of the
 // nine hostile or boundary JSON cases into that text, and runs the generated
-// unit's RootFromJson under recover and -race.
+// unit's RootFromJSON under recover and -race.
 
 import (
 	"encoding/json"
@@ -21,8 +21,8 @@ import (
 )
 
 // plantSpec is one planted JSON input for a generated Root table.
-// mode is "must_refuse" (RootFromJson must return false or report.Err() != nil),
-// "must_accept" (RootFromJson must return true with report.Err() == nil), or
+// mode is "must_refuse" (RootFromJSON must return false or report.Err() != nil),
+// "must_accept" (RootFromJSON must return true with report.Err() == nil), or
 // "either" (either refused by name via report.Err() != nil, or accepted cleanly).
 type plantSpec struct {
 	name string
@@ -32,7 +32,7 @@ type plantSpec struct {
 
 // validUnitJSON returns a valid JSON text for u from randomJSON(r, u, 1),
 // rewriting any raw integer timestamp leaf from tablegen_test.go into an
-// RFC 3339 string so RootFromJson accepts the base text cleanly before any
+// RFC 3339 string so RootFromJSON accepts the base text cleanly before any
 // plant is applied.
 func validUnitJSON(r *rand.Rand, u *genUnit) string {
 	raw := randomJSON(r, u, 1)
@@ -156,7 +156,7 @@ func withDuplicateKey(baseJSON, fname string) string {
 }
 
 // scalarNullPlant returns a JSON text derived from baseJSON where a non-optional
-// scalar position holds null, so RootFromJson must refuse it with kind_mismatch.
+// scalar position holds null, so RootFromJSON must refuse it with kind_mismatch.
 func scalarNullPlant(u *genUnit, baseJSON string) string {
 	for _, f := range u.Root.Fields {
 		switch f.Kind {
@@ -313,7 +313,7 @@ func TestJsonPlantsProbe(t *testing.T) {
 	var baseVal Root
 	var baseRep TableReport
 	RootReset(&baseVal)
-	if !RootFromJson(&baseVal, baseBytes, &baseRep) || baseRep != (TableReport{}) {
+	if !RootFromJSON(&baseVal, baseBytes, &baseRep) || baseRep != (TableReport{}) {
 		record(&div, "baserefuse %+v %s", baseRep, b64(baseBytes))
 	}
 
@@ -345,7 +345,7 @@ func TestJsonPlantsProbe(t *testing.T) {
 			RootReset(&pv)
 			var before, after runtime.MemStats
 			runtime.ReadMemStats(&before)
-			ok := RootFromJson(&pv, decoded, &pr)
+			ok := RootFromJSON(&pv, decoded, &pr)
 			runtime.ReadMemStats(&after)
 			if after.TotalAlloc-before.TotalAlloc > 4<<20 {
 				record(&div, "plantalloc %s %d", name, after.TotalAlloc-before.TotalAlloc)
@@ -365,7 +365,7 @@ func TestJsonPlantsProbe(t *testing.T) {
 				}
 			}
 
-			// Whenever RootFromJson returns true (accepted or tolerantly clamped/skipped),
+			// Whenever RootFromJSON returns true (accepted or tolerantly clamped/skipped),
 			// the resulting value must measure, save, and write JSON that reads back equal.
 			if ok {
 				m, mreason := RootMeasureReason(&pv)
@@ -378,25 +378,25 @@ func TestJsonPlantsProbe(t *testing.T) {
 					record(&div, "plantsave %s", name)
 					return
 				}
-				jm := RootToJsonMeasure(&pv)
+				jm := RootToJSONMeasure(&pv)
 				if jm <= 0 {
 					record(&div, "planttojsonmeasure %s jm=%d", name, jm)
 					return
 				}
 				tj := make([]byte, jm)
-				if RootToJson(&pv, tj) != jm {
+				if RootToJSON(&pv, tj) != jm {
 					record(&div, "planttojson %s", name)
 					return
 				}
 				var v2 Root
 				var r2 TableReport
 				RootReset(&v2)
-				if !RootFromJson(&v2, tj, &r2) || r2.Err() != nil {
+				if !RootFromJSON(&v2, tj, &r2) || r2.Err() != nil {
 					record(&div, "plantroundtriprefuse %s err=%v %s", name, r2.Err(), b64(tj))
 					return
 				}
-				tj2 := make([]byte, RootToJsonMeasure(&v2))
-				if RootToJson(&v2, tj2) != int64(len(tj2)) || !bytes.Equal(tj2, tj) {
+				tj2 := make([]byte, RootToJSONMeasure(&v2))
+				if RootToJSON(&v2, tj2) != int64(len(tj2)) || !bytes.Equal(tj2, tj) {
 					record(&div, "plantroundtripjson %s %s %s", name, b64(tj), b64(tj2))
 				}
 				w2 := make([]byte, RootMeasure(&v2))
@@ -458,7 +458,7 @@ func runJsonPlantsSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (une
 
 // TestRandomTableJsonPlants generates random valid table units for seeds
 // SCHEMA_TABLE_DIFF_FROM..TO (default 0..4), plants the nine hostile/boundary
-// JSON cases into a valid randomJSON text of each unit, and runs RootFromJson
+// JSON cases into a valid randomJSON text of each unit, and runs RootFromJSON
 // under recover and -race, plus one sabotaged negative-control run.
 func TestRandomTableJsonPlants(t *testing.T) {
 	t.Parallel()

@@ -152,13 +152,13 @@ func TestMapOfOptionalTablesKeepsItsValuesGo(t *testing.T) {
 	runGenerated(t, mapOptionalTableSchema, `package probe
 import("bytes";"encoding/hex";"encoding/json";"testing";"unsafe")
 func compact(t *testing.T,text []byte)string {var out bytes.Buffer;if err:=json.Compact(&out,text);err!=nil{t.Fatalf("not JSON %v %s",err,text)};return out.String()}
-func save(t *testing.T,name,text string)string {var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if !RootFromJson(&b,[]byte(text),&report)||report!=(TableReport{})||!b.Lock(){t.Fatalf("%s: json read %s %+v",name,text,report)};wire:=make([]byte,RootMeasure(b.AsConst()));if RootSave(b.AsConst(),wire)!=int64(len(wire)){t.Fatalf("%s: save",name)};return hex.EncodeToString(wire)}
+func save(t *testing.T,name,text string)string {var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if !RootFromJSON(&b,[]byte(text),&report)||report!=(TableReport{})||!b.Lock(){t.Fatalf("%s: json read %s %+v",name,text,report)};wire:=make([]byte,RootMeasure(b.AsConst()));if RootSave(b.AsConst(),wire)!=int64(len(wire)){t.Fatalf("%s: save",name)};return hex.EncodeToString(wire)}
 func TestMapOptionalTable(t *testing.T){for _,tc:=range []struct{name,text,want,wire string}{
 `+cases.String()+`} {
  if got:=save(t,tc.name,tc.text);got!=tc.wire{t.Errorf("%s: json read then save\n got  %s\n want %s",tc.name,got,tc.wire)}
  if got:=save(t,tc.name,tc.want);got!=tc.wire{t.Errorf("%s: canonical json read then save\n got  %s\n want %s",tc.name,got,tc.wire)}
  wire,_:=hex.DecodeString(tc.wire);size:=RootLoadMeasure(wire);if size<0{t.Fatalf("%s: measure",tc.name)};raw:=make([]byte,size+16);off:=(-uintptr(unsafe.Pointer(&raw[0])))&15;var report TableReport;got:=RootLoad(raw[off:off+uintptr(size)],wire,&report);if got==nil||report!=(TableReport{}){t.Fatalf("%s: load %+v",tc.name,report)}
- text:=make([]byte,RootToJsonMeasure(got));if RootToJson(got,text)!=int64(len(text)){t.Fatalf("%s: json write",tc.name)};if c:=compact(t,text);c!=tc.want{t.Errorf("%s: load then json write\n got  %s\n want %s",tc.name,c,tc.want)}
+ text:=make([]byte,RootToJSONMeasure(got));if RootToJSON(got,text)!=int64(len(text)){t.Fatalf("%s: json write",tc.name)};if c:=compact(t,text);c!=tc.want{t.Errorf("%s: load then json write\n got  %s\n want %s",tc.name,c,tc.want)}
 }}
 `)
 }

@@ -115,11 +115,11 @@ table Root { entries map[int32]Child }
 import("testing";"encoding/binary";"bytes";"unsafe")
 func TestMapCook(t *testing.T){
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var report TableReport
- if !RootFromJson(&b,[]byte("{\"entries\":{\"4\":{\"n\":9},\"-3\":{\"n\":7,\"samples\":[258,772]}}}"),&report){t.Fatal(report)}
+ if !RootFromJSON(&b,[]byte("{\"entries\":{\"4\":{\"n\":9},\"-3\":{\"n\":7,\"samples\":[258,772]}}}"),&report){t.Fatal(report)}
  if RootCookMeasure(b.GetRoot(),&b.Arena)!=168{t.Fatal("measure")}
  for _,big:=range []bool{false,true}{
   var order binary.ByteOrder=binary.LittleEndian;target:=TableByteOrderLittle;if big{order=binary.BigEndian;target=TableByteOrderBig};want:=make([]byte,168)
-  for at,v:=range map[int]uint64{0:0x4b4f4f434d484353,8:BuildVersion,16:uint64(target),24:88,32:16,40:8,64:16,96:48,160:RootTableType().Id}{order.PutUint64(want[at:],v)}
+  for at,v:=range map[int]uint64{0:0x4b4f4f434d484353,8:BuildVersion,16:uint64(target),24:88,32:16,40:8,64:16,96:48,160:RootTableType().ID}{order.PutUint64(want[at:],v)}
   for at,v:=range map[int]uint32{72:2,80:0xfffffffd,88:7,104:2,112:4,120:9}{order.PutUint32(want[at:],v)};order.PutUint16(want[144:],258);order.PutUint16(want[146:],772)
   got:=make([]byte,168);if !RootCookFrom(b.GetRoot(),got,target,&b.Arena)||!bytes.Equal(got,want){for i:=range want{if got[i]!=want[i]{t.Fatalf("big=%v byte %d got %x want %x",big,i,got[i],want[i])}};t.Fatal("cook refused")}
   if !big{raw:=make([]byte,231);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;copy(raw[off:],got);var c RootCook;if !RootOpen(&c,unsafe.Pointer(&raw[off]),168){t.Fatal("open")};root:=c.Root();if root.Entries.Count!=2||root.Entries.At(0).Value.Samples.At(1)==nil||*root.Entries.At(0).Value.Samples.At(1)!=772{t.Fatal("native map deref")}}

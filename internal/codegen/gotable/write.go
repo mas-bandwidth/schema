@@ -353,7 +353,7 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 	case f.Type.TextUnbounded():
 		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the blob's bytes under
 		// kind 12, refused when not well-formed UTF-8 or holding a zero byte
-		g.pf("%s{ text,ok:=tableTextBytes(&%s,%s.Ids.Numbering.arena);if !ok||!tableUtf8Valid(text) {return false}\n", ind, expr, writer)
+		g.pf("%s{ text,ok:=tableTextBytes(&%s,%s.Ids.Numbering.arena);if !ok||!tableUTF8Valid(text) {return false}\n", ind, expr, writer)
 		if framed {
 			g.emitPutLeb(ind+"\t", writer, "uint64(len(text))")
 		}
@@ -366,10 +366,10 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 		// already put Length inside 0..N. It is the fixed writer's word test
 		// (emitTextWords), in line because the speed gate measured the call:
 		// a zero byte refuses, ASCII passes, and only text with a byte at or
-		// past 0x80 is asked of tableUtf8Valid.
+		// past 0x80 is asked of tableUTF8Valid.
 		g.pf("%s{\n%s\tn := int(%sLength)\n%s\tvar hi, z uint64\n", ind, ind, expr, ind)
-		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUtf8Word", false)
-		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
+		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUTF8Word", false)
+		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
 		if framed {
 			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)")
 		}
@@ -520,7 +520,7 @@ func (g *tableGen) emitWireArrayElement(f *ir.Field, expr, writer, ind string) {
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	// Keyed entries each have their own L around the bare value.
-	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumId(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
+	g.pf("%smark := %s.Ids.Count\n%sid, named := %s(i+1).TableEnumID(); if !named { return false }; ref := %s.Ids.Ref(id); start := %s.Ids.Count\n", i, writer, i, f.KeyEnum, writer, writer)
 	g.pf("%s%s := TableWriter{Measuring:true, Ids:%s.Ids}\n", i, element, writer)
 	g.emitWireValue(&elem, expr, element, i, false)
 	cond := g.elideDiffers(&elem, expr, fieldDefaultExpr(&elem))
@@ -612,7 +612,7 @@ func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
 		g.emitPutLeb(ind+"\t", writer, "0")
 		for i, v := range e.Variants {
 			id := ir.TableWireId(e.VariantWireName(i))
-			g.pf("%scase %s%s: %s.IdAt(%d, 0x%016x)\n", ind, e.Name, v, writer, g.knownOrdinal(id), id)
+			g.pf("%scase %s%s: %s.IDAt(%d, 0x%016x)\n", ind, e.Name, v, writer, g.knownOrdinal(id), id)
 		}
 		g.pf("%sdefault: return false\n%s}\n", ind, ind)
 		return

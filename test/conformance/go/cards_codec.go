@@ -17,13 +17,13 @@ func init() {
 					return nil, nil, false
 				}
 				defer b.Shutdown()
-				ok := cards.CardFromJsonTolerant(&b, text, r)
+				ok := cards.CardFromJSONTolerant(&b, text, r)
 				if !b.Lock() {
 					return nil, nil, false
 				}
 				return b.AsConst(), b.Region(), ok
 			},
-			cards.CardToJsonMeasure, cards.CardToJson, cards.CardCookMeasure, cards.CardCookFrom,
+			cards.CardToJSONMeasure, cards.CardToJSON, cards.CardCookMeasure, cards.CardCookFrom,
 			func(r *cards.TableReport) report {
 				return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == cards.TableOpenRefused}
 			}))

@@ -139,7 +139,7 @@ import("testing";"math";"hash/fnv")
 func TestSignalingNaN(t *testing.T) {
  h:=fnv.New64a();h.Write([]byte("value"))
  for _,bits:=range []uint32{0x7f800001,0xff812345,0x7fc12345,0x7f800000,0xff800000} {
-  var ids TableIds;buffer:=make([]byte,128);w:=TableWriter{Buffer:buffer,Ids:&ids};w.Put8(1);w.Id(h.Sum64());w.Put8(10);w.Put32(bits);w.Put8(0);w.Trailer()
+  var ids TableIds;buffer:=make([]byte,128);w:=TableWriter{Buffer:buffer,Ids:&ids};w.Put8(1);w.ID(h.Sum64());w.Put8(10);w.Put32(bits);w.Put8(0);w.Trailer()
   var value Root;var report TableReport
   if !RootLoadTolerant(&value,buffer[:w.Offset],&report)||report.Widened!=1||report.Malformed {t.Fatalf("load %#x: %+v",bits,report)}
   want:=uint64(bits>>31)<<63|0x7ff0000000000000|uint64(bits&0x7fffff)<<29

@@ -88,11 +88,11 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 			return true
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
+		if !ok || entry.ID >= 0xfffffffffffffffd {
 			r.Report.Malformed = true
 			return false
 		}
-		switch entry.Id {
+		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
 			{
 				widened := false

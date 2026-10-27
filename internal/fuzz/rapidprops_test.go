@@ -17,7 +17,7 @@ package fuzz_test
 //	                             truncations and single-byte flips) carries a
 //	                             non-empty report, and a tolerant read that is ok
 //	                             with an all-zero report is accepted strictly.
-//	TestPropStrictTolerantAgree  on a clean Save and a clean ToJson both reads
+//	TestPropStrictTolerantAgree  on a clean Save and a clean ToJSON both reads
 //	                             accept, give the same value and report clean.
 //
 // The property is expensive (it compiles a unit per check), so it is behind
@@ -235,7 +235,7 @@ func TestPropRefusalNeverSilent(t *testing.T) {
 	coverageFloor(t, "the fixed Root form", fixed)
 }
 
-// TestPropStrictTolerantAgree: on a clean Save and a clean ToJson the strict
+// TestPropStrictTolerantAgree: on a clean Save and a clean ToJSON the strict
 // and tolerant reads both accept, give the same value and both report clean.
 func TestPropStrictTolerantAgree(t *testing.T) {
 	t.Parallel()
@@ -438,13 +438,13 @@ import (
 )
 
 func rapidJSON(v *Root) (string, error) {
-	n := RootToJsonMeasure(v)
+	n := RootToJSONMeasure(v)
 	if n < 0 {
-		return "", fmt.Errorf("ToJsonMeasure %d", n)
+		return "", fmt.Errorf("ToJSONMeasure %d", n)
 	}
 	b := make([]byte, n)
-	if got := RootToJson(v, b); got != n {
-		return "", fmt.Errorf("ToJson %d want %d", got, n)
+	if got := RootToJSON(v, b); got != n {
+		return "", fmt.Errorf("ToJSON %d want %d", got, n)
 	}
 	return string(b), nil
 }
@@ -480,7 +480,7 @@ func rapidFromJSON(t *testing.T, jb []byte) (*Root, string, error) {
 	var rep TableReport
 	v, ok := probeFromJSON(jb, &rep)
 	if !ok || v == nil {
-		return nil, "", fmt.Errorf("FromJson refused: %+v", rep)
+		return nil, "", fmt.Errorf("FromJSON refused: %+v", rep)
 	}
 	js, err := rapidJSON(v)
 	return v, js, err
@@ -543,7 +543,7 @@ func testRoundTrip(t *testing.T, vals [][]byte) {
 		}
 		fv, ok := probeFromJSON([]byte(tj), &rep)
 		if !ok || fv == nil {
-			t.Fatalf("value %d: strict FromJson refused canonical text: %+v", i, rep)
+			t.Fatalf("value %d: strict FromJSON refused canonical text: %+v", i, rep)
 		}
 		fj, err := rapidJSON(fv)
 		if err != nil || fj != tj {
@@ -556,7 +556,7 @@ func testRoundTrip(t *testing.T, vals [][]byte) {
 		var tfrep TableReport
 		tfv, tok := probeFromJSONTolerant([]byte(tj), &tfrep)
 		if !tok || tfv == nil {
-			t.Fatalf("value %d: tolerant FromJson refused canonical text: %+v", i, tfrep)
+			t.Fatalf("value %d: tolerant FromJSON refused canonical text: %+v", i, tfrep)
 		}
 		if tfj, _ := rapidJSON(tfv); tfj != tj {
 			t.Fatalf("value %d: tolerant JSON differs\nwant %s\ngot  %s", i, tj, tfj)
@@ -776,8 +776,8 @@ func rapidMessageLoad(buf []byte, vocab *TableVocabulary, tolerant bool) (string
 func rapidMessageSave(t *testing.T, js string) (string, error) {
 	var v Root
 	var rep TableReport
-	if !RootFromJson(&v, []byte(js), &rep) {
-		return "", fmt.Errorf("FromJson %+v", rep)
+	if !RootFromJSON(&v, []byte(js), &rep) {
+		return "", fmt.Errorf("FromJSON %+v", rep)
 	}
 	values := []*Root{&v}
 	n := RootMeasureMessages(values, nil)

@@ -89,13 +89,13 @@ func TestNestedScratch(t *testing.T) {
  var loaded Root
  for _,text:=range texts {
   var value Root;var report TableReport
-  if !RootFromJson(&value,[]byte(text),&report)||report!=(TableReport{}) {t.Fatalf("input: %+v",report)}
+  if !RootFromJSON(&value,[]byte(text),&report)||report!=(TableReport{}) {t.Fatalf("input: %+v",report)}
   wire:=make([]byte,RootMeasure(&value));out:=make([]byte,len(wire))
   if RootSave(&value,wire)!=int64(len(wire))||!RootLoad(&loaded,wire,&report)||report!=(TableReport{}) {t.Fatalf("nested scratch changed value: %+v",report)}
   // Dormant union arms are reused storage, not logical fields. Compare the
   // public text/wire forms rather than inactive slots from the previous load.
-  a,b:=make([]byte,RootToJsonMeasure(&value)),make([]byte,RootToJsonMeasure(&loaded))
-  if RootToJson(&value,a)!=int64(len(a))||RootToJson(&loaded,b)!=int64(len(b))||!bytes.Equal(a,b) {t.Fatal("nested scratch changed logical fields")}
+  a,b:=make([]byte,RootToJSONMeasure(&value)),make([]byte,RootToJSONMeasure(&loaded))
+  if RootToJSON(&value,a)!=int64(len(a))||RootToJSON(&loaded,b)!=int64(len(b))||!bytes.Equal(a,b) {t.Fatal("nested scratch changed logical fields")}
   if RootSave(&loaded,out)!=int64(len(wire))||!bytes.Equal(out,wire) {t.Fatal("nested scratch changed wire")}
   if n:=testing.AllocsPerRun(50,func(){RootMeasure(&value);RootSave(&value,wire);RootLoad(&loaded,wire,&report)});n!=0 {t.Fatalf("nested scratch allocated %v",n)}
  }

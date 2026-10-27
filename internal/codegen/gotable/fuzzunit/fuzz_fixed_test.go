@@ -85,40 +85,40 @@ func fixedOf[T any](name string, reset func(*T), planMax int32,
 var fixedTargets = []fixedTarget{
 	fixedOf("TeamConfig", tabledemo.TeamConfigReset, tabledemo.TeamConfigFixedPlanMax,
 		tabledemo.TeamConfigFixedMeasure, tabledemo.TeamConfigFixedSave, tabledemo.TeamConfigFixedLoad,
-		tabledemo.TeamConfigToJsonMeasure, tabledemo.TeamConfigToJson),
+		tabledemo.TeamConfigToJSONMeasure, tabledemo.TeamConfigToJSON),
 	fixedOf("GunnerConfig", tabledemo.GunnerConfigReset, tabledemo.GunnerConfigFixedPlanMax,
 		tabledemo.GunnerConfigFixedMeasure, tabledemo.GunnerConfigFixedSave, tabledemo.GunnerConfigFixedLoad,
-		tabledemo.GunnerConfigToJsonMeasure, tabledemo.GunnerConfigToJson),
+		tabledemo.GunnerConfigToJSONMeasure, tabledemo.GunnerConfigToJSON),
 	fixedOf("TurretConfig", tabledemo.TurretConfigReset, tabledemo.TurretConfigFixedPlanMax,
 		tabledemo.TurretConfigFixedMeasure, tabledemo.TurretConfigFixedSave, tabledemo.TurretConfigFixedLoad,
-		tabledemo.TurretConfigToJsonMeasure, tabledemo.TurretConfigToJson),
+		tabledemo.TurretConfigToJSONMeasure, tabledemo.TurretConfigToJSON),
 	fixedOf("HullConfig", tabledemo.HullConfigReset, tabledemo.HullConfigFixedPlanMax,
 		tabledemo.HullConfigFixedMeasure, tabledemo.HullConfigFixedSave, tabledemo.HullConfigFixedLoad,
-		tabledemo.HullConfigToJsonMeasure, tabledemo.HullConfigToJson),
+		tabledemo.HullConfigToJSONMeasure, tabledemo.HullConfigToJSON),
 	fixedOf("KeyedConfig", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigFixedPlanMax,
 		tabledemo.KeyedConfigFixedMeasure, tabledemo.KeyedConfigFixedSave, tabledemo.KeyedConfigFixedLoad,
-		tabledemo.KeyedConfigToJsonMeasure, tabledemo.KeyedConfigToJson),
+		tabledemo.KeyedConfigToJSONMeasure, tabledemo.KeyedConfigToJSON),
 	fixedOf("GunnerSettings", tabledemo.GunnerSettingsReset, tabledemo.GunnerSettingsFixedPlanMax,
 		tabledemo.GunnerSettingsFixedMeasure, tabledemo.GunnerSettingsFixedSave, tabledemo.GunnerSettingsFixedLoad,
-		tabledemo.GunnerSettingsToJsonMeasure, tabledemo.GunnerSettingsToJson),
+		tabledemo.GunnerSettingsToJSONMeasure, tabledemo.GunnerSettingsToJSON),
 	fixedOf("ShipEntry", tabledemo.ShipEntryReset, tabledemo.ShipEntryFixedPlanMax,
 		tabledemo.ShipEntryFixedMeasure, tabledemo.ShipEntryFixedSave, tabledemo.ShipEntryFixedLoad,
-		tabledemo.ShipEntryToJsonMeasure, tabledemo.ShipEntryToJson),
+		tabledemo.ShipEntryToJSONMeasure, tabledemo.ShipEntryToJSON),
 	fixedOf("GlobalSettings", tabledemo.GlobalSettingsReset, tabledemo.GlobalSettingsFixedPlanMax,
 		tabledemo.GlobalSettingsFixedMeasure, tabledemo.GlobalSettingsFixedSave, tabledemo.GlobalSettingsFixedLoad,
-		tabledemo.GlobalSettingsToJsonMeasure, tabledemo.GlobalSettingsToJson),
+		tabledemo.GlobalSettingsToJSONMeasure, tabledemo.GlobalSettingsToJSON),
 	fixedOf("PackConfig", tabledemo.PackConfigReset, tabledemo.PackConfigFixedPlanMax,
 		tabledemo.PackConfigFixedMeasure, tabledemo.PackConfigFixedSave, tabledemo.PackConfigFixedLoad,
-		tabledemo.PackConfigToJsonMeasure, tabledemo.PackConfigToJson),
+		tabledemo.PackConfigToJSONMeasure, tabledemo.PackConfigToJSON),
 	fixedOf("RangedSigned", tabledemo.RangedSignedReset, tabledemo.RangedSignedFixedPlanMax,
 		tabledemo.RangedSignedFixedMeasure, tabledemo.RangedSignedFixedSave, tabledemo.RangedSignedFixedLoad,
-		tabledemo.RangedSignedToJsonMeasure, tabledemo.RangedSignedToJson),
+		tabledemo.RangedSignedToJSONMeasure, tabledemo.RangedSignedToJSON),
 	fixedOf("RangedUnsigned", tabledemo.RangedUnsignedReset, tabledemo.RangedUnsignedFixedPlanMax,
 		tabledemo.RangedUnsignedFixedMeasure, tabledemo.RangedUnsignedFixedSave, tabledemo.RangedUnsignedFixedLoad,
-		tabledemo.RangedUnsignedToJsonMeasure, tabledemo.RangedUnsignedToJson),
+		tabledemo.RangedUnsignedToJSONMeasure, tabledemo.RangedUnsignedToJSON),
 	fixedOf("RangedWidths", tabledemo.RangedWidthsReset, tabledemo.RangedWidthsFixedPlanMax,
 		tabledemo.RangedWidthsFixedMeasure, tabledemo.RangedWidthsFixedSave, tabledemo.RangedWidthsFixedLoad,
-		tabledemo.RangedWidthsToJsonMeasure, tabledemo.RangedWidthsToJson),
+		tabledemo.RangedWidthsToJSONMeasure, tabledemo.RangedWidthsToJSON),
 }
 
 func FuzzFixedLoad(f *testing.F) {
@@ -173,11 +173,11 @@ func reSaveFixed(t *testing.T, target fixedTarget, accepted any, n int64) {
 		return
 	}
 	// A wire-legal value may hold a float JSON cannot spell (NaN, an
-	// infinity) or string bytes that are not UTF-8; ToJson refuses those.
+	// infinity) or string bytes that are not UTF-8; ToJSON refuses those.
 	// The re-save equality is still checked, on the writer image itself.
 	againImage := make([]byte, size)
 	if got := target.save(second, againImage); got != size || !bytes.Equal(wire, againImage) {
-		t.Fatalf("%s: re-save round trip differs and ToJson cannot represent the value", target.name)
+		t.Fatalf("%s: re-save round trip differs and ToJSON cannot represent the value", target.name)
 	}
 }
 

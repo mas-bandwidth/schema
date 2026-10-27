@@ -58,7 +58,7 @@ import("testing";"bytes";"unsafe")
 func TestRetain(t *testing.T){
  wire:=%#v;want:=%#v
  n:=RootLoadMeasure(wire);if n<0{t.Fatal("measure")};raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
- retain:=TableRetain{Bytes:make([]byte,1<<20),Ids:make([]TableRetainId,1024)};var report TableReport
+ retain:=TableRetain{Bytes:make([]byte,1<<20),Ids:make([]TableRetainID,1024)};var report TableReport
  v:=RootLoadRetain(region,wire,&retain,&report);if v==nil||report.Malformed||report.Unknown!=%d||report.Retained!=%d||report.RetainLost!=%d{t.Fatalf("report: %%+v stored %%d",report,retain.Count)}
  size:=RootMeasureRetain(v,&retain);if size!=int64(len(want)){t.Fatalf("measure %%d want %%d",size,len(want))};out:=make([]byte,size)
  if RootSaveRetain(v,&retain,out,nil)!=-1{t.Fatal("nil report")}
@@ -78,8 +78,8 @@ table Root { child *Child }
 `, `package probe
 import("testing";"unsafe")
 func TestCaptureBounds(t *testing.T){
- var root Root;store:=TableRetain{Bytes:make([]byte,8192),Ids:make([]TableRetainId,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeId:RootTableType().Id}})
- entry:=TableMessageEntry{Id:123,Shape:TableMessageShape{Kind:13,Bits:-1}};v:=TableVocabulary{Entries:[]TableMessageEntry{entry},Count:1,RefBits:1,Announced:true}
+ var root Root;store:=TableRetain{Bytes:make([]byte,8192),Ids:make([]TableRetainID,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeID:RootTableType().ID}})
+ entry:=TableMessageEntry{ID:123,Shape:TableMessageShape{Kind:13,Bits:-1}};v:=TableVocabulary{Entries:[]TableMessageEntry{entry},Count:1,RefBits:1,Announced:true}
  for _,depth:=range []int{64,65}{
   bits:=make([]byte,32);w:=TableBitWriter{Buffer:bits};for i:=1;i<depth;i++{w.Put(1,1)};for i:=0;i<depth;i++{w.Put(0,1)}
   store.Used=0;store.Count=0;r:=TableRetainMessageReader{tableMessagePlainReader:TableMessageReader{Bits:TableBitReader{Buffer:bits},Vocabulary:&v},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
@@ -87,10 +87,10 @@ func TestCaptureBounds(t *testing.T){
   if depth==64&&(r.Report.Retained!=1||r.Report.RetainLost!=0)||depth==65&&(r.Report.Retained!=0||r.Report.RetainLost!=1){t.Fatalf("depth %d %+v",depth,r.Report)}
  }
  store.Used=0;store.Count=0;store.Bytes=store.Bytes[:64]
- huge:=TableMessageEntry{Id:124,Shape:TableMessageShape{Kind:14,Min:1<<31,Max:1<<31,Bits:-1},Element:TableMessageShape{Kind:4,Packing:1,Bits:0}}
+ huge:=TableMessageEntry{ID:124,Shape:TableMessageShape{Kind:14,Min:1<<31,Max:1<<31,Bits:-1},Element:TableMessageShape{Kind:4,Packing:1,Bits:0}}
  r:=TableRetainMessageReader{tableMessagePlainReader:TableMessageReader{Vocabulary:&v},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
  if !r.capture(huge)||r.Report.RetainLost!=1||r.Report.Retained!=0||r.Report.Malformed||store.Used!=0{t.Fatalf("zero-bit count %+v",r.Report)}
- quantized:=TableMessageEntry{Id:125,Shape:TableMessageShape{Kind:10,Packing:2,Bits:2,QCount:2,QMin:0,QDelta:1}}
+ quantized:=TableMessageEntry{ID:125,Shape:TableMessageShape{Kind:10,Packing:2,Bits:2,QCount:2,QMin:0,QDelta:1}}
  r.Report=TableReport{};r.Bits=TableBitReader{Buffer:[]byte{3}}
  if !r.capture(quantized)||r.Report.RetainLost!=1||r.Report.Malformed{t.Fatalf("invalid quantized index %+v",r.Report)}
 }
@@ -131,7 +131,7 @@ func TestReplacement(t *testing.T){
  }
  for _,tc:=range cases{t.Run(tc.name,func(t *testing.T){
   wire:=join([]byte{1},tc.payload,[]byte{0});for _,name:=range names{h:=fnv.New64a();h.Write([]byte(name));wire=binary.LittleEndian.AppendUint64(wire,h.Sum64())};wire=binary.LittleEndian.AppendUint64(wire,uint64(len(names)))
-  n:=RootLoadMeasure(wire);if n<0{t.Fatal("measure")};raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)];retain:=TableRetain{Bytes:make([]byte,2048),Ids:make([]TableRetainId,32)};var r TableReport
+  n:=RootLoadMeasure(wire);if n<0{t.Fatal("measure")};raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)];retain:=TableRetain{Bytes:make([]byte,2048),Ids:make([]TableRetainID,32)};var r TableReport
   root:=RootLoadRetain(region,wire,&retain,&r);if root==nil||r.Malformed||r.Retained!=tc.retained||int32(retain.Count)!=tc.count||r.RetainLost!=0{t.Fatalf("load %+v count %d",r,retain.Count)}
   if tc.edit{root.ArrayCount=1};out:=make([]byte,RootMeasureRetain(root,&retain));r=TableReport{};if RootSaveRetain(root,&retain,out,&r)!=int64(len(out))||r.RetainLost!=tc.lost{t.Fatalf("save %+v",r)}
   size:=RootLoadMeasure(out);raw2:=make([]byte,size+63);off2:=(-uintptr(unsafe.Pointer(&raw2[0])))&63;r=TableReport{};if RootLoad(raw2[off2:off2+uintptr(size)],out,&r)==nil||r.Malformed||r.Unknown!=tc.count-tc.lost{t.Fatalf("retained contents %+v",r)}
@@ -150,7 +150,7 @@ func TestRetainFileCapacityBeforeExpansion(t *testing.T) {
   body:=append([]byte{6,100},make([]byte,100)...)
   probe:=tableRetainIn{r:TableReader{Buffer:body},w:TableWriter{Measuring:true},limit:16}
   if probe.content(14,int64(len(body)),0)||probe.r.Offset!=2{t.Fatalf("count expanded past available resolved capacity at %d",probe.r.Offset)}
-  var root Root;store:=TableRetain{Bytes:make([]byte,42),Ids:make([]TableRetainId,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeId:RootTableType().Id}})
+  var root Root;store:=TableRetain{Bytes:make([]byte,42),Ids:make([]TableRetainID,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeID:RootTableType().ID}})
   wire:=append([]byte{byte(len(body))},body...);var report TableReport;r:=TableRetainReader{tableRetainPlainReader:TableReader{Buffer:wire,Report:&report},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
   if !r.capture(123,14)||report.Malformed||report.RetainLost!=1||report.Retained!=0||store.Used!=0{t.Fatalf("whole-record capacity %+v",report)}
  }
@@ -191,6 +191,6 @@ func TestRetainUnknownNodeRecord(t *testing.T) {
 	}
 	runGenerated(t, string(schema), fmt.Sprintf(`package tblrt1
  import("testing";"unsafe")
- func TestUnknownNode(t *testing.T){wire:=[]byte{%s};size:=NodeLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);offset:=(-uintptr(unsafe.Pointer(&raw[0])))&15;region:=raw[offset:offset+uintptr(size)];store:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainId,128)};report:=TableReport{Clamped:3};value:=NodeLoadRetain(region,wire,&store,&report);if value==nil||value.Head!=0||report.RetainLost!=1||report.Unknown!=1||report.Malformed||report.Clamped!=3{t.Fatalf("unplaceable node retention: %%+v",report)}}
+ func TestUnknownNode(t *testing.T){wire:=[]byte{%s};size:=NodeLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);offset:=(-uintptr(unsafe.Pointer(&raw[0])))&15;region:=raw[offset:offset+uintptr(size)];store:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainID,128)};report:=TableReport{Clamped:3};value:=NodeLoadRetain(region,wire,&store,&report);if value==nil||value.Head!=0||report.RetainLost!=1||report.Unknown!=1||report.Malformed||report.Clamped!=3{t.Fatalf("unplaceable node retention: %%+v",report)}}
  `, byteLiterals(wire)))
 }

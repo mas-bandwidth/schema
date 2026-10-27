@@ -57,8 +57,8 @@ func (g *tableGen) emitReadTextElement(f *ir.Field, expr, ind string) {
 	m := v.Type.Size
 	value := expr + "." + member(v)
 	g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; break }\n", ind)
-	g.pf("%sif !tableUtf8Valid(elem.Buffer) { r.Report.Malformed = true; %sReset(&%s); break }\n", ind, f.Type.Name, expr)
-	g.pf("%skeep := int64(len(elem.Buffer)); if keep > %d { keep = tableUtf8Clamp(elem.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, m, m, f.TextListElem().MapEntryOf)
+	g.pf("%sif !tableUTF8Valid(elem.Buffer) { r.Report.Malformed = true; %sReset(&%s); break }\n", ind, f.Type.Name, expr)
+	g.pf("%skeep := int64(len(elem.Buffer)); if keep > %d { keep = tableUTF8Clamp(elem.Buffer, %d); r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q) }\n", ind, m, m, f.TextListElem().MapEntryOf)
 	g.pf("%sclear(%s[:]); copy(%s[:keep], elem.Buffer); %sLength = int32(keep)\n", ind, value, value, value)
 }
 
@@ -94,7 +94,7 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	}
 	// the write-side text rule (§2.13): the element past M, a zero byte and
 	// ill-formed UTF-8 are refused at the append, as Save refuses them
-	valid := "if len(text)>%d||!tableUtf8Valid(unsafe.Slice(unsafe.StringData(text),len(text))){return false};"
+	valid := "if len(text)>%d||!tableUTF8Valid(unsafe.Slice(unsafe.StringData(text),len(text))){return false};"
 	g.needsUnsafe()
 	// the total (§2.13): the element that would carry the sum past it is
 	// refused, as the element past the count is
@@ -197,13 +197,13 @@ func textListRuntime(u *ir.Unit, s string) string {
 
 // textListJsonSource is the text form's plain element of a text list (§16.2).
 const textListJsonSource = `
-// tableJsonWriteTextElement writes one text-list element (docs/SPEC-TABLES.md
+// tableJSONWriteTextElement writes one text-list element (docs/SPEC-TABLES.md
 // §2.13, §16.2): its string, or null for an absent ?string(M) element.
-func tableJsonWriteTextElement(out *tableJsonOut,p unsafe.Pointer,f *TableFieldInfo)bool{v:=&f.Table().Fields[0];if f.TextList==2&&tableJsonGetRaw(unsafe.Add(p,uintptr(v.PresentOffset)),1)==0{out.text("null");return true};n:=tableJsonCount(p,v);if n<0||n>v.ArrayBound{return false};tableJsonWriteString(out,tableJsonBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}
+func tableJSONWriteTextElement(out *tableJSONOut,p unsafe.Pointer,f *TableFieldInfo)bool{v:=&f.Table().Fields[0];if f.TextList==2&&tableJSONGetRaw(unsafe.Add(p,uintptr(v.PresentOffset)),1)==0{out.text("null");return true};n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}
 
-// tableJsonReadTextElement reads one: a string, or null where the element may be
+// tableJSONReadTextElement reads one: a string, or null where the element may be
 // absent; the caller's shape check has already counted every other JSON type.
-func tableJsonReadTextElement(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool{t:=f.Table();t.Reset(p);if in.valueShape()=='z'{return in.literal("null")};v:=&t.Fields[0];if !tableJsonReadField(in,p,v,depth){return false};if f.TextList==2{tableJsonSetRaw(unsafe.Add(p,uintptr(v.PresentOffset)),1,1)};return true}
+func tableJSONReadTextElement(in *tableJSONIn,p unsafe.Pointer,f *TableFieldInfo,depth int32)bool{t:=f.Table();t.Reset(p);if in.valueShape()=='z'{return in.literal("null")};v:=&t.Fields[0];if !tableJSONReadField(in,p,v,depth){return false};if f.TextList==2{tableJSONSetRaw(unsafe.Add(p,uintptr(v.PresentOffset)),1,1)};return true}
 `
 
 // textListJson is the text form's walk with the text list's plain array and the
@@ -218,31 +218,31 @@ func textListJson(u *ir.Unit, s string, walk bool) string {
 	if !walk {
 		return textTotalJson(u, s, false)
 	}
-	s = tableSourceReplace(s, "func tableJsonShape(f *TableFieldInfo) byte {\n", "func tableJsonShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 'a'};if f.Kind==13&&!f.Pointer&&!f.IsArray&&!f.List&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
-	s = tableSourceReplace(s, "func tableJsonElementShape(f *TableFieldInfo) byte {\n", "func tableJsonElementShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 's'};if f.Kind==13&&!f.Pointer&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
-	s = tableSourceReplace(s, "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonWriteTextElement(out,storage,f)}\n", 1)
-	s = tableSourceReplace(s, "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJsonReadTextElement(in,storage,f,depth)}\n", 1)
-	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\ttableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))", 1)
+	s = tableSourceReplace(s, "func tableJSONShape(f *TableFieldInfo) byte {\n", "func tableJSONShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 'a'};if f.Kind==13&&!f.Pointer&&!f.IsArray&&!f.List&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
+	s = tableSourceReplace(s, "func tableJSONElementShape(f *TableFieldInfo) byte {\n", "func tableJSONElementShape(f *TableFieldInfo) byte {\nif f.TextList!=0{return 's'};if f.Kind==13&&!f.Pointer&&f.Table!=nil&&f.Table().JsonArray{return 'a'}\n", 1)
+	s = tableSourceReplace(s, "func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJSONWriteTextElement(out,storage,f)}\n", 1)
+	s = tableSourceReplace(s, "func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.TextList!=0{return tableJSONReadTextElement(in,storage,f,depth)}\n", 1)
+	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\ttableJSONWriteString(out, tableJSONBytes(storage, tableJSONCount(base, f)))", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\ttableJSONWriteString(out, tableJSONBytes(storage, tableJSONCount(base, f)))", 1)
 	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\tlength, ok := in.scanString(", "\tif f.Kind == 12 && f.TextList == 0 {\n\t\tlength, ok := in.scanString(", 1)
 	s = tableSourceReplace(s, "!(f.Pointer && in.valueShape()=='z')", "!((f.Pointer||f.TextList==2) && in.valueShape()=='z')", 2)
 	// The list reader carries the unspaced historical spelling, exactly once.
 	s = tableSourceReplace(s, "!(f.Pointer&&in.valueShape()=='z')", "!((f.Pointer||f.TextList==2)&&in.valueShape()=='z')", 1)
-	s = tableSourceReplace(s, " if depth>tableJsonMaxDepth{return false}\n any := label!=0\n", " if depth>tableJsonMaxDepth{return false}\n if info.JsonArray&&label==0&&len(info.Fields)==1{return tableJsonWriteField(out,base,&info.Fields[0],depth)}\n any := label!=0\n", 1)
-	s = tableSourceReplace(s, "func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n", "func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJsonMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n"+"\tif info.JsonArray&&len(info.Fields)==1 {if in.peek()!='['{if in.report!=nil&&in.report.Reason==\"\"{in.report.Reason=\"json_root_not_array: \"+info.Name};in.bad=true;return false};return tableJsonReadField(in,base,&info.Fields[0],depth)}\n", 1)
+	s = tableSourceReplace(s, " if depth>tableJSONMaxDepth{return false}\n any := label!=0\n", " if depth>tableJSONMaxDepth{return false}\n if info.JsonArray&&label==0&&len(info.Fields)==1{return tableJSONWriteField(out,base,&info.Fields[0],depth)}\n any := label!=0\n", 1)
+	s = tableSourceReplace(s, "func tableJSONReadTable(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJSONMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n", "func tableJSONReadTable(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInfo, depth int32) bool {\n\tif depth > tableJSONMaxDepth {\n\t\tin.bad = true\n\t\treturn false\n\t}\n"+"\tif info.JsonArray&&len(info.Fields)==1 {if in.peek()!='['{if in.report!=nil&&in.report.Reason==\"\"{in.report.Reason=\"json_root_not_array: \"+info.Name};in.bad=true;return false};return tableJSONReadField(in,base,&info.Fields[0],depth)}\n", 1)
 	s = tableSourceReplace(s, "// ---- json walk: end ----", textListJsonSource+"// ---- json walk: end ----", 1)
 	return textTotalJson(u, s, true)
 }
 
 // textTotalJsonSource is the text form's half of a text list's total (§2.13).
 const textTotalJsonSource = `
-// tableJsonTextBytes is the byte total of count text-list elements at p
+// tableJSONTextBytes is the byte total of count text-list elements at p
 // (docs/SPEC-TABLES.md §2.13): an absent ?string(M) element counts zero.
-func tableJsonTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=&f.Table().Fields[0];spent:=int64(0);for i := range count {e:=unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize));if f.TextList==2&&tableJsonGetRaw(unsafe.Add(e,uintptr(v.PresentOffset)),1)==0{continue};if n:=tableJsonCount(e,v);n>0{spent+=int64(n)}};return spent}
+func tableJSONTextBytes(p unsafe.Pointer,count int32,f *TableFieldInfo)int64{v:=&f.Table().Fields[0];spent:=int64(0);for i := range count {e:=unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize));if f.TextList==2&&tableJSONGetRaw(unsafe.Add(e,uintptr(v.PresentOffset)),1)==0{continue};if n:=tableJSONCount(e,v);n>0{spent+=int64(n)}};return spent}
 
-// tableJsonTextTotalKeep adds one read element to the running total and says
+// tableJSONTextTotalKeep adds one read element to the running total and says
 // whether it is kept: the first element past the total is reset, counted
 // clamped once and the field named (docs/SPEC-TABLES.md §2.13).
-func tableJsonTextTotalKeep(in *tableJsonIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJsonTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(&in.report.ClampedField,f.TextTotalOf);return false}
+func tableJSONTextTotalKeep(in *tableJSONIn,p unsafe.Pointer,f *TableFieldInfo,spent *int64)bool{*spent+=tableJSONTextBytes(p,1,f);if *spent<=f.TextTotal{return true};f.Table().Reset(p);in.report.Clamped++;tableTextClamped(&in.report.ClampedField,f.TextTotalOf);return false}
 `
 
 // textTotalJson is the text form's walk holding a text list's total (§2.13):
@@ -264,13 +264,13 @@ func textTotalJson(u *ir.Unit, s string, walk bool) string {
 	rep := func(old, new string, count int) {
 		s = tableSourceReplace(s, old, new, count)
 	}
-	rep("\tif f.IsArray {\n\t\tcount := tableJsonCount(base, f)\n", "\tif f.IsArray {\n\t\tcount := tableJsonCount(base, f)\n\t\tif f.TextTotal>0&&tableJsonTextBytes(storage,count,f)>f.TextTotal{return false}\n", walkCount)
-	rep("\t\ttableJsonSetCount(base, f, 0)\n\t\tplaced := int32(0)\n\t\tshape := tableJsonElementShape(f)\n", "\t\ttableJsonSetCount(base, f, 0)\n\t\tplaced := int32(0)\n\t\tshape := tableJsonElementShape(f)\n\t\tspent, full := int64(0), false\n", walkCount)
+	rep("\tif f.IsArray {\n\t\tcount := tableJSONCount(base, f)\n", "\tif f.IsArray {\n\t\tcount := tableJSONCount(base, f)\n\t\tif f.TextTotal>0&&tableJSONTextBytes(storage,count,f)>f.TextTotal{return false}\n", walkCount)
+	rep("\t\ttableJSONSetCount(base, f, 0)\n\t\tplaced := int32(0)\n\t\tshape := tableJSONElementShape(f)\n", "\t\ttableJSONSetCount(base, f, 0)\n\t\tplaced := int32(0)\n\t\tshape := tableJSONElementShape(f)\n\t\tspent, full := int64(0), false\n", walkCount)
 	rep("\t\t\tcase placed >= f.ArrayBound:\n", "\t\t\tcase full:\n\t\t\t\tif !in.skipValue(depth + 1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\tcase placed >= f.ArrayBound:\n", walkCount)
-	rep("\t\t\t\tif !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\t\tplaced++\n", "\t\t\t\tif !tableJsonReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\t\tif f.TextTotal>0&&!tableJsonTextTotalKeep(in,unsafe.Add(storage,uintptr(placed)*uintptr(f.ElemSize)),f,&spent){full=true}else{placed++}\n", walkCount)
-	rep("ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');", "ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);if f.TextTotal>0&&tableJsonTextBytes(p,count,f)>f.TextTotal{return false};out.put('[');", walkCount)
-	rep("shape:=tableJsonElementShape(f)\n for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(", "shape:=tableJsonElementShape(f);spent,full:=int64(0),false\n for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};if full{if !in.skipValue(depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false};p:=in.graph.listAdd(", walkCount)
-	rep("else if !tableJsonReadScalar(in,p,f,depth+1){return false};c=in.peek()", "else if !tableJsonReadScalar(in,p,f,depth+1){return false}else if f.TextTotal>0&&!tableJsonTextTotalKeep(in,p,f,&spent){full=true;if in.graph.listDrop==nil{in.bad=true;return false};in.graph.listDrop(holder,p,int64(f.ElemSize))};c=in.peek()", walkCount)
+	rep("\t\t\t\tif !tableJSONReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\t\tplaced++\n", "\t\t\t\tif !tableJSONReadScalar(in, unsafe.Add(storage, uintptr(placed)*uintptr(f.ElemSize)), f, depth+1) {\n\t\t\t\t\treturn false\n\t\t\t\t}\n\t\t\t\tif f.TextTotal>0&&!tableJSONTextTotalKeep(in,unsafe.Add(storage,uintptr(placed)*uintptr(f.ElemSize)),f,&spent){full=true}else{placed++}\n", walkCount)
+	rep("ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');", "ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);if f.TextTotal>0&&tableJSONTextBytes(p,count,f)>f.TextTotal{return false};out.put('[');", walkCount)
+	rep("shape:=tableJSONElementShape(f)\n for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(", "shape:=tableJSONElementShape(f);spent,full:=int64(0),false\n for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};if full{if !in.skipValue(depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false};p:=in.graph.listAdd(", walkCount)
+	rep("else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek()", "else if !tableJSONReadScalar(in,p,f,depth+1){return false}else if f.TextTotal>0&&!tableJSONTextTotalKeep(in,p,f,&spent){full=true;if in.graph.listDrop==nil{in.bad=true;return false};in.graph.listDrop(holder,p,int64(f.ElemSize))};c=in.peek()", walkCount)
 	rep(" listAdd func(unsafe.Pointer,int64)unsafe.Pointer\n", " listAdd func(unsafe.Pointer,int64)unsafe.Pointer\n listDrop func(unsafe.Pointer,unsafe.Pointer,int64)\n", walkCount)
 	rep("listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},", "listAdd:func(p unsafe.Pointer,size int64)unsafe.Pointer{return tableContainerAppend(worker,(*tableContainer)(p),size)},listDrop:func(p,e unsafe.Pointer,size int64){tableContainerErase(worker.Arena,(*tableContainer)(p),e,size)},", regionCount)
 	s = tableSourceReplace(s, "// ---- json walk: end ----", textTotalJsonSource+"// ---- json walk: end ----", walkCount)

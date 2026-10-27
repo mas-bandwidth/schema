@@ -14,7 +14,7 @@ func TestMeasureRefusalReasons(t *testing.T) {
  import("testing";"unsafe")
  var measureSizeSink int64
  var measureErrorSink error
- func arrayFile(field int,count uint64)[]byte{var ids TableIds;wire:=make([]byte,128);w:=TableWriter{Buffer:wire,Ids:&ids};w.Put8(1);w.Id(RootTableFields[field].Id);w.Put8(14);w.PutLeb(uint64(1+tableLebBytes(count)));kind:=uint8(4);if field==1{kind=13};w.Put8(kind);w.PutLeb(count);w.Put8(0);w.Trailer();return wire[:w.Offset]}
+ func arrayFile(field int,count uint64)[]byte{var ids TableIds;wire:=make([]byte,128);w:=TableWriter{Buffer:wire,Ids:&ids};w.Put8(1);w.ID(RootTableFields[field].ID);w.Put8(14);w.PutLeb(uint64(1+tableLebBytes(count)));kind:=uint8(4);if field==1{kind=13};w.Put8(kind);w.PutLeb(count);w.Put8(0);w.Trailer();return wire[:w.Offset]}
  func TestMeasureReasons(t *testing.T){
  if TableRefuseWireDamaged.Error()!="wire_damaged"{t.Fatal("damage spelling")};for reason:=TableRefuseOk;reason<=TableRefuseWireDamaged;reason++{if n:=testing.AllocsPerRun(20,func(){measureErrorSink=reason});n!=0{t.Fatalf("escaping reason %v allocated %v",reason,n)}}
  if tableRefuseError(TableRefuseOk)!=nil{t.Fatal("zero reason became non-nil error")}
