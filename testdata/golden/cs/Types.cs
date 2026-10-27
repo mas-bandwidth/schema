@@ -12,7 +12,7 @@ namespace Example
 {
 
     // type Vec3
-    public sealed class Vec3
+    public struct Vec3
     {
         public double X;
         public double Y;
@@ -20,7 +20,7 @@ namespace Example
     }
 
     // type Quat
-    public sealed class Quat
+    public struct Quat
     {
         public double X;
         public double Y;
@@ -29,14 +29,14 @@ namespace Example
     }
 
     // type Handle
-    public sealed class Handle
+    public struct Handle
     {
         public int ObjectId; // wire [0, 9999]
         public byte ObjectSequence;
     }
 
     // type QuantizedPosition
-    public sealed class QuantizedPosition
+    public struct QuantizedPosition
     {
         public int X; // wire [-8388608, 8388608]
         public int Y; // wire [-8388608, 8388608]
@@ -44,7 +44,7 @@ namespace Example
     }
 
     // type QuantizedVelocity
-    public sealed class QuantizedVelocity
+    public struct QuantizedVelocity
     {
         public int X; // wire [-2097152, 2097152]
         public int Y; // wire [-2097152, 2097152]
@@ -52,7 +52,7 @@ namespace Example
     }
 
     // type QuantizedRotation
-    public sealed class QuantizedRotation
+    public struct QuantizedRotation
     {
         public short X; // wire [-1024, 1024]
         public short Y; // wire [-1024, 1024]
@@ -61,20 +61,20 @@ namespace Example
     }
 
     // type RigidBody
-    public sealed class RigidBody
+    public struct RigidBody
     {
-        public Vec3 Position = new Vec3();
-        public Quat Orientation = new Quat();
+        public Vec3 Position;
+        public Quat Orientation;
         public bool AtRest;
 
         // !at_rest — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
-        public Vec3 LinearVelocity = new Vec3();
-        public Vec3 AngularVelocity = new Vec3();
+        public Vec3 LinearVelocity;
+        public Vec3 AngularVelocity;
     }
 
     // type Input
-    public sealed class Input
+    public struct Input
     {
         public float StickX;
         public float StickY;
@@ -92,30 +92,22 @@ namespace Example
     }
 
     // type InputPacket
-    public sealed class InputPacket
+    public struct InputPacket
     {
         public ushort SynchronizeSequence;
         public ulong CurrentFrame;
         public ulong StartFrame;
-        public Input[] Inputs = new Input[Schema.MaxInputsPerPacket]; // used count beside it; wire count in [0, MaxInputsPerPacket]
+        public InlineBuffer16<Input> Inputs; // used count beside it; wire count in [0, MaxInputsPerPacket]
         public int InputsCount;
-
-        public InputPacket()
-        {
-            for (int i = 0; i < Inputs.Length; i++)
-            {
-                Inputs[i] = new Input();
-            }
-        }
     }
 
     // type ShipCreate
-    public sealed class ShipCreate
+    public struct ShipCreate
     {
         public ShipType ShipType;
-        public QuantizedPosition Position = new QuantizedPosition();
-        public QuantizedRotation Rotation = new QuantizedRotation();
-        public QuantizedVelocity LinearVelocity = new QuantizedVelocity();
+        public QuantizedPosition Position;
+        public QuantizedRotation Rotation;
+        public QuantizedVelocity LinearVelocity;
         public bool HasFlags;
 
         // has_flags — wire branch; storage holds both sides, a read zeroes the
@@ -129,29 +121,44 @@ namespace Example
     }
 
     // type ExpressionProbe
-    public sealed class ExpressionProbe
+    public struct ExpressionProbe
     {
         public int HardpointIndex; // wire [0, 31]
-        public int SpinRate = (int)Schema.RotationUnits; // specified default at construction; Zero* gives the §5 zero form; wire [1024, 2048]
+        public int SpinRate; // specified default at construction; Zero* gives the §5 zero form; wire [1024, 2048]
+
+        public ExpressionProbe()
+        {
+            Schema.InitExpressionProbe(ref this);
+        }
     }
 
     // type ExtremeProbe
-    public sealed class ExtremeProbe
+    public struct ExtremeProbe
     {
         public long FloorBound; // wire [-9223372036854775808, 100]
         public long DoubledFloor; // wire [-9223372036854775808, 100]
-        public ulong CeilingRange = 1; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551615]
-        public long FloorDefault = -9223372036854775808; // specified default at construction; Zero* gives the §5 zero form
-        public ulong CeilingDefault = 18446744073709551615; // specified default at construction; Zero* gives the §5 zero form
+        public ulong CeilingRange; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551615]
+        public long FloorDefault; // specified default at construction; Zero* gives the §5 zero form
+        public ulong CeilingDefault; // specified default at construction; Zero* gives the §5 zero form
+
+        public ExtremeProbe()
+        {
+            Schema.InitExtremeProbe(ref this);
+        }
     }
 
     // type ExtremeRow
-    public sealed class ExtremeRow
+    public struct ExtremeRow
     {
         public long ClampedFloor; // wire [-9223372036854775808, 100]
-        public ulong ClampedCeiling = 1; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551614]
-        public long FloorDef = -9223372036854775808; // specified default at construction; Zero* gives the §5 zero form
-        public ulong CeilingDef = 18446744073709551615; // specified default at construction; Zero* gives the §5 zero form
+        public ulong ClampedCeiling; // specified default at construction; Zero* gives the §5 zero form; wire [1, 18446744073709551614]
+        public long FloorDef; // specified default at construction; Zero* gives the §5 zero form
+        public ulong CeilingDef; // specified default at construction; Zero* gives the §5 zero form
+
+        public ExtremeRow()
+        {
+            Schema.InitExtremeRow(ref this);
+        }
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -165,7 +172,7 @@ namespace Example
         public const int Vec3MaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroVec3(Vec3 value)
+        public static void ZeroVec3(ref Vec3 value)
         {
             value.X = 0.0;
             value.Y = 0.0;
@@ -174,17 +181,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteVec3(WriteStream stream, Vec3 value)
+        public static bool WriteVec3(WriteStream stream, ref Vec3 value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteVec3Batch(ref batch, value);
+            bool result = WriteVec3Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteVec3Batch(ref WriteBatch batch, Vec3 value)
+        private static bool WriteVec3Batch(ref WriteBatch batch, ref Vec3 value)
         {
             if (!batch.SerializeDouble(ref value.X))
             {
@@ -201,17 +208,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadVec3(ReadStream stream, Vec3 value)
+        public static bool ReadVec3(ReadStream stream, ref Vec3 value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadVec3Batch(ref batch, value);
+            bool result = ReadVec3Batch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadVec3Batch(ref ReadBatch batch, Vec3 value)
+        private static bool ReadVec3Batch(ref ReadBatch batch, ref Vec3 value)
         {
             if (!batch.SerializeDouble(ref value.X))
             {
@@ -234,7 +241,7 @@ namespace Example
         public const int QuatMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroQuat(Quat value)
+        public static void ZeroQuat(ref Quat value)
         {
             value.X = 0.0;
             value.Y = 0.0;
@@ -244,17 +251,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteQuat(WriteStream stream, Quat value)
+        public static bool WriteQuat(WriteStream stream, ref Quat value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteQuatBatch(ref batch, value);
+            bool result = WriteQuatBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteQuatBatch(ref WriteBatch batch, Quat value)
+        private static bool WriteQuatBatch(ref WriteBatch batch, ref Quat value)
         {
             if (!batch.SerializeDouble(ref value.X))
             {
@@ -275,17 +282,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadQuat(ReadStream stream, Quat value)
+        public static bool ReadQuat(ReadStream stream, ref Quat value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadQuatBatch(ref batch, value);
+            bool result = ReadQuatBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadQuatBatch(ref ReadBatch batch, Quat value)
+        private static bool ReadQuatBatch(ref ReadBatch batch, ref Quat value)
         {
             if (!batch.SerializeDouble(ref value.X))
             {
@@ -312,7 +319,7 @@ namespace Example
         public const int HandleMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroHandle(Handle value)
+        public static void ZeroHandle(ref Handle value)
         {
             value.ObjectId = 0;
             value.ObjectSequence = 0;
@@ -320,17 +327,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteHandle(WriteStream stream, Handle value)
+        public static bool WriteHandle(WriteStream stream, ref Handle value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteHandleBatch(ref batch, value);
+            bool result = WriteHandleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteHandleBatch(ref WriteBatch batch, Handle value)
+        private static bool WriteHandleBatch(ref WriteBatch batch, ref Handle value)
         {
             {
                 // flat run: 22 bits in 1 chunk(s) — the field placement is folded
@@ -346,17 +353,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadHandle(ReadStream stream, Handle value)
+        public static bool ReadHandle(ReadStream stream, ref Handle value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadHandleBatch(ref batch, value);
+            bool result = ReadHandleBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadHandleBatch(ref ReadBatch batch, Handle value)
+        private static bool ReadHandleBatch(ref ReadBatch batch, ref Handle value)
         {
             if (!batch.SerializeInt(ref value.ObjectId, 0, (int)(MaxObjects - 1)))
             {
@@ -379,7 +386,7 @@ namespace Example
         public const int QuantizedPositionMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroQuantizedPosition(QuantizedPosition value)
+        public static void ZeroQuantizedPosition(ref QuantizedPosition value)
         {
             value.X = 0;
             value.Y = 0;
@@ -388,17 +395,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteQuantizedPosition(WriteStream stream, QuantizedPosition value)
+        public static bool WriteQuantizedPosition(WriteStream stream, ref QuantizedPosition value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteQuantizedPositionBatch(ref batch, value);
+            bool result = WriteQuantizedPositionBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteQuantizedPositionBatch(ref WriteBatch batch, QuantizedPosition value)
+        private static bool WriteQuantizedPositionBatch(ref WriteBatch batch, ref QuantizedPosition value)
         {
             {
                 // flat run: 75 bits in 2 chunk(s) — the field placement is folded
@@ -422,17 +429,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadQuantizedPosition(ReadStream stream, QuantizedPosition value)
+        public static bool ReadQuantizedPosition(ReadStream stream, ref QuantizedPosition value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadQuantizedPositionBatch(ref batch, value);
+            bool result = ReadQuantizedPositionBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadQuantizedPositionBatch(ref ReadBatch batch, QuantizedPosition value)
+        private static bool ReadQuantizedPositionBatch(ref ReadBatch batch, ref QuantizedPosition value)
         {
             if (!batch.SerializeInt(ref value.X, (int)(-MaxPositionUnits), (int)MaxPositionUnits))
             {
@@ -455,7 +462,7 @@ namespace Example
         public const int QuantizedVelocityMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroQuantizedVelocity(QuantizedVelocity value)
+        public static void ZeroQuantizedVelocity(ref QuantizedVelocity value)
         {
             value.X = 0;
             value.Y = 0;
@@ -464,17 +471,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteQuantizedVelocity(WriteStream stream, QuantizedVelocity value)
+        public static bool WriteQuantizedVelocity(WriteStream stream, ref QuantizedVelocity value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteQuantizedVelocityBatch(ref batch, value);
+            bool result = WriteQuantizedVelocityBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteQuantizedVelocityBatch(ref WriteBatch batch, QuantizedVelocity value)
+        private static bool WriteQuantizedVelocityBatch(ref WriteBatch batch, ref QuantizedVelocity value)
         {
             {
                 // flat run: 69 bits in 2 chunk(s) — the field placement is folded
@@ -498,17 +505,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadQuantizedVelocity(ReadStream stream, QuantizedVelocity value)
+        public static bool ReadQuantizedVelocity(ReadStream stream, ref QuantizedVelocity value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadQuantizedVelocityBatch(ref batch, value);
+            bool result = ReadQuantizedVelocityBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadQuantizedVelocityBatch(ref ReadBatch batch, QuantizedVelocity value)
+        private static bool ReadQuantizedVelocityBatch(ref ReadBatch batch, ref QuantizedVelocity value)
         {
             if (!batch.SerializeInt(ref value.X, (int)(-MaxVelocityUnits), (int)MaxVelocityUnits))
             {
@@ -531,7 +538,7 @@ namespace Example
         public const int QuantizedRotationMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroQuantizedRotation(QuantizedRotation value)
+        public static void ZeroQuantizedRotation(ref QuantizedRotation value)
         {
             value.X = 0;
             value.Y = 0;
@@ -541,17 +548,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteQuantizedRotation(WriteStream stream, QuantizedRotation value)
+        public static bool WriteQuantizedRotation(WriteStream stream, ref QuantizedRotation value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteQuantizedRotationBatch(ref batch, value);
+            bool result = WriteQuantizedRotationBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteQuantizedRotationBatch(ref WriteBatch batch, QuantizedRotation value)
+        private static bool WriteQuantizedRotationBatch(ref WriteBatch batch, ref QuantizedRotation value)
         {
             {
                 // flat run: 48 bits in 1 chunk(s) — the field placement is folded
@@ -572,17 +579,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadQuantizedRotation(ReadStream stream, QuantizedRotation value)
+        public static bool ReadQuantizedRotation(ReadStream stream, ref QuantizedRotation value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadQuantizedRotationBatch(ref batch, value);
+            bool result = ReadQuantizedRotationBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadQuantizedRotationBatch(ref ReadBatch batch, QuantizedRotation value)
+        private static bool ReadQuantizedRotationBatch(ref ReadBatch batch, ref QuantizedRotation value)
         {
             {
                 int rangeValue = 0;
@@ -625,34 +632,34 @@ namespace Example
         public const int RigidBodyMaxBytes = 112;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroRigidBody(RigidBody value)
+        public static void ZeroRigidBody(ref RigidBody value)
         {
-            ZeroVec3(value.Position);
-            ZeroQuat(value.Orientation);
+            ZeroVec3(ref value.Position);
+            ZeroQuat(ref value.Orientation);
             value.AtRest = false;
-            ZeroVec3(value.LinearVelocity);
-            ZeroVec3(value.AngularVelocity);
+            ZeroVec3(ref value.LinearVelocity);
+            ZeroVec3(ref value.AngularVelocity);
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteRigidBody(WriteStream stream, RigidBody value)
+        public static bool WriteRigidBody(WriteStream stream, ref RigidBody value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteRigidBodyBatch(ref batch, value);
+            bool result = WriteRigidBodyBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteRigidBodyBatch(ref WriteBatch batch, RigidBody value)
+        private static bool WriteRigidBodyBatch(ref WriteBatch batch, ref RigidBody value)
         {
-            if (!WriteVec3Batch(ref batch, value.Position))
+            if (!WriteVec3Batch(ref batch, ref value.Position))
             {
                 return false;
             }
-            if (!WriteQuatBatch(ref batch, value.Orientation))
+            if (!WriteQuatBatch(ref batch, ref value.Orientation))
             {
                 return false;
             }
@@ -662,11 +669,11 @@ namespace Example
             }
             if (!value.AtRest)
             {
-                if (!WriteVec3Batch(ref batch, value.LinearVelocity))
+                if (!WriteVec3Batch(ref batch, ref value.LinearVelocity))
                 {
                     return false;
                 }
-                if (!WriteVec3Batch(ref batch, value.AngularVelocity))
+                if (!WriteVec3Batch(ref batch, ref value.AngularVelocity))
                 {
                     return false;
                 }
@@ -674,23 +681,23 @@ namespace Example
             return true;
         }
 
-        public static bool ReadRigidBody(ReadStream stream, RigidBody value)
+        public static bool ReadRigidBody(ReadStream stream, ref RigidBody value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadRigidBodyBatch(ref batch, value);
+            bool result = ReadRigidBodyBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadRigidBodyBatch(ref ReadBatch batch, RigidBody value)
+        private static bool ReadRigidBodyBatch(ref ReadBatch batch, ref RigidBody value)
         {
-            if (!ReadVec3Batch(ref batch, value.Position))
+            if (!ReadVec3Batch(ref batch, ref value.Position))
             {
                 return false;
             }
-            if (!ReadQuatBatch(ref batch, value.Orientation))
+            if (!ReadQuatBatch(ref batch, ref value.Orientation))
             {
                 return false;
             }
@@ -700,19 +707,19 @@ namespace Example
             }
             if (!value.AtRest)
             {
-                if (!ReadVec3Batch(ref batch, value.LinearVelocity))
+                if (!ReadVec3Batch(ref batch, ref value.LinearVelocity))
                 {
                     return false;
                 }
-                if (!ReadVec3Batch(ref batch, value.AngularVelocity))
+                if (!ReadVec3Batch(ref batch, ref value.AngularVelocity))
                 {
                     return false;
                 }
             }
             else
             {
-                ZeroVec3(value.LinearVelocity);
-                ZeroVec3(value.AngularVelocity);
+                ZeroVec3(ref value.LinearVelocity);
+                ZeroVec3(ref value.AngularVelocity);
             }
             return true;
         }
@@ -723,7 +730,7 @@ namespace Example
         public const int InputMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroInput(Input value)
+        public static void ZeroInput(ref Input value)
         {
             value.StickX = 0.0f;
             value.StickY = 0.0f;
@@ -742,17 +749,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteInput(WriteStream stream, Input value)
+        public static bool WriteInput(WriteStream stream, ref Input value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteInputBatch(ref batch, value);
+            bool result = WriteInputBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteInputBatch(ref WriteBatch batch, Input value)
+        private static bool WriteInputBatch(ref WriteBatch batch, ref Input value)
         {
             if (!batch.SerializeFloat(ref value.StickX))
             {
@@ -793,17 +800,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadInput(ReadStream stream, Input value)
+        public static bool ReadInput(ReadStream stream, ref Input value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadInputBatch(ref batch, value);
+            bool result = ReadInputBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadInputBatch(ref ReadBatch batch, Input value)
+        private static bool ReadInputBatch(ref ReadBatch batch, ref Input value)
         {
             if (!batch.SerializeFloat(ref value.StickX))
             {
@@ -860,31 +867,31 @@ namespace Example
         public const int InputPacketMaxBytes = 360;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroInputPacket(InputPacket value)
+        public static void ZeroInputPacket(ref InputPacket value)
         {
             value.SynchronizeSequence = 0;
             value.CurrentFrame = 0;
             value.StartFrame = 0;
             for (int i = 0; i < (int)MaxInputsPerPacket; i++)
             {
-                ZeroInput(value.Inputs[i]);
+                ZeroInput(ref value.Inputs[i]);
             }
             value.InputsCount = 0;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteInputPacket(WriteStream stream, InputPacket value)
+        public static bool WriteInputPacket(WriteStream stream, ref InputPacket value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteInputPacketBatch(ref batch, value);
+            bool result = WriteInputPacketBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteInputPacketBatch(ref WriteBatch batch, InputPacket value)
+        private static bool WriteInputPacketBatch(ref WriteBatch batch, ref InputPacket value)
         {
             {
                 uint rawValue = value.SynchronizeSequence;
@@ -911,7 +918,7 @@ namespace Example
             }
             for (int i = 0; i < value.InputsCount; i++)
             {
-                if (!WriteInputBatch(ref batch, value.Inputs[i]))
+                if (!WriteInputBatch(ref batch, ref value.Inputs[i]))
                 {
                     return false;
                 }
@@ -919,17 +926,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadInputPacket(ReadStream stream, InputPacket value)
+        public static bool ReadInputPacket(ReadStream stream, ref InputPacket value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadInputPacketBatch(ref batch, value);
+            bool result = ReadInputPacketBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadInputPacketBatch(ref ReadBatch batch, InputPacket value)
+        private static bool ReadInputPacketBatch(ref ReadBatch batch, ref InputPacket value)
         {
             {
                 uint rawValue = 0;
@@ -953,7 +960,7 @@ namespace Example
             }
             for (int i = 0; i < value.InputsCount; i++)
             {
-                if (!ReadInputBatch(ref batch, value.Inputs[i]))
+                if (!ReadInputBatch(ref batch, ref value.Inputs[i]))
                 {
                     return false;
                 }
@@ -967,12 +974,12 @@ namespace Example
         public const int ShipCreateMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroShipCreate(ShipCreate value)
+        public static void ZeroShipCreate(ref ShipCreate value)
         {
             value.ShipType = ShipType.None;
-            ZeroQuantizedPosition(value.Position);
-            ZeroQuantizedRotation(value.Rotation);
-            ZeroQuantizedVelocity(value.LinearVelocity);
+            ZeroQuantizedPosition(ref value.Position);
+            ZeroQuantizedRotation(ref value.Rotation);
+            ZeroQuantizedVelocity(ref value.LinearVelocity);
             value.HasFlags = false;
             value.Flags = 0;
             value.Team = Team.None;
@@ -983,17 +990,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteShipCreate(WriteStream stream, ShipCreate value)
+        public static bool WriteShipCreate(WriteStream stream, ref ShipCreate value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteShipCreateBatch(ref batch, value);
+            bool result = WriteShipCreateBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteShipCreateBatch(ref WriteBatch batch, ShipCreate value)
+        private static bool WriteShipCreateBatch(ref WriteBatch batch, ref ShipCreate value)
         {
             {
                 uint enumValue = (uint)value.ShipType;
@@ -1003,15 +1010,15 @@ namespace Example
                     return false;
                 }
             }
-            if (!WriteQuantizedPositionBatch(ref batch, value.Position))
+            if (!WriteQuantizedPositionBatch(ref batch, ref value.Position))
             {
                 return false;
             }
-            if (!WriteQuantizedRotationBatch(ref batch, value.Rotation))
+            if (!WriteQuantizedRotationBatch(ref batch, ref value.Rotation))
             {
                 return false;
             }
-            if (!WriteQuantizedVelocityBatch(ref batch, value.LinearVelocity))
+            if (!WriteQuantizedVelocityBatch(ref batch, ref value.LinearVelocity))
             {
                 return false;
             }
@@ -1048,17 +1055,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadShipCreate(ReadStream stream, ShipCreate value)
+        public static bool ReadShipCreate(ReadStream stream, ref ShipCreate value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadShipCreateBatch(ref batch, value);
+            bool result = ReadShipCreateBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadShipCreateBatch(ref ReadBatch batch, ShipCreate value)
+        private static bool ReadShipCreateBatch(ref ReadBatch batch, ref ShipCreate value)
         {
             {
                 int enumValue = 0;
@@ -1068,15 +1075,15 @@ namespace Example
                 }
                 value.ShipType = (ShipType)enumValue;
             }
-            if (!ReadQuantizedPositionBatch(ref batch, value.Position))
+            if (!ReadQuantizedPositionBatch(ref batch, ref value.Position))
             {
                 return false;
             }
-            if (!ReadQuantizedRotationBatch(ref batch, value.Rotation))
+            if (!ReadQuantizedRotationBatch(ref batch, ref value.Rotation))
             {
                 return false;
             }
-            if (!ReadQuantizedVelocityBatch(ref batch, value.LinearVelocity))
+            if (!ReadQuantizedVelocityBatch(ref batch, ref value.LinearVelocity))
             {
                 return false;
             }
@@ -1140,14 +1147,14 @@ namespace Example
         public const int ExpressionProbeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroExpressionProbe(ExpressionProbe value)
+        public static void ZeroExpressionProbe(ref ExpressionProbe value)
         {
             value.HardpointIndex = 0;
             value.SpinRate = 0;
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitExpressionProbe(ExpressionProbe value)
+        public static void InitExpressionProbe(ref ExpressionProbe value)
         {
             value.HardpointIndex = 0;
             value.SpinRate = (int)RotationUnits;
@@ -1155,17 +1162,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteExpressionProbe(WriteStream stream, ExpressionProbe value)
+        public static bool WriteExpressionProbe(WriteStream stream, ref ExpressionProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteExpressionProbeBatch(ref batch, value);
+            bool result = WriteExpressionProbeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteExpressionProbeBatch(ref WriteBatch batch, ExpressionProbe value)
+        private static bool WriteExpressionProbeBatch(ref WriteBatch batch, ref ExpressionProbe value)
         {
             {
                 // flat run: 16 bits in 1 chunk(s) — the field placement is folded
@@ -1182,17 +1189,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadExpressionProbe(ReadStream stream, ExpressionProbe value)
+        public static bool ReadExpressionProbe(ReadStream stream, ref ExpressionProbe value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadExpressionProbeBatch(ref batch, value);
+            bool result = ReadExpressionProbeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadExpressionProbeBatch(ref ReadBatch batch, ExpressionProbe value)
+        private static bool ReadExpressionProbeBatch(ref ReadBatch batch, ref ExpressionProbe value)
         {
             if (!batch.SerializeInt(ref value.HardpointIndex, 0, (int)((ShipMaxLasers + ShipMaxMissiles) - 1)))
             {
@@ -1215,7 +1222,7 @@ namespace Example
         public const int ExtremeProbeMaxBytes = 40;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroExtremeProbe(ExtremeProbe value)
+        public static void ZeroExtremeProbe(ref ExtremeProbe value)
         {
             value.FloorBound = 0;
             value.DoubledFloor = 0;
@@ -1225,7 +1232,7 @@ namespace Example
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitExtremeProbe(ExtremeProbe value)
+        public static void InitExtremeProbe(ref ExtremeProbe value)
         {
             value.FloorBound = 0;
             value.DoubledFloor = 0;
@@ -1236,17 +1243,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteExtremeProbe(WriteStream stream, ExtremeProbe value)
+        public static bool WriteExtremeProbe(WriteStream stream, ref ExtremeProbe value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteExtremeProbeBatch(ref batch, value);
+            bool result = WriteExtremeProbeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteExtremeProbeBatch(ref WriteBatch batch, ExtremeProbe value)
+        private static bool WriteExtremeProbeBatch(ref WriteBatch batch, ref ExtremeProbe value)
         {
             Debug.Assert(value.FloorBound <= 100, "value.FloorBound out of range [-9223372036854775808, 100]");
             {
@@ -1286,17 +1293,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadExtremeProbe(ReadStream stream, ExtremeProbe value)
+        public static bool ReadExtremeProbe(ReadStream stream, ref ExtremeProbe value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadExtremeProbeBatch(ref batch, value);
+            bool result = ReadExtremeProbeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadExtremeProbeBatch(ref ReadBatch batch, ExtremeProbe value)
+        private static bool ReadExtremeProbeBatch(ref ReadBatch batch, ref ExtremeProbe value)
         {
             if (!batch.SerializeInt64(ref value.FloorBound, -9223372036854775808, 100))
             {
@@ -1339,7 +1346,7 @@ namespace Example
         public const int ExtremeRowMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroExtremeRow(ExtremeRow value)
+        public static void ZeroExtremeRow(ref ExtremeRow value)
         {
             value.ClampedFloor = 0;
             value.ClampedCeiling = 0;
@@ -1348,7 +1355,7 @@ namespace Example
         }
 
         // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitExtremeRow(ExtremeRow value)
+        public static void InitExtremeRow(ref ExtremeRow value)
         {
             value.ClampedFloor = 0;
             value.ClampedCeiling = 1;
@@ -1358,17 +1365,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteExtremeRow(WriteStream stream, ExtremeRow value)
+        public static bool WriteExtremeRow(WriteStream stream, ref ExtremeRow value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteExtremeRowBatch(ref batch, value);
+            bool result = WriteExtremeRowBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteExtremeRowBatch(ref WriteBatch batch, ExtremeRow value)
+        private static bool WriteExtremeRowBatch(ref WriteBatch batch, ref ExtremeRow value)
         {
             Debug.Assert(value.ClampedFloor <= 100, "value.ClampedFloor out of range [-9223372036854775808, 100]");
             {
@@ -1400,17 +1407,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadExtremeRow(ReadStream stream, ExtremeRow value)
+        public static bool ReadExtremeRow(ReadStream stream, ref ExtremeRow value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadExtremeRowBatch(ref batch, value);
+            bool result = ReadExtremeRowBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadExtremeRowBatch(ref ReadBatch batch, ExtremeRow value)
+        private static bool ReadExtremeRowBatch(ref ReadBatch batch, ref ExtremeRow value)
         {
             if (!batch.SerializeInt64(ref value.ClampedFloor, -9223372036854775808, 100))
             {

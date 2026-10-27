@@ -320,10 +320,10 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
 		expectation{"public enum ShapeType", 1},
-		expectation{"public sealed class Shape", 1},
-		expectation{"public static bool WriteShape(WriteStream stream, Shape value)", 1},
-		expectation{"public static bool ReadShape(ReadStream stream, Shape value)", 1},
-		expectation{"public static void ZeroShape(Shape value)", 1},
+		expectation{"public struct Shape", 1},
+		expectation{"public static bool WriteShape(WriteStream stream, ref Shape value)", 1},
+		expectation{"public static bool ReadShape(ReadStream stream, ref Shape value)", 1},
+		expectation{"public static void ZeroShape(ref Shape value)", 1},
 		expectation{"public const int ShapeMaxBits = 18;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,

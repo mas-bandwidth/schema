@@ -13,7 +13,7 @@ namespace Example
 {
 
     // type ArmsAgree
-    public sealed class ArmsAgree
+    public struct ArmsAgree
     {
         public uint Lead;
         public bool Flag;
@@ -30,7 +30,7 @@ namespace Example
     }
 
     // type ArmsDisagree
-    public sealed class ArmsDisagree
+    public struct ArmsDisagree
     {
         public uint Lead;
         public bool Flag;
@@ -47,7 +47,7 @@ namespace Example
     }
 
     // type ArmEmpty
-    public sealed class ArmEmpty
+    public struct ArmEmpty
     {
         public uint Lead;
         public bool Flag;
@@ -60,7 +60,7 @@ namespace Example
     }
 
     // type ArmsNested
-    public sealed class ArmsNested
+    public struct ArmsNested
     {
         public uint Lead;
         public bool Outer;
@@ -85,14 +85,14 @@ namespace Example
     }
 
     // type ArmAlign
-    public sealed class ArmAlign
+    public struct ArmAlign
     {
         public uint Lead;
         public bool Flag;
 
         // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
-        public byte[] S = new byte[4]; // string(4): max length, used length beside it (SPEC §4.7)
+        public InlineBuffer4<byte> S; // string(4): max length, used length beside it (SPEC §4.7)
         public int SLength;
 
         // !flag — wire branch; storage holds both sides, a read zeroes the
@@ -103,14 +103,14 @@ namespace Example
     }
 
     // type ArmArray
-    public sealed class ArmArray
+    public struct ArmArray
     {
         public uint Lead;
         public bool Flag;
 
         // flag — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
-        public ushort[] Items = new ushort[3]; // used count beside it; wire count in [0, 3]
+        public InlineBuffer3<ushort> Items; // used count beside it; wire count in [0, 3]
         public int ItemsCount;
 
         // !flag — wire branch; storage holds both sides, a read zeroes the
@@ -121,13 +121,13 @@ namespace Example
     }
 
     // type Narrow
-    public sealed class Narrow
+    public struct Narrow
     {
         public uint N;
     }
 
     // type Wide
-    public sealed class Wide
+    public struct Wide
     {
         public ulong W;
     }
@@ -144,45 +144,37 @@ namespace Example
     // union (None). Every read selection initializes the chosen payload from
     // construction defaults; unselected arms keep what they last held — the
     // MessageStorage reuse discipline. Consumers read the selected arm only.
-    public sealed class Uneven
+    public struct Uneven
     {
         public UnevenType Type;
-        public Narrow Narrow = new Narrow();
-        public Wide Wide = new Wide();
+        public Narrow Narrow;
+        public Wide Wide;
     }
 
     // type HoldsUneven
-    public sealed class HoldsUneven
+    public struct HoldsUneven
     {
         public uint Lead;
-        public Uneven U = new Uneven();
+        public Uneven U;
         public uint Tail;
     }
 
     // type ArrUneven
-    public sealed class ArrUneven
+    public struct ArrUneven
     {
         public uint Lead;
-        public Uneven[] Items = new Uneven[3]; // used count beside it; wire count in [0, 3]
+        public InlineBuffer3<Uneven> Items; // used count beside it; wire count in [0, 3]
         public int ItemsCount;
         public uint Tail;
-
-        public ArrUneven()
-        {
-            for (int i = 0; i < Items.Length; i++)
-            {
-                Items[i] = new Uneven();
-            }
-        }
     }
 
     // type RegainAfterAlign
-    public sealed class RegainAfterAlign
+    public struct RegainAfterAlign
     {
         public uint Lead;
-        public ushort[] Items = new ushort[3]; // used count beside it; wire count in [0, 3]
+        public InlineBuffer3<ushort> Items; // used count beside it; wire count in [0, 3]
         public int ItemsCount;
-        public byte[] S = new byte[4]; // string(4): max length, used length beside it (SPEC §4.7)
+        public InlineBuffer4<byte> S; // string(4): max length, used length beside it (SPEC §4.7)
         public int SLength;
         public uint P;
         public uint Q;
@@ -201,7 +193,7 @@ namespace Example
         public const int ArmsAgreeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroArmsAgree(ArmsAgree value)
+        public static void ZeroArmsAgree(ref ArmsAgree value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -212,17 +204,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteArmsAgree(WriteStream stream, ArmsAgree value)
+        public static bool WriteArmsAgree(WriteStream stream, ref ArmsAgree value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteArmsAgreeBatch(ref batch, value);
+            bool result = WriteArmsAgreeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteArmsAgreeBatch(ref WriteBatch batch, ArmsAgree value)
+        private static bool WriteArmsAgreeBatch(ref WriteBatch batch, ref ArmsAgree value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — the field placement is folded
@@ -255,17 +247,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadArmsAgree(ReadStream stream, ArmsAgree value)
+        public static bool ReadArmsAgree(ReadStream stream, ref ArmsAgree value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadArmsAgreeBatch(ref batch, value);
+            bool result = ReadArmsAgreeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadArmsAgreeBatch(ref ReadBatch batch, ArmsAgree value)
+        private static bool ReadArmsAgreeBatch(ref ReadBatch batch, ref ArmsAgree value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
@@ -310,7 +302,7 @@ namespace Example
         public const int ArmsDisagreeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroArmsDisagree(ArmsDisagree value)
+        public static void ZeroArmsDisagree(ref ArmsDisagree value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -321,17 +313,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteArmsDisagree(WriteStream stream, ArmsDisagree value)
+        public static bool WriteArmsDisagree(WriteStream stream, ref ArmsDisagree value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteArmsDisagreeBatch(ref batch, value);
+            bool result = WriteArmsDisagreeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteArmsDisagreeBatch(ref WriteBatch batch, ArmsDisagree value)
+        private static bool WriteArmsDisagreeBatch(ref WriteBatch batch, ref ArmsDisagree value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — the field placement is folded
@@ -364,17 +356,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadArmsDisagree(ReadStream stream, ArmsDisagree value)
+        public static bool ReadArmsDisagree(ReadStream stream, ref ArmsDisagree value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadArmsDisagreeBatch(ref batch, value);
+            bool result = ReadArmsDisagreeBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadArmsDisagreeBatch(ref ReadBatch batch, ArmsDisagree value)
+        private static bool ReadArmsDisagreeBatch(ref ReadBatch batch, ref ArmsDisagree value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
@@ -419,7 +411,7 @@ namespace Example
         public const int ArmEmptyMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroArmEmpty(ArmEmpty value)
+        public static void ZeroArmEmpty(ref ArmEmpty value)
         {
             value.Lead = 0;
             value.Flag = false;
@@ -429,17 +421,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteArmEmpty(WriteStream stream, ArmEmpty value)
+        public static bool WriteArmEmpty(WriteStream stream, ref ArmEmpty value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteArmEmptyBatch(ref batch, value);
+            bool result = WriteArmEmptyBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteArmEmptyBatch(ref WriteBatch batch, ArmEmpty value)
+        private static bool WriteArmEmptyBatch(ref WriteBatch batch, ref ArmEmpty value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — the field placement is folded
@@ -465,17 +457,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadArmEmpty(ReadStream stream, ArmEmpty value)
+        public static bool ReadArmEmpty(ReadStream stream, ref ArmEmpty value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadArmEmptyBatch(ref batch, value);
+            bool result = ReadArmEmptyBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadArmEmptyBatch(ref ReadBatch batch, ArmEmpty value)
+        private static bool ReadArmEmptyBatch(ref ReadBatch batch, ref ArmEmpty value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
@@ -515,7 +507,7 @@ namespace Example
         public const int ArmsNestedMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroArmsNested(ArmsNested value)
+        public static void ZeroArmsNested(ref ArmsNested value)
         {
             value.Lead = 0;
             value.Outer = false;
@@ -528,17 +520,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteArmsNested(WriteStream stream, ArmsNested value)
+        public static bool WriteArmsNested(WriteStream stream, ref ArmsNested value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteArmsNestedBatch(ref batch, value);
+            bool result = WriteArmsNestedBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteArmsNestedBatch(ref WriteBatch batch, ArmsNested value)
+        private static bool WriteArmsNestedBatch(ref WriteBatch batch, ref ArmsNested value)
         {
             {
                 // flat run: 4 bits in 1 chunk(s) — the field placement is folded
@@ -585,17 +577,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadArmsNested(ReadStream stream, ArmsNested value)
+        public static bool ReadArmsNested(ReadStream stream, ref ArmsNested value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadArmsNestedBatch(ref batch, value);
+            bool result = ReadArmsNestedBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadArmsNestedBatch(ref ReadBatch batch, ArmsNested value)
+        private static bool ReadArmsNestedBatch(ref ReadBatch batch, ref ArmsNested value)
         {
             {
                 // flat run: 4 bits in 1 chunk(s) — one bounds check per chunk,
@@ -658,17 +650,17 @@ namespace Example
         public const int ArmAlignMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroArmAlign(ArmAlign value)
+        public static void ZeroArmAlign(ref ArmAlign value)
         {
             value.Lead = 0;
             value.Flag = false;
-            Array.Clear(value.S, 0, 4);
+            value.S[..].Clear();
             value.SLength = 0;
             value.B = 0;
             value.Tail = 0;
         }
 
-        public static bool WriteArmAlign(WriteStream stream, ArmAlign value)
+        public static bool WriteArmAlign(WriteStream stream, ref ArmAlign value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — the field placement is folded
@@ -690,7 +682,7 @@ namespace Example
                         return false;
                     }
                 }
-                if (!stream.SerializeBytes(value.S.AsSpan(0, value.SLength)))
+                if (!stream.SerializeBytes(value.S[..value.SLength]))
                 {
                     return false;
                 }
@@ -709,7 +701,7 @@ namespace Example
             return true;
         }
 
-        public static bool ReadArmAlign(ReadStream stream, ArmAlign value)
+        public static bool ReadArmAlign(ReadStream stream, ref ArmAlign value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
@@ -731,7 +723,7 @@ namespace Example
                 {
                     return false;
                 }
-                if (!stream.SerializeBytes(value.S.AsSpan(0, value.SLength)))
+                if (!stream.SerializeBytes(value.S[..value.SLength]))
                 {
                     return false;
                 }
@@ -770,7 +762,7 @@ namespace Example
                 {
                     return false;
                 }
-                Array.Clear(value.S, 0, 4);
+                value.S[..].Clear();
                 value.SLength = 0;
             }
             if (!stream.SerializeBits(ref value.Tail, 7))
@@ -786,11 +778,11 @@ namespace Example
         public const int ArmArrayMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroArmArray(ArmArray value)
+        public static void ZeroArmArray(ref ArmArray value)
         {
             value.Lead = 0;
             value.Flag = false;
-            Array.Clear(value.Items, 0, 3);
+            value.Items[..].Clear();
             value.ItemsCount = 0;
             value.B = 0;
             value.Tail = 0;
@@ -798,17 +790,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteArmArray(WriteStream stream, ArmArray value)
+        public static bool WriteArmArray(WriteStream stream, ref ArmArray value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteArmArrayBatch(ref batch, value);
+            bool result = WriteArmArrayBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteArmArrayBatch(ref WriteBatch batch, ArmArray value)
+        private static bool WriteArmArrayBatch(ref WriteBatch batch, ref ArmArray value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — the field placement is folded
@@ -856,17 +848,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadArmArray(ReadStream stream, ArmArray value)
+        public static bool ReadArmArray(ReadStream stream, ref ArmArray value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadArmArrayBatch(ref batch, value);
+            bool result = ReadArmArrayBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadArmArrayBatch(ref ReadBatch batch, ArmArray value)
+        private static bool ReadArmArrayBatch(ref ReadBatch batch, ref ArmArray value)
         {
             {
                 // flat run: 6 bits in 1 chunk(s) — one bounds check per chunk,
@@ -907,7 +899,7 @@ namespace Example
                 {
                     return false;
                 }
-                Array.Clear(value.Items, 0, 3);
+                value.Items[..].Clear();
                 value.ItemsCount = 0;
             }
             if (!batch.SerializeBits(ref value.Tail, 7))
@@ -923,12 +915,12 @@ namespace Example
         public const int NarrowMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroNarrow(Narrow value)
+        public static void ZeroNarrow(ref Narrow value)
         {
             value.N = 0;
         }
 
-        public static bool WriteNarrow(WriteStream stream, Narrow value)
+        public static bool WriteNarrow(WriteStream stream, ref Narrow value)
         {
             if (!stream.SerializeBits(ref value.N, 3))
             {
@@ -939,7 +931,7 @@ namespace Example
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteNarrowBatch(ref WriteBatch batch, Narrow value)
+        private static bool WriteNarrowBatch(ref WriteBatch batch, ref Narrow value)
         {
             if (!batch.SerializeBits(ref value.N, 3))
             {
@@ -948,7 +940,7 @@ namespace Example
             return true;
         }
 
-        public static bool ReadNarrow(ReadStream stream, Narrow value)
+        public static bool ReadNarrow(ReadStream stream, ref Narrow value)
         {
             if (!stream.SerializeBits(ref value.N, 3))
             {
@@ -959,7 +951,7 @@ namespace Example
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadNarrowBatch(ref ReadBatch batch, Narrow value)
+        private static bool ReadNarrowBatch(ref ReadBatch batch, ref Narrow value)
         {
             if (!batch.SerializeBits(ref value.N, 3))
             {
@@ -974,12 +966,12 @@ namespace Example
         public const int WideMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroWide(Wide value)
+        public static void ZeroWide(ref Wide value)
         {
             value.W = 0;
         }
 
-        public static bool WriteWide(WriteStream stream, Wide value)
+        public static bool WriteWide(WriteStream stream, ref Wide value)
         {
             if (!stream.SerializeBits64(ref value.W, 37))
             {
@@ -990,7 +982,7 @@ namespace Example
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteWideBatch(ref WriteBatch batch, Wide value)
+        private static bool WriteWideBatch(ref WriteBatch batch, ref Wide value)
         {
             if (!batch.SerializeBits64(ref value.W, 37))
             {
@@ -999,7 +991,7 @@ namespace Example
             return true;
         }
 
-        public static bool ReadWide(ReadStream stream, Wide value)
+        public static bool ReadWide(ReadStream stream, ref Wide value)
         {
             if (!stream.SerializeBits64(ref value.W, 37))
             {
@@ -1010,7 +1002,7 @@ namespace Example
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadWideBatch(ref ReadBatch batch, Wide value)
+        private static bool ReadWideBatch(ref ReadBatch batch, ref Wide value)
         {
             if (!batch.SerializeBits64(ref value.W, 37))
             {
@@ -1046,24 +1038,24 @@ namespace Example
         // ZeroUneven resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
         // is unselected at None; an arm initializes at its next selection.
-        public static void ZeroUneven(Uneven value)
+        public static void ZeroUneven(ref Uneven value)
         {
             value.Type = UnevenType.None;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteUneven(WriteStream stream, Uneven value)
+        public static bool WriteUneven(WriteStream stream, ref Uneven value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteUnevenBatch(ref batch, value);
+            bool result = WriteUnevenBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteUnevenBatch(ref WriteBatch batch, Uneven value)
+        private static bool WriteUnevenBatch(ref WriteBatch batch, ref Uneven value)
         {
             uint tagValue = (uint)value.Type;
             Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]"); // the tag contract holds BEFORE it rides (SPEC §4.8)
@@ -1074,24 +1066,24 @@ namespace Example
             switch (value.Type)
             {
                 case UnevenType.Narrow:
-                    return WriteNarrowBatch(ref batch, value.Narrow);
+                    return WriteNarrowBatch(ref batch, ref value.Narrow);
                 case UnevenType.Wide:
-                    return WriteWideBatch(ref batch, value.Wide);
+                    return WriteWideBatch(ref batch, ref value.Wide);
             }
             return true; // None — the tag is the whole wire (SPEC §4.8)
         }
 
-        public static bool ReadUneven(ReadStream stream, Uneven value)
+        public static bool ReadUneven(ReadStream stream, ref Uneven value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadUnevenBatch(ref batch, value);
+            bool result = ReadUnevenBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadUnevenBatch(ref ReadBatch batch, Uneven value)
+        private static bool ReadUnevenBatch(ref ReadBatch batch, ref Uneven value)
         {
             int tagValue = 0;
             if (!batch.SerializeInt(ref tagValue, 0, 2)) // rejects a tag above the count (SPEC §4.8)
@@ -1102,11 +1094,11 @@ namespace Example
             switch (value.Type)
             {
                 case UnevenType.Narrow:
-                    ZeroNarrow(value.Narrow); // every selection starts from construction defaults
-                    return ReadNarrowBatch(ref batch, value.Narrow);
+                    ZeroNarrow(ref value.Narrow); // every selection starts from construction defaults
+                    return ReadNarrowBatch(ref batch, ref value.Narrow);
                 case UnevenType.Wide:
-                    ZeroWide(value.Wide); // every selection starts from construction defaults
-                    return ReadWideBatch(ref batch, value.Wide);
+                    ZeroWide(ref value.Wide); // every selection starts from construction defaults
+                    return ReadWideBatch(ref batch, ref value.Wide);
             }
             return true; // None
         }
@@ -1117,32 +1109,32 @@ namespace Example
         public const int HoldsUnevenMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroHoldsUneven(HoldsUneven value)
+        public static void ZeroHoldsUneven(ref HoldsUneven value)
         {
             value.Lead = 0;
-            ZeroUneven(value.U);
+            ZeroUneven(ref value.U);
             value.Tail = 0;
         }
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteHoldsUneven(WriteStream stream, HoldsUneven value)
+        public static bool WriteHoldsUneven(WriteStream stream, ref HoldsUneven value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteHoldsUnevenBatch(ref batch, value);
+            bool result = WriteHoldsUnevenBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteHoldsUnevenBatch(ref WriteBatch batch, HoldsUneven value)
+        private static bool WriteHoldsUnevenBatch(ref WriteBatch batch, ref HoldsUneven value)
         {
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
-            if (!WriteUnevenBatch(ref batch, value.U))
+            if (!WriteUnevenBatch(ref batch, ref value.U))
             {
                 return false;
             }
@@ -1153,23 +1145,23 @@ namespace Example
             return true;
         }
 
-        public static bool ReadHoldsUneven(ReadStream stream, HoldsUneven value)
+        public static bool ReadHoldsUneven(ReadStream stream, ref HoldsUneven value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadHoldsUnevenBatch(ref batch, value);
+            bool result = ReadHoldsUnevenBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadHoldsUnevenBatch(ref ReadBatch batch, HoldsUneven value)
+        private static bool ReadHoldsUnevenBatch(ref ReadBatch batch, ref HoldsUneven value)
         {
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
-            if (!ReadUnevenBatch(ref batch, value.U))
+            if (!ReadUnevenBatch(ref batch, ref value.U))
             {
                 return false;
             }
@@ -1186,12 +1178,12 @@ namespace Example
         public const int ArrUnevenMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroArrUneven(ArrUneven value)
+        public static void ZeroArrUneven(ref ArrUneven value)
         {
             value.Lead = 0;
             for (int i = 0; i < 3; i++)
             {
-                ZeroUneven(value.Items[i]);
+                ZeroUneven(ref value.Items[i]);
             }
             value.ItemsCount = 0;
             value.Tail = 0;
@@ -1199,17 +1191,17 @@ namespace Example
 
         // batch form: stream state stays in registers across the body and End
         // publishes it — same wire bytes, same validation, same error model.
-        public static bool WriteArrUneven(WriteStream stream, ArrUneven value)
+        public static bool WriteArrUneven(WriteStream stream, ref ArrUneven value)
         {
             WriteBatch batch = stream.BeginBatch();
-            bool result = WriteArrUnevenBatch(ref batch, value);
+            bool result = WriteArrUnevenBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool WriteArrUnevenBatch(ref WriteBatch batch, ArrUneven value)
+        private static bool WriteArrUnevenBatch(ref WriteBatch batch, ref ArrUneven value)
         {
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
@@ -1225,7 +1217,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (!WriteUnevenBatch(ref batch, value.Items[i]))
+                if (!WriteUnevenBatch(ref batch, ref value.Items[i]))
                 {
                     return false;
                 }
@@ -1237,17 +1229,17 @@ namespace Example
             return true;
         }
 
-        public static bool ReadArrUneven(ReadStream stream, ArrUneven value)
+        public static bool ReadArrUneven(ReadStream stream, ref ArrUneven value)
         {
             ReadBatch batch = stream.BeginBatch();
-            bool result = ReadArrUnevenBatch(ref batch, value);
+            bool result = ReadArrUnevenBatch(ref batch, ref value);
             batch.End();
             return result;
         }
 
         // inline-only batch core — a real call would address-expose the batch
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool ReadArrUnevenBatch(ref ReadBatch batch, ArrUneven value)
+        private static bool ReadArrUnevenBatch(ref ReadBatch batch, ref ArrUneven value)
         {
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
@@ -1259,7 +1251,7 @@ namespace Example
             }
             for (int i = 0; i < value.ItemsCount; i++)
             {
-                if (!ReadUnevenBatch(ref batch, value.Items[i]))
+                if (!ReadUnevenBatch(ref batch, ref value.Items[i]))
                 {
                     return false;
                 }
@@ -1277,12 +1269,12 @@ namespace Example
         public const int RegainAfterAlignMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
-        public static void ZeroRegainAfterAlign(RegainAfterAlign value)
+        public static void ZeroRegainAfterAlign(ref RegainAfterAlign value)
         {
             value.Lead = 0;
-            Array.Clear(value.Items, 0, 3);
+            value.Items[..].Clear();
             value.ItemsCount = 0;
-            Array.Clear(value.S, 0, 4);
+            value.S[..].Clear();
             value.SLength = 0;
             value.P = 0;
             value.Q = 0;
@@ -1290,7 +1282,7 @@ namespace Example
             value.Tail = 0;
         }
 
-        public static bool WriteRegainAfterAlign(WriteStream stream, RegainAfterAlign value)
+        public static bool WriteRegainAfterAlign(WriteStream stream, ref RegainAfterAlign value)
         {
             if (!stream.SerializeBits(ref value.Lead, 5))
             {
@@ -1323,7 +1315,7 @@ namespace Example
                     return false;
                 }
             }
-            if (!stream.SerializeBytes(value.S.AsSpan(0, value.SLength)))
+            if (!stream.SerializeBytes(value.S[..value.SLength]))
             {
                 return false;
             }
@@ -1347,7 +1339,7 @@ namespace Example
             return true;
         }
 
-        public static bool ReadRegainAfterAlign(ReadStream stream, RegainAfterAlign value)
+        public static bool ReadRegainAfterAlign(ReadStream stream, ref RegainAfterAlign value)
         {
             if (!stream.SerializeBits(ref value.Lead, 5))
             {
@@ -1372,7 +1364,7 @@ namespace Example
             {
                 return false;
             }
-            if (!stream.SerializeBytes(value.S.AsSpan(0, value.SLength)))
+            if (!stream.SerializeBytes(value.S[..value.SLength]))
             {
                 return false;
             }

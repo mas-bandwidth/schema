@@ -106,16 +106,16 @@ static class Program
         return ws.Data.ToArray();
     }
 
-    static void SetText(byte[] buffer, string text)
+    static void SetText(Span<byte> buffer, string text)
     {
-        Encoding.ASCII.GetBytes(text).CopyTo(buffer, 0);
+        Encoding.ASCII.GetBytes(text).CopyTo(buffer);
     }
 
     // ---- per-type equality: classes have no ==, so fields compare directly ----
 
-    static bool EqBytes(byte[] a, byte[] b)
+    static bool EqBytes(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
     {
-        return a.AsSpan().SequenceEqual(b);
+        return a.SequenceEqual(b);
     }
 
     static bool EqVec3(Vec3 a, Vec3 b)
@@ -187,7 +187,7 @@ static class Program
         {
             return false;
         }
-        for (int i = 0; i < a.Inputs.Length; i++)
+        for (int i = 0; i < a.Inputs[..].Length; i++)
         {
             if (!EqInput(a.Inputs[i], b.Inputs[i]))
             {
@@ -200,7 +200,7 @@ static class Program
     static bool EqTestData(TestData a, TestData b)
     {
         return a.A == b.A && a.B == b.B && a.C == b.C && a.D == b.D && a.E == b.E && a.F == b.F
-            && a.G == b.G && a.ItemsCount == b.ItemsCount && a.Items.AsSpan().SequenceEqual(b.Items)
+            && a.G == b.G && a.ItemsCount == b.ItemsCount && a.Items[..].SequenceEqual(b.Items[..])
             && a.FloatValue == b.FloatValue && a.CompressedFloatValue == b.CompressedFloatValue
             && a.DoubleValue == b.DoubleValue && a.Int8Value == b.Int8Value && a.Int16Value == b.Int16Value
             && a.Uint8Value == b.Uint8Value && a.Uint16Value == b.Uint16Value && a.Uint32Value == b.Uint32Value
@@ -255,7 +255,7 @@ static class Program
         input.Uint64Value = 18446744073709551615;
         input.Int64Full = long.MinValue; // -9223372036854775808, the Go test's literal
         input.Int64Range = -999999999999;
-        for (int i = 0; i < input.FixedBytes.Length; i++)
+        for (int i = 0; i < input.FixedBytes[..].Length; i++)
         {
             input.FixedBytes[i] = (byte)(i * 3);
         }
@@ -275,24 +275,24 @@ static class Program
             {
                 input.First.EntriesCount = 2;
                 input.First.Entries[0].Retries = 99;
-                InitDefaultArm(input.First);
+                InitDefaultArm(ref input.First);
                 Check(input.First.EntriesCount == 0 && input.First.Marker == 0 &&
                       input.First.Entries[0].Retries == -1 && input.First.Entries[1].Retries == -1,
                       "InitDefaultArm restores construction defaults");
             }
             input.First.Marker = 5;
             WriteStream ws = NewWriteStream();
-            Check(WriteDefaultChoice(ws, input), "write fresh/initialized DefaultChoice");
+            Check(WriteDefaultChoice(ws, ref input), "write fresh/initialized DefaultChoice");
             Check(ws.BitsProcessed == 7, "DefaultChoice uses seven independent bits");
             byte[] bytes = Data(ws);
             Check(bytes.Length == 1 && bytes[0] == 0x51, "DefaultChoice independent wire is 0x51");
         }
 
         DefaultChoice output = new DefaultChoice();
-        DefaultArm first = output.First, second = output.Second;
-        ProbeConfig[] firstEntries = first.Entries, secondEntries = second.Entries;
-        ProbeConfig first0 = first.Entries[0], first1 = first.Entries[1];
-        ProbeConfig second0 = second.Entries[0], second1 = second.Entries[1];
+        // the arms are fields of the union value: ref locals see what a read
+        // writes in place
+        ref DefaultArm first = ref output.First;
+        ref DefaultArm second = ref output.Second;
         second.Marker = 7;
         second.EntriesCount = 2;
         for (int i = 0; i < 2; i++)
@@ -312,7 +312,7 @@ static class Program
             }
             ReadStream rs = new ReadStream(new byte[] { 0x51 });
             // This scalar-only union's public entry runs its batch core.
-            bool readOK = ReadDefaultChoice(rs, output);
+            bool readOK = ReadDefaultChoice(rs, ref output);
             Check(readOK, "decode DefaultChoice, same tag included");
             bool selectedOK = rs.BitsProcessed == 7 && output.Type == DefaultChoiceType.First &&
                               first.EntriesCount == 0 && first.Marker == 5;
@@ -327,11 +327,6 @@ static class Program
                 Check(second.Entries[i].Retries == 41 + i && second.Entries[i].Preferred == Weapon.Missile,
                       "unselected backing entry retains its value");
             }
-            Check(ReferenceEquals(output.First, first) && ReferenceEquals(output.Second, second) &&
-                  ReferenceEquals(first.Entries, firstEntries) && ReferenceEquals(second.Entries, secondEntries) &&
-                  ReferenceEquals(first.Entries[0], first0) && ReferenceEquals(first.Entries[1], first1) &&
-                  ReferenceEquals(second.Entries[0], second0) && ReferenceEquals(second.Entries[1], second1),
-                  "selection preserves all preallocated identities");
             Check(second.Marker == 7 && second.EntriesCount == 2, "unselected payload remains untouched");
         }
     }
@@ -343,19 +338,21 @@ static class Program
         input.Type = DefaultBulkChoiceType.First;
         input.First.Payload.Marker = 5;
         WriteStream ws = NewWriteStream();
-        Check(WriteDefaultBulkChoice(ws, input), "write ordinary DefaultBulkChoice");
+        Check(WriteDefaultBulkChoice(ws, ref input), "write ordinary DefaultBulkChoice");
         Check(ws.BitsProcessed == 16, "bulk choice: seven payload bits, two length bits, seven alignment bits");
         byte[] wire = Data(ws);
         Check(wire.Length == 2 && wire[0] == 0x51 && wire[1] == 0,
               "bulk choice empty-data wire is 0x51 0x00");
 
         DefaultBulkChoice output = new DefaultBulkChoice();
-        DefaultBulkArm first = output.First, second = output.Second;
-        DefaultArm payload = first.Payload, otherPayload = second.Payload;
-        ProbeConfig[] entries = payload.Entries, otherEntries = otherPayload.Entries;
-        ProbeConfig first0 = entries[0], first1 = entries[1];
-        ProbeConfig second0 = otherEntries[0], second1 = otherEntries[1];
-        byte[] data = first.Data, otherData = second.Data;
+        // arms, payloads and buffers are storage inside the union value: refs
+        // and spans see what a read writes in place
+        ref DefaultBulkArm first = ref output.First;
+        ref DefaultBulkArm second = ref output.Second;
+        ref DefaultArm payload = ref first.Payload;
+        ref DefaultArm otherPayload = ref second.Payload;
+        Span<ProbeConfig> entries = payload.Entries, otherEntries = otherPayload.Entries;
+        Span<byte> data = first.Data, otherData = second.Data;
         otherPayload.Marker = 7;
         otherPayload.EntriesCount = 2;
         second.DataLength = 2;
@@ -378,7 +375,7 @@ static class Program
                 data[i] = 0xa5;
             }
             ReadStream rs = new ReadStream(new byte[] { 0x51, 0x00 });
-            Check(ReadDefaultBulkChoice(rs, output), "ordinary decoder initializes selected payload on every read");
+            Check(ReadDefaultBulkChoice(rs, ref output), "ordinary decoder initializes selected payload on every read");
             Check(rs.BitsProcessed == 16 && output.Type == DefaultBulkChoiceType.First &&
                   payload.EntriesCount == 0 && payload.Marker == 5 && first.DataLength == 0,
                   "ordinary decoder overlays selected fields and empty data");
@@ -389,13 +386,6 @@ static class Program
                 Check(otherEntries[i].Retries == 41 + i && otherEntries[i].Preferred == Weapon.Missile && otherData[i] == 0x5a,
                       "ordinary decoder preserves unselected backing storage");
             }
-            Check(ReferenceEquals(output.First, first) && ReferenceEquals(output.Second, second) &&
-                  ReferenceEquals(first.Payload, payload) && ReferenceEquals(second.Payload, otherPayload) &&
-                  ReferenceEquals(payload.Entries, entries) && ReferenceEquals(otherPayload.Entries, otherEntries) &&
-                  ReferenceEquals(entries[0], first0) && ReferenceEquals(entries[1], first1) &&
-                  ReferenceEquals(otherEntries[0], second0) && ReferenceEquals(otherEntries[1], second1) &&
-                  ReferenceEquals(first.Data, data) && ReferenceEquals(second.Data, otherData),
-                  "ordinary decoder retains every preallocated object and buffer");
             Check(otherPayload.Marker == 7 && otherPayload.EntriesCount == 2 && second.DataLength == 2,
                   "ordinary decoder leaves unselected metadata untouched");
         }
@@ -429,12 +419,45 @@ static class Program
         Check(enums > 0, "the duplicate-value walk saw the generated enums");
     }
 
+    // Types are values. new T() is the construction form (its constructor runs
+    // Init); default(T) and a fresh array element are the §5 zero form, and
+    // Init installs the specified defaults in place — element by element in
+    // an array of a defaulted type.
+    static void TestValueDefaults()
+    {
+        ProbeConfig built = new ProbeConfig();
+        Check(built.Retries == -1 && built.Preferred == Weapon.Railgun, "new T() carries the specified defaults");
+        ProbeConfig zero = default;
+        Check(zero.Retries == 0 && zero.Preferred == Weapon.None, "default(T) is the zero form");
+
+        ProbeConfig[] array = new ProbeConfig[3];
+        Check(array[2].Retries == 0, "a fresh array element is the zero form");
+        for (int i = 0; i < array.Length; i++)
+        {
+            InitProbeConfig(ref array[i]);
+        }
+        Check(array[0].Retries == -1 && array[2].Preferred == Weapon.Railgun, "Init installs defaults in each array element");
+
+        DefaultArm arm = new DefaultArm();
+        Check(arm.Entries[0].Retries == -1 && arm.Entries[1].Preferred == Weapon.Railgun,
+              "an inline array of a defaulted type is initialized by its owner's construction");
+        DefaultArm armZero = default;
+        Check(armZero.Entries[1].Retries == 0, "default(owner) leaves inline elements in the zero form");
+        InitDefaultArm(ref armZero);
+        Check(armZero.Entries[1].Retries == -1, "Init on the owner reaches every inline element");
+
+        ProbeConfig copy = built;
+        copy.Retries = 9;
+        Check(built.Retries == -1, "assignment copies a value");
+    }
+
     static int Main()
     {
         wireDir = FindTestDataDir("wire");
         TestSelectedArmDefaults();
         TestSelectedArmDefaultsStream();
         TestEnumSurface();
+        TestValueDefaults();
 
         // ---- ShipCreate: the bool-gated flags branch, both ways ----
         {
@@ -450,23 +473,23 @@ static class Program
             input.Thrust = 55;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteShipCreate(ws, input), "write ShipCreate");
+            Check(WriteShipCreate(ws, ref input), "write ShipCreate");
             byte[] wire = Data(ws);
             GoldenWire("shipcreate_flags", wire);
 
             ShipCreate output = new ShipCreate();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadShipCreate(rs, output), "read ShipCreate");
+            Check(ReadShipCreate(rs, ref output), "read ShipCreate");
             Check(EqShipCreate(output, input), "ShipCreate round-trips");
 
             // untaken branch: flags must read back ZERO (SPEC §5) — into the same
             // output value, so stale flags would be caught
             input.HasFlags = false;
             WriteStream ws2 = NewWriteStream();
-            Check(WriteShipCreate(ws2, input), "write ShipCreate no-flags");
+            Check(WriteShipCreate(ws2, ref input), "write ShipCreate no-flags");
             byte[] wire2 = Data(ws2);
             ReadStream rs2 = new ReadStream(wire2);
-            Check(ReadShipCreate(rs2, output), "read ShipCreate no-flags");
+            Check(ReadShipCreate(rs2, ref output), "read ShipCreate no-flags");
             Check(!output.HasFlags && output.Flags == 0, "untaken branch reads as zero (SPEC §5)");
         }
 
@@ -489,12 +512,12 @@ static class Program
             input.AngularVelocity.Z = 0.75;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteRigidBody(ws, input), "write RigidBody moving");
+            Check(WriteRigidBody(ws, ref input), "write RigidBody moving");
             GoldenWire("rigidbody_moving", Data(ws));
 
             input.AtRest = true;
             WriteStream ws2 = NewWriteStream();
-            Check(WriteRigidBody(ws2, input), "write RigidBody at rest");
+            Check(WriteRigidBody(ws2, ref input), "write RigidBody at rest");
             byte[] wire2 = Data(ws2);
             GoldenWire("rigidbody_at_rest", wire2);
 
@@ -502,7 +525,7 @@ static class Program
             // the written value had them set
             RigidBody output = new RigidBody();
             ReadStream rs = new ReadStream(wire2);
-            Check(ReadRigidBody(rs, output), "read RigidBody at rest");
+            Check(ReadRigidBody(rs, ref output), "read RigidBody at rest");
             Check(output.AtRest, "at_rest reads true");
             Check(EqVec3(output.LinearVelocity, new Vec3()) && EqVec3(output.AngularVelocity, new Vec3()),
                 "velocities read as zero under the taken at-rest branch (SPEC §5)");
@@ -515,13 +538,13 @@ static class Program
             input.TextLength = 11;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteChat(ws, input), "write Chat");
+            Check(WriteChat(ws, ref input), "write Chat");
             byte[] wire = Data(ws);
             GoldenWire("chat", wire);
 
             Chat output = new Chat();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadChat(rs, output), "read Chat");
+            Check(ReadChat(rs, ref output), "read Chat");
             Check(EqChat(output, input), "Chat round-trips");
         }
 
@@ -531,20 +554,20 @@ static class Program
             input.Version = 5;
             input.ProbeId = 0x1122334455667788;
             WriteStream ws = NewWriteStream();
-            Check(WriteProbeHeader(ws, input), "write ProbeHeader");
+            Check(WriteProbeHeader(ws, ref input), "write ProbeHeader");
             byte[] wire = Data(ws);
             Check(wire[0] == 0xAB, "const(0xAB, 8) leads the wire");
             GoldenWire("probe_header", wire);
 
             ProbeHeader output = new ProbeHeader();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadProbeHeader(rs, output), "read ProbeHeader");
+            Check(ReadProbeHeader(rs, ref output), "read ProbeHeader");
             Check(EqProbeHeader(output, input), "ProbeHeader round-trips");
 
             byte[] corrupt = (byte[])wire.Clone();
             corrupt[0] = 0xAC;
             ReadStream rs2 = new ReadStream(corrupt);
-            Check(!ReadProbeHeader(rs2, output), "a corrupted wire constant is REJECTED (SPEC §4.3)");
+            Check(!ReadProbeHeader(rs2, ref output), "a corrupted wire constant is REJECTED (SPEC §4.3)");
         }
 
         // ---- InputPacket: counted array of nested classes ----
@@ -560,12 +583,12 @@ static class Program
             input.Inputs[1].Boost = true;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteInputPacket(ws, input), "write InputPacket");
+            Check(WriteInputPacket(ws, ref input), "write InputPacket");
             byte[] wire = Data(ws);
 
             InputPacket output = new InputPacket();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadInputPacket(rs, output), "read InputPacket");
+            Check(ReadInputPacket(rs, ref output), "read InputPacket");
             Check(EqInputPacket(output, input), "InputPacket round-trips");
         }
 
@@ -574,12 +597,12 @@ static class Program
             TestData input = TestDataInstance();
 
             WriteStream ws = NewWriteStream();
-            Check(WriteTestData(ws, input), "write TestData");
+            Check(WriteTestData(ws, ref input), "write TestData");
             byte[] wire = Data(ws);
 
             TestData output = new TestData();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadTestData(rs, output), "read TestData");
+            Check(ReadTestData(rs, ref output), "read TestData");
             Check(EqTestData(output, input), "TestData round-trips — signed narrows, full-range ints, align, fixed bytes, string");
         }
 
@@ -594,13 +617,13 @@ static class Program
             input.Offset = -4.8585f;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteCompressedProbe(ws, input), "write CompressedProbe");
+            Check(WriteCompressedProbe(ws, ref input), "write CompressedProbe");
             byte[] wire = Data(ws);
             GoldenWire("compressed_probe", wire);
 
             CompressedProbe output = new CompressedProbe();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadCompressedProbe(rs, output), "read CompressedProbe");
+            Check(ReadCompressedProbe(rs, ref output), "read CompressedProbe");
             // through locals, not constants: the C# compiler may fold
             // constant float expressions in higher precision than the
             // float32 per-op arithmetic the reader performs
@@ -614,7 +637,7 @@ static class Program
         {
             ProbeSample sample = new ProbeSample();
             Check(sample.Active, "ProbeSample.active defaults true");
-            ZeroProbeSample(sample);
+            ZeroProbeSample(ref sample);
             Check(!sample.Active, "the §5 zero form stays zero (Zero* does not reapply defaults)");
             ProbeConfig config = new ProbeConfig();
             Check(config.Retries == -1, "ProbeConfig.retries defaults -1");
@@ -631,13 +654,13 @@ static class Program
             input.Nonce = 18446744073709551615;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteProbeBits(ws, input), "write ProbeBits");
+            Check(WriteProbeBits(ws, ref input), "write ProbeBits");
             byte[] wire = Data(ws);
             GoldenWire("probebits", wire);
 
             ProbeBits output = new ProbeBits();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadProbeBits(rs, output), "read ProbeBits");
+            Check(ReadProbeBits(rs, ref output), "read ProbeBits");
             Check(EqProbeBits(output, input), "ProbeBits round-trips — 9/33/64-bit and full-range paths");
         }
 
@@ -659,14 +682,14 @@ static class Program
             input.Extras[0].Ring.Radius = 777;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteProbeCollider(ws, input), "write ProbeCollider");
+            Check(WriteProbeCollider(ws, ref input), "write ProbeCollider");
             byte[] wire = Data(ws);
             GoldenWire("probecollider", wire);
 
             ProbeCollider output = new ProbeCollider();
             output.Backup.Type = ProbeShapeType.Ring; // dirty — the read must restore None
             ReadStream rs = new ReadStream(wire);
-            Check(ReadProbeCollider(rs, output), "read ProbeCollider");
+            Check(ReadProbeCollider(rs, ref output), "read ProbeCollider");
             Check(output.Armor == 7 && output.Shape.Type == ProbeShapeType.Slab &&
                   output.Shape.Slab.Width == 42 && output.Shape.Slab.Height == 9,
                   "the selected arm round-trips");
@@ -679,7 +702,7 @@ static class Program
             byte[] corrupt = (byte[]) wire.Clone();
             corrupt[1] |= 0x03;
             ProbeCollider bad = new ProbeCollider();
-            Check(!ReadProbeCollider(new ReadStream(corrupt), bad),
+            Check(!ReadProbeCollider(new ReadStream(corrupt), ref bad),
                   "an out-of-range union tag is refused (SPEC §4.8)");
 
             // NEGATIVE CONTROL — corrupt the arm payload: width rides 7 bits
@@ -687,7 +710,7 @@ static class Program
             corrupt = (byte[]) wire.Clone();
             corrupt[1] |= 0xFC;
             corrupt[2] |= 0x01;
-            Check(!ReadProbeCollider(new ReadStream(corrupt), bad),
+            Check(!ReadProbeCollider(new ReadStream(corrupt), ref bad),
                   "a corrupt union arm payload is refused (SPEC §4.8)");
 
             // the write side's tag contract is a Debug.Assert (SPEC §5): a tag
@@ -700,7 +723,7 @@ static class Program
         {
             TestData input = TestDataInstance();
             WriteStream ws = NewWriteStream();
-            Check(WriteTestData(ws, input), "write TestData (pin)");
+            Check(WriteTestData(ws, ref input), "write TestData (pin)");
             GoldenWire("testdata", Data(ws));
 
             InputPacket packet = new InputPacket();
@@ -713,7 +736,7 @@ static class Program
             packet.Inputs[1].StickX = -0.25f;
             packet.Inputs[1].Boost = true;
             WriteStream ws2 = NewWriteStream();
-            Check(WriteInputPacket(ws2, packet), "write InputPacket (pin)");
+            Check(WriteInputPacket(ws2, ref packet), "write InputPacket (pin)");
             GoldenWire("inputpacket", Data(ws2));
         }
 
@@ -731,11 +754,11 @@ static class Program
             input.Samples[0] = 42;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteProbeSample(ws, input), "write ProbeSample active");
+            Check(WriteProbeSample(ws, ref input), "write ProbeSample active");
             byte[] wire = Data(ws);
             ProbeSample output = new ProbeSample();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadProbeSample(rs, output), "read ProbeSample active");
+            Check(ReadProbeSample(rs, ref output), "read ProbeSample active");
             Check(output.Active && output.Weapon == Weapon.Laser && output.HasTarget && output.TargetId == 777,
                 "the taken branch round-trips, nested branch included");
             Check(output.IdleTicks == 0, "the untaken else side reads as zero (SPEC §5)");
@@ -744,10 +767,10 @@ static class Program
             input.Active = false;
             input.HasTarget = false;
             WriteStream ws2 = NewWriteStream();
-            Check(WriteProbeSample(ws2, input), "write ProbeSample idle");
+            Check(WriteProbeSample(ws2, ref input), "write ProbeSample idle");
             byte[] wire2 = Data(ws2);
             ReadStream rs2 = new ReadStream(wire2);
-            Check(ReadProbeSample(rs2, output), "read ProbeSample idle");
+            Check(ReadProbeSample(rs2, ref output), "read ProbeSample idle");
             Check(!output.Active && output.IdleTicks == 12345, "the else branch round-trips");
             Check(output.Weapon == Weapon.None && !output.HasTarget && output.TargetId == 0,
                 "the whole untaken then side reads as zero, nested branch included (SPEC §5)");
@@ -781,13 +804,13 @@ static class Program
             input.Config.Preferred = Weapon.Missile;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteProbeArray(ws, input), "write ProbeArray");
+            Check(WriteProbeArray(ws, ref input), "write ProbeArray");
             byte[] wire = Data(ws);
             GoldenWire("probearray", wire);
 
             ProbeArray output = new ProbeArray();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadProbeArray(rs, output), "read ProbeArray");
+            Check(ReadProbeArray(rs, ref output), "read ProbeArray");
             Check(!output.Samples[1].Active && output.Samples[1].IdleTicks == 1000, "nested else branch round-trips");
             Check(output.Samples[1].Weapon == Weapon.None && !output.Samples[1].HasTarget,
                 "nested untaken side reads as zero (SPEC §5)");
@@ -804,11 +827,11 @@ static class Program
             input.Echo.TestB = 1000;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteProbeReport(ws, input), "write ProbeReport");
+            Check(WriteProbeReport(ws, ref input), "write ProbeReport");
             byte[] wire = Data(ws);
             ProbeReport output = new ProbeReport();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadProbeReport(rs, output), "read ProbeReport");
+            Check(ReadProbeReport(rs, ref output), "read ProbeReport");
             Check(EqProbeReport(output, input), "ProbeReport round-trips — a named type as an ordinary field");
 
             // a mask bit above the widened 8-bit wire breaks the WRITER's
@@ -821,7 +844,7 @@ static class Program
             input.Flags = (ProbeFlags)(1ul << 9);
 #if !DEBUG
             WriteStream ws2 = NewWriteStream();
-            Check(WriteProbeReport(ws2, input), "release: the flags contract is compiled out — the write is not refused");
+            Check(WriteProbeReport(ws2, ref input), "release: the flags contract is compiled out — the write is not refused");
             Check(ws2.Error == SerializeError.None, "release: nothing latches on the write side");
 #endif
             input.Flags = ProbeFlags.Armed; // back inside the contract for anything after
@@ -837,11 +860,11 @@ static class Program
             input.DataLength = 100;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteBlock(ws, input), "write Block");
+            Check(WriteBlock(ws, ref input), "write Block");
             byte[] wire = Data(ws);
             Block output = new Block();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadBlock(rs, output), "read Block");
+            Check(ReadBlock(rs, ref output), "read Block");
             Check(EqBlock(output, input), "Block round-trips — bytes(N) framing");
         }
 
@@ -857,7 +880,7 @@ static class Program
                 corrupt[4] = 0; // inside the text bytes (length rides bytes 0-1, align pads to byte 2)
                 Chat output = new Chat();
                 ReadStream rs = new ReadStream(corrupt);
-                Check(!ReadChat(rs, output) && rs.Error == SerializeError.None,
+                Check(!ReadChat(rs, ref output) && rs.Error == SerializeError.None,
                     "an interior null is rejected as validation — false, stream.Error stays None");
 
                 // a truncated stream is the stream's own error, never a content verdict
@@ -865,7 +888,7 @@ static class Program
                 Array.Copy(chatGolden, truncated, 3);
                 Chat output2 = new Chat();
                 ReadStream rs2 = new ReadStream(truncated);
-                Check(!ReadChat(rs2, output2) && rs2.Error != SerializeError.None,
+                Check(!ReadChat(rs2, ref output2) && rs2.Error != SerializeError.None,
                     "truncation surfaces as the latched stream error");
             }
 
@@ -877,7 +900,7 @@ static class Program
                 corrupt2[1] |= 0x08; // the first reserved bit above version's 3
                 ProbeHeader output3 = new ProbeHeader();
                 ReadStream rs3 = new ReadStream(corrupt2);
-                Check(!ReadProbeHeader(rs3, output3) && rs3.Error == SerializeError.None,
+                Check(!ReadProbeHeader(rs3, ref output3) && rs3.Error == SerializeError.None,
                     "a nonzero reserved bit is rejected — false, stream.Error stays None");
             }
 
@@ -893,7 +916,7 @@ static class Program
                 corrupt3[18] = (byte)((corrupt3[18] & 0xE0) | 17); // count 2 -> 17, over [0, 16]
                 InputPacket output4 = new InputPacket();
                 ReadStream rs4 = new ReadStream(corrupt3);
-                Check(!ReadInputPacket(rs4, output4) && rs4.Error == SerializeError.ValueOutOfRange,
+                Check(!ReadInputPacket(rs4, ref output4) && rs4.Error == SerializeError.ValueOutOfRange,
                     "an out-of-range count is refused before the loop, latched by the runtime");
             }
         }
@@ -917,11 +940,11 @@ static class Program
             input.AngularVelocity.Z = 0.75;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteRigidBody(ws, input), "write RigidBody moving (read-back)");
+            Check(WriteRigidBody(ws, ref input), "write RigidBody moving (read-back)");
             byte[] wire = Data(ws);
             RigidBody output = new RigidBody();
             ReadStream rs = new ReadStream(wire);
-            Check(ReadRigidBody(rs, output), "read RigidBody moving");
+            Check(ReadRigidBody(rs, ref output), "read RigidBody moving");
             Check(EqRigidBody(output, input), "the moving branch round-trips with velocities intact");
         }
 
@@ -987,18 +1010,18 @@ static class Program
             straddle.Inner.A = 0x11111; straddle.Inner.B = 0x22222; straddle.Inner.C = 0x33333;
 
             WriteStream ws = NewWriteStream();
-            Check(WriteVec2(ws, vec2), "write Vec2");
-            Check(WriteSpanF64(ws, spanF64), "write SpanF64");
-            Check(WriteSpanU64(ws, spanU64), "write SpanU64");
-            Check(WriteSpanI64(ws, spanI64), "write SpanI64");
-            Check(WriteSpanOne(ws, spanOne), "write SpanOne");
-            Check(WriteSpanChunk(ws, spanChunk), "write SpanChunk");
-            Check(WriteSpanTail(ws, spanTail), "write SpanTail");
-            Check(WriteSpanTwice(ws, spanTwice), "write SpanTwice");
-            Check(WriteTrio(ws, trio), "write Trio");
-            Check(WriteTrioSole(ws, trioSole), "write TrioSole");
-            Check(WriteTrioFirst(ws, trioFirst), "write TrioFirst");
-            Check(WriteTrioStraddle(ws, straddle), "write TrioStraddle");
+            Check(WriteVec2(ws, ref vec2), "write Vec2");
+            Check(WriteSpanF64(ws, ref spanF64), "write SpanF64");
+            Check(WriteSpanU64(ws, ref spanU64), "write SpanU64");
+            Check(WriteSpanI64(ws, ref spanI64), "write SpanI64");
+            Check(WriteSpanOne(ws, ref spanOne), "write SpanOne");
+            Check(WriteSpanChunk(ws, ref spanChunk), "write SpanChunk");
+            Check(WriteSpanTail(ws, ref spanTail), "write SpanTail");
+            Check(WriteSpanTwice(ws, ref spanTwice), "write SpanTwice");
+            Check(WriteTrio(ws, ref trio), "write Trio");
+            Check(WriteTrioSole(ws, ref trioSole), "write TrioSole");
+            Check(WriteTrioFirst(ws, ref trioFirst), "write TrioFirst");
+            Check(WriteTrioStraddle(ws, ref straddle), "write TrioStraddle");
             Check(ws.BitsProcessed == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
                 "the twelve degenerate shapes ride their declared widths and nothing more");
             byte[] wire = Data(ws);
@@ -1018,18 +1041,18 @@ static class Program
             TrioStraddle rStraddle = new TrioStraddle();
 
             ReadStream rs = new ReadStream(wire);
-            Check(ReadVec2(rs, rVec2), "read Vec2");
-            Check(ReadSpanF64(rs, rSpanF64), "read SpanF64");
-            Check(ReadSpanU64(rs, rSpanU64), "read SpanU64");
-            Check(ReadSpanI64(rs, rSpanI64), "read SpanI64");
-            Check(ReadSpanOne(rs, rSpanOne), "read SpanOne");
-            Check(ReadSpanChunk(rs, rSpanChunk), "read SpanChunk");
-            Check(ReadSpanTail(rs, rSpanTail), "read SpanTail");
-            Check(ReadSpanTwice(rs, rSpanTwice), "read SpanTwice");
-            Check(ReadTrio(rs, rTrio), "read Trio");
-            Check(ReadTrioSole(rs, rTrioSole), "read TrioSole");
-            Check(ReadTrioFirst(rs, rTrioFirst), "read TrioFirst");
-            Check(ReadTrioStraddle(rs, rStraddle), "read TrioStraddle");
+            Check(ReadVec2(rs, ref rVec2), "read Vec2");
+            Check(ReadSpanF64(rs, ref rSpanF64), "read SpanF64");
+            Check(ReadSpanU64(rs, ref rSpanU64), "read SpanU64");
+            Check(ReadSpanI64(rs, ref rSpanI64), "read SpanI64");
+            Check(ReadSpanOne(rs, ref rSpanOne), "read SpanOne");
+            Check(ReadSpanChunk(rs, ref rSpanChunk), "read SpanChunk");
+            Check(ReadSpanTail(rs, ref rSpanTail), "read SpanTail");
+            Check(ReadSpanTwice(rs, ref rSpanTwice), "read SpanTwice");
+            Check(ReadTrio(rs, ref rTrio), "read Trio");
+            Check(ReadTrioSole(rs, ref rTrioSole), "read TrioSole");
+            Check(ReadTrioFirst(rs, ref rTrioFirst), "read TrioFirst");
+            Check(ReadTrioStraddle(rs, ref rStraddle), "read TrioStraddle");
 
             Check(rVec2.X == 1.5 && rVec2.Y == -2.25, "Vec2 round-trips");
             Check(rSpanF64.Values[0] == 3.5 && rSpanF64.Values[1] == -4.75, "SpanF64 round-trips");
@@ -1087,7 +1110,7 @@ static class Program
             {
                 W13 v = new W13 { ItemsCount = c };
                 for (int i = 0; i < c; i++) v.Items[i] = (ushort)(8191 - i * 733);
-                Emit("W13/" + c, 4 + 13 * c, ws => WriteW13(ws, v));
+                Emit("W13/" + c, 4 + 13 * c, ws => WriteW13(ws, ref v));
             }
 
             int[] w17Counts = { 0, 1, 2, 3, 4, 9 };
@@ -1095,7 +1118,7 @@ static class Program
             {
                 W17 v = new W17 { ItemsCount = c };
                 for (int i = 0; i < c; i++) v.Items[i] = (uint)(131071 - i * 11117);
-                Emit("W17/" + c, 4 + 17 * c, ws => WriteW17(ws, v));
+                Emit("W17/" + c, 4 + 17 * c, ws => WriteW17(ws, ref v));
             }
 
             int[] w26Counts = { 0, 1, 2, 3, 6 };
@@ -1103,7 +1126,7 @@ static class Program
             {
                 W26 v = new W26 { ItemsCount = c };
                 for (int i = 0; i < c; i++) v.Items[i] = (uint)(67108863 - i * 5555555);
-                Emit("W26/" + c, 3 + 26 * c, ws => WriteW26(ws, v));
+                Emit("W26/" + c, 3 + 26 * c, ws => WriteW26(ws, ref v));
             }
 
             int[] w1Counts = { 0, 1, 3, 4, 5, 20 };
@@ -1111,38 +1134,38 @@ static class Program
             {
                 W1 v = new W1 { ItemsCount = c };
                 for (int i = 0; i < c; i++) v.Items[i] = (byte)(i % 2);
-                Emit("W1/" + c, 5 + c, ws => WriteW1(ws, v));
+                Emit("W1/" + c, 5 + c, ws => WriteW1(ws, ref v));
             }
 
             for (int c = 0; c <= 3; c++)
             {
                 W52 v = new W52 { ItemsCount = c };
                 for (int i = 0; i < c; i++) v.Items[i] = 4503599627370495UL - (ulong)i * 123456789UL;
-                Emit("W52/" + c, 2 + 52 * c, ws => WriteW52(ws, v));
+                Emit("W52/" + c, 2 + 52 * c, ws => WriteW52(ws, ref v));
             }
 
             for (int c = 0; c <= 3; c++)
             {
                 W50 v = new W50 { ItemsCount = c };
                 for (int i = 0; i < c; i++) v.Items[i] = 1125899906842623UL - (ulong)i * 987654321UL;
-                Emit("W50/" + c, 2 + 50 * c, ws => WriteW50(ws, v));
+                Emit("W50/" + c, 2 + 50 * c, ws => WriteW50(ws, ref v));
             }
 
             F13 f13 = new F13();
             for (int i = 0; i < 7; i++) f13.Items[i] = (ushort)(8191 - i * 911);
-            Emit("F13", 91, ws => WriteF13(ws, f13));
+            Emit("F13", 91, ws => WriteF13(ws, ref f13));
 
             int[] triCounts = { 0, 1, 3, 4, 5, 10 };
             foreach (int c in triCounts)
             {
                 ArrTri3 v = new ArrTri3 { ItemsCount = c };
                 for (int i = 0; i < c; i++) { v.Items[i].A = (uint)(i % 2); v.Items[i].B = (uint)(i % 4); }
-                Emit("ArrTri3/" + c, 4 + 3 * c, ws => WriteArrTri3(ws, v));
+                Emit("ArrTri3/" + c, 4 + 3 * c, ws => WriteArrTri3(ws, ref v));
             }
 
             ArrEleven arrEleven = new ArrEleven();
             for (int i = 0; i < 9; i++) { arrEleven.Items[i].A = (uint)(i % 8); arrEleven.Items[i].B = (uint)(255 - i * 17); }
-            Emit("ArrEleven", 99, ws => WriteArrEleven(ws, arrEleven));
+            Emit("ArrEleven", 99, ws => WriteArrEleven(ws, ref arrEleven));
 
             // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
             EmptyUnionType[] emptyArms = { EmptyUnionType.None, EmptyUnionType.A, EmptyUnionType.B };
@@ -1150,7 +1173,7 @@ static class Program
             {
                 HoldsEmptyUnion v = new HoldsEmptyUnion { Lead = 21, Tail = 99 };
                 v.U.Type = arm;
-                Emit("HoldsEmptyUnion/" + arm, 14, ws => WriteHoldsEmptyUnion(ws, v));
+                Emit("HoldsEmptyUnion/" + arm, 14, ws => WriteHoldsEmptyUnion(ws, ref v));
             }
 
             // lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
@@ -1162,20 +1185,20 @@ static class Program
             for (int k = 0; k < 3; k++)
             {
                 Strs v = new Strs { Lead = 21, Tail = 5, SLength = strsS[k].Length, BLength = strsB[k].Length };
-                Array.Copy(strsS[k], v.S, strsS[k].Length);
-                Array.Copy(strsB[k], v.B, strsB[k].Length);
-                Emit("Strs/" + k, strsBits[k], ws => WriteStrs(ws, v));
+                strsS[k].CopyTo(v.S[..]);
+                strsB[k].CopyTo(v.B[..]);
+                Emit("Strs/" + k, strsBits[k], ws => WriteStrs(ws, ref v));
             }
 
             for (int c = 0; c <= 4; c++)
             {
                 ArrNested v = new ArrNested { Lead = 21, Tail = 5, ItemsCount = c };
                 for (int i = 0; i < c; i++) { v.Items[i].A = (uint)(i % 8); v.Items[i].B = (uint)(200 - i * 7); }
-                Emit("ArrNested/" + c, 11 + 11 * c, ws => WriteArrNested(ws, v));
+                Emit("ArrNested/" + c, 11 + 11 * c, ws => WriteArrNested(ws, ref v));
             }
 
             Sole sole = new Sole { Only = 5555 };
-            Emit("Sole", 13, ws => WriteSole(ws, sole));
+            Emit("Sole", 13, ws => WriteSole(ws, ref sole));
 
             GoldenWire("clauses", stream.ToArray());
 
@@ -1185,72 +1208,72 @@ static class Program
             foreach (int c in w13Counts)
             {
                 W13 r = new W13();
-                Consume("W13/" + c, 4 + 13 * c, rs => ReadW13(rs, r));
+                Consume("W13/" + c, 4 + 13 * c, rs => ReadW13(rs, ref r));
                 Check(r.ItemsCount == c, "W13 count round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i] == (ushort)(8191 - i * 733), "W13 element round-trips");
             }
             foreach (int c in w17Counts)
             {
                 W17 r = new W17();
-                Consume("W17/" + c, 4 + 17 * c, rs => ReadW17(rs, r));
+                Consume("W17/" + c, 4 + 17 * c, rs => ReadW17(rs, ref r));
                 Check(r.ItemsCount == c, "W17 count round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i] == (uint)(131071 - i * 11117), "W17 element round-trips");
             }
             foreach (int c in w26Counts)
             {
                 W26 r = new W26();
-                Consume("W26/" + c, 3 + 26 * c, rs => ReadW26(rs, r));
+                Consume("W26/" + c, 3 + 26 * c, rs => ReadW26(rs, ref r));
                 Check(r.ItemsCount == c, "W26 count round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i] == (uint)(67108863 - i * 5555555), "W26 element round-trips");
             }
             foreach (int c in w1Counts)
             {
                 W1 r = new W1();
-                Consume("W1/" + c, 5 + c, rs => ReadW1(rs, r));
+                Consume("W1/" + c, 5 + c, rs => ReadW1(rs, ref r));
                 Check(r.ItemsCount == c, "W1 count round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i] == (byte)(i % 2), "W1 element round-trips");
             }
             for (int c = 0; c <= 3; c++)
             {
                 W52 r = new W52();
-                Consume("W52/" + c, 2 + 52 * c, rs => ReadW52(rs, r));
+                Consume("W52/" + c, 2 + 52 * c, rs => ReadW52(rs, ref r));
                 Check(r.ItemsCount == c, "W52 count round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i] == 4503599627370495UL - (ulong)i * 123456789UL, "W52 element round-trips");
             }
             for (int c = 0; c <= 3; c++)
             {
                 W50 r = new W50();
-                Consume("W50/" + c, 2 + 50 * c, rs => ReadW50(rs, r));
+                Consume("W50/" + c, 2 + 50 * c, rs => ReadW50(rs, ref r));
                 Check(r.ItemsCount == c, "W50 count round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i] == 1125899906842623UL - (ulong)i * 987654321UL, "W50 element round-trips");
             }
             {
                 F13 r = new F13();
-                Consume("F13", 91, rs => ReadF13(rs, r));
+                Consume("F13", 91, rs => ReadF13(rs, ref r));
                 for (int i = 0; i < 7; i++) Check(r.Items[i] == (ushort)(8191 - i * 911), "F13 element round-trips");
             }
             foreach (int c in triCounts)
             {
                 ArrTri3 r = new ArrTri3();
-                Consume("ArrTri3/" + c, 4 + 3 * c, rs => ReadArrTri3(rs, r));
+                Consume("ArrTri3/" + c, 4 + 3 * c, rs => ReadArrTri3(rs, ref r));
                 Check(r.ItemsCount == c, "ArrTri3 count round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i].A == (uint)(i % 2) && r.Items[i].B == (uint)(i % 4), "ArrTri3 element round-trips");
             }
             {
                 ArrEleven r = new ArrEleven();
-                Consume("ArrEleven", 99, rs => ReadArrEleven(rs, r));
+                Consume("ArrEleven", 99, rs => ReadArrEleven(rs, ref r));
                 for (int i = 0; i < 9; i++) Check(r.Items[i].A == (uint)(i % 8) && r.Items[i].B == (uint)(255 - i * 17), "ArrEleven element round-trips");
             }
             foreach (EmptyUnionType arm in emptyArms)
             {
                 HoldsEmptyUnion r = new HoldsEmptyUnion();
-                Consume("HoldsEmptyUnion/" + arm, 14, rs => ReadHoldsEmptyUnion(rs, r));
+                Consume("HoldsEmptyUnion/" + arm, 14, rs => ReadHoldsEmptyUnion(rs, ref r));
                 Check(r.Lead == 21 && r.Tail == 99 && r.U.Type == arm, "HoldsEmptyUnion round-trips");
             }
             for (int k = 0; k < 3; k++)
             {
                 Strs r = new Strs();
-                Consume("Strs/" + k, strsBits[k], rs => ReadStrs(rs, r));
+                Consume("Strs/" + k, strsBits[k], rs => ReadStrs(rs, ref r));
                 Check(r.Lead == 21 && r.Tail == 5, "Strs lead and tail round-trip");
                 Check(r.SLength == strsS[k].Length && r.BLength == strsB[k].Length, "Strs lengths round-trip");
                 for (int i = 0; i < strsS[k].Length; i++) Check(r.S[i] == strsS[k][i], "Strs string byte round-trips");
@@ -1259,13 +1282,13 @@ static class Program
             for (int c = 0; c <= 4; c++)
             {
                 ArrNested r = new ArrNested();
-                Consume("ArrNested/" + c, 11 + 11 * c, rs => ReadArrNested(rs, r));
+                Consume("ArrNested/" + c, 11 + 11 * c, rs => ReadArrNested(rs, ref r));
                 Check(r.ItemsCount == c && r.Lead == 21 && r.Tail == 5, "ArrNested round-trips");
                 for (int i = 0; i < c; i++) Check(r.Items[i].A == (uint)(i % 8) && r.Items[i].B == (uint)(200 - i * 7), "ArrNested element round-trips");
             }
             {
                 Sole r = new Sole();
-                Consume("Sole", 13, rs => ReadSole(rs, r));
+                Consume("Sole", 13, rs => ReadSole(rs, ref r));
                 Check(r.Only == 5555, "Sole round-trips");
             }
             Check(off == stream.Count, "the clauses reads consume the whole golden");
@@ -1285,20 +1308,20 @@ static class Program
                 // the arms agree on WIDTH but not on value, so a join that
                 // keeps the wrong arm is a value mismatch, not just a width one
                 ArmsAgree agree = new ArmsAgree { Lead = 21, Flag = f, A = 1234, B = 1500, Tail = 99 };
-                Emit("ArmsAgree/" + f, 24, ws => WriteArmsAgree(ws, agree));
+                Emit("ArmsAgree/" + f, 24, ws => WriteArmsAgree(ws, ref agree));
 
                 ArmsDisagree disagree = new ArmsDisagree { Lead = 21, Flag = f, A = 1234, B = 5, Tail = 99 };
-                Emit("ArmsDisagree/" + f, f ? 24 : 16, ws => WriteArmsDisagree(ws, disagree));
+                Emit("ArmsDisagree/" + f, f ? 24 : 16, ws => WriteArmsDisagree(ws, ref disagree));
 
                 ArmEmpty armEmpty = new ArmEmpty { Lead = 21, Flag = f, A = 456789, Tail = 99 };
-                Emit("ArmEmpty/" + f, f ? 32 : 13, ws => WriteArmEmpty(ws, armEmpty));
+                Emit("ArmEmpty/" + f, f ? 32 : 13, ws => WriteArmEmpty(ws, ref armEmpty));
 
                 ArmAlign alignStr = new ArmAlign { Lead = 21, Flag = f, SLength = 4, B = 1000, Tail = 99 };
-                Array.Copy(Encoding.ASCII.GetBytes("abcd"), alignStr.S, 4);
-                Emit("ArmAlign/" + f, f ? 55 : 23, ws => WriteArmAlign(ws, alignStr));
+                Encoding.ASCII.GetBytes("abcd").CopyTo(alignStr.S[..]);
+                Emit("ArmAlign/" + f, f ? 55 : 23, ws => WriteArmAlign(ws, ref alignStr));
 
                 ArmAlign alignEmpty = new ArmAlign { Lead = 21, Flag = f, B = 1000, Tail = 99 };
-                Emit("ArmAlignEmptyStr/" + f, 23, ws => WriteArmAlign(ws, alignEmpty));
+                Emit("ArmAlignEmptyStr/" + f, 23, ws => WriteArmAlign(ws, ref alignEmpty));
             }
 
             for (int oi = 0; oi <= 1; oi++)
@@ -1307,7 +1330,7 @@ static class Program
                 {
                     bool o = oi != 0, inn = ii != 0;
                     ArmsNested v = new ArmsNested { Lead = 5, Outer = o, Inner = inn, X = 500000000, Y = 17, Z = 4000, Tail = 33 };
-                    Emit("ArmsNested/" + oi + ii, o ? (inn ? 40 : 16) : 23, ws => WriteArmsNested(ws, v));
+                    Emit("ArmsNested/" + oi + ii, o ? (inn ? 40 : 16) : 23, ws => WriteArmsNested(ws, ref v));
                 }
             }
 
@@ -1318,7 +1341,7 @@ static class Program
                     bool f = fi != 0;
                     ArmArray v = new ArmArray { Lead = 21, Flag = f, ItemsCount = c, B = 300, Tail = 99 };
                     for (int i = 0; i < c; i++) v.Items[i] = (ushort)(8191 - i * 777);
-                    Emit("ArmArray/" + f + "/" + c, f ? 15 + 13 * c : 22, ws => WriteArmArray(ws, v));
+                    Emit("ArmArray/" + f + "/" + c, f ? 15 + 13 * c : 22, ws => WriteArmArray(ws, ref v));
                 }
             }
 
@@ -1331,7 +1354,7 @@ static class Program
                 v.U.Type = unevenArms[k];
                 if (unevenArms[k] == UnevenType.Narrow) v.U.Narrow.N = 5;
                 if (unevenArms[k] == UnevenType.Wide) v.U.Wide.W = 123456789012UL;
-                Emit("HoldsUneven/" + unevenArms[k], unevenBits[k], ws => WriteHoldsUneven(ws, v));
+                Emit("HoldsUneven/" + unevenArms[k], unevenBits[k], ws => WriteHoldsUneven(ws, ref v));
             }
 
             // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
@@ -1344,7 +1367,7 @@ static class Program
                     if (i % 2 == 0) { v.Items[i].Type = UnevenType.Narrow; v.Items[i].Narrow.N = (uint)(i % 8); }
                     else { v.Items[i].Type = UnevenType.Wide; v.Items[i].Wide.W = 99887766554UL + (ulong)i; }
                 }
-                Emit("ArrUneven/" + c, 10 + unevenItemBits[c], ws => WriteArrUneven(ws, v));
+                Emit("ArrUneven/" + c, 10 + unevenItemBits[c], ws => WriteArrUneven(ws, ref v));
             }
 
             // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
@@ -1358,10 +1381,10 @@ static class Program
                         Lead = 21, ItemsCount = c, SLength = sl,
                         P = 0xDEADBEEF, Q = (1u << 29) - 7, R = (1u << 19) - 3, Tail = 9,
                     };
-                    if (sl != 0) Array.Copy(Encoding.ASCII.GetBytes("wxyz"), v.S, 4);
+                    if (sl != 0) Encoding.ASCII.GetBytes("wxyz").CopyTo(v.S[..]);
                     for (int i = 0; i < c; i++) v.Items[i] = (ushort)(8191 - i * 999);
                     int afterAlign = ((5 + 2 + 13 * c + 3) + 7) / 8 * 8;
-                    Emit("Regain/" + c + "/" + sl, afterAlign + 8 * sl + 84, ws => WriteRegainAfterAlign(ws, v));
+                    Emit("Regain/" + c + "/" + sl, afterAlign + 8 * sl + 84, ws => WriteRegainAfterAlign(ws, ref v));
                 }
             }
 
@@ -1371,31 +1394,31 @@ static class Program
             {
                 bool f = fi != 0;
                 ArmsAgree agree = new ArmsAgree();
-                Consume("ArmsAgree/" + f, 24, rs => ReadArmsAgree(rs, agree));
+                Consume("ArmsAgree/" + f, 24, rs => ReadArmsAgree(rs, ref agree));
                 Check(agree.Lead == 21 && agree.Flag == f && agree.Tail == 99, "ArmsAgree round-trips");
                 Check(f ? (agree.A == 1234 && agree.B == 0) : (agree.B == 1500 && agree.A == 0),
                     "ArmsAgree's untaken side reads as zero (SPEC §5)");
 
                 ArmsDisagree disagree = new ArmsDisagree();
-                Consume("ArmsDisagree/" + f, f ? 24 : 16, rs => ReadArmsDisagree(rs, disagree));
+                Consume("ArmsDisagree/" + f, f ? 24 : 16, rs => ReadArmsDisagree(rs, ref disagree));
                 Check(disagree.Lead == 21 && disagree.Tail == 99, "ArmsDisagree round-trips");
                 Check(f ? (disagree.A == 1234 && disagree.B == 0) : (disagree.B == 5 && disagree.A == 0),
                     "ArmsDisagree's untaken side reads as zero");
 
                 ArmEmpty armEmpty = new ArmEmpty();
-                Consume("ArmEmpty/" + f, f ? 32 : 13, rs => ReadArmEmpty(rs, armEmpty));
+                Consume("ArmEmpty/" + f, f ? 32 : 13, rs => ReadArmEmpty(rs, ref armEmpty));
                 Check(armEmpty.Lead == 21 && armEmpty.Tail == 99, "ArmEmpty round-trips");
                 Check(armEmpty.A == (f ? 456789u : 0u), "ArmEmpty's absent arm reads as zero");
 
                 ArmAlign alignStr = new ArmAlign();
-                Consume("ArmAlign/" + f, f ? 55 : 23, rs => ReadArmAlign(rs, alignStr));
+                Consume("ArmAlign/" + f, f ? 55 : 23, rs => ReadArmAlign(rs, ref alignStr));
                 Check(alignStr.Lead == 21 && alignStr.Tail == 99, "ArmAlign round-trips");
                 Check(f ? (alignStr.SLength == 4 && alignStr.S[0] == (byte)'a' && alignStr.S[3] == (byte)'d' && alignStr.B == 0)
                         : (alignStr.B == 1000 && alignStr.SLength == 0),
                     "ArmAlign's untaken side reads as zero");
 
                 ArmAlign alignEmpty = new ArmAlign();
-                Consume("ArmAlignEmptyStr/" + f, 23, rs => ReadArmAlign(rs, alignEmpty));
+                Consume("ArmAlignEmptyStr/" + f, 23, rs => ReadArmAlign(rs, ref alignEmpty));
                 Check(alignEmpty.Lead == 21 && alignEmpty.Tail == 99, "ArmAlign with an empty string round-trips");
                 Check(f ? (alignEmpty.SLength == 0 && alignEmpty.B == 0) : (alignEmpty.B == 1000),
                     "ArmAlign's empty string round-trips");
@@ -1407,7 +1430,7 @@ static class Program
                 {
                     bool o = oi != 0, inn = ii != 0;
                     ArmsNested r = new ArmsNested();
-                    Consume("ArmsNested/" + oi + ii, o ? (inn ? 40 : 16) : 23, rs => ReadArmsNested(rs, r));
+                    Consume("ArmsNested/" + oi + ii, o ? (inn ? 40 : 16) : 23, rs => ReadArmsNested(rs, ref r));
                     Check(r.Lead == 5 && r.Tail == 33 && r.Outer == o, "ArmsNested round-trips");
                     if (o)
                     {
@@ -1427,7 +1450,7 @@ static class Program
                 {
                     bool f = fi != 0;
                     ArmArray r = new ArmArray();
-                    Consume("ArmArray/" + f + "/" + c, f ? 15 + 13 * c : 22, rs => ReadArmArray(rs, r));
+                    Consume("ArmArray/" + f + "/" + c, f ? 15 + 13 * c : 22, rs => ReadArmArray(rs, ref r));
                     Check(r.Lead == 21 && r.Tail == 99, "ArmArray round-trips");
                     if (f)
                     {
@@ -1444,7 +1467,7 @@ static class Program
             for (int k = 0; k < 3; k++)
             {
                 HoldsUneven r = new HoldsUneven();
-                Consume("HoldsUneven/" + unevenArms[k], unevenBits[k], rs => ReadHoldsUneven(rs, r));
+                Consume("HoldsUneven/" + unevenArms[k], unevenBits[k], rs => ReadHoldsUneven(rs, ref r));
                 Check(r.Lead == 21 && r.Tail == 1500 && r.U.Type == unevenArms[k], "HoldsUneven round-trips");
                 if (unevenArms[k] == UnevenType.Narrow) Check(r.U.Narrow.N == 5, "HoldsUneven's narrow arm round-trips");
                 if (unevenArms[k] == UnevenType.Wide) Check(r.U.Wide.W == 123456789012UL, "HoldsUneven's wide arm round-trips");
@@ -1453,7 +1476,7 @@ static class Program
             for (int c = 0; c <= 3; c++)
             {
                 ArrUneven r = new ArrUneven();
-                Consume("ArrUneven/" + c, 10 + unevenItemBits[c], rs => ReadArrUneven(rs, r));
+                Consume("ArrUneven/" + c, 10 + unevenItemBits[c], rs => ReadArrUneven(rs, ref r));
                 Check(r.ItemsCount == c && r.Lead == 21 && r.Tail == 5, "ArrUneven round-trips");
                 for (int i = 0; i < c; i++)
                 {
@@ -1468,7 +1491,7 @@ static class Program
                 {
                     RegainAfterAlign r = new RegainAfterAlign();
                     int afterAlign = ((5 + 2 + 13 * c + 3) + 7) / 8 * 8;
-                    Consume("Regain/" + c + "/" + sl, afterAlign + 8 * sl + 84, rs => ReadRegainAfterAlign(rs, r));
+                    Consume("Regain/" + c + "/" + sl, afterAlign + 8 * sl + 84, rs => ReadRegainAfterAlign(rs, ref r));
                     Check(r.Lead == 21 && r.ItemsCount == c && r.SLength == sl, "RegainAfterAlign round-trips");
                     Check(r.P == 0xDEADBEEF && r.Q == (1u << 29) - 7 && r.R == (1u << 19) - 3 && r.Tail == 9,
                         "RegainAfterAlign's static run after the align round-trips");

@@ -2745,6 +2745,15 @@ or a file per declaration where the language demands one.
   per translation unit behind a guard; the home is named for the PACKAGE on
   §19.2's rule for every port. Every unit emits one further file per unit,
   `<Package>View.cs`, on the same terms as the C++ pair above.
+  **A `type` and a union are structs** (.NET 8 or later, C# 12 or later):
+  fixed arrays, strings and bytes live inline as `[InlineArray]` buffers,
+  nothing allocates per value, and `Write`/`Read`/`Zero`/`Init` take the
+  value by `ref`. Assigning a value copies it. `new T()` is the construction
+  form — a type with a specified default gets a constructor that runs
+  `InitT` — while `default(T)` and a fresh array element are the §5 zero
+  form until `InitT` runs on them. Until the table surface takes its values
+  by ref, a unit that declares tables keeps its declarations as sealed
+  classes.
 - **Dart:** one library per schema file, cross-file `import`s derived from
   actual references, with `show` clauses naming exactly the symbols used. A
   unit that declares TABLES grows two further libraries per schema file —

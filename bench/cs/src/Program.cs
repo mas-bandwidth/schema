@@ -29,6 +29,10 @@ using Serialize;
 
 static partial class Program
 {
+    // packet types are values: the codecs take them by ref
+    delegate bool BenchWrite<T>(WriteStream stream, ref T value);
+    delegate bool BenchRead<T>(ReadStream stream, ref T value);
+
     const int MaxNumRuns = 7;   // median of 7 (N >= 5), after 1 warmup run
     static bool gGate = false;
     static bool gQuick = false; // --quick: bench_mixed only, 3 measured runs
@@ -279,8 +283,8 @@ static partial class Program
     // as in the C++ reference. A TYPE name is not a field name; the driver
     // still knows nothing about the shape's contents.
     static void BenchDataDriven<T>(string name, string golden, long iters,
-        Func<WriteStream, T, bool> writeFn, Func<ReadStream, T, bool> readFn)
-        where T : class, new()
+        BenchWrite<T> writeFn, BenchRead<T> readFn)
+        where T : struct
     {
         if (gIterations > 0) iters = gIterations;
         long bytesPerOp = LoadVariants(name);
@@ -308,13 +312,13 @@ static partial class Program
         {
             instances[k] = new T();
             ReadStream gateRs = new ReadStream(gVariants[k], (int)bytesPerOp);
-            if (!readFn(gateRs, instances[k]))
+            if (!readFn(gateRs, ref instances[k]))
             {
                 Fail(name, "decode of a variant failed");
                 return;
             }
             WriteStream gateWs = new WriteStream(gTwin);
-            if (!writeFn(gateWs, instances[k]))
+            if (!writeFn(gateWs, ref instances[k]))
             {
                 Fail(name, "re-encode of a decoded variant failed");
                 return;
@@ -347,7 +351,7 @@ static partial class Program
             for (long i = 0; i < iters; i++)
             {
                 ws.Reset(gBuffer);
-                if (!writeFn(ws, instances[i & (NumVariants - 1)]))
+                if (!writeFn(ws, ref instances[i & (NumVariants - 1)]))
                 {
                     Fail(name, "write failed in loop");
                     return;
@@ -376,13 +380,13 @@ static partial class Program
             for (long i = 0; i < iters; i++)
             {
                 rs.Reset(gVariants[i & (NumVariants - 1)], (int)bytesPerOp);
-                if (!readFn(rs, outValue))
+                if (!readFn(rs, ref outValue))
                 {
                     Fail(name, "read failed in loop");
                     return;
                 }
                 ws.Reset(gBuffer);
-                if (!writeFn(ws, outValue))
+                if (!writeFn(ws, ref outValue))
                 {
                     Fail(name, "re-write failed in loop");
                     return;
@@ -423,7 +427,7 @@ static partial class Program
         for (int i = 0; i < allocOps; i++)
         {
             ws.Reset(gBuffer);
-            if (!writeFn(ws, instances[i & (NumVariants - 1)]))
+            if (!writeFn(ws, ref instances[i & (NumVariants - 1)]))
             {
                 Fail(name, "write failed in alloc pass");
                 return;
@@ -436,13 +440,13 @@ static partial class Program
         for (int i = 0; i < allocOps; i++)
         {
             rs.Reset(gVariants[i & (NumVariants - 1)], (int)bytesPerOp);
-            if (!readFn(rs, outValue))
+            if (!readFn(rs, ref outValue))
             {
                 Fail(name, "read failed in alloc pass");
                 return;
             }
             ws.Reset(gBuffer);
-            if (!writeFn(ws, outValue))
+            if (!writeFn(ws, ref outValue))
             {
                 Fail(name, "re-write failed in alloc pass");
                 return;
