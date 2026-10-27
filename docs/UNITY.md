@@ -200,6 +200,35 @@ per folder, and the assembly's name and references are the project's decision.
    messages (`stream.Reset(buffer)`), so the steady state allocates nothing
    beyond that one copy.
 
+## Speed
+
+The fastest correct code per language is the bar, and the techniques the
+modern C# generator measured carry over to C# 9 unchanged: neither needs a
+language feature past C# 7.2. This generator re-derives them in its own
+emitter rather than sharing `cs`'s.
+
+- **Folded words.** Every bit offset inside a run of statically placed items
+  (bools, `bits(N)`, integers, enums, flags, `const`, `reserved`) is known at
+  generation time, so the run is packed into 64-bit words at literal shifts and
+  written one word at a time. A run of B bits costs ceil(B/64) packer steps
+  instead of one per field. Every value is masked to its width, and the write
+  contracts are asserted ahead of the packing. A read run reads its words with
+  one bounds check each and tests the stream's error once. A ranged or enum
+  read whose check can fire stays on the runtime's `SerializeInt`, so its
+  latched `ValueOutOfRange` is unchanged.
+- **Batched streams.** serialize.cs's `WriteBatch`/`ReadBatch` ref structs hold
+  the packer state in locals between `BeginBatch` and `End`. A type whose body
+  is scalar-dense with no delegated bulk site (text, a byte run, fixed point,
+  128-bit) runs its whole body on a batch. The body is an
+  `[MethodImpl(AggressiveInlining)]` core, and nested types are reached core to
+  core by `ref`. A stream-form body opens one scoped batch around a
+  composition site whose child is batched. Under IL2CPP a ref struct is a stack
+  struct, so the state stays in registers just as it does under the JIT.
+
+The wire is unchanged. Every gate below runs on this code. The laws behind the
+thresholds were measured on CoreCLR for `--lang cs`; measuring them for this
+generator is the fleet's job, never the studio's.
+
 ## How it is tested
 
 No Unity editor runs in CI, so the Unity dialect is reproduced where CI can run

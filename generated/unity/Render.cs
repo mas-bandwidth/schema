@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Example
@@ -50,29 +51,37 @@ namespace Example
 
         public static bool WriteRenderSprite(WriteStream stream, ref RenderSprite value)
         {
-            if (!stream.SerializeBits64(ref value.SortKey, 64))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteRenderSpriteBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteRenderSpriteBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteRenderSpriteBatch(ref WriteBatch batch, ref RenderSprite value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.MeshId, 32))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.MaterialId, 32))
-            {
-                return false;
-            }
-            {
-                uint rawValue = value.Layer;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                // 138 bits folded into 3 word(s)
+                Debug.Assert((uint)value.Team <= 2, "value.Team above the enum wire range [0, 2]");
+                ulong f0 = value.SortKey;
+                ulong f1 = ((ulong)value.MeshId) & 0xffffffffUL;
+                ulong f2 = ((ulong)value.MaterialId) & 0xffffffffUL;
+                ulong f3 = ((ulong)value.Layer) & 0xffUL;
+                ulong f4 = ((ulong)(uint)value.Team) & 0x3UL;
+                ulong w0 = f0;
+                if (!batch.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
-            }
-            {
-                uint enumValue = (uint)value.Team;
-                Debug.Assert(enumValue <= 2, "value.Team above the enum wire range [0, 2]");
-                if (!stream.SerializeBits(ref enumValue, 2))
+                ulong w1 = f1 | (f2 << 32);
+                if (!batch.SerializeBits64(ref w1, 64))
+                {
+                    return false;
+                }
+                uint w2 = (uint)(f3 | (f4 << 8));
+                if (!batch.SerializeBits(ref w2, 10))
                 {
                     return false;
                 }
@@ -82,29 +91,41 @@ namespace Example
 
         public static bool ReadRenderSprite(ReadStream stream, ref RenderSprite value)
         {
-            if (!stream.SerializeBits64(ref value.SortKey, 64))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadRenderSpriteBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadRenderSpriteBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadRenderSpriteBatch(ref ReadBatch batch, ref RenderSprite value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.MeshId, 32))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.MaterialId, 32))
-            {
-                return false;
-            }
-            {
-                uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                // 136 bits read as 3 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                batch.SerializeBits64(ref c1, 64);
+                ulong c2 = 0;
+                batch.SerializeBits64(ref c2, 8);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                value.Layer = (byte)rawValue;
+                ulong v0 = c0;
+                value.SortKey = v0;
+                ulong v1 = c1 & 0xffffffffUL;
+                value.MeshId = (uint)v1;
+                ulong v2 = (c1 >> 32) & 0xffffffffUL;
+                value.MaterialId = (uint)v2;
+                ulong v3 = c2 & 0xffUL;
+                value.Layer = (byte)v3;
             }
             {
                 int enumValue = 0;
-                if (!stream.SerializeInt(ref enumValue, 0, 2))
+                if (!batch.SerializeInt(ref enumValue, 0, 2))
                 {
                     return false;
                 }
@@ -126,18 +147,31 @@ namespace Example
 
         public static bool WriteRenderBlock(WriteStream stream, ref RenderBlock value)
         {
-            if (!stream.SerializeBits(ref value.WorkerIndex, 32))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteRenderBlockBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteRenderBlockBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteRenderBlockBatch(ref WriteBatch batch, ref RenderBlock value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.SpriteCountHint, 32))
-            {
-                return false;
+                // 64 bits folded into 1 word(s)
+                ulong f0 = ((ulong)value.WorkerIndex) & 0xffffffffUL;
+                ulong f1 = ((ulong)value.SpriteCountHint) & 0xffffffffUL;
+                ulong w0 = f0 | (f1 << 32);
+                if (!batch.SerializeBits64(ref w0, 64))
+                {
+                    return false;
+                }
             }
             Debug.Assert(value.SpritesCount >= 0 && value.SpritesCount <= 64, "value.SpritesCount out of range [0, 64]");
             {
                 uint offsetValue = (uint)value.SpritesCount;
-                if (!stream.SerializeBits(ref offsetValue, 7))
+                if (!batch.SerializeBits(ref offsetValue, 7))
                 {
                     return false;
                 }
@@ -146,7 +180,7 @@ namespace Example
                 Span<RenderSprite> spritesSpan = value.Sprites.AsSpan();
                 for (int i = 0; i < value.SpritesCount; i++)
                 {
-                    if (!WriteRenderSprite(stream, ref spritesSpan[i]))
+                    if (!WriteRenderSpriteBatch(ref batch, ref spritesSpan[i]))
                     {
                         return false;
                     }
@@ -157,15 +191,31 @@ namespace Example
 
         public static bool ReadRenderBlock(ReadStream stream, ref RenderBlock value)
         {
-            if (!stream.SerializeBits(ref value.WorkerIndex, 32))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadRenderBlockBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadRenderBlockBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadRenderBlockBatch(ref ReadBatch batch, ref RenderBlock value)
+        {
             {
-                return false;
+                // 64 bits read as 1 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xffffffffUL;
+                value.WorkerIndex = (uint)v0;
+                ulong v1 = (c0 >> 32) & 0xffffffffUL;
+                value.SpriteCountHint = (uint)v1;
             }
-            if (!stream.SerializeBits(ref value.SpriteCountHint, 32))
-            {
-                return false;
-            }
-            if (!stream.SerializeInt(ref value.SpritesCount, 0, 64)) // the count guards the loop (§6.3)
+            if (!batch.SerializeInt(ref value.SpritesCount, 0, 64)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -173,7 +223,7 @@ namespace Example
                 Span<RenderSprite> spritesSpan = value.Sprites.AsSpan();
                 for (int i = 0; i < value.SpritesCount; i++)
                 {
-                    if (!ReadRenderSprite(stream, ref spritesSpan[i]))
+                    if (!ReadRenderSpriteBatch(ref batch, ref spritesSpan[i]))
                     {
                         return false;
                     }

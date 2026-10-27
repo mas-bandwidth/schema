@@ -128,3 +128,54 @@ func TestRefusesAGeneratedNameCollision(t *testing.T) {
 		}
 	}
 }
+
+const denseSrc = `package dense
+
+enum Mode { A, B, C }
+
+type Dense
+{
+    a bits(3)
+    b bool
+    c int16 | min = -100, max = 100
+    mode Mode
+    d bits(40)
+}
+
+type Holder
+{
+    items [..4]Dense
+}
+
+type Chat
+{
+    text string(8)
+}
+`
+
+// The cs speed techniques, carried: a scalar-dense pair runs on a batch with
+// an inline core, its statically placed fields fold into whole words, a
+// composition site under a stream-form parent opens one scoped batch, and a
+// body with a delegated bulk site stays on the stream.
+func TestDenseBodiesBatchAndFold(t *testing.T) {
+	files, err := Generate(unitOf(t, "Dense", denseSrc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files["Dense.cs"])
+	for _, want := range []string{
+		"WriteBatch batch = stream.BeginBatch();\n            bool result = WriteDenseBatch(ref batch, ref value);",
+		"[MethodImpl(MethodImplOptions.AggressiveInlining)]\n        private static bool WriteDenseBatch(ref WriteBatch batch, ref Dense value)",
+		"bits folded into",
+		"bits read as",
+		"if (!WriteDenseBatch(ref batch, ref itemsSpan[i]))",
+		"public static bool WriteChat(WriteStream stream, ref Chat value)\n        {\n            Debug.Assert",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(text, "WriteChatBatch") {
+		t.Error("a body with a delegated byte run must stay on the stream")
+	}
+}

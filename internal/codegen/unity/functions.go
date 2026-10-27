@@ -39,16 +39,18 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	}
 
 	aligned := ir.AlignedFixedByteArrays(st)
-	g.sf("public static bool Write%s(WriteStream stream, ref %s value)\n{\n", st.Name, st.Name)
-	if len(st.Items) == 0 {
-		g.sf("    // an empty body: presence is the payload (SPEC §4.6)\n")
-	}
-	g.emitItems(st.Items, true, aligned, "    ")
-	g.sf("    return true;\n}\n\n")
-
-	g.sf("public static bool Read%s(ReadStream stream, ref %s value)\n{\n", st.Name, st.Name)
-	g.emitItems(st.Items, false, aligned, "    ")
-	g.sf("    return true;\n}\n\n")
+	g.emitPair(st.Name,
+		func() {
+			if len(st.Items) == 0 {
+				g.sf("    // an empty body: presence is the payload (SPEC §4.6)\n")
+			}
+			g.emitItems(st.Items, true, aligned, "    ")
+			g.sf("    return true;\n")
+		},
+		func() {
+			g.emitItems(st.Items, false, aligned, "    ")
+			g.sf("    return true;\n")
+		})
 }
 
 func (g *gen) emitBounds(name string, maxBits int64, what string) {
@@ -95,9 +97,51 @@ func (g *gen) emitInitField(f *ir.Field, ind string) {
 	}
 }
 
-// emitItems walks a body in wire order.
+// emitItems walks a body in wire order, folding each maximal run of
+// statically placed items into whole words (flat.go) and sending everything
+// else down the per-item path. A run that does not reduce the packer steps
+// falls back item by item.
 func (g *gen) emitItems(items []ir.Item, writing bool, aligned map[*ir.Field]bool, ind string) {
+	var run []flatPiece
+	var runBits int64
+	flush := func() {
+		pieces, bits := run, runBits
+		run, runBits = nil, 0
+		if len(pieces) == 0 {
+			return
+		}
+		if flatWorthwhile(pieces, bits) {
+			if writing {
+				g.emitFlatWriteRun(pieces, bits, ind)
+			} else {
+				g.emitFlatReadRun(pieces, bits, ind)
+			}
+			return
+		}
+		for _, p := range pieces {
+			g.emitItem(p.item, writing, aligned, ind)
+		}
+	}
 	for _, item := range items {
+		p, ok := g.flatPieceOf(item, writing, aligned)
+		if ok && runBits+p.bits <= flatMaxRunBits {
+			run = append(run, p)
+			runBits += p.bits
+			continue
+		}
+		flush()
+		if ok {
+			run, runBits = []flatPiece{p}, p.bits
+			continue
+		}
+		g.emitItem(item, writing, aligned, ind)
+	}
+	flush()
+}
+
+// emitItem is the per-item path: a run's fallback, and every item no run holds.
+func (g *gen) emitItem(item ir.Item, writing bool, aligned map[*ir.Field]bool, ind string) {
+	{
 		switch item := item.(type) {
 		case *ir.FieldItem:
 			if writing {
@@ -114,7 +158,7 @@ func (g *gen) emitItems(items []ir.Item, writing bool, aligned map[*ir.Field]boo
 			if !writing {
 				comment = " // rejects nonzero padding (SPEC §4.3)"
 			}
-			g.call(ind, "stream.SerializeAlign()", comment)
+			g.call(ind, g.rv()+".SerializeAlign()", comment)
 		case *ir.Branch:
 			neg := ""
 			if item.Neg {
@@ -184,12 +228,12 @@ func (g *gen) emitConstItem(item *ir.ConstItem, writing bool, ind string) {
 	typ, fn := bitsCall(item.Bits)
 	if writing {
 		g.sf("%s{\n%s    %s constValue = %s; // const(%s, %d) (SPEC §4.3)\n", ind, ind, typ, item.Value, item.Value, item.Bits)
-		g.call(ind+"    ", fmt.Sprintf("stream.%s(ref constValue, %d)", fn, item.Bits), "")
+		g.call(ind+"    ", fmt.Sprintf("%s.%s(ref constValue, %d)", g.rv(), fn, item.Bits), "")
 		g.sf("%s}\n", ind)
 		return
 	}
 	g.sf("%s{\n%s    %s constValue = 0;\n", ind, ind, typ)
-	g.call(ind+"    ", fmt.Sprintf("stream.%s(ref constValue, %d)", fn, item.Bits), "")
+	g.call(ind+"    ", fmt.Sprintf("%s.%s(ref constValue, %d)", g.rv(), fn, item.Bits), "")
 	g.reject(ind+"    ", fmt.Sprintf("constValue != %s", item.Value), fmt.Sprintf(" // const(%s, %d): any other value is refused (SPEC §4.3)", item.Value, item.Bits))
 	g.sf("%s}\n", ind)
 }
@@ -197,7 +241,7 @@ func (g *gen) emitConstItem(item *ir.ConstItem, writing bool, ind string) {
 func (g *gen) emitReservedItem(item *ir.ReservedItem, writing bool, ind string) {
 	typ, fn := bitsCall(item.Bits)
 	g.sf("%s{\n%s    %s reservedValue = 0;\n", ind, ind, typ)
-	g.call(ind+"    ", fmt.Sprintf("stream.%s(ref reservedValue, %d)", fn, item.Bits), "")
+	g.call(ind+"    ", fmt.Sprintf("%s.%s(ref reservedValue, %d)", g.rv(), fn, item.Bits), "")
 	if !writing {
 		g.reject(ind+"    ", "reservedValue != 0", fmt.Sprintf(" // reserved(%d): nonzero is refused (SPEC §4.3)", item.Bits))
 	}
@@ -259,7 +303,7 @@ func (g *gen) emitWriteOffset(expr string, min, max *big.Int, assertLo, assertHi
 	default:
 		g.sf("%s{\n%s    %s offsetValue = (%s)%s - %s;\n", ind, ind, typ, typ, expr, min)
 	}
-	g.call(ind+"    ", fmt.Sprintf("stream.%s(ref offsetValue, %d)", fn, bits), "")
+	g.call(ind+"    ", fmt.Sprintf("%s.%s(ref offsetValue, %d)", g.rv(), fn, bits), "")
 	g.sf("%s}\n", ind)
 }
 
@@ -283,6 +327,10 @@ func lowerFirst(s string) string {
 
 func (g *gen) emitWriteField(f *ir.Field, aligned bool, ind string) {
 	name := "value." + member(f)
+	if child := g.scopedChild(f); child != "" {
+		g.emitScopedBatch(true, f, child, ind)
+		return
+	}
 	if f.Array == ir.ArrayNone {
 		g.emitWriteScalar(f, name, ind)
 		return
@@ -290,7 +338,7 @@ func (g *gen) emitWriteField(f *ir.Field, aligned bool, ind string) {
 	if aligned {
 		// a statically byte-aligned [N]uint8: zero align bits, then one bulk copy
 		// — wire-identical to the per-byte loop (SPEC §6.2)
-		g.call(ind, fmt.Sprintf("stream.SerializeBytes(%s.AsSpan())", name), " // byte-aligned [N]uint8: one bulk copy")
+		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan())", g.rv(), name), " // byte-aligned [N]uint8: one bulk copy")
 		return
 	}
 	count := fmt.Sprintf("%d", f.ArrayBound)
@@ -307,18 +355,22 @@ func (g *gen) emitWriteField(f *ir.Field, aligned bool, ind string) {
 
 func (g *gen) emitReadField(f *ir.Field, aligned bool, ind string) {
 	name := "value." + member(f)
+	if child := g.scopedChild(f); child != "" {
+		g.emitScopedBatch(false, f, child, ind)
+		return
+	}
 	if f.Array == ir.ArrayNone {
 		g.emitReadScalar(f, name, ind)
 		return
 	}
 	if aligned {
-		g.call(ind, fmt.Sprintf("stream.SerializeBytes(%s.AsSpan())", name), " // byte-aligned [N]uint8: one bulk copy")
+		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan())", g.rv(), name), " // byte-aligned [N]uint8: one bulk copy")
 		return
 	}
 	count := fmt.Sprintf("%d", f.ArrayBound)
 	if f.Array == ir.ArrayCounted {
 		count = name + "Count"
-		g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, %d, %d)", count, f.ArrayMin, f.ArrayBound), " // the count guards the loop (§6.3)")
+		g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, %d, %d)", g.rv(), count, f.ArrayMin, f.ArrayBound), " // the count guards the loop (§6.3)")
 	}
 	span := elemSpan(f)
 	g.sf("%s{\n%s    Span<%s> %s = %s.AsSpan();\n", ind, ind, g.storage(f.Type), span, name)
@@ -360,9 +412,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
 		_, fn := bitsCall(int64(f.Type.Width))
-		g.call(ind, fmt.Sprintf("stream.%s(ref %s, %d)", fn, name, f.Type.Width), "")
+		g.call(ind, fmt.Sprintf("%s.%s(ref %s, %d)", g.rv(), fn, name, f.Type.Width), "")
 	case ir.TBool:
-		g.call(ind, fmt.Sprintf("stream.SerializeBool(ref %s)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBool(ref %s)", g.rv(), name), "")
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			// a temp, so the quantization cannot write back into the caller's value
@@ -371,14 +423,14 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.sf("%s}\n", ind)
 			return
 		}
-		g.call(ind, fmt.Sprintf("stream.SerializeFloat(ref %s)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 	case ir.TFloat64:
-		g.call(ind, fmt.Sprintf("stream.SerializeDouble(ref %s)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes (SPEC §4.7)
 		length := name + "Length"
 		g.countWrite(length, 0, f.Type.Size, ind)
-		g.call(ind, fmt.Sprintf("stream.SerializeBytes(%s.AsSpan().Slice(0, %s))", name, length), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan().Slice(0, %s))", g.rv(), name, length), "")
 	case ir.TWString:
 		// length in [0, N], then one 32-bit group per UTF-16 code unit, no
 		// alignment anywhere (SPEC §4.12)
@@ -388,7 +440,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.sf("%s    for (int i = 0; i < %s; i++)\n%s    {\n", ind, length, ind)
 		g.sf("%s        uint wideUnit = wide[i];\n", ind)
 		g.writeAssert(ind+"        ", "wideUnit != 0", "a wide string's used units carry an interior null")
-		g.call(ind+"        ", "stream.SerializeBits(ref wideUnit, 32)", "")
+		g.call(ind+"        ", g.rv()+".SerializeBits(ref wideUnit, 32)", "")
 		g.sf("%s    }\n%s}\n", ind, ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -403,7 +455,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.writeAssert(ind+"    ", fmt.Sprintf("enumValue <= %d", ref.Max), fmt.Sprintf("%s above the enum wire range [0, %d]", name, ref.Max))
 			}
 			if bits > 0 {
-				g.call(ind+"    ", fmt.Sprintf("stream.%s(ref enumValue, %d)", fn, bits), "")
+				g.call(ind+"    ", fmt.Sprintf("%s.%s(ref enumValue, %d)", g.rv(), fn, bits), "")
 			}
 			g.sf("%s}\n", ind)
 		case *ir.Flags:
@@ -412,10 +464,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			}
 			typ, fn := bitsCall(int64(ref.WireBits))
 			g.sf("%s{\n%s    %s flagsValue = (%s)%s;\n", ind, ind, typ, typ, name)
-			g.call(ind+"    ", fmt.Sprintf("stream.%s(ref flagsValue, %d)", fn, ref.WireBits), "")
+			g.call(ind+"    ", fmt.Sprintf("%s.%s(ref flagsValue, %d)", g.rv(), fn, ref.WireBits), "")
 			g.sf("%s}\n", ind)
 		case *ir.Struct, *ir.Union:
-			g.call(ind, fmt.Sprintf("Write%s(stream, ref %s)", f.Type.Name, name), "")
+			g.call(ind, g.compose("Write", f.Type.Name, name), "")
 		}
 	}
 }
@@ -424,8 +476,8 @@ func (g *gen) compressedCall(f *ir.Field, name string) string {
 	steps, wireBits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
-	return fmt.Sprintf("stream.SerializeCompressedFloatPrecomputed(ref %s, %du, %d, %s, %s)",
-		name, steps, wireBits, formatFloat32(float64(delta)), formatFloat32(float64(min32)))
+	return fmt.Sprintf("%s.SerializeCompressedFloatPrecomputed(ref %s, %du, %d, %s, %s)",
+		g.rv(), name, steps, wireBits, formatFloat32(float64(delta)), formatFloat32(float64(min32)))
 }
 
 func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
@@ -433,11 +485,11 @@ func (g *gen) emitWriteInt(f *ir.Field, name, ind string) {
 	if t.Width == 128 {
 		switch {
 		case !f.HasIntRange:
-			g.call(ind, fmt.Sprintf("stream.SerializeUInt128(ref %s)", name), "") // uint128: raw, low half first
+			g.call(ind, fmt.Sprintf("%s.SerializeUInt128(ref %s)", g.rv(), name), "") // uint128: raw, low half first
 		case f.IntMin.Cmp(f.IntMax) == 0:
 			g.writeAssert(ind, fmt.Sprintf("%s == (Int128Value)(%s)", name, lit128(f.IntMin, true)), name+" is not the one legal value of its degenerate range")
 		default:
-			g.call(ind, fmt.Sprintf("stream.SerializeInt128(ref %s, %s, %s)", name, lit128(f.IntMin, true), lit128(f.IntMax, true)), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeInt128(ref %s, %s, %s)", g.rv(), name, lit128(f.IntMin, true), lit128(f.IntMax, true)), "")
 		}
 		return
 	}
@@ -464,20 +516,20 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	w := f.Type.Width
 	switch {
 	case w == 64 && !f.Type.Signed:
-		g.call(ind, fmt.Sprintf("stream.SerializeBits64(ref %s, 64)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBits64(ref %s, 64)", g.rv(), name), "")
 	case w == 64:
 		g.sf("%s{\n%s    ulong rawValue = unchecked((ulong)%s);\n", ind, ind, name)
-		g.call(ind+"    ", "stream.SerializeBits64(ref rawValue, 64)", "")
+		g.call(ind+"    ", g.rv()+".SerializeBits64(ref rawValue, 64)", "")
 		g.sf("%s}\n", ind)
 	case w == 32 && !f.Type.Signed:
-		g.call(ind, fmt.Sprintf("stream.SerializeBits(ref %s, 32)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBits(ref %s, 32)", g.rv(), name), "")
 	default:
 		conv := name // byte and ushort widen implicitly
 		if f.Type.Signed {
 			conv = fmt.Sprintf("unchecked((%s)%s)", csUint(w), name)
 		}
 		g.sf("%s{\n%s    uint rawValue = %s;\n", ind, ind, conv)
-		g.call(ind+"    ", fmt.Sprintf("stream.SerializeBits(ref rawValue, %d)", w), "")
+		g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits(ref rawValue, %d)", g.rv(), w), "")
 		g.sf("%s}\n", ind)
 	}
 }
@@ -509,11 +561,11 @@ func (g *gen) emitWriteFixed(f *ir.Field, name, ind string) {
 	args := fmt.Sprintf("%d, %d, %sL, %sL", f.Type.IntBits, f.Type.FracBits, f.IntMin, f.IntMax)
 	if f.Type.Width == 8 {
 		g.sf("%s{\n%s    %s fixedValue = %s;\n", ind, ind, fixedTemp(f), name)
-		g.call(ind+"    ", "stream.SerializeFixed(ref fixedValue, "+args+")", "")
+		g.call(ind+"    ", g.rv()+".SerializeFixed(ref fixedValue, "+args+")", "")
 		g.sf("%s}\n", ind)
 		return
 	}
-	g.call(ind, fmt.Sprintf("stream.SerializeFixed(ref %s, %s)", name, args), "")
+	g.call(ind, fmt.Sprintf("%s.SerializeFixed(ref %s, %s)", g.rv(), name, args), "")
 }
 
 func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
@@ -524,33 +576,33 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.emitReadInt(f, name, ind)
 	case ir.TBits:
 		_, fn := bitsCall(int64(f.Type.Width))
-		g.call(ind, fmt.Sprintf("stream.%s(ref %s, %d)", fn, name, f.Type.Width), "")
+		g.call(ind, fmt.Sprintf("%s.%s(ref %s, %d)", g.rv(), fn, name, f.Type.Width), "")
 	case ir.TBool:
-		g.call(ind, fmt.Sprintf("stream.SerializeBool(ref %s)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBool(ref %s)", g.rv(), name), "")
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			g.call(ind, g.compressedCall(f, name), "")
 			return
 		}
-		g.call(ind, fmt.Sprintf("stream.SerializeFloat(ref %s)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 	case ir.TFloat64:
-		g.call(ind, fmt.Sprintf("stream.SerializeDouble(ref %s)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
 	case ir.TString, ir.TBytes:
 		length := name + "Length"
-		g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, 0, %d)", length, f.Type.Size), " // the length guards the slice (§6.3)")
+		g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, 0, %d)", g.rv(), length, f.Type.Size), " // the length guards the slice (§6.3)")
 		g.sf("%s{\n%s    Span<byte> bytes = %s.AsSpan().Slice(0, %s);\n", ind, ind, name, length)
-		g.call(ind+"    ", "stream.SerializeBytes(bytes)", "")
+		g.call(ind+"    ", g.rv()+".SerializeBytes(bytes)", "")
 		if f.Type.Kind == ir.TString {
 			g.reject(ind+"    ", "!ValidUtf8Text(bytes)", " // malformed UTF-8 or an interior null is refused (SPEC §4.7)")
 		}
 		g.sf("%s}\n", ind)
 	case ir.TWString:
 		length := name + "Length"
-		g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, 0, %d)", length, f.Type.Size), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, 0, %d)", g.rv(), length, f.Type.Size), "")
 		g.sf("%s{\n%s    Span<char> wide = %s.AsSpan();\n%s    bool expectLow = false;\n", ind, ind, name, ind)
 		g.sf("%s    for (int i = 0; i < %s; i++)\n%s    {\n", ind, length, ind)
 		g.sf("%s        uint wideUnit = 0;\n", ind)
-		g.call(ind+"        ", "stream.SerializeBits(ref wideUnit, 32)", "")
+		g.call(ind+"        ", g.rv()+".SerializeBits(ref wideUnit, 32)", "")
 		g.reject(ind+"        ", "wideUnit == 0 || wideUnit > 0xFFFF", " // a null or a group past one code unit (SPEC §4.12)")
 		g.sf("%s        bool high = wideUnit >= 0xD800 && wideUnit <= 0xDBFF;\n", ind)
 		g.sf("%s        bool low = wideUnit >= 0xDC00 && wideUnit <= 0xDFFF;\n", ind)
@@ -562,15 +614,15 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			g.sf("%s{\n%s    int enumValue = 0;\n", ind, ind)
-			g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt(ref enumValue, 0, %d)", ref.Max), "")
+			g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt(ref enumValue, 0, %d)", g.rv(), ref.Max), "")
 			g.sf("%s    %s = (%s)enumValue;\n%s}\n", ind, name, f.Type.Name, ind)
 		case *ir.Flags:
 			typ, fn := bitsCall(int64(ref.WireBits))
 			g.sf("%s{\n%s    %s flagsValue = 0;\n", ind, ind, typ)
-			g.call(ind+"    ", fmt.Sprintf("stream.%s(ref flagsValue, %d)", fn, ref.WireBits), "")
+			g.call(ind+"    ", fmt.Sprintf("%s.%s(ref flagsValue, %d)", g.rv(), fn, ref.WireBits), "")
 			g.sf("%s    %s = (%s)flagsValue;\n%s}\n", ind, name, f.Type.Name, ind)
 		case *ir.Struct, *ir.Union:
-			g.call(ind, fmt.Sprintf("Read%s(stream, ref %s)", f.Type.Name, name), "")
+			g.call(ind, g.compose("Read", f.Type.Name, name), "")
 		}
 	}
 }
@@ -580,11 +632,11 @@ func (g *gen) emitReadInt(f *ir.Field, name, ind string) {
 	if t.Width == 128 {
 		switch {
 		case !f.HasIntRange:
-			g.call(ind, fmt.Sprintf("stream.SerializeUInt128(ref %s)", name), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeUInt128(ref %s)", g.rv(), name), "")
 		case f.IntMin.Cmp(f.IntMax) == 0:
 			g.sf("%s%s = %s; // a degenerate range: zero bits (SPEC §4.6)\n", ind, name, lit128(f.IntMin, true))
 		default:
-			g.call(ind, fmt.Sprintf("stream.SerializeInt128(ref %s, %s, %s)", name, lit128(f.IntMin, true), lit128(f.IntMax, true)), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeInt128(ref %s, %s, %s)", g.rv(), name, lit128(f.IntMin, true), lit128(f.IntMax, true)), "")
 		}
 		return
 	}
@@ -600,19 +652,19 @@ func (g *gen) emitReadInt(f *ir.Field, name, ind string) {
 	switch intPath(f.IntMin, f.IntMax) {
 	case "int32":
 		if t.Signed && t.Width == 32 {
-			g.call(ind, fmt.Sprintf("stream.SerializeInt(ref %s, %s, %s)", name, f.IntMin, f.IntMax), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeInt(ref %s, %s, %s)", g.rv(), name, f.IntMin, f.IntMax), "")
 			return
 		}
 		g.sf("%s{\n%s    int rangeValue = 0;\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt(ref rangeValue, %s, %s)", f.IntMin, f.IntMax), "")
+		g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt(ref rangeValue, %s, %s)", g.rv(), f.IntMin, f.IntMax), "")
 		g.sf("%s    %s = (%s)rangeValue;\n%s}\n", ind, name, storage, ind)
 	case "int64":
 		if t.Signed && t.Width == 64 {
-			g.call(ind, fmt.Sprintf("stream.SerializeInt64(ref %s, %sL, %sL)", name, f.IntMin, f.IntMax), "")
+			g.call(ind, fmt.Sprintf("%s.SerializeInt64(ref %s, %sL, %sL)", g.rv(), name, f.IntMin, f.IntMax), "")
 			return
 		}
 		g.sf("%s{\n%s    long rangeValue = 0;\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("stream.SerializeInt64(ref rangeValue, %sL, %sL)", f.IntMin, f.IntMax), "")
+		g.call(ind+"    ", fmt.Sprintf("%s.SerializeInt64(ref rangeValue, %sL, %sL)", g.rv(), f.IntMin, f.IntMax), "")
 		g.sf("%s    %s = (%s)rangeValue;\n%s}\n", ind, name, storage, ind)
 	default:
 		// raw offset bits; the decode masks to the encoded width, so only a span
@@ -620,7 +672,7 @@ func (g *gen) emitReadInt(f *ir.Field, name, ind string) {
 		bits := ir.BitsRequired(f.IntMin, f.IntMax)
 		span := new(big.Int).Sub(f.IntMax, f.IntMin)
 		g.sf("%s{\n%s    ulong offsetValue = 0;\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("stream.SerializeBits64(ref offsetValue, %d)", bits), "")
+		g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits64(ref offsetValue, %d)", g.rv(), bits), "")
 		if span.Cmp(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))) < 0 {
 			g.reject(ind+"    ", fmt.Sprintf("offsetValue > %sUL", span), " // out of range: refused, not latched (SPEC §5)")
 		}
@@ -636,16 +688,16 @@ func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 	w := f.Type.Width
 	switch {
 	case w == 64 && !f.Type.Signed:
-		g.call(ind, fmt.Sprintf("stream.SerializeBits64(ref %s, 64)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBits64(ref %s, 64)", g.rv(), name), "")
 	case w == 64:
 		g.sf("%s{\n%s    ulong rawValue = 0;\n", ind, ind)
-		g.call(ind+"    ", "stream.SerializeBits64(ref rawValue, 64)", "")
+		g.call(ind+"    ", g.rv()+".SerializeBits64(ref rawValue, 64)", "")
 		g.sf("%s    %s = unchecked((long)rawValue);\n%s}\n", ind, name, ind)
 	case w == 32 && !f.Type.Signed:
-		g.call(ind, fmt.Sprintf("stream.SerializeBits(ref %s, 32)", name), "")
+		g.call(ind, fmt.Sprintf("%s.SerializeBits(ref %s, 32)", g.rv(), name), "")
 	default:
 		g.sf("%s{\n%s    uint rawValue = 0;\n", ind, ind)
-		g.call(ind+"    ", fmt.Sprintf("stream.SerializeBits(ref rawValue, %d)", w), "")
+		g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits(ref rawValue, %d)", g.rv(), w), "")
 		if f.Type.Signed {
 			// back through the same-width unsigned so the sign bit lands right
 			g.sf("%s    %s = unchecked((%s)(%s)rawValue);\n%s}\n", ind, name, csInt(w), csUint(w), ind)
@@ -671,11 +723,11 @@ func (g *gen) emitReadFixed(f *ir.Field, name, ind string) {
 	args := fmt.Sprintf("%d, %d, %sL, %sL", f.Type.IntBits, f.Type.FracBits, f.IntMin, f.IntMax)
 	if f.Type.Width == 8 {
 		g.sf("%s{\n%s    %s fixedValue = 0;\n", ind, ind, fixedTemp(f))
-		g.call(ind+"    ", "stream.SerializeFixed(ref fixedValue, "+args+")", "")
+		g.call(ind+"    ", g.rv()+".SerializeFixed(ref fixedValue, "+args+")", "")
 		g.sf("%s    %s = (%s)fixedValue;\n%s}\n", ind, name, g.storage(f.Type), ind)
 		return
 	}
-	g.call(ind, fmt.Sprintf("stream.SerializeFixed(ref %s, %s)", name, args), "")
+	g.call(ind, fmt.Sprintf("%s.SerializeFixed(ref %s, %s)", g.rv(), name, args), "")
 }
 
 // ---- unions ----
@@ -687,48 +739,50 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.sf("public static void Zero%s(ref %s value)\n{\n    value = default;\n}\n\n", d.Name, d.Name)
 
 	tagBits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
-	g.sf("public static bool Write%s(WriteStream stream, ref %s value)\n{\n", d.Name, d.Name)
-	if d.Max == 0 {
-		g.writeAssert("    ", fmt.Sprintf("value.Type == %sType.None", d.Name), "an empty union can only hold None")
-		g.sf("    return true; // the tag range [0, 0] costs zero bits (SPEC §4.8)\n}\n\n")
-	} else {
-		g.sf("    uint tagValue = (uint)value.Type;\n")
-		g.writeAssert("    ", fmt.Sprintf("tagValue <= %d", d.Max), fmt.Sprintf("the union tag is outside [0, %d]", d.Max))
-		g.call("    ", fmt.Sprintf("stream.SerializeBits(ref tagValue, %d)", tagBits), "")
-		g.sf("    switch (value.Type)\n    {\n")
-		for _, v := range d.Variants {
-			arm := ir.GoExportName(v.Name)
-			if v.Void() {
-				g.sf("        case %sType.%s:\n            return true; // a payload-free arm: the tag is the wire\n", d.Name, arm)
-				continue
+	g.emitPair(d.Name,
+		func() {
+			if d.Max == 0 {
+				g.writeAssert("    ", fmt.Sprintf("value.Type == %sType.None", d.Name), "an empty union can only hold None")
+				g.sf("    return true; // the tag range [0, 0] costs zero bits (SPEC §4.8)\n")
+				return
 			}
-			g.sf("        case %sType.%s:\n            return Write%s(stream, ref value.%s);\n", d.Name, arm, v.Type, arm)
-		}
-		g.sf("        default:\n            return true; // None: the tag is the wire\n    }\n}\n\n")
-	}
-
-	g.sf("public static bool Read%s(ReadStream stream, ref %s value)\n{\n", d.Name, d.Name)
-	if d.Max == 0 {
-		g.sf("    value.Type = %sType.None; // zero wire bits: only None exists (SPEC §4.8)\n    return true;\n}\n\n", d.Name)
-		return
-	}
-	g.sf("    int tagValue = 0;\n")
-	g.call("    ", fmt.Sprintf("stream.SerializeInt(ref tagValue, 0, %d)", d.Max), " // a tag above the count is refused (SPEC §4.8)")
-	g.sf("    value.Type = (%sType)tagValue;\n", d.Name)
-	g.sf("    switch (value.Type)\n    {\n")
-	for _, v := range d.Variants {
-		arm := ir.GoExportName(v.Name)
-		g.sf("        case %sType.%s:\n", d.Name, arm)
-		if v.Void() {
-			g.sf("            return true;\n")
-			continue
-		}
-		if hasDefaults(v.Ref) {
-			g.sf("            Init%s(ref value.%s); // a selection starts from the construction form\n", v.Type, arm)
-		} else {
-			g.sf("            value.%s = default; // a selection starts from the construction form\n", arm)
-		}
-		g.sf("            return Read%s(stream, ref value.%s);\n", v.Type, arm)
-	}
-	g.sf("        default:\n            return true; // None\n    }\n}\n\n")
+			g.sf("    uint tagValue = (uint)value.Type;\n")
+			g.writeAssert("    ", fmt.Sprintf("tagValue <= %d", d.Max), fmt.Sprintf("the union tag is outside [0, %d]", d.Max))
+			g.call("    ", fmt.Sprintf("%s.SerializeBits(ref tagValue, %d)", g.rv(), tagBits), "")
+			g.sf("    switch (value.Type)\n    {\n")
+			for _, v := range d.Variants {
+				arm := ir.GoExportName(v.Name)
+				if v.Void() {
+					g.sf("        case %sType.%s:\n            return true; // a payload-free arm: the tag is the wire\n", d.Name, arm)
+					continue
+				}
+				g.sf("        case %sType.%s:\n            return %s;\n", d.Name, arm, g.compose("Write", v.Type, "value."+arm))
+			}
+			g.sf("        default:\n            return true; // None: the tag is the wire\n    }\n")
+		},
+		func() {
+			if d.Max == 0 {
+				g.sf("    value.Type = %sType.None; // zero wire bits: only None exists (SPEC §4.8)\n    return true;\n", d.Name)
+				return
+			}
+			g.sf("    int tagValue = 0;\n")
+			g.call("    ", fmt.Sprintf("%s.SerializeInt(ref tagValue, 0, %d)", g.rv(), d.Max), " // a tag above the count is refused (SPEC §4.8)")
+			g.sf("    value.Type = (%sType)tagValue;\n", d.Name)
+			g.sf("    switch (value.Type)\n    {\n")
+			for _, v := range d.Variants {
+				arm := ir.GoExportName(v.Name)
+				g.sf("        case %sType.%s:\n", d.Name, arm)
+				if v.Void() {
+					g.sf("            return true;\n")
+					continue
+				}
+				if hasDefaults(v.Ref) {
+					g.sf("            Init%s(ref value.%s); // a selection starts from the construction form\n", v.Type, arm)
+				} else {
+					g.sf("            value.%s = default; // a selection starts from the construction form\n", arm)
+				}
+				g.sf("            return %s;\n", g.compose("Read", v.Type, "value."+arm))
+			}
+			g.sf("        default:\n            return true; // None\n    }\n")
+		})
 }

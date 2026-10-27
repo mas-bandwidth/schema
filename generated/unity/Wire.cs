@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Example
@@ -299,29 +300,33 @@ namespace Example
 
         public static bool WriteProbeHeader(WriteStream stream, ref ProbeHeader value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeHeaderBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeHeaderBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeHeaderBatch(ref WriteBatch batch, ref ProbeHeader value)
+        {
             {
-                uint constValue = 171; // const(171, 8) (SPEC §4.3)
-                if (!stream.SerializeBits(ref constValue, 8))
+                // 16 bits folded into 1 word(s)
+                ulong f0 = (171UL) & 0xffUL;
+                ulong f1 = ((ulong)value.Version) & 0x7UL;
+                ulong f2 = 0UL;
+                uint w0 = (uint)(f0 | (f1 << 8) | (f2 << 11));
+                if (!batch.SerializeBits(ref w0, 16))
                 {
                     return false;
                 }
             }
-            if (!stream.SerializeBits(ref value.Version, 3))
+            if (!batch.SerializeAlign())
             {
                 return false;
             }
-            {
-                uint reservedValue = 0;
-                if (!stream.SerializeBits(ref reservedValue, 5))
-                {
-                    return false;
-                }
-            }
-            if (!stream.SerializeAlign())
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.ProbeId, 64))
+            if (!batch.SerializeBits64(ref value.ProbeId, 64))
             {
                 return false;
             }
@@ -330,37 +335,43 @@ namespace Example
 
         public static bool ReadProbeHeader(ReadStream stream, ref ProbeHeader value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeHeaderBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeHeaderBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeHeaderBatch(ref ReadBatch batch, ref ProbeHeader value)
+        {
             {
-                uint constValue = 0;
-                if (!stream.SerializeBits(ref constValue, 8))
+                // 16 bits read as 1 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 16);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                if (constValue != 171) // const(171, 8): any other value is refused (SPEC §4.3)
+                ulong v0 = c0 & 0xffUL;
+                if (v0 != 171UL) // const(171, 8): any other value is refused (SPEC §4.3)
+                {
+                    return false;
+                }
+                ulong v1 = (c0 >> 8) & 0x7UL;
+                value.Version = (uint)v1;
+                ulong v2 = (c0 >> 11) & 0x1fUL;
+                if (v2 != 0UL) // reserved(5): nonzero is refused (SPEC §4.3)
                 {
                     return false;
                 }
             }
-            if (!stream.SerializeBits(ref value.Version, 3))
+            if (!batch.SerializeAlign()) // rejects nonzero padding (SPEC §4.3)
             {
                 return false;
             }
-            {
-                uint reservedValue = 0;
-                if (!stream.SerializeBits(ref reservedValue, 5))
-                {
-                    return false;
-                }
-                if (reservedValue != 0) // reserved(5): nonzero is refused (SPEC §4.3)
-                {
-                    return false;
-                }
-            }
-            if (!stream.SerializeAlign()) // rejects nonzero padding (SPEC §4.3)
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.ProbeId, 64))
+            if (!batch.SerializeBits64(ref value.ProbeId, 64))
             {
                 return false;
             }
@@ -380,28 +391,41 @@ namespace Example
 
         public static bool WriteProbeBits(WriteStream stream, ref ProbeBits value)
         {
-            if (!stream.SerializeBits(ref value.Small, 9))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeBitsBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeBitsBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeBitsBatch(ref WriteBatch batch, ref ProbeBits value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.Boundary, 33))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.Wide, 64))
-            {
-                return false;
-            }
-            {
-                ulong offsetValue = (ulong)value.Sensor;
-                if (!stream.SerializeBits64(ref offsetValue, 32))
+                // 202 bits folded into 4 word(s)
+                ulong f0 = ((ulong)value.Small) & 0x1ffUL;
+                ulong f1 = ((ulong)value.Boundary) & 0x1ffffffffUL;
+                ulong f2 = (ulong)value.Wide;
+                ulong f3 = (unchecked((ulong)value.Sensor)) & 0xffffffffUL;
+                ulong f4 = unchecked((ulong)value.Nonce);
+                ulong w0 = f0 | (f1 << 9) | (f2 << 42);
+                if (!batch.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
-            }
-            {
-                ulong offsetValue = (ulong)value.Nonce;
-                if (!stream.SerializeBits64(ref offsetValue, 64))
+                ulong w1 = (f2 >> 22) | (f3 << 42);
+                if (!batch.SerializeBits64(ref w1, 64))
+                {
+                    return false;
+                }
+                ulong w2 = (f3 >> 22) | (f4 << 10);
+                if (!batch.SerializeBits64(ref w2, 64))
+                {
+                    return false;
+                }
+                uint w3 = (uint)((f4 >> 54));
+                if (!batch.SerializeBits(ref w3, 10))
                 {
                     return false;
                 }
@@ -411,33 +435,41 @@ namespace Example
 
         public static bool ReadProbeBits(ReadStream stream, ref ProbeBits value)
         {
-            if (!stream.SerializeBits(ref value.Small, 9))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeBitsBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeBitsBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeBitsBatch(ref ReadBatch batch, ref ProbeBits value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.Boundary, 33))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.Wide, 64))
-            {
-                return false;
-            }
-            {
-                long rangeValue = 0;
-                if (!stream.SerializeInt64(ref rangeValue, 0L, 4294967295L))
+                // 202 bits read as 4 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                batch.SerializeBits64(ref c1, 64);
+                ulong c2 = 0;
+                batch.SerializeBits64(ref c2, 64);
+                ulong c3 = 0;
+                batch.SerializeBits64(ref c3, 10);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                value.Sensor = (uint)rangeValue;
-            }
-            {
-                ulong offsetValue = 0;
-                if (!stream.SerializeBits64(ref offsetValue, 64))
-                {
-                    return false;
-                }
-                value.Nonce = offsetValue;
+                ulong v0 = c0 & 0x1ffUL;
+                value.Small = (uint)v0;
+                ulong v1 = (c0 >> 9) & 0x1ffffffffUL;
+                value.Boundary = v1;
+                ulong v2 = ((c0 >> 42) | (c1 << 22));
+                value.Wide = v2;
+                ulong v3 = ((c1 >> 42) | (c2 << 22)) & 0xffffffffUL;
+                value.Sensor = unchecked((uint)v3);
+                ulong v4 = ((c2 >> 10) | (c3 << 54));
+                value.Nonce = unchecked((ulong)v4);
             }
             return true;
         }
@@ -472,27 +504,38 @@ namespace Example
 
         public static bool WriteProbeSample(WriteStream stream, ref ProbeSample value)
         {
-            if (!stream.SerializeBool(ref value.Active))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeSampleBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeSampleBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeSampleBatch(ref WriteBatch batch, ref ProbeSample value)
+        {
+            if (!batch.SerializeBool(ref value.Active))
             {
                 return false;
             }
             {
                 float compressedValue = value.Orientation;
-                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 36000u, 16, 360.0f, -180.0f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 36000u, 16, 360.0f, -180.0f))
                 {
                     return false;
                 }
             }
             {
                 uint rawValue = unchecked((uint)value.RawDelta);
-                if (!stream.SerializeBits(ref rawValue, 32))
+                if (!batch.SerializeBits(ref rawValue, 32))
                 {
                     return false;
                 }
             }
             {
                 ulong rawValue = unchecked((ulong)value.BigDelta);
-                if (!stream.SerializeBits64(ref rawValue, 64))
+                if (!batch.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
                 }
@@ -500,22 +543,21 @@ namespace Example
             if (value.Active)
             {
                 {
-                    uint enumValue = (uint)value.Weapon;
-                    Debug.Assert(enumValue <= 15, "value.Weapon above the enum wire range [0, 15]");
-                    if (!stream.SerializeBits(ref enumValue, 4))
+                    // 5 bits folded into 1 word(s)
+                    Debug.Assert((uint)value.Weapon <= 15, "value.Weapon above the enum wire range [0, 15]");
+                    ulong f0 = ((ulong)(uint)value.Weapon) & 0xfUL;
+                    ulong f1 = value.HasTarget ? 1UL : 0UL;
+                    uint w0 = (uint)(f0 | (f1 << 4));
+                    if (!batch.SerializeBits(ref w0, 5))
                     {
                         return false;
                     }
-                }
-                if (!stream.SerializeBool(ref value.HasTarget))
-                {
-                    return false;
                 }
                 if (value.HasTarget)
                 {
                     {
                         uint rawValue = value.TargetId;
-                        if (!stream.SerializeBits(ref rawValue, 16))
+                        if (!batch.SerializeBits(ref rawValue, 16))
                         {
                             return false;
                         }
@@ -524,7 +566,7 @@ namespace Example
             }
             else
             {
-                if (!stream.SerializeBits(ref value.IdleTicks, 32))
+                if (!batch.SerializeBits(ref value.IdleTicks, 32))
                 {
                     return false;
                 }
@@ -532,7 +574,7 @@ namespace Example
             Debug.Assert(value.SamplesCount >= 1 && value.SamplesCount <= 8, "value.SamplesCount out of range [1, 8]");
             {
                 uint offsetValue = (uint)value.SamplesCount - 1;
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
                 }
@@ -542,7 +584,7 @@ namespace Example
                 for (int i = 0; i < value.SamplesCount; i++)
                 {
                     uint rawValue = samplesSpan[i];
-                    if (!stream.SerializeBits(ref rawValue, 16))
+                    if (!batch.SerializeBits(ref rawValue, 16))
                     {
                         return false;
                     }
@@ -553,17 +595,28 @@ namespace Example
 
         public static bool ReadProbeSample(ReadStream stream, ref ProbeSample value)
         {
-            if (!stream.SerializeBool(ref value.Active))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeSampleBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeSampleBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeSampleBatch(ref ReadBatch batch, ref ProbeSample value)
+        {
+            if (!batch.SerializeBool(ref value.Active))
             {
                 return false;
             }
-            if (!stream.SerializeCompressedFloatPrecomputed(ref value.Orientation, 36000u, 16, 360.0f, -180.0f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.Orientation, 36000u, 16, 360.0f, -180.0f))
             {
                 return false;
             }
             {
                 uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 32))
+                if (!batch.SerializeBits(ref rawValue, 32))
                 {
                     return false;
                 }
@@ -571,7 +624,7 @@ namespace Example
             }
             {
                 ulong rawValue = 0;
-                if (!stream.SerializeBits64(ref rawValue, 64))
+                if (!batch.SerializeBits64(ref rawValue, 64))
                 {
                     return false;
                 }
@@ -580,22 +633,23 @@ namespace Example
             if (value.Active)
             {
                 {
-                    int enumValue = 0;
-                    if (!stream.SerializeInt(ref enumValue, 0, 15))
+                    // 5 bits read as 1 word(s): one bounds check per word, one error test
+                    ulong c0 = 0;
+                    batch.SerializeBits64(ref c0, 5);
+                    if (!batch.Ok)
                     {
                         return false;
                     }
-                    value.Weapon = (Weapon)enumValue;
-                }
-                if (!stream.SerializeBool(ref value.HasTarget))
-                {
-                    return false;
+                    ulong v0 = c0 & 0xfUL;
+                    value.Weapon = (Weapon)v0;
+                    ulong v1 = (c0 >> 4) & 0x1UL;
+                    value.HasTarget = v1 != 0UL;
                 }
                 if (value.HasTarget)
                 {
                     {
                         uint rawValue = 0;
-                        if (!stream.SerializeBits(ref rawValue, 16))
+                        if (!batch.SerializeBits(ref rawValue, 16))
                         {
                             return false;
                         }
@@ -610,7 +664,7 @@ namespace Example
             }
             else
             {
-                if (!stream.SerializeBits(ref value.IdleTicks, 32))
+                if (!batch.SerializeBits(ref value.IdleTicks, 32))
                 {
                     return false;
                 }
@@ -618,7 +672,7 @@ namespace Example
                 value.HasTarget = default;
                 value.TargetId = default;
             }
-            if (!stream.SerializeInt(ref value.SamplesCount, 1, 8)) // the count guards the loop (§6.3)
+            if (!batch.SerializeInt(ref value.SamplesCount, 1, 8)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -627,7 +681,7 @@ namespace Example
                 for (int i = 0; i < value.SamplesCount; i++)
                 {
                     uint rawValue = 0;
-                    if (!stream.SerializeBits(ref rawValue, 16))
+                    if (!batch.SerializeBits(ref rawValue, 16))
                     {
                         return false;
                     }
@@ -660,11 +714,42 @@ namespace Example
             return true;
         }
 
+        // WriteProbeRingBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeRingBatch(ref WriteBatch batch, ref ProbeRing value)
+        {
+            {
+                uint rawValue = value.Radius;
+                if (!batch.SerializeBits(ref rawValue, 16))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         public static bool ReadProbeRing(ReadStream stream, ref ProbeRing value)
         {
             {
                 uint rawValue = 0;
                 if (!stream.SerializeBits(ref rawValue, 16))
+                {
+                    return false;
+                }
+                value.Radius = (ushort)rawValue;
+            }
+            return true;
+        }
+
+        // ReadProbeRingBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeRingBatch(ref ReadBatch batch, ref ProbeRing value)
+        {
+            {
+                uint rawValue = 0;
+                if (!batch.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
@@ -686,17 +771,24 @@ namespace Example
 
         public static bool WriteProbeSlab(WriteStream stream, ref ProbeSlab value)
         {
-            Debug.Assert(value.Width <= 100, "value.Width out of range [0, 100]");
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeSlabBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeSlabBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeSlabBatch(ref WriteBatch batch, ref ProbeSlab value)
+        {
             {
-                uint offsetValue = (uint)value.Width;
-                if (!stream.SerializeBits(ref offsetValue, 7))
-                {
-                    return false;
-                }
-            }
-            {
-                uint rawValue = value.Height;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                // 15 bits folded into 1 word(s)
+                Debug.Assert(value.Width <= 100, "value.Width out of range [0, 100]");
+                ulong f0 = (unchecked((ulong)value.Width)) & 0x7fUL;
+                ulong f1 = ((ulong)value.Height) & 0xffUL;
+                uint w0 = (uint)(f0 | (f1 << 7));
+                if (!batch.SerializeBits(ref w0, 15))
                 {
                     return false;
                 }
@@ -706,9 +798,20 @@ namespace Example
 
         public static bool ReadProbeSlab(ReadStream stream, ref ProbeSlab value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeSlabBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeSlabBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeSlabBatch(ref ReadBatch batch, ref ProbeSlab value)
+        {
             {
                 int rangeValue = 0;
-                if (!stream.SerializeInt(ref rangeValue, 0, 100))
+                if (!batch.SerializeInt(ref rangeValue, 0, 100))
                 {
                     return false;
                 }
@@ -716,7 +819,7 @@ namespace Example
             }
             {
                 uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                if (!batch.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
@@ -756,18 +859,29 @@ namespace Example
 
         public static bool WriteProbeShape(WriteStream stream, ref ProbeShape value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeShapeBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeShapeBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeShapeBatch(ref WriteBatch batch, ref ProbeShape value)
+        {
             uint tagValue = (uint)value.Type;
             Debug.Assert(tagValue <= 2, "the union tag is outside [0, 2]");
-            if (!stream.SerializeBits(ref tagValue, 2))
+            if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
             }
             switch (value.Type)
             {
                 case ProbeShapeType.Ring:
-                    return WriteProbeRing(stream, ref value.Ring);
+                    return WriteProbeRingBatch(ref batch, ref value.Ring);
                 case ProbeShapeType.Slab:
-                    return WriteProbeSlab(stream, ref value.Slab);
+                    return WriteProbeSlabBatch(ref batch, ref value.Slab);
                 default:
                     return true; // None: the tag is the wire
             }
@@ -775,8 +889,19 @@ namespace Example
 
         public static bool ReadProbeShape(ReadStream stream, ref ProbeShape value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeShapeBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeShapeBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeShapeBatch(ref ReadBatch batch, ref ProbeShape value)
+        {
             int tagValue = 0;
-            if (!stream.SerializeInt(ref tagValue, 0, 2)) // a tag above the count is refused (SPEC §4.8)
+            if (!batch.SerializeInt(ref tagValue, 0, 2)) // a tag above the count is refused (SPEC §4.8)
             {
                 return false;
             }
@@ -785,10 +910,10 @@ namespace Example
             {
                 case ProbeShapeType.Ring:
                     value.Ring = default; // a selection starts from the construction form
-                    return ReadProbeRing(stream, ref value.Ring);
+                    return ReadProbeRingBatch(ref batch, ref value.Ring);
                 case ProbeShapeType.Slab:
                     value.Slab = default; // a selection starts from the construction form
-                    return ReadProbeSlab(stream, ref value.Slab);
+                    return ReadProbeSlabBatch(ref batch, ref value.Slab);
                 default:
                     return true; // None
             }
@@ -807,25 +932,36 @@ namespace Example
 
         public static bool WriteProbeCollider(WriteStream stream, ref ProbeCollider value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeColliderBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeColliderBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeColliderBatch(ref WriteBatch batch, ref ProbeCollider value)
+        {
             {
                 uint rawValue = value.Armor;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                if (!batch.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
             }
-            if (!WriteProbeShape(stream, ref value.Shape))
+            if (!WriteProbeShapeBatch(ref batch, ref value.Shape))
             {
                 return false;
             }
-            if (!WriteProbeShape(stream, ref value.Backup))
+            if (!WriteProbeShapeBatch(ref batch, ref value.Backup))
             {
                 return false;
             }
             Debug.Assert(value.ExtrasCount >= 0 && value.ExtrasCount <= 2, "value.ExtrasCount out of range [0, 2]");
             {
                 uint offsetValue = (uint)value.ExtrasCount;
-                if (!stream.SerializeBits(ref offsetValue, 2))
+                if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
                 }
@@ -834,7 +970,7 @@ namespace Example
                 Span<ProbeShape> extrasSpan = value.Extras.AsSpan();
                 for (int i = 0; i < value.ExtrasCount; i++)
                 {
-                    if (!WriteProbeShape(stream, ref extrasSpan[i]))
+                    if (!WriteProbeShapeBatch(ref batch, ref extrasSpan[i]))
                     {
                         return false;
                     }
@@ -845,23 +981,34 @@ namespace Example
 
         public static bool ReadProbeCollider(ReadStream stream, ref ProbeCollider value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeColliderBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeColliderBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeColliderBatch(ref ReadBatch batch, ref ProbeCollider value)
+        {
             {
                 uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                if (!batch.SerializeBits(ref rawValue, 8))
                 {
                     return false;
                 }
                 value.Armor = (byte)rawValue;
             }
-            if (!ReadProbeShape(stream, ref value.Shape))
+            if (!ReadProbeShapeBatch(ref batch, ref value.Shape))
             {
                 return false;
             }
-            if (!ReadProbeShape(stream, ref value.Backup))
+            if (!ReadProbeShapeBatch(ref batch, ref value.Backup))
             {
                 return false;
             }
-            if (!stream.SerializeInt(ref value.ExtrasCount, 0, 2)) // the count guards the loop (§6.3)
+            if (!batch.SerializeInt(ref value.ExtrasCount, 0, 2)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -869,7 +1016,7 @@ namespace Example
                 Span<ProbeShape> extrasSpan = value.Extras.AsSpan();
                 for (int i = 0; i < value.ExtrasCount; i++)
                 {
-                    if (!ReadProbeShape(stream, ref extrasSpan[i]))
+                    if (!ReadProbeShapeBatch(ref batch, ref extrasSpan[i]))
                     {
                         return false;
                     }
@@ -908,17 +1055,24 @@ namespace Example
 
         public static bool WriteProbeConfig(WriteStream stream, ref ProbeConfig value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeConfigBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeConfigBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeConfigBatch(ref WriteBatch batch, ref ProbeConfig value)
+        {
             {
-                uint rawValue = unchecked((uint)value.Retries);
-                if (!stream.SerializeBits(ref rawValue, 32))
-                {
-                    return false;
-                }
-            }
-            {
-                uint enumValue = (uint)value.Preferred;
-                Debug.Assert(enumValue <= 15, "value.Preferred above the enum wire range [0, 15]");
-                if (!stream.SerializeBits(ref enumValue, 4))
+                // 36 bits folded into 1 word(s)
+                Debug.Assert((uint)value.Preferred <= 15, "value.Preferred above the enum wire range [0, 15]");
+                ulong f0 = (unchecked((ulong)(uint)value.Retries)) & 0xffffffffUL;
+                ulong f1 = ((ulong)(uint)value.Preferred) & 0xfUL;
+                ulong w0 = f0 | (f1 << 32);
+                if (!batch.SerializeBits64(ref w0, 36))
                 {
                     return false;
                 }
@@ -928,21 +1082,29 @@ namespace Example
 
         public static bool ReadProbeConfig(ReadStream stream, ref ProbeConfig value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeConfigBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeConfigBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeConfigBatch(ref ReadBatch batch, ref ProbeConfig value)
+        {
             {
-                uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 32))
+                // 36 bits read as 1 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 36);
+                if (!batch.Ok)
                 {
                     return false;
                 }
-                value.Retries = unchecked((int)(uint)rawValue);
-            }
-            {
-                int enumValue = 0;
-                if (!stream.SerializeInt(ref enumValue, 0, 15))
-                {
-                    return false;
-                }
-                value.Preferred = (Weapon)enumValue;
+                ulong v0 = c0 & 0xffffffffUL;
+                value.Retries = unchecked((int)(uint)v0);
+                ulong v1 = (c0 >> 32) & 0xfUL;
+                value.Preferred = (Weapon)v1;
             }
             return true;
         }
@@ -983,17 +1145,28 @@ namespace Example
 
         public static bool WriteProbeArray(WriteStream stream, ref ProbeArray value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeArrayBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeArrayBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeArrayBatch(ref WriteBatch batch, ref ProbeArray value)
+        {
             {
                 Span<ProbeSample> samplesSpan = value.Samples.AsSpan();
                 for (int i = 0; i < 2; i++)
                 {
-                    if (!WriteProbeSample(stream, ref samplesSpan[i]))
+                    if (!WriteProbeSampleBatch(ref batch, ref samplesSpan[i]))
                     {
                         return false;
                     }
                 }
             }
-            if (!WriteProbeConfig(stream, ref value.Config))
+            if (!WriteProbeConfigBatch(ref batch, ref value.Config))
             {
                 return false;
             }
@@ -1002,17 +1175,28 @@ namespace Example
 
         public static bool ReadProbeArray(ReadStream stream, ref ProbeArray value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeArrayBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeArrayBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeArrayBatch(ref ReadBatch batch, ref ProbeArray value)
+        {
             {
                 Span<ProbeSample> samplesSpan = value.Samples.AsSpan();
                 for (int i = 0; i < 2; i++)
                 {
-                    if (!ReadProbeSample(stream, ref samplesSpan[i]))
+                    if (!ReadProbeSampleBatch(ref batch, ref samplesSpan[i]))
                     {
                         return false;
                     }
                 }
             }
-            if (!ReadProbeConfig(stream, ref value.Config))
+            if (!ReadProbeConfigBatch(ref batch, ref value.Config))
             {
                 return false;
             }
@@ -1054,33 +1238,28 @@ namespace Example
 
         public static bool WriteTest(WriteStream stream, ref Test value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteTestBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteTestBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteTestBatch(ref WriteBatch batch, ref Test value)
+        {
             {
-                uint rawValue = value.TestA;
-                if (!stream.SerializeBits(ref rawValue, 16))
-                {
-                    return false;
-                }
-            }
-            Debug.Assert(value.TestB >= 0 && value.TestB <= 1000, "value.TestB out of range [0, 1000]");
-            {
-                uint offsetValue = (uint)value.TestB;
-                if (!stream.SerializeBits(ref offsetValue, 10))
-                {
-                    return false;
-                }
-            }
-            Debug.Assert(value.TestC >= 0 && value.TestC <= 1000, "value.TestC out of range [0, 1000]");
-            {
-                uint offsetValue = (uint)value.TestC;
-                if (!stream.SerializeBits(ref offsetValue, 10))
-                {
-                    return false;
-                }
-            }
-            Debug.Assert(value.TestD >= 0 && value.TestD <= 1000, "value.TestD out of range [0, 1000]");
-            {
-                uint offsetValue = (uint)value.TestD;
-                if (!stream.SerializeBits(ref offsetValue, 10))
+                // 46 bits folded into 1 word(s)
+                Debug.Assert(value.TestB >= 0 && value.TestB <= 1000, "value.TestB out of range [0, 1000]");
+                Debug.Assert(value.TestC >= 0 && value.TestC <= 1000, "value.TestC out of range [0, 1000]");
+                Debug.Assert(value.TestD >= 0 && value.TestD <= 1000, "value.TestD out of range [0, 1000]");
+                ulong f0 = ((ulong)value.TestA) & 0xffffUL;
+                ulong f1 = (unchecked((ulong)value.TestB)) & 0x3ffUL;
+                ulong f2 = (unchecked((ulong)value.TestC)) & 0x3ffUL;
+                ulong f3 = (unchecked((ulong)value.TestD)) & 0x3ffUL;
+                ulong w0 = f0 | (f1 << 16) | (f2 << 26) | (f3 << 36);
+                if (!batch.SerializeBits64(ref w0, 46))
                 {
                     return false;
                 }
@@ -1090,9 +1269,20 @@ namespace Example
 
         public static bool ReadTest(ReadStream stream, ref Test value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadTestBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadTestBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadTestBatch(ref ReadBatch batch, ref Test value)
+        {
             {
                 uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 16))
+                if (!batch.SerializeBits(ref rawValue, 16))
                 {
                     return false;
                 }
@@ -1100,7 +1290,7 @@ namespace Example
             }
             {
                 int rangeValue = 0;
-                if (!stream.SerializeInt(ref rangeValue, 0, 1000))
+                if (!batch.SerializeInt(ref rangeValue, 0, 1000))
                 {
                     return false;
                 }
@@ -1108,7 +1298,7 @@ namespace Example
             }
             {
                 int rangeValue = 0;
-                if (!stream.SerializeInt(ref rangeValue, 0, 1000))
+                if (!batch.SerializeInt(ref rangeValue, 0, 1000))
                 {
                     return false;
                 }
@@ -1116,7 +1306,7 @@ namespace Example
             }
             {
                 int rangeValue = 0;
-                if (!stream.SerializeInt(ref rangeValue, 0, 1000))
+                if (!batch.SerializeInt(ref rangeValue, 0, 1000))
                 {
                     return false;
                 }
@@ -1230,19 +1420,30 @@ namespace Example
 
         public static bool WriteProbeReport(WriteStream stream, ref ProbeReport value)
         {
-            if (!WriteProbeHeader(stream, ref value.Header))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteProbeReportBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteProbeReportBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteProbeReportBatch(ref WriteBatch batch, ref ProbeReport value)
+        {
+            if (!WriteProbeHeaderBatch(ref batch, ref value.Header))
             {
                 return false;
             }
             Debug.Assert((ulong)value.Flags < 1UL << 8, "value.Flags has a mask bit above the 8-bit wire width");
             {
                 uint flagsValue = (uint)value.Flags;
-                if (!stream.SerializeBits(ref flagsValue, 8))
+                if (!batch.SerializeBits(ref flagsValue, 8))
                 {
                     return false;
                 }
             }
-            if (!WriteTest(stream, ref value.Echo))
+            if (!WriteTestBatch(ref batch, ref value.Echo))
             {
                 return false;
             }
@@ -1251,19 +1452,30 @@ namespace Example
 
         public static bool ReadProbeReport(ReadStream stream, ref ProbeReport value)
         {
-            if (!ReadProbeHeader(stream, ref value.Header))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadProbeReportBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadProbeReportBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadProbeReportBatch(ref ReadBatch batch, ref ProbeReport value)
+        {
+            if (!ReadProbeHeaderBatch(ref batch, ref value.Header))
             {
                 return false;
             }
             {
                 uint flagsValue = 0;
-                if (!stream.SerializeBits(ref flagsValue, 8))
+                if (!batch.SerializeBits(ref flagsValue, 8))
                 {
                     return false;
                 }
                 value.Flags = (ProbeFlags)flagsValue;
             }
-            if (!ReadTest(stream, ref value.Echo))
+            if (!ReadTestBatch(ref batch, ref value.Echo))
             {
                 return false;
             }
@@ -1283,45 +1495,23 @@ namespace Example
 
         public static bool WriteTestData(WriteStream stream, ref TestData value)
         {
-            Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
             {
-                uint offsetValue = unchecked((uint)value.A - (uint)(-100));
-                if (!stream.SerializeBits(ref offsetValue, 8))
+                // 49 bits folded into 1 word(s)
+                Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
+                Debug.Assert(value.B >= -100 && value.B <= 100, "value.B out of range [-100, 100]");
+                Debug.Assert(value.C >= -100 && value.C <= 150, "value.C out of range [-100, 150]");
+                ulong f0 = (unchecked((ulong)value.A - (ulong)(-100))) & 0xffUL;
+                ulong f1 = (unchecked((ulong)value.B - (ulong)(-100))) & 0xffUL;
+                ulong f2 = (unchecked((ulong)value.C - (ulong)(-100))) & 0xffUL;
+                ulong f3 = ((ulong)value.D) & 0xffUL;
+                ulong f4 = ((ulong)value.E) & 0xffUL;
+                ulong f5 = ((ulong)value.F) & 0xffUL;
+                ulong f6 = value.G ? 1UL : 0UL;
+                ulong w0 = f0 | (f1 << 8) | (f2 << 16) | (f3 << 24) | (f4 << 32) | (f5 << 40) | (f6 << 48);
+                if (!stream.SerializeBits64(ref w0, 49))
                 {
                     return false;
                 }
-            }
-            Debug.Assert(value.B >= -100 && value.B <= 100, "value.B out of range [-100, 100]");
-            {
-                uint offsetValue = unchecked((uint)value.B - (uint)(-100));
-                if (!stream.SerializeBits(ref offsetValue, 8))
-                {
-                    return false;
-                }
-            }
-            Debug.Assert(value.C >= -100 && value.C <= 150, "value.C out of range [-100, 150]");
-            {
-                uint offsetValue = unchecked((uint)value.C - (uint)(-100));
-                if (!stream.SerializeBits(ref offsetValue, 8))
-                {
-                    return false;
-                }
-            }
-            if (!stream.SerializeBits(ref value.D, 8))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.E, 8))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.F, 8))
-            {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.G))
-            {
-                return false;
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 16, "value.ItemsCount out of range [0, 16]");
             {
@@ -1361,52 +1551,33 @@ namespace Example
                 return false;
             }
             {
-                uint rawValue = unchecked((byte)value.Int8Value);
-                if (!stream.SerializeBits(ref rawValue, 8))
+                // 249 bits folded into 4 word(s)
+                Debug.Assert(value.Int64Range >= -1000000000000 && value.Int64Range <= 1000000000000, "value.Int64Range out of range [-1000000000000, 1000000000000]");
+                ulong f0 = (unchecked((ulong)(byte)value.Int8Value)) & 0xffUL;
+                ulong f1 = (unchecked((ulong)(ushort)value.Int16Value)) & 0xffffUL;
+                ulong f2 = ((ulong)value.Uint8Value) & 0xffUL;
+                ulong f3 = ((ulong)value.Uint16Value) & 0xffffUL;
+                ulong f4 = ((ulong)value.Uint32Value) & 0xffffffffUL;
+                ulong f5 = value.Uint64Value;
+                ulong f6 = unchecked((ulong)value.Int64Full);
+                ulong f7 = (unchecked((ulong)value.Int64Range - (ulong)(-1000000000000))) & 0x1ffffffffffUL;
+                ulong w0 = f0 | (f1 << 8) | (f2 << 24) | (f3 << 32) | (f4 << 48);
+                if (!stream.SerializeBits64(ref w0, 64))
                 {
                     return false;
                 }
-            }
-            {
-                uint rawValue = unchecked((ushort)value.Int16Value);
-                if (!stream.SerializeBits(ref rawValue, 16))
+                ulong w1 = (f4 >> 16) | (f5 << 16);
+                if (!stream.SerializeBits64(ref w1, 64))
                 {
                     return false;
                 }
-            }
-            {
-                uint rawValue = value.Uint8Value;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                ulong w2 = (f5 >> 48) | (f6 << 16);
+                if (!stream.SerializeBits64(ref w2, 64))
                 {
                     return false;
                 }
-            }
-            {
-                uint rawValue = value.Uint16Value;
-                if (!stream.SerializeBits(ref rawValue, 16))
-                {
-                    return false;
-                }
-            }
-            if (!stream.SerializeBits(ref value.Uint32Value, 32))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.Uint64Value, 64))
-            {
-                return false;
-            }
-            {
-                ulong rawValue = unchecked((ulong)value.Int64Full);
-                if (!stream.SerializeBits64(ref rawValue, 64))
-                {
-                    return false;
-                }
-            }
-            Debug.Assert(value.Int64Range >= -1000000000000 && value.Int64Range <= 1000000000000, "value.Int64Range out of range [-1000000000000, 1000000000000]");
-            {
-                ulong offsetValue = unchecked((ulong)value.Int64Range - (ulong)(-1000000000000));
-                if (!stream.SerializeBits64(ref offsetValue, 41))
+                ulong w3 = (f6 >> 48) | (f7 << 16);
+                if (!stream.SerializeBits64(ref w3, 57))
                 {
                     return false;
                 }
@@ -1448,21 +1619,22 @@ namespace Example
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.D, 8))
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.E, 8))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.F, 8))
-            {
-                return false;
-            }
-            if (!stream.SerializeBool(ref value.G))
-            {
-                return false;
+                // 25 bits read as 1 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                stream.SerializeBits64(ref c0, 25);
+                if (!stream.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0xffUL;
+                value.D = (uint)v0;
+                ulong v1 = (c0 >> 8) & 0xffUL;
+                value.E = (uint)v1;
+                ulong v2 = (c0 >> 16) & 0xffUL;
+                value.F = (uint)v2;
+                ulong v3 = (c0 >> 24) & 0x1UL;
+                value.G = v3 != 0UL;
             }
             if (!stream.SerializeInt(ref value.ItemsCount, 0, 16)) // the count guards the loop (§6.3)
             {
@@ -1491,52 +1663,33 @@ namespace Example
                 return false;
             }
             {
-                uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 8))
+                // 208 bits read as 4 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                stream.SerializeBits64(ref c0, 64);
+                ulong c1 = 0;
+                stream.SerializeBits64(ref c1, 64);
+                ulong c2 = 0;
+                stream.SerializeBits64(ref c2, 64);
+                ulong c3 = 0;
+                stream.SerializeBits64(ref c3, 16);
+                if (!stream.Ok)
                 {
                     return false;
                 }
-                value.Int8Value = unchecked((sbyte)(byte)rawValue);
-            }
-            {
-                uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 16))
-                {
-                    return false;
-                }
-                value.Int16Value = unchecked((short)(ushort)rawValue);
-            }
-            {
-                uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 8))
-                {
-                    return false;
-                }
-                value.Uint8Value = (byte)rawValue;
-            }
-            {
-                uint rawValue = 0;
-                if (!stream.SerializeBits(ref rawValue, 16))
-                {
-                    return false;
-                }
-                value.Uint16Value = (ushort)rawValue;
-            }
-            if (!stream.SerializeBits(ref value.Uint32Value, 32))
-            {
-                return false;
-            }
-            if (!stream.SerializeBits64(ref value.Uint64Value, 64))
-            {
-                return false;
-            }
-            {
-                ulong rawValue = 0;
-                if (!stream.SerializeBits64(ref rawValue, 64))
-                {
-                    return false;
-                }
-                value.Int64Full = unchecked((long)rawValue);
+                ulong v0 = c0 & 0xffUL;
+                value.Int8Value = unchecked((sbyte)(byte)v0);
+                ulong v1 = (c0 >> 8) & 0xffffUL;
+                value.Int16Value = unchecked((short)(ushort)v1);
+                ulong v2 = (c0 >> 24) & 0xffUL;
+                value.Uint8Value = (byte)v2;
+                ulong v3 = (c0 >> 32) & 0xffffUL;
+                value.Uint16Value = (ushort)v3;
+                ulong v4 = ((c0 >> 48) | (c1 << 16)) & 0xffffffffUL;
+                value.Uint32Value = (uint)v4;
+                ulong v5 = ((c1 >> 16) | (c2 << 48));
+                value.Uint64Value = v5;
+                ulong v6 = ((c2 >> 16) | (c3 << 48));
+                value.Int64Full = unchecked((long)v6);
             }
             if (!stream.SerializeInt64(ref value.Int64Range, -1000000000000L, 1000000000000L))
             {
@@ -1581,16 +1734,27 @@ namespace Example
 
         public static bool WriteCompressedProbe(WriteStream stream, ref CompressedProbe value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteCompressedProbeBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteCompressedProbeBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteCompressedProbeBatch(ref WriteBatch batch, ref CompressedProbe value)
+        {
             {
                 float compressedValue = value.Boundary;
-                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 1000u, 10, 10.0f, 0.0f))
                 {
                     return false;
                 }
             }
             {
                 float compressedValue = value.Offset;
-                if (!stream.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 10.0f, -5.0f))
+                if (!batch.SerializeCompressedFloatPrecomputed(ref compressedValue, 10000u, 14, 10.0f, -5.0f))
                 {
                     return false;
                 }
@@ -1600,11 +1764,22 @@ namespace Example
 
         public static bool ReadCompressedProbe(ReadStream stream, ref CompressedProbe value)
         {
-            if (!stream.SerializeCompressedFloatPrecomputed(ref value.Boundary, 1000u, 10, 10.0f, 0.0f))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadCompressedProbeBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadCompressedProbeBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadCompressedProbeBatch(ref ReadBatch batch, ref CompressedProbe value)
+        {
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.Boundary, 1000u, 10, 10.0f, 0.0f))
             {
                 return false;
             }
-            if (!stream.SerializeCompressedFloatPrecomputed(ref value.Offset, 10000u, 14, 10.0f, -5.0f))
+            if (!batch.SerializeCompressedFloatPrecomputed(ref value.Offset, 10000u, 14, 10.0f, -5.0f))
             {
                 return false;
             }

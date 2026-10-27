@@ -43,7 +43,7 @@ UNITY_WIRE_NC := build/unity-wire-negative
 unity-wire-negative-control: generated/unity/.stamp generated/unity-ludicrous/.stamp
 	@rm -rf $(UNITY_WIRE_NC) && mkdir -p $(UNITY_WIRE_NC)/generated
 	@cp generated/unity/*.cs $(UNITY_WIRE_NC)/generated/
-	@sed -i.orig 's/uint constValue = 171;/uint constValue = 170;/' $(UNITY_WIRE_NC)/generated/Wire.cs
+	@sed -i.orig 's/ulong f0 = (171UL)/ulong f0 = (170UL)/' $(UNITY_WIRE_NC)/generated/Wire.cs
 	@cmp -s generated/unity/Wire.cs $(UNITY_WIRE_NC)/generated/Wire.cs && { echo 'NEGATIVE CONTROL: the planted constant patched nothing'; exit 1; } || true
 	@rm -f $(UNITY_WIRE_NC)/generated/*.orig
 	$(DOTNET) build test/unity/unitytest.csproj -c Debug -o $(UNITY_WIRE_NC)/bin --nologo -v quiet \

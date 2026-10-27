@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Example
@@ -112,10 +113,21 @@ namespace Example
 
         public static bool WriteDefaultArm(WriteStream stream, ref DefaultArm value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteDefaultArmBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteDefaultArmBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteDefaultArmBatch(ref WriteBatch batch, ref DefaultArm value)
+        {
             Debug.Assert(value.EntriesCount >= 0 && value.EntriesCount <= 2, "value.EntriesCount out of range [0, 2]");
             {
                 uint offsetValue = (uint)value.EntriesCount;
-                if (!stream.SerializeBits(ref offsetValue, 2))
+                if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
                 }
@@ -124,7 +136,7 @@ namespace Example
                 Span<ProbeConfig> entriesSpan = value.Entries.AsSpan();
                 for (int i = 0; i < value.EntriesCount; i++)
                 {
-                    if (!WriteProbeConfig(stream, ref entriesSpan[i]))
+                    if (!WriteProbeConfigBatch(ref batch, ref entriesSpan[i]))
                     {
                         return false;
                     }
@@ -133,7 +145,7 @@ namespace Example
             Debug.Assert(value.Marker <= 7, "value.Marker out of range [0, 7]");
             {
                 uint offsetValue = (uint)value.Marker;
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
                 }
@@ -143,7 +155,18 @@ namespace Example
 
         public static bool ReadDefaultArm(ReadStream stream, ref DefaultArm value)
         {
-            if (!stream.SerializeInt(ref value.EntriesCount, 0, 2)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadDefaultArmBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadDefaultArmBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadDefaultArmBatch(ref ReadBatch batch, ref DefaultArm value)
+        {
+            if (!batch.SerializeInt(ref value.EntriesCount, 0, 2)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -151,7 +174,7 @@ namespace Example
                 Span<ProbeConfig> entriesSpan = value.Entries.AsSpan();
                 for (int i = 0; i < value.EntriesCount; i++)
                 {
-                    if (!ReadProbeConfig(stream, ref entriesSpan[i]))
+                    if (!ReadProbeConfigBatch(ref batch, ref entriesSpan[i]))
                     {
                         return false;
                     }
@@ -159,7 +182,7 @@ namespace Example
             }
             {
                 int rangeValue = 0;
-                if (!stream.SerializeInt(ref rangeValue, 0, 7))
+                if (!batch.SerializeInt(ref rangeValue, 0, 7))
                 {
                     return false;
                 }
@@ -199,18 +222,29 @@ namespace Example
 
         public static bool WriteDefaultChoice(WriteStream stream, ref DefaultChoice value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteDefaultChoiceBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteDefaultChoiceBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteDefaultChoiceBatch(ref WriteBatch batch, ref DefaultChoice value)
+        {
             uint tagValue = (uint)value.Type;
             Debug.Assert(tagValue <= 2, "the union tag is outside [0, 2]");
-            if (!stream.SerializeBits(ref tagValue, 2))
+            if (!batch.SerializeBits(ref tagValue, 2))
             {
                 return false;
             }
             switch (value.Type)
             {
                 case DefaultChoiceType.First:
-                    return WriteDefaultArm(stream, ref value.First);
+                    return WriteDefaultArmBatch(ref batch, ref value.First);
                 case DefaultChoiceType.Second:
-                    return WriteDefaultArm(stream, ref value.Second);
+                    return WriteDefaultArmBatch(ref batch, ref value.Second);
                 default:
                     return true; // None: the tag is the wire
             }
@@ -218,8 +252,19 @@ namespace Example
 
         public static bool ReadDefaultChoice(ReadStream stream, ref DefaultChoice value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadDefaultChoiceBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadDefaultChoiceBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadDefaultChoiceBatch(ref ReadBatch batch, ref DefaultChoice value)
+        {
             int tagValue = 0;
-            if (!stream.SerializeInt(ref tagValue, 0, 2)) // a tag above the count is refused (SPEC §4.8)
+            if (!batch.SerializeInt(ref tagValue, 0, 2)) // a tag above the count is refused (SPEC §4.8)
             {
                 return false;
             }
@@ -228,10 +273,10 @@ namespace Example
             {
                 case DefaultChoiceType.First:
                     InitDefaultArm(ref value.First); // a selection starts from the construction form
-                    return ReadDefaultArm(stream, ref value.First);
+                    return ReadDefaultArmBatch(ref batch, ref value.First);
                 case DefaultChoiceType.Second:
                     InitDefaultArm(ref value.Second); // a selection starts from the construction form
-                    return ReadDefaultArm(stream, ref value.Second);
+                    return ReadDefaultArmBatch(ref batch, ref value.Second);
                 default:
                     return true; // None
             }
@@ -250,7 +295,18 @@ namespace Example
 
         public static bool WriteDefaultChoicePacket(WriteStream stream, ref DefaultChoicePacket value)
         {
-            if (!WriteDefaultChoice(stream, ref value.Choice))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteDefaultChoicePacketBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteDefaultChoicePacketBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteDefaultChoicePacketBatch(ref WriteBatch batch, ref DefaultChoicePacket value)
+        {
+            if (!WriteDefaultChoiceBatch(ref batch, ref value.Choice))
             {
                 return false;
             }
@@ -259,7 +315,18 @@ namespace Example
 
         public static bool ReadDefaultChoicePacket(ReadStream stream, ref DefaultChoicePacket value)
         {
-            if (!ReadDefaultChoice(stream, ref value.Choice))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadDefaultChoicePacketBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadDefaultChoicePacketBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadDefaultChoicePacketBatch(ref ReadBatch batch, ref DefaultChoicePacket value)
+        {
+            if (!ReadDefaultChoiceBatch(ref batch, ref value.Choice))
             {
                 return false;
             }
@@ -295,9 +362,15 @@ namespace Example
 
         public static bool WriteDefaultBulkArm(WriteStream stream, ref DefaultBulkArm value)
         {
-            if (!WriteDefaultArm(stream, ref value.Payload))
             {
-                return false;
+                // one batch for the whole site: one capture, one restore
+                WriteBatch batch = stream.BeginBatch();
+                bool batchOk = WriteDefaultArmBatch(ref batch, ref value.Payload);
+                batch.End();
+                if (!batchOk)
+                {
+                    return false;
+                }
             }
             Debug.Assert(value.DataLength >= 0 && value.DataLength <= 2, "value.DataLength out of range [0, 2]");
             {
@@ -316,9 +389,15 @@ namespace Example
 
         public static bool ReadDefaultBulkArm(ReadStream stream, ref DefaultBulkArm value)
         {
-            if (!ReadDefaultArm(stream, ref value.Payload))
             {
-                return false;
+                // one batch for the whole site: one capture, one restore
+                ReadBatch batch = stream.BeginBatch();
+                bool batchOk = ReadDefaultArmBatch(ref batch, ref value.Payload);
+                batch.End();
+                if (!batchOk)
+                {
+                    return false;
+                }
             }
             if (!stream.SerializeInt(ref value.DataLength, 0, 2)) // the length guards the slice (§6.3)
             {

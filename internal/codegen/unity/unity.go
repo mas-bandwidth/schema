@@ -46,8 +46,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	out := map[string][]byte{}
 	home := ir.ProtocolIdHome(u)
+	batched, needCore := batchPlan(u)
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: f.Base == home}
+		g := &gen{unit: u, file: f, home: f.Base == home, batched: batched, needCore: needCore}
 		if g.home {
 			g.emitBuffers()
 		}
@@ -94,7 +95,12 @@ type gen struct {
 	types  strings.Builder // namespace-level declarations
 	schema strings.Builder // members of the partial static Schema class
 
+	batched  map[string]bool // pairs whose entry runs on a batch (batch.go)
+	needCore map[string]bool // pairs that carry an inline batch core
+	inBatch  bool            // emitting a core: the receiver is `batch`
+
 	needsSerialize bool // wire functions -> using Serialize;
+	needsCompiler  bool // [MethodImpl] -> using System.Runtime.CompilerServices;
 	needsDiag      bool // Debug.Assert -> using System.Diagnostics;
 	needsInterop   bool // MemoryMarshal, StructLayout -> using System.Runtime.InteropServices;
 }
@@ -126,6 +132,9 @@ func (g *gen) assemble() []byte {
 	h.WriteString("using System;\n")
 	if g.needsDiag {
 		h.WriteString("using System.Diagnostics;\n")
+	}
+	if g.needsCompiler {
+		h.WriteString("using System.Runtime.CompilerServices;\n")
 	}
 	if g.needsInterop {
 		h.WriteString("using System.Runtime.InteropServices;\n")

@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Serialize;
 
 namespace Example
@@ -182,10 +183,21 @@ namespace Example
 
         public static bool WriteW13(WriteStream stream, ref W13 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteW13Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteW13Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteW13Batch(ref WriteBatch batch, ref W13 value)
+        {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 12, "value.ItemsCount out of range [0, 12]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 4))
+                if (!batch.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
                 }
@@ -197,7 +209,7 @@ namespace Example
                     Debug.Assert(itemsSpan[i] <= 8191, "itemsSpan[i] out of range [0, 8191]");
                     {
                         uint offsetValue = (uint)itemsSpan[i];
-                        if (!stream.SerializeBits(ref offsetValue, 13))
+                        if (!batch.SerializeBits(ref offsetValue, 13))
                         {
                             return false;
                         }
@@ -209,7 +221,18 @@ namespace Example
 
         public static bool ReadW13(ReadStream stream, ref W13 value)
         {
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 12)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadW13Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadW13Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadW13Batch(ref ReadBatch batch, ref W13 value)
+        {
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 12)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -218,7 +241,7 @@ namespace Example
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
                     int rangeValue = 0;
-                    if (!stream.SerializeInt(ref rangeValue, 0, 8191))
+                    if (!batch.SerializeInt(ref rangeValue, 0, 8191))
                     {
                         return false;
                     }
@@ -241,10 +264,21 @@ namespace Example
 
         public static bool WriteW17(WriteStream stream, ref W17 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteW17Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteW17Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteW17Batch(ref WriteBatch batch, ref W17 value)
+        {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 9, "value.ItemsCount out of range [0, 9]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 4))
+                if (!batch.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
                 }
@@ -256,7 +290,7 @@ namespace Example
                     Debug.Assert(itemsSpan[i] <= 131071, "itemsSpan[i] out of range [0, 131071]");
                     {
                         uint offsetValue = (uint)itemsSpan[i];
-                        if (!stream.SerializeBits(ref offsetValue, 17))
+                        if (!batch.SerializeBits(ref offsetValue, 17))
                         {
                             return false;
                         }
@@ -268,7 +302,18 @@ namespace Example
 
         public static bool ReadW17(ReadStream stream, ref W17 value)
         {
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 9)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadW17Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadW17Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadW17Batch(ref ReadBatch batch, ref W17 value)
+        {
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 9)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -277,7 +322,7 @@ namespace Example
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
                     int rangeValue = 0;
-                    if (!stream.SerializeInt(ref rangeValue, 0, 131071))
+                    if (!batch.SerializeInt(ref rangeValue, 0, 131071))
                     {
                         return false;
                     }
@@ -300,10 +345,21 @@ namespace Example
 
         public static bool WriteW26(WriteStream stream, ref W26 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteW26Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteW26Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteW26Batch(ref WriteBatch batch, ref W26 value)
+        {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 6, "value.ItemsCount out of range [0, 6]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
                 }
@@ -315,7 +371,7 @@ namespace Example
                     Debug.Assert(itemsSpan[i] <= 67108863, "itemsSpan[i] out of range [0, 67108863]");
                     {
                         uint offsetValue = (uint)itemsSpan[i];
-                        if (!stream.SerializeBits(ref offsetValue, 26))
+                        if (!batch.SerializeBits(ref offsetValue, 26))
                         {
                             return false;
                         }
@@ -327,7 +383,18 @@ namespace Example
 
         public static bool ReadW26(ReadStream stream, ref W26 value)
         {
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 6)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadW26Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadW26Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadW26Batch(ref ReadBatch batch, ref W26 value)
+        {
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 6)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -336,7 +403,7 @@ namespace Example
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
                     int rangeValue = 0;
-                    if (!stream.SerializeInt(ref rangeValue, 0, 67108863))
+                    if (!batch.SerializeInt(ref rangeValue, 0, 67108863))
                     {
                         return false;
                     }
@@ -359,10 +426,21 @@ namespace Example
 
         public static bool WriteW1(WriteStream stream, ref W1 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteW1Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteW1Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteW1Batch(ref WriteBatch batch, ref W1 value)
+        {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 20, "value.ItemsCount out of range [0, 20]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 5))
+                if (!batch.SerializeBits(ref offsetValue, 5))
                 {
                     return false;
                 }
@@ -374,7 +452,7 @@ namespace Example
                     Debug.Assert(itemsSpan[i] <= 1, "itemsSpan[i] out of range [0, 1]");
                     {
                         uint offsetValue = (uint)itemsSpan[i];
-                        if (!stream.SerializeBits(ref offsetValue, 1))
+                        if (!batch.SerializeBits(ref offsetValue, 1))
                         {
                             return false;
                         }
@@ -386,7 +464,18 @@ namespace Example
 
         public static bool ReadW1(ReadStream stream, ref W1 value)
         {
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 20)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadW1Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadW1Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadW1Batch(ref ReadBatch batch, ref W1 value)
+        {
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 20)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -395,7 +484,7 @@ namespace Example
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
                     int rangeValue = 0;
-                    if (!stream.SerializeInt(ref rangeValue, 0, 1))
+                    if (!batch.SerializeInt(ref rangeValue, 0, 1))
                     {
                         return false;
                     }
@@ -418,10 +507,21 @@ namespace Example
 
         public static bool WriteW52(WriteStream stream, ref W52 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteW52Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteW52Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteW52Batch(ref WriteBatch batch, ref W52 value)
+        {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 2))
+                if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
                 }
@@ -433,7 +533,7 @@ namespace Example
                     Debug.Assert(itemsSpan[i] <= 4503599627370495, "itemsSpan[i] out of range [0, 4503599627370495]");
                     {
                         ulong offsetValue = (ulong)itemsSpan[i];
-                        if (!stream.SerializeBits64(ref offsetValue, 52))
+                        if (!batch.SerializeBits64(ref offsetValue, 52))
                         {
                             return false;
                         }
@@ -445,7 +545,18 @@ namespace Example
 
         public static bool ReadW52(ReadStream stream, ref W52 value)
         {
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 3)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadW52Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadW52Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadW52Batch(ref ReadBatch batch, ref W52 value)
+        {
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 3)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -454,7 +565,7 @@ namespace Example
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
                     long rangeValue = 0;
-                    if (!stream.SerializeInt64(ref rangeValue, 0L, 4503599627370495L))
+                    if (!batch.SerializeInt64(ref rangeValue, 0L, 4503599627370495L))
                     {
                         return false;
                     }
@@ -477,10 +588,21 @@ namespace Example
 
         public static bool WriteW50(WriteStream stream, ref W50 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteW50Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteW50Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteW50Batch(ref WriteBatch batch, ref W50 value)
+        {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 3, "value.ItemsCount out of range [0, 3]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 2))
+                if (!batch.SerializeBits(ref offsetValue, 2))
                 {
                     return false;
                 }
@@ -492,7 +614,7 @@ namespace Example
                     Debug.Assert(itemsSpan[i] <= 1125899906842623, "itemsSpan[i] out of range [0, 1125899906842623]");
                     {
                         ulong offsetValue = (ulong)itemsSpan[i];
-                        if (!stream.SerializeBits64(ref offsetValue, 50))
+                        if (!batch.SerializeBits64(ref offsetValue, 50))
                         {
                             return false;
                         }
@@ -504,7 +626,18 @@ namespace Example
 
         public static bool ReadW50(ReadStream stream, ref W50 value)
         {
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 3)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadW50Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadW50Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadW50Batch(ref ReadBatch batch, ref W50 value)
+        {
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 3)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -513,7 +646,7 @@ namespace Example
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
                     long rangeValue = 0;
-                    if (!stream.SerializeInt64(ref rangeValue, 0L, 1125899906842623L))
+                    if (!batch.SerializeInt64(ref rangeValue, 0L, 1125899906842623L))
                     {
                         return false;
                     }
@@ -536,6 +669,17 @@ namespace Example
 
         public static bool WriteF13(WriteStream stream, ref F13 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteF13Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteF13Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteF13Batch(ref WriteBatch batch, ref F13 value)
+        {
             {
                 Span<ushort> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < 7; i++)
@@ -543,7 +687,7 @@ namespace Example
                     Debug.Assert(itemsSpan[i] <= 8191, "itemsSpan[i] out of range [0, 8191]");
                     {
                         uint offsetValue = (uint)itemsSpan[i];
-                        if (!stream.SerializeBits(ref offsetValue, 13))
+                        if (!batch.SerializeBits(ref offsetValue, 13))
                         {
                             return false;
                         }
@@ -555,12 +699,23 @@ namespace Example
 
         public static bool ReadF13(ReadStream stream, ref F13 value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadF13Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadF13Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadF13Batch(ref ReadBatch batch, ref F13 value)
+        {
             {
                 Span<ushort> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < 7; i++)
                 {
                     int rangeValue = 0;
-                    if (!stream.SerializeInt(ref rangeValue, 0, 8191))
+                    if (!batch.SerializeInt(ref rangeValue, 0, 8191))
                     {
                         return false;
                     }
@@ -583,26 +738,55 @@ namespace Example
 
         public static bool WriteTri3(WriteStream stream, ref Tri3 value)
         {
-            if (!stream.SerializeBits(ref value.A, 1))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteTri3Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteTri3Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteTri3Batch(ref WriteBatch batch, ref Tri3 value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.B, 2))
-            {
-                return false;
+                // 3 bits folded into 1 word(s)
+                ulong f0 = ((ulong)value.A) & 0x1UL;
+                ulong f1 = ((ulong)value.B) & 0x3UL;
+                uint w0 = (uint)(f0 | (f1 << 1));
+                if (!batch.SerializeBits(ref w0, 3))
+                {
+                    return false;
+                }
             }
             return true;
         }
 
         public static bool ReadTri3(ReadStream stream, ref Tri3 value)
         {
-            if (!stream.SerializeBits(ref value.A, 1))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadTri3Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadTri3Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadTri3Batch(ref ReadBatch batch, ref Tri3 value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.B, 2))
-            {
-                return false;
+                // 3 bits read as 1 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 3);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x1UL;
+                value.A = (uint)v0;
+                ulong v1 = (c0 >> 1) & 0x3UL;
+                value.B = (uint)v1;
             }
             return true;
         }
@@ -620,10 +804,21 @@ namespace Example
 
         public static bool WriteArrTri3(WriteStream stream, ref ArrTri3 value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteArrTri3Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteArrTri3Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteArrTri3Batch(ref WriteBatch batch, ref ArrTri3 value)
+        {
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 10, "value.ItemsCount out of range [0, 10]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 4))
+                if (!batch.SerializeBits(ref offsetValue, 4))
                 {
                     return false;
                 }
@@ -632,7 +827,7 @@ namespace Example
                 Span<Tri3> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
-                    if (!WriteTri3(stream, ref itemsSpan[i]))
+                    if (!WriteTri3Batch(ref batch, ref itemsSpan[i]))
                     {
                         return false;
                     }
@@ -643,7 +838,18 @@ namespace Example
 
         public static bool ReadArrTri3(ReadStream stream, ref ArrTri3 value)
         {
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 10)) // the count guards the loop (§6.3)
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadArrTri3Batch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadArrTri3Batch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadArrTri3Batch(ref ReadBatch batch, ref ArrTri3 value)
+        {
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 10)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -651,7 +857,7 @@ namespace Example
                 Span<Tri3> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
-                    if (!ReadTri3(stream, ref itemsSpan[i]))
+                    if (!ReadTri3Batch(ref batch, ref itemsSpan[i]))
                     {
                         return false;
                     }
@@ -673,26 +879,55 @@ namespace Example
 
         public static bool WriteEleven(WriteStream stream, ref Eleven value)
         {
-            if (!stream.SerializeBits(ref value.A, 3))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteElevenBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteElevenBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteElevenBatch(ref WriteBatch batch, ref Eleven value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.B, 8))
-            {
-                return false;
+                // 11 bits folded into 1 word(s)
+                ulong f0 = ((ulong)value.A) & 0x7UL;
+                ulong f1 = ((ulong)value.B) & 0xffUL;
+                uint w0 = (uint)(f0 | (f1 << 3));
+                if (!batch.SerializeBits(ref w0, 11))
+                {
+                    return false;
+                }
             }
             return true;
         }
 
         public static bool ReadEleven(ReadStream stream, ref Eleven value)
         {
-            if (!stream.SerializeBits(ref value.A, 3))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadElevenBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadElevenBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadElevenBatch(ref ReadBatch batch, ref Eleven value)
+        {
             {
-                return false;
-            }
-            if (!stream.SerializeBits(ref value.B, 8))
-            {
-                return false;
+                // 11 bits read as 1 word(s): one bounds check per word, one error test
+                ulong c0 = 0;
+                batch.SerializeBits64(ref c0, 11);
+                if (!batch.Ok)
+                {
+                    return false;
+                }
+                ulong v0 = c0 & 0x7UL;
+                value.A = (uint)v0;
+                ulong v1 = (c0 >> 3) & 0xffUL;
+                value.B = (uint)v1;
             }
             return true;
         }
@@ -710,11 +945,22 @@ namespace Example
 
         public static bool WriteArrEleven(WriteStream stream, ref ArrEleven value)
         {
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteArrElevenBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteArrElevenBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteArrElevenBatch(ref WriteBatch batch, ref ArrEleven value)
+        {
             {
                 Span<Eleven> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < 9; i++)
                 {
-                    if (!WriteEleven(stream, ref itemsSpan[i]))
+                    if (!WriteElevenBatch(ref batch, ref itemsSpan[i]))
                     {
                         return false;
                     }
@@ -725,11 +971,22 @@ namespace Example
 
         public static bool ReadArrEleven(ReadStream stream, ref ArrEleven value)
         {
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadArrElevenBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadArrElevenBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadArrElevenBatch(ref ReadBatch batch, ref ArrEleven value)
+        {
             {
                 Span<Eleven> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < 9; i++)
                 {
-                    if (!ReadEleven(stream, ref itemsSpan[i]))
+                    if (!ReadElevenBatch(ref batch, ref itemsSpan[i]))
                     {
                         return false;
                     }
@@ -755,7 +1012,24 @@ namespace Example
             return true;
         }
 
+        // WriteEmptyABatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteEmptyABatch(ref WriteBatch batch, ref EmptyA value)
+        {
+            // an empty body: presence is the payload (SPEC §4.6)
+            return true;
+        }
+
         public static bool ReadEmptyA(ReadStream stream, ref EmptyA value)
+        {
+            return true;
+        }
+
+        // ReadEmptyABatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadEmptyABatch(ref ReadBatch batch, ref EmptyA value)
         {
             return true;
         }
@@ -777,7 +1051,24 @@ namespace Example
             return true;
         }
 
+        // WriteEmptyBBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteEmptyBBatch(ref WriteBatch batch, ref EmptyB value)
+        {
+            // an empty body: presence is the payload (SPEC §4.6)
+            return true;
+        }
+
         public static bool ReadEmptyB(ReadStream stream, ref EmptyB value)
+        {
+            return true;
+        }
+
+        // ReadEmptyBBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadEmptyBBatch(ref ReadBatch batch, ref EmptyB value)
         {
             return true;
         }
@@ -830,6 +1121,28 @@ namespace Example
             }
         }
 
+        // WriteEmptyUnionBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteEmptyUnionBatch(ref WriteBatch batch, ref EmptyUnion value)
+        {
+            uint tagValue = (uint)value.Type;
+            Debug.Assert(tagValue <= 2, "the union tag is outside [0, 2]");
+            if (!batch.SerializeBits(ref tagValue, 2))
+            {
+                return false;
+            }
+            switch (value.Type)
+            {
+                case EmptyUnionType.A:
+                    return WriteEmptyABatch(ref batch, ref value.A);
+                case EmptyUnionType.B:
+                    return WriteEmptyBBatch(ref batch, ref value.B);
+                default:
+                    return true; // None: the tag is the wire
+            }
+        }
+
         public static bool ReadEmptyUnion(ReadStream stream, ref EmptyUnion value)
         {
             int tagValue = 0;
@@ -851,6 +1164,30 @@ namespace Example
             }
         }
 
+        // ReadEmptyUnionBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadEmptyUnionBatch(ref ReadBatch batch, ref EmptyUnion value)
+        {
+            int tagValue = 0;
+            if (!batch.SerializeInt(ref tagValue, 0, 2)) // a tag above the count is refused (SPEC §4.8)
+            {
+                return false;
+            }
+            value.Type = (EmptyUnionType)tagValue;
+            switch (value.Type)
+            {
+                case EmptyUnionType.A:
+                    value.A = default; // a selection starts from the construction form
+                    return ReadEmptyABatch(ref batch, ref value.A);
+                case EmptyUnionType.B:
+                    value.B = default; // a selection starts from the construction form
+                    return ReadEmptyBBatch(ref batch, ref value.B);
+                default:
+                    return true; // None
+            }
+        }
+
         // HoldsEmptyUnionMaxBits is the longest wire path; align pads at worst case (SPEC §6.1);
         // HoldsEmptyUnionMaxBytes rounds it up to the 8-byte write-buffer granularity.
         public const int HoldsEmptyUnionMaxBits = 14;
@@ -864,15 +1201,26 @@ namespace Example
 
         public static bool WriteHoldsEmptyUnion(WriteStream stream, ref HoldsEmptyUnion value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteHoldsEmptyUnionBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteHoldsEmptyUnionBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteHoldsEmptyUnionBatch(ref WriteBatch batch, ref HoldsEmptyUnion value)
+        {
+            if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
-            if (!WriteEmptyUnion(stream, ref value.U))
+            if (!WriteEmptyUnionBatch(ref batch, ref value.U))
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.Tail, 7))
+            if (!batch.SerializeBits(ref value.Tail, 7))
             {
                 return false;
             }
@@ -881,15 +1229,26 @@ namespace Example
 
         public static bool ReadHoldsEmptyUnion(ReadStream stream, ref HoldsEmptyUnion value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadHoldsEmptyUnionBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadHoldsEmptyUnionBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadHoldsEmptyUnionBatch(ref ReadBatch batch, ref HoldsEmptyUnion value)
+        {
+            if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
-            if (!ReadEmptyUnion(stream, ref value.U))
+            if (!ReadEmptyUnionBatch(ref batch, ref value.U))
             {
                 return false;
             }
-            if (!stream.SerializeBits(ref value.Tail, 7))
+            if (!batch.SerializeBits(ref value.Tail, 7))
             {
                 return false;
             }
@@ -996,14 +1355,25 @@ namespace Example
 
         public static bool WriteArrNested(WriteStream stream, ref ArrNested value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
+            WriteBatch batch = stream.BeginBatch();
+            bool result = WriteArrNestedBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // WriteArrNestedBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool WriteArrNestedBatch(ref WriteBatch batch, ref ArrNested value)
+        {
+            if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
             Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 4, "value.ItemsCount out of range [0, 4]");
             {
                 uint offsetValue = (uint)value.ItemsCount;
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                if (!batch.SerializeBits(ref offsetValue, 3))
                 {
                     return false;
                 }
@@ -1012,13 +1382,13 @@ namespace Example
                 Span<Eleven> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
-                    if (!WriteEleven(stream, ref itemsSpan[i]))
+                    if (!WriteElevenBatch(ref batch, ref itemsSpan[i]))
                     {
                         return false;
                     }
                 }
             }
-            if (!stream.SerializeBits(ref value.Tail, 3))
+            if (!batch.SerializeBits(ref value.Tail, 3))
             {
                 return false;
             }
@@ -1027,11 +1397,22 @@ namespace Example
 
         public static bool ReadArrNested(ReadStream stream, ref ArrNested value)
         {
-            if (!stream.SerializeBits(ref value.Lead, 5))
+            ReadBatch batch = stream.BeginBatch();
+            bool result = ReadArrNestedBatch(ref batch, ref value);
+            batch.End();
+            return result;
+        }
+
+        // ReadArrNestedBatch is the body on a register-resident batch; inline only, so a
+        // caller never takes the batch's address.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ReadArrNestedBatch(ref ReadBatch batch, ref ArrNested value)
+        {
+            if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
             }
-            if (!stream.SerializeInt(ref value.ItemsCount, 0, 4)) // the count guards the loop (§6.3)
+            if (!batch.SerializeInt(ref value.ItemsCount, 0, 4)) // the count guards the loop (§6.3)
             {
                 return false;
             }
@@ -1039,13 +1420,13 @@ namespace Example
                 Span<Eleven> itemsSpan = value.Items.AsSpan();
                 for (int i = 0; i < value.ItemsCount; i++)
                 {
-                    if (!ReadEleven(stream, ref itemsSpan[i]))
+                    if (!ReadElevenBatch(ref batch, ref itemsSpan[i]))
                     {
                         return false;
                     }
                 }
             }
-            if (!stream.SerializeBits(ref value.Tail, 3))
+            if (!batch.SerializeBits(ref value.Tail, 3))
             {
                 return false;
             }
