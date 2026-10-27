@@ -204,6 +204,17 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 		return
 	}
 	g.pf("%sif (out != null) {\n", ind)
+	g.emitCookScalarStore(f, expr, at, width, ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+// emitCookScalarStore is emitCookFixedScalar's store with no null test on
+// out, for a caller already inside `if (out != null)`: the analyzer refuses
+// a second test on a promoted out (unnecessary_null_comparison).
+func (g *cookGen) emitCookScalarStore(f *ir.Field, expr, at string, width int64, ind string) {
+	// ind is the store's own indent; the lines below are spelled one level
+	// in from their enclosing statement, so step back out by one
+	ind = strings.TrimSuffix(ind, "  ")
 	switch {
 	case f.Type.Kind == ir.TBool:
 		g.pf("%s  out.setUint8(%s, %s ? 1 : 0);\n", ind, at, expr)
@@ -230,7 +241,6 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 			g.pf("%s  out.set%s%d(%s, %s, order);\n", ind, signed, width*8, at, expr)
 		}
 	}
-	g.pf("%s}\n", ind)
 }
 
 // emitCookWriteVariable writes §7.6's VARIABLE-CLASS cook: the region of a
@@ -362,8 +372,11 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
 		g.pf("      case %s:\n", dartU64Literal(ir.TableWireId(rs.WireName())))
 		if recordHasLists(g.unit, rs) {
-			g.pf("        if (!_cook%s(node as wire.%s, c, at)) return false;\n", r, r)
-			g.pf("        if (_carve%s(node as wire.%s, c, at, at + %d, 0) < 0) return false;\n", r, r, recordBytes)
+			// one cast: a second `node as` on the promoted node is refused by
+			// the analyzer (unnecessary_cast)
+			g.pf("        final value = node as wire.%s;\n", r)
+			g.pf("        if (!_cook%s(value, c, at)) return false;\n", r)
+			g.pf("        if (_carve%s(value, c, at, at + %d, 0) < 0) return false;\n", r, recordBytes)
 			g.pf("        return true;\n")
 		} else {
 			g.pf("        return _cook%s(node as wire.%s, c, at);\n", r, r)
@@ -619,10 +632,25 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 		return
 	}
 	g.pf("  // The extent's carve (§7.6): the same pre-order walk, writing.\n")
-	g.pf("  static int _carve%s(wire.%s value, TableCookGraph c, int at, int base, int point) {\n", name, name)
-	g.pf("    final out = c.out;\n")
-	g.pf("    final order = c.order;\n")
+	if sig := fmt.Sprintf("  static int _carve%s(wire.%s value, TableCookGraph c, int at, int base, int point) {", name, name); len(sig) <= 80 {
+		g.pf("%s\n", sig)
+	} else {
+		g.pf("  static int _carve%s(\n    wire.%s value,\n    TableCookGraph c,\n    int at,\n    int base,\n    int point,\n  ) {\n", name, name)
+	}
+	// the walk state is read only where this record places an array itself;
+	// a record that only descends into its fields' extents reads neither
+	outer := g.body
+	g.body = strings.Builder{}
 	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base")
+	fields := g.body.String()
+	g.body = outer
+	if cookUsesOut.MatchString(fields) {
+		g.pf("    final out = c.out;\n")
+	}
+	if cookUsesOrder.MatchString(fields) {
+		g.pf("    final order = c.order;\n")
+	}
+	g.pf("%s", fields)
 	g.pf("    return point;\n  }\n\n")
 }
 
@@ -648,7 +676,9 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 			g.pf("%s  final l = %s.%s;\n", ind, expr, fieldMember(f))
 			g.pf("%s  final n = l.length;\n", ind)
 			g.pf("%s  point = ((point + %d - 1) & ~(%d - 1));\n", ind, align, align)
-			g.pf("%s  final start = point;\n", ind)
+			if write { // only the carve places the array at its start
+				g.pf("%s  final start = point;\n", ind)
+			}
 			g.pf("%s  point += n * %d;\n", ind, size)
 			if write {
 				g.pf("%s  if (out != null) {\n", ind)
@@ -659,7 +689,8 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				if ref := tableRef(f); ref != nil {
 					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, ref.Name, size)
 				} else {
-					g.emitCookFixedScalar(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
+					// inside the `if (out != null)` above: out is promoted
+					g.emitCookScalarStore(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
 				}
 				g.pf("%s    }\n%s  }\n", ind, ind)
 			}
@@ -707,6 +738,16 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 			g.pf("%spoint = _extent%s(%s.%s, point);\n", ind, ref.Name, expr, fieldMember(f))
 		}
 	}
+}
+
+// emitCookRef writes one pointer slot's c.ref call, in dart format's tall
+// form when the one-line form passes 80 columns.
+func (g *cookGen) emitCookRef(ind, at, target string) {
+	if one := fmt.Sprintf("%sc.ref(%s, %s);", ind, at, target); len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%sc.ref(\n%s  %s,\n%s  %s,\n%s);\n", ind, ind, at, ind, target, ind)
 }
 
 // the two walk-state locals a record body may read.
@@ -770,7 +811,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
-			g.pf("%s  c.ref(at + %d + i * %d, i < %s.length ? %s[i] : null);\n", ind, offset, stride, expr, expr)
+			g.emitCookRef(ind+"  ", fmt.Sprintf("at + %d + i * %d", offset, stride), fmt.Sprintf("i < %s.length ? %s[i] : null", expr, expr))
 		case ref != nil:
 			// a DEAD slot holds the element's declared defaults, as the
 			// reference's storage does (§7.6)
@@ -799,7 +840,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
-			g.pf("%s  c.ref(at + %d + i * %d, %s[i]);\n", ind, offset, stride, expr)
+			g.emitCookRef(ind+"  ", fmt.Sprintf("at + %d + i * %d", offset, stride), expr+"[i]")
 		case ref != nil:
 			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
 		default:
@@ -807,7 +848,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
-		g.pf("%sc.ref(at + %d, %s);\n", ind, offset, expr)
+		g.emitCookRef(ind, fmt.Sprintf("at + %d", offset), expr)
 	case isByValueTable(f):
 		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:

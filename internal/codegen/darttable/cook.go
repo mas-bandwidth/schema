@@ -814,7 +814,7 @@ func (g *cookGen) trimBlank() {
 // its UTF-8 bytes (`List<int>`), ordered bytewise over the used length with the
 // shorter first, which is the order the cook was written in.
 func (g *blockGen) emitCookMapAccessors(f *ir.Field, offset int64, ind, origin string) {
-	name := dartName(f.Name)
+	name := accessorName(f, false)
 	entry := f.MapEntry.Name + "Row"
 	el := ir.RecordLayout(g.unit, f.MapEntry)
 	key := ir.MapKeyField(f)
