@@ -16,10 +16,11 @@
 //
 // Storage is the §6.1 storage principle in JavaScript's value domain:
 // classes with PUBLIC FIELDS, every field initialized in the constructor in
-// declaration order (hidden-class stability), member names via
-// ir.GoExportName — the SAME PascalCase mapping as the Go and C# targets, so
-// the checker's existing collision detection covers JS without a second
-// registry. The value-domain rule that governs everything: Number for
+// declaration order (hidden-class stability), member names in the language's
+// own lowerCamelCase (MemberName): object_id is objectId, its companions
+// textLength and itemsCount, a union's tag type. Declarations, functions and
+// constants stay PascalCase, as JavaScript spells classes and the family
+// spells its generated API. The value-domain rule that governs everything: Number for
 // storage widths of 32 bits or fewer, BigInt for 64 and 128 — the runtime's
 // own seam (streams.js: serializeBits takes a Number, serializeBits64 a
 // BigInt). Flags-typed fields store uint64 in every target (SPEC §6.1), so
@@ -57,6 +58,17 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// MemberName is the one mapping from a schema field or union arm name to its
+// JavaScript storage member: lower_snake_case -> lowerCamelCase, the
+// first-letter-lowered form of ir.GoExportName. Both JavaScript emitters (the
+// packet tier here and the table tier in jstable) and the checker's claims
+// share it. The lowering is one-to-one on what GoExportName produces, so two
+// fields collide here exactly when they collide in Go, and the checker's Go
+// registry already refuses them (SPEC §4.6).
+func MemberName(name string) string {
+	return ir.DartMemberName(name)
+}
 
 // Generate returns basename.js -> file contents for every file of the unit.
 // ES modules are order-free for functions and classes used at call time, but
@@ -100,6 +112,8 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// makes flat THE JavaScript path, and the runtime tier above is emitted
 	// regardless because it is the flat tier's CI oracle
 	maps.Copy(out, generateFlat(u))
+	// the TypeScript declarations of both tiers (dts.go)
+	maps.Copy(out, generateDecls(u))
 	return out, nil
 }
 
@@ -128,6 +142,7 @@ type gen struct {
 	needNumScratch  bool
 	needBigScratch  bool
 	needBoolScratch bool
+	needText        bool // a string field's read calls the module's text validator
 
 	// The flat tier uses the same in-place initialization emitter with
 	// nested fields inlined and schema references resolved to literals.
@@ -230,6 +245,9 @@ func (g *gen) assemble() []byte {
 		}
 		h.WriteString("\n")
 	}
+	if g.needText {
+		h.WriteString(emitTextHelper())
+	}
 	h.WriteString(g.body.String())
 	return []byte(h.String())
 }
@@ -283,9 +301,8 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.pf("%s", ir.DocComment(docs[i], "  ", "//"))
 		g.pf("  %s: %d,\n", m, i+1)
 	}
-	g.pf("  Count: %d, // the declared variant count (SPEC §4.2)\n", len(members))
-	g.pf("  Max: %d, // the exported extent (SPEC §4.2)\n", len(members))
-	g.pf("});\n\n")
+	g.pf("});\n")
+	g.emitEnumMax(name, int64(len(members)))
 
 	// the tag enum's name surface is a declared enum's, member for member: a
 	// reader logging which message arrived writes EnumName<Tag>(value)
@@ -358,9 +375,8 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "  ", "//"))
 		g.pf("  %s: %d,\n", v, i+1)
 	}
-	g.pf("  Count: %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
-	g.pf("  Max: %d, // the exported extent (SPEC §4.2)\n", d.Max)
-	g.pf("});\n\n")
+	g.pf("});\n")
+	g.emitEnumMax(d.Name, d.Max)
 	g.pf("// EnumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
 	g.pf("// out-of-set values (wire-legal up to the declared max) name as \"???\"\n")
 	g.pf("export function EnumName%s(value) {\n", d.Name)
@@ -370,6 +386,16 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("    case %s.%s:\n      return %q;\n", d.Name, v, v)
 	}
 	g.pf("    default:\n      return \"???\";\n  }\n}\n\n")
+}
+
+// emitEnumMax emits an enum surface's extent as a constant of its own,
+// beside the frozen variant object rather than inside it, so Object.values,
+// Object.keys and for...in over the object see variants only, and a variant
+// may take any name the checker allows. The spelling is the Go target's,
+// <Name>Max, which the checker already claims. An enum exports no Count: its
+// variant count is its Max (SPEC §4.2).
+func (g *gen) emitEnumMax(name string, max int64) {
+	g.pf("export const %sMax = %d; // the exported extent (SPEC §4.2)\n\n", name, max)
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
@@ -437,7 +463,7 @@ func (g *gen) emitClassFields(fields []*ir.Field) {
 }
 
 func (g *gen) emitStorageField(f *ir.Field) {
-	name := ir.GoExportName(f.Name)
+	name := MemberName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TWString:
 		g.pf("    this.%s = new Uint16Array(%s);\n    this.%sLength = 0;\n", name, g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)), name)
@@ -556,7 +582,7 @@ func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
 	g.pf("// reused-storage discipline. Consumers read the selected arm only.\n")
 	g.pf("export class %s {\n", name)
 	g.pf("  constructor() {\n")
-	g.pf("    this.Type = %sType.None;\n", name)
+	g.pf("    this.type = %sType.None;\n", name)
 	for _, v := range variants {
 		if v.Void() {
 			continue // a PAYLOAD-FREE arm has no storage (SPEC §4.8)
@@ -569,7 +595,7 @@ func (g *gen) emitTagUnion(name, doc string, variants []ir.UnionVariant) {
 			continue
 		}
 		g.addRef(v.Type, v.Type)
-		g.pf("    this.%s = new %s();\n", ir.GoExportName(v.Name), v.Type)
+		g.pf("    this.%s = new %s();\n", MemberName(v.Name), v.Type)
 	}
 	g.pf("  }\n}\n\n")
 }
@@ -846,6 +872,11 @@ func jsIdentifiers(body string) map[string]bool {
 			start := i
 			for i < len(body) && isWord(body[i], false) {
 				i++
+			}
+			// a property name after a member dot (value.x) is not a binding;
+			// a spread (...x) is
+			if start > 0 && body[start-1] == '.' && !strings.HasSuffix(body[:start], "...") {
+				continue
 			}
 			set[body[start:i]] = true
 		case c >= '0' && c <= '9':

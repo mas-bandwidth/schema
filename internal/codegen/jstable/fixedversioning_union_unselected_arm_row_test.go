@@ -30,9 +30,9 @@ func TestJSFixedVersioningUnionUnselectedArm(t *testing.T) {
 	// Nothing here names beta or gamma.
 	checks := `
 if (n !== 1) { fail("the file carries one record, not " + n + " " + reason(r)); }
-if (back[0].Pick.Type !== 1) { fail("pick.type is the writer's alpha arm (1), not " + back[0].Pick.Type); }
-if (back[0].Pick.Alpha.M !== 7) { fail("pick.alpha.m is the writer's 7, not " + back[0].Pick.Alpha.M); }
-if (back[0].Seq !== 15) { fail("seq is the writer's 15, not " + back[0].Seq); }
+if (back[0].pick.type !== 1) { fail("pick.type is the writer's alpha arm (1), not " + back[0].pick.type); }
+if (back[0].pick.alpha.m !== 7) { fail("pick.alpha.m is the writer's 7, not " + back[0].pick.alpha.m); }
+if (back[0].seq !== 15) { fail("seq is the writer's 15, not " + back[0].seq); }
 if (r.clamped !== 0 || r.unknown !== 0 || r.kindMismatch !== 0 || r.widened !== 0 || r.duplicate !== 0) {
   fail("a clean read moved a counter: " + reason(r));
 }
@@ -46,11 +46,11 @@ if (r.refused !== 0) { fail("a clean backward read is not a refusal: " + reason(
 	compiled := fmt.Sprintf(`
 const data = readFileSync(%q);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
-back[0].Pick.Type = 0x5A5A5A5A;
-back[0].Pick.Alpha.M = 0x5A5A5A5A;
-back[0].Pick.Beta.N = 0x5A5A5A5A;
-back[0].Pick.Gamma.P = 0x5A5A5A5A;
-back[0].Seq = 0x5A5A5A5A;
+back[0].pick.type = 0x5A5A5A5A;
+back[0].pick.alpha.m = 0x5A5A5A5A;
+back[0].pick.beta.n = 0x5A5A5A5A;
+back[0].pick.gamma.p = 0x5A5A5A5A;
+back[0].seq = 0x5A5A5A5A;
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 %s
@@ -65,10 +65,10 @@ const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), repo
 	identity := fmt.Sprintf(`
 const data = readFileSync(%q);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
-back[0].Pick.Type = 0x5A5A5A5A;
-back[0].Pick.Alpha.M = 0x5A5A5A5A;
-back[0].Pick.Beta.N = 0x5A5A5A5A;
-back[0].Seq = 0x5A5A5A5A;
+back[0].pick.type = 0x5A5A5A5A;
+back[0].pick.alpha.m = 0x5A5A5A5A;
+back[0].pick.beta.n = 0x5A5A5A5A;
+back[0].seq = 0x5A5A5A5A;
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 %s

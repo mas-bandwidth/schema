@@ -19,1054 +19,326 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type Vec3: the flat codec ----
 
-function writeVec3FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteVec3Flat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold Vec3MaxBytes.
+export function WriteVec3Flat(view, value) {
+  view.setFloat64(0, value.x, true);
+  view.setFloat64(8, value.y, true);
+  view.setFloat64(16, value.z, true);
+  return 24;
 }
 
-function writeVec3FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteVec3Flat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold Vec3MaxBytes.
-export const WriteVec3Flat = PRODUCTION ? writeVec3FlatProduction : writeVec3FlatChecked;
-
-// ReadVec3Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadVec3Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadVec3Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 192 > numBits) {
+export function ReadVec3Flat(view, numBits, value) {
+  if (192 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.X = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Y = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Z = SC.getFloat64(0, true);
+  value.x = view.getFloat64(0, true);
+  value.y = view.getFloat64(8, true);
+  value.z = view.getFloat64(16, true);
   return true;
 }
 
 // ---- type Quat: the flat codec ----
 
-function writeQuatFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.W, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteQuatFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold QuatMaxBytes.
+export function WriteQuatFlat(view, value) {
+  view.setFloat64(0, value.x, true);
+  view.setFloat64(8, value.y, true);
+  view.setFloat64(16, value.z, true);
+  view.setFloat64(24, value.w, true);
+  return 32;
 }
 
-function writeQuatFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.W, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteQuatFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold QuatMaxBytes.
-export const WriteQuatFlat = PRODUCTION ? writeQuatFlatProduction : writeQuatFlatChecked;
-
-// ReadQuatFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadQuatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadQuatFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 256 > numBits) {
+export function ReadQuatFlat(view, numBits, value) {
+  if (256 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.X = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Y = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Z = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.W = SC.getFloat64(0, true);
+  value.x = view.getFloat64(0, true);
+  value.y = view.getFloat64(8, true);
+  value.z = view.getFloat64(16, true);
+  value.w = view.getFloat64(24, true);
   return true;
 }
 
 // ---- type Handle: the flat codec ----
 
-function writeHandleFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ObjectId) & 0x3fff) | (((value.ObjectSequence) & 0xff) << 14)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 22;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (22 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeHandleFlatProduction(view, value) {
+  let lo = 0;
+  lo = (((value.objectId) & 0x3fff) | (((value.objectSequence) & 0xff) << 14));
+  view.setUint32(0, lo, true);
+  return 3;
 }
 
-function writeHandleFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ObjectId) || value.ObjectId < 0 || value.ObjectId > 9999) {
+function writeHandleFlatChecked(view, value) {
+  let lo = 0;
+  if (!Number.isInteger(value.objectId) || value.objectId < 0 || value.objectId > 9999) {
     return -1;
   }
-  v = (((value.ObjectId) & 0x3fff) | (((value.ObjectSequence) & 0xff) << 14)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 22;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (22 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  lo = (((value.objectId) & 0x3fff) | (((value.objectSequence) & 0xff) << 14));
+  view.setUint32(0, lo, true);
+  return 3;
 }
 
-// WriteHandleFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteHandleFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold HandleMaxBytes.
 export const WriteHandleFlat = PRODUCTION ? writeHandleFlatProduction : writeHandleFlatChecked;
 
-// ReadHandleFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadHandleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadHandleFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 22 > numBits) {
+export function ReadHandleFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (22 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x3fff) >>> 0;
   if (v > 9999) { // a smuggled offset is refused
     return false;
   }
-  value.ObjectId = v | 0;
+  value.objectId = v | 0;
   v = (out >>> 14) & 0xff;
-  value.ObjectSequence = v;
+  value.objectSequence = v;
   return true;
 }
 
 // ---- type QuantizedPosition: the flat codec ----
 
-function writeQuantizedPositionFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((((value.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  v = (((((value.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  v = (((((value.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeQuantizedPositionFlatProduction(view, value) {
+  let v = 0, lo = 0;
+  lo = (((((value.x >>> 0) - 4286578688) >>> 0) & 0x1ffffff));
+  v = (((((value.y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 25)) >>> 0, true);
+  lo = v >>> 7;
+  v = (((((value.z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(4, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  view.setUint32(8, lo, true);
+  return 10;
 }
 
-function writeQuantizedPositionFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.X) || value.X < -8388608 || value.X > 8388608) {
+function writeQuantizedPositionFlatChecked(view, value) {
+  let v = 0, lo = 0;
+  if (!Number.isInteger(value.x) || value.x < -8388608 || value.x > 8388608) {
     return -1;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -8388608 || value.Y > 8388608) {
+  if (!Number.isInteger(value.y) || value.y < -8388608 || value.y > 8388608) {
     return -1;
   }
-  v = (((((value.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (!Number.isInteger(value.Z) || value.Z < -8388608 || value.Z > 8388608) {
+  lo = (((((value.x >>> 0) - 4286578688) >>> 0) & 0x1ffffff));
+  if (!Number.isInteger(value.z) || value.z < -8388608 || value.z > 8388608) {
     return -1;
   }
-  v = (((((value.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  v = (((((value.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  v = (((((value.y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 25)) >>> 0, true);
+  lo = v >>> 7;
+  v = (((((value.z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(4, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  view.setUint32(8, lo, true);
+  return 10;
 }
 
-// WriteQuantizedPositionFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteQuantizedPositionFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold QuantizedPositionMaxBytes.
 export const WriteQuantizedPositionFlat = PRODUCTION ? writeQuantizedPositionFlatProduction : writeQuantizedPositionFlatChecked;
 
-// ReadQuantizedPositionFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadQuantizedPositionFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadQuantizedPositionFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 75 > numBits) {
+export function ReadQuantizedPositionFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (75 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1ffffff) >>> 0;
   if (v > 16777216) { // a smuggled offset is refused
     return false;
   }
-  value.X = (v + 4286578688) | 0;
-  br += 25;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.x = (v + 4286578688) | 0;
+  out = (view.getUint32(3, true) >>> 1) | (view.getUint32(7, true) << 31);
   v = (out & 0x1ffffff) >>> 0;
   if (v > 16777216) { // a smuggled offset is refused
     return false;
   }
-  value.Y = (v + 4286578688) | 0;
-  br += 25;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.y = (v + 4286578688) | 0;
+  out = (view.getUint32(6, true) >>> 2) | (view.getUint32(10, true) << 30);
   v = (out & 0x1ffffff) >>> 0;
   if (v > 16777216) { // a smuggled offset is refused
     return false;
   }
-  value.Z = (v + 4286578688) | 0;
+  value.z = (v + 4286578688) | 0;
   return true;
 }
 
 // ---- type QuantizedVelocity: the flat codec ----
 
-function writeQuantizedVelocityFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((((value.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = (((((value.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = (((((value.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeQuantizedVelocityFlatProduction(view, value) {
+  let v = 0, lo = 0;
+  lo = (((((value.x >>> 0) - 4292870144) >>> 0) & 0x7fffff));
+  v = (((((value.y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 23)) >>> 0, true);
+  lo = v >>> 9;
+  v = (((((value.z >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(4, (lo | (v << 14)) >>> 0, true);
+  lo = v >>> 18;
+  view.setUint32(8, lo, true);
+  return 9;
 }
 
-function writeQuantizedVelocityFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.X) || value.X < -2097152 || value.X > 2097152) {
+function writeQuantizedVelocityFlatChecked(view, value) {
+  let v = 0, lo = 0;
+  if (!Number.isInteger(value.x) || value.x < -2097152 || value.x > 2097152) {
     return -1;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -2097152 || value.Y > 2097152) {
+  if (!Number.isInteger(value.y) || value.y < -2097152 || value.y > 2097152) {
     return -1;
   }
-  v = (((((value.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  if (!Number.isInteger(value.Z) || value.Z < -2097152 || value.Z > 2097152) {
+  lo = (((((value.x >>> 0) - 4292870144) >>> 0) & 0x7fffff));
+  if (!Number.isInteger(value.z) || value.z < -2097152 || value.z > 2097152) {
     return -1;
   }
-  v = (((((value.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = (((((value.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  v = (((((value.y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 23)) >>> 0, true);
+  lo = v >>> 9;
+  v = (((((value.z >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(4, (lo | (v << 14)) >>> 0, true);
+  lo = v >>> 18;
+  view.setUint32(8, lo, true);
+  return 9;
 }
 
-// WriteQuantizedVelocityFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteQuantizedVelocityFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold QuantizedVelocityMaxBytes.
 export const WriteQuantizedVelocityFlat = PRODUCTION ? writeQuantizedVelocityFlatProduction : writeQuantizedVelocityFlatChecked;
 
-// ReadQuantizedVelocityFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadQuantizedVelocityFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadQuantizedVelocityFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 69 > numBits) {
+export function ReadQuantizedVelocityFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (69 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x7fffff) >>> 0;
   if (v > 4194304) { // a smuggled offset is refused
     return false;
   }
-  value.X = (v + 4292870144) | 0;
-  br += 23;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.x = (v + 4292870144) | 0;
+  out = (view.getUint32(2, true) >>> 7) | (view.getUint32(6, true) << 25);
   v = (out & 0x7fffff) >>> 0;
   if (v > 4194304) { // a smuggled offset is refused
     return false;
   }
-  value.Y = (v + 4292870144) | 0;
-  br += 23;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.y = (v + 4292870144) | 0;
+  out = (view.getUint32(5, true) >>> 6) | (view.getUint32(9, true) << 26);
   v = (out & 0x7fffff) >>> 0;
   if (v > 4194304) { // a smuggled offset is refused
     return false;
   }
-  value.Z = (v + 4292870144) | 0;
+  value.z = (v + 4292870144) | 0;
   return true;
 }
 
 // ---- type QuantizedRotation: the flat codec ----
 
-function writeQuantizedRotationFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((((value.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  v = (((((value.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeQuantizedRotationFlatProduction(view, value) {
+  let v = 0, lo = 0;
+  lo = (((((value.x >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12));
+  v = (((((value.z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.w >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
+  view.setUint32(0, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  view.setUint32(4, lo, true);
+  return 6;
 }
 
-function writeQuantizedRotationFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.X) || value.X < -1024 || value.X > 1024) {
+function writeQuantizedRotationFlatChecked(view, value) {
+  let v = 0, lo = 0;
+  if (!Number.isInteger(value.x) || value.x < -1024 || value.x > 1024) {
     return -1;
   }
-  if (!Number.isInteger(value.Y) || value.Y < -1024 || value.Y > 1024) {
+  if (!Number.isInteger(value.y) || value.y < -1024 || value.y > 1024) {
     return -1;
   }
-  if (!Number.isInteger(value.Z) || value.Z < -1024 || value.Z > 1024) {
+  if (!Number.isInteger(value.z) || value.z < -1024 || value.z > 1024) {
     return -1;
   }
-  v = (((((value.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (!Number.isInteger(value.W) || value.W < -1024 || value.W > 1024) {
+  lo = (((((value.x >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12));
+  if (!Number.isInteger(value.w) || value.w < -1024 || value.w > 1024) {
     return -1;
   }
-  v = (((((value.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  v = (((((value.z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.w >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
+  view.setUint32(0, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  view.setUint32(4, lo, true);
+  return 6;
 }
 
-// WriteQuantizedRotationFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteQuantizedRotationFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold QuantizedRotationMaxBytes.
 export const WriteQuantizedRotationFlat = PRODUCTION ? writeQuantizedRotationFlatProduction : writeQuantizedRotationFlatChecked;
 
-// ReadQuantizedRotationFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadQuantizedRotationFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadQuantizedRotationFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 48 > numBits) {
+export function ReadQuantizedRotationFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (48 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xfff) >>> 0;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.X = (v + 4294966272) | 0;
+  value.x = (v + 4294966272) | 0;
   v = (out >>> 12) & 0xfff;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.Y = (v + 4294966272) | 0;
-  br += 24;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.y = (v + 4294966272) | 0;
+  out = view.getUint32(3, true);
   v = (out & 0xfff) >>> 0;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.Z = (v + 4294966272) | 0;
+  value.z = (v + 4294966272) | 0;
   v = (out >>> 12) & 0xfff;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.W = (v + 4294966272) | 0;
+  value.w = (v + 4294966272) | 0;
   return true;
 }
 
 // ---- type RigidBody: the flat codec ----
 
-function writeRigidBodyFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.Position.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Position.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Position.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.W, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.AtRest ? 1 : 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  if (!value.AtRest) {
-    SC.setFloat64(0, value.LinearVelocity.X, true);
+// WriteRigidBodyFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold RigidBodyMaxBytes.
+export function WriteRigidBodyFlat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  view.setFloat64(0, value.position.x, true);
+  view.setFloat64(8, value.position.y, true);
+  view.setFloat64(16, value.position.z, true);
+  view.setFloat64(24, value.orientation.x, true);
+  view.setFloat64(32, value.orientation.y, true);
+  view.setFloat64(40, value.orientation.z, true);
+  view.setFloat64(48, value.orientation.w, true);
+  lo = ((value.atRest ? 1 : 0));
+  wi = 56;
+  sb = 1;
+  if (!value.atRest) {
+    SC.setFloat64(0, value.linearVelocity.x, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1085,7 +357,7 @@ function writeRigidBodyFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setFloat64(0, value.LinearVelocity.Y, true);
+    SC.setFloat64(0, value.linearVelocity.y, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1104,7 +376,7 @@ function writeRigidBodyFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setFloat64(0, value.LinearVelocity.Z, true);
+    SC.setFloat64(0, value.linearVelocity.z, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1123,7 +395,7 @@ function writeRigidBodyFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setFloat64(0, value.AngularVelocity.X, true);
+    SC.setFloat64(0, value.angularVelocity.x, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1142,7 +414,7 @@ function writeRigidBodyFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setFloat64(0, value.AngularVelocity.Y, true);
+    SC.setFloat64(0, value.angularVelocity.y, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1161,7 +433,7 @@ function writeRigidBodyFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    SC.setFloat64(0, value.AngularVelocity.Z, true);
+    SC.setFloat64(0, value.angularVelocity.z, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1187,414 +459,25 @@ function writeRigidBodyFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeRigidBodyFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.Position.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Position.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Position.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Orientation.W, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.AtRest ? 1 : 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  if (!value.AtRest) {
-    SC.setFloat64(0, value.LinearVelocity.X, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setFloat64(0, value.LinearVelocity.Y, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setFloat64(0, value.LinearVelocity.Z, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setFloat64(0, value.AngularVelocity.X, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setFloat64(0, value.AngularVelocity.Y, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setFloat64(0, value.AngularVelocity.Z, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteRigidBodyFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold RigidBodyMaxBytes.
-export const WriteRigidBodyFlat = PRODUCTION ? writeRigidBodyFlatProduction : writeRigidBodyFlatChecked;
-
-// ReadRigidBodyFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadRigidBodyFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadRigidBodyFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 449 > numBits) {
+export function ReadRigidBodyFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (449 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Position.X = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Position.Y = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Position.Z = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Orientation.X = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Orientation.Y = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Orientation.Z = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Orientation.W = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.position.x = view.getFloat64(0, true);
+  value.position.y = view.getFloat64(8, true);
+  value.position.z = view.getFloat64(16, true);
+  value.orientation.x = view.getFloat64(24, true);
+  value.orientation.y = view.getFloat64(32, true);
+  value.orientation.z = view.getFloat64(40, true);
+  value.orientation.w = view.getFloat64(48, true);
+  out = view.getUint32(56, true);
   v = (out & 0x1) >>> 0;
-  value.AtRest = v !== 0;
-  br += 1;
-  if (!value.AtRest) {
+  value.atRest = v !== 0;
+  br = 449;
+  if (!value.atRest) {
     if (br + 384 > numBits) {
       return false;
     }
@@ -1613,7 +496,7 @@ export function ReadRigidBodyFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.LinearVelocity.X = SC.getFloat64(0, true);
+    value.linearVelocity.x = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1630,7 +513,7 @@ export function ReadRigidBodyFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.LinearVelocity.Y = SC.getFloat64(0, true);
+    value.linearVelocity.y = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1647,7 +530,7 @@ export function ReadRigidBodyFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.LinearVelocity.Z = SC.getFloat64(0, true);
+    value.linearVelocity.z = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1664,7 +547,7 @@ export function ReadRigidBodyFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.AngularVelocity.X = SC.getFloat64(0, true);
+    value.angularVelocity.x = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1681,7 +564,7 @@ export function ReadRigidBodyFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.AngularVelocity.Y = SC.getFloat64(0, true);
+    value.angularVelocity.y = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -1698,26 +581,28 @@ export function ReadRigidBodyFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.AngularVelocity.Z = SC.getFloat64(0, true);
+    value.angularVelocity.z = SC.getFloat64(0, true);
     br += 32;
   } else {
-    value.LinearVelocity.X = 0;
-    value.LinearVelocity.Y = 0;
-    value.LinearVelocity.Z = 0;
-    value.AngularVelocity.X = 0;
-    value.AngularVelocity.Y = 0;
-    value.AngularVelocity.Z = 0;
+    value.linearVelocity.x = 0;
+    value.linearVelocity.y = 0;
+    value.linearVelocity.z = 0;
+    value.angularVelocity.x = 0;
+    value.angularVelocity.y = 0;
+    value.angularVelocity.z = 0;
   }
   return true;
 }
 
 // ---- type Input: the flat codec ----
 
-function writeInputFlatProduction(value, view) {
-  let v = 0, x = 0, t0 = 0, t1 = 0;
+// WriteInputFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold InputMaxBytes.
+export function WriteInputFlat(view, value) {
+  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0;
   let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  x = value.StickX;
+  x = value.stickX;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1729,15 +614,8 @@ function writeInputFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.StickY;
+  view.setUint32(0, v, true);
+  x = value.stickY;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1749,15 +627,8 @@ function writeInputFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.Throttle;
+  view.setUint32(4, v, true);
+  x = value.throttle;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1769,15 +640,8 @@ function writeInputFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.Yaw;
+  view.setUint32(8, v, true);
+  x = value.yaw;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1789,15 +653,8 @@ function writeInputFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.Pitch;
+  view.setUint32(12, v, true);
+  x = value.pitch;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1809,320 +666,110 @@ function writeInputFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.Fire ? 1 : 0) | ((value.AltFire ? 1 : 0) << 1) | ((value.Boost ? 1 : 0) << 2) | ((value.Brake ? 1 : 0) << 3) | ((value.Aim ? 1 : 0) << 4) | ((value.LockOn ? 1 : 0) << 5) | ((value.Zoom ? 1 : 0) << 6) | ((value.Ping ? 1 : 0) << 7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(16, v, true);
+  lo = ((value.fire ? 1 : 0) | ((value.altFire ? 1 : 0) << 1) | ((value.boost ? 1 : 0) << 2) | ((value.brake ? 1 : 0) << 3) | ((value.aim ? 1 : 0) << 4) | ((value.lockOn ? 1 : 0) << 5) | ((value.zoom ? 1 : 0) << 6) | ((value.ping ? 1 : 0) << 7));
+  view.setUint32(20, lo, true);
+  return 21;
 }
 
-function writeInputFlatChecked(value, view) {
-  let v = 0, x = 0, t0 = 0, t1 = 0;
-  let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  x = value.StickX;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.StickY;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.Throttle;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.Yaw;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.Pitch;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.Fire ? 1 : 0) | ((value.AltFire ? 1 : 0) << 1) | ((value.Boost ? 1 : 0) << 2) | ((value.Brake ? 1 : 0) << 3) | ((value.Aim ? 1 : 0) << 4) | ((value.LockOn ? 1 : 0) << 5) | ((value.Zoom ? 1 : 0) << 6) | ((value.Ping ? 1 : 0) << 7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteInputFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold InputMaxBytes.
-export const WriteInputFlat = PRODUCTION ? writeInputFlatProduction : writeInputFlatChecked;
-
-// ReadInputFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadInputFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadInputFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 168 > numBits) {
+export function ReadInputFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (168 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = out >>> 0;
-  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.StickX = SC.getFloat64(0, true);
+    value.stickX = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.StickX = SC.getFloat32(0, true);
+    value.stickX = SC.getFloat32(0, true);
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(4, true);
   v = out >>> 0;
-  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.StickY = SC.getFloat64(0, true);
+    value.stickY = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.StickY = SC.getFloat32(0, true);
+    value.stickY = SC.getFloat32(0, true);
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(8, true);
   v = out >>> 0;
-  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.Throttle = SC.getFloat64(0, true);
+    value.throttle = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.Throttle = SC.getFloat32(0, true);
+    value.throttle = SC.getFloat32(0, true);
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(12, true);
   v = out >>> 0;
-  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.Yaw = SC.getFloat64(0, true);
+    value.yaw = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.Yaw = SC.getFloat32(0, true);
+    value.yaw = SC.getFloat32(0, true);
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(16, true);
   v = out >>> 0;
-  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.Pitch = SC.getFloat64(0, true);
+    value.pitch = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.Pitch = SC.getFloat32(0, true);
+    value.pitch = SC.getFloat32(0, true);
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(20, true);
   v = (out & 0x1) >>> 0;
-  value.Fire = v !== 0;
+  value.fire = v !== 0;
   v = (out >>> 1) & 0x1;
-  value.AltFire = v !== 0;
+  value.altFire = v !== 0;
   v = (out >>> 2) & 0x1;
-  value.Boost = v !== 0;
+  value.boost = v !== 0;
   v = (out >>> 3) & 0x1;
-  value.Brake = v !== 0;
+  value.brake = v !== 0;
   v = (out >>> 4) & 0x1;
-  value.Aim = v !== 0;
+  value.aim = v !== 0;
   v = (out >>> 5) & 0x1;
-  value.LockOn = v !== 0;
+  value.lockOn = v !== 0;
   v = (out >>> 6) & 0x1;
-  value.Zoom = v !== 0;
+  value.zoom = v !== 0;
   v = (out >>> 7) & 0x1;
-  value.Ping = v !== 0;
+  value.ping = v !== 0;
   return true;
 }
 
 // ---- type InputPacket: the flat codec ----
 
-function writeInputPacketFlatProduction(value, view) {
-  let v = 0, x = 0, t0 = 0, t1 = 0;
+function writeInputPacketFlatProduction(view, value) {
+  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.SynchronizeSequence) & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  SC.setBigUint64(0, value.CurrentFrame, true);
+  lo = (((value.synchronizeSequence) & 0xffff));
+  SC.setBigUint64(0, value.currentFrame, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.StartFrame, true);
+  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
+  SC.setBigUint64(0, value.startFrame, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(8, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.InputsCount) & 0x1f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  for (let i0 = 0; i0 < value.InputsCount; i0++) {
-    const e0 = value.Inputs[i0];
-    x = e0.StickX;
+  view.setUint32(12, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
+  lo = (lo | ((((value.inputsCount) & 0x1f)) << 16)) >>> 0;
+  wi = 16;
+  sb = 21;
+  for (let i0 = 0; i0 < value.inputsCount; i0++) {
+    const e0 = value.inputs[i0];
+    x = e0.stickX;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2142,7 +789,7 @@ function writeInputPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.StickY;
+    x = e0.stickY;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2162,7 +809,7 @@ function writeInputPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.Throttle;
+    x = e0.throttle;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2182,7 +829,7 @@ function writeInputPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.Yaw;
+    x = e0.yaw;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2202,7 +849,7 @@ function writeInputPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.Pitch;
+    x = e0.pitch;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2222,7 +869,7 @@ function writeInputPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = ((e0.Fire ? 1 : 0) | ((e0.AltFire ? 1 : 0) << 1) | ((e0.Boost ? 1 : 0) << 2) | ((e0.Brake ? 1 : 0) << 3) | ((e0.Aim ? 1 : 0) << 4) | ((e0.LockOn ? 1 : 0) << 5) | ((e0.Zoom ? 1 : 0) << 6) | ((e0.Ping ? 1 : 0) << 7)) >>> 0;
+    v = ((e0.fire ? 1 : 0) | ((e0.altFire ? 1 : 0) << 1) | ((e0.boost ? 1 : 0) << 2) | ((e0.brake ? 1 : 0) << 3) | ((e0.aim ? 1 : 0) << 4) | ((e0.lockOn ? 1 : 0) << 5) | ((e0.zoom ? 1 : 0) << 6) | ((e0.ping ? 1 : 0) << 7)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -2238,72 +885,33 @@ function writeInputPacketFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeInputPacketFlatChecked(value, view) {
-  let v = 0, x = 0, t0 = 0, t1 = 0;
+function writeInputPacketFlatChecked(view, value) {
+  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.SynchronizeSequence) & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  SC.setBigUint64(0, value.CurrentFrame, true);
+  lo = (((value.synchronizeSequence) & 0xffff));
+  SC.setBigUint64(0, value.currentFrame, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.StartFrame, true);
+  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
+  SC.setBigUint64(0, value.startFrame, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(8, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (!Number.isInteger(value.InputsCount) || value.InputsCount < 0 || value.InputsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+  view.setUint32(12, (lo | (v << 16)) >>> 0, true);
+  lo = v >>> 16;
+  if (!Number.isInteger(value.inputsCount) || value.inputsCount < 0 || value.inputsCount > 16) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.InputsCount) & 0x1f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  for (let i0 = 0; i0 < value.InputsCount; i0++) {
-    const e0 = value.Inputs[i0];
-    x = e0.StickX;
+  lo = (lo | ((((value.inputsCount) & 0x1f)) << 16)) >>> 0;
+  wi = 16;
+  sb = 21;
+  for (let i0 = 0; i0 < value.inputsCount; i0++) {
+    const e0 = value.inputs[i0];
+    x = e0.stickX;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2323,7 +931,7 @@ function writeInputPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.StickY;
+    x = e0.stickY;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2343,7 +951,7 @@ function writeInputPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.Throttle;
+    x = e0.throttle;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2363,7 +971,7 @@ function writeInputPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.Yaw;
+    x = e0.yaw;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2383,7 +991,7 @@ function writeInputPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    x = e0.Pitch;
+    x = e0.pitch;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -2403,7 +1011,7 @@ function writeInputPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = ((e0.Fire ? 1 : 0) | ((e0.AltFire ? 1 : 0) << 1) | ((e0.Boost ? 1 : 0) << 2) | ((e0.Brake ? 1 : 0) << 3) | ((e0.Aim ? 1 : 0) << 4) | ((e0.LockOn ? 1 : 0) << 5) | ((e0.Zoom ? 1 : 0) << 6) | ((e0.Ping ? 1 : 0) << 7)) >>> 0;
+    v = ((e0.fire ? 1 : 0) | ((e0.altFire ? 1 : 0) << 1) | ((e0.boost ? 1 : 0) << 2) | ((e0.brake ? 1 : 0) << 3) | ((e0.aim ? 1 : 0) << 4) | ((e0.lockOn ? 1 : 0) << 5) | ((e0.zoom ? 1 : 0) << 6) | ((e0.ping ? 1 : 0) << 7)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -2419,83 +1027,53 @@ function writeInputPacketFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteInputPacketFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteInputPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold InputPacketMaxBytes.
 export const WriteInputPacketFlat = PRODUCTION ? writeInputPacketFlatProduction : writeInputPacketFlatChecked;
 
-// ReadInputPacketFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadInputPacketFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadInputPacketFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadInputPacketFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 144 > numBits) {
+  if (144 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xffff) >>> 0;
-  value.SynchronizeSequence = v;
-  br += 16;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.synchronizeSequence = v;
+  out = view.getUint32(2, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(6, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.CurrentFrame = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.currentFrame = bg;
+  out = view.getUint32(10, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(14, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.StartFrame = bg;
-  br += 32;
-  if (br + 5 > numBits) {
+  value.startFrame = bg;
+  if (149 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(18, true);
   v = (out & 0x1f) >>> 0;
   if (v > 16) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.InputsCount = v;
-  br += 5;
-  if (br + value.InputsCount * 168 > numBits) {
+  value.inputsCount = v;
+  br = 149;
+  if (br + value.inputsCount * 168 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.InputsCount; i0++) {
-    const e0 = value.Inputs[i0];
+  for (let i0 = 0; i0 < value.inputsCount; i0++) {
+    const e0 = value.inputs[i0];
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -2505,10 +1083,10 @@ export function ReadInputPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      e0.StickX = SC.getFloat64(0, true);
+      e0.stickX = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      e0.StickX = SC.getFloat32(0, true);
+      e0.stickX = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2519,10 +1097,10 @@ export function ReadInputPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      e0.StickY = SC.getFloat64(0, true);
+      e0.stickY = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      e0.StickY = SC.getFloat32(0, true);
+      e0.stickY = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2533,10 +1111,10 @@ export function ReadInputPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      e0.Throttle = SC.getFloat64(0, true);
+      e0.throttle = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      e0.Throttle = SC.getFloat32(0, true);
+      e0.throttle = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2547,10 +1125,10 @@ export function ReadInputPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      e0.Yaw = SC.getFloat64(0, true);
+      e0.yaw = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      e0.Yaw = SC.getFloat32(0, true);
+      e0.yaw = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2561,10 +1139,10 @@ export function ReadInputPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      e0.Pitch = SC.getFloat64(0, true);
+      e0.pitch = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      e0.Pitch = SC.getFloat32(0, true);
+      e0.pitch = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2572,21 +1150,21 @@ export function ReadInputPacketFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1) >>> 0;
-    e0.Fire = v !== 0;
+    e0.fire = v !== 0;
     v = (out >>> 1) & 0x1;
-    e0.AltFire = v !== 0;
+    e0.altFire = v !== 0;
     v = (out >>> 2) & 0x1;
-    e0.Boost = v !== 0;
+    e0.boost = v !== 0;
     v = (out >>> 3) & 0x1;
-    e0.Brake = v !== 0;
+    e0.brake = v !== 0;
     v = (out >>> 4) & 0x1;
-    e0.Aim = v !== 0;
+    e0.aim = v !== 0;
     v = (out >>> 5) & 0x1;
-    e0.LockOn = v !== 0;
+    e0.lockOn = v !== 0;
     v = (out >>> 6) & 0x1;
-    e0.Zoom = v !== 0;
+    e0.zoom = v !== 0;
     v = (out >>> 7) & 0x1;
-    e0.Ping = v !== 0;
+    e0.ping = v !== 0;
     br += 8;
   }
   return true;
@@ -2594,83 +1172,32 @@ export function ReadInputPacketFlat(value, view, numBits) {
 
 // ---- type ShipCreate: the flat codec ----
 
-function writeShipCreateFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.ShipType & 0x7) | (((((value.Position.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) << 3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 28;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (28 - sb);
-  }
-  v = (((((value.Position.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  v = (((((value.Position.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  v = (((((value.Rotation.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  v = (((((value.Rotation.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  v = (((((value.LinearVelocity.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = (((((value.LinearVelocity.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = (((((value.LinearVelocity.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.HasFlags ? 1 : 0) << 23)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (value.HasFlags) {
-    SC.setBigUint64(0, value.Flags, true);
+function writeShipCreateFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = ((value.shipType & 0x7) | (((((value.position.x >>> 0) - 4286578688) >>> 0) & 0x1ffffff) << 3));
+  v = (((((value.position.y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 28)) >>> 0, true);
+  lo = v >>> 4;
+  v = (((((value.position.z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(4, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  v = (((((value.rotation.x >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.rotation.y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
+  view.setUint32(8, (lo | (v << 14)) >>> 0, true);
+  lo = v >>> 18;
+  lo = (lo | ((((((value.rotation.z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.rotation.w >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) << 6)) >>> 0;
+  v = (((((value.linearVelocity.x >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(12, (lo | (v << 30)) >>> 0, true);
+  lo = v >>> 2;
+  v = (((((value.linearVelocity.y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(16, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  v = (((((value.linearVelocity.z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.hasFlags ? 1 : 0) << 23)) >>> 0;
+  view.setUint32(20, (lo | (v << 12)) >>> 0, true);
+  lo = v >>> 20;
+  wi = 24;
+  sb = 4;
+  if (value.hasFlags) {
+    SC.setBigUint64(0, value.flags, true);
     v = SC.getUint32(0, true) & 0xf;
     lo = (lo | (v << sb)) >>> 0;
     sb += 4;
@@ -2681,7 +1208,7 @@ function writeShipCreateFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
   }
-  v = ((value.Team & 0x3) | (((value.Health) & 0x3ff) << 2) | (((value.Thrust) & 0x7f) << 12)) >>> 0;
+  v = ((value.team & 0x3) | (((value.health) & 0x3ff) << 2) | (((value.thrust) & 0x7f) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 19;
   if (sb >= 32) {
@@ -2696,119 +1223,68 @@ function writeShipCreateFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeShipCreateFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ShipType) || value.ShipType < 0 || value.ShipType > 5) { // headroom above the wire range cannot ride
+function writeShipCreateFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.shipType) || value.shipType < 0 || value.shipType > 5) { // headroom above the wire range cannot ride
     return -1;
   }
-  if (!Number.isInteger(value.Position.X) || value.Position.X < -8388608 || value.Position.X > 8388608) {
+  if (!Number.isInteger(value.position.x) || value.position.x < -8388608 || value.position.x > 8388608) {
     return -1;
   }
-  if (!Number.isInteger(value.Position.Y) || value.Position.Y < -8388608 || value.Position.Y > 8388608) {
+  if (!Number.isInteger(value.position.y) || value.position.y < -8388608 || value.position.y > 8388608) {
     return -1;
   }
-  v = ((value.ShipType & 0x7) | (((((value.Position.X >>> 0) - 4286578688) >>> 0) & 0x1ffffff) << 3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 28;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (28 - sb);
-  }
-  if (!Number.isInteger(value.Position.Z) || value.Position.Z < -8388608 || value.Position.Z > 8388608) {
+  lo = ((value.shipType & 0x7) | (((((value.position.x >>> 0) - 4286578688) >>> 0) & 0x1ffffff) << 3));
+  if (!Number.isInteger(value.position.z) || value.position.z < -8388608 || value.position.z > 8388608) {
     return -1;
   }
-  v = (((((value.Position.Y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (!Number.isInteger(value.Rotation.X) || value.Rotation.X < -1024 || value.Rotation.X > 1024) {
+  v = (((((value.position.y >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 28)) >>> 0, true);
+  lo = v >>> 4;
+  if (!Number.isInteger(value.rotation.x) || value.rotation.x < -1024 || value.rotation.x > 1024) {
     return -1;
   }
-  v = (((((value.Position.Z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  if (!Number.isInteger(value.Rotation.Y) || value.Rotation.Y < -1024 || value.Rotation.Y > 1024) {
+  v = (((((value.position.z >>> 0) - 4286578688) >>> 0) & 0x1ffffff)) >>> 0;
+  view.setUint32(4, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  if (!Number.isInteger(value.rotation.y) || value.rotation.y < -1024 || value.rotation.y > 1024) {
     return -1;
   }
-  if (!Number.isInteger(value.Rotation.Z) || value.Rotation.Z < -1024 || value.Rotation.Z > 1024) {
+  if (!Number.isInteger(value.rotation.z) || value.rotation.z < -1024 || value.rotation.z > 1024) {
     return -1;
   }
-  v = (((((value.Rotation.X >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.Y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (!Number.isInteger(value.Rotation.W) || value.Rotation.W < -1024 || value.Rotation.W > 1024) {
+  v = (((((value.rotation.x >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.rotation.y >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
+  view.setUint32(8, (lo | (v << 14)) >>> 0, true);
+  lo = v >>> 18;
+  if (!Number.isInteger(value.rotation.w) || value.rotation.w < -1024 || value.rotation.w > 1024) {
     return -1;
   }
-  if (!Number.isInteger(value.LinearVelocity.X) || value.LinearVelocity.X < -2097152 || value.LinearVelocity.X > 2097152) {
+  if (!Number.isInteger(value.linearVelocity.x) || value.linearVelocity.x < -2097152 || value.linearVelocity.x > 2097152) {
     return -1;
   }
-  v = (((((value.Rotation.Z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.Rotation.W >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (!Number.isInteger(value.LinearVelocity.Y) || value.LinearVelocity.Y < -2097152 || value.LinearVelocity.Y > 2097152) {
+  lo = (lo | ((((((value.rotation.z >>> 0) - 4294966272) >>> 0) & 0xfff) | (((((value.rotation.w >>> 0) - 4294966272) >>> 0) & 0xfff) << 12)) << 6)) >>> 0;
+  if (!Number.isInteger(value.linearVelocity.y) || value.linearVelocity.y < -2097152 || value.linearVelocity.y > 2097152) {
     return -1;
   }
-  v = (((((value.LinearVelocity.X >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  if (!Number.isInteger(value.LinearVelocity.Z) || value.LinearVelocity.Z < -2097152 || value.LinearVelocity.Z > 2097152) {
+  v = (((((value.linearVelocity.x >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(12, (lo | (v << 30)) >>> 0, true);
+  lo = v >>> 2;
+  if (!Number.isInteger(value.linearVelocity.z) || value.linearVelocity.z < -2097152 || value.linearVelocity.z > 2097152) {
     return -1;
   }
-  v = (((((value.LinearVelocity.Y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = (((((value.LinearVelocity.Z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.HasFlags ? 1 : 0) << 23)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (value.HasFlags) {
-    if (BigInt.asUintN(64, value.Flags) >= 16n) { // a mask bit above the wire width cannot ride
+  v = (((((value.linearVelocity.y >>> 0) - 4292870144) >>> 0) & 0x7fffff)) >>> 0;
+  view.setUint32(16, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  v = (((((value.linearVelocity.z >>> 0) - 4292870144) >>> 0) & 0x7fffff) | ((value.hasFlags ? 1 : 0) << 23)) >>> 0;
+  view.setUint32(20, (lo | (v << 12)) >>> 0, true);
+  lo = v >>> 20;
+  wi = 24;
+  sb = 4;
+  if (value.hasFlags) {
+    if (BigInt.asUintN(64, value.flags) >= 16n) { // a mask bit above the wire width cannot ride
       return -1;
     }
-    SC.setBigUint64(0, value.Flags, true);
+    SC.setBigUint64(0, value.flags, true);
     v = SC.getUint32(0, true) & 0xf;
     lo = (lo | (v << sb)) >>> 0;
     sb += 4;
@@ -2819,19 +1295,19 @@ function writeShipCreateFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (4 - sb);
     }
   }
-  if (!Number.isInteger(value.Team) || value.Team < 0 || value.Team > 2) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return -1;
   }
-  if (!Number.isInteger(value.Health) || value.Health < 0 || value.Health > 1000) {
+  if (!Number.isInteger(value.health) || value.health < 0 || value.health > 1000) {
     return -1;
   }
-  if (!Number.isInteger(value.Thrust) || value.Thrust < 0 || value.Thrust > 100) {
+  if (!Number.isInteger(value.thrust) || value.thrust < 0 || value.thrust > 100) {
     return -1;
   }
-  if (!Number.isInteger(value.Pending) || value.Pending < 0 || value.Pending > 0) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.pending) || value.pending < 0 || value.pending > 0) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = ((value.Team & 0x3) | (((value.Health) & 0x3ff) << 2) | (((value.Thrust) & 0x7f) << 12)) >>> 0;
+  v = ((value.team & 0x3) | (((value.health) & 0x3ff) << 2) | (((value.thrust) & 0x7f) << 12)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 19;
   if (sb >= 32) {
@@ -2846,125 +1322,85 @@ function writeShipCreateFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteShipCreateFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteShipCreateFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ShipCreateMaxBytes.
 export const WriteShipCreateFlat = PRODUCTION ? writeShipCreateFlatProduction : writeShipCreateFlatChecked;
 
-// ReadShipCreateFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadShipCreateFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadShipCreateFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 196 > numBits) {
+export function ReadShipCreateFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (196 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x7) >>> 0;
   if (v > 5) { // headroom above the wire range is refused
     return false;
   }
-  value.ShipType = v;
+  value.shipType = v;
   v = (out >>> 3) & 0x1ffffff;
   if (v > 16777216) { // a smuggled offset is refused
     return false;
   }
-  value.Position.X = (v + 4286578688) | 0;
-  br += 28;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.position.x = (v + 4286578688) | 0;
+  out = (view.getUint32(3, true) >>> 4) | (view.getUint32(7, true) << 28);
   v = (out & 0x1ffffff) >>> 0;
   if (v > 16777216) { // a smuggled offset is refused
     return false;
   }
-  value.Position.Y = (v + 4286578688) | 0;
-  br += 25;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.position.y = (v + 4286578688) | 0;
+  out = (view.getUint32(6, true) >>> 5) | (view.getUint32(10, true) << 27);
   v = (out & 0x1ffffff) >>> 0;
   if (v > 16777216) { // a smuggled offset is refused
     return false;
   }
-  value.Position.Z = (v + 4286578688) | 0;
-  br += 25;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.position.z = (v + 4286578688) | 0;
+  out = (view.getUint32(9, true) >>> 6) | (view.getUint32(13, true) << 26);
   v = (out & 0xfff) >>> 0;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.Rotation.X = (v + 4294966272) | 0;
+  value.rotation.x = (v + 4294966272) | 0;
   v = (out >>> 12) & 0xfff;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.Rotation.Y = (v + 4294966272) | 0;
-  br += 24;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.rotation.y = (v + 4294966272) | 0;
+  out = (view.getUint32(12, true) >>> 6) | (view.getUint32(16, true) << 26);
   v = (out & 0xfff) >>> 0;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.Rotation.Z = (v + 4294966272) | 0;
+  value.rotation.z = (v + 4294966272) | 0;
   v = (out >>> 12) & 0xfff;
   if (v > 2048) { // a smuggled offset is refused
     return false;
   }
-  value.Rotation.W = (v + 4294966272) | 0;
-  br += 24;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.rotation.w = (v + 4294966272) | 0;
+  out = (view.getUint32(15, true) >>> 6) | (view.getUint32(19, true) << 26);
   v = (out & 0x7fffff) >>> 0;
   if (v > 4194304) { // a smuggled offset is refused
     return false;
   }
-  value.LinearVelocity.X = (v + 4292870144) | 0;
-  br += 23;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.linearVelocity.x = (v + 4292870144) | 0;
+  out = (view.getUint32(18, true) >>> 5) | (view.getUint32(22, true) << 27);
   v = (out & 0x7fffff) >>> 0;
   if (v > 4194304) { // a smuggled offset is refused
     return false;
   }
-  value.LinearVelocity.Y = (v + 4292870144) | 0;
-  br += 23;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.linearVelocity.y = (v + 4292870144) | 0;
+  out = (view.getUint32(21, true) >>> 4) | (view.getUint32(25, true) << 28);
   v = (out & 0x7fffff) >>> 0;
   if (v > 4194304) { // a smuggled offset is refused
     return false;
   }
-  value.LinearVelocity.Z = (v + 4292870144) | 0;
+  value.linearVelocity.z = (v + 4292870144) | 0;
   v = (out >>> 23) & 0x1;
-  value.HasFlags = v !== 0;
-  br += 24;
-  if (value.HasFlags) {
+  value.hasFlags = v !== 0;
+  br = 196;
+  if (value.hasFlags) {
     if (br + 4 > numBits) {
       return false;
     }
@@ -2974,10 +1410,10 @@ export function ReadShipCreateFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xf) >>> 0;
-    value.Flags = BigInt(v);
+    value.flags = BigInt(v);
     br += 4;
   } else {
-    value.Flags = 0n;
+    value.flags = 0n;
   }
   if (br + 19 > numBits) {
     return false;
@@ -2991,696 +1427,311 @@ export function ReadShipCreateFlat(value, view, numBits) {
   if (v > 2) { // headroom above the wire range is refused
     return false;
   }
-  value.Team = v;
+  value.team = v;
   v = (out >>> 2) & 0x3ff;
   if (v > 1000) { // a smuggled offset is refused
     return false;
   }
-  value.Health = v | 0;
+  value.health = v | 0;
   v = (out >>> 12) & 0x7f;
   if (v > 100) { // a smuggled offset is refused
     return false;
   }
-  value.Thrust = v | 0;
-  value.Pending = 0;
+  value.thrust = v | 0;
+  value.pending = 0;
   return true;
 }
 
 // ---- type ExpressionProbe: the flat codec ----
 
-function writeExpressionProbeFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.HardpointIndex) & 0x1f) | (((((value.SpinRate >>> 0) - 1024) >>> 0) & 0x7ff) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+function writeExpressionProbeFlatProduction(view, value) {
+  let lo = 0;
+  lo = (((value.hardpointIndex) & 0x1f) | (((((value.spinRate >>> 0) - 1024) >>> 0) & 0x7ff) << 5));
+  view.setUint32(0, lo, true);
+  return 2;
 }
 
-function writeExpressionProbeFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.HardpointIndex) || value.HardpointIndex < 0 || value.HardpointIndex > 31) {
+function writeExpressionProbeFlatChecked(view, value) {
+  let lo = 0;
+  if (!Number.isInteger(value.hardpointIndex) || value.hardpointIndex < 0 || value.hardpointIndex > 31) {
     return -1;
   }
-  if (!Number.isInteger(value.SpinRate) || value.SpinRate < 1024 || value.SpinRate > 2048) {
+  if (!Number.isInteger(value.spinRate) || value.spinRate < 1024 || value.spinRate > 2048) {
     return -1;
   }
-  v = (((value.HardpointIndex) & 0x1f) | (((((value.SpinRate >>> 0) - 1024) >>> 0) & 0x7ff) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  lo = (((value.hardpointIndex) & 0x1f) | (((((value.spinRate >>> 0) - 1024) >>> 0) & 0x7ff) << 5));
+  view.setUint32(0, lo, true);
+  return 2;
 }
 
-// WriteExpressionProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteExpressionProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ExpressionProbeMaxBytes.
 export const WriteExpressionProbeFlat = PRODUCTION ? writeExpressionProbeFlatProduction : writeExpressionProbeFlatChecked;
 
-// ReadExpressionProbeFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadExpressionProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadExpressionProbeFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 16 > numBits) {
+export function ReadExpressionProbeFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (16 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1f) >>> 0;
-  value.HardpointIndex = v | 0;
+  value.hardpointIndex = v | 0;
   v = (out >>> 5) & 0x7ff;
   if (v > 1024) { // a smuggled offset is refused
     return false;
   }
-  value.SpinRate = (v + 1024) | 0;
+  value.spinRate = (v + 1024) | 0;
   return true;
 }
 
 // ---- type ExtremeProbe: the flat codec ----
 
-function writeExtremeProbeFlatProduction(value, view) {
+function writeExtremeProbeFlatProduction(view, value) {
   let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, value.FloorBound - -9223372036854775808n, true);
+  SC.setBigUint64(0, value.floorBound - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.DoubledFloor - -9223372036854775808n, true);
+  view.setUint32(4, v, true);
+  SC.setBigUint64(0, value.doubledFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.CeilingRange - 1n, true);
+  view.setUint32(12, v, true);
+  SC.setBigUint64(0, value.ceilingRange - 1n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.FloorDefault, true);
+  view.setUint32(20, v, true);
+  SC.setBigUint64(0, value.floorDefault, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.CeilingDefault, true);
+  view.setUint32(28, v, true);
+  SC.setBigUint64(0, value.ceilingDefault, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(32, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(36, v, true);
+  return 40;
 }
 
-function writeExtremeProbeFlatChecked(value, view) {
+function writeExtremeProbeFlatChecked(view, value) {
   let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (value.FloorBound > 100n) {
+  if (value.floorBound > 100n) {
     return -1;
   }
-  SC.setBigUint64(0, value.FloorBound - -9223372036854775808n, true);
+  SC.setBigUint64(0, value.floorBound - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (value.DoubledFloor > 100n) {
+  view.setUint32(4, v, true);
+  if (value.doubledFloor > 100n) {
     return -1;
   }
-  SC.setBigUint64(0, value.DoubledFloor - -9223372036854775808n, true);
+  SC.setBigUint64(0, value.doubledFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (value.CeilingRange < 1n) {
+  view.setUint32(12, v, true);
+  if (value.ceilingRange < 1n) {
     return -1;
   }
-  SC.setBigUint64(0, value.CeilingRange - 1n, true);
+  SC.setBigUint64(0, value.ceilingRange - 1n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.FloorDefault, true);
+  view.setUint32(20, v, true);
+  SC.setBigUint64(0, value.floorDefault, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.CeilingDefault, true);
+  view.setUint32(28, v, true);
+  SC.setBigUint64(0, value.ceilingDefault, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(32, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(36, v, true);
+  return 40;
 }
 
-// WriteExtremeProbeFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteExtremeProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ExtremeProbeMaxBytes.
 export const WriteExtremeProbeFlat = PRODUCTION ? writeExtremeProbeFlatProduction : writeExtremeProbeFlatChecked;
 
-// ReadExtremeProbeFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadExtremeProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadExtremeProbeFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadExtremeProbeFlat(view, numBits, value) {
+  let v = 0, out = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 320 > numBits) {
+  if (320 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(4, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   if (bg > 9223372036854775908n) { // a smuggled offset is refused
     return false;
   }
-  value.FloorBound = -9223372036854775808n + bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.floorBound = -9223372036854775808n + bg;
+  out = view.getUint32(8, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(12, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   if (bg > 9223372036854775908n) { // a smuggled offset is refused
     return false;
   }
-  value.DoubledFloor = -9223372036854775808n + bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.doubledFloor = -9223372036854775808n + bg;
+  out = view.getUint32(16, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(20, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   if (bg > 18446744073709551614n) { // a smuggled offset is refused
     return false;
   }
-  value.CeilingRange = 1n + bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.ceilingRange = 1n + bg;
+  out = view.getUint32(24, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(28, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.FloorDefault = BigInt.asIntN(64, bg);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.floorDefault = BigInt.asIntN(64, bg);
+  out = view.getUint32(32, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(36, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.CeilingDefault = bg;
+  value.ceilingDefault = bg;
   return true;
 }
 
 // ---- type ExtremeRow: the flat codec ----
 
-function writeExtremeRowFlatProduction(value, view) {
+function writeExtremeRowFlatProduction(view, value) {
   let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, value.ClampedFloor - -9223372036854775808n, true);
+  SC.setBigUint64(0, value.clampedFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.ClampedCeiling - 1n, true);
+  view.setUint32(4, v, true);
+  SC.setBigUint64(0, value.clampedCeiling - 1n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.FloorDef, true);
+  view.setUint32(12, v, true);
+  SC.setBigUint64(0, value.floorDef, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.CeilingDef, true);
+  view.setUint32(20, v, true);
+  SC.setBigUint64(0, value.ceilingDef, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(28, v, true);
+  return 32;
 }
 
-function writeExtremeRowFlatChecked(value, view) {
+function writeExtremeRowFlatChecked(view, value) {
   let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (value.ClampedFloor > 100n) {
+  if (value.clampedFloor > 100n) {
     return -1;
   }
-  SC.setBigUint64(0, value.ClampedFloor - -9223372036854775808n, true);
+  SC.setBigUint64(0, value.clampedFloor - -9223372036854775808n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (value.ClampedCeiling < 1n || value.ClampedCeiling > 18446744073709551614n) {
+  view.setUint32(4, v, true);
+  if (value.clampedCeiling < 1n || value.clampedCeiling > 18446744073709551614n) {
     return -1;
   }
-  SC.setBigUint64(0, value.ClampedCeiling - 1n, true);
+  SC.setBigUint64(0, value.clampedCeiling - 1n, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.FloorDef, true);
+  view.setUint32(12, v, true);
+  SC.setBigUint64(0, value.floorDef, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.CeilingDef, true);
+  view.setUint32(20, v, true);
+  SC.setBigUint64(0, value.ceilingDef, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(28, v, true);
+  return 32;
 }
 
-// WriteExtremeRowFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteExtremeRowFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ExtremeRowMaxBytes.
 export const WriteExtremeRowFlat = PRODUCTION ? writeExtremeRowFlatProduction : writeExtremeRowFlatChecked;
 
-// ReadExtremeRowFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadExtremeRowFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadExtremeRowFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadExtremeRowFlat(view, numBits, value) {
+  let v = 0, out = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 256 > numBits) {
+  if (256 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(4, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   if (bg > 9223372036854775908n) { // a smuggled offset is refused
     return false;
   }
-  value.ClampedFloor = -9223372036854775808n + bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.clampedFloor = -9223372036854775808n + bg;
+  out = view.getUint32(8, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(12, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
   if (bg > 18446744073709551613n) { // a smuggled offset is refused
     return false;
   }
-  value.ClampedCeiling = 1n + bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.clampedCeiling = 1n + bg;
+  out = view.getUint32(16, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(20, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.FloorDef = BigInt.asIntN(64, bg);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.floorDef = BigInt.asIntN(64, bg);
+  out = view.getUint32(24, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(28, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.CeilingDef = bg;
+  value.ceilingDef = bg;
   return true;
 }
 

@@ -48,17 +48,17 @@ func TestJSFixedVersioningVariantArmMidList(t *testing.T) {
 const { writeFileSync } = await import("node:fs");
 const { Grade, EffectType, Slot } = await import("./Probe.js");
 const v = new T(); InitT(v);
-v.A = 42;
+v.a = 42;
 const NAME = "hello";
-for (let i = 0; i < NAME.length; i++) { v.Name[i] = NAME.charCodeAt(i); }
-v.NameLength = NAME.length;
-v.Grade = Grade.Gold;
-v.Effect.Type = EffectType.Ward;
-v.Effect.Ward.Charge = 0.75;
-v.Tokens[Slot.Alpha - 1] = 21;
-v.Tokens[Slot.Delta - 1] = 24;
-v.TierPresent = true;
-v.Tier = 77;
+for (let i = 0; i < NAME.length; i++) { v.name[i] = NAME.charCodeAt(i); }
+v.nameLength = NAME.length;
+v.grade = Grade.Gold;
+v.effect.type = EffectType.Ward;
+v.effect.ward.charge = 0.75;
+v.tokens[Slot.Alpha - 1] = 21;
+v.tokens[Slot.Delta - 1] = 24;
+v.tierPresent = true;
+v.tier = 77;
 const buf = new Uint8Array(TMeasure(1));
 if (TSave([v], 1, buf) !== buf.length) { fail("E7: V1 wrote its record"); }
 writeFileSync(%q, buf);
@@ -84,18 +84,18 @@ if (!(n === 1 && !r.malformed && r.refused === 0)) {
   fail("E7: V2 read V1's record through a compiled plan: n=" + n + " " + reason(r));
 }
 const got = back[0];
-if (got.Grade !== Grade.Gold) {
+if (got.grade !== Grade.Gold) {
   fail("E7 ENUM: a variant inserted in the middle is remapped by NAME, not by ordinal — got " +
-    EnumNameGrade(got.Grade) + " (" + got.Grade + "), want Gold");
+    EnumNameGrade(got.grade) + " (" + got.grade + "), want Gold");
 }
-if (got.Effect.Type !== EffectType.Ward) {
+if (got.effect.type !== EffectType.Ward) {
   fail("E7 UNION: an arm inserted in the middle is remapped by NAME, not by ordinal — got " +
-    got.Effect.Type + ", want " + EffectType.Ward);
+    got.effect.type + ", want " + EffectType.Ward);
 }
-if (got.Effect.Ward.Charge !== 0.75) {
-  fail("E7 UNION: the remapped arm's payload lands — got " + got.Effect.Ward.Charge);
+if (got.effect.ward.charge !== 0.75) {
+  fail("E7 UNION: the remapped arm's payload lands — got " + got.effect.ward.charge);
 }
-if (!(got.Tokens[Slot.Delta - 1] === 24 && got.TierPresent === true && got.Tier === 77)) {
+if (!(got.tokens[Slot.Delta - 1] === 24 && got.tierPresent === true && got.tier === 77)) {
   fail("E7: the keyed slot and the optional beside the moved variants land: " + show(got));
 }
 `, file)

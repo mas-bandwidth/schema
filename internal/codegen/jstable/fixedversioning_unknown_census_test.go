@@ -34,13 +34,13 @@ const n = TLoad(back, back.length, data, data.length, plan, report);
 if (n !== 1) { fail("the manifest says this file carries 1 record, not " + n + " " + reason(r)); }
 if (r.refused !== 0 || r.malformed) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
 const got = back[0];
-if (got.Lead !== 1 || got.Trail !== 2) {
+if (got.lead !== 1 || got.trail !== 2) {
   fail("the brackets either side of the removed field did not stand: " + show(got));
 }
 const want = [10, 11, 12, 13];
 for (let i = 0; i < 4; i++) {
-  if (got.Items[i].A !== want[i]) {
-    fail("items[" + i + "].a is " + got.Items[i].A + ", the manifest says " + want[i] + " — the removed drop moved a neighbour");
+  if (got.items[i].a !== want[i]) {
+    fail("items[" + i + "].a is " + got.items[i].a + ", the manifest says " + want[i] + " — the removed drop moved a neighbour");
   }
 }
 if (r.unknown !== 1) {

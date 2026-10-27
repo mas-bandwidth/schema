@@ -49,7 +49,7 @@ var countName = map[string]string{
 	"elixir": "window", // the list IS the count: length(value.window)
 	"go":     "WindowCount",
 	"java":   "windowCount",
-	"js":     "WindowCount",
+	"js":     "windowCount",
 	"rust":   "window_count",
 }
 
@@ -65,7 +65,7 @@ var bornAtMinimum = map[string]string{
 	"elixir": "defstruct window: List.duplicate(0, 2)",
 	"go":     "value.WindowCount = 2",
 	"java":   "public int windowCount = 2;",
-	"js":     "this.WindowCount = 2;",
+	"js":     "this.windowCount = 2;",
 	"rust":   "window_count: 2,",
 }
 
@@ -175,7 +175,7 @@ func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		if target == "js" {
 			// the fork, not a statement: the contract lives in the checked
 			// writer and the production writer is free of it
-			const want = "value.WindowCount < 2 || value.WindowCount > 8"
+			const want = "value.windowCount < 2 || value.windowCount > 8"
 			if got := jsFlatWriter(t, text, "writeTFlatChecked"); !strings.Contains(got, want) {
 				t.Errorf("js: the checked flat writer does not hold the count, %q absent", want)
 			}

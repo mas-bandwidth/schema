@@ -60,16 +60,16 @@ function assert(condition, msg) {
 
 // ---- the value: a caller contract violation, five units past N = 15
 const v = new PaddedRow();
-v.Tag = 0x33;
-v.Value = 4.5;
-v.Flag = true;
-v.Id = 0xCAFEBABE;
-for (let i = 0; i < 15; i++) { v.Label[i] = 0x41 + i; } // "ABCDEFGHIJKLMNO"
-v.LabelLength = 20; // past the string(15) bound: the caller's contract, not the writer's
-v.Slots = [1, 2, 3, 4];
-v.Teams.set([9, 8, 7, 6], 0);
-v.CounterPresent = true;
-v.Counter = -12345;
+v.tag = 0x33;
+v.value = 4.5;
+v.flag = true;
+v.id = 0xCAFEBABE;
+for (let i = 0; i < 15; i++) { v.label[i] = 0x41 + i; } // "ABCDEFGHIJKLMNO"
+v.labelLength = 20; // past the string(15) bound: the caller's contract, not the writer's
+v.slots = [1, 2, 3, 4];
+v.teams.set([9, 8, 7, 6], 0);
+v.counterPresent = true;
+v.counter = -12345;
 
 const file = new Uint8Array(PaddedRowFixedMeasure(1));
 
@@ -102,10 +102,10 @@ TableFixedResetReport(report);
 const n = PaddedRowFixedLoad(back, 1, file, file.length, plan, report);
 assert(n === 1 && !report.malformed && report.refused === 0,
   "the record still reads: a caller contract violation is not a refusal");
-assert(back[0].LabelLength === 15 && report.clamped === 1,
+assert(back[0].labelLength === 15 && report.clamped === 1,
   "the read side checks the same number in every build: it clamps 20 to the declared bound 15 and counts exactly one clamp");
 let live = true;
-for (let i = 0; i < 15; i++) { if (back[0].Label[i] !== 0x41 + i) { live = false; } }
+for (let i = 0; i < 15; i++) { if (back[0].label[i] !== 0x41 + i) { live = false; } }
 assert(live,
   "the clamped read keeps the live units the wire carries");
 

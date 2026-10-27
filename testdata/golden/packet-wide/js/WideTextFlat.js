@@ -11,10 +11,10 @@
 // remains the diagnostic and reference surface — re-read a failing buffer
 // through it to learn WHICH operation failed and why.
 //
-// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked
+// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked
 // writer refuses an out-of-contract value (the production writer trusts
 // the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(value, view, numBits) -> bool, the family
+// module load). Read<Name>Flat(view, numBits, value) -> bool, the family
 // read verdict; reader obligations ride in every mode.
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
@@ -31,22 +31,63 @@ const PRODUCTION = typeof process !== "undefined" && !!process.env && process.en
 // Read buffers must extend at least this many bytes past the payload.
 export const FLAT_READ_SLACK = 8;
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 // ---- type WideSeven: the flat codec ----
 
-function writeWideSevenFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.TextLength) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
-    v = value.Text[wideIndex];
+function writeWideSevenFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.textLength) & 0x7));
+  sb = 3;
+  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
+    v = value.text[wideIndex];
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -62,23 +103,15 @@ function writeWideSevenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeWideSevenFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 7) { // the length guards the loop; out-of-contract writes are refused
+function writeWideSevenFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 7) { // the length guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.TextLength) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
-    v = value.Text[wideIndex];
+  lo = (((value.textLength) & 0x7));
+  sb = 3;
+  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
+    v = value.text[wideIndex];
     if (v === 0) { // a wide string's used units carry no interior null
       return -1;
     }
@@ -97,16 +130,15 @@ function writeWideSevenFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideSevenFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteWideSevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold WideSevenMaxBytes.
 export const WriteWideSevenFlat = PRODUCTION ? writeWideSevenFlatProduction : writeWideSevenFlatChecked;
 
-// ReadWideSevenFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadWideSevenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadWideSevenFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadWideSevenFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 3 > numBits) return false;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -115,12 +147,12 @@ export function ReadWideSevenFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   if (v > 7) return false;
-  value.TextLength = v;
+  value.textLength = v;
   br += 3;
-  if (br + value.TextLength * 32 > numBits) return false;
+  if (br + value.textLength * 32 > numBits) return false;
   {
     let expectLow = false;
-    for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
+    for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
@@ -134,7 +166,7 @@ export function ReadWideSevenFlat(value, view, numBits) {
       if (low !== expectLow) return false;
       br += 32;
       expectLow = high;
-      value.Text[wideIndex] = wideGroup;
+      value.text[wideIndex] = wideGroup;
     }
     if (expectLow) return false;
   }
@@ -143,20 +175,12 @@ export function ReadWideSevenFlat(value, view, numBits) {
 
 // ---- type WideFour: the flat codec ----
 
-function writeWideFourFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.TextLength) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
-    v = value.Text[wideIndex];
+function writeWideFourFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.textLength) & 0x7));
+  sb = 3;
+  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
+    v = value.text[wideIndex];
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -172,23 +196,15 @@ function writeWideFourFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeWideFourFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 4) { // the length guards the loop; out-of-contract writes are refused
+function writeWideFourFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 4) { // the length guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.TextLength) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
-    v = value.Text[wideIndex];
+  lo = (((value.textLength) & 0x7));
+  sb = 3;
+  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
+    v = value.text[wideIndex];
     if (v === 0) { // a wide string's used units carry no interior null
       return -1;
     }
@@ -207,16 +223,15 @@ function writeWideFourFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideFourFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteWideFourFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold WideFourMaxBytes.
 export const WriteWideFourFlat = PRODUCTION ? writeWideFourFlatProduction : writeWideFourFlatChecked;
 
-// ReadWideFourFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadWideFourFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadWideFourFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadWideFourFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 3 > numBits) return false;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -225,12 +240,12 @@ export function ReadWideFourFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   if (v > 4) return false;
-  value.TextLength = v;
+  value.textLength = v;
   br += 3;
-  if (br + value.TextLength * 32 > numBits) return false;
+  if (br + value.textLength * 32 > numBits) return false;
   {
     let expectLow = false;
-    for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++) {
+    for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
@@ -244,7 +259,7 @@ export function ReadWideFourFlat(value, view, numBits) {
       if (low !== expectLow) return false;
       br += 32;
       expectLow = high;
-      value.Text[wideIndex] = wideGroup;
+      value.text[wideIndex] = wideGroup;
     }
     if (expectLow) return false;
   }
@@ -253,29 +268,14 @@ export function ReadWideFourFlat(value, view, numBits) {
 
 // ---- type NarrowFifteen: the flat codec ----
 
-function writeNarrowFifteenFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.TextLength) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+function writeNarrowFifteenFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.textLength) & 0xf));
+  sb = 8;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.TextLength; i0 += 4) {
-      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -285,8 +285,8 @@ function writeNarrowFifteenFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.TextLength; i0++) {
-      v = value.Text[i0];
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -303,32 +303,17 @@ function writeNarrowFifteenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeNarrowFifteenFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.TextLength) || value.TextLength < 0 || value.TextLength > 15) { // the length guards the slice; out-of-contract writes are refused
+function writeNarrowFifteenFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 15) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.TextLength) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+  lo = (((value.textLength) & 0xf));
+  sb = 8;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.TextLength; i0 += 4) {
-      v = (value.Text[i0] | (value.Text[i0 + 1] << 8) | (value.Text[i0 + 2] << 16) | (value.Text[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.textLength; i0 += 4) {
+      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -338,8 +323,8 @@ function writeNarrowFifteenFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.TextLength; i0++) {
-      v = value.Text[i0];
+    for (; i0 < value.textLength; i0++) {
+      v = value.text[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -356,16 +341,15 @@ function writeNarrowFifteenFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteNarrowFifteenFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteNarrowFifteenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold NarrowFifteenMaxBytes.
 export const WriteNarrowFifteenFlat = PRODUCTION ? writeNarrowFifteenFlatProduction : writeNarrowFifteenFlatChecked;
 
-// ReadNarrowFifteenFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadNarrowFifteenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadNarrowFifteenFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadNarrowFifteenFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 4 > numBits) {
     return false;
   }
@@ -375,7 +359,7 @@ export function ReadNarrowFifteenFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xf) >>> 0;
-  value.TextLength = v;
+  value.textLength = v;
   br += 4;
   s2 = br & 7;
   if (s2 !== 0) {
@@ -387,58 +371,28 @@ export function ReadNarrowFifteenFlat(value, view, numBits) {
     }
     br += 8 - s2;
   }
-  if (br + value.TextLength * 8 > numBits) {
+  if (br + value.textLength * 8 > numBits) {
     return false;
   }
   bi = br >>> 3;
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    value.Text[i0] = view.getUint8(bi + i0);
+  for (let i0 = 0; i0 < value.textLength; i0++) {
+    value.text[i0] = view.getUint8(bi + i0);
   }
-  br += value.TextLength * 8;
-  for (let utf8Index = 0; utf8Index < value.TextLength;)
-  {
-    const utf8Lead = value.Text[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.TextLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.Text[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i0 = 0; i0 < value.TextLength; i0++) {
-    if (value.Text[i0] === 0) { // an interior null is content the read refuses
-      return false;
-    }
+  br += value.textLength * 8;
+  if (!validText(value.text, value.textLength)) {
+    return false;
   }
   return true;
 }
 
 // ---- type WideInterop: the flat codec ----
 
-function writeWideInteropFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.CaptionLength) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++) {
-    v = value.Caption[wideIndex];
+function writeWideInteropFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.captionLength) & 0x7));
+  sb = 3;
+  for (let wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
+    v = value.caption[wideIndex];
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -454,23 +408,15 @@ function writeWideInteropFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeWideInteropFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.CaptionLength) || value.CaptionLength < 0 || value.CaptionLength > 7) { // the length guards the loop; out-of-contract writes are refused
+function writeWideInteropFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.captionLength) || value.captionLength < 0 || value.captionLength > 7) { // the length guards the loop; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.CaptionLength) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++) {
-    v = value.Caption[wideIndex];
+  lo = (((value.captionLength) & 0x7));
+  sb = 3;
+  for (let wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
+    v = value.caption[wideIndex];
     if (v === 0) { // a wide string's used units carry no interior null
       return -1;
     }
@@ -489,16 +435,15 @@ function writeWideInteropFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteWideInteropFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteWideInteropFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold WideInteropMaxBytes.
 export const WriteWideInteropFlat = PRODUCTION ? writeWideInteropFlatProduction : writeWideInteropFlatChecked;
 
-// ReadWideInteropFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadWideInteropFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadWideInteropFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
+export function ReadWideInteropFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 3 > numBits) return false;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -507,12 +452,12 @@ export function ReadWideInteropFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
   if (v > 7) return false;
-  value.CaptionLength = v;
+  value.captionLength = v;
   br += 3;
-  if (br + value.CaptionLength * 32 > numBits) return false;
+  if (br + value.captionLength * 32 > numBits) return false;
   {
     let expectLow = false;
-    for (let wideIndex = 0; wideIndex < value.CaptionLength; wideIndex++) {
+    for (let wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
       bi = br >>> 3;
       wlo = view.getUint32(bi, true);
       whi = view.getUint32(bi + 4, true);
@@ -526,7 +471,7 @@ export function ReadWideInteropFlat(value, view, numBits) {
       if (low !== expectLow) return false;
       br += 32;
       expectLow = high;
-      value.Caption[wideIndex] = wideGroup;
+      value.caption[wideIndex] = wideGroup;
     }
     if (expectLow) return false;
   }

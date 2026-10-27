@@ -87,8 +87,8 @@ var jsVersionRows = []jsVersionRow{
   // THE ELEMENT DEFAULT, past the old writer's four (§5.7's poison is what makes
   // this readable: a prefill that never ran reads 0x5A5A5A5A, not 7).
   for (let i = 4; i < 8; i++) {
-    if (back[0].Vals[i].X !== 7 || back[0].Vals[i].Y !== 9) {
-      fail("the grown slot " + i + " is not its element's declared default: " + show(back[0].Vals[i]));
+    if (back[0].vals[i].x !== 7 || back[0].vals[i].y !== 9) {
+      fail("the grown slot " + i + " is not its element's declared default: " + show(back[0].vals[i]));
     }
   }`},
 	{row: "bits_grow", widens: true},
@@ -97,10 +97,10 @@ var jsVersionRows = []jsVersionRow{
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
 	{row: "field_append", check: `
-  if (back[0].X !== 11 || back[0].Y !== 22 || back[0].Z !== 33) {
+  if (back[0].x !== 11 || back[0].y !== 22 || back[0].z !== 33) {
     fail("the old writer's values did not land: " + show(back[0]));
   }
-  if (back[0].W !== 77) {
+  if (back[0].w !== 77) {
     fail("the appended field is not its declared default: " + show(back[0]));
   }`},
 	{row: "field_deprecate", sameHash: true},
@@ -112,9 +112,9 @@ var jsVersionRows = []jsVersionRow{
   // the scalar row asserts one value and its bracket.
   const want = [-1, -128, 0, 112];
   for (let k = 0; k < want.length; k++) {
-    if (Number(back[0].Vals[k]) !== want[k]) { fail("slot " + k + " widened wrong: " + show(back[0])); }
+    if (Number(back[0].vals[k]) !== want[k]) { fail("slot " + k + " widened wrong: " + show(back[0])); }
   }
-  if (back[0].Lead !== 0xAAAAAAAA || back[0].Trail !== 0xBBBBBBBB) {
+  if (back[0].lead !== 0xAAAAAAAA || back[0].trail !== 0xBBBBBBBB) {
     fail("the row moved a neighbour: " + show(back[0]));
   }`},
 	{row: "flags_append"},
@@ -123,16 +123,16 @@ var jsVersionRows = []jsVersionRow{
   if (n !== 3) { fail("the int_widen file carries three records, not " + n); }
   const want = [-1, -32768, 32767];
   for (let k = 0; k < want.length; k++) {
-    if (Number(back[k].V) !== want[k]) { fail("record " + k + " widened wrong: " + show(back[k])); }
-    if (back[k].Lead !== 0xAAAAAAAA || back[k].Trail !== 0xBBBBBBBB) {
+    if (Number(back[k].v) !== want[k]) { fail("record " + k + " widened wrong: " + show(back[k])); }
+    if (back[k].lead !== 0xAAAAAAAA || back[k].trail !== 0xBBBBBBBB) {
       fail("record " + k + " moved a neighbour: " + show(back[k]));
     }
   }`},
 	{row: "keyed_array_enum_append", check: `
   // THE APPENDED KEYED SLOT IS ITS ELEMENT'S DECLARED DEFAULT (n = 7), exactly
   // as an appended field is, and the poison is what says the prefill ran.
-  if (back[0].Slots[3].N !== 7) {
-    fail("the appended keyed slot is not its declared default: " + show(back[0].Slots[3]));
+  if (back[0].slots[3].n !== 7) {
+    fail("the appended keyed slot is not its declared default: " + show(back[0].slots[3]));
   }`},
 	{row: "nested_append"},
 	{row: "optional_add", check: `
@@ -141,10 +141,10 @@ var jsVersionRows = []jsVersionRow{
   // IS present and the constant is the plan's. A leg that prefills the companion
   // and emits no present entry reads a value the writer sent as ABSENT — and
   // every value check still passes, which is why this one is its own line.
-  if (back[0].LinkPresent !== true) {
+  if (back[0].linkPresent !== true) {
     fail("T into ?T owes present = 1, not the fresh value's false: " + show(back[0]));
   }
-  if (back[0].Link.Value !== 777) {
+  if (back[0].link.value !== 777) {
     fail("the payload beside the present companion is the writer's value: " + show(back[0]));
   }`},
 	{row: "range_widen"},
@@ -157,9 +157,9 @@ var jsVersionRows = []jsVersionRow{
   // (§5.2's prefill sentence, §5.9 #38): Alpha.y is declared 55 and the old
   // writer never sent it. A prefill that returns at the union leaves 0 here and
   // every other assertion of this row still passes.
-  if (back[0].Pick.Type !== 1) { fail("the old writer's arm did not land: " + show(back[0])); }
-  if (back[0].Pick.Alpha.X !== 21) { fail("the arm's sent value did not land: " + show(back[0])); }
-  if (back[0].Pick.Alpha.Y !== 55) {
+  if (back[0].pick.type !== 1) { fail("the old writer's arm did not land: " + show(back[0])); }
+  if (back[0].pick.alpha.x !== 21) { fail("the arm's sent value did not land: " + show(back[0])); }
+  if (back[0].pick.alpha.y !== 55) {
     fail("the arm's reader-appended field is not its declared default: " + show(back[0]));
   }`},
 	{row: "wstring_grow", unported: "kind 33, wstring(N), is refused in a JavaScript table (schema#366 / refuseWideText)"},
@@ -393,7 +393,7 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n < 1 || r.refused !== 0 || r.malformed) { fail("hash_identity: n=" + n + " " + reason(r)); }
-if (back[0].W !== 777) { fail("the identity plan lost a value: " + show(back[0])); }
+if (back[0].w !== 777) { fail("the identity plan lost a value: " + show(back[0])); }
 if (r.layoutHash !== 0n) { fail("layout_hash is zero on every path but the two layout refusals (§5.9 #15)"); }`, fresh)},
 	}
 	for _, c := range cases {
@@ -471,13 +471,13 @@ func TestJSFixedVersioningUnionArmText(t *testing.T) {
 const { writeFileSync } = await import("node:fs");
 const { PickType } = await import("./Probe.js");
 const v = new T(); InitT(v);
-v.Head = 81;
-v.Pick.Type = PickType.B;
+v.head = 81;
+v.pick.type = PickType.B;
 const LABEL = "back";
-for (let i = 0; i < LABEL.length; i++) { v.Pick.B.Label[i] = LABEL.charCodeAt(i); }
-v.Pick.B.LabelLength = LABEL.length;
-v.Pick.B.M = -12;
-v.Tail = 88;
+for (let i = 0; i < LABEL.length; i++) { v.pick.b.label[i] = LABEL.charCodeAt(i); }
+v.pick.b.labelLength = LABEL.length;
+v.pick.b.m = -12;
+v.tail = 88;
 const buf = new Uint8Array(TMeasure(1));
 if (TSave([v], 1, buf) !== buf.length) { fail("union-arm text: UT1 wrote its arm-b record"); }
 writeFileSync(%q, buf);
@@ -502,13 +502,13 @@ if (!(n === 1 && !r.malformed)) {
 }
 const got = back[0];
 let label = "";
-for (let i = 0; i < got.Pick.B.LabelLength; i++) { label += String.fromCharCode(got.Pick.B.Label[i]); }
-if (!(got.Pick.Type === PickType.B && label === "back" && got.Pick.B.M === -12)) {
+for (let i = 0; i < got.pick.b.labelLength; i++) { label += String.fromCharCode(got.pick.b.label[i]); }
+if (!(got.pick.type === PickType.B && label === "back" && got.pick.b.m === -12)) {
   fail("union-arm text: the arm's string and scalar land the other way round too — tag " +
-    got.Pick.Type + " " + JSON.stringify(label) + " " + got.Pick.B.M);
+    got.pick.type + " " + JSON.stringify(label) + " " + got.pick.b.m);
 }
-if (!(got.Head === 81 && got.Tail === 88)) {
-  fail("union-arm text: the fields either side of the union are 81/88, got " + got.Head + "/" + got.Tail);
+if (!(got.head === 81 && got.tail === 88)) {
+  fail("union-arm text: the fields either side of the union are 81/88, got " + got.head + "/" + got.tail);
 }
 `, file)
 	if out, err := jsRunVersionProbe(t, node, ut2, []string{ut1}, 0, table, read); err != nil {
@@ -719,7 +719,7 @@ func jsManifestPath(key string, renamed map[string]string) (string, bool) {
 		if to, ok := renamed[name]; ok {
 			surface = to // the wire name translated into this build's spelling
 		}
-		path += "." + ir.GoExportName(surface)
+		path += "." + js.MemberName(surface)
 		if !hasIdx {
 			continue
 		}

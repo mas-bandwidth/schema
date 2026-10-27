@@ -9,166 +9,40 @@
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
 
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
-
 // Read buffers must extend at least this many bytes past the payload.
 export const FLAT_READ_SLACK = 8;
 
 // ---- type Vec2: the flat codec ----
 
-function writeVec2FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteVec2Flat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold Vec2MaxBytes.
+export function WriteVec2Flat(view, value) {
+  view.setFloat64(0, value.x, true);
+  view.setFloat64(8, value.y, true);
+  return 16;
 }
 
-function writeVec2FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteVec2Flat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold Vec2MaxBytes.
-export const WriteVec2Flat = PRODUCTION ? writeVec2FlatProduction : writeVec2FlatChecked;
-
-// ReadVec2Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadVec2Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadVec2Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 128 > numBits) {
+export function ReadVec2Flat(view, numBits, value) {
+  if (128 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.X = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.Y = SC.getFloat64(0, true);
+  value.x = view.getFloat64(0, true);
+  value.y = view.getFloat64(8, true);
   return true;
 }
 
 // ---- type SpanF64: the flat codec ----
 
-function writeSpanF64FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteSpanF64Flat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SpanF64MaxBytes.
+export function WriteSpanF64Flat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.Values[i0], true);
+    SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -194,47 +68,11 @@ function writeSpanF64FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeSpanF64FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.Values[i0], true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteSpanF64Flat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SpanF64MaxBytes.
-export const WriteSpanF64Flat = PRODUCTION ? writeSpanF64FlatProduction : writeSpanF64FlatChecked;
-
-// ReadSpanF64Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSpanF64Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSpanF64Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 128 > numBits) {
+export function ReadSpanF64Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (128 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -253,7 +91,7 @@ export function ReadSpanF64Flat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.Values[i0] = SC.getFloat64(0, true);
+    value.values[i0] = SC.getFloat64(0, true);
     br += 32;
   }
   return true;
@@ -261,11 +99,13 @@ export function ReadSpanF64Flat(value, view, numBits) {
 
 // ---- type SpanU64: the flat codec ----
 
-function writeSpanU64FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteSpanU64Flat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SpanU64MaxBytes.
+export function WriteSpanU64Flat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, value.Values[i0], true);
+    SC.setBigUint64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -291,48 +131,12 @@ function writeSpanU64FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeSpanU64FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, value.Values[i0], true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteSpanU64Flat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SpanU64MaxBytes.
-export const WriteSpanU64Flat = PRODUCTION ? writeSpanU64FlatProduction : writeSpanU64FlatChecked;
-
-// ReadSpanU64Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSpanU64Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSpanU64Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadSpanU64Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 128 > numBits) {
+  if (128 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -352,7 +156,7 @@ export function ReadSpanU64Flat(value, view, numBits) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.Values[i0] = bg;
+    value.values[i0] = bg;
     br += 32;
   }
   return true;
@@ -360,11 +164,13 @@ export function ReadSpanU64Flat(value, view, numBits) {
 
 // ---- type SpanI64: the flat codec ----
 
-function writeSpanI64FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteSpanI64Flat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SpanI64MaxBytes.
+export function WriteSpanI64Flat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, value.Values[i0], true);
+    SC.setBigUint64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -390,48 +196,12 @@ function writeSpanI64FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeSpanI64FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 2; i0++) {
-    SC.setBigUint64(0, value.Values[i0], true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteSpanI64Flat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SpanI64MaxBytes.
-export const WriteSpanI64Flat = PRODUCTION ? writeSpanI64FlatProduction : writeSpanI64FlatChecked;
-
-// ReadSpanI64Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSpanI64Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSpanI64Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadSpanI64Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 128 > numBits) {
+  if (128 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -451,7 +221,7 @@ export function ReadSpanI64Flat(value, view, numBits) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.Values[i0] = BigInt.asIntN(64, bg);
+    value.values[i0] = BigInt.asIntN(64, bg);
     br += 32;
   }
   return true;
@@ -459,11 +229,13 @@ export function ReadSpanI64Flat(value, view, numBits) {
 
 // ---- type SpanOne: the flat codec ----
 
-function writeSpanOneFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteSpanOneFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SpanOneMaxBytes.
+export function WriteSpanOneFlat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 1; i0++) {
-    SC.setBigUint64(0, value.Values[i0], true);
+    SC.setBigUint64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -489,48 +261,12 @@ function writeSpanOneFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeSpanOneFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 1; i0++) {
-    SC.setBigUint64(0, value.Values[i0], true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteSpanOneFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SpanOneMaxBytes.
-export const WriteSpanOneFlat = PRODUCTION ? writeSpanOneFlatProduction : writeSpanOneFlatChecked;
-
-// ReadSpanOneFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSpanOneFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSpanOneFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadSpanOneFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 64 > numBits) {
+  if (64 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 1; i0++) {
@@ -550,7 +286,7 @@ export function ReadSpanOneFlat(value, view, numBits) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.Values[i0] = bg;
+    value.values[i0] = bg;
     br += 32;
   }
   return true;
@@ -558,11 +294,13 @@ export function ReadSpanOneFlat(value, view, numBits) {
 
 // ---- type SpanChunk: the flat codec ----
 
-function writeSpanChunkFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteSpanChunkFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SpanChunkMaxBytes.
+export function WriteSpanChunkFlat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 4; i0++) {
-    v = (((value.Values[i0]) & 0xffff)) >>> 0;
+    v = (((value.values[i0]) & 0xffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -578,37 +316,11 @@ function writeSpanChunkFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeSpanChunkFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 4; i0++) {
-    v = (((value.Values[i0]) & 0xffff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 16;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (16 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteSpanChunkFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SpanChunkMaxBytes.
-export const WriteSpanChunkFlat = PRODUCTION ? writeSpanChunkFlatProduction : writeSpanChunkFlatChecked;
-
-// ReadSpanChunkFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSpanChunkFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSpanChunkFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 64 > numBits) {
+export function ReadSpanChunkFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (64 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 4; i0++) {
@@ -618,7 +330,7 @@ export function ReadSpanChunkFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xffff) >>> 0;
-    value.Values[i0] = v;
+    value.values[i0] = v;
     br += 16;
   }
   return true;
@@ -626,11 +338,13 @@ export function ReadSpanChunkFlat(value, view, numBits) {
 
 // ---- type SpanTail: the flat codec ----
 
-function writeSpanTailFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteSpanTailFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SpanTailMaxBytes.
+export function WriteSpanTailFlat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.Values[i0], true);
+    SC.setFloat64(0, value.values[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -650,7 +364,7 @@ function writeSpanTailFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
   }
-  v = (((value.Tail) >>> 0)) >>> 0;
+  v = (((value.tail) >>> 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -665,56 +379,11 @@ function writeSpanTailFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeSpanTailFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.Values[i0], true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  v = (((value.Tail) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteSpanTailFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SpanTailMaxBytes.
-export const WriteSpanTailFlat = PRODUCTION ? writeSpanTailFlatProduction : writeSpanTailFlatChecked;
-
-// ReadSpanTailFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSpanTailFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSpanTailFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 160 > numBits) {
+export function ReadSpanTailFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (160 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -733,7 +402,7 @@ export function ReadSpanTailFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.Values[i0] = SC.getFloat64(0, true);
+    value.values[i0] = SC.getFloat64(0, true);
     br += 32;
   }
   bi = br >>> 3;
@@ -742,17 +411,19 @@ export function ReadSpanTailFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
-  value.Tail = v;
+  value.tail = v;
   return true;
 }
 
 // ---- type SpanTwice: the flat codec ----
 
-function writeSpanTwiceFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteSpanTwiceFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SpanTwiceMaxBytes.
+export function WriteSpanTwiceFlat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.A[i0], true);
+    SC.setFloat64(0, value.a[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -773,58 +444,7 @@ function writeSpanTwiceFlatProduction(value, view) {
     }
   }
   for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.B[i0], true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeSpanTwiceFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.A[i0], true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  for (let i0 = 0; i0 < 2; i0++) {
-    SC.setFloat64(0, value.B[i0], true);
+    SC.setFloat64(0, value.b[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -850,17 +470,11 @@ function writeSpanTwiceFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteSpanTwiceFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SpanTwiceMaxBytes.
-export const WriteSpanTwiceFlat = PRODUCTION ? writeSpanTwiceFlatProduction : writeSpanTwiceFlatChecked;
-
-// ReadSpanTwiceFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSpanTwiceFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSpanTwiceFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 256 > numBits) {
+export function ReadSpanTwiceFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (256 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -879,7 +493,7 @@ export function ReadSpanTwiceFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.A[i0] = SC.getFloat64(0, true);
+    value.a[i0] = SC.getFloat64(0, true);
     br += 32;
   }
   for (let i0 = 0; i0 < 2; i0++) {
@@ -898,7 +512,7 @@ export function ReadSpanTwiceFlat(value, view, numBits) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
-    value.B[i0] = SC.getFloat64(0, true);
+    value.b[i0] = SC.getFloat64(0, true);
     br += 32;
   }
   return true;
@@ -906,986 +520,241 @@ export function ReadSpanTwiceFlat(value, view, numBits) {
 
 // ---- type Trio: the flat codec ----
 
-function writeTrioFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteTrioFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold TrioMaxBytes.
+export function WriteTrioFlat(view, value) {
+  let v = 0, lo = 0;
+  lo = ((value.a & 0xfffff));
+  v = ((value.b & 0xfffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 20)) >>> 0, true);
+  lo = v >>> 12;
+  view.setUint32(4, (lo | (((value.c & 0xffffff)) << 8)) >>> 0, true);
+  lo = 0;
+  return 8;
 }
 
-function writeTrioFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteTrioFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold TrioMaxBytes.
-export const WriteTrioFlat = PRODUCTION ? writeTrioFlatProduction : writeTrioFlatChecked;
-
-// ReadTrioFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadTrioFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadTrioFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 64 > numBits) {
+export function ReadTrioFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (64 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xfffff) >>> 0;
-  value.A = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
   v = (out & 0xfffff) >>> 0;
-  value.B = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.b = v;
+  out = view.getUint32(5, true);
   v = (out & 0xffffff) >>> 0;
-  value.C = v;
+  value.c = v;
   return true;
 }
 
 // ---- type TrioSole: the flat codec ----
 
-function writeTrioSoleFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Inner.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteTrioSoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold TrioSoleMaxBytes.
+export function WriteTrioSoleFlat(view, value) {
+  let v = 0, lo = 0;
+  lo = ((value.inner.a & 0xfffff));
+  v = ((value.inner.b & 0xfffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 20)) >>> 0, true);
+  lo = v >>> 12;
+  view.setUint32(4, (lo | (((value.inner.c & 0xffffff)) << 8)) >>> 0, true);
+  lo = 0;
+  return 8;
 }
 
-function writeTrioSoleFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Inner.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteTrioSoleFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold TrioSoleMaxBytes.
-export const WriteTrioSoleFlat = PRODUCTION ? writeTrioSoleFlatProduction : writeTrioSoleFlatChecked;
-
-// ReadTrioSoleFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadTrioSoleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadTrioSoleFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 64 > numBits) {
+export function ReadTrioSoleFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (64 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xfffff) >>> 0;
-  value.Inner.A = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.inner.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
   v = (out & 0xfffff) >>> 0;
-  value.Inner.B = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.inner.b = v;
+  out = view.getUint32(5, true);
   v = (out & 0xffffff) >>> 0;
-  value.Inner.C = v;
+  value.inner.c = v;
   return true;
 }
 
 // ---- type Vec3Sole: the flat codec ----
 
-function writeVec3SoleFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.V.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.V.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.V.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteVec3SoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold Vec3SoleMaxBytes.
+export function WriteVec3SoleFlat(view, value) {
+  view.setFloat64(0, value.v.x, true);
+  view.setFloat64(8, value.v.y, true);
+  view.setFloat64(16, value.v.z, true);
+  return 24;
 }
 
-function writeVec3SoleFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setFloat64(0, value.V.X, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.V.Y, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.V.Z, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteVec3SoleFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold Vec3SoleMaxBytes.
-export const WriteVec3SoleFlat = PRODUCTION ? writeVec3SoleFlatProduction : writeVec3SoleFlatChecked;
-
-// ReadVec3SoleFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadVec3SoleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadVec3SoleFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 192 > numBits) {
+export function ReadVec3SoleFlat(view, numBits, value) {
+  if (192 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.V.X = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.V.Y = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = out >>> 0;
-  SC.setUint32(4, v, true);
-  value.V.Z = SC.getFloat64(0, true);
+  value.v.x = view.getFloat64(0, true);
+  value.v.y = view.getFloat64(8, true);
+  value.v.z = view.getFloat64(16, true);
   return true;
 }
 
 // ---- type TrioFirst: the flat codec ----
 
-function writeTrioFirstFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Inner.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  v = ((value.Trailer & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteTrioFirstFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold TrioFirstMaxBytes.
+export function WriteTrioFirstFlat(view, value) {
+  let v = 0, lo = 0;
+  lo = ((value.inner.a & 0xfffff));
+  v = ((value.inner.b & 0xfffff)) >>> 0;
+  view.setUint32(0, (lo | (v << 20)) >>> 0, true);
+  lo = v >>> 12;
+  view.setUint32(4, (lo | (((value.inner.c & 0xffffff)) << 8)) >>> 0, true);
+  lo = 0;
+  lo = ((value.trailer & 0xffff));
+  view.setUint32(8, lo, true);
+  return 10;
 }
 
-function writeTrioFirstFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Inner.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  v = ((value.Trailer & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteTrioFirstFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold TrioFirstMaxBytes.
-export const WriteTrioFirstFlat = PRODUCTION ? writeTrioFirstFlatProduction : writeTrioFirstFlatChecked;
-
-// ReadTrioFirstFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadTrioFirstFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadTrioFirstFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 80 > numBits) {
+export function ReadTrioFirstFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (80 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xfffff) >>> 0;
-  value.Inner.A = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.inner.a = v;
+  out = (view.getUint32(2, true) >>> 4) | (view.getUint32(6, true) << 28);
   v = (out & 0xfffff) >>> 0;
-  value.Inner.B = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.inner.b = v;
+  out = view.getUint32(5, true);
   v = (out & 0xffffff) >>> 0;
-  value.Inner.C = v;
-  br += 24;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.inner.c = v;
+  out = view.getUint32(8, true);
   v = (out & 0xffff) >>> 0;
-  value.Trailer = v;
+  value.trailer = v;
   return true;
 }
 
 // ---- type TrioStraddle: the flat codec ----
 
-function writeTrioStraddleFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, value.Pad0, true);
+// WriteTrioStraddleFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold TrioStraddleMaxBytes.
+export function WriteTrioStraddleFlat(view, value) {
+  let v = 0, lo = 0;
+  SC.setBigUint64(0, value.pad0, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad1, true);
+  view.setUint32(4, v, true);
+  SC.setBigUint64(0, value.pad1, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(8, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad2, true);
+  view.setUint32(12, v, true);
+  SC.setBigUint64(0, value.pad2, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(16, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad3, true);
+  view.setUint32(20, v, true);
+  SC.setBigUint64(0, value.pad3, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(24, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad4, true);
+  view.setUint32(28, v, true);
+  SC.setBigUint64(0, value.pad4, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(32, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.Pad5 & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  v = ((value.Inner.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(36, v, true);
+  lo = ((value.pad5 & 0xffffff));
+  v = ((value.inner.a & 0xfffff)) >>> 0;
+  view.setUint32(40, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  view.setUint32(44, (lo | (((value.inner.b & 0xfffff)) << 12)) >>> 0, true);
+  lo = 0;
+  lo = ((value.inner.c & 0xffffff));
+  view.setUint32(48, lo, true);
+  return 51;
 }
 
-function writeTrioStraddleFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, value.Pad0, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad1, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad2, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad3, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.Pad4, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.Pad5 & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  v = ((value.Inner.A & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.B & 0xfffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  v = ((value.Inner.C & 0xffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 24;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (24 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteTrioStraddleFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold TrioStraddleMaxBytes.
-export const WriteTrioStraddleFlat = PRODUCTION ? writeTrioStraddleFlatProduction : writeTrioStraddleFlatChecked;
-
-// ReadTrioStraddleFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadTrioStraddleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadTrioStraddleFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadTrioStraddleFlat(view, numBits, value) {
+  let v = 0, out = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 408 > numBits) {
+  if (408 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(4, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Pad0 = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.pad0 = bg;
+  out = view.getUint32(8, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(12, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Pad1 = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.pad1 = bg;
+  out = view.getUint32(16, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(20, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Pad2 = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.pad2 = bg;
+  out = view.getUint32(24, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(28, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Pad3 = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.pad3 = bg;
+  out = view.getUint32(32, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(36, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.Pad4 = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.pad4 = bg;
+  out = view.getUint32(40, true);
   v = (out & 0xffffff) >>> 0;
-  value.Pad5 = v;
-  br += 24;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.pad5 = v;
+  out = view.getUint32(43, true);
   v = (out & 0xfffff) >>> 0;
-  value.Inner.A = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.inner.a = v;
+  out = (view.getUint32(45, true) >>> 4) | (view.getUint32(49, true) << 28);
   v = (out & 0xfffff) >>> 0;
-  value.Inner.B = v;
-  br += 20;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.inner.b = v;
+  out = view.getUint32(48, true);
   v = (out & 0xffffff) >>> 0;
-  value.Inner.C = v;
+  value.inner.c = v;
   return true;
 }
 

@@ -10,21 +10,70 @@ const NUMBER_SCRATCH = { value: 0 };
 const BIGINT_SCRATCH = { value: 0n };
 const BOOL_SCRATCH = { value: false };
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 // type ArmsAgree
 export class ArmsAgree {
   constructor() {
-    this.Lead = 0;
-    this.Flag = false;
+    this.lead = 0;
+    this.flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.A = 0;
+    this.a = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.B = 0;
+    this.b = 0;
 
-    this.Tail = 0;
+    this.tail = 0;
   }
 }
 
@@ -35,43 +84,43 @@ export const ArmsAgreeMaxBytes = 8;
 
 // InitArmsAgree restores fresh construction values in place, preserving storage.
 export function InitArmsAgree(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.A = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmsAgree(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.A = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 export function WriteArmsAgree(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Flag;
+  BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.Flag) {
-    NUMBER_SCRATCH.value = value.A;
+  if (value.flag) {
+    NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
   } else {
-    NUMBER_SCRATCH.value = value.B;
+    NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -82,46 +131,46 @@ export function ReadArmsAgree(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Flag = BOOL_SCRATCH.value;
-  if (value.Flag) {
+  value.flag = BOOL_SCRATCH.value;
+  if (value.flag) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
-    value.A = NUMBER_SCRATCH.value;
-    value.B = 0;
+    value.a = NUMBER_SCRATCH.value;
+    value.b = 0;
   } else {
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
-    value.B = NUMBER_SCRATCH.value;
-    value.A = 0;
+    value.b = NUMBER_SCRATCH.value;
+    value.a = 0;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArmsDisagree
 export class ArmsDisagree {
   constructor() {
-    this.Lead = 0;
-    this.Flag = false;
+    this.lead = 0;
+    this.flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.A = 0;
+    this.a = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.B = 0;
+    this.b = 0;
 
-    this.Tail = 0;
+    this.tail = 0;
   }
 }
 
@@ -132,43 +181,43 @@ export const ArmsDisagreeMaxBytes = 8;
 
 // InitArmsDisagree restores fresh construction values in place, preserving storage.
 export function InitArmsDisagree(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.A = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmsDisagree(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.A = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 export function WriteArmsDisagree(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Flag;
+  BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.Flag) {
-    NUMBER_SCRATCH.value = value.A;
+  if (value.flag) {
+    NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
   } else {
-    NUMBER_SCRATCH.value = value.B;
+    NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -179,42 +228,42 @@ export function ReadArmsDisagree(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Flag = BOOL_SCRATCH.value;
-  if (value.Flag) {
+  value.flag = BOOL_SCRATCH.value;
+  if (value.flag) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
       return false;
     }
-    value.A = NUMBER_SCRATCH.value;
-    value.B = 0;
+    value.a = NUMBER_SCRATCH.value;
+    value.b = 0;
   } else {
     if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
       return false;
     }
-    value.B = NUMBER_SCRATCH.value;
-    value.A = 0;
+    value.b = NUMBER_SCRATCH.value;
+    value.a = 0;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArmEmpty
 export class ArmEmpty {
   constructor() {
-    this.Lead = 0;
-    this.Flag = false;
+    this.lead = 0;
+    this.flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.A = 0;
+    this.a = 0;
 
-    this.Tail = 0;
+    this.tail = 0;
   }
 }
 
@@ -225,36 +274,36 @@ export const ArmEmptyMaxBytes = 8;
 
 // InitArmEmpty restores fresh construction values in place, preserving storage.
 export function InitArmEmpty(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.A = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmEmpty(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.A = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.a = 0;
+  value.tail = 0;
 }
 
 export function WriteArmEmpty(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Flag;
+  BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.Flag) {
-    NUMBER_SCRATCH.value = value.A;
+  if (value.flag) {
+    NUMBER_SCRATCH.value = value.a;
     if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -265,49 +314,49 @@ export function ReadArmEmpty(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Flag = BOOL_SCRATCH.value;
-  if (value.Flag) {
+  value.flag = BOOL_SCRATCH.value;
+  if (value.flag) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
       return false;
     }
-    value.A = NUMBER_SCRATCH.value;
+    value.a = NUMBER_SCRATCH.value;
   } else {
-    value.A = 0;
+    value.a = 0;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArmsNested
 export class ArmsNested {
   constructor() {
-    this.Lead = 0;
-    this.Outer = false;
+    this.lead = 0;
+    this.outer = false;
 
     // outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.Inner = false;
+    this.inner = false;
 
     // outer && inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.X = 0;
+    this.x = 0;
 
     // outer && !inner — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.Y = 0;
+    this.y = 0;
 
     // !outer — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.Z = 0;
+    this.z = 0;
 
-    this.Tail = 0;
+    this.tail = 0;
   }
 }
 
@@ -318,58 +367,58 @@ export const ArmsNestedMaxBytes = 8;
 
 // InitArmsNested restores fresh construction values in place, preserving storage.
 export function InitArmsNested(value) {
-  value.Lead = 0;
-  value.Outer = false;
-  value.Inner = false;
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.outer = false;
+  value.inner = false;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmsNested(value) {
-  value.Lead = 0;
-  value.Outer = false;
-  value.Inner = false;
-  value.X = 0;
-  value.Y = 0;
-  value.Z = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.outer = false;
+  value.inner = false;
+  value.x = 0;
+  value.y = 0;
+  value.z = 0;
+  value.tail = 0;
 }
 
 export function WriteArmsNested(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Outer;
+  BOOL_SCRATCH.value = value.outer;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.Outer) {
-    BOOL_SCRATCH.value = value.Inner;
+  if (value.outer) {
+    BOOL_SCRATCH.value = value.inner;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
     }
-    if (value.Inner) {
-      NUMBER_SCRATCH.value = value.X;
+    if (value.inner) {
+      NUMBER_SCRATCH.value = value.x;
       if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
         return false;
       }
     } else {
-      NUMBER_SCRATCH.value = value.Y;
+      NUMBER_SCRATCH.value = value.y;
       if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
         return false;
       }
     }
   } else {
-    NUMBER_SCRATCH.value = value.Z;
+    NUMBER_SCRATCH.value = value.z;
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
     return false;
   }
@@ -380,62 +429,62 @@ export function ReadArmsNested(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Outer = BOOL_SCRATCH.value;
-  if (value.Outer) {
+  value.outer = BOOL_SCRATCH.value;
+  if (value.outer) {
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
     }
-    value.Inner = BOOL_SCRATCH.value;
-    if (value.Inner) {
+    value.inner = BOOL_SCRATCH.value;
+    if (value.inner) {
       if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
         return false;
       }
-      value.X = NUMBER_SCRATCH.value;
-      value.Y = 0;
+      value.x = NUMBER_SCRATCH.value;
+      value.y = 0;
     } else {
       if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
         return false;
       }
-      value.Y = NUMBER_SCRATCH.value;
-      value.X = 0;
+      value.y = NUMBER_SCRATCH.value;
+      value.x = 0;
     }
-    value.Z = 0;
+    value.z = 0;
   } else {
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
-    value.Z = NUMBER_SCRATCH.value;
-    value.Inner = false;
-    value.X = 0;
-    value.Y = 0;
+    value.z = NUMBER_SCRATCH.value;
+    value.inner = false;
+    value.x = 0;
+    value.y = 0;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArmAlign
 export class ArmAlign {
   constructor() {
-    this.Lead = 0;
-    this.Flag = false;
+    this.lead = 0;
+    this.flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.S = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
-    this.SLength = 0;
+    this.s = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    this.sLength = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.B = 0;
+    this.b = 0;
 
-    this.Tail = 0;
+    this.tail = 0;
   }
 }
 
@@ -446,51 +495,51 @@ export const ArmAlignMaxBytes = 8;
 
 // InitArmAlign restores fresh construction values in place, preserving storage.
 export function InitArmAlign(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.S.fill(0);
-  value.SLength = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.s.fill(0);
+  value.sLength = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmAlign(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.S.fill(0);
-  value.SLength = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.s.fill(0);
+  value.sLength = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 export function WriteArmAlign(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Flag;
+  BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.Flag) {
-    if (!Number.isInteger(value.SLength) || value.SLength < 0 || value.SLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (value.flag) {
+    if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
       return false;
     }
-    NUMBER_SCRATCH.value = value.SLength;
+    NUMBER_SCRATCH.value = value.sLength;
     if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
       return false;
     }
-    if (!stream.serializeBytes(value.S.subarray(0, value.SLength))) {
+    if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
       return false;
     }
   } else {
-    NUMBER_SCRATCH.value = value.B;
+    NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -501,76 +550,54 @@ export function ReadArmAlign(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Flag = BOOL_SCRATCH.value;
-  if (value.Flag) {
+  value.flag = BOOL_SCRATCH.value;
+  if (value.flag) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4)) { // the length guards the slice (§6.3)
       return false;
     }
-    value.SLength = NUMBER_SCRATCH.value;
-    if (!stream.serializeBytes(value.S.subarray(0, value.SLength))) {
+    value.sLength = NUMBER_SCRATCH.value;
+    if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
       return false;
     }
-    for (let utf8Index = 0; utf8Index < value.SLength;)
-    {
-      const utf8Lead = value.S[utf8Index++];
-      if (utf8Lead < 0x80) continue;
-      let utf8Remaining, utf8Point;
-      if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-      else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-      else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-      else return false; // malformed UTF-8 lead (SPEC §4.7)
-      if (utf8Remaining > value.SLength - utf8Index) return false;
-      for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-      {
-        const utf8Byte = value.S[utf8Index++];
-        if ((utf8Byte & 0xC0) !== 0x80) return false;
-        utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-      }
-      if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-      if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-      if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
+    if (!validText(value.s, value.sLength)) {
+      return false;
     }
-    for (let i = 0; i < value.SLength; i++) {
-      if (value.S[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
-        return false;
-      }
-    }
-    value.B = 0;
+    value.b = 0;
   } else {
     if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
       return false;
     }
-    value.B = NUMBER_SCRATCH.value;
-    value.S.fill(0);
-    value.SLength = 0;
+    value.b = NUMBER_SCRATCH.value;
+    value.s.fill(0);
+    value.sLength = 0;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArmArray
 export class ArmArray {
   constructor() {
-    this.Lead = 0;
-    this.Flag = false;
+    this.lead = 0;
+    this.flag = false;
 
     // flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.Items = new Array(3).fill(0); // wire [0, 8191]
-    this.ItemsCount = 0;
+    this.items = new Array(3).fill(0); // wire [0, 8191]
+    this.itemsCount = 0;
 
     // !flag — wire branch; storage holds both sides, a read zeroes the
     // untaken side (SPEC §5)
-    this.B = 0;
+    this.b = 0;
 
-    this.Tail = 0;
+    this.tail = 0;
   }
 }
 
@@ -581,57 +608,57 @@ export const ArmArrayMaxBytes = 8;
 
 // InitArmArray restores fresh construction values in place, preserving storage.
 export function InitArmArray(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.Items.fill(0);
-  value.ItemsCount = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.items.fill(0);
+  value.itemsCount = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArmArray(value) {
-  value.Lead = 0;
-  value.Flag = false;
-  value.Items.fill(0);
-  value.ItemsCount = 0;
-  value.B = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.flag = false;
+  value.items.fill(0);
+  value.itemsCount = 0;
+  value.b = 0;
+  value.tail = 0;
 }
 
 export function WriteArmArray(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  BOOL_SCRATCH.value = value.Flag;
+  BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.Flag) {
-    if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop (§6.3)
+  if (value.flag) {
+    if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
       return false;
     }
-    NUMBER_SCRATCH.value = value.ItemsCount;
+    NUMBER_SCRATCH.value = value.itemsCount;
     if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
       return false;
     }
-    for (let i = 0; i < value.ItemsCount; i++) {
-      if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 8191) {
+    for (let i = 0; i < value.itemsCount; i++) {
+      if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
         return false;
       }
-      NUMBER_SCRATCH.value = value.Items[i];
+      NUMBER_SCRATCH.value = value.items[i];
       if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
         return false;
       }
     }
   } else {
-    NUMBER_SCRATCH.value = value.B;
+    NUMBER_SCRATCH.value = value.b;
     if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
@@ -642,42 +669,42 @@ export function ReadArmArray(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  value.Flag = BOOL_SCRATCH.value;
-  if (value.Flag) {
+  value.flag = BOOL_SCRATCH.value;
+  if (value.flag) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
       return false;
     }
-    value.ItemsCount = NUMBER_SCRATCH.value;
-    for (let i = 0; i < value.ItemsCount; i++) {
+    value.itemsCount = NUMBER_SCRATCH.value;
+    for (let i = 0; i < value.itemsCount; i++) {
       if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8191)) {
         return false;
       }
-      value.Items[i] = NUMBER_SCRATCH.value;
+      value.items[i] = NUMBER_SCRATCH.value;
     }
-    value.B = 0;
+    value.b = 0;
   } else {
     if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
       return false;
     }
-    value.B = NUMBER_SCRATCH.value;
-    value.Items.fill(0);
-    value.ItemsCount = 0;
+    value.b = NUMBER_SCRATCH.value;
+    value.items.fill(0);
+    value.itemsCount = 0;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type Narrow
 export class Narrow {
   constructor() {
-    this.N = 0;
+    this.n = 0;
   }
 }
 
@@ -688,16 +715,16 @@ export const NarrowMaxBytes = 8;
 
 // InitNarrow restores fresh construction values in place, preserving storage.
 export function InitNarrow(value) {
-  value.N = 0;
+  value.n = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroNarrow(value) {
-  value.N = 0;
+  value.n = 0;
 }
 
 export function WriteNarrow(stream, value) {
-  NUMBER_SCRATCH.value = value.N;
+  NUMBER_SCRATCH.value = value.n;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -708,14 +735,14 @@ export function ReadNarrow(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.N = NUMBER_SCRATCH.value;
+  value.n = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type Wide
 export class Wide {
   constructor() {
-    this.W = 0n;
+    this.w = 0n;
   }
 }
 
@@ -726,16 +753,16 @@ export const WideMaxBytes = 8;
 
 // InitWide restores fresh construction values in place, preserving storage.
 export function InitWide(value) {
-  value.W = 0n;
+  value.w = 0n;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroWide(value) {
-  value.W = 0n;
+  value.w = 0n;
 }
 
 export function WriteWide(stream, value) {
-  BIGINT_SCRATCH.value = value.W;
+  BIGINT_SCRATCH.value = value.w;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 37)) {
     return false;
   }
@@ -746,7 +773,7 @@ export function ReadWide(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 37)) {
     return false;
   }
-  value.W = BIGINT_SCRATCH.value;
+  value.w = BIGINT_SCRATCH.value;
   return true;
 }
 
@@ -755,9 +782,8 @@ export const UnevenType = Object.freeze({
   None: 0,
   Narrow: 1,
   Wide: 2,
-  Count: 2, // the declared variant count (SPEC §4.2)
-  Max: 2, // the exported extent (SPEC §4.2)
 });
+export const UnevenTypeMax = 2; // the exported extent (SPEC §4.2)
 
 // EnumNameUnevenType: debug/log/tooling name for any UnevenType wire value —
 // out-of-set values (wire-legal up to the declared max) name as "???"
@@ -780,9 +806,9 @@ export function EnumNameUnevenType(value) {
 // reused-storage discipline. Consumers read the selected arm only.
 export class Uneven {
   constructor() {
-    this.Type = UnevenType.None;
-    this.Narrow = new Narrow();
-    this.Wide = new Wide();
+    this.type = UnevenType.None;
+    this.narrow = new Narrow();
+    this.wide = new Wide();
   }
 }
 
@@ -795,22 +821,22 @@ export const UnevenMaxBytes = 8;
 // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
 // is unselected at None; an arm is initialized at its next selection.
 export function ZeroUneven(value) {
-  value.Type = UnevenType.None;
+  value.type = UnevenType.None;
 }
 
 export function WriteUneven(stream, value) {
-  if (!Number.isInteger(value.Type) || value.Type < 0 || value.Type > 2) {
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
-  NUMBER_SCRATCH.value = value.Type;
+  NUMBER_SCRATCH.value = value.type;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  switch (value.Type) {
+  switch (value.type) {
     case UnevenType.Narrow:
-      return WriteNarrow(stream, value.Narrow);
+      return WriteNarrow(stream, value.narrow);
     case UnevenType.Wide:
-      return WriteWide(stream, value.Wide);
+      return WriteWide(stream, value.wide);
   }
   return true; // None — the tag is the whole wire (SPEC §4.8)
 }
@@ -819,14 +845,14 @@ export function ReadUneven(stream, value) {
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 2)) { // rejects a tag above the count (SPEC §4.8)
     return false;
   }
-  value.Type = NUMBER_SCRATCH.value;
-  switch (value.Type) {
+  value.type = NUMBER_SCRATCH.value;
+  switch (value.type) {
     case UnevenType.Narrow:
-      InitNarrow(value.Narrow); // fresh declared defaults on every selection
-      return ReadNarrow(stream, value.Narrow);
+      InitNarrow(value.narrow); // fresh declared defaults on every selection
+      return ReadNarrow(stream, value.narrow);
     case UnevenType.Wide:
-      InitWide(value.Wide); // fresh declared defaults on every selection
-      return ReadWide(stream, value.Wide);
+      InitWide(value.wide); // fresh declared defaults on every selection
+      return ReadWide(stream, value.wide);
   }
   return true; // None
 }
@@ -834,9 +860,9 @@ export function ReadUneven(stream, value) {
 // type HoldsUneven
 export class HoldsUneven {
   constructor() {
-    this.Lead = 0;
-    this.U = new Uneven();
-    this.Tail = 0;
+    this.lead = 0;
+    this.u = new Uneven();
+    this.tail = 0;
   }
 }
 
@@ -847,27 +873,27 @@ export const HoldsUnevenMaxBytes = 8;
 
 // InitHoldsUneven restores fresh construction values in place, preserving storage.
 export function InitHoldsUneven(value) {
-  value.Lead = 0;
-  value.U.Type = 0; // None; dormant arms keep their storage
-  value.Tail = 0;
+  value.lead = 0;
+  value.u.type = 0; // None; dormant arms keep their storage
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroHoldsUneven(value) {
-  value.Lead = 0;
-  ZeroUneven(value.U);
-  value.Tail = 0;
+  value.lead = 0;
+  ZeroUneven(value.u);
+  value.tail = 0;
 }
 
 export function WriteHoldsUneven(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!WriteUneven(stream, value.U)) {
+  if (!WriteUneven(stream, value.u)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
@@ -878,24 +904,24 @@ export function ReadHoldsUneven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
-  if (!ReadUneven(stream, value.U)) {
+  value.lead = NUMBER_SCRATCH.value;
+  if (!ReadUneven(stream, value.u)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 11)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type ArrUneven
 export class ArrUneven {
   constructor() {
-    this.Lead = 0;
-    this.Items = Array.from({ length: 3 }, () => new Uneven());
-    this.ItemsCount = 0;
-    this.Tail = 0;
+    this.lead = 0;
+    this.items = Array.from({ length: 3 }, () => new Uneven());
+    this.itemsCount = 0;
+    this.tail = 0;
   }
 }
 
@@ -906,43 +932,43 @@ export const ArrUnevenMaxBytes = 16;
 
 // InitArrUneven restores fresh construction values in place, preserving storage.
 export function InitArrUneven(value) {
-  value.Lead = 0;
+  value.lead = 0;
   for (let initIndex0 = 0; initIndex0 < 3; initIndex0++) {
-    const initValue0 = value.Items[initIndex0];
-    initValue0.Type = 0; // None; dormant arms keep their storage
+    const initValue0 = value.items[initIndex0];
+    initValue0.type = 0; // None; dormant arms keep their storage
   }
-  value.ItemsCount = 0;
-  value.Tail = 0;
+  value.itemsCount = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroArrUneven(value) {
-  value.Lead = 0;
+  value.lead = 0;
   for (let i = 0; i < 3; i++) {
-    ZeroUneven(value.Items[i]);
+    ZeroUneven(value.items[i]);
   }
-  value.ItemsCount = 0;
-  value.Tail = 0;
+  value.itemsCount = 0;
+  value.tail = 0;
 }
 
 export function WriteArrUneven(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!WriteUneven(stream, value.Items[i])) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!WriteUneven(stream, value.items[i])) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
@@ -953,35 +979,35 @@ export function ReadArrUneven(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!ReadUneven(stream, value.Items[i])) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!ReadUneven(stream, value.items[i])) {
       return false;
     }
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type RegainAfterAlign
 export class RegainAfterAlign {
   constructor() {
-    this.Lead = 0;
-    this.Items = new Array(3).fill(0); // wire [0, 8191]
-    this.ItemsCount = 0;
-    this.S = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
-    this.SLength = 0;
-    this.P = 0;
-    this.Q = 0;
-    this.R = 0;
-    this.Tail = 0;
+    this.lead = 0;
+    this.items = new Array(3).fill(0); // wire [0, 8191]
+    this.itemsCount = 0;
+    this.s = new Uint8Array(4); // string(4): max length, used length beside it (SPEC §4.7)
+    this.sLength = 0;
+    this.p = 0;
+    this.q = 0;
+    this.r = 0;
+    this.tail = 0;
   }
 }
 
@@ -992,74 +1018,74 @@ export const RegainAfterAlignMaxBytes = 24;
 
 // InitRegainAfterAlign restores fresh construction values in place, preserving storage.
 export function InitRegainAfterAlign(value) {
-  value.Lead = 0;
-  value.Items.fill(0);
-  value.ItemsCount = 0;
-  value.S.fill(0);
-  value.SLength = 0;
-  value.P = 0;
-  value.Q = 0;
-  value.R = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
+  value.s.fill(0);
+  value.sLength = 0;
+  value.p = 0;
+  value.q = 0;
+  value.r = 0;
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroRegainAfterAlign(value) {
-  value.Lead = 0;
-  value.Items.fill(0);
-  value.ItemsCount = 0;
-  value.S.fill(0);
-  value.SLength = 0;
-  value.P = 0;
-  value.Q = 0;
-  value.R = 0;
-  value.Tail = 0;
+  value.lead = 0;
+  value.items.fill(0);
+  value.itemsCount = 0;
+  value.s.fill(0);
+  value.sLength = 0;
+  value.p = 0;
+  value.q = 0;
+  value.r = 0;
+  value.tail = 0;
 }
 
 export function WriteRegainAfterAlign(stream, value) {
-  NUMBER_SCRATCH.value = value.Lead;
+  NUMBER_SCRATCH.value = value.lead;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop (§6.3)
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop (§6.3)
     return false;
   }
-  NUMBER_SCRATCH.value = value.ItemsCount;
+  NUMBER_SCRATCH.value = value.itemsCount;
   if (!stream.serializeBits(NUMBER_SCRATCH, 2)) {
     return false;
   }
-  for (let i = 0; i < value.ItemsCount; i++) {
-    if (!Number.isInteger(value.Items[i]) || value.Items[i] < 0 || value.Items[i] > 8191) {
+  for (let i = 0; i < value.itemsCount; i++) {
+    if (!Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
     }
-    NUMBER_SCRATCH.value = value.Items[i];
+    NUMBER_SCRATCH.value = value.items[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 13)) {
       return false;
     }
   }
-  if (!Number.isInteger(value.SLength) || value.SLength < 0 || value.SLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
+  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 4) { // the length guards the slice (§6.3); out-of-contract writes are refused
     return false;
   }
-  NUMBER_SCRATCH.value = value.SLength;
+  NUMBER_SCRATCH.value = value.sLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
-  if (!stream.serializeBytes(value.S.subarray(0, value.SLength))) {
+  if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.P;
+  NUMBER_SCRATCH.value = value.p;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Q;
+  NUMBER_SCRATCH.value = value.q;
   if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.R;
+  NUMBER_SCRATCH.value = value.r;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
@@ -1070,65 +1096,43 @@ export function ReadRegainAfterAlign(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
   }
-  value.Lead = NUMBER_SCRATCH.value;
+  value.lead = NUMBER_SCRATCH.value;
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 3)) { // the count guards the loop (§6.3)
     return false;
   }
-  value.ItemsCount = NUMBER_SCRATCH.value;
-  for (let i = 0; i < value.ItemsCount; i++) {
+  value.itemsCount = NUMBER_SCRATCH.value;
+  for (let i = 0; i < value.itemsCount; i++) {
     if (!stream.serializeInt(NUMBER_SCRATCH, 0, 8191)) {
       return false;
     }
-    value.Items[i] = NUMBER_SCRATCH.value;
+    value.items[i] = NUMBER_SCRATCH.value;
   }
   if (!stream.serializeInt(NUMBER_SCRATCH, 0, 4)) { // the length guards the slice (§6.3)
     return false;
   }
-  value.SLength = NUMBER_SCRATCH.value;
-  if (!stream.serializeBytes(value.S.subarray(0, value.SLength))) {
+  value.sLength = NUMBER_SCRATCH.value;
+  if (!stream.serializeBytes(value.s.subarray(0, value.sLength))) {
     return false;
   }
-  for (let utf8Index = 0; utf8Index < value.SLength;)
-  {
-    const utf8Lead = value.S[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.SLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.S[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i = 0; i < value.SLength; i++) {
-    if (value.S[i] === 0) { // an interior null is content the read refuses (SPEC §4.7)
-      return false;
-    }
+  if (!validText(value.s, value.sLength)) {
+    return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.P = NUMBER_SCRATCH.value;
+  value.p = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 29)) {
     return false;
   }
-  value.Q = NUMBER_SCRATCH.value;
+  value.q = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
     return false;
   }
-  value.R = NUMBER_SCRATCH.value;
+  value.r = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 

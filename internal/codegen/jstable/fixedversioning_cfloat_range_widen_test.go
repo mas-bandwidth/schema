@@ -35,11 +35,11 @@ const READ = (f, wantBits, clamped, tag) => {
   const plan = TNewPlan(4096, 4096);
   const n = TLoad(back, back.length, data, data.length, plan, report);
   if (n !== 1) { fail(tag + ": n is not 1: " + n + " " + reason(r)); }
-  if (back[0].Lead !== 1 || back[0].Trail !== 2) {
+  if (back[0].lead !== 1 || back[0].trail !== 2) {
     fail(tag + ": the row moved a neighbour: " + show(back[0]));
   }
-  if (f32bits(back[0].Aim) !== wantBits) {
-    fail(tag + ": aim landed bits " + f32bits(back[0].Aim).toString(16) + ", want " + wantBits.toString(16) + " (" + back[0].Aim + ")");
+  if (f32bits(back[0].aim) !== wantBits) {
+    fail(tag + ": aim landed bits " + f32bits(back[0].aim).toString(16) + ", want " + wantBits.toString(16) + " (" + back[0].aim + ")");
   }
   if (r.clamped !== clamped) {
     fail(tag + ": clamped landed " + r.clamped + ", want exactly " + clamped + ": " + reason(r));

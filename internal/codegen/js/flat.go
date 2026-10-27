@@ -11,8 +11,11 @@
 // Per schema file Base.schema, BaseFlat.js is emitted beside Base.js
 // whenever the file declares types. Per struct Name:
 //
-//	Write<Name>Flat(value, view)          -> bytes written | -1 (checked refusal)
-//	Read<Name>Flat(value, view, numBits)  -> bool
+//	Write<Name>Flat(view, value)          -> bytes written | -1 (checked refusal)
+//	Read<Name>Flat(view, numBits, value)  -> bool
+//
+// Target first, value last — the runtime tier's Write<Name>(stream, value)
+// order, with the view (and, reading, its bit count) in the stream's place.
 //
 // Check model (the design's §4, the family's JavaScript #ifdef):
 //   - The READ side is never configurable. Reader obligations are format:
@@ -70,12 +73,24 @@ type fgen struct {
 	// per-function emission state
 	fn        strings.Builder
 	checked   bool // write side: emit the fold-guard set
-	needX     bool // float32 write temp
-	needN     bool // compressed-float / narrowing temp
-	needT     bool // float32 NaN lane temps
-	needBg    bool // BigInt lane temp
-	needNw    bool // read side: the wide-offset Number temp
 	loopDepth int
+
+	// THE STATIC CURSOR. From a function's first field until the first
+	// construct whose width the generator cannot know (a loop, a union's arm
+	// switch, a string, a branch whose sides differ), the write position
+	// (wi, sb) and the read position (br) are generation-time constants. While
+	// they are, the emitter folds them: a flush test that is always true or
+	// always false is not emitted, a word lands at a literal offset, an aligned
+	// double is one DataView store, and the runtime cursor variables are not
+	// touched at all. At the first dynamic construct the cursor is
+	// MATERIALIZED (assigned its known value) and the emitter falls back to
+	// the runtime cursor for the rest of the function. The wire is the same
+	// either way; only the arithmetic moved to generation time.
+	wKnown bool  // write: wi and sb are known constants
+	wWi    int64 // write: the known byte offset of the staging word
+	wSb    int64 // write: the known bit count staged in lo
+	rKnown bool  // read: br is a known constant
+	rBr    int64 // read: the known bit cursor
 
 	// the write-side chunk accumulator: adjacent constant-width fields whose
 	// value expressions are pure (field loads, literals — never a mutable
@@ -97,6 +112,9 @@ type fgen struct {
 	rwOpen bool
 	rwUsed int64
 	rwInd  string
+
+	// needText: some string field's read calls the module's text validator
+	needText bool
 }
 
 // chunkPiece is one field's contribution to a pending write chunk: a pure,
@@ -139,17 +157,27 @@ func (g *fgen) chunkFlush(ind string) {
 		}
 		shift += p.bits
 	}
-	g.pf("%sv = (%s) >>> 0;\n", ind, strings.Join(parts, " | "))
-	g.mergeW(g.chunkBits, ind)
+	expr := strings.Join(parts, " | ")
+	bits := g.chunkBits
 	g.chunk = g.chunk[:0]
 	g.chunkBits = 0
+	if g.wKnown && g.wSb+bits <= 32 {
+		// the chunk leaves no remainder for a next word, so its value is read
+		// once: the expression is merged where it stands, with no staging temp
+		g.mergeKnown(fmt.Sprintf("(%s)", expr), bits, ind)
+		return
+	}
+	g.pf("%sv = (%s) >>> 0;\n", ind, expr)
+	g.mergeW(bits, ind)
 }
 
 // flatFileHasSurface reports whether a file gets a Flat module: any file
-// declaring structs.
+// declaring a type or a union — the declarations the runtime tier gives a
+// Write/Read pair, so the two tiers carry the same codec set.
 func flatFileHasSurface(f *ir.File) bool {
 	for _, d := range f.Decls {
-		if _, ok := d.(*ir.Struct); ok {
+		switch d.(type) {
+		case *ir.Struct, *ir.Union:
 			return true
 		}
 	}
@@ -190,10 +218,22 @@ func closesReadWindow(s string) bool {
 	return strings.ContainsAny(s, "{}") || brToken.MatchString(s)
 }
 
+// writeCursor matches the runtime write cursor's names.
+var writeCursor = regexp.MustCompile(`\b(sb|wi)\b`)
+
 func (g *fgen) pf(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
 	if g.rwOpen && closesReadWindow(s) {
 		g.readClose()
+	}
+	// the static cursor's lock: while it holds, the runtime cursor variables
+	// are stale, so an emission that names one without materializing first
+	// would read a wrong position — a generator bug, refused here loudly
+	if g.rKnown && brToken.MatchString(s) {
+		panic("flat emitter: names br while the read cursor is static: " + s)
+	}
+	if g.wKnown && writeCursor.MatchString(s) {
+		panic("flat emitter: names the write cursor while it is static: " + s)
 	}
 	g.fn.WriteString(s)
 }
@@ -226,10 +266,10 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("// remains the diagnostic and reference surface — re-read a failing buffer\n")
 		h.WriteString("// through it to learn WHICH operation failed and why.\n")
 		h.WriteString("//\n")
-		h.WriteString("// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked\n")
+		h.WriteString("// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked\n")
 		h.WriteString("// writer refuses an out-of-contract value (the production writer trusts\n")
 		h.WriteString("// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at\n")
-		h.WriteString("// module load). Read<Name>Flat(value, view, numBits) -> bool, the family\n")
+		h.WriteString("// module load). Read<Name>Flat(view, numBits, value) -> bool, the family\n")
 		h.WriteString("// read verdict; reader obligations ride in every mode.\n")
 		h.WriteString("//\n")
 		h.WriteString("// Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes\n")
@@ -267,24 +307,42 @@ func (g *fgen) assemble() []byte {
 		h.WriteString("// fills it.\n")
 		h.WriteString("const SC = new DataView(new ArrayBuffer(8));\n\n")
 	}
-	h.WriteString("// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):\n")
-	h.WriteString("// bundlers statically replace NODE_ENV, so production bundles tree-shake\n")
-	h.WriteString("// the checked writers out. Existence-guarded for browsers without process.\n")
-	h.WriteString("const PRODUCTION = typeof process !== \"undefined\" && !!process.env && process.env.NODE_ENV === \"production\";\n\n")
+	// the build switch is declared only where some writer forks on it: a
+	// module whose every writer holds no contract shares one writer per type
+	if used["PRODUCTION"] {
+		h.WriteString("// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):\n")
+		h.WriteString("// bundlers statically replace NODE_ENV, so production bundles tree-shake\n")
+		h.WriteString("// the checked writers out. Existence-guarded for browsers without process.\n")
+		h.WriteString("const PRODUCTION = typeof process !== \"undefined\" && !!process.env && process.env.NODE_ENV === \"production\";\n\n")
+	}
 	h.WriteString("// Read buffers must extend at least this many bytes past the payload.\n")
 	h.WriteString("export const FLAT_READ_SLACK = 8;\n\n")
+	if g.needText {
+		h.WriteString(emitTextHelper())
+	}
 	h.WriteString(g.body.String())
 	return []byte(h.String())
 }
 
 func (g *fgen) emitModule() {
 	for _, d := range ir.EmissionOrder(g.file) {
-		st, ok := d.(*ir.Struct)
-		if !ok {
-			continue
+		switch d := d.(type) {
+		case *ir.Struct:
+			g.emitStructFlat(d)
+		case *ir.Union:
+			g.emitUnionFlat(d)
 		}
-		g.emitStructFlat(st)
 	}
+}
+
+// emitUnionFlat emits a union's standalone flat codec pair — the runtime
+// tier's Write<Union>/Read<Union> twin, for a union sent on its own: the tag
+// in minimal bits, then the selected arm inlined, exactly as a union field
+// of a type is.
+func (g *fgen) emitUnionFlat(u *ir.Union) {
+	g.bpf("// ---- union %s: the flat codec ----\n\n", u.Name)
+	g.emitWriteFlat(u.Name, func() { g.emitWriteUnionFlat(u, "value", "  ") })
+	g.emitReadFlatBody(u.Name, func() { g.emitReadUnionFlat(u, "value", "  ", false) })
 }
 
 // ---- shared kernel text (the probe's gen_flat.mjs, transliterated) ----
@@ -308,6 +366,10 @@ func maskHex(bits int64) string {
 // Measured against the previous two-lane 64-bit staging form: 1.44x on a
 // mixed-width field group (node 26, M2).
 func (g *fgen) mergeW(bits int64, ind string) {
+	if g.wKnown {
+		g.mergeKnown("v", bits, ind)
+		return
+	}
 	g.pf("%slo = (lo | (v << sb)) >>> 0;\n", ind)
 	g.pf("%ssb += %d;\n", ind, bits)
 	g.pf("%sif (sb >= 32) {\n", ind)
@@ -316,6 +378,67 @@ func (g *fgen) mergeW(bits int64, ind string) {
 	g.pf("%s  sb -= 32;\n", ind)
 	g.pf("%s  lo = sb === 0 ? 0 : v >>> (%d - sb);\n", ind, bits)
 	g.pf("%s}\n", ind)
+}
+
+// mergeKnown is mergeW at a static cursor: sb is a constant, so the flush
+// test is decided here, the word lands at a literal offset, and the staging
+// word is assigned rather than or-ed when it is empty. v is the merged value
+// (a temp, or a pure expression when no remainder needs it twice).
+func (g *fgen) mergeKnown(v string, bits int64, ind string) {
+	s, t := g.wSb, g.wSb+bits
+	if t < 32 {
+		if s == 0 {
+			g.rawf("%slo = %s;\n", ind, v)
+		} else {
+			g.rawf("%slo = (lo | (%s << %d)) >>> 0;\n", ind, v, s)
+		}
+		g.wSb = t
+		return
+	}
+	word := v
+	if s != 0 {
+		word = fmt.Sprintf("(lo | (%s << %d)) >>> 0", v, s)
+	}
+	g.rawf("%sview.setUint32(%d, %s, true);\n", ind, g.wWi, word)
+	g.wWi += 4
+	switch rem := t - 32; {
+	case rem > 0:
+		g.rawf("%slo = %s >>> %d;\n", ind, v, 32-s)
+	case s != 0:
+		g.rawf("%slo = 0;\n", ind)
+	}
+	g.wSb = t - 32
+}
+
+// wDynamic materializes the static write cursor before a construct whose
+// width the generator cannot know: the runtime wi and sb take the known
+// values (each was declared 0 and never touched while the cursor was static),
+// and every emission after this uses them.
+func (g *fgen) wDynamic(ind string) {
+	g.chunkFlush(ind)
+	if !g.wKnown {
+		return
+	}
+	g.wKnown = false
+	if g.wWi != 0 {
+		g.pf("%swi = %d;\n", ind, g.wWi)
+	}
+	if g.wSb != 0 {
+		g.pf("%ssb = %d;\n", ind, g.wSb)
+	}
+}
+
+// rDynamic is wDynamic's read twin: the open window settles, and the runtime
+// br takes the known position.
+func (g *fgen) rDynamic(ind string) {
+	if !g.rKnown {
+		return
+	}
+	g.readClose()
+	g.rKnown = false
+	if g.rBr != 0 {
+		g.pf("%sbr = %d;\n", ind, g.rBr)
+	}
 }
 
 // readR reads bits (in [1,32]) into v, from the open read window when the
@@ -347,6 +470,18 @@ func (g *fgen) readWin(bits int64, ind string) int64 {
 		return rel
 	}
 	g.readClose()
+	if g.rKnown {
+		// a static cursor: the byte offset and the in-byte shift are literals,
+		// and a byte-aligned window is one load
+		b0, sh := g.rBr>>3, g.rBr&7
+		if sh == 0 {
+			g.rawf("%sout = view.getUint32(%d, true);\n", ind, b0)
+		} else {
+			g.rawf("%sout = (view.getUint32(%d, true) >>> %d) | (view.getUint32(%d, true) << %d);\n", ind, b0, sh, b0+4, 32-sh)
+		}
+		g.rwOpen, g.rwUsed, g.rwInd = true, bits, ind
+		return 0
+	}
 	g.rawf("%sbi = br >>> 3;\n", ind)
 	g.rawf("%swlo = view.getUint32(bi, true);\n", ind)
 	g.rawf("%swhi = view.getUint32(bi + 4, true);\n", ind)
@@ -364,6 +499,10 @@ func (g *fgen) readClose() {
 	}
 	used, ind := g.rwUsed, g.rwInd
 	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
+	if g.rKnown {
+		g.rBr += used
+		return
+	}
 	if used > 0 {
 		g.rawf("%sbr += %d;\n", ind, used)
 	}
@@ -489,57 +628,63 @@ func (g *fgen) staticBitsScalar(f *ir.Field) (int64, bool) {
 
 func (g *fgen) emitStructFlat(st *ir.Struct) {
 	g.bpf("// ---- type %s: the flat codec ----\n\n", st.Name)
+	g.emitWriteFlat(st.Name, func() { g.emitWriteItems(st.Items, "value", "  ") })
+	g.emitReadFlatBody(st.Name, func() { g.emitReadItems(st.Items, "value", "  ", false) })
+}
 
-	g.emitWriteVariant(st, false)
-	g.emitWriteVariant(st, true)
-	g.bpf("// Write%sFlat(value, view) -> bytes written (>= 0), or -1 on a refused\n", st.Name)
+// emitWriteFlat emits Write<name>Flat from a body emitter run once per build.
+func (g *fgen) emitWriteFlat(name string, emit func()) {
+	production := g.writeVariantBody(emit, false)
+	checked := g.writeVariantBody(emit, true)
+	if production == checked {
+		// NOTHING TO CHECK: the value holds no writer contract the checked
+		// build would refuse, so the two variants are the same text and one
+		// function serves both builds.
+		g.bpf("// Write%sFlat(view, value) -> bytes written (>= 0). Nothing here is a\n", name)
+		g.bpf("// writer contract, so the checked and production builds share this one\n")
+		g.bpf("// writer. The buffer behind view must hold %sMaxBytes.\n", name)
+		g.bpf("export function Write%sFlat(%s) {\n%s}\n\n", name, usedParams(production, "view", "value"), production)
+		return
+	}
+	g.bpf("function write%sFlatProduction(%s) {\n%s}\n\n", name, usedParams(production, "view", "value"), production)
+	g.bpf("function write%sFlatChecked(%s) {\n%s}\n\n", name, usedParams(checked, "view", "value"), checked)
+	g.bpf("// Write%sFlat(view, value) -> bytes written (>= 0), or -1 on a refused\n", name)
 	g.bpf("// writer contract in the checked build — the production writer holds none\n")
-	g.bpf("// of them (SPEC §5). The buffer behind view must hold %sMaxBytes.\n", st.Name)
-	g.bpf("export const Write%sFlat = PRODUCTION ? write%sFlatProduction : write%sFlatChecked;\n\n", st.Name, st.Name, st.Name)
-
-	g.emitReadFlat(st)
+	g.bpf("// of them (SPEC §5). The buffer behind view must hold %sMaxBytes.\n", name)
+	g.bpf("export const Write%sFlat = PRODUCTION ? write%sFlatProduction : write%sFlatChecked;\n\n", name, name, name)
 }
 
 func (g *fgen) resetNeeds() {
-	g.needX, g.needN, g.needT, g.needBg = false, false, false, false
-	g.needNw = false
 	g.loopDepth = 0
+	g.wKnown, g.wWi, g.wSb = true, 0, 0
+	g.rKnown, g.rBr = true, 0
 	g.chunk = g.chunk[:0]
 	g.chunkBits = 0
 	g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
 }
 
-// writeLocals renders the write-side local declarations the body needs.
-func (g *fgen) writeLocals(ind string) string {
+// declareLocals renders `let` lines for the locals body names, in the given
+// order: a local the body never names is not declared (eslint
+// no-unused-vars), which is what lets folded straight-line code drop the
+// cursor and staging temps it no longer needs.
+func declareLocals(body, ind string, locals ...string) string {
+	used := jsIdentifiers(body)
+	var nums []string
 	var b strings.Builder
-	locals := []string{"v = 0"}
-	if g.needX {
-		locals = append(locals, "x = 0")
+	for _, l := range locals {
+		name, _, _ := strings.Cut(l, " ")
+		if !used[name] {
+			continue
+		}
+		if name == "bg" {
+			continue // the BigInt lane is declared on its own line, after the Numbers
+		}
+		nums = append(nums, l)
 	}
-	if g.needN {
-		locals = append(locals, "n = 0")
+	if len(nums) > 0 {
+		fmt.Fprintf(&b, "%slet %s;\n", ind, strings.Join(nums, ", "))
 	}
-	if g.needT {
-		locals = append(locals, "t0 = 0", "t1 = 0")
-	}
-	fmt.Fprintf(&b, "%slet %s;\n", ind, strings.Join(locals, ", "))
-	if g.needBg {
-		fmt.Fprintf(&b, "%slet bg = 0n;\n", ind)
-	}
-	return b.String()
-}
-
-func (g *fgen) readLocals(ind string) string {
-	var b strings.Builder
-	locals := []string{"v = 0", "bi = 0", "wlo = 0", "whi = 0", "s2 = 0", "out = 0"}
-	if g.needNw {
-		locals = append(locals, "nw = 0", "nl = 0")
-	}
-	if g.needX {
-		locals = append(locals, "x = 0")
-	}
-	fmt.Fprintf(&b, "%slet %s;\n", ind, strings.Join(locals, ", "))
-	if g.needBg {
+	if used["bg"] {
 		fmt.Fprintf(&b, "%slet bg = 0n;\n", ind)
 	}
 	return b.String()
@@ -552,62 +697,78 @@ func variantName(checked bool) string {
 	return "Production"
 }
 
-func (g *fgen) emitWriteVariant(st *ir.Struct, checked bool) {
+// writeVariantBody renders one write variant's function body (the text between
+// the braces), so the caller can see whether the two builds differ at all.
+func (g *fgen) writeVariantBody(emit func(), checked bool) string {
 	g.fn.Reset()
 	g.resetNeeds()
 	g.checked = checked
-	g.emitWriteItems(st.Items, "value", "  ")
+	emit()
 	g.chunkFlush("  ")
 	body := g.fn.String()
 	g.fn.Reset()
 
-	g.pf("function write%sFlat%s(value, view) {\n", st.Name, variantName(checked))
-	g.body.WriteString(g.fn.String())
-	g.fn.Reset()
-	if len(st.Items) > 0 {
-		// an empty type's writer reads no field, so it declares no value local
-		g.body.WriteString(g.writeLocals("  "))
-	}
-	g.body.WriteString("  let lo = 0, sb = 0, wi = 0;\n")
-	g.body.WriteString(body)
-	g.body.WriteString("  if (sb !== 0) {\n")
-	g.body.WriteString("    view.setUint32(wi, lo, true);\n")
-	g.body.WriteString("  }\n")
-	g.body.WriteString("  return ((wi * 8 + sb) + 7) >> 3;\n")
-	g.body.WriteString("}\n\n")
+	body += g.writeTail("  ")
+	return declareLocals(body, "  ", "v = 0", "x = 0", "n = 0", "t0 = 0", "t1 = 0", "lo = 0", "sb = 0", "wi = 0", "bg") + body
 }
 
-func (g *fgen) emitReadFlat(st *ir.Struct) {
+// writeTail flushes the staged word and returns the byte count.
+func (g *fgen) writeTail(ind string) string {
+	if g.wKnown {
+		// a static cursor: the tail flush and the byte count are constants
+		tail := ""
+		if g.wSb != 0 {
+			tail = fmt.Sprintf("%sview.setUint32(%d, lo, true);\n", ind, g.wWi)
+		}
+		return tail + fmt.Sprintf("%sreturn %d;\n", ind, g.wWi+(g.wSb+7)/8)
+	}
+	return ind + "if (sb !== 0) {\n" +
+		ind + "  view.setUint32(wi, lo, true);\n" +
+		ind + "}\n" +
+		ind + "return ((wi * 8 + sb) + 7) >> 3;\n"
+}
+
+// emitReadFlatBody emits Read<name>Flat from a body emitter.
+func (g *fgen) emitReadFlatBody(name string, emit func()) {
 	g.fn.Reset()
 	g.resetNeeds()
-	g.emitReadItems(st.Items, "value", "  ", false)
+	emit()
 	// the last window's advance is dead: `return true` is all that follows
 	g.readDrop()
-	body := g.fn.String()
+	body := g.readBody(g.fn.String())
 	g.fn.Reset()
 
-	g.pf("// Read%sFlat(value, view, numBits) -> bool. The buffer behind view must\n", st.Name)
-	g.pf("// extend FLAT_READ_SLACK bytes past the payload.\n")
-	if len(st.Items) == 0 {
-		// AN EMPTY TYPE READS NOTHING: no parameter and no cursor local is
-		// read, so none is declared (eslint no-unused-vars); a caller's
-		// arguments are accepted and ignored.
-		g.pf("export function Read%sFlat() {\n", st.Name)
-		g.body.WriteString(g.fn.String())
-		g.fn.Reset()
-		g.body.WriteString(body)
-		g.body.WriteString("  return true;\n")
-		g.body.WriteString("}\n\n")
-		return
+	g.bpf("// Read%sFlat(view, numBits, value) -> bool. The buffer behind view must\n", name)
+	g.bpf("// extend FLAT_READ_SLACK bytes past the payload.\n")
+	// a parameter nothing reads is not declared (eslint no-unused-vars) — an
+	// empty type reads none; a caller's arguments are accepted and ignored
+	g.bpf("export function Read%sFlat(%s) {\n%s  return true;\n}\n\n", name, usedParams(body, "view", "numBits", "value"), body)
+}
+
+// deadCursorStore matches a read cursor materialization line.
+var deadCursorStore = regexp.MustCompile(`(?m)^[ ]*br = \d+;\n`)
+
+// readBody prefixes a read body with the locals it names. A materialized
+// cursor nothing after it reads (a union whose every arm is empty, last in
+// its type) is a dead store, and is dropped.
+func (g *fgen) readBody(body string) string {
+	if stores := deadCursorStore.FindAllStringIndex(body, -1); len(stores) > 0 &&
+		len(brToken.FindAllStringIndex(body, -1)) == len(stores) {
+		body = deadCursorStore.ReplaceAllString(body, "")
 	}
-	g.pf("export function Read%sFlat(value, view, numBits) {\n", st.Name)
-	g.body.WriteString(g.fn.String())
-	g.fn.Reset()
-	g.body.WriteString(g.readLocals("  "))
-	g.body.WriteString("  let br = 0;\n")
-	g.body.WriteString(body)
-	g.body.WriteString("  return true;\n")
-	g.body.WriteString("}\n\n")
+	return declareLocals(body, "  ", "v = 0", "bi = 0", "wlo = 0", "whi = 0", "s2 = 0", "out = 0", "nw = 0", "nl = 0", "x = 0", "br = 0", "bg") + body
+}
+
+// usedParams renders a parameter list with the trailing parameters the body
+// never names dropped: an unread trailing parameter is eslint no-unused-vars,
+// and a caller's extra arguments are accepted and ignored.
+func usedParams(body string, params ...string) string {
+	used := jsIdentifiers(body)
+	n := len(params)
+	for n > 0 && !used[params[n-1]] {
+		n--
+	}
+	return strings.Join(params[:n], ", ")
 }
 
 // ---- write emission ----
@@ -624,22 +785,52 @@ func (g *fgen) emitWriteItems(items []ir.Item, path, ind string) {
 		case *ir.AlignItem:
 			g.emitWriteAlign(ind)
 		case *ir.Branch:
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.chunkFlush(ind)
-			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, ir.GoExportName(item.Cond))
-			g.emitWriteItems(item.Then, path, ind+"  ")
-			g.chunkFlush(ind + "  ")
-			if item.Else != nil {
-				g.pf("%s} else {\n", ind)
-				g.emitWriteItems(item.Else, path, ind+"  ")
-				g.chunkFlush(ind + "  ")
-			}
-			g.pf("%s}\n", ind)
+			g.emitWriteBranch(item, path, ind)
 		}
 	}
+}
+
+// emitWriteBranch writes an if/else. At a static cursor it is first emitted
+// on trial: when both sides leave the cursor at the same known position the
+// cursor stays static past the branch; otherwise the trial is discarded, the
+// cursor materializes, and the branch is emitted against the runtime cursor.
+func (g *fgen) emitWriteBranch(item *ir.Branch, path, ind string) {
+	g.chunkFlush(ind)
+	if g.wKnown {
+		mark, depth := g.fn.String(), g.loopDepth
+		wi, sb := g.wWi, g.wSb
+		if g.writeBranchSides(item, path, ind) {
+			return
+		}
+		g.fn.Reset()
+		g.fn.WriteString(mark)
+		g.loopDepth = depth
+		g.wKnown, g.wWi, g.wSb = true, wi, sb
+		g.wDynamic(ind)
+	}
+	g.writeBranchSides(item, path, ind)
+}
+
+// writeBranchSides emits the branch and reports whether a static cursor
+// stays static through it (both sides end at the same known position).
+func (g *fgen) writeBranchSides(item *ir.Branch, path, ind string) bool {
+	neg := ""
+	if item.Neg {
+		neg = "!"
+	}
+	known, wi, sb := g.wKnown, g.wWi, g.wSb
+	g.pf("%sif (%s%s.%s) {\n", ind, neg, path, MemberName(item.Cond))
+	g.emitWriteItems(item.Then, path, ind+"  ")
+	g.chunkFlush(ind + "  ")
+	thenKnown, thenWi, thenSb := g.wKnown, g.wWi, g.wSb
+	g.wKnown, g.wWi, g.wSb = known, wi, sb
+	if item.Else != nil {
+		g.pf("%s} else {\n", ind)
+		g.emitWriteItems(item.Else, path, ind+"  ")
+		g.chunkFlush(ind + "  ")
+	}
+	g.pf("%s}\n", ind)
+	return thenKnown && g.wKnown && thenWi == g.wWi && thenSb == g.wSb
 }
 
 // emitWriteRaw merges a compile-time constant (const/reserved items) of up
@@ -666,6 +857,19 @@ func (g *fgen) emitWriteRaw(value *big.Int, bits int64, ind string) {
 // kept, exactly as the merge would).
 func (g *fgen) emitWriteAlign(ind string) {
 	g.chunkFlush(ind)
+	if g.wKnown {
+		// the pad is a constant: zero bits, or the flush of a full word
+		switch padded := (g.wSb + 7) &^ 7; padded {
+		case 32:
+			g.rawf("%sview.setUint32(%d, lo, true);\n", ind, g.wWi)
+			g.rawf("%slo = 0;\n", ind)
+			g.wWi += 4
+			g.wSb = 0
+		default:
+			g.wSb = padded
+		}
+		return
+	}
 	g.pf("%ssb = (sb + 7) & -8;\n", ind)
 	g.pf("%sif (sb === 32) {\n", ind)
 	g.pf("%s  view.setUint32(wi, lo, true);\n", ind)
@@ -676,12 +880,12 @@ func (g *fgen) emitWriteAlign(ind string) {
 }
 
 func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
-	name := path + "." + ir.GoExportName(f.Name)
+	name := path + "." + MemberName(f.Name)
 	switch f.Array {
 	case ir.ArrayFixed:
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
-		g.chunkFlush(ind)
+		g.wDynamic(ind)
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 		g.emitWriteElem(f, name, iv, ind+"  ")
 		g.chunkFlush(ind + "  ")
@@ -698,7 +902,7 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 		g.emitWriteRangedNum(count, f.ArrayMin, f.ArrayBound, ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
-		g.chunkFlush(ind)
+		g.wDynamic(ind)
 		g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 		g.emitWriteElem(f, name, iv, ind+"  ")
 		g.chunkFlush(ind + "  ")
@@ -785,7 +989,6 @@ func (g *fgen) emitWriteWideOffset(rawExpr string, bits int64, ind string) {
 		}
 		g.mergeW(bits-32, ind)
 	default:
-		g.needBg = true
 		g.pf("%sbg = %s;\n", ind, rawExpr)
 		g.pf("%sSC.setBigUint64(0, bg, true);\n", ind)
 		g.pf("%sv = SC.getUint32(0, true);\n", ind)
@@ -840,6 +1043,13 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteF32(name, ind)
 	case ir.TFloat64:
 		g.chunkFlush(ind)
+		if g.wKnown && g.wSb == 0 {
+			// word-aligned at a static offset: the double's two little-endian
+			// words, low first, are exactly one little-endian 8-byte store
+			g.rawf("%sview.setFloat64(%d, %s, true);\n", ind, g.wWi, name)
+			g.wWi += 8
+			return
+		}
 		g.pf("%sSC.setFloat64(0, %s, true);\n", ind, name)
 		g.pf("%sv = SC.getUint32(0, true);\n", ind)
 		g.mergeW(32, ind)
@@ -868,7 +1078,6 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 // forced except the all-low-payload case).
 func (g *fgen) emitWriteF32(name, ind string) {
 	g.chunkFlush(ind)
-	g.needX, g.needT, g.needBg = true, true, true
 	g.pf("%sx = %s;\n", ind, name)
 	g.pf("%sif (x === x) {\n", ind)
 	g.pf("%s  SC.setFloat32(0, x, true);\n", ind)
@@ -895,7 +1104,6 @@ func f32lit(v float64) string {
 // checked mode (the runtime's always-on assert), clamp, quantize.
 func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind)
-	g.needX, g.needN = true, true
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
@@ -994,7 +1202,6 @@ func (g *fgen) emitWriteInt(f *ir.Field, name, ind string) {
 				// BigInt storage, int32-family range: truncate to the call
 				// family's domain first (the C# (int) cast's twin), then the
 				// Number-domain offset
-				g.needN = true
 				g.chunkFlush(ind)
 				g.pf("%sSC.setBigUint64(0, %s, true);\n", ind, name)
 				g.pf("%sn = SC.getInt32(0, true);\n", ind)
@@ -1109,6 +1316,7 @@ func (g *fgen) emitWriteBytesField(f *ir.Field, name, ind string) {
 		" // the length guards the slice; out-of-contract writes are refused", ind)
 	g.emitWriteRangedNum(length, 0, f.Type.Size, ind)
 	g.emitWriteAlign(ind) // flushes the pending chunk (the length prefix)
+	g.wDynamic(ind)
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	g.loopDepth++
 	// four bytes per merge, then the byte-at-a-time tail — measured +3.6%
@@ -1150,7 +1358,7 @@ func (g *fgen) emitReadItems(items []ir.Item, path, ind string, bounded bool) {
 				j++
 			}
 			if !bounded && total > 0 {
-				g.pf("%sif (br + %d > numBits) {\n%s  return false;\n%s}\n", ind, total, ind, ind)
+				g.boundCheck(total, ind)
 			}
 			for ; i < j; i++ {
 				g.emitReadStaticItem(items[i], path, ind)
@@ -1160,6 +1368,16 @@ func (g *fgen) emitReadItems(items []ir.Item, path, ind string, bounded bool) {
 		g.emitReadDynamicItem(items[i], path, ind)
 		i++
 	}
+}
+
+// boundCheck refuses a read whose next bits run past numBits.
+func (g *fgen) boundCheck(bits int64, ind string) {
+	g.readClose()
+	if g.rKnown {
+		g.pf("%sif (%d > numBits) {\n%s  return false;\n%s}\n", ind, g.rBr+bits, ind, ind)
+		return
+	}
+	g.pf("%sif (br + %d > numBits) {\n%s  return false;\n%s}\n", ind, bits, ind, ind)
 }
 
 // emitReadStaticItem reads one statically-sized item; bounds already proven.
@@ -1173,20 +1391,52 @@ func (g *fgen) emitReadStaticItem(item ir.Item, path, ind string) {
 		g.emitReadRaw(big.NewInt(0), item.Bits, false, ind)
 	case *ir.Branch:
 		// both sides statically equal (the run test admitted it)
-		neg := ""
-		if item.Neg {
-			neg = "!"
-		}
-		g.pf("%sif (%s%s.%s) {\n", ind, neg, path, ir.GoExportName(item.Cond))
-		g.emitReadItems(item.Then, path, ind+"  ", true)
-		g.emitZeroItems(item.Else, path, ind+"  ")
-		g.pf("%s} else {\n", ind)
-		if item.Else != nil {
-			g.emitReadItems(item.Else, path, ind+"  ", true)
-		}
-		g.emitZeroItems(item.Then, path, ind+"  ")
-		g.pf("%s}\n", ind)
+		g.emitReadBranch(item, path, ind, true)
 	}
+}
+
+// emitReadBranch reads an if/else, the untaken side zeroed (SPEC §5). At a
+// static cursor it is emitted on trial, exactly as emitWriteBranch is.
+func (g *fgen) emitReadBranch(item *ir.Branch, path, ind string, bounded bool) {
+	g.readClose()
+	if g.rKnown {
+		mark, depth := g.fn.String(), g.loopDepth
+		br := g.rBr
+		if g.readBranchSides(item, path, ind, bounded) {
+			return
+		}
+		g.fn.Reset()
+		g.fn.WriteString(mark)
+		g.loopDepth = depth
+		g.rwOpen, g.rwUsed, g.rwInd = false, 0, ""
+		g.rKnown, g.rBr = true, br
+		g.rDynamic(ind)
+	}
+	g.readBranchSides(item, path, ind, bounded)
+}
+
+// readBranchSides emits the branch and reports whether a static cursor stays
+// static through it.
+func (g *fgen) readBranchSides(item *ir.Branch, path, ind string, bounded bool) bool {
+	neg := ""
+	if item.Neg {
+		neg = "!"
+	}
+	known, br := g.rKnown, g.rBr
+	g.pf("%sif (%s%s.%s) {\n", ind, neg, path, MemberName(item.Cond))
+	g.emitReadItems(item.Then, path, ind+"  ", bounded)
+	g.emitZeroItems(item.Else, path, ind+"  ")
+	g.readClose()
+	thenKnown, thenBr := g.rKnown, g.rBr
+	g.rKnown, g.rBr = known, br
+	g.pf("%s} else {\n", ind)
+	if item.Else != nil {
+		g.emitReadItems(item.Else, path, ind+"  ", bounded)
+	}
+	g.emitZeroItems(item.Then, path, ind+"  ")
+	g.readClose()
+	g.pf("%s}\n", ind)
+	return thenKnown && g.rKnown && thenBr == g.rBr
 }
 
 func (g *fgen) emitReadDynamicItem(item ir.Item, path, ind string) {
@@ -1196,24 +1446,24 @@ func (g *fgen) emitReadDynamicItem(item ir.Item, path, ind string) {
 	case *ir.AlignItem:
 		g.emitReadAlign(ind)
 	case *ir.Branch:
-		neg := ""
-		if item.Neg {
-			neg = "!"
-		}
-		g.pf("%sif (%s%s.%s) {\n", ind, neg, path, ir.GoExportName(item.Cond))
-		g.emitReadItems(item.Then, path, ind+"  ", false)
-		g.emitZeroItems(item.Else, path, ind+"  ")
-		g.pf("%s} else {\n", ind)
-		if item.Else != nil {
-			g.emitReadItems(item.Else, path, ind+"  ", false)
-		}
-		g.emitZeroItems(item.Then, path, ind+"  ")
-		g.pf("%s}\n", ind)
+		g.emitReadBranch(item, path, ind, false)
 	}
 }
 
 // emitReadAlign verifies zero padding to the byte boundary and advances.
 func (g *fgen) emitReadAlign(ind string) {
+	g.readClose()
+	if g.rKnown {
+		// the pad is a constant: nothing at a byte boundary, else one bounded
+		// check of the padding byte
+		if sh := g.rBr & 7; sh != 0 {
+			g.pf("%sif (%d > numBits) {\n%s  return false;\n%s}\n", ind, g.rBr+8-sh, ind, ind)
+			g.pf("%sif ((view.getUint8(%d) >>> %d) !== 0) { // nonzero padding is refused\n", ind, g.rBr>>3, sh)
+			g.pf("%s  return false;\n%s}\n", ind, ind)
+			g.rBr += 8 - sh
+		}
+		return
+	}
 	g.pf("%ss2 = br & 7;\n", ind)
 	g.pf("%sif (s2 !== 0) {\n", ind)
 	g.pf("%s  if (br + (8 - s2) > numBits) {\n%s    return false;\n%s  }\n", ind, ind, ind)
@@ -1235,7 +1485,6 @@ func (g *fgen) emitReadRaw(value *big.Int, bits int64, isConst bool, ind string)
 		g.readRefuse(fmt.Sprintf("v !== %s", lo.String()), " // "+what, ind)
 		return
 	}
-	g.needBg = true
 	g.readR(32, ind)
 	g.pf("%sSC.setUint32(0, v, true);\n", ind)
 	g.readR(bits-32, ind)
@@ -1246,10 +1495,11 @@ func (g *fgen) emitReadRaw(value *big.Int, bits int64, isConst bool, ind string)
 }
 
 func (g *fgen) emitReadStaticField(f *ir.Field, path, ind string) {
-	name := path + "." + ir.GoExportName(f.Name)
+	name := path + "." + MemberName(f.Name)
 	if f.Array == ir.ArrayFixed {
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.rDynamic(ind)
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 		g.emitReadElem(f, name, iv, ind+"  ", true)
 		g.pf("%s}\n", ind)
@@ -1278,7 +1528,7 @@ func (g *fgen) emitReadElem(f *ir.Field, name, iv, ind string, bounded bool) {
 }
 
 func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
-	name := path + "." + ir.GoExportName(f.Name)
+	name := path + "." + MemberName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TWString:
 		g.emitReadWString(f, name, ind)
@@ -1288,7 +1538,7 @@ func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		count := name + "Count"
 		countBits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
 		if countBits > 0 {
-			g.pf("%sif (br + %d > numBits) {\n%s  return false;\n%s}\n", ind, countBits, ind, ind)
+			g.boundCheck(countBits, ind)
 			g.readR(countBits, ind)
 			diff := f.ArrayBound - f.ArrayMin
 			if diff != (int64(1)<<countBits)-1 {
@@ -1304,6 +1554,7 @@ func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		}
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.rDynamic(ind)
 		if elemBits, ok := g.staticBitsScalar(f); ok {
 			if elemBits > 0 {
 				g.pf("%sif (br + %s * %d > numBits) {\n%s  return false;\n%s}\n", ind, count, elemBits, ind, ind)
@@ -1321,6 +1572,7 @@ func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		// a fixed array of dynamically-sized elements (branches, strings)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
+		g.rDynamic(ind)
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
 		g.emitReadElem(f, name, iv, ind+"  ", false)
 		g.pf("%s}\n", ind)
@@ -1343,6 +1595,7 @@ func (g *fgen) emitReadDynamicField(f *ir.Field, path, ind string) {
 func (g *fgen) emitReadBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
+	g.rDynamic(ind)
 	g.pf("%sif (br + %d > numBits) {\n%s  return false;\n%s}\n", ind, lenBits, ind, ind)
 	g.readR(lenBits, ind)
 	if f.Type.Size != (int64(1)<<lenBits)-1 {
@@ -1359,10 +1612,8 @@ func (g *fgen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%s}\n", ind)
 	g.pf("%sbr += %s * 8;\n", ind, length)
 	if f.Type.Kind == ir.TString {
-		emitReadUTF8(g.pf, name, length, ind)
-		g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, length, iv)
-		g.pf("%s  if (%s[%s] === 0) { // an interior null is content the read refuses\n", ind, name, iv)
-		g.pf("%s    return false;\n%s  }\n%s}\n", ind, ind, ind)
+		g.needText = true
+		emitReadText(g.pf, name, length, ind)
 	}
 	g.loopDepth--
 }
@@ -1371,7 +1622,6 @@ func (g *fgen) emitReadBytesField(f *ir.Field, name, ind string) {
 // lanes through the scratch through 64 bits, 32-bit groups accumulated
 // past that (value-identical to serialize.js's group assembly).
 func (g *fgen) emitReadWide(bits int64, ind string) {
-	g.needBg = true
 	switch {
 	case bits <= 32:
 		g.readR(bits, ind)
@@ -1446,6 +1696,13 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		g.pf("%s  %s = SC.getFloat32(0, true);\n", ind, name)
 		g.pf("%s}\n", ind)
 	case ir.TFloat64:
+		g.readClose()
+		if g.rKnown && g.rBr&7 == 0 {
+			// byte-aligned at a static offset: one little-endian 8-byte load
+			g.rawf("%s%s = view.getFloat64(%d, true);\n", ind, name, g.rBr>>3)
+			g.rBr += 64
+			return
+		}
 		g.readR(32, ind)
 		g.pf("%sSC.setUint32(0, v, true);\n", ind)
 		g.readR(32, ind)
@@ -1725,9 +1982,6 @@ func (g *fgen) emitReadWideOffsetNum(f *ir.Field, name string, bits int64, diff,
 		return false
 	}
 
-	g.needBg = true
-	g.needNw = true
-
 	// the low 64 bits, through the scratch, exactly as the general path
 	g.readR(32, ind)
 	g.pf("%sSC.setUint32(0, v, true);\n", ind)
@@ -1777,22 +2031,22 @@ func (g *fgen) emitReadWideOffsetNum(f *ir.Field, name string, bits int64, diff,
 // switch inlines each arm's items — the struct-inlining move, per arm. expr
 // is the union object (a field path or a hoisted element ref).
 func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
-	g.guard(fmt.Sprintf("!Number.isInteger(%s.Type) || %s.Type < 0 || %s.Type > %d", expr, expr, expr, u.Max),
+	g.guard(fmt.Sprintf("!Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d", expr, expr, expr, u.Max),
 		" // the tag validates BEFORE it rides (SPEC §4.8)", ind)
 	if u.Max == 0 {
 		return // an empty union's degenerate tag range [0, 0] costs zero bits
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	g.chunkAdd(fmt.Sprintf("(%s.Type & %s)", expr, maskHex(bits)), bits, ind)
-	g.chunkFlush(ind)
-	g.pf("%sswitch (%s.Type) {\n", ind, expr)
+	g.chunkAdd(fmt.Sprintf("(%s.type & %s)", expr, maskHex(bits)), bits, ind)
+	g.wDynamic(ind) // the arms differ in width
+	g.pf("%sswitch (%s.type) {\n", ind, expr)
 	for i, vr := range u.Variants {
 		g.pf("%s  case %d: {\n", ind, i+1)
 		if vr.Void() {
 			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s  }\n", ind, ind)
 			continue
 		}
-		g.emitWriteItems(vr.Ref.Items, expr+"."+ir.GoExportName(vr.Name), ind+"    ")
+		g.emitWriteItems(vr.Ref.Items, expr+"."+MemberName(vr.Name), ind+"    ")
 		g.chunkFlush(ind + "    ")
 		g.pf("%s    break;\n%s  }\n", ind, ind)
 	}
@@ -1805,21 +2059,22 @@ func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
 // acceptance-identical to the runtime tier's Read<Union>.
 func (g *fgen) emitReadUnionFlat(u *ir.Union, expr, ind string, bounded bool) {
 	if u.Max == 0 {
-		g.pf("%s%s.Type = 0; // zero wire bits — only None exists (SPEC §4.8)\n", ind, expr)
+		g.pf("%s%s.type = 0; // zero wire bits — only None exists (SPEC §4.8)\n", ind, expr)
 		return
 	}
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	if !bounded {
-		g.pf("%sif (br + %d > numBits) {\n%s  return false;\n%s}\n", ind, bits, ind, ind)
+		g.boundCheck(bits, ind)
 	}
 	g.readR(bits, ind)
 	if u.Max != (int64(1)<<bits)-1 {
 		g.readRefuse(fmt.Sprintf("v > %d", u.Max), " // not a wire-legal tag (SPEC §4.8)", ind)
 	}
-	g.pf("%s%s.Type = v;\n", ind, expr)
-	g.pf("%sswitch (%s.Type) {\n", ind, expr)
+	g.pf("%s%s.type = v;\n", ind, expr)
+	g.rDynamic(ind) // the arms differ in width
+	g.pf("%sswitch (%s.type) {\n", ind, expr)
 	for i, vr := range u.Variants {
-		arm := expr + "." + ir.GoExportName(vr.Name)
+		arm := expr + "." + MemberName(vr.Name)
 		g.pf("%s  case %d: {\n", ind, i+1)
 		if vr.Void() {
 			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s  }\n", ind, ind)
@@ -1852,7 +2107,7 @@ func (g *fgen) emitZeroItems(items []ir.Item, path, ind string) {
 }
 
 func (g *fgen) emitZeroFieldFlat(f *ir.Field, path, ind string) {
-	name := path + "." + ir.GoExportName(f.Name)
+	name := path + "." + MemberName(f.Name)
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
@@ -1874,7 +2129,7 @@ func (g *fgen) emitZeroFieldFlat(f *ir.Field, path, ind string) {
 			iv := fmt.Sprintf("i%d", g.loopDepth)
 			g.loopDepth++
 			g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-			g.pf("%s  %s[%s].Type = 0;\n", ind, name, iv)
+			g.pf("%s  %s[%s].type = 0;\n", ind, name, iv)
 			g.pf("%s}\n", ind)
 			g.loopDepth--
 		} else {
@@ -1892,7 +2147,7 @@ func (g *fgen) emitZeroFieldFlat(f *ir.Field, path, ind string) {
 		}
 		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion && f.Type.Kind == ir.TNamed {
 			// zero IS None: the tag resets; arms are unspecified at None
-			g.pf("%s%s.Type = 0;\n", ind, name)
+			g.pf("%s%s.type = 0;\n", ind, name)
 			return
 		}
 		g.pf("%s%s = %s;\n", ind, name, g.flatZeroValue(f.Type))

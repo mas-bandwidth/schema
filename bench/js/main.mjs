@@ -412,7 +412,7 @@ function benchDataDrivenFlat(name, golden, iters, Ctor, writeFn, readFn, flatWri
     // 64-bit window loads up to 8 bytes past the last word (§2.7's stride pad)
     const vview = new DataView(gVariants[k].buffer);
     const flOut = new Ctor();
-    if (!flatReadFn(flOut, vview, numBits)) {
+    if (!flatReadFn(vview, numBits, flOut)) {
       fail(name, "flat decode of a variant failed");
       return;
     }
@@ -425,7 +425,7 @@ function benchDataDrivenFlat(name, golden, iters, Ctor, writeFn, readFn, flatWri
       fail(name, "flat and runtime reads disagree on a variant's fields");
       return;
     }
-    if (flatWriteFn(flOut, twinView) !== bytesPerOp ||
+    if (flatWriteFn(twinView, flOut) !== bytesPerOp ||
       !bytesEqual(gTwin.subarray(0, bytesPerOp), gVariants[k].subarray(0, bytesPerOp))) {
       fail(name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus");
       return;
@@ -454,7 +454,7 @@ function benchDataDrivenFlat(name, golden, iters, Ctor, writeFn, readFn, flatWri
   for (let run = -1; run < gNumRuns; run++) {
     const start = performance.now();
     for (let i = 0; i < iters; i++) {
-      const n = flatWriteFn(instances[i & (NumVariants - 1)], gView);
+      const n = flatWriteFn(gView, instances[i & (NumVariants - 1)]);
       if (n < 0) {
         fail(name, "flat write refused in loop");
         return;
@@ -475,11 +475,11 @@ function benchDataDrivenFlat(name, golden, iters, Ctor, writeFn, readFn, flatWri
   for (let run = -1; run < gNumRuns; run++) {
     const start = performance.now();
     for (let i = 0; i < iters; i++) {
-      if (!flatReadFn(outValue, variantViews[i & (NumVariants - 1)], numBits)) {
+      if (!flatReadFn(variantViews[i & (NumVariants - 1)], numBits, outValue)) {
         fail(name, "flat read failed in loop");
         return;
       }
-      const n = flatWriteFn(outValue, gView);
+      const n = flatWriteFn(gView, outValue);
       if (n < 0) {
         fail(name, "flat re-write refused in loop");
         return;
@@ -537,7 +537,7 @@ function benchFlatReadAlone(name, iters, bytesPerOp, numBits, variantViews, outV
   for (let run = -1; run < gNumRuns; run++) {
     const start = performance.now();
     for (let i = 0; i < iters; i++) {
-      if (!flatReadFn(outValue, variantViews[i & (NumVariants - 1)], numBits)) {
+      if (!flatReadFn(variantViews[i & (NumVariants - 1)], numBits, outValue)) {
         fail(name, "flat read failed in loop");
         return;
       }
@@ -549,7 +549,7 @@ function benchFlatReadAlone(name, iters, bytesPerOp, numBits, variantViews, outV
     }
   }
   const last = (iters - 1) & (NumVariants - 1);
-  if (flatWriteFn(outValue, gView) !== bytesPerOp ||
+  if (flatWriteFn(gView, outValue) !== bytesPerOp ||
     !bytesEqual(gBuffer.subarray(0, bytesPerOp), gVariants[last].subarray(0, bytesPerOp))) {
     fail(name, "the timed reads' destination does not re-encode to the last variant read");
     return;

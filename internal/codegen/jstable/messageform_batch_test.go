@@ -412,10 +412,10 @@ func messageCompressedFloatProbe(u *ir.Unit, st *ir.Struct) string {
 // the announced grid comes back the same float, so one message saved then
 // loaded reproduces the message byte for byte.
 const value = new %[1]s();
-value.ServerTime = 123.45;
-value.AimX = 0.5;
-value.AimY = -0.25;
-value.AimZ = 0.75;
+value.serverTime = 123.45;
+value.aimX = 0.5;
+value.aimY = -0.25;
+value.aimZ = 0.75;
 value.Ping = 37.5;
 const buf = new Uint8Array(65536);
 const saveReport = {};
@@ -436,10 +436,10 @@ const n2 = %[1]sSaveMessages([storage[0]], buf2, saveReport2);
 if (n2 !== n || !bytesEq(buf.subarray(0, n), buf2.subarray(0, n2))) {
   fail("compressed-float round trip bytes differ");
 }
-if (Math.abs(storage[0].ServerTime - 123.45) > 0.02) { fail("ServerTime " + storage[0].ServerTime); }
-if (Math.abs(storage[0].AimX - 0.5) > 0.02) { fail("AimX " + storage[0].AimX); }
-if (Math.abs(storage[0].AimY + 0.25) > 0.02) { fail("AimY " + storage[0].AimY); }
-if (Math.abs(storage[0].AimZ - 0.75) > 0.02) { fail("AimZ " + storage[0].AimZ); }
+if (Math.abs(storage[0].serverTime - 123.45) > 0.02) { fail("ServerTime " + storage[0].serverTime); }
+if (Math.abs(storage[0].aimX - 0.5) > 0.02) { fail("AimX " + storage[0].aimX); }
+if (Math.abs(storage[0].aimY + 0.25) > 0.02) { fail("AimY " + storage[0].aimY); }
+if (Math.abs(storage[0].aimZ - 0.75) > 0.02) { fail("AimZ " + storage[0].aimZ); }
 if (Math.abs(storage[0].Ping - 37.5) > 0.02) { fail("Ping " + storage[0].Ping); }
 `, st.Name)
 	b.WriteString(probeTail())
@@ -460,8 +460,8 @@ func messageKeyedArrayProbe(u *ir.Unit, st *ir.Struct) string {
 // (docs/SPEC-TABLES.md §3.2): the two set slots ride under their variant's
 // name, the default slot does not, and save/load round-trips byte for byte.
 const value = new %[1]s();
-value.Slots[0] = 7;
-value.Slots[2] = 9;
+value.slots[0] = 7;
+value.slots[2] = 9;
 const buf = new Uint8Array(65536);
 const saveReport = {};
 const n = %[1]sSaveMessages([value], buf, saveReport);
@@ -472,8 +472,8 @@ const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
 if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
   fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
 }
-if (storage[0].Slots[0] !== 7 || storage[0].Slots[1] !== 0 || storage[0].Slots[2] !== 9) {
-  fail("keyed slots: " + JSON.stringify(Array.from(storage[0].Slots)));
+if (storage[0].slots[0] !== 7 || storage[0].slots[1] !== 0 || storage[0].slots[2] !== 9) {
+  fail("keyed slots: " + JSON.stringify(Array.from(storage[0].slots)));
 }
 const buf2 = new Uint8Array(65536);
 const n2 = %[1]sSaveMessages([storage[0]], buf2, {});
@@ -495,7 +495,7 @@ func messageByValueTypeProbe(u *ir.Unit, st *ir.Struct) string {
 	b.WriteString(messageProbeHeader(u, st, ""))
 	fmt.Fprintf(&b, `
 const value = new %[1]s();
-value.Scores.Points = 42;
+value.scores.points = 42;
 const buf = new Uint8Array(65536);
 const saveReport = {};
 const n = %[1]sSaveMessages([value], buf, saveReport);
@@ -506,7 +506,7 @@ const count = %[1]sLoadMessages(storage, v, buf.subarray(0, n), loadReport);
 if (count !== 1 || loadReport.Verdict !== 0 || loadReport.Malformed) {
   fail("LoadMessages: count=" + count + " " + JSON.stringify(loadReport));
 }
-if (storage[0].Scores.Points !== 42) { fail("by-value type: " + storage[0].Scores.Points); }
+if (storage[0].scores.points !== 42) { fail("by-value type: " + storage[0].scores.points); }
 `, st.Name)
 	b.WriteString(probeTail())
 	return b.String()
@@ -632,7 +632,7 @@ func emitStructChecks(b *strings.Builder, st *ir.Struct, node any, expr, ind str
 		if !ok {
 			continue
 		}
-		member := expr + "." + ir.GoExportName(f.Name)
+		member := expr + "." + js.MemberName(f.Name)
 		emitFieldCheck(b, f, val, member, ind)
 	}
 }

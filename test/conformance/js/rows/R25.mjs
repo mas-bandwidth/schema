@@ -112,7 +112,7 @@ function buildCellFile() {
     holes: [],
   };
   
-  const values = [{ Power: 0, LabelLength: 0, Label: new Uint8Array(8) }];
+  const values = [{ power: 0, labelLength: 0, label: new Uint8Array(8) }];
   const result = CellFixedLoad(values, 1, bytes, bytes.length, plan, report);
   
   // Should succeed (return 1 record)

@@ -48,7 +48,7 @@ type Wide
 	// The production writer must NOT contain the unconditional length check
 	// or the interior-null check. Note: the field name is capitalized to TextLength.
 	prodForbidden := []string{
-		"!Number.isInteger(value.TextLength)",
+		"!Number.isInteger(value.textLength)",
 		"v === 0",
 	}
 	for _, forbidden := range prodForbidden {
@@ -60,7 +60,7 @@ type Wide
 	// The checked writer MUST contain both checks (via guard, so they appear
 	// as if statements with return -1).
 	checkedRequired := []string{
-		"!Number.isInteger(value.TextLength)",
+		"!Number.isInteger(value.textLength)",
 		"v === 0",
 	}
 	for _, required := range checkedRequired {
@@ -71,15 +71,15 @@ type Wide
 	// The interior-null refusal sits in the loop body, at the same indent as
 	// the unit load. g.guard at the for-statement indent emits a malformed
 	// body that a substring check still accepts.
-	if got, want := lineIndent(writeChecked, "if (v === 0)"), lineIndent(writeChecked, "v = value.Text[wideIndex];"); got != want {
+	if got, want := lineIndent(writeChecked, "if (v === 0)"), lineIndent(writeChecked, "v = value.text[wideIndex];"); got != want {
 		t.Errorf("interior-null guard indent %q, want loop-body indent %q:\n%s", got, want, writeChecked)
 	}
 
 	// Sanity: both writers should still have the loop structure
-	if !strings.Contains(writeProd, "for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++)") {
+	if !strings.Contains(writeProd, "for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++)") {
 		t.Error("production writer missing the wstring loop")
 	}
-	if !strings.Contains(writeChecked, "for (let wideIndex = 0; wideIndex < value.TextLength; wideIndex++)") {
+	if !strings.Contains(writeChecked, "for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++)") {
 		t.Error("checked writer missing the wstring loop")
 	}
 }

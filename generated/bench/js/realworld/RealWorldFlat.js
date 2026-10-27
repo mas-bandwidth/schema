@@ -11,10 +11,10 @@
 // remains the diagnostic and reference surface — re-read a failing buffer
 // through it to learn WHICH operation failed and why.
 //
-// Write<Name>Flat(value, view) -> bytes written, or -1 when the checked
+// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked
 // writer refuses an out-of-contract value (the production writer trusts
 // the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(value, view, numBits) -> bool, the family
+// module load). Read<Name>Flat(view, numBits, value) -> bool, the family
 // read verdict; reader obligations ride in every mode.
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
@@ -38,70 +38,30 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type RealPacket: the flat codec ----
 
-function writeRealPacketFlatProduction(value, view) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
+function writeRealPacketFlatProduction(view, value) {
+  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((((value.F001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 21;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (21 - sb);
-  }
-  SC.setFloat64(0, value.F002F64, true);
+  lo = (((((value.f001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff));
+  SC.setFloat64(0, value.f002F64, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((((value.F003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 21;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (21 - sb);
-  }
-  x = Math.fround(value.F004Cf32);
+  view.setUint32(4, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  v = (((((value.f003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff)) >>> 0;
+  view.setUint32(8, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  x = Math.fround(value.f004Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
   if (v > 20000) { v = 20000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 15;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (15 - sb);
-  }
-  v = (((value.F005Uint) & 0x1fff) | (((((value.F006Int >>> 0) - 4294965783) >>> 0) & 0xfff) << 13)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  x = value.F007F32;
+  lo = (lo | (v << 10)) >>> 0;
+  v = (((value.f005Uint) & 0x1fff) | (((((value.f006Int >>> 0) - 4294965783) >>> 0) & 0xfff) << 13)) >>> 0;
+  view.setUint32(12, (lo | (v << 25)) >>> 0, true);
+  lo = v >>> 7;
+  x = value.f007F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -113,43 +73,17 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.F008U64, true);
+  view.setUint32(16, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  SC.setBigUint64(0, value.f008U64, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(20, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((((value.F009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 6;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (6 - sb);
-  }
-  x = value.F010F32;
+  view.setUint32(24, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  lo = (lo | ((((((value.f009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) << 18)) >>> 0;
+  x = value.f010F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -161,25 +95,15 @@ function writeRealPacketFlatProduction(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.F011Bits & 0x3ff) | ((value.F012Bool ? 1 : 0) << 10)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  if (value.F012Bool) {
-    x = value.F013F32;
+  view.setUint32(28, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
+  view.setUint32(32, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  wi = 36;
+  sb = 3;
+  if (value.f012Bool) {
+    x = value.f013F32;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -199,7 +123,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((value.F014Uint) & 0x3ff) | (((((value.F015Int >>> 0) - 4294967275) >>> 0) & 0x3f) << 10)) >>> 0;
+    v = (((value.f014Uint) & 0x3ff) | (((((value.f015Int >>> 0) - 4294967275) >>> 0) & 0x3f) << 10)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -208,7 +132,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (16 - sb);
     }
-    v = (((((value.F016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff)) >>> 0;
+    v = (((((value.f016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 27;
     if (sb >= 32) {
@@ -217,7 +141,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (27 - sb);
     }
-    v = (((value.F017Uint) & 0x1fff)) >>> 0;
+    v = (((value.f017Uint) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -227,7 +151,7 @@ function writeRealPacketFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
-  v = (((((value.F018Int >>> 0) - 4294966462) >>> 0) & 0x7ff)) >>> 0;
+  v = (((((value.f018Int >>> 0) - 4294966462) >>> 0) & 0x7ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -236,7 +160,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  SC.setFloat64(0, value.F019F64, true);
+  SC.setFloat64(0, value.f019F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -255,7 +179,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = value.F020F32;
+  x = value.f020F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -275,7 +199,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.F021Ufixed) & 0x7ffffff)) >>> 0;
+  v = (((value.f021Ufixed) & 0x7ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 27;
   if (sb >= 32) {
@@ -284,7 +208,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
-  x = value.F022F32;
+  x = value.f022F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -304,7 +228,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.F023Bits & 0x1ffffff)) >>> 0;
+  v = ((value.f023Bits & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -313,7 +237,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  x = value.F024F32;
+  x = value.f024F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -333,7 +257,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((((value.F025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) | ((value.F026Bits & 0x1ff) << 16)) >>> 0;
+  v = (((((value.f025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) | ((value.f026Bits & 0x1ff) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -342,7 +266,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  x = Math.fround(value.F027Cf32);
+  x = Math.fround(value.f027Cf32);
   n = Math.fround(Math.fround(x - -2.0) / 4.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
@@ -355,7 +279,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  v = ((value.F028Bits & 0xf)) >>> 0;
+  v = ((value.f028Bits & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -364,7 +288,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
-  SC.setBigUint64(0, value.F029I64, true);
+  SC.setBigUint64(0, value.f029I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -383,7 +307,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = value.F030F32;
+  x = value.f030F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -403,7 +327,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.F031Bits & 0x1) | (((((value.F032Int >>> 0) - 4294967293) >>> 0) & 0x7) << 1) | (((value.F033Uint) & 0x3ffff) << 4)) >>> 0;
+  v = ((value.f031Bits & 0x1) | (((((value.f032Int >>> 0) - 4294967293) >>> 0) & 0x7) << 1) | (((value.f033Uint) & 0x3ffff) << 4)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 22;
   if (sb >= 32) {
@@ -412,7 +336,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (22 - sb);
   }
-  v = (((value.F034Uint) & 0x3fff) | ((value.F035Bits & 0x1ff) << 14) | ((value.F036Enum & 0x7) << 23) | ((value.F037Bool ? 1 : 0) << 26) | ((value.F038Bool ? 1 : 0) << 27)) >>> 0;
+  v = (((value.f034Uint) & 0x3fff) | ((value.f035Bits & 0x1ff) << 14) | ((value.f036Enum & 0x7) << 23) | ((value.f037Bool ? 1 : 0) << 26) | ((value.f038Bool ? 1 : 0) << 27)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 28;
   if (sb >= 32) {
@@ -421,7 +345,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
-  v = ((value.F039Bits & 0x7ffff)) >>> 0;
+  v = ((value.f039Bits & 0x7ffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 19;
   if (sb >= 32) {
@@ -430,7 +354,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
-  v = (((((value.F040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) | (((((value.F041Int >>> 0) - 4294967241) >>> 0) & 0x7f) << 16)) >>> 0;
+  v = (((((value.f040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) | (((((value.f041Int >>> 0) - 4294967241) >>> 0) & 0x7f) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -439,7 +363,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  v = ((value.F042Bits & 0x3fffffff) | ((value.F043Bool ? 1 : 0) << 30)) >>> 0;
+  v = ((value.f042Bits & 0x3fffffff) | ((value.f043Bool ? 1 : 0) << 30)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 31;
   if (sb >= 32) {
@@ -448,8 +372,8 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (31 - sb);
   }
-  if (value.F043Bool) {
-    x = value.F044F32;
+  if (value.f043Bool) {
+    x = value.f044F32;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -469,7 +393,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = ((value.F045Bits & 0xfff) | (((value.F046Uint) & 0x1ffff) << 12)) >>> 0;
+    v = ((value.f045Bits & 0xfff) | (((value.f046Uint) & 0x1ffff) << 12)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 29;
     if (sb >= 32) {
@@ -478,7 +402,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (29 - sb);
     }
-    v = (((((value.F047Int >>> 0) - 4294536320) >>> 0) & 0xfffff)) >>> 0;
+    v = (((((value.f047Int >>> 0) - 4294536320) >>> 0) & 0xfffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 20;
     if (sb >= 32) {
@@ -488,7 +412,7 @@ function writeRealPacketFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (20 - sb);
     }
   }
-  SC.setFloat64(0, value.F048F64, true);
+  SC.setFloat64(0, value.f048F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -507,7 +431,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.F049Ufixed) & 0xffff) | ((value.F050Bool ? 1 : 0) << 16)) >>> 0;
+  v = (((value.f049Ufixed) & 0xffff) | ((value.f050Bool ? 1 : 0) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 17;
   if (sb >= 32) {
@@ -516,8 +440,8 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (17 - sb);
   }
-  if (value.F050Bool) {
-    v = ((value.F051Bool ? 1 : 0) | (((((value.F052Int >>> 0) - 4294967239) >>> 0) & 0x7f) << 1)) >>> 0;
+  if (value.f050Bool) {
+    v = ((value.f051Bool ? 1 : 0) | (((((value.f052Int >>> 0) - 4294967239) >>> 0) & 0x7f) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -526,7 +450,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
-    x = value.F053F32;
+    x = value.f053F32;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -546,7 +470,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((((value.F054Int >>> 0) - 4294967261) >>> 0) & 0x7f)) >>> 0;
+    v = (((((value.f054Int >>> 0) - 4294967261) >>> 0) & 0x7f)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 7;
     if (sb >= 32) {
@@ -556,7 +480,7 @@ function writeRealPacketFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
   }
-  v = ((value.F055Bool ? 1 : 0) | (((((value.F056Int >>> 0) - 4294967283) >>> 0) & 0x1f) << 1) | (((((value.F057Int >>> 0) - 4294967281) >>> 0) & 0x1f) << 6)) >>> 0;
+  v = ((value.f055Bool ? 1 : 0) | (((((value.f056Int >>> 0) - 4294967283) >>> 0) & 0x1f) << 1) | (((((value.f057Int >>> 0) - 4294967281) >>> 0) & 0x1f) << 6)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -565,7 +489,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  x = value.F058F32;
+  x = value.f058F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -585,7 +509,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setFloat64(0, value.F059F64, true);
+  SC.setFloat64(0, value.f059F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -604,7 +528,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.F060Bits & 0xff)) >>> 0;
+  v = ((value.f060Bits & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -613,7 +537,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
-  x = Math.fround(value.F061Cf32);
+  x = Math.fround(value.f061Cf32);
   n = Math.fround(Math.fround(x - -90.0) / 180.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 360.0) + 0.5));
@@ -626,7 +550,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  v = (((value.F062Uint) & 0x1ff)) >>> 0;
+  v = (((value.f062Uint) & 0x1ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -635,7 +559,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, value.F063I64, true);
+  SC.setBigUint64(0, value.f063I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -654,7 +578,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((value.F064Uint) & 0x1ff)) >>> 0;
+  v = (((value.f064Uint) & 0x1ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -663,7 +587,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  x = Math.fround(value.F065Cf32);
+  x = Math.fround(value.f065Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 30.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
@@ -676,7 +600,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
-  v = (((value.F066Ufixed) & 0xffff)) >>> 0;
+  v = (((value.f066Ufixed) & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -685,7 +609,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  x = Math.fround(value.F067Cf32);
+  x = Math.fround(value.f067Cf32);
   n = Math.fround(Math.fround(x - -100.0) / 200.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
@@ -698,7 +622,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
-  x = Math.fround(value.F068Cf32);
+  x = Math.fround(value.f068Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 2000.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
@@ -711,7 +635,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  v = ((value.F069Bits & 0x7ff) | (((value.F070Uint) & 0x3) << 11)) >>> 0;
+  v = ((value.f069Bits & 0x7ff) | (((value.f070Uint) & 0x3) << 11)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 13;
   if (sb >= 32) {
@@ -720,7 +644,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (13 - sb);
   }
-  x = Math.fround(value.F071Cf32);
+  x = Math.fround(value.f071Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 10.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
@@ -733,7 +657,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  x = Math.fround(value.F072Cf32);
+  x = Math.fround(value.f072Cf32);
   n = Math.fround(Math.fround(x - 0.0) / 100.0);
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
@@ -746,7 +670,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (14 - sb);
   }
-  v = (((((value.F073Int >>> 0) - 4294967292) >>> 0) & 0xf) | ((value.F074Bool ? 1 : 0) << 4)) >>> 0;
+  v = (((((value.f073Int >>> 0) - 4294967292) >>> 0) & 0xf) | ((value.f074Bool ? 1 : 0) << 4)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -755,8 +679,8 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  if (value.F074Bool) {
-    SC.setBigUint64(0, value.F075U64, true);
+  if (value.f074Bool) {
+    SC.setBigUint64(0, value.f075U64, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -775,7 +699,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((((value.F076Int >>> 0) - 4294941078) >>> 0) & 0xffff) | (((((value.F077Int >>> 0) - 4294967279) >>> 0) & 0x3f) << 16) | ((value.F078Bits & 0x1ff) << 22)) >>> 0;
+    v = (((((value.f076Int >>> 0) - 4294941078) >>> 0) & 0xffff) | (((((value.f077Int >>> 0) - 4294967279) >>> 0) & 0x3f) << 16) | ((value.f078Bits & 0x1ff) << 22)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 31;
     if (sb >= 32) {
@@ -784,7 +708,7 @@ function writeRealPacketFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (31 - sb);
     }
-    v = (((value.F079Uint) & 0x1f)) >>> 0;
+    v = (((value.f079Uint) & 0x1f)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 5;
     if (sb >= 32) {
@@ -794,7 +718,7 @@ function writeRealPacketFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
   }
-  v = ((value.F080Bool ? 1 : 0) | ((value.F081Bits & 0x1fffffff) << 1)) >>> 0;
+  v = ((value.f080Bool ? 1 : 0) | ((value.f081Bits & 0x1fffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 30;
   if (sb >= 32) {
@@ -803,7 +727,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (30 - sb);
   }
-  v = ((value.F082Bits & 0x1ffffff) | ((value.F083Enum & 0x7) << 25)) >>> 0;
+  v = ((value.f082Bits & 0x1ffffff) | ((value.f083Enum & 0x7) << 25)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 28;
   if (sb >= 32) {
@@ -812,7 +736,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
-  v = (((value.F084Ufixed) & 0xff) | ((value.F085Bits & 0x1fffff) << 8)) >>> 0;
+  v = (((value.f084Ufixed) & 0xff) | ((value.f085Bits & 0x1fffff) << 8)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 29;
   if (sb >= 32) {
@@ -821,7 +745,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
-  v = (((value.F086Uint) & 0x1ff)) >>> 0;
+  v = (((value.f086Uint) & 0x1ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -830,7 +754,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setFloat64(0, value.F087F64, true);
+  SC.setFloat64(0, value.f087F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -849,7 +773,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = (((((value.F088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
+  v = (((((value.f088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -858,7 +782,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  SC.setBigUint64(0, value.F089Bits, true);
+  SC.setBigUint64(0, value.f089Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -877,7 +801,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  v = (((value.F090Uint) & 0xff)) >>> 0;
+  v = (((value.f090Uint) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -886,7 +810,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
-  SC.setBigUint64(0, value.F091Flags, true);
+  SC.setBigUint64(0, value.f091Flags, true);
   v = SC.getUint32(0, true) & 0x1f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
@@ -896,7 +820,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  v = ((value.F092Bool ? 1 : 0)) >>> 0;
+  v = ((value.f092Bool ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
   if (sb >= 32) {
@@ -905,7 +829,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
-  SC.setBigUint64(0, value.F093Bits, true);
+  SC.setBigUint64(0, value.f093Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -924,7 +848,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.F094Bool ? 1 : 0) | (((((value.F095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) << 1)) >>> 0;
+  v = ((value.f094Bool ? 1 : 0) | (((((value.f095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 29;
   if (sb >= 32) {
@@ -933,7 +857,7 @@ function writeRealPacketFlatProduction(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
-  v = ((value.F096Bits & 0x3ffff) | ((value.F097Bits & 0xfff) << 18)) >>> 0;
+  v = ((value.f096Bits & 0x3ffff) | ((value.f097Bits & 0xfff) << 18)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 30;
   if (sb >= 32) {
@@ -948,54 +872,27 @@ function writeRealPacketFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeRealPacketFlatChecked(value, view) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0;
+function writeRealPacketFlatChecked(view, value) {
+  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.F001Int) || value.F001Int < -805495 || value.F001Int > 805495) {
+  if (!Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return -1;
   }
-  v = (((((value.F001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 21;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (21 - sb);
-  }
-  SC.setFloat64(0, value.F002F64, true);
+  lo = (((((value.f001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff));
+  SC.setFloat64(0, value.f002F64, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (!Number.isInteger(value.F003Int) || value.F003Int < -835897 || value.F003Int > 835897) {
+  view.setUint32(4, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  if (!Number.isInteger(value.f003Int) || value.f003Int < -835897 || value.f003Int > 835897) {
     return -1;
   }
-  v = (((((value.F003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 21;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (21 - sb);
-  }
-  x = Math.fround(value.F004Cf32);
+  v = (((((value.f003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff)) >>> 0;
+  view.setUint32(8, (lo | (v << 21)) >>> 0, true);
+  lo = v >>> 11;
+  x = Math.fround(value.f004Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1003,30 +900,17 @@ function writeRealPacketFlatChecked(value, view) {
   if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
   v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
   if (v > 20000) { v = 20000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 15;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (15 - sb);
-  }
-  if (!Number.isInteger(value.F005Uint) || value.F005Uint < 0 || value.F005Uint > 7316) {
+  lo = (lo | (v << 10)) >>> 0;
+  if (!Number.isInteger(value.f005Uint) || value.f005Uint < 0 || value.f005Uint > 7316) {
     return -1;
   }
-  if (!Number.isInteger(value.F006Int) || value.F006Int < -1513 || value.F006Int > 1513) {
+  if (!Number.isInteger(value.f006Int) || value.f006Int < -1513 || value.f006Int > 1513) {
     return -1;
   }
-  v = (((value.F005Uint) & 0x1fff) | (((((value.F006Int >>> 0) - 4294965783) >>> 0) & 0xfff) << 13)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  x = value.F007F32;
+  v = (((value.f005Uint) & 0x1fff) | (((((value.f006Int >>> 0) - 4294965783) >>> 0) & 0xfff) << 13)) >>> 0;
+  view.setUint32(12, (lo | (v << 25)) >>> 0, true);
+  lo = v >>> 7;
+  x = value.f007F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1038,46 +922,20 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.F008U64, true);
+  view.setUint32(16, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  SC.setBigUint64(0, value.f008U64, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(20, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (!Number.isInteger(value.F009Int) || value.F009Int < -22 || value.F009Int > 22) {
+  view.setUint32(24, (lo | (v << 18)) >>> 0, true);
+  lo = v >>> 14;
+  if (!Number.isInteger(value.f009Int) || value.f009Int < -22 || value.f009Int > 22) {
     return -1;
   }
-  v = (((((value.F009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 6;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (6 - sb);
-  }
-  x = value.F010F32;
+  lo = (lo | ((((((value.f009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) << 18)) >>> 0;
+  x = value.f010F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1089,25 +947,15 @@ function writeRealPacketFlatChecked(value, view) {
     if (t1 === 0) { t1 = 0x400000; }
     v = (t0 | 0x7f800000 | t1) >>> 0;
   }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.F011Bits & 0x3ff) | ((value.F012Bool ? 1 : 0) << 10)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  if (value.F012Bool) {
-    x = value.F013F32;
+  view.setUint32(28, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
+  view.setUint32(32, (lo | (v << 24)) >>> 0, true);
+  lo = v >>> 8;
+  wi = 36;
+  sb = 3;
+  if (value.f012Bool) {
+    x = value.f013F32;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -1127,16 +975,16 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(value.F014Uint) || value.F014Uint < 0 || value.F014Uint > 775) {
+    if (!Number.isInteger(value.f014Uint) || value.f014Uint < 0 || value.f014Uint > 775) {
       return -1;
     }
-    if (!Number.isInteger(value.F015Int) || value.F015Int < -21 || value.F015Int > 21) {
+    if (!Number.isInteger(value.f015Int) || value.f015Int < -21 || value.f015Int > 21) {
       return -1;
     }
-    if (!Number.isInteger(value.F016Fixed) || value.F016Fixed < -37748736 || value.F016Fixed > 37748736) {
+    if (!Number.isInteger(value.f016Fixed) || value.f016Fixed < -37748736 || value.f016Fixed > 37748736) {
       return -1;
     }
-    v = (((value.F014Uint) & 0x3ff) | (((((value.F015Int >>> 0) - 4294967275) >>> 0) & 0x3f) << 10)) >>> 0;
+    v = (((value.f014Uint) & 0x3ff) | (((((value.f015Int >>> 0) - 4294967275) >>> 0) & 0x3f) << 10)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 16;
     if (sb >= 32) {
@@ -1145,10 +993,10 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (16 - sb);
     }
-    if (!Number.isInteger(value.F017Uint) || value.F017Uint < 0 || value.F017Uint > 4606) {
+    if (!Number.isInteger(value.f017Uint) || value.f017Uint < 0 || value.f017Uint > 4606) {
       return -1;
     }
-    v = (((((value.F016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff)) >>> 0;
+    v = (((((value.f016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 27;
     if (sb >= 32) {
@@ -1157,7 +1005,7 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (27 - sb);
     }
-    v = (((value.F017Uint) & 0x1fff)) >>> 0;
+    v = (((value.f017Uint) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -1167,10 +1015,10 @@ function writeRealPacketFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (13 - sb);
     }
   }
-  if (!Number.isInteger(value.F018Int) || value.F018Int < -834 || value.F018Int > 834) {
+  if (!Number.isInteger(value.f018Int) || value.f018Int < -834 || value.f018Int > 834) {
     return -1;
   }
-  v = (((((value.F018Int >>> 0) - 4294966462) >>> 0) & 0x7ff)) >>> 0;
+  v = (((((value.f018Int >>> 0) - 4294966462) >>> 0) & 0x7ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -1179,7 +1027,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  SC.setFloat64(0, value.F019F64, true);
+  SC.setFloat64(0, value.f019F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1198,7 +1046,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = value.F020F32;
+  x = value.f020F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1218,10 +1066,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.F021Ufixed) || value.F021Ufixed < 0 || value.F021Ufixed > 102977536) {
+  if (!Number.isInteger(value.f021Ufixed) || value.f021Ufixed < 0 || value.f021Ufixed > 102977536) {
     return -1;
   }
-  v = (((value.F021Ufixed) & 0x7ffffff)) >>> 0;
+  v = (((value.f021Ufixed) & 0x7ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 27;
   if (sb >= 32) {
@@ -1230,7 +1078,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
-  x = value.F022F32;
+  x = value.f022F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1250,7 +1098,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.F023Bits & 0x1ffffff)) >>> 0;
+  v = ((value.f023Bits & 0x1ffffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -1259,7 +1107,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  x = value.F024F32;
+  x = value.f024F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1279,10 +1127,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.F025Fixed) || value.F025Fixed < -30464 || value.F025Fixed > 30464) {
+  if (!Number.isInteger(value.f025Fixed) || value.f025Fixed < -30464 || value.f025Fixed > 30464) {
     return -1;
   }
-  v = (((((value.F025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) | ((value.F026Bits & 0x1ff) << 16)) >>> 0;
+  v = (((((value.f025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) | ((value.f026Bits & 0x1ff) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 25;
   if (sb >= 32) {
@@ -1291,7 +1139,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  x = Math.fround(value.F027Cf32);
+  x = Math.fround(value.f027Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1307,7 +1155,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  v = ((value.F028Bits & 0xf)) >>> 0;
+  v = ((value.f028Bits & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -1316,7 +1164,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (4 - sb);
   }
-  SC.setBigUint64(0, value.F029I64, true);
+  SC.setBigUint64(0, value.f029I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1335,7 +1183,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = value.F030F32;
+  x = value.f030F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1355,16 +1203,16 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.F032Int) || value.F032Int < -3 || value.F032Int > 3) {
+  if (!Number.isInteger(value.f032Int) || value.f032Int < -3 || value.f032Int > 3) {
     return -1;
   }
-  if (!Number.isInteger(value.F033Uint) || value.F033Uint < 0 || value.F033Uint > 142780) {
+  if (!Number.isInteger(value.f033Uint) || value.f033Uint < 0 || value.f033Uint > 142780) {
     return -1;
   }
-  if (!Number.isInteger(value.F034Uint) || value.F034Uint < 0 || value.F034Uint > 14149) {
+  if (!Number.isInteger(value.f034Uint) || value.f034Uint < 0 || value.f034Uint > 14149) {
     return -1;
   }
-  v = ((value.F031Bits & 0x1) | (((((value.F032Int >>> 0) - 4294967293) >>> 0) & 0x7) << 1) | (((value.F033Uint) & 0x3ffff) << 4)) >>> 0;
+  v = ((value.f031Bits & 0x1) | (((((value.f032Int >>> 0) - 4294967293) >>> 0) & 0x7) << 1) | (((value.f033Uint) & 0x3ffff) << 4)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 22;
   if (sb >= 32) {
@@ -1373,10 +1221,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (22 - sb);
   }
-  if (!Number.isInteger(value.F036Enum) || value.F036Enum < 0 || value.F036Enum > 5) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.f036Enum) || value.f036Enum < 0 || value.f036Enum > 5) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (((value.F034Uint) & 0x3fff) | ((value.F035Bits & 0x1ff) << 14) | ((value.F036Enum & 0x7) << 23) | ((value.F037Bool ? 1 : 0) << 26) | ((value.F038Bool ? 1 : 0) << 27)) >>> 0;
+  v = (((value.f034Uint) & 0x3fff) | ((value.f035Bits & 0x1ff) << 14) | ((value.f036Enum & 0x7) << 23) | ((value.f037Bool ? 1 : 0) << 26) | ((value.f038Bool ? 1 : 0) << 27)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 28;
   if (sb >= 32) {
@@ -1385,10 +1233,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
-  if (!Number.isInteger(value.F040Fixed) || value.F040Fixed < -20480 || value.F040Fixed > 20480) {
+  if (!Number.isInteger(value.f040Fixed) || value.f040Fixed < -20480 || value.f040Fixed > 20480) {
     return -1;
   }
-  v = ((value.F039Bits & 0x7ffff)) >>> 0;
+  v = ((value.f039Bits & 0x7ffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 19;
   if (sb >= 32) {
@@ -1397,10 +1245,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (19 - sb);
   }
-  if (!Number.isInteger(value.F041Int) || value.F041Int < -55 || value.F041Int > 55) {
+  if (!Number.isInteger(value.f041Int) || value.f041Int < -55 || value.f041Int > 55) {
     return -1;
   }
-  v = (((((value.F040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) | (((((value.F041Int >>> 0) - 4294967241) >>> 0) & 0x7f) << 16)) >>> 0;
+  v = (((((value.f040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) | (((((value.f041Int >>> 0) - 4294967241) >>> 0) & 0x7f) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 23;
   if (sb >= 32) {
@@ -1409,7 +1257,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
   }
-  v = ((value.F042Bits & 0x3fffffff) | ((value.F043Bool ? 1 : 0) << 30)) >>> 0;
+  v = ((value.f042Bits & 0x3fffffff) | ((value.f043Bool ? 1 : 0) << 30)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 31;
   if (sb >= 32) {
@@ -1418,8 +1266,8 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (31 - sb);
   }
-  if (value.F043Bool) {
-    x = value.F044F32;
+  if (value.f043Bool) {
+    x = value.f044F32;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -1439,13 +1287,13 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(value.F046Uint) || value.F046Uint < 0 || value.F046Uint > 76063) {
+    if (!Number.isInteger(value.f046Uint) || value.f046Uint < 0 || value.f046Uint > 76063) {
       return -1;
     }
-    if (!Number.isInteger(value.F047Int) || value.F047Int < -430976 || value.F047Int > 430976) {
+    if (!Number.isInteger(value.f047Int) || value.f047Int < -430976 || value.f047Int > 430976) {
       return -1;
     }
-    v = ((value.F045Bits & 0xfff) | (((value.F046Uint) & 0x1ffff) << 12)) >>> 0;
+    v = ((value.f045Bits & 0xfff) | (((value.f046Uint) & 0x1ffff) << 12)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 29;
     if (sb >= 32) {
@@ -1454,7 +1302,7 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (29 - sb);
     }
-    v = (((((value.F047Int >>> 0) - 4294536320) >>> 0) & 0xfffff)) >>> 0;
+    v = (((((value.f047Int >>> 0) - 4294536320) >>> 0) & 0xfffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 20;
     if (sb >= 32) {
@@ -1464,7 +1312,7 @@ function writeRealPacketFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (20 - sb);
     }
   }
-  SC.setFloat64(0, value.F048F64, true);
+  SC.setFloat64(0, value.f048F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1483,10 +1331,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.F049Ufixed) || value.F049Ufixed < 0 || value.F049Ufixed > 49152) {
+  if (!Number.isInteger(value.f049Ufixed) || value.f049Ufixed < 0 || value.f049Ufixed > 49152) {
     return -1;
   }
-  v = (((value.F049Ufixed) & 0xffff) | ((value.F050Bool ? 1 : 0) << 16)) >>> 0;
+  v = (((value.f049Ufixed) & 0xffff) | ((value.f050Bool ? 1 : 0) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 17;
   if (sb >= 32) {
@@ -1495,11 +1343,11 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (17 - sb);
   }
-  if (value.F050Bool) {
-    if (!Number.isInteger(value.F052Int) || value.F052Int < -57 || value.F052Int > 57) {
+  if (value.f050Bool) {
+    if (!Number.isInteger(value.f052Int) || value.f052Int < -57 || value.f052Int > 57) {
       return -1;
     }
-    v = ((value.F051Bool ? 1 : 0) | (((((value.F052Int >>> 0) - 4294967239) >>> 0) & 0x7f) << 1)) >>> 0;
+    v = ((value.f051Bool ? 1 : 0) | (((((value.f052Int >>> 0) - 4294967239) >>> 0) & 0x7f) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 8;
     if (sb >= 32) {
@@ -1508,7 +1356,7 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
-    x = value.F053F32;
+    x = value.f053F32;
     if (x === x) {
       SC.setFloat32(0, x, true);
       v = SC.getUint32(0, true);
@@ -1528,10 +1376,10 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(value.F054Int) || value.F054Int < -35 || value.F054Int > 35) {
+    if (!Number.isInteger(value.f054Int) || value.f054Int < -35 || value.f054Int > 35) {
       return -1;
     }
-    v = (((((value.F054Int >>> 0) - 4294967261) >>> 0) & 0x7f)) >>> 0;
+    v = (((((value.f054Int >>> 0) - 4294967261) >>> 0) & 0x7f)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 7;
     if (sb >= 32) {
@@ -1541,13 +1389,13 @@ function writeRealPacketFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
   }
-  if (!Number.isInteger(value.F056Int) || value.F056Int < -13 || value.F056Int > 13) {
+  if (!Number.isInteger(value.f056Int) || value.f056Int < -13 || value.f056Int > 13) {
     return -1;
   }
-  if (!Number.isInteger(value.F057Int) || value.F057Int < -15 || value.F057Int > 15) {
+  if (!Number.isInteger(value.f057Int) || value.f057Int < -15 || value.f057Int > 15) {
     return -1;
   }
-  v = ((value.F055Bool ? 1 : 0) | (((((value.F056Int >>> 0) - 4294967283) >>> 0) & 0x1f) << 1) | (((((value.F057Int >>> 0) - 4294967281) >>> 0) & 0x1f) << 6)) >>> 0;
+  v = ((value.f055Bool ? 1 : 0) | (((((value.f056Int >>> 0) - 4294967283) >>> 0) & 0x1f) << 1) | (((((value.f057Int >>> 0) - 4294967281) >>> 0) & 0x1f) << 6)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -1556,7 +1404,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  x = value.F058F32;
+  x = value.f058F32;
   if (x === x) {
     SC.setFloat32(0, x, true);
     v = SC.getUint32(0, true);
@@ -1576,7 +1424,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  SC.setFloat64(0, value.F059F64, true);
+  SC.setFloat64(0, value.f059F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1595,7 +1443,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  v = ((value.F060Bits & 0xff)) >>> 0;
+  v = ((value.f060Bits & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -1604,7 +1452,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
-  x = Math.fround(value.F061Cf32);
+  x = Math.fround(value.f061Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1620,10 +1468,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  if (!Number.isInteger(value.F062Uint) || value.F062Uint < 0 || value.F062Uint > 503) {
+  if (!Number.isInteger(value.f062Uint) || value.f062Uint < 0 || value.f062Uint > 503) {
     return -1;
   }
-  v = (((value.F062Uint) & 0x1ff)) >>> 0;
+  v = (((value.f062Uint) & 0x1ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -1632,7 +1480,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setBigUint64(0, value.F063I64, true);
+  SC.setBigUint64(0, value.f063I64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1651,10 +1499,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.F064Uint) || value.F064Uint < 0 || value.F064Uint > 299) {
+  if (!Number.isInteger(value.f064Uint) || value.f064Uint < 0 || value.f064Uint > 299) {
     return -1;
   }
-  v = (((value.F064Uint) & 0x1ff)) >>> 0;
+  v = (((value.f064Uint) & 0x1ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -1663,7 +1511,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  x = Math.fround(value.F065Cf32);
+  x = Math.fround(value.f065Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1679,10 +1527,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (6 - sb);
   }
-  if (!Number.isInteger(value.F066Ufixed) || value.F066Ufixed < 0 || value.F066Ufixed > 32768) {
+  if (!Number.isInteger(value.f066Ufixed) || value.f066Ufixed < 0 || value.f066Ufixed > 32768) {
     return -1;
   }
-  v = (((value.F066Ufixed) & 0xffff)) >>> 0;
+  v = (((value.f066Ufixed) & 0xffff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 16;
   if (sb >= 32) {
@@ -1691,7 +1539,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  x = Math.fround(value.F067Cf32);
+  x = Math.fround(value.f067Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1707,7 +1555,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (10 - sb);
   }
-  x = Math.fround(value.F068Cf32);
+  x = Math.fround(value.f068Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1723,10 +1571,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  if (!Number.isInteger(value.F070Uint) || value.F070Uint < 0 || value.F070Uint > 2) {
+  if (!Number.isInteger(value.f070Uint) || value.f070Uint < 0 || value.f070Uint > 2) {
     return -1;
   }
-  v = ((value.F069Bits & 0x7ff) | (((value.F070Uint) & 0x3) << 11)) >>> 0;
+  v = ((value.f069Bits & 0x7ff) | (((value.f070Uint) & 0x3) << 11)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 13;
   if (sb >= 32) {
@@ -1735,7 +1583,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (13 - sb);
   }
-  x = Math.fround(value.F071Cf32);
+  x = Math.fround(value.f071Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1751,7 +1599,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  x = Math.fround(value.F072Cf32);
+  x = Math.fround(value.f072Cf32);
   if (!Number.isFinite(x)) {
     return -1;
   }
@@ -1767,10 +1615,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (14 - sb);
   }
-  if (!Number.isInteger(value.F073Int) || value.F073Int < -4 || value.F073Int > 4) {
+  if (!Number.isInteger(value.f073Int) || value.f073Int < -4 || value.f073Int > 4) {
     return -1;
   }
-  v = (((((value.F073Int >>> 0) - 4294967292) >>> 0) & 0xf) | ((value.F074Bool ? 1 : 0) << 4)) >>> 0;
+  v = (((((value.f073Int >>> 0) - 4294967292) >>> 0) & 0xf) | ((value.f074Bool ? 1 : 0) << 4)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
   if (sb >= 32) {
@@ -1779,8 +1627,8 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  if (value.F074Bool) {
-    SC.setBigUint64(0, value.F075U64, true);
+  if (value.f074Bool) {
+    SC.setBigUint64(0, value.f075U64, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -1799,16 +1647,16 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(value.F076Int) || value.F076Int < -26218 || value.F076Int > 26218) {
+    if (!Number.isInteger(value.f076Int) || value.f076Int < -26218 || value.f076Int > 26218) {
       return -1;
     }
-    if (!Number.isInteger(value.F077Int) || value.F077Int < -17 || value.F077Int > 17) {
+    if (!Number.isInteger(value.f077Int) || value.f077Int < -17 || value.f077Int > 17) {
       return -1;
     }
-    if (!Number.isInteger(value.F079Uint) || value.F079Uint < 0 || value.F079Uint > 17) {
+    if (!Number.isInteger(value.f079Uint) || value.f079Uint < 0 || value.f079Uint > 17) {
       return -1;
     }
-    v = (((((value.F076Int >>> 0) - 4294941078) >>> 0) & 0xffff) | (((((value.F077Int >>> 0) - 4294967279) >>> 0) & 0x3f) << 16) | ((value.F078Bits & 0x1ff) << 22)) >>> 0;
+    v = (((((value.f076Int >>> 0) - 4294941078) >>> 0) & 0xffff) | (((((value.f077Int >>> 0) - 4294967279) >>> 0) & 0x3f) << 16) | ((value.f078Bits & 0x1ff) << 22)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 31;
     if (sb >= 32) {
@@ -1817,7 +1665,7 @@ function writeRealPacketFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (31 - sb);
     }
-    v = (((value.F079Uint) & 0x1f)) >>> 0;
+    v = (((value.f079Uint) & 0x1f)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 5;
     if (sb >= 32) {
@@ -1827,7 +1675,7 @@ function writeRealPacketFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
   }
-  v = ((value.F080Bool ? 1 : 0) | ((value.F081Bits & 0x1fffffff) << 1)) >>> 0;
+  v = ((value.f080Bool ? 1 : 0) | ((value.f081Bits & 0x1fffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 30;
   if (sb >= 32) {
@@ -1836,13 +1684,13 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (30 - sb);
   }
-  if (!Number.isInteger(value.F083Enum) || value.F083Enum < 0 || value.F083Enum > 5) { // headroom above the wire range cannot ride
+  if (!Number.isInteger(value.f083Enum) || value.f083Enum < 0 || value.f083Enum > 5) { // headroom above the wire range cannot ride
     return -1;
   }
-  if (!Number.isInteger(value.F084Ufixed) || value.F084Ufixed < 0 || value.F084Ufixed > 128) {
+  if (!Number.isInteger(value.f084Ufixed) || value.f084Ufixed < 0 || value.f084Ufixed > 128) {
     return -1;
   }
-  v = ((value.F082Bits & 0x1ffffff) | ((value.F083Enum & 0x7) << 25)) >>> 0;
+  v = ((value.f082Bits & 0x1ffffff) | ((value.f083Enum & 0x7) << 25)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 28;
   if (sb >= 32) {
@@ -1851,10 +1699,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (28 - sb);
   }
-  if (!Number.isInteger(value.F086Uint) || value.F086Uint < 0 || value.F086Uint > 399) {
+  if (!Number.isInteger(value.f086Uint) || value.f086Uint < 0 || value.f086Uint > 399) {
     return -1;
   }
-  v = (((value.F084Ufixed) & 0xff) | ((value.F085Bits & 0x1fffff) << 8)) >>> 0;
+  v = (((value.f084Ufixed) & 0xff) | ((value.f085Bits & 0x1fffff) << 8)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 29;
   if (sb >= 32) {
@@ -1863,7 +1711,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
-  v = (((value.F086Uint) & 0x1ff)) >>> 0;
+  v = (((value.f086Uint) & 0x1ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 9;
   if (sb >= 32) {
@@ -1872,7 +1720,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
-  SC.setFloat64(0, value.F087F64, true);
+  SC.setFloat64(0, value.f087F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1891,10 +1739,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.F088Int) || value.F088Int < -694 || value.F088Int > 694) {
+  if (!Number.isInteger(value.f088Int) || value.f088Int < -694 || value.f088Int > 694) {
     return -1;
   }
-  v = (((((value.F088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
+  v = (((((value.f088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 11;
   if (sb >= 32) {
@@ -1903,7 +1751,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  SC.setBigUint64(0, value.F089Bits, true);
+  SC.setBigUint64(0, value.f089Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1922,13 +1770,13 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (16 - sb);
   }
-  if (!Number.isInteger(value.F090Uint) || value.F090Uint < 0 || value.F090Uint > 214) {
+  if (!Number.isInteger(value.f090Uint) || value.f090Uint < 0 || value.f090Uint > 214) {
     return -1;
   }
-  if (BigInt.asUintN(64, value.F091Flags) >= 32n) { // a mask bit above the wire width cannot ride
+  if (BigInt.asUintN(64, value.f091Flags) >= 32n) { // a mask bit above the wire width cannot ride
     return -1;
   }
-  v = (((value.F090Uint) & 0xff)) >>> 0;
+  v = (((value.f090Uint) & 0xff)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 8;
   if (sb >= 32) {
@@ -1937,7 +1785,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
-  SC.setBigUint64(0, value.F091Flags, true);
+  SC.setBigUint64(0, value.f091Flags, true);
   v = SC.getUint32(0, true) & 0x1f;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
@@ -1947,7 +1795,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
-  v = ((value.F092Bool ? 1 : 0)) >>> 0;
+  v = ((value.f092Bool ? 1 : 0)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 1;
   if (sb >= 32) {
@@ -1956,7 +1804,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (1 - sb);
   }
-  SC.setBigUint64(0, value.F093Bits, true);
+  SC.setBigUint64(0, value.f093Bits, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
@@ -1975,10 +1823,10 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  if (!Number.isInteger(value.F095Fixed) || value.F095Fixed < -103350272 || value.F095Fixed > 103350272) {
+  if (!Number.isInteger(value.f095Fixed) || value.f095Fixed < -103350272 || value.f095Fixed > 103350272) {
     return -1;
   }
-  v = ((value.F094Bool ? 1 : 0) | (((((value.F095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) << 1)) >>> 0;
+  v = ((value.f094Bool ? 1 : 0) | (((((value.f095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) << 1)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 29;
   if (sb >= 32) {
@@ -1987,7 +1835,7 @@ function writeRealPacketFlatChecked(value, view) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (29 - sb);
   }
-  v = ((value.F096Bits & 0x3ffff) | ((value.F097Bits & 0xfff) << 18)) >>> 0;
+  v = ((value.f096Bits & 0x3ffff) | ((value.f097Bits & 0xfff) << 18)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 30;
   if (sb >= 32) {
@@ -2002,154 +1850,94 @@ function writeRealPacketFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRealPacketFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteRealPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold RealPacketMaxBytes.
 export const WriteRealPacketFlat = PRODUCTION ? writeRealPacketFlatProduction : writeRealPacketFlatChecked;
 
-// ReadRealPacketFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadRealPacketFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadRealPacketFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadRealPacketFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 291 > numBits) {
+  if (291 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1fffff) >>> 0;
   if (v > 1610990) { // a smuggled offset is refused
     return false;
   }
-  value.F001Int = (v + 4294161801) | 0;
-  br += 21;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.f001Int = (v + 4294161801) | 0;
+  out = (view.getUint32(2, true) >>> 5) | (view.getUint32(6, true) << 27);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(6, true) >>> 5) | (view.getUint32(10, true) << 27);
   v = out >>> 0;
   SC.setUint32(4, v, true);
-  value.F002F64 = SC.getFloat64(0, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.f002F64 = SC.getFloat64(0, true);
+  out = (view.getUint32(10, true) >>> 5) | (view.getUint32(14, true) << 27);
   v = (out & 0x1fffff) >>> 0;
   if (v > 1671794) { // a smuggled offset is refused
     return false;
   }
-  value.F003Int = (v + 4294131399) | 0;
-  br += 21;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.f003Int = (v + 4294131399) | 0;
+  out = (view.getUint32(13, true) >>> 2) | (view.getUint32(17, true) << 30);
   v = (out & 0x7fff) >>> 0;
   if (v > 20000) { // headroom above the quantum count is refused
     return false;
   }
-  value.F004Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 20000.0) * 2000.0) + 0.0);
+  value.f004Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 20000.0) * 2000.0) + 0.0);
   v = (out >>> 15) & 0x1fff;
   if (v > 7316) { // a smuggled offset is refused
     return false;
   }
-  value.F005Uint = v | 0;
-  br += 28;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.f005Uint = v | 0;
+  out = (view.getUint32(16, true) >>> 6) | (view.getUint32(20, true) << 26);
   v = (out & 0xfff) >>> 0;
   if (v > 3026) { // a smuggled offset is refused
     return false;
   }
-  value.F006Int = (v + 4294965783) | 0;
-  br += 12;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.f006Int = (v + 4294965783) | 0;
+  out = (view.getUint32(18, true) >>> 2) | (view.getUint32(22, true) << 30);
   v = out >>> 0;
-  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.F007F32 = SC.getFloat64(0, true);
+    value.f007F32 = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.F007F32 = SC.getFloat32(0, true);
+    value.f007F32 = SC.getFloat32(0, true);
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(22, true) >>> 2) | (view.getUint32(26, true) << 30);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(26, true) >>> 2) | (view.getUint32(30, true) << 30);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.F008U64 = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.f008U64 = bg;
+  out = (view.getUint32(30, true) >>> 2) | (view.getUint32(34, true) << 30);
   v = (out & 0x3f) >>> 0;
   if (v > 44) { // a smuggled offset is refused
     return false;
   }
-  value.F009Int = (v + 4294967274) | 0;
-  br += 6;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.f009Int = (v + 4294967274) | 0;
+  out = view.getUint32(31, true);
   v = out >>> 0;
-  br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.F010F32 = SC.getFloat64(0, true);
+    value.f010F32 = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.F010F32 = SC.getFloat32(0, true);
+    value.f010F32 = SC.getFloat32(0, true);
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(35, true);
   v = (out & 0x3ff) >>> 0;
-  value.F011Bits = v;
+  value.f011Bits = v;
   v = (out >>> 10) & 0x1;
-  value.F012Bool = v !== 0;
-  br += 11;
-  if (value.F012Bool) {
+  value.f012Bool = v !== 0;
+  br = 291;
+  if (value.f012Bool) {
     if (br + 88 > numBits) {
       return false;
     }
@@ -2162,10 +1950,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      value.F013F32 = SC.getFloat64(0, true);
+      value.f013F32 = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      value.F013F32 = SC.getFloat32(0, true);
+      value.f013F32 = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2176,12 +1964,12 @@ export function ReadRealPacketFlat(value, view, numBits) {
     if (v > 775) { // a smuggled offset is refused
       return false;
     }
-    value.F014Uint = v | 0;
+    value.f014Uint = v | 0;
     v = (out >>> 10) & 0x3f;
     if (v > 42) { // a smuggled offset is refused
       return false;
     }
-    value.F015Int = (v + 4294967275) | 0;
+    value.f015Int = (v + 4294967275) | 0;
     br += 16;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2192,7 +1980,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
     if (v > 75497472) { // a smuggled raw offset is refused
       return false;
     }
-    value.F016Fixed = -37748736 + v;
+    value.f016Fixed = -37748736 + v;
     br += 27;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2203,14 +1991,14 @@ export function ReadRealPacketFlat(value, view, numBits) {
     if (v > 4606) { // a smuggled offset is refused
       return false;
     }
-    value.F017Uint = v | 0;
+    value.f017Uint = v | 0;
     br += 13;
   } else {
-    value.F013F32 = 0;
-    value.F014Uint = 0;
-    value.F015Int = 0;
-    value.F016Fixed = 0;
-    value.F017Uint = 0;
+    value.f013F32 = 0;
+    value.f014Uint = 0;
+    value.f015Int = 0;
+    value.f016Fixed = 0;
+    value.f017Uint = 0;
   }
   if (br + 476 > numBits) {
     return false;
@@ -2224,7 +2012,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 1668) { // a smuggled offset is refused
     return false;
   }
-  value.F018Int = (v + 4294966462) | 0;
+  value.f018Int = (v + 4294966462) | 0;
   br += 11;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2241,7 +2029,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
-  value.F019F64 = SC.getFloat64(0, true);
+  value.f019F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2252,10 +2040,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.F020F32 = SC.getFloat64(0, true);
+    value.f020F32 = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.F020F32 = SC.getFloat32(0, true);
+    value.f020F32 = SC.getFloat32(0, true);
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2266,7 +2054,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 102977536) { // a smuggled raw offset is refused
     return false;
   }
-  value.F021Ufixed = v;
+  value.f021Ufixed = v;
   br += 27;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2277,10 +2065,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.F022F32 = SC.getFloat64(0, true);
+    value.f022F32 = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.F022F32 = SC.getFloat32(0, true);
+    value.f022F32 = SC.getFloat32(0, true);
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2288,7 +2076,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x1ffffff) >>> 0;
-  value.F023Bits = v;
+  value.f023Bits = v;
   br += 25;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2299,10 +2087,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.F024F32 = SC.getFloat64(0, true);
+    value.f024F32 = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.F024F32 = SC.getFloat32(0, true);
+    value.f024F32 = SC.getFloat32(0, true);
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2313,14 +2101,14 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 60928) { // a smuggled raw offset is refused
     return false;
   }
-  value.F025Fixed = -30464 + v;
+  value.f025Fixed = -30464 + v;
   v = (out >>> 16) & 0x1ff;
-  value.F026Bits = v;
+  value.f026Bits = v;
   v = (out >>> 25) & 0x1f;
   if (v > 16) { // headroom above the quantum count is refused
     return false;
   }
-  value.F027Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 16.0) * 4.0) + -2.0);
+  value.f027Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 16.0) * 4.0) + -2.0);
   br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2328,7 +2116,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xf) >>> 0;
-  value.F028Bits = v;
+  value.f028Bits = v;
   br += 4;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2346,7 +2134,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.F029I64 = BigInt.asIntN(64, bg);
+  value.f029I64 = BigInt.asIntN(64, bg);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2357,10 +2145,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.F030F32 = SC.getFloat64(0, true);
+    value.f030F32 = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.F030F32 = SC.getFloat32(0, true);
+    value.f030F32 = SC.getFloat32(0, true);
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2368,17 +2156,17 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x1) >>> 0;
-  value.F031Bits = v;
+  value.f031Bits = v;
   v = (out >>> 1) & 0x7;
   if (v > 6) { // a smuggled offset is refused
     return false;
   }
-  value.F032Int = (v + 4294967293) | 0;
+  value.f032Int = (v + 4294967293) | 0;
   v = (out >>> 4) & 0x3ffff;
   if (v > 142780) { // a smuggled offset is refused
     return false;
   }
-  value.F033Uint = v | 0;
+  value.f033Uint = v | 0;
   br += 22;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2389,18 +2177,18 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 14149) { // a smuggled offset is refused
     return false;
   }
-  value.F034Uint = v | 0;
+  value.f034Uint = v | 0;
   v = (out >>> 14) & 0x1ff;
-  value.F035Bits = v;
+  value.f035Bits = v;
   v = (out >>> 23) & 0x7;
   if (v > 5) { // headroom above the wire range is refused
     return false;
   }
-  value.F036Enum = v;
+  value.f036Enum = v;
   v = (out >>> 26) & 0x1;
-  value.F037Bool = v !== 0;
+  value.f037Bool = v !== 0;
   v = (out >>> 27) & 0x1;
-  value.F038Bool = v !== 0;
+  value.f038Bool = v !== 0;
   br += 28;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2408,7 +2196,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7ffff) >>> 0;
-  value.F039Bits = v;
+  value.f039Bits = v;
   br += 19;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2419,12 +2207,12 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 40960) { // a smuggled raw offset is refused
     return false;
   }
-  value.F040Fixed = -20480 + v;
+  value.f040Fixed = -20480 + v;
   v = (out >>> 16) & 0x7f;
   if (v > 110) { // a smuggled offset is refused
     return false;
   }
-  value.F041Int = (v + 4294967241) | 0;
+  value.f041Int = (v + 4294967241) | 0;
   br += 23;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2432,11 +2220,11 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x3fffffff) >>> 0;
-  value.F042Bits = v;
+  value.f042Bits = v;
   v = (out >>> 30) & 0x1;
-  value.F043Bool = v !== 0;
+  value.f043Bool = v !== 0;
   br += 31;
-  if (value.F043Bool) {
+  if (value.f043Bool) {
     if (br + 81 > numBits) {
       return false;
     }
@@ -2449,10 +2237,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      value.F044F32 = SC.getFloat64(0, true);
+      value.f044F32 = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      value.F044F32 = SC.getFloat32(0, true);
+      value.f044F32 = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2460,12 +2248,12 @@ export function ReadRealPacketFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xfff) >>> 0;
-    value.F045Bits = v;
+    value.f045Bits = v;
     v = (out >>> 12) & 0x1ffff;
     if (v > 76063) { // a smuggled offset is refused
       return false;
     }
-    value.F046Uint = v | 0;
+    value.f046Uint = v | 0;
     br += 29;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2476,13 +2264,13 @@ export function ReadRealPacketFlat(value, view, numBits) {
     if (v > 861952) { // a smuggled offset is refused
       return false;
     }
-    value.F047Int = (v + 4294536320) | 0;
+    value.f047Int = (v + 4294536320) | 0;
     br += 20;
   } else {
-    value.F044F32 = 0;
-    value.F045Bits = 0;
-    value.F046Uint = 0;
-    value.F047Int = 0;
+    value.f044F32 = 0;
+    value.f045Bits = 0;
+    value.f046Uint = 0;
+    value.f047Int = 0;
   }
   if (br + 81 > numBits) {
     return false;
@@ -2502,7 +2290,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
-  value.F048F64 = SC.getFloat64(0, true);
+  value.f048F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2513,11 +2301,11 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 49152) { // a smuggled raw offset is refused
     return false;
   }
-  value.F049Ufixed = v;
+  value.f049Ufixed = v;
   v = (out >>> 16) & 0x1;
-  value.F050Bool = v !== 0;
+  value.f050Bool = v !== 0;
   br += 17;
-  if (value.F050Bool) {
+  if (value.f050Bool) {
     if (br + 47 > numBits) {
       return false;
     }
@@ -2527,12 +2315,12 @@ export function ReadRealPacketFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1) >>> 0;
-    value.F051Bool = v !== 0;
+    value.f051Bool = v !== 0;
     v = (out >>> 1) & 0x7f;
     if (v > 114) { // a smuggled offset is refused
       return false;
     }
-    value.F052Int = (v + 4294967239) | 0;
+    value.f052Int = (v + 4294967239) | 0;
     br += 8;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2543,10 +2331,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-      value.F053F32 = SC.getFloat64(0, true);
+      value.f053F32 = SC.getFloat64(0, true);
     } else {
       SC.setUint32(0, v, true);
-      value.F053F32 = SC.getFloat32(0, true);
+      value.f053F32 = SC.getFloat32(0, true);
     }
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2557,13 +2345,13 @@ export function ReadRealPacketFlat(value, view, numBits) {
     if (v > 70) { // a smuggled offset is refused
       return false;
     }
-    value.F054Int = (v + 4294967261) | 0;
+    value.f054Int = (v + 4294967261) | 0;
     br += 7;
   } else {
-    value.F051Bool = false;
-    value.F052Int = 0;
-    value.F053F32 = 0;
-    value.F054Int = 0;
+    value.f051Bool = false;
+    value.f052Int = 0;
+    value.f053F32 = 0;
+    value.f054Int = 0;
   }
   if (br + 290 > numBits) {
     return false;
@@ -2574,17 +2362,17 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x1) >>> 0;
-  value.F055Bool = v !== 0;
+  value.f055Bool = v !== 0;
   v = (out >>> 1) & 0x1f;
   if (v > 26) { // a smuggled offset is refused
     return false;
   }
-  value.F056Int = (v + 4294967283) | 0;
+  value.f056Int = (v + 4294967283) | 0;
   v = (out >>> 6) & 0x1f;
   if (v > 30) { // a smuggled offset is refused
     return false;
   }
-  value.F057Int = (v + 4294967281) | 0;
+  value.f057Int = (v + 4294967281) | 0;
   br += 11;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2595,10 +2383,10 @@ export function ReadRealPacketFlat(value, view, numBits) {
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
-    value.F058F32 = SC.getFloat64(0, true);
+    value.f058F32 = SC.getFloat64(0, true);
   } else {
     SC.setUint32(0, v, true);
-    value.F058F32 = SC.getFloat32(0, true);
+    value.f058F32 = SC.getFloat32(0, true);
   }
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2615,7 +2403,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
-  value.F059F64 = SC.getFloat64(0, true);
+  value.f059F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2623,17 +2411,17 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0xff) >>> 0;
-  value.F060Bits = v;
+  value.f060Bits = v;
   v = (out >>> 8) & 0x1ff;
   if (v > 360) { // headroom above the quantum count is refused
     return false;
   }
-  value.F061Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 360.0) * 180.0) + -90.0);
+  value.f061Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 360.0) * 180.0) + -90.0);
   v = (out >>> 17) & 0x1ff;
   if (v > 503) { // a smuggled offset is refused
     return false;
   }
-  value.F062Uint = v | 0;
+  value.f062Uint = v | 0;
   br += 26;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2651,7 +2439,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.F063I64 = BigInt.asIntN(64, bg);
+  value.f063I64 = BigInt.asIntN(64, bg);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2662,17 +2450,17 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 299) { // a smuggled offset is refused
     return false;
   }
-  value.F064Uint = v | 0;
+  value.f064Uint = v | 0;
   v = (out >>> 9) & 0x3f;
   if (v > 60) { // headroom above the quantum count is refused
     return false;
   }
-  value.F065Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 60.0) * 30.0) + 0.0);
+  value.f065Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 60.0) * 30.0) + 0.0);
   v = (out >>> 15) & 0xffff;
   if (v > 32768) { // a smuggled raw offset is refused
     return false;
   }
-  value.F066Ufixed = v;
+  value.f066Ufixed = v;
   br += 31;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2683,14 +2471,14 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 800) { // headroom above the quantum count is refused
     return false;
   }
-  value.F067Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 800.0) * 200.0) + -100.0);
+  value.f067Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 800.0) * 200.0) + -100.0);
   v = (out >>> 10) & 0x7ff;
   if (v > 2000) { // headroom above the quantum count is refused
     return false;
   }
-  value.F068Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 2000.0) * 2000.0) + 0.0);
+  value.f068Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 2000.0) * 2000.0) + 0.0);
   v = (out >>> 21) & 0x7ff;
-  value.F069Bits = v;
+  value.f069Bits = v;
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2701,26 +2489,26 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 2) { // a smuggled offset is refused
     return false;
   }
-  value.F070Uint = v | 0;
+  value.f070Uint = v | 0;
   v = (out >>> 2) & 0x1ff;
   if (v > 500) { // headroom above the quantum count is refused
     return false;
   }
-  value.F071Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 500.0) * 10.0) + 0.0);
+  value.f071Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 500.0) * 10.0) + 0.0);
   v = (out >>> 11) & 0x3fff;
   if (v > 10000) { // headroom above the quantum count is refused
     return false;
   }
-  value.F072Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 100.0) + 0.0);
+  value.f072Cf32 = Math.fround(Math.fround(Math.fround(Math.fround(v) / 10000.0) * 100.0) + 0.0);
   v = (out >>> 25) & 0xf;
   if (v > 8) { // a smuggled offset is refused
     return false;
   }
-  value.F073Int = (v + 4294967292) | 0;
+  value.f073Int = (v + 4294967292) | 0;
   v = (out >>> 29) & 0x1;
-  value.F074Bool = v !== 0;
+  value.f074Bool = v !== 0;
   br += 30;
-  if (value.F074Bool) {
+  if (value.f074Bool) {
     if (br + 100 > numBits) {
       return false;
     }
@@ -2740,7 +2528,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.F075U64 = bg;
+    value.f075U64 = bg;
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2751,14 +2539,14 @@ export function ReadRealPacketFlat(value, view, numBits) {
     if (v > 52436) { // a smuggled offset is refused
       return false;
     }
-    value.F076Int = (v + 4294941078) | 0;
+    value.f076Int = (v + 4294941078) | 0;
     v = (out >>> 16) & 0x3f;
     if (v > 34) { // a smuggled offset is refused
       return false;
     }
-    value.F077Int = (v + 4294967279) | 0;
+    value.f077Int = (v + 4294967279) | 0;
     v = (out >>> 22) & 0x1ff;
-    value.F078Bits = v;
+    value.f078Bits = v;
     br += 31;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -2769,14 +2557,14 @@ export function ReadRealPacketFlat(value, view, numBits) {
     if (v > 17) { // a smuggled offset is refused
       return false;
     }
-    value.F079Uint = v | 0;
+    value.f079Uint = v | 0;
     br += 5;
   } else {
-    value.F075U64 = 0n;
-    value.F076Int = 0;
-    value.F077Int = 0;
-    value.F078Bits = 0;
-    value.F079Uint = 0;
+    value.f075U64 = 0n;
+    value.f076Int = 0;
+    value.f077Int = 0;
+    value.f078Bits = 0;
+    value.f079Uint = 0;
   }
   if (br + 356 > numBits) {
     return false;
@@ -2787,9 +2575,9 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x1) >>> 0;
-  value.F080Bool = v !== 0;
+  value.f080Bool = v !== 0;
   v = (out >>> 1) & 0x1fffffff;
-  value.F081Bits = v;
+  value.f081Bits = v;
   br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2797,12 +2585,12 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x1ffffff) >>> 0;
-  value.F082Bits = v;
+  value.f082Bits = v;
   v = (out >>> 25) & 0x7;
   if (v > 5) { // headroom above the wire range is refused
     return false;
   }
-  value.F083Enum = v;
+  value.f083Enum = v;
   br += 28;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2813,9 +2601,9 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 128) { // a smuggled raw offset is refused
     return false;
   }
-  value.F084Ufixed = v;
+  value.f084Ufixed = v;
   v = (out >>> 8) & 0x1fffff;
-  value.F085Bits = v;
+  value.f085Bits = v;
   br += 29;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2826,7 +2614,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 399) { // a smuggled offset is refused
     return false;
   }
-  value.F086Uint = v | 0;
+  value.f086Uint = v | 0;
   br += 9;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2843,7 +2631,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
-  value.F087F64 = SC.getFloat64(0, true);
+  value.f087F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2854,7 +2642,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   if (v > 1388) { // a smuggled offset is refused
     return false;
   }
-  value.F088Int = (v + 4294966602) | 0;
+  value.f088Int = (v + 4294966602) | 0;
   br += 11;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2872,16 +2660,16 @@ export function ReadRealPacketFlat(value, view, numBits) {
   v = (out & 0xffff) >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.F089Bits = bg;
+  value.f089Bits = bg;
   v = (out >>> 16) & 0xff;
   if (v > 214) { // a smuggled offset is refused
     return false;
   }
-  value.F090Uint = v | 0;
+  value.f090Uint = v | 0;
   v = (out >>> 24) & 0x1f;
-  value.F091Flags = BigInt(v);
+  value.f091Flags = BigInt(v);
   v = (out >>> 29) & 0x1;
-  value.F092Bool = v !== 0;
+  value.f092Bool = v !== 0;
   br += 30;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2899,7 +2687,7 @@ export function ReadRealPacketFlat(value, view, numBits) {
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.F093Bits = bg;
+  value.f093Bits = bg;
   br += 32;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2907,12 +2695,12 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x1) >>> 0;
-  value.F094Bool = v !== 0;
+  value.f094Bool = v !== 0;
   v = (out >>> 1) & 0xfffffff;
   if (v > 206700544) { // a smuggled raw offset is refused
     return false;
   }
-  value.F095Fixed = -103350272 + v;
+  value.f095Fixed = -103350272 + v;
   br += 29;
   bi = br >>> 3;
   wlo = view.getUint32(bi, true);
@@ -2920,9 +2708,9 @@ export function ReadRealPacketFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x3ffff) >>> 0;
-  value.F096Bits = v;
+  value.f096Bits = v;
   v = (out >>> 18) & 0xfff;
-  value.F097Bits = v;
+  value.f097Bits = v;
   return true;
 }
 

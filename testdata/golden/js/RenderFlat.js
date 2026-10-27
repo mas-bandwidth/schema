@@ -19,217 +19,87 @@ export const FLAT_READ_SLACK = 8;
 
 // ---- type RenderSprite: the flat codec ----
 
-function writeRenderSpriteFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, value.SortKey, true);
+function writeRenderSpriteFlatProduction(view, value) {
+  let v = 0, lo = 0;
+  SC.setBigUint64(0, value.sortKey, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.MeshId) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.MaterialId) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.Layer) & 0xff) | ((value.Team & 0x3) << 8)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  view.setUint32(4, v, true);
+  view.setUint32(8, (((value.meshId) >>> 0)), true);
+  view.setUint32(12, (((value.materialId) >>> 0)), true);
+  lo = (((value.layer) & 0xff) | ((value.team & 0x3) << 8));
+  view.setUint32(16, lo, true);
+  return 18;
 }
 
-function writeRenderSpriteFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  SC.setBigUint64(0, value.SortKey, true);
+function writeRenderSpriteFlatChecked(view, value) {
+  let v = 0, lo = 0;
+  SC.setBigUint64(0, value.sortKey, true);
   v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
+  view.setUint32(0, v, true);
   v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.MeshId) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.MaterialId) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (!Number.isInteger(value.Team) || value.Team < 0 || value.Team > 2) { // headroom above the wire range cannot ride
+  view.setUint32(4, v, true);
+  view.setUint32(8, (((value.meshId) >>> 0)), true);
+  view.setUint32(12, (((value.materialId) >>> 0)), true);
+  if (!Number.isInteger(value.team) || value.team < 0 || value.team > 2) { // headroom above the wire range cannot ride
     return -1;
   }
-  v = (((value.Layer) & 0xff) | ((value.Team & 0x3) << 8)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+  lo = (((value.layer) & 0xff) | ((value.team & 0x3) << 8));
+  view.setUint32(16, lo, true);
+  return 18;
 }
 
-// WriteRenderSpriteFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteRenderSpriteFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold RenderSpriteMaxBytes.
 export const WriteRenderSpriteFlat = PRODUCTION ? writeRenderSpriteFlatProduction : writeRenderSpriteFlatChecked;
 
-// ReadRenderSpriteFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadRenderSpriteFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadRenderSpriteFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadRenderSpriteFlat(view, numBits, value) {
+  let v = 0, out = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 138 > numBits) {
+  if (138 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = out >>> 0;
   SC.setUint32(0, v, true);
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(4, true);
   v = out >>> 0;
   SC.setUint32(4, v, true);
   bg = SC.getBigUint64(0, true);
-  value.SortKey = bg;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.sortKey = bg;
+  out = view.getUint32(8, true);
   v = out >>> 0;
-  value.MeshId = v;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.meshId = v;
+  out = view.getUint32(12, true);
   v = out >>> 0;
-  value.MaterialId = v;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.materialId = v;
+  out = view.getUint32(16, true);
   v = (out & 0xff) >>> 0;
-  value.Layer = v;
+  value.layer = v;
   v = (out >>> 8) & 0x3;
   if (v > 2) { // headroom above the wire range is refused
     return false;
   }
-  value.Team = v;
+  value.team = v;
   return true;
 }
 
 // ---- type RenderBlock: the flat codec ----
 
-function writeRenderBlockFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.WorkerIndex) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.SpriteCountHint) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.SpritesCount) & 0x7f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  for (let i0 = 0; i0 < value.SpritesCount; i0++) {
-    const e0 = value.Sprites[i0];
-    SC.setBigUint64(0, e0.SortKey, true);
+function writeRenderBlockFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  view.setUint32(0, (((value.workerIndex) >>> 0)), true);
+  view.setUint32(4, (((value.spriteCountHint) >>> 0)), true);
+  lo = (((value.spritesCount) & 0x7f));
+  wi = 8;
+  sb = 7;
+  for (let i0 = 0; i0 < value.spritesCount; i0++) {
+    const e0 = value.sprites[i0];
+    SC.setBigUint64(0, e0.sortKey, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -248,7 +118,7 @@ function writeRenderBlockFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((e0.MeshId) >>> 0)) >>> 0;
+    v = (((e0.meshId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -257,7 +127,7 @@ function writeRenderBlockFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((e0.MaterialId) >>> 0)) >>> 0;
+    v = (((e0.materialId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -266,7 +136,7 @@ function writeRenderBlockFlatProduction(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((e0.Layer) & 0xff) | ((e0.Team & 0x3) << 8)) >>> 0;
+    v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 10;
     if (sb >= 32) {
@@ -282,42 +152,19 @@ function writeRenderBlockFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeRenderBlockFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.WorkerIndex) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  if (!Number.isInteger(value.SpritesCount) || value.SpritesCount < 0 || value.SpritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeRenderBlockFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  view.setUint32(0, (((value.workerIndex) >>> 0)), true);
+  if (!Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.SpriteCountHint) >>> 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.SpritesCount) & 0x7f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  for (let i0 = 0; i0 < value.SpritesCount; i0++) {
-    const e0 = value.Sprites[i0];
-    SC.setBigUint64(0, e0.SortKey, true);
+  view.setUint32(4, (((value.spriteCountHint) >>> 0)), true);
+  lo = (((value.spritesCount) & 0x7f));
+  wi = 8;
+  sb = 7;
+  for (let i0 = 0; i0 < value.spritesCount; i0++) {
+    const e0 = value.sprites[i0];
+    SC.setBigUint64(0, e0.sortKey, true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -336,7 +183,7 @@ function writeRenderBlockFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((e0.MeshId) >>> 0)) >>> 0;
+    v = (((e0.meshId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -345,7 +192,7 @@ function writeRenderBlockFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    v = (((e0.MaterialId) >>> 0)) >>> 0;
+    v = (((e0.materialId) >>> 0)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -354,10 +201,10 @@ function writeRenderBlockFlatChecked(value, view) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
-    if (!Number.isInteger(e0.Team) || e0.Team < 0 || e0.Team > 2) { // headroom above the wire range cannot ride
+    if (!Number.isInteger(e0.team) || e0.team < 0 || e0.team > 2) { // headroom above the wire range cannot ride
       return -1;
     }
-    v = (((e0.Layer) & 0xff) | ((e0.Team & 0x3) << 8)) >>> 0;
+    v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 10;
     if (sb >= 32) {
@@ -373,55 +220,40 @@ function writeRenderBlockFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteRenderBlockFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteRenderBlockFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold RenderBlockMaxBytes.
 export const WriteRenderBlockFlat = PRODUCTION ? writeRenderBlockFlatProduction : writeRenderBlockFlatChecked;
 
-// ReadRenderBlockFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadRenderBlockFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadRenderBlockFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadRenderBlockFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 64 > numBits) {
+  if (64 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = out >>> 0;
-  value.WorkerIndex = v;
-  br += 32;
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  value.workerIndex = v;
+  out = view.getUint32(4, true);
   v = out >>> 0;
-  value.SpriteCountHint = v;
-  br += 32;
-  if (br + 7 > numBits) {
+  value.spriteCountHint = v;
+  if (71 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(8, true);
   v = (out & 0x7f) >>> 0;
   if (v > 64) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.SpritesCount = v;
-  br += 7;
-  if (br + value.SpritesCount * 138 > numBits) {
+  value.spritesCount = v;
+  br = 71;
+  if (br + value.spritesCount * 138 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.SpritesCount; i0++) {
-    const e0 = value.Sprites[i0];
+  for (let i0 = 0; i0 < value.spritesCount; i0++) {
+    const e0 = value.sprites[i0];
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -438,7 +270,7 @@ export function ReadRenderBlockFlat(value, view, numBits) {
     v = out >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    e0.SortKey = bg;
+    e0.sortKey = bg;
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -446,7 +278,7 @@ export function ReadRenderBlockFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
-    e0.MeshId = v;
+    e0.meshId = v;
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -454,7 +286,7 @@ export function ReadRenderBlockFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
-    e0.MaterialId = v;
+    e0.materialId = v;
     br += 32;
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
@@ -462,12 +294,12 @@ export function ReadRenderBlockFlat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0xff) >>> 0;
-    e0.Layer = v;
+    e0.layer = v;
     v = (out >>> 8) & 0x3;
     if (v > 2) { // headroom above the wire range is refused
       return false;
     }
-    e0.Team = v;
+    e0.team = v;
     br += 10;
   }
   return true;

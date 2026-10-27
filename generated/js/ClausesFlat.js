@@ -17,22 +17,63 @@ const PRODUCTION = typeof process !== "undefined" && !!process.env && process.en
 // Read buffers must extend at least this many bytes past the payload.
 export const FLAT_READ_SLACK = 8;
 
+// validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
+// interior null (SPEC §4.7). Every string field's read calls it; nothing
+// allocates and nothing latches.
+function validText(bytes, length) {
+  for (let utf8Index = 0; utf8Index < length;) {
+    const utf8Lead = bytes[utf8Index++];
+    if (utf8Lead < 0x80) {
+      if (utf8Lead === 0) {
+        return false; // an interior null is content the read refuses
+      }
+      continue;
+    }
+    let utf8Remaining = 0;
+    let utf8Point = 0;
+    if ((utf8Lead & 0xe0) === 0xc0) {
+      utf8Remaining = 1;
+      utf8Point = utf8Lead & 0x1f;
+    } else if ((utf8Lead & 0xf0) === 0xe0) {
+      utf8Remaining = 2;
+      utf8Point = utf8Lead & 0x0f;
+    } else if ((utf8Lead & 0xf8) === 0xf0) {
+      utf8Remaining = 3;
+      utf8Point = utf8Lead & 0x07;
+    } else {
+      return false; // malformed UTF-8 lead
+    }
+    if (utf8Remaining > length - utf8Index) {
+      return false;
+    }
+    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++) {
+      const utf8Byte = bytes[utf8Index++];
+      if ((utf8Byte & 0xc0) !== 0x80) {
+        return false;
+      }
+      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3f);
+    }
+    if (utf8Remaining === 1 && utf8Point < 0x80) {
+      return false; // overlong
+    }
+    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xd800 && utf8Point <= 0xdfff))) {
+      return false; // overlong, or a surrogate
+    }
+    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10ffff)) {
+      return false; // overlong, or past U+10FFFF
+    }
+  }
+  return true;
+}
+
 // ---- type W13: the flat codec ----
 
-function writeW13FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ItemsCount) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+function writeW13FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.itemsCount) & 0xf));
+  sb = 4;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    v = (((value.items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -48,26 +89,18 @@ function writeW13FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeW13FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 12) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeW13FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.ItemsCount) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 8191) {
+  lo = (((value.itemsCount) & 0xf));
+  sb = 4;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
       return -1;
     }
-    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+    v = (((value.items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -83,41 +116,36 @@ function writeW13FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteW13Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteW13Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold W13MaxBytes.
 export const WriteW13Flat = PRODUCTION ? writeW13FlatProduction : writeW13FlatChecked;
 
-// ReadW13Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadW13Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadW13Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 4 > numBits) {
+export function ReadW13Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (4 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xf) >>> 0;
   if (v > 12) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ItemsCount = v;
-  br += 4;
-  if (br + value.ItemsCount * 13 > numBits) {
+  value.itemsCount = v;
+  br = 4;
+  if (br + value.itemsCount * 13 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1fff) >>> 0;
-    value.Items[i0] = v | 0;
+    value.items[i0] = v | 0;
     br += 13;
   }
   return true;
@@ -125,20 +153,12 @@ export function ReadW13Flat(value, view, numBits) {
 
 // ---- type W17: the flat codec ----
 
-function writeW17FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ItemsCount) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = (((value.Items[i0]) & 0x1ffff)) >>> 0;
+function writeW17FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.itemsCount) & 0xf));
+  sb = 4;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    v = (((value.items[i0]) & 0x1ffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 17;
     if (sb >= 32) {
@@ -154,26 +174,18 @@ function writeW17FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeW17FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 9) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeW17FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.ItemsCount) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 131071) {
+  lo = (((value.itemsCount) & 0xf));
+  sb = 4;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 131071) {
       return -1;
     }
-    v = (((value.Items[i0]) & 0x1ffff)) >>> 0;
+    v = (((value.items[i0]) & 0x1ffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 17;
     if (sb >= 32) {
@@ -189,41 +201,36 @@ function writeW17FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteW17Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteW17Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold W17MaxBytes.
 export const WriteW17Flat = PRODUCTION ? writeW17FlatProduction : writeW17FlatChecked;
 
-// ReadW17Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadW17Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadW17Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 4 > numBits) {
+export function ReadW17Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (4 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xf) >>> 0;
   if (v > 9) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ItemsCount = v;
-  br += 4;
-  if (br + value.ItemsCount * 17 > numBits) {
+  value.itemsCount = v;
+  br = 4;
+  if (br + value.itemsCount * 17 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1ffff) >>> 0;
-    value.Items[i0] = v | 0;
+    value.items[i0] = v | 0;
     br += 17;
   }
   return true;
@@ -231,20 +238,12 @@ export function ReadW17Flat(value, view, numBits) {
 
 // ---- type W26: the flat codec ----
 
-function writeW26FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ItemsCount) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = (((value.Items[i0]) & 0x3ffffff)) >>> 0;
+function writeW26FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.itemsCount) & 0x7));
+  sb = 3;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    v = (((value.items[i0]) & 0x3ffffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 26;
     if (sb >= 32) {
@@ -260,26 +259,18 @@ function writeW26FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeW26FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 6) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeW26FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.ItemsCount) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 67108863) {
+  lo = (((value.itemsCount) & 0x7));
+  sb = 3;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 67108863) {
       return -1;
     }
-    v = (((value.Items[i0]) & 0x3ffffff)) >>> 0;
+    v = (((value.items[i0]) & 0x3ffffff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 26;
     if (sb >= 32) {
@@ -295,41 +286,36 @@ function writeW26FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteW26Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteW26Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold W26MaxBytes.
 export const WriteW26Flat = PRODUCTION ? writeW26FlatProduction : writeW26FlatChecked;
 
-// ReadW26Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadW26Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadW26Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 3 > numBits) {
+export function ReadW26Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (3 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x7) >>> 0;
   if (v > 6) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ItemsCount = v;
-  br += 3;
-  if (br + value.ItemsCount * 26 > numBits) {
+  value.itemsCount = v;
+  br = 3;
+  if (br + value.itemsCount * 26 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x3ffffff) >>> 0;
-    value.Items[i0] = v | 0;
+    value.items[i0] = v | 0;
     br += 26;
   }
   return true;
@@ -337,20 +323,12 @@ export function ReadW26Flat(value, view, numBits) {
 
 // ---- type W1: the flat codec ----
 
-function writeW1FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ItemsCount) & 0x1f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    v = (((value.Items[i0]) & 0x1)) >>> 0;
+function writeW1FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.itemsCount) & 0x1f));
+  sb = 5;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    v = (((value.items[i0]) & 0x1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 1;
     if (sb >= 32) {
@@ -366,26 +344,18 @@ function writeW1FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeW1FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 20) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeW1FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.ItemsCount) & 0x1f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 1) {
+  lo = (((value.itemsCount) & 0x1f));
+  sb = 5;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 1) {
       return -1;
     }
-    v = (((value.Items[i0]) & 0x1)) >>> 0;
+    v = (((value.items[i0]) & 0x1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 1;
     if (sb >= 32) {
@@ -401,41 +371,36 @@ function writeW1FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteW1Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteW1Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold W1MaxBytes.
 export const WriteW1Flat = PRODUCTION ? writeW1FlatProduction : writeW1FlatChecked;
 
-// ReadW1Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadW1Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadW1Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 5 > numBits) {
+export function ReadW1Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1f) >>> 0;
   if (v > 20) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ItemsCount = v;
-  br += 5;
-  if (br + value.ItemsCount * 1 > numBits) {
+  value.itemsCount = v;
+  br = 5;
+  if (br + value.itemsCount * 1 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1) >>> 0;
-    value.Items[i0] = v | 0;
+    value.items[i0] = v | 0;
     br += 1;
   }
   return true;
@@ -443,20 +408,12 @@ export function ReadW1Flat(value, view, numBits) {
 
 // ---- type W52: the flat codec ----
 
-function writeW52FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ItemsCount) & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    SC.setBigUint64(0, value.Items[i0], true);
+function writeW52FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.itemsCount) & 0x3));
+  sb = 2;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    SC.setBigUint64(0, value.items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -482,26 +439,18 @@ function writeW52FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeW52FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeW52FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.ItemsCount) & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    if (value.Items[i0] > 4503599627370495n) {
+  lo = (((value.itemsCount) & 0x3));
+  sb = 2;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    if (value.items[i0] > 4503599627370495n) {
       return -1;
     }
-    SC.setBigUint64(0, value.Items[i0], true);
+    SC.setBigUint64(0, value.items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -527,32 +476,27 @@ function writeW52FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteW52Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteW52Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold W52MaxBytes.
 export const WriteW52Flat = PRODUCTION ? writeW52FlatProduction : writeW52FlatChecked;
 
-// ReadW52Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadW52Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadW52Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadW52Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 2 > numBits) {
+  if (2 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x3) >>> 0;
-  value.ItemsCount = v;
-  br += 2;
-  if (br + value.ItemsCount * 52 > numBits) {
+  value.itemsCount = v;
+  br = 2;
+  if (br + value.itemsCount * 52 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -569,7 +513,7 @@ export function ReadW52Flat(value, view, numBits) {
     v = (out & 0xfffff) >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.Items[i0] = bg;
+    value.items[i0] = bg;
     br += 20;
   }
   return true;
@@ -577,20 +521,12 @@ export function ReadW52Flat(value, view, numBits) {
 
 // ---- type W50: the flat codec ----
 
-function writeW50FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ItemsCount) & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    SC.setBigUint64(0, value.Items[i0], true);
+function writeW50FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.itemsCount) & 0x3));
+  sb = 2;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    SC.setBigUint64(0, value.items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -616,26 +552,18 @@ function writeW50FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeW50FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeW50FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.ItemsCount) & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    if (value.Items[i0] > 1125899906842623n) {
+  lo = (((value.itemsCount) & 0x3));
+  sb = 2;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    if (value.items[i0] > 1125899906842623n) {
       return -1;
     }
-    SC.setBigUint64(0, value.Items[i0], true);
+    SC.setBigUint64(0, value.items[i0], true);
     v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
@@ -661,32 +589,27 @@ function writeW50FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteW50Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteW50Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold W50MaxBytes.
 export const WriteW50Flat = PRODUCTION ? writeW50FlatProduction : writeW50FlatChecked;
 
-// ReadW50Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadW50Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadW50Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
+export function ReadW50Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
-  let br = 0;
-  if (br + 2 > numBits) {
+  if (2 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x3) >>> 0;
-  value.ItemsCount = v;
-  br += 2;
-  if (br + value.ItemsCount * 50 > numBits) {
+  value.itemsCount = v;
+  br = 2;
+  if (br + value.itemsCount * 50 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
@@ -703,7 +626,7 @@ export function ReadW50Flat(value, view, numBits) {
     v = (out & 0x3ffff) >>> 0;
     SC.setUint32(4, v, true);
     bg = SC.getBigUint64(0, true);
-    value.Items[i0] = bg;
+    value.items[i0] = bg;
     br += 18;
   }
   return true;
@@ -711,11 +634,10 @@ export function ReadW50Flat(value, view, numBits) {
 
 // ---- type F13: the flat codec ----
 
-function writeF13FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+function writeF13FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 7; i0++) {
-    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+    v = (((value.items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -731,14 +653,13 @@ function writeF13FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeF13FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+function writeF13FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 7; i0++) {
-    if (!Number.isInteger(value.Items[i0]) || value.Items[i0] < 0 || value.Items[i0] > 8191) {
+    if (!Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
       return -1;
     }
-    v = (((value.Items[i0]) & 0x1fff)) >>> 0;
+    v = (((value.items[i0]) & 0x1fff)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 13;
     if (sb >= 32) {
@@ -754,17 +675,16 @@ function writeF13FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteF13Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteF13Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold F13MaxBytes.
 export const WriteF13Flat = PRODUCTION ? writeF13FlatProduction : writeF13FlatChecked;
 
-// ReadF13Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadF13Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadF13Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 91 > numBits) {
+export function ReadF13Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (91 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 7; i0++) {
@@ -774,7 +694,7 @@ export function ReadF13Flat(value, view, numBits) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1fff) >>> 0;
-    value.Items[i0] = v | 0;
+    value.items[i0] = v | 0;
     br += 13;
   }
   return true;
@@ -782,84 +702,40 @@ export function ReadF13Flat(value, view, numBits) {
 
 // ---- type Tri3: the flat codec ----
 
-function writeTri3FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.A & 0x1) | ((value.B & 0x3) << 1)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteTri3Flat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold Tri3MaxBytes.
+export function WriteTri3Flat(view, value) {
+  let lo = 0;
+  lo = ((value.a & 0x1) | ((value.b & 0x3) << 1));
+  view.setUint32(0, lo, true);
+  return 1;
 }
 
-function writeTri3FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.A & 0x1) | ((value.B & 0x3) << 1)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteTri3Flat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold Tri3MaxBytes.
-export const WriteTri3Flat = PRODUCTION ? writeTri3FlatProduction : writeTri3FlatChecked;
-
-// ReadTri3Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadTri3Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadTri3Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 3 > numBits) {
+export function ReadTri3Flat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (3 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1) >>> 0;
-  value.A = v;
+  value.a = v;
   v = (out >>> 1) & 0x3;
-  value.B = v;
+  value.b = v;
   return true;
 }
 
 // ---- type ArrTri3: the flat codec ----
 
-function writeArrTri3FlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = (((value.ItemsCount) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    const e0 = value.Items[i0];
-    v = ((e0.A & 0x1) | ((e0.B & 0x3) << 1)) >>> 0;
+function writeArrTri3FlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = (((value.itemsCount) & 0xf));
+  sb = 4;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
+    v = ((e0.a & 0x1) | ((e0.b & 0x3) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 3;
     if (sb >= 32) {
@@ -875,24 +751,16 @@ function writeArrTri3FlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeArrTri3FlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 10) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeArrTri3FlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = (((value.ItemsCount) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    const e0 = value.Items[i0];
-    v = ((e0.A & 0x1) | ((e0.B & 0x3) << 1)) >>> 0;
+  lo = (((value.itemsCount) & 0xf));
+  sb = 4;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
+    v = ((e0.a & 0x1) | ((e0.b & 0x3) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 3;
     if (sb >= 32) {
@@ -908,44 +776,39 @@ function writeArrTri3FlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArrTri3Flat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteArrTri3Flat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ArrTri3MaxBytes.
 export const WriteArrTri3Flat = PRODUCTION ? writeArrTri3FlatProduction : writeArrTri3FlatChecked;
 
-// ReadArrTri3Flat(value, view, numBits) -> bool. The buffer behind view must
+// ReadArrTri3Flat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadArrTri3Flat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 4 > numBits) {
+export function ReadArrTri3Flat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (4 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0xf) >>> 0;
   if (v > 10) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ItemsCount = v;
-  br += 4;
-  if (br + value.ItemsCount * 3 > numBits) {
+  value.itemsCount = v;
+  br = 4;
+  if (br + value.itemsCount * 3 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    const e0 = value.Items[i0];
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x1) >>> 0;
-    e0.A = v;
+    e0.a = v;
     v = (out >>> 1) & 0x3;
-    e0.B = v;
+    e0.b = v;
     br += 3;
   }
   return true;
@@ -953,75 +816,41 @@ export function ReadArrTri3Flat(value, view, numBits) {
 
 // ---- type Eleven: the flat codec ----
 
-function writeElevenFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.A & 0x7) | ((value.B & 0xff) << 3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteElevenFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold ElevenMaxBytes.
+export function WriteElevenFlat(view, value) {
+  let lo = 0;
+  lo = ((value.a & 0x7) | ((value.b & 0xff) << 3));
+  view.setUint32(0, lo, true);
+  return 2;
 }
 
-function writeElevenFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.A & 0x7) | ((value.B & 0xff) << 3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteElevenFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ElevenMaxBytes.
-export const WriteElevenFlat = PRODUCTION ? writeElevenFlatProduction : writeElevenFlatChecked;
-
-// ReadElevenFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadElevenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadElevenFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 11 > numBits) {
+export function ReadElevenFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (11 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x7) >>> 0;
-  value.A = v;
+  value.a = v;
   v = (out >>> 3) & 0xff;
-  value.B = v;
+  value.b = v;
   return true;
 }
 
 // ---- type ArrEleven: the flat codec ----
 
-function writeArrElevenFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
+// WriteArrElevenFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold ArrElevenMaxBytes.
+export function WriteArrElevenFlat(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
   for (let i0 = 0; i0 < 9; i0++) {
-    const e0 = value.Items[i0];
-    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
+    const e0 = value.items[i0];
+    v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
     if (sb >= 32) {
@@ -1037,51 +866,24 @@ function writeArrElevenFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeArrElevenFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  for (let i0 = 0; i0 < 9; i0++) {
-    const e0 = value.Items[i0];
-    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 11;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (11 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteArrElevenFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold ArrElevenMaxBytes.
-export const WriteArrElevenFlat = PRODUCTION ? writeArrElevenFlatProduction : writeArrElevenFlatChecked;
-
-// ReadArrElevenFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadArrElevenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadArrElevenFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 99 > numBits) {
+export function ReadArrElevenFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (99 > numBits) {
     return false;
   }
   for (let i0 = 0; i0 < 9; i0++) {
-    const e0 = value.Items[i0];
+    const e0 = value.items[i0];
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x7) >>> 0;
-    e0.A = v;
+    e0.a = v;
     v = (out >>> 3) & 0xff;
-    e0.B = v;
+    e0.b = v;
     br += 11;
   }
   return true;
@@ -1089,28 +891,14 @@ export function ReadArrElevenFlat(value, view, numBits) {
 
 // ---- type EmptyA: the flat codec ----
 
-function writeEmptyAFlatProduction(value, view) {
-  let lo = 0, sb = 0, wi = 0;
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteEmptyAFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold EmptyAMaxBytes.
+export function WriteEmptyAFlat() {
+  return 0;
 }
 
-function writeEmptyAFlatChecked(value, view) {
-  let lo = 0, sb = 0, wi = 0;
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteEmptyAFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold EmptyAMaxBytes.
-export const WriteEmptyAFlat = PRODUCTION ? writeEmptyAFlatProduction : writeEmptyAFlatChecked;
-
-// ReadEmptyAFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadEmptyAFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
 export function ReadEmptyAFlat() {
   return true;
@@ -1118,48 +906,26 @@ export function ReadEmptyAFlat() {
 
 // ---- type EmptyB: the flat codec ----
 
-function writeEmptyBFlatProduction(value, view) {
-  let lo = 0, sb = 0, wi = 0;
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteEmptyBFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold EmptyBMaxBytes.
+export function WriteEmptyBFlat() {
+  return 0;
 }
 
-function writeEmptyBFlatChecked(value, view) {
-  let lo = 0, sb = 0, wi = 0;
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteEmptyBFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold EmptyBMaxBytes.
-export const WriteEmptyBFlat = PRODUCTION ? writeEmptyBFlatProduction : writeEmptyBFlatChecked;
-
-// ReadEmptyBFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadEmptyBFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
 export function ReadEmptyBFlat() {
   return true;
 }
 
-// ---- type HoldsEmptyUnion: the flat codec ----
+// ---- union EmptyUnion: the flat codec ----
 
-function writeHoldsEmptyUnionFlatProduction(value, view) {
-  let v = 0;
+function writeEmptyUnionFlatProduction(view, value) {
   let lo = 0, sb = 0, wi = 0;
-  v = ((value.Lead & 0x1f) | ((value.U.Type & 0x3) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  switch (value.U.Type) {
+  lo = ((value.type & 0x3));
+  sb = 2;
+  switch (value.type) {
     case 1: {
       break;
     }
@@ -1167,37 +933,20 @@ function writeHoldsEmptyUnionFlatProduction(value, view) {
       break;
     }
   }
-  v = ((value.Tail & 0x7f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeHoldsEmptyUnionFlatChecked(value, view) {
-  let v = 0;
+function writeEmptyUnionFlatChecked(view, value) {
   let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.U.Type) || value.U.Type < 0 || value.U.Type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+  if (!Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
-  v = ((value.Lead & 0x1f) | ((value.U.Type & 0x3) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  switch (value.U.Type) {
+  lo = ((value.type & 0x3));
+  sb = 2;
+  switch (value.type) {
     case 1: {
       break;
     }
@@ -1205,57 +954,126 @@ function writeHoldsEmptyUnionFlatChecked(value, view) {
       break;
     }
   }
-  v = ((value.Tail & 0x7f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteHoldsEmptyUnionFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteEmptyUnionFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold HoldsEmptyUnionMaxBytes.
-export const WriteHoldsEmptyUnionFlat = PRODUCTION ? writeHoldsEmptyUnionFlatProduction : writeHoldsEmptyUnionFlatChecked;
+// of them (SPEC §5). The buffer behind view must hold EmptyUnionMaxBytes.
+export const WriteEmptyUnionFlat = PRODUCTION ? writeEmptyUnionFlatProduction : writeEmptyUnionFlatChecked;
 
-// ReadHoldsEmptyUnionFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadEmptyUnionFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 5 > numBits) {
+export function ReadEmptyUnionFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (2 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
-  v = (out & 0x1f) >>> 0;
-  value.Lead = v;
-  br += 5;
-  if (br + 2 > numBits) {
-    return false;
-  }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x3) >>> 0;
   if (v > 2) { // not a wire-legal tag (SPEC §4.8)
     return false;
   }
-  value.U.Type = v;
-  br += 2;
-  switch (value.U.Type) {
+  value.type = v;
+  switch (value.type) {
+    case 1: {
+      break;
+    }
+    case 2: {
+      break;
+    }
+  }
+  return true;
+}
+
+// ---- type HoldsEmptyUnion: the flat codec ----
+
+function writeHoldsEmptyUnionFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = ((value.lead & 0x1f) | ((value.u.type & 0x3) << 5));
+  sb = 7;
+  switch (value.u.type) {
+    case 1: {
+      break;
+    }
+    case 2: {
+      break;
+    }
+  }
+  v = ((value.tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+function writeHoldsEmptyUnionFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+    return -1;
+  }
+  lo = ((value.lead & 0x1f) | ((value.u.type & 0x3) << 5));
+  sb = 7;
+  switch (value.u.type) {
+    case 1: {
+      break;
+    }
+    case 2: {
+      break;
+    }
+  }
+  v = ((value.tail & 0x7f)) >>> 0;
+  lo = (lo | (v << sb)) >>> 0;
+  sb += 7;
+  if (sb >= 32) {
+    view.setUint32(wi, lo, true);
+    wi += 4;
+    sb -= 32;
+    lo = sb === 0 ? 0 : v >>> (7 - sb);
+  }
+  if (sb !== 0) {
+    view.setUint32(wi, lo, true);
+  }
+  return ((wi * 8 + sb) + 7) >> 3;
+}
+
+// WriteHoldsEmptyUnionFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract in the checked build — the production writer holds none
+// of them (SPEC §5). The buffer behind view must hold HoldsEmptyUnionMaxBytes.
+export const WriteHoldsEmptyUnionFlat = PRODUCTION ? writeHoldsEmptyUnionFlatProduction : writeHoldsEmptyUnionFlatChecked;
+
+// ReadHoldsEmptyUnionFlat(view, numBits, value) -> bool. The buffer behind view must
+// extend FLAT_READ_SLACK bytes past the payload.
+export function ReadHoldsEmptyUnionFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
+    return false;
+  }
+  out = view.getUint32(0, true);
+  v = (out & 0x1f) >>> 0;
+  value.lead = v;
+  if (7 > numBits) {
+    return false;
+  }
+  out = (view.getUint32(0, true) >>> 5) | (view.getUint32(4, true) << 27);
+  v = (out & 0x3) >>> 0;
+  if (v > 2) { // not a wire-legal tag (SPEC §4.8)
+    return false;
+  }
+  value.u.type = v;
+  br = 7;
+  switch (value.u.type) {
     case 1: {
       break;
     }
@@ -1272,35 +1090,20 @@ export function ReadHoldsEmptyUnionFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7f) >>> 0;
-  value.Tail = v;
+  value.tail = v;
   return true;
 }
 
 // ---- type Strs: the flat codec ----
 
-function writeStrsFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Lead & 0x1f) | (((value.SLength) & 0xf) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+function writeStrsFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = ((value.lead & 0x1f) | (((value.sLength) & 0xf) << 5));
+  sb = 16;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.SLength; i0 += 4) {
-      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.sLength; i0 += 4) {
+      v = (value.s[i0] | (value.s[i0 + 1] << 8) | (value.s[i0 + 2] << 16) | (value.s[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -1310,8 +1113,8 @@ function writeStrsFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.SLength; i0++) {
-      v = value.S[i0];
+    for (; i0 < value.sLength; i0++) {
+      v = value.s[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -1322,7 +1125,7 @@ function writeStrsFlatProduction(value, view) {
       }
     }
   }
-  v = (((value.BLength) & 0xf)) >>> 0;
+  v = (((value.bLength) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -1340,8 +1143,8 @@ function writeStrsFlatProduction(value, view) {
   }
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.BLength; i0 += 4) {
-      v = (value.B[i0] | (value.B[i0 + 1] << 8) | (value.B[i0 + 2] << 16) | (value.B[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.bLength; i0 += 4) {
+      v = (value.b[i0] | (value.b[i0 + 1] << 8) | (value.b[i0 + 2] << 16) | (value.b[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -1351,8 +1154,8 @@ function writeStrsFlatProduction(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.BLength; i0++) {
-      v = value.B[i0];
+    for (; i0 < value.bLength; i0++) {
+      v = value.b[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -1363,7 +1166,7 @@ function writeStrsFlatProduction(value, view) {
       }
     }
   }
-  v = ((value.Tail & 0x7)) >>> 0;
+  v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1378,32 +1181,17 @@ function writeStrsFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeStrsFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.SLength) || value.SLength < 0 || value.SLength > 8) { // the length guards the slice; out-of-contract writes are refused
+function writeStrsFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = ((value.Lead & 0x1f) | (((value.SLength) & 0xf) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
+  lo = ((value.lead & 0x1f) | (((value.sLength) & 0xf) << 5));
+  sb = 16;
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.SLength; i0 += 4) {
-      v = (value.S[i0] | (value.S[i0 + 1] << 8) | (value.S[i0 + 2] << 16) | (value.S[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.sLength; i0 += 4) {
+      v = (value.s[i0] | (value.s[i0 + 1] << 8) | (value.s[i0 + 2] << 16) | (value.s[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -1413,8 +1201,8 @@ function writeStrsFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.SLength; i0++) {
-      v = value.S[i0];
+    for (; i0 < value.sLength; i0++) {
+      v = value.s[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -1425,10 +1213,10 @@ function writeStrsFlatChecked(value, view) {
       }
     }
   }
-  if (!Number.isInteger(value.BLength) || value.BLength < 0 || value.BLength > 8) { // the length guards the slice; out-of-contract writes are refused
+  if (!Number.isInteger(value.bLength) || value.bLength < 0 || value.bLength > 8) { // the length guards the slice; out-of-contract writes are refused
     return -1;
   }
-  v = (((value.BLength) & 0xf)) >>> 0;
+  v = (((value.bLength) & 0xf)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 4;
   if (sb >= 32) {
@@ -1446,8 +1234,8 @@ function writeStrsFlatChecked(value, view) {
   }
   {
     let i0 = 0;
-    for (; i0 + 4 <= value.BLength; i0 += 4) {
-      v = (value.B[i0] | (value.B[i0 + 1] << 8) | (value.B[i0 + 2] << 16) | (value.B[i0 + 3] << 24)) >>> 0;
+    for (; i0 + 4 <= value.bLength; i0 += 4) {
+      v = (value.b[i0] | (value.b[i0 + 1] << 8) | (value.b[i0 + 2] << 16) | (value.b[i0 + 3] << 24)) >>> 0;
       lo = (lo | (v << sb)) >>> 0;
       sb += 32;
       if (sb >= 32) {
@@ -1457,8 +1245,8 @@ function writeStrsFlatChecked(value, view) {
         lo = sb === 0 ? 0 : v >>> (32 - sb);
       }
     }
-    for (; i0 < value.BLength; i0++) {
-      v = value.B[i0];
+    for (; i0 < value.bLength; i0++) {
+      v = value.b[i0];
       lo = (lo | (v << sb)) >>> 0;
       sb += 8;
       if (sb >= 32) {
@@ -1469,7 +1257,7 @@ function writeStrsFlatChecked(value, view) {
       }
     }
   }
-  v = ((value.Tail & 0x7)) >>> 0;
+  v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1484,27 +1272,22 @@ function writeStrsFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteStrsFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteStrsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold StrsMaxBytes.
 export const WriteStrsFlat = PRODUCTION ? writeStrsFlatProduction : writeStrsFlatChecked;
 
-// ReadStrsFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadStrsFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadStrsFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 5 > numBits) {
+export function ReadStrsFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1f) >>> 0;
-  value.Lead = v;
-  br += 5;
+  value.lead = v;
+  br = 5;
   if (br + 4 > numBits) {
     return false;
   }
@@ -1517,7 +1300,7 @@ export function ReadStrsFlat(value, view, numBits) {
   if (v > 8) { // the length guards the slice — reject, never clamp
     return false;
   }
-  value.SLength = v;
+  value.sLength = v;
   br += 4;
   s2 = br & 7;
   if (s2 !== 0) {
@@ -1529,38 +1312,16 @@ export function ReadStrsFlat(value, view, numBits) {
     }
     br += 8 - s2;
   }
-  if (br + value.SLength * 8 > numBits) {
+  if (br + value.sLength * 8 > numBits) {
     return false;
   }
   bi = br >>> 3;
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    value.S[i0] = view.getUint8(bi + i0);
+  for (let i0 = 0; i0 < value.sLength; i0++) {
+    value.s[i0] = view.getUint8(bi + i0);
   }
-  br += value.SLength * 8;
-  for (let utf8Index = 0; utf8Index < value.SLength;)
-  {
-    const utf8Lead = value.S[utf8Index++];
-    if (utf8Lead < 0x80) continue;
-    let utf8Remaining, utf8Point;
-    if ((utf8Lead & 0xE0) === 0xC0) { utf8Remaining = 1; utf8Point = utf8Lead & 0x1F; }
-    else if ((utf8Lead & 0xF0) === 0xE0) { utf8Remaining = 2; utf8Point = utf8Lead & 0x0F; }
-    else if ((utf8Lead & 0xF8) === 0xF0) { utf8Remaining = 3; utf8Point = utf8Lead & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (utf8Remaining > value.SLength - utf8Index) return false;
-    for (let utf8Part = 0; utf8Part < utf8Remaining; utf8Part++)
-    {
-      const utf8Byte = value.S[utf8Index++];
-      if ((utf8Byte & 0xC0) !== 0x80) return false;
-      utf8Point = (utf8Point << 6) | (utf8Byte & 0x3F);
-    }
-    if (utf8Remaining === 1 && utf8Point < 0x80) return false;
-    if (utf8Remaining === 2 && (utf8Point < 0x800 || (utf8Point >= 0xD800 && utf8Point <= 0xDFFF))) return false;
-    if (utf8Remaining === 3 && (utf8Point < 0x10000 || utf8Point > 0x10FFFF)) return false;
-  }
-  for (let i0 = 0; i0 < value.SLength; i0++) {
-    if (value.S[i0] === 0) { // an interior null is content the read refuses
-      return false;
-    }
+  br += value.sLength * 8;
+  if (!validText(value.s, value.sLength)) {
+    return false;
   }
   if (br + 4 > numBits) {
     return false;
@@ -1574,7 +1335,7 @@ export function ReadStrsFlat(value, view, numBits) {
   if (v > 8) { // the length guards the slice — reject, never clamp
     return false;
   }
-  value.BLength = v;
+  value.bLength = v;
   br += 4;
   s2 = br & 7;
   if (s2 !== 0) {
@@ -1586,14 +1347,14 @@ export function ReadStrsFlat(value, view, numBits) {
     }
     br += 8 - s2;
   }
-  if (br + value.BLength * 8 > numBits) {
+  if (br + value.bLength * 8 > numBits) {
     return false;
   }
   bi = br >>> 3;
-  for (let i0 = 0; i0 < value.BLength; i0++) {
-    value.B[i0] = view.getUint8(bi + i0);
+  for (let i0 = 0; i0 < value.bLength; i0++) {
+    value.b[i0] = view.getUint8(bi + i0);
   }
-  br += value.BLength * 8;
+  br += value.bLength * 8;
   if (br + 3 > numBits) {
     return false;
   }
@@ -1603,27 +1364,19 @@ export function ReadStrsFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
-  value.Tail = v;
+  value.tail = v;
   return true;
 }
 
 // ---- type ArrNested: the flat codec ----
 
-function writeArrNestedFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x7) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    const e0 = value.Items[i0];
-    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
+function writeArrNestedFlatProduction(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x7) << 5));
+  sb = 8;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
+    v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
     if (sb >= 32) {
@@ -1633,7 +1386,7 @@ function writeArrNestedFlatProduction(value, view) {
       lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
-  v = ((value.Tail & 0x7)) >>> 0;
+  v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1648,24 +1401,16 @@ function writeArrNestedFlatProduction(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-function writeArrNestedFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  if (!Number.isInteger(value.ItemsCount) || value.ItemsCount < 0 || value.ItemsCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+function writeArrNestedFlatChecked(view, value) {
+  let v = 0, lo = 0, sb = 0, wi = 0;
+  if (!Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
-  v = ((value.Lead & 0x1f) | (((value.ItemsCount) & 0x7) << 5)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    const e0 = value.Items[i0];
-    v = ((e0.A & 0x7) | ((e0.B & 0xff) << 3)) >>> 0;
+  lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x7) << 5));
+  sb = 8;
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
+    v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 11;
     if (sb >= 32) {
@@ -1675,7 +1420,7 @@ function writeArrNestedFlatChecked(value, view) {
       lo = sb === 0 ? 0 : v >>> (11 - sb);
     }
   }
-  v = ((value.Tail & 0x7)) >>> 0;
+  v = ((value.tail & 0x7)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 3;
   if (sb >= 32) {
@@ -1690,55 +1435,45 @@ function writeArrNestedFlatChecked(value, view) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteArrNestedFlat(value, view) -> bytes written (>= 0), or -1 on a refused
+// WriteArrNestedFlat(view, value) -> bytes written (>= 0), or -1 on a refused
 // writer contract in the checked build — the production writer holds none
 // of them (SPEC §5). The buffer behind view must hold ArrNestedMaxBytes.
 export const WriteArrNestedFlat = PRODUCTION ? writeArrNestedFlatProduction : writeArrNestedFlatChecked;
 
-// ReadArrNestedFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadArrNestedFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadArrNestedFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 5 > numBits) {
+export function ReadArrNestedFlat(view, numBits, value) {
+  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
+  if (5 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1f) >>> 0;
-  value.Lead = v;
-  br += 5;
-  if (br + 3 > numBits) {
+  value.lead = v;
+  if (8 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = (view.getUint32(0, true) >>> 5) | (view.getUint32(4, true) << 27);
   v = (out & 0x7) >>> 0;
   if (v > 4) { // the count guards the loop — reject, never clamp
     return false;
   }
-  value.ItemsCount = v;
-  br += 3;
-  if (br + value.ItemsCount * 11 > numBits) {
+  value.itemsCount = v;
+  br = 8;
+  if (br + value.itemsCount * 11 > numBits) {
     return false;
   }
-  for (let i0 = 0; i0 < value.ItemsCount; i0++) {
-    const e0 = value.Items[i0];
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
     bi = br >>> 3;
     wlo = view.getUint32(bi, true);
     whi = view.getUint32(bi + 4, true);
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = (out & 0x7) >>> 0;
-    e0.A = v;
+    e0.a = v;
     v = (out >>> 3) & 0xff;
-    e0.B = v;
+    e0.b = v;
     br += 11;
   }
   if (br + 3 > numBits) {
@@ -1750,68 +1485,32 @@ export function ReadArrNestedFlat(value, view, numBits) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = (out & 0x7) >>> 0;
-  value.Tail = v;
+  value.tail = v;
   return true;
 }
 
 // ---- type Sole: the flat codec ----
 
-function writeSoleFlatProduction(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Only & 0x1fff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 13;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (13 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
+// WriteSoleFlat(view, value) -> bytes written (>= 0). Nothing here is a
+// writer contract, so the checked and production builds share this one
+// writer. The buffer behind view must hold SoleMaxBytes.
+export function WriteSoleFlat(view, value) {
+  let lo = 0;
+  lo = ((value.only & 0x1fff));
+  view.setUint32(0, lo, true);
+  return 2;
 }
 
-function writeSoleFlatChecked(value, view) {
-  let v = 0;
-  let lo = 0, sb = 0, wi = 0;
-  v = ((value.Only & 0x1fff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 13;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (13 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-// WriteSoleFlat(value, view) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold SoleMaxBytes.
-export const WriteSoleFlat = PRODUCTION ? writeSoleFlatProduction : writeSoleFlatChecked;
-
-// ReadSoleFlat(value, view, numBits) -> bool. The buffer behind view must
+// ReadSoleFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FLAT_READ_SLACK bytes past the payload.
-export function ReadSoleFlat(value, view, numBits) {
-  let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0;
-  let br = 0;
-  if (br + 13 > numBits) {
+export function ReadSoleFlat(view, numBits, value) {
+  let v = 0, out = 0;
+  if (13 > numBits) {
     return false;
   }
-  bi = br >>> 3;
-  wlo = view.getUint32(bi, true);
-  whi = view.getUint32(bi + 4, true);
-  s2 = br & 7;
-  out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
+  out = view.getUint32(0, true);
   v = (out & 0x1fff) >>> 0;
-  value.Only = v;
+  value.only = v;
   return true;
 }
 

@@ -14,8 +14,8 @@ const BIGINT_SCRATCH = { value: 0n };
 // type Vec2
 export class Vec2 {
   constructor() {
-    this.X = 0;
-    this.Y = 0;
+    this.x = 0;
+    this.y = 0;
   }
 }
 
@@ -26,22 +26,22 @@ export const Vec2MaxBytes = 16;
 
 // InitVec2 restores fresh construction values in place, preserving storage.
 export function InitVec2(value) {
-  value.X = 0;
-  value.Y = 0;
+  value.x = 0;
+  value.y = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroVec2(value) {
-  value.X = 0;
-  value.Y = 0;
+  value.x = 0;
+  value.y = 0;
 }
 
 export function WriteVec2(stream, value) {
-  NUMBER_SCRATCH.value = value.X;
+  NUMBER_SCRATCH.value = value.x;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Y;
+  NUMBER_SCRATCH.value = value.y;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
@@ -52,18 +52,18 @@ export function ReadVec2(stream, value) {
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.X = NUMBER_SCRATCH.value;
+  value.x = NUMBER_SCRATCH.value;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
     return false;
   }
-  value.Y = NUMBER_SCRATCH.value;
+  value.y = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type SpanF64
 export class SpanF64 {
   constructor() {
-    this.Values = new Array(2).fill(0);
+    this.values = new Array(2).fill(0);
   }
 }
 
@@ -74,17 +74,17 @@ export const SpanF64MaxBytes = 16;
 
 // InitSpanF64 restores fresh construction values in place, preserving storage.
 export function InitSpanF64(value) {
-  value.Values.fill(0);
+  value.values.fill(0);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanF64(value) {
-  value.Values.fill(0);
+  value.values.fill(0);
 }
 
 export function WriteSpanF64(stream, value) {
   for (let i = 0; i < 2; i++) {
-    NUMBER_SCRATCH.value = value.Values[i];
+    NUMBER_SCRATCH.value = value.values[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
@@ -97,7 +97,7 @@ export function ReadSpanF64(stream, value) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
-    value.Values[i] = NUMBER_SCRATCH.value;
+    value.values[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -105,7 +105,7 @@ export function ReadSpanF64(stream, value) {
 // type SpanU64
 export class SpanU64 {
   constructor() {
-    this.Values = new Array(2).fill(0n);
+    this.values = new Array(2).fill(0n);
   }
 }
 
@@ -116,17 +116,17 @@ export const SpanU64MaxBytes = 16;
 
 // InitSpanU64 restores fresh construction values in place, preserving storage.
 export function InitSpanU64(value) {
-  value.Values.fill(0n);
+  value.values.fill(0n);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanU64(value) {
-  value.Values.fill(0n);
+  value.values.fill(0n);
 }
 
 export function WriteSpanU64(stream, value) {
   for (let i = 0; i < 2; i++) {
-    BIGINT_SCRATCH.value = value.Values[i];
+    BIGINT_SCRATCH.value = value.values[i];
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
@@ -139,7 +139,7 @@ export function ReadSpanU64(stream, value) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
-    value.Values[i] = BIGINT_SCRATCH.value;
+    value.values[i] = BIGINT_SCRATCH.value;
   }
   return true;
 }
@@ -147,7 +147,7 @@ export function ReadSpanU64(stream, value) {
 // type SpanI64
 export class SpanI64 {
   constructor() {
-    this.Values = new Array(2).fill(0n);
+    this.values = new Array(2).fill(0n);
   }
 }
 
@@ -158,17 +158,17 @@ export const SpanI64MaxBytes = 16;
 
 // InitSpanI64 restores fresh construction values in place, preserving storage.
 export function InitSpanI64(value) {
-  value.Values.fill(0n);
+  value.values.fill(0n);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanI64(value) {
-  value.Values.fill(0n);
+  value.values.fill(0n);
 }
 
 export function WriteSpanI64(stream, value) {
   for (let i = 0; i < 2; i++) {
-    BIGINT_SCRATCH.value = value.Values[i];
+    BIGINT_SCRATCH.value = value.values[i];
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
@@ -181,7 +181,7 @@ export function ReadSpanI64(stream, value) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
-    value.Values[i] = BigInt.asIntN(64, BIGINT_SCRATCH.value);
+    value.values[i] = BigInt.asIntN(64, BIGINT_SCRATCH.value);
   }
   return true;
 }
@@ -189,7 +189,7 @@ export function ReadSpanI64(stream, value) {
 // type SpanOne
 export class SpanOne {
   constructor() {
-    this.Values = new Array(1).fill(0n);
+    this.values = new Array(1).fill(0n);
   }
 }
 
@@ -200,17 +200,17 @@ export const SpanOneMaxBytes = 8;
 
 // InitSpanOne restores fresh construction values in place, preserving storage.
 export function InitSpanOne(value) {
-  value.Values.fill(0n);
+  value.values.fill(0n);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanOne(value) {
-  value.Values.fill(0n);
+  value.values.fill(0n);
 }
 
 export function WriteSpanOne(stream, value) {
   for (let i = 0; i < 1; i++) {
-    BIGINT_SCRATCH.value = value.Values[i];
+    BIGINT_SCRATCH.value = value.values[i];
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
@@ -223,7 +223,7 @@ export function ReadSpanOne(stream, value) {
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }
-    value.Values[i] = BIGINT_SCRATCH.value;
+    value.values[i] = BIGINT_SCRATCH.value;
   }
   return true;
 }
@@ -231,7 +231,7 @@ export function ReadSpanOne(stream, value) {
 // type SpanChunk
 export class SpanChunk {
   constructor() {
-    this.Values = new Array(4).fill(0);
+    this.values = new Array(4).fill(0);
   }
 }
 
@@ -242,17 +242,17 @@ export const SpanChunkMaxBytes = 8;
 
 // InitSpanChunk restores fresh construction values in place, preserving storage.
 export function InitSpanChunk(value) {
-  value.Values.fill(0);
+  value.values.fill(0);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanChunk(value) {
-  value.Values.fill(0);
+  value.values.fill(0);
 }
 
 export function WriteSpanChunk(stream, value) {
   for (let i = 0; i < 4; i++) {
-    NUMBER_SCRATCH.value = value.Values[i];
+    NUMBER_SCRATCH.value = value.values[i];
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
     }
@@ -265,7 +265,7 @@ export function ReadSpanChunk(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
       return false;
     }
-    value.Values[i] = NUMBER_SCRATCH.value;
+    value.values[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -273,8 +273,8 @@ export function ReadSpanChunk(stream, value) {
 // type SpanTail
 export class SpanTail {
   constructor() {
-    this.Values = new Array(2).fill(0);
-    this.Tail = 0;
+    this.values = new Array(2).fill(0);
+    this.tail = 0;
   }
 }
 
@@ -285,24 +285,24 @@ export const SpanTailMaxBytes = 24;
 
 // InitSpanTail restores fresh construction values in place, preserving storage.
 export function InitSpanTail(value) {
-  value.Values.fill(0);
-  value.Tail = 0;
+  value.values.fill(0);
+  value.tail = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanTail(value) {
-  value.Values.fill(0);
-  value.Tail = 0;
+  value.values.fill(0);
+  value.tail = 0;
 }
 
 export function WriteSpanTail(stream, value) {
   for (let i = 0; i < 2; i++) {
-    NUMBER_SCRATCH.value = value.Values[i];
+    NUMBER_SCRATCH.value = value.values[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
   }
-  NUMBER_SCRATCH.value = value.Tail;
+  NUMBER_SCRATCH.value = value.tail;
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
@@ -314,20 +314,20 @@ export function ReadSpanTail(stream, value) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
-    value.Values[i] = NUMBER_SCRATCH.value;
+    value.values[i] = NUMBER_SCRATCH.value;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  value.Tail = NUMBER_SCRATCH.value;
+  value.tail = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type SpanTwice
 export class SpanTwice {
   constructor() {
-    this.A = new Array(2).fill(0);
-    this.B = new Array(2).fill(0);
+    this.a = new Array(2).fill(0);
+    this.b = new Array(2).fill(0);
   }
 }
 
@@ -338,25 +338,25 @@ export const SpanTwiceMaxBytes = 32;
 
 // InitSpanTwice restores fresh construction values in place, preserving storage.
 export function InitSpanTwice(value) {
-  value.A.fill(0);
-  value.B.fill(0);
+  value.a.fill(0);
+  value.b.fill(0);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroSpanTwice(value) {
-  value.A.fill(0);
-  value.B.fill(0);
+  value.a.fill(0);
+  value.b.fill(0);
 }
 
 export function WriteSpanTwice(stream, value) {
   for (let i = 0; i < 2; i++) {
-    NUMBER_SCRATCH.value = value.A[i];
+    NUMBER_SCRATCH.value = value.a[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
   }
   for (let i = 0; i < 2; i++) {
-    NUMBER_SCRATCH.value = value.B[i];
+    NUMBER_SCRATCH.value = value.b[i];
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
@@ -369,13 +369,13 @@ export function ReadSpanTwice(stream, value) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
-    value.A[i] = NUMBER_SCRATCH.value;
+    value.a[i] = NUMBER_SCRATCH.value;
   }
   for (let i = 0; i < 2; i++) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
-    value.B[i] = NUMBER_SCRATCH.value;
+    value.b[i] = NUMBER_SCRATCH.value;
   }
   return true;
 }
@@ -383,9 +383,9 @@ export function ReadSpanTwice(stream, value) {
 // type Trio
 export class Trio {
   constructor() {
-    this.A = 0;
-    this.B = 0;
-    this.C = 0;
+    this.a = 0;
+    this.b = 0;
+    this.c = 0;
   }
 }
 
@@ -396,28 +396,28 @@ export const TrioMaxBytes = 8;
 
 // InitTrio restores fresh construction values in place, preserving storage.
 export function InitTrio(value) {
-  value.A = 0;
-  value.B = 0;
-  value.C = 0;
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrio(value) {
-  value.A = 0;
-  value.B = 0;
-  value.C = 0;
+  value.a = 0;
+  value.b = 0;
+  value.c = 0;
 }
 
 export function WriteTrio(stream, value) {
-  NUMBER_SCRATCH.value = value.A;
+  NUMBER_SCRATCH.value = value.a;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.B;
+  NUMBER_SCRATCH.value = value.b;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.C;
+  NUMBER_SCRATCH.value = value.c;
   if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
     return false;
   }
@@ -428,22 +428,22 @@ export function ReadTrio(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  value.A = NUMBER_SCRATCH.value;
+  value.a = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 20)) {
     return false;
   }
-  value.B = NUMBER_SCRATCH.value;
+  value.b = NUMBER_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
     return false;
   }
-  value.C = NUMBER_SCRATCH.value;
+  value.c = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type TrioSole
 export class TrioSole {
   constructor() {
-    this.Inner = new Trio();
+    this.inner = new Trio();
   }
 }
 
@@ -454,23 +454,23 @@ export const TrioSoleMaxBytes = 8;
 
 // InitTrioSole restores fresh construction values in place, preserving storage.
 export function InitTrioSole(value) {
-  InitTrio(value.Inner);
+  InitTrio(value.inner);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrioSole(value) {
-  ZeroTrio(value.Inner);
+  ZeroTrio(value.inner);
 }
 
 export function WriteTrioSole(stream, value) {
-  if (!WriteTrio(stream, value.Inner)) {
+  if (!WriteTrio(stream, value.inner)) {
     return false;
   }
   return true;
 }
 
 export function ReadTrioSole(stream, value) {
-  if (!ReadTrio(stream, value.Inner)) {
+  if (!ReadTrio(stream, value.inner)) {
     return false;
   }
   return true;
@@ -479,7 +479,7 @@ export function ReadTrioSole(stream, value) {
 // type Vec3Sole
 export class Vec3Sole {
   constructor() {
-    this.V = new Vec3();
+    this.v = new Vec3();
   }
 }
 
@@ -490,23 +490,23 @@ export const Vec3SoleMaxBytes = 24;
 
 // InitVec3Sole restores fresh construction values in place, preserving storage.
 export function InitVec3Sole(value) {
-  InitVec3(value.V);
+  InitVec3(value.v);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroVec3Sole(value) {
-  ZeroVec3(value.V);
+  ZeroVec3(value.v);
 }
 
 export function WriteVec3Sole(stream, value) {
-  if (!WriteVec3(stream, value.V)) {
+  if (!WriteVec3(stream, value.v)) {
     return false;
   }
   return true;
 }
 
 export function ReadVec3Sole(stream, value) {
-  if (!ReadVec3(stream, value.V)) {
+  if (!ReadVec3(stream, value.v)) {
     return false;
   }
   return true;
@@ -515,8 +515,8 @@ export function ReadVec3Sole(stream, value) {
 // type TrioFirst
 export class TrioFirst {
   constructor() {
-    this.Inner = new Trio();
-    this.Trailer = 0;
+    this.inner = new Trio();
+    this.trailer = 0;
   }
 }
 
@@ -527,21 +527,21 @@ export const TrioFirstMaxBytes = 16;
 
 // InitTrioFirst restores fresh construction values in place, preserving storage.
 export function InitTrioFirst(value) {
-  InitTrio(value.Inner);
-  value.Trailer = 0;
+  InitTrio(value.inner);
+  value.trailer = 0;
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrioFirst(value) {
-  ZeroTrio(value.Inner);
-  value.Trailer = 0;
+  ZeroTrio(value.inner);
+  value.trailer = 0;
 }
 
 export function WriteTrioFirst(stream, value) {
-  if (!WriteTrio(stream, value.Inner)) {
+  if (!WriteTrio(stream, value.inner)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Trailer;
+  NUMBER_SCRATCH.value = value.trailer;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
@@ -549,26 +549,26 @@ export function WriteTrioFirst(stream, value) {
 }
 
 export function ReadTrioFirst(stream, value) {
-  if (!ReadTrio(stream, value.Inner)) {
+  if (!ReadTrio(stream, value.inner)) {
     return false;
   }
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) {
     return false;
   }
-  value.Trailer = NUMBER_SCRATCH.value;
+  value.trailer = NUMBER_SCRATCH.value;
   return true;
 }
 
 // type TrioStraddle
 export class TrioStraddle {
   constructor() {
-    this.Pad0 = 0n;
-    this.Pad1 = 0n;
-    this.Pad2 = 0n;
-    this.Pad3 = 0n;
-    this.Pad4 = 0n;
-    this.Pad5 = 0;
-    this.Inner = new Trio();
+    this.pad0 = 0n;
+    this.pad1 = 0n;
+    this.pad2 = 0n;
+    this.pad3 = 0n;
+    this.pad4 = 0n;
+    this.pad5 = 0;
+    this.inner = new Trio();
   }
 }
 
@@ -579,52 +579,52 @@ export const TrioStraddleMaxBytes = 56;
 
 // InitTrioStraddle restores fresh construction values in place, preserving storage.
 export function InitTrioStraddle(value) {
-  value.Pad0 = 0n;
-  value.Pad1 = 0n;
-  value.Pad2 = 0n;
-  value.Pad3 = 0n;
-  value.Pad4 = 0n;
-  value.Pad5 = 0;
-  InitTrio(value.Inner);
+  value.pad0 = 0n;
+  value.pad1 = 0n;
+  value.pad2 = 0n;
+  value.pad3 = 0n;
+  value.pad4 = 0n;
+  value.pad5 = 0;
+  InitTrio(value.inner);
 }
 
 // The §5 zero form: all-zero storage, without declared defaults or birth counts.
 export function ZeroTrioStraddle(value) {
-  value.Pad0 = 0n;
-  value.Pad1 = 0n;
-  value.Pad2 = 0n;
-  value.Pad3 = 0n;
-  value.Pad4 = 0n;
-  value.Pad5 = 0;
-  ZeroTrio(value.Inner);
+  value.pad0 = 0n;
+  value.pad1 = 0n;
+  value.pad2 = 0n;
+  value.pad3 = 0n;
+  value.pad4 = 0n;
+  value.pad5 = 0;
+  ZeroTrio(value.inner);
 }
 
 export function WriteTrioStraddle(stream, value) {
-  BIGINT_SCRATCH.value = value.Pad0;
+  BIGINT_SCRATCH.value = value.pad0;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Pad1;
+  BIGINT_SCRATCH.value = value.pad1;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Pad2;
+  BIGINT_SCRATCH.value = value.pad2;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Pad3;
+  BIGINT_SCRATCH.value = value.pad3;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.Pad4;
+  BIGINT_SCRATCH.value = value.pad4;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  NUMBER_SCRATCH.value = value.Pad5;
+  NUMBER_SCRATCH.value = value.pad5;
   if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
     return false;
   }
-  if (!WriteTrio(stream, value.Inner)) {
+  if (!WriteTrio(stream, value.inner)) {
     return false;
   }
   return true;
@@ -634,28 +634,28 @@ export function ReadTrioStraddle(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Pad0 = BIGINT_SCRATCH.value;
+  value.pad0 = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Pad1 = BIGINT_SCRATCH.value;
+  value.pad1 = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Pad2 = BIGINT_SCRATCH.value;
+  value.pad2 = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Pad3 = BIGINT_SCRATCH.value;
+  value.pad3 = BIGINT_SCRATCH.value;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  value.Pad4 = BIGINT_SCRATCH.value;
+  value.pad4 = BIGINT_SCRATCH.value;
   if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
     return false;
   }
-  value.Pad5 = NUMBER_SCRATCH.value;
-  if (!ReadTrio(stream, value.Inner)) {
+  value.pad5 = NUMBER_SCRATCH.value;
+  if (!ReadTrio(stream, value.inner)) {
     return false;
   }
   return true;

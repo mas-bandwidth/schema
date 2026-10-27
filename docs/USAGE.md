@@ -1246,8 +1246,8 @@ import { ShipConfig, ShipConfigMeasure, ShipConfigSave, ShipConfigSaveInto, Ship
   from "./ConfigTable.js";
 
 const ship = new ShipConfig();
-ship.Health = 250.0;
-ship.SettingsPresent = true;           // ?T: presence decides whether it rides
+ship.health = 250.0;
+ship.settingsPresent = true;           // ?T: presence decides whether it rides
 
 const bytes = ShipConfigSave(ship);    // a fresh Uint8Array of exactly Measure's size
 const size = ShipConfigMeasure(ship);  // exact, writes nothing
@@ -1295,8 +1295,9 @@ for (const message of stream) {
 }
 ```
 
-A `string(N)` or a `bytes(N)` is a `Uint8Array` with a `<Name>Length` beside
-it, and a bounded array a preallocated `Array` beside a `<Name>Count`, exactly
+A `string(N)` or a `bytes(N)` is a `Uint8Array` with a `<name>Length` beside
+it, and a bounded array a preallocated `Array` beside a `<name>Count` (members
+are lowerCamelCase in JavaScript: `object_id` is `objectId`), exactly
 as C++ and C# hold them — and exactly as the packet emitter already spells them
 for the unit's `type`s, which is not a free choice: a table's closure decodes
 into those very classes, and one unit is one spelling. The codec never builds a
@@ -1304,8 +1305,8 @@ JavaScript string, so a read allocates nothing for one. Decode at the boundary,
 where the allocation is your own choice:
 
 ```js
-const name = new TextDecoder().decode(loaded.Name.subarray(0, loaded.NameLength));
-loaded.NameLength = new TextEncoder().encodeInto("Rowan", loaded.Name).written;
+const name = new TextDecoder().decode(loaded.name.subarray(0, loaded.nameLength));
+loaded.nameLength = new TextEncoder().encodeInto("Rowan", loaded.name).written;
 ```
 
 The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a
@@ -4777,11 +4778,11 @@ import { ShipCreateMaxBytes } from "./Wire.js";
 
 const buf = new Uint8Array(ShipCreateMaxBytes);        // write: MaxBytes suffices
 const view = new DataView(buf.buffer);
-const bytes = WriteShipCreateFlat(ship, view);          // bytes written, or -1 (checked refusal)
+const bytes = WriteShipCreateFlat(view, ship);          // bytes written, or -1 (checked refusal)
 
 const rbuf = new Uint8Array(bytes + FLAT_READ_SLACK);   // read: 8 bytes of slack past the payload
 rbuf.set(buf.subarray(0, bytes));                       // (copy exactly-sized receive buffers in)
-const ok = ReadShipCreateFlat(out, new DataView(rbuf.buffer), bytes * 8);
+const ok = ReadShipCreateFlat(new DataView(rbuf.buffer), bytes * 8, out);
 ```
 
 Reads validate in every mode; writes fork checked/production once at module

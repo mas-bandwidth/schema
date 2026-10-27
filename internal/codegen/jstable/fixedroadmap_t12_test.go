@@ -130,56 +130,56 @@ function roundtrip(label, setup, check) {
 }
 
 roundtrip("union-field-arms/text", (v) => {
-  v.Body.Type = BodyType.Text;
+  v.body.type = BodyType.Text;
   const s = "abcdefgh";
-  for (let i = 0; i < s.length; i++) { v.Body.Text[i] = s.charCodeAt(i); }
-  v.Body.TextLength = s.length;
+  for (let i = 0; i < s.length; i++) { v.body.text[i] = s.charCodeAt(i); }
+  v.body.textLength = s.length;
 }, (b) => {
-  if (!(b.Body.Type === BodyType.Text && b.Body.TextLength === 8)) {
+  if (!(b.body.type === BodyType.Text && b.body.textLength === 8)) {
     fail("union-field-arms: the text arm's tag and length did not round trip");
     return;
   }
   let got = "";
-  for (let i = 0; i < b.Body.TextLength; i++) { got += String.fromCharCode(b.Body.Text[i]); }
+  for (let i = 0; i < b.body.textLength; i++) { got += String.fromCharCode(b.body.text[i]); }
   if (!(got === "abcdefgh")) { fail("union-field-arms: the text arm's bytes did not round trip, got " + JSON.stringify(got)); }
 });
 
 roundtrip("union-field-arms/bytes", (v) => {
-  v.Body.Type = BodyType.Data;
+  v.body.type = BodyType.Data;
   const bytes = [0x00, 0xff, 0x7f, 0x80];
-  for (let i = 0; i < bytes.length; i++) { v.Body.Data[i] = bytes[i]; }
-  v.Body.DataLength = bytes.length;
+  for (let i = 0; i < bytes.length; i++) { v.body.data[i] = bytes[i]; }
+  v.body.dataLength = bytes.length;
 }, (b) => {
-  if (!(b.Body.Type === BodyType.Data && b.Body.DataLength === 4)) {
+  if (!(b.body.type === BodyType.Data && b.body.dataLength === 4)) {
     fail("union-field-arms: the bytes arm's tag and length did not round trip");
     return;
   }
-  if (!(b.Body.Data[0] === 0x00 && b.Body.Data[1] === 0xff && b.Body.Data[2] === 0x7f && b.Body.Data[3] === 0x80)) {
+  if (!(b.body.data[0] === 0x00 && b.body.data[1] === 0xff && b.body.data[2] === 0x7f && b.body.data[3] === 0x80)) {
     fail("union-field-arms: every byte of the bytes arm did not round trip");
   }
 });
 
 roundtrip("union-field-arms/array", (v) => {
-  v.Body.Type = BodyType.List;
-  v.Body.List[0] = -2147483648;
-  v.Body.List[1] = 0;
-  v.Body.List[2] = 2147483647;
+  v.body.type = BodyType.List;
+  v.body.list[0] = -2147483648;
+  v.body.list[1] = 0;
+  v.body.list[2] = 2147483647;
 }, (b) => {
-  if (!(b.Body.Type === BodyType.List &&
-        b.Body.List[0] === -2147483648 && b.Body.List[1] === 0 && b.Body.List[2] === 2147483647)) {
+  if (!(b.body.type === BodyType.List &&
+        b.body.list[0] === -2147483648 && b.body.list[1] === 0 && b.body.list[2] === 2147483647)) {
     fail("union-field-arms: the array arm's elements did not round trip");
   }
 });
 
 const none = new T(); InitT(none);
-if (!(none.Body.Type === BodyType.None)) { fail("union-field-arms: a default union is not None"); }
+if (!(none.body.type === BodyType.None)) { fail("union-field-arms: a default union is not None"); }
 const noneBuf = new Uint8Array(TMeasure(1));
 if (TSave([none], 1, noneBuf) !== noneBuf.length) { fail("union-field-arms: save none"); }
 const noneBack = [new T()]; InitT(noneBack[0]);
 const noneReport = new TableFixedReport();
 const noneN = TLoad(noneBack, 1, noneBuf, noneBuf.length, TNewPlan(4096, 4096), noneReport);
 if (!(noneN === 1 && !noneReport.malformed)) { fail("union-field-arms: load none " + reason(noneReport)); }
-if (!(noneBack[0].Body.Type === BodyType.None)) { fail("union-field-arms: None did not round trip"); }
+if (!(noneBack[0].body.type === BodyType.None)) { fail("union-field-arms: None did not round trip"); }
 if (BodyType.Text === BodyType.Data || BodyType.Text === BodyType.List || BodyType.Data === BodyType.List) {
   fail("union-field-arms: two direct arms collide in the tag enum");
 }

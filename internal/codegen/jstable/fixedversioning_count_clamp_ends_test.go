@@ -54,11 +54,11 @@ const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n !== 1) { fail("count_clamp_ends C1: n is not 1: " + n + " " + reason(r)); }
 if (r.refused !== 0 || r.malformed) { fail("a forged count is not a refusal and not malformed: " + reason(r)); }
-if (back[0].Lead !== 0xAAAAAAAA || back[0].Trail !== 0xBBBBBBBB) {
+if (back[0].lead !== 0xAAAAAAAA || back[0].trail !== 0xBBBBBBBB) {
   fail("a forged count moved a neighbour: " + show(back[0]));
 }
-if (back[0].ValsCount !== 0) {
-  fail("the negative count does not clamp to zero: " + show(back[0].ValsCount));
+if (back[0].valsCount !== 0) {
+  fail("the negative count does not clamp to zero: " + show(back[0].valsCount));
 }
 if (r.clamped !== 1) {
   fail("the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: " + reason(r));
@@ -98,17 +98,17 @@ const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n !== 1) { fail("count_clamp_ends C2: n is not 1: " + n + " " + reason(r)); }
 if (r.refused !== 0 || r.malformed) { fail("a forged count is not a refusal and not malformed: " + reason(r)); }
-if (back[0].Lead !== 0xAAAAAAAA || back[0].Trail !== 0xBBBBBBBB) {
+if (back[0].lead !== 0xAAAAAAAA || back[0].trail !== 0xBBBBBBBB) {
   fail("a forged count moved a neighbour: " + show(back[0]));
 }
-if (back[0].ValsCount !== 4) {
-  fail("the count past the reader's bound lands the WRITER's bound 4, never the reader's 8 nor the forged 9: " + show(back[0].ValsCount));
+if (back[0].valsCount !== 4) {
+  fail("the count past the reader's bound lands the WRITER's bound 4, never the reader's 8 nor the forged 9: " + show(back[0].valsCount));
 }
 for (let i = 0; i < 4; i++) {
-  if (back[0].Vals[i] !== 1000 + i) { fail("vals[" + i + "] did not land: " + show(back[0])); }
+  if (back[0].vals[i] !== 1000 + i) { fail("vals[" + i + "] did not land: " + show(back[0])); }
 }
 for (let i = 4; i < 8; i++) {
-  if (back[0].Vals[i] !== 0) { fail("vals[" + i + "] is not the reader's declared default: " + show(back[0])); }
+  if (back[0].vals[i] !== 0) { fail("vals[" + i + "] is not the reader's declared default: " + show(back[0])); }
 }
 if (r.clamped !== 1) {
   fail("the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: " + reason(r));

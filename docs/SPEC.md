@@ -1170,7 +1170,7 @@ a language rule — the language does not enforce entry 0's meaning.
 enum and the generated `<Union>Type` tag enums — carries its
 extent as a member named `Max` in the target's own convention: `E::Max`
 (C++), `Schema.EMax` (C#, a typed constant beside the enum, never a member
-a variant's value could alias), `EMax` (Go), `E::MAX` (Rust), `E.Max` (JS), `E_MAX`
+a variant's value could alias), `EMax` (Go), `E::MAX` (Rust), `EMax` (JS), `E_MAX`
 (C), `E.max` (Dart and Java), `E.max/0` (Elixir). Its value is the enum's
 max — the same number `E.Max` names in schema
 expressions (§4.2): the highest wire-legal value, which under the
@@ -2569,11 +2569,17 @@ name is in the function name in every target, for uniformity); Rust: module
 functions in `mod <package>`; JS: exported free functions
 `WriteShip(stream, value)`, one ES module per schema file. The `package`
 ident maps to the target's namespace/module/package concept verbatim. JS
-storage members are PascalCase via the same mapping as the Go target — not
-camelCase — so the checker's collision registry covers JS with zero new
-rules; the generated function names are the family's own
-`WriteX`/`ReadX`/`ZeroX` (the runtime's methods stay camelCase —
-the seam is the stream parameter). Go then spells the schema's words in every
+storage members are the language's own lowerCamelCase — `object_id` is
+`objectId`, its companions `textLength`/`itemsCount`, a union's tag
+`type` — the first-letter-lowered form of the PascalCase field mapping
+(without Go's initialisms, below), so two fields collide in JS exactly when
+they collide under that mapping and the checker's existing registry covers
+them; the checker adds only the JS-specific claims (a field
+spelt as an `Object.prototype` member, and the module-scope bindings every
+generated module declares). The generated function names are the family's
+own `WriteX`/`ReadX`/`ZeroX`, target first like the runtime tier's
+`WriteX(stream, value)`: the flat tier is `WriteXFlat(view, value)` and
+`ReadXFlat(view, numBits, value)`. Go then spells the schema's words in every
 generated name with Go's initialisms, `object_id` as `ObjectID`, `ProbeId` as
 `ProbeID`, `ProtocolId` as `ProtocolID`; the checker claims that spelling
 too, so two names it would merge are refused.
@@ -2805,14 +2811,21 @@ or a file per declaration where the language demands one.
   every wire call is a method on the stream parameter, so no wiring file
   exists and this tier's checked/production fork stays where it lives, in the
   runtime's own load-time mode selection: the runtime-tier module reads no
-  `NODE_ENV` of its own. Beside it, **every schema file that declares types
-  also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
+  `NODE_ENV` of its own. An enum's or a tag's frozen variant object holds
+  its variants only — the extent is the module constant `<Name>Max` — so
+  `Object.values` enumerates variants. Beside it, **every schema file that
+  declares types or unions also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
   inlined at every field with no runtime import at all, held byte-identical
   to the runtime tier by a standing gate. That tier owns the fork itself:
   `NODE_ENV` is read ONCE at module load, exactly as `serialize.js`'s own
   `src/mode.js` does, and whole write variants are selected at export, so a
   bundler that statically replaces `NODE_ENV` tree-shakes the checked writers
-  out. The READ side is never configurable in either tier. A unit that
+  out; a writer with no contract to check is one function for both builds.
+  The READ side is never configurable in either tier. **Every packet module
+  ships its TypeScript declarations beside it** — `<Base>.d.ts` and
+  `<Base>Flat.d.ts`, emitted from the same IR walk, accepted by `tsc
+  --strict` and by `tsc --checkJs` consumers; a table-tier module carries
+  none yet, and a declaration naming a table class types it `object`. A unit that
   declares TABLES emits three further modules per
   schema file — `<Base>Table.js` for the table wire's codecs, its reflection
   descriptors and its TEXT FORM (SPEC-TABLES.md §16), and `<Base>Block.js`
@@ -2900,6 +2913,11 @@ and write through a serialize-family runtime:
 | emits against | `serialize_write_stream_t`/`serialize_read_stream_t` free functions | `WriteStream`/`ReadStream` methods (or `serialize_*`-equivalent calls) | sealed `WriteStream`/`ReadStream` (`ref` params, `bool` returns + sticky `Error`) | `WriteStream`/`ReadStream` concrete types (no interface dispatch) | methods on the stream parameter — generated JS never imports the runtime | `WriteStream`/`ReadStream` via the `Stream` trait, monomorphized |
 | error idiom | `int` 1/0 early-out; the stream latches the error, generated validation refusals included (`serialize_read_fail`) | `return false` early-out | `bool` early-out; counts checked before loops; latched `Error` for callers | sticky stream errors; counts checked before loops; `return stream.Err()` | `bool` early-out; validation failures return false without latching, stream failures latch on `stream.error` | `?` propagation of `serialize::Error` |
 | buffer contract | write buffers multiple of 8; read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (asserted); read allocations extend ≥8 bytes past packet data (required) | write buffers multiple of 8 (throws); reader takes (buffer, bytes), no slack required | write buffers multiple of 8; ≥7 bytes read slack for the fast path | caller-owned DataViews; the flat tier requires ≥8 bytes read slack past the payload | write buffers multiple of 8; ≥8 bytes read slack for the fast path |
+
+JavaScript is typed by declaration files rather than JSDoc: each packet
+module ships `<Base>.d.ts` (and `<Base>Flat.d.ts`) beside it (§6.1), with the
+stream parameter typed structurally by the serialize.js methods the code
+calls.
 
 The three self-contained targets — no runtime library, so there is no stream
 object to emit against; the bit reader and writer live in the generated code:

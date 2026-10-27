@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -318,7 +319,7 @@ func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 // follows it.
 func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind string) {
 	if f.Type.Optional {
-		name := ir.GoExportName(f.Name)
+		name := js.MemberName(f.Name)
 		g.pf("%sview.setUint8(%s, %s.%sPresent ? 1 : 0);\n", ind, off(base, at), val, name)
 		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
 		g.emitWritePayload(f, base, at+fixedPresentBytes, val, ind+"  ")
@@ -329,7 +330,7 @@ func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind s
 }
 
 func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, ind string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	switch {
 	case f.KeyEnum != "":
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
@@ -380,8 +381,8 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
-			g.storeTag(ind, off(base, at), tag, expr+".Type")
-			g.pf("%sswitch (%s.Type) {\n", ind, expr)
+			g.storeTag(ind, off(base, at), tag, expr+".type")
+			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
@@ -632,7 +633,7 @@ func (g *fixedGen) emitCheckTextElement(f *ir.Field, base string, at int64, ind 
 // which is what the prefill already says an absent field reads as.
 func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind string) {
 	if f.Type.Optional {
-		name := ir.GoExportName(f.Name)
+		name := js.MemberName(f.Name)
 		g.pf("%s%s.%sPresent = view.getUint8(%s) !== 0;\n", ind, val, name, off(base, at))
 		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
 		g.emitDecodePayload(f, base, at+fixedPresentBytes, val, ind+"  ")
@@ -645,7 +646,7 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 }
 
 func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, ind string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	switch {
 	case f.KeyEnum != "":
 		g.emitDecodeLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
@@ -751,7 +752,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
-			g.loadTag(ind, expr+".Type", off(base, at), tag)
+			g.loadTag(ind, expr+".type", off(base, at), tag)
 			// A TAG BEYOND THE ARM COUNT LANDS AS None (0) AND COUNTS ONE
 			// clamped. It is the twin of the count and length clamps two
 			// functions down: on the IDENTITY path the whole body is ONE
@@ -773,9 +774,9 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// over the writer's arm ordinals beside the guarded consts, which is
 			// a plan-shape change and not a projection one; it is named here
 			// rather than left silent (§5.8's habit, §5.4's rule).
-			g.pf("%sif (%s.Type > %d) { %s.Type = 0; report.clamped++; }\n",
+			g.pf("%sif (%s.type > %d) { %s.type = 0; report.clamped++; }\n",
 				ind, expr, len(r.Variants), expr)
-			g.pf("%sswitch (%s.Type) {\n", ind, expr)
+			g.pf("%sswitch (%s.type) {\n", ind, expr)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d: {\n", ind, i+1)
 				if v.F != nil {
@@ -1084,7 +1085,7 @@ func fixedIsUnionType(t ir.FieldType) bool {
 // statement rather than printing it so a loop body can stay on one line.
 func (g *fixedGen) compositeReset(t ir.FieldType, path string) string {
 	if fixedIsUnionType(t) {
-		return path + ".Type = 0; /* None; dormant arms keep their storage */"
+		return path + ".type = 0; /* None; dormant arms keep their storage */"
 	}
 	g.require(fixedElementClass(t), t.Name)
 	return fmt.Sprintf("Init%s(%s);", fixedElementClass(t), path)
@@ -1174,7 +1175,7 @@ func fixedElementZero(f *ir.Field) string {
 }
 
 func (g *fixedGen) emitFieldStorage(f *ir.Field, ind, target string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	g.require(fixedElementClass(f.Type), f.Type.Name)
 	switch {
 	case f.KeyEnum != "":
@@ -1212,7 +1213,7 @@ func (g *fixedGen) emitPresenceStorage(f *ir.Field, ind, target string) {
 		return
 	}
 	g.pf("%s%s.%sPresent = false; // ?: absent until set (docs/SPEC-TABLES.md §3.4)\n",
-		ind, target, ir.GoExportName(f.Name))
+		ind, target, js.MemberName(f.Name))
 }
 
 // emitDefaultTextBytes lays a `string(N)` or `bytes(N)` field's DECLARED
@@ -1242,7 +1243,7 @@ func (g *fixedGen) emitDefaultTextBytes(f *ir.Field, ind, target string) {
 		parts = append(parts, strconv.FormatUint(uint64(b), 10))
 	}
 	g.pf("%s%s.%s.set([%s]); // the declared default (SPEC §4.2)\n",
-		ind, target, ir.GoExportName(f.Name), strings.Join(parts, ", "))
+		ind, target, js.MemberName(f.Name), strings.Join(parts, ", "))
 }
 
 func fixedDefaultTextLength(f *ir.Field) int64 {
@@ -1277,7 +1278,7 @@ func (g *fixedGen) emitFieldReset(f *ir.Field, ind, target string) {
 // class's own Init calls it with the presence reset beside it, and the DECODE
 // calls it alone, for the payload behind a flag that says absent.
 func (g *fixedGen) emitPayloadReset(f *ir.Field, ind, target string) {
-	name := ir.GoExportName(f.Name)
+	name := js.MemberName(f.Name)
 	switch {
 	case f.KeyEnum != "", f.Array != ir.ArrayNone:
 		count := f.ArrayBound

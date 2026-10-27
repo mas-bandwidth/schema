@@ -35,12 +35,12 @@ if (r.refused !== 0 || r.malformed) { fail("a clean NEW-READS-OLD is not a refus
 const want = [10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33];
 for (let rec = 0; rec < 3; rec++) {
   const got = back[rec];
-  if (got.Lead !== 1 || got.Trail !== 2) {
+  if (got.lead !== 1 || got.trail !== 2) {
     fail("record " + rec + ": the brackets either side of the removed field did not stand: " + show(got));
   }
   for (let i = 0; i < 4; i++) {
-    if (got.Items[i].A !== want[rec * 4 + i]) {
-      fail("record " + rec + " items[" + i + "].a is " + got.Items[i].A + ", the manifest says " + want[rec * 4 + i] + " — the removed drop moved a neighbour");
+    if (got.items[i].a !== want[rec * 4 + i]) {
+      fail("record " + rec + " items[" + i + "].a is " + got.items[i].a + ", the manifest says " + want[rec * 4 + i] + " — the removed drop moved a neighbour");
     }
   }
 }

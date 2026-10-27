@@ -74,16 +74,16 @@ function assert(condition, msg) {
 // the template's zeros stand.
 function makeWeapon(tag) {
   const w = new WeaponConfig();
-  w.Damage = 21;
-  w.Speed = 500;
-  w.Penetration = 5;
-  w.Channel = 2;
-  w.Homing = true;
-  w.Effect.Type = tag;
-  w.Effect.Buff.Multiplier = 1234567.5;  // dormant-arm garbage
-  w.Effect.Debuff.Amount = 2000000000;   // dormant-arm garbage
-  if (tag === 1) { w.Effect.Buff.Multiplier = 2.5; }
-  if (tag === 2) { w.Effect.Debuff.Amount = 77; }
+  w.damage = 21;
+  w.speed = 500;
+  w.penetration = 5;
+  w.channel = 2;
+  w.homing = true;
+  w.effect.type = tag;
+  w.effect.buff.multiplier = 1234567.5;  // dormant-arm garbage
+  w.effect.debuff.amount = 2000000000;   // dormant-arm garbage
+  if (tag === 1) { w.effect.buff.multiplier = 2.5; }
+  if (tag === 2) { w.effect.debuff.amount = 77; }
   return w;
 }
 

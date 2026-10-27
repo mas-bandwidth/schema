@@ -133,8 +133,8 @@ func TestEnumExtentEmitted(t *testing.T) {
 		expectation{"public const ShapeType ShapeTypeMax = (ShapeType)2;", 1})
 	jsFiles, jsErr := js.Generate(u)
 	addTarget("JS", jsFiles, jsErr,
-		expectation{"Max: 15,", 1},
-		expectation{"Max: 2,", 1})
+		expectation{"export const WeaponMax = 15;", 1},
+		expectation{"export const ShapeTypeMax = 2;", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
 		expectation{"#define WEAPON_MAX 15", 1},
@@ -218,10 +218,12 @@ func TestEnumDeclaredCountEmitted(t *testing.T) {
 		expectation{"Count = ", 0},
 		expectation{"public const Weapon WeaponMax = (Weapon)15;", 1})
 	jsFiles, jsErr := js.Generate(u)
+	// JS: the extent is a module constant beside the frozen object, and, as
+	// in Go, there is no enum Count (SPEC §4.2)
 	addTarget("JS", jsFiles, jsErr,
-		expectation{"Count: 2,", 1},
-		expectation{"Count: 3,", 1},
-		expectation{"Max: 15,", 1})
+		expectation{"WeaponCount", 0},
+		expectation{"TeamCount", 0},
+		expectation{"export const WeaponMax = 15;", 1})
 	cFiles, cErr := cgen.Generate(u)
 	addTarget("C", cFiles, cErr,
 		expectation{"#define WEAPON_COUNT 2", 1},
