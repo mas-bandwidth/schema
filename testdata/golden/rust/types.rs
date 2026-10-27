@@ -8,23 +8,13 @@ use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
 // type Vec3
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Vec3 {
     pub x: f64,
     pub y: f64,
     pub z: f64,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Vec3 {
-    fn default() -> Self {
-        Vec3 {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        }
-    }
 }
 
 // VEC3_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -37,34 +27,40 @@ pub fn write_vec3(stream: &mut WriteStream<'_>, value: &Vec3) -> Result {
     let f0: u64 = value.x.to_bits();
     let f1: u64 = value.y.to_bits();
     let f2: u64 = value.z.to_bits();
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = f2 as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f2 >> 32) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
+    // word 0, 32 bits: x[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: x[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: y[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 32 bits: y[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    // word 4, 32 bits: z[0..32]
+    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    // word 5, 32 bits: z[32..64]
+    stream.serialize_bits(&mut ((f2 >> 32) as u32), 32)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_vec3(stream: &mut ReadStream<'_>, value: &mut Vec3) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: x[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: x[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: y[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: y[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: z[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: z[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -77,25 +73,14 @@ pub fn read_vec3(stream: &mut ReadStream<'_>, value: &mut Vec3) -> Result {
 }
 
 // type Quat
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Quat {
     pub x: f64,
     pub y: f64,
     pub z: f64,
     pub w: f64,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Quat {
-    fn default() -> Self {
-        Quat {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            w: 0.0,
-        }
-    }
 }
 
 // QUAT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -109,42 +94,50 @@ pub fn write_quat(stream: &mut WriteStream<'_>, value: &Quat) -> Result {
     let f1: u64 = value.y.to_bits();
     let f2: u64 = value.z.to_bits();
     let f3: u64 = value.w.to_bits();
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = f2 as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f2 >> 32) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = f3 as u32;
-    stream.serialize_bits(&mut w6, 32)?;
-    let mut w7 = (f3 >> 32) as u32;
-    stream.serialize_bits(&mut w7, 32)?;
+    // word 0, 32 bits: x[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: x[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: y[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 32 bits: y[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    // word 4, 32 bits: z[0..32]
+    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    // word 5, 32 bits: z[32..64]
+    stream.serialize_bits(&mut ((f2 >> 32) as u32), 32)?;
+    // word 6, 32 bits: w[0..32]
+    stream.serialize_bits(&mut (f3 as u32), 32)?;
+    // word 7, 32 bits: w[32..64]
+    stream.serialize_bits(&mut ((f3 >> 32) as u32), 32)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_quat(stream: &mut ReadStream<'_>, value: &mut Quat) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: x[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: x[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: y[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: y[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: z[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: z[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 32 bits: w[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c6 = u64::from(c);
+    // word 7, 32 bits: w[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -159,21 +152,12 @@ pub fn read_quat(stream: &mut ReadStream<'_>, value: &mut Quat) -> Result {
 }
 
 // type Handle
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Handle {
     pub object_id: i32, // wire [0, 9999]
     pub object_sequence: u8,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Handle {
-    fn default() -> Self {
-        Handle {
-            object_id: 0,
-            object_sequence: 0,
-        }
-    }
 }
 
 // HANDLE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -183,17 +167,18 @@ pub const HANDLE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_handle(stream: &mut WriteStream<'_>, value: &Handle) -> Result {
-    debug_assert!(value.object_id >= 0 && value.object_id <= 9999, "object_id out of range [0, 9999]");
+    debug_assert!(value.object_id >= 0 && value.object_id <= (MAX_OBJECTS - 1) as i32, "object_id out of range [0, 9999]");
     let f0: u64 = u64::from(value.object_id as u32);
     let f1: u64 = u64::from(value.object_sequence);
-    let mut w0 = (f0 | (f1 << 14)) as u32;
-    stream.serialize_bits(&mut w0, 22)?;
+    // word 0, 22 bits: object_id[0..14], object_sequence[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 14)) as u32), 22)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_handle(stream: &mut ReadStream<'_>, value: &mut Handle) -> Result {
     let mut c: u32 = 0;
+    // word 0, 22 bits: object_id[0..14], object_sequence[0..8]
     stream.serialize_bits(&mut c, 22)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x3fff;
@@ -207,23 +192,13 @@ pub fn read_handle(stream: &mut ReadStream<'_>, value: &mut Handle) -> Result {
 }
 
 // type QuantizedPosition
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct QuantizedPosition {
     pub x: i32, // wire [-8388608, 8388608]
     pub y: i32, // wire [-8388608, 8388608]
     pub z: i32, // wire [-8388608, 8388608]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for QuantizedPosition {
-    fn default() -> Self {
-        QuantizedPosition {
-            x: 0,
-            y: 0,
-            z: 0,
-        }
-    }
 }
 
 // QUANTIZED_POSITION_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -233,28 +208,31 @@ pub const QUANTIZED_POSITION_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_quantized_position(stream: &mut WriteStream<'_>, value: &QuantizedPosition) -> Result {
-    debug_assert!(value.x >= -8388608 && value.x <= 8388608, "x out of range [-8388608, 8388608]");
-    debug_assert!(value.y >= -8388608 && value.y <= 8388608, "y out of range [-8388608, 8388608]");
-    debug_assert!(value.z >= -8388608 && value.z <= 8388608, "z out of range [-8388608, 8388608]");
+    debug_assert!(value.x >= (-MAX_POSITION_UNITS) as i32 && value.x <= MAX_POSITION_UNITS as i32, "x out of range [-8388608, 8388608]");
+    debug_assert!(value.y >= (-MAX_POSITION_UNITS) as i32 && value.y <= MAX_POSITION_UNITS as i32, "y out of range [-8388608, 8388608]");
+    debug_assert!(value.z >= (-MAX_POSITION_UNITS) as i32 && value.z <= MAX_POSITION_UNITS as i32, "z out of range [-8388608, 8388608]");
     let f0: u64 = u64::from((value.x as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32));
     let f1: u64 = u64::from((value.y as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32));
     let f2: u64 = u64::from((value.z as u32).wrapping_sub(((-MAX_POSITION_UNITS) as i32) as u32));
-    let mut w0 = (f0 | (f1 << 25)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f1 >> 7) | (f2 << 18)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f2 >> 14) as u32;
-    stream.serialize_bits(&mut w2, 11)?;
+    // word 0, 32 bits: x[0..25], y[0..7]
+    stream.serialize_bits(&mut ((f0 | (f1 << 25)) as u32), 32)?;
+    // word 1, 32 bits: y[7..25], z[0..14]
+    stream.serialize_bits(&mut (((f1 >> 7) | (f2 << 18)) as u32), 32)?;
+    // word 2, 11 bits: z[14..25]
+    stream.serialize_bits(&mut ((f2 >> 14) as u32), 11)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_quantized_position(stream: &mut ReadStream<'_>, value: &mut QuantizedPosition) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: x[0..25], y[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: y[7..25], z[0..14]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 11 bits: z[14..25]
     stream.serialize_bits(&mut c, 11)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0x1ffffff;
@@ -276,23 +254,13 @@ pub fn read_quantized_position(stream: &mut ReadStream<'_>, value: &mut Quantize
 }
 
 // type QuantizedVelocity
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct QuantizedVelocity {
     pub x: i32, // wire [-2097152, 2097152]
     pub y: i32, // wire [-2097152, 2097152]
     pub z: i32, // wire [-2097152, 2097152]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for QuantizedVelocity {
-    fn default() -> Self {
-        QuantizedVelocity {
-            x: 0,
-            y: 0,
-            z: 0,
-        }
-    }
 }
 
 // QUANTIZED_VELOCITY_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -302,28 +270,31 @@ pub const QUANTIZED_VELOCITY_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_quantized_velocity(stream: &mut WriteStream<'_>, value: &QuantizedVelocity) -> Result {
-    debug_assert!(value.x >= -2097152 && value.x <= 2097152, "x out of range [-2097152, 2097152]");
-    debug_assert!(value.y >= -2097152 && value.y <= 2097152, "y out of range [-2097152, 2097152]");
-    debug_assert!(value.z >= -2097152 && value.z <= 2097152, "z out of range [-2097152, 2097152]");
+    debug_assert!(value.x >= (-MAX_VELOCITY_UNITS) as i32 && value.x <= MAX_VELOCITY_UNITS as i32, "x out of range [-2097152, 2097152]");
+    debug_assert!(value.y >= (-MAX_VELOCITY_UNITS) as i32 && value.y <= MAX_VELOCITY_UNITS as i32, "y out of range [-2097152, 2097152]");
+    debug_assert!(value.z >= (-MAX_VELOCITY_UNITS) as i32 && value.z <= MAX_VELOCITY_UNITS as i32, "z out of range [-2097152, 2097152]");
     let f0: u64 = u64::from((value.x as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32));
     let f1: u64 = u64::from((value.y as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32));
     let f2: u64 = u64::from((value.z as u32).wrapping_sub(((-MAX_VELOCITY_UNITS) as i32) as u32));
-    let mut w0 = (f0 | (f1 << 23)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f1 >> 9) | (f2 << 14)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f2 >> 18) as u32;
-    stream.serialize_bits(&mut w2, 5)?;
+    // word 0, 32 bits: x[0..23], y[0..9]
+    stream.serialize_bits(&mut ((f0 | (f1 << 23)) as u32), 32)?;
+    // word 1, 32 bits: y[9..23], z[0..18]
+    stream.serialize_bits(&mut (((f1 >> 9) | (f2 << 14)) as u32), 32)?;
+    // word 2, 5 bits: z[18..23]
+    stream.serialize_bits(&mut ((f2 >> 18) as u32), 5)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_quantized_velocity(stream: &mut ReadStream<'_>, value: &mut QuantizedVelocity) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: x[0..23], y[0..9]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: y[9..23], z[0..18]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 5 bits: z[18..23]
     stream.serialize_bits(&mut c, 5)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0x7fffff;
@@ -345,25 +316,14 @@ pub fn read_quantized_velocity(stream: &mut ReadStream<'_>, value: &mut Quantize
 }
 
 // type QuantizedRotation
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct QuantizedRotation {
     pub x: i16, // wire [-1024, 1024]
     pub y: i16, // wire [-1024, 1024]
     pub z: i16, // wire [-1024, 1024]
     pub w: i16, // wire [-1024, 1024]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for QuantizedRotation {
-    fn default() -> Self {
-        QuantizedRotation {
-            x: 0,
-            y: 0,
-            z: 0,
-            w: 0,
-        }
-    }
 }
 
 // QUANTIZED_ROTATION_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -373,26 +333,28 @@ pub const QUANTIZED_ROTATION_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_quantized_rotation(stream: &mut WriteStream<'_>, value: &QuantizedRotation) -> Result {
-    debug_assert!(value.x >= -1024 && value.x <= 1024, "x out of range [-1024, 1024]");
-    debug_assert!(value.y >= -1024 && value.y <= 1024, "y out of range [-1024, 1024]");
-    debug_assert!(value.z >= -1024 && value.z <= 1024, "z out of range [-1024, 1024]");
-    debug_assert!(value.w >= -1024 && value.w <= 1024, "w out of range [-1024, 1024]");
+    debug_assert!(value.x >= (-ROTATION_UNITS) as i16 && value.x <= ROTATION_UNITS as i16, "x out of range [-1024, 1024]");
+    debug_assert!(value.y >= (-ROTATION_UNITS) as i16 && value.y <= ROTATION_UNITS as i16, "y out of range [-1024, 1024]");
+    debug_assert!(value.z >= (-ROTATION_UNITS) as i16 && value.z <= ROTATION_UNITS as i16, "z out of range [-1024, 1024]");
+    debug_assert!(value.w >= (-ROTATION_UNITS) as i16 && value.w <= ROTATION_UNITS as i16, "w out of range [-1024, 1024]");
     let f0: u64 = u64::from((value.x as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32));
     let f1: u64 = u64::from((value.y as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32));
     let f2: u64 = u64::from((value.z as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32));
     let f3: u64 = u64::from((value.w as u32).wrapping_sub(((-ROTATION_UNITS) as i32) as u32));
-    let mut w0 = (f0 | (f1 << 12) | (f2 << 24)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 8) | (f3 << 4)) as u32;
-    stream.serialize_bits(&mut w1, 16)?;
+    // word 0, 32 bits: x[0..12], y[0..12], z[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 12) | (f2 << 24)) as u32), 32)?;
+    // word 1, 16 bits: z[8..12], w[0..12]
+    stream.serialize_bits(&mut (((f2 >> 8) | (f3 << 4)) as u32), 16)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_quantized_rotation(stream: &mut ReadStream<'_>, value: &mut QuantizedRotation) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: x[0..12], y[0..12], z[0..8]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 16 bits: z[8..12], w[0..12]
     stream.serialize_bits(&mut c, 16)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0xfff;
@@ -419,8 +381,9 @@ pub fn read_quantized_rotation(stream: &mut ReadStream<'_>, value: &mut Quantize
 }
 
 // type RigidBody
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct RigidBody {
     pub position: Vec3,
     pub orientation: Quat,
@@ -430,19 +393,6 @@ pub struct RigidBody {
     // untaken side (SPEC §5)
     pub linear_velocity: Vec3,
     pub angular_velocity: Vec3,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for RigidBody {
-    fn default() -> Self {
-        RigidBody {
-            position: Vec3::default(),
-            orientation: Quat::default(),
-            at_rest: false,
-            linear_velocity: Vec3::default(),
-            angular_velocity: Vec3::default(),
-        }
-    }
 }
 
 // RIGID_BODY_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -481,8 +431,9 @@ pub fn read_rigid_body(stream: &mut ReadStream<'_>, value: &mut RigidBody) -> Re
 }
 
 // type Input
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Input {
     pub stick_x: f32,
     pub stick_y: f32,
@@ -497,27 +448,6 @@ pub struct Input {
     pub lock_on: bool,
     pub zoom: bool,
     pub ping: bool,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Input {
-    fn default() -> Self {
-        Input {
-            stick_x: 0.0,
-            stick_y: 0.0,
-            throttle: 0.0,
-            yaw: 0.0,
-            pitch: 0.0,
-            fire: false,
-            alt_fire: false,
-            boost: false,
-            brake: false,
-            aim: false,
-            lock_on: false,
-            zoom: false,
-            ping: false,
-        }
-    }
 }
 
 // INPUT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -540,34 +470,40 @@ pub fn write_input(stream: &mut WriteStream<'_>, value: &Input) -> Result {
     let f10: u64 = u64::from(value.lock_on);
     let f11: u64 = u64::from(value.zoom);
     let f12: u64 = u64::from(value.ping);
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = f1 as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f2 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = f3 as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = f4 as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f5 | (f6 << 1) | (f7 << 2) | (f8 << 3) | (f9 << 4) | (f10 << 5) | (f11 << 6) | (f12 << 7)) as u32;
-    stream.serialize_bits(&mut w5, 8)?;
+    // word 0, 32 bits: stick_x[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: stick_y[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 2, 32 bits: throttle[0..32]
+    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    // word 3, 32 bits: yaw[0..32]
+    stream.serialize_bits(&mut (f3 as u32), 32)?;
+    // word 4, 32 bits: pitch[0..32]
+    stream.serialize_bits(&mut (f4 as u32), 32)?;
+    // word 5, 8 bits: fire[0..1], alt_fire[0..1], boost[0..1], brake[0..1], aim[0..1], lock_on[0..1], zoom[0..1], ping[0..1]
+    stream.serialize_bits(&mut ((f5 | (f6 << 1) | (f7 << 2) | (f8 << 3) | (f9 << 4) | (f10 << 5) | (f11 << 6) | (f12 << 7)) as u32), 8)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_input(stream: &mut ReadStream<'_>, value: &mut Input) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: stick_x[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: stick_y[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: throttle[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: yaw[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: pitch[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 8 bits: fire[0..1], alt_fire[0..1], boost[0..1], brake[0..1], aim[0..1], lock_on[0..1], zoom[0..1], ping[0..1]
     stream.serialize_bits(&mut c, 8)?;
     let c5 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
@@ -600,27 +536,15 @@ pub fn read_input(stream: &mut ReadStream<'_>, value: &mut Input) -> Result {
 }
 
 // type InputPacket
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct InputPacket {
     pub synchronize_sequence: u16,
     pub current_frame: u64,
     pub start_frame: u64,
     pub inputs: [Input; MAX_INPUTS_PER_PACKET as usize], // used count beside it; wire count in [0, MaxInputsPerPacket]
     pub inputs_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for InputPacket {
-    fn default() -> Self {
-        InputPacket {
-            synchronize_sequence: 0,
-            current_frame: 0,
-            start_frame: 0,
-            inputs: [Input::default(); MAX_INPUTS_PER_PACKET as usize],
-            inputs_count: 0,
-        }
-    }
 }
 
 // INPUT_PACKET_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -633,16 +557,16 @@ pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> 
     let f0: u64 = u64::from(value.synchronize_sequence);
     let f1: u64 = value.current_frame;
     let f2: u64 = value.start_frame;
-    let mut w0 = (f0 | (f1 << 16)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f1 >> 16) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f1 >> 48) | (f2 << 16)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f2 >> 16) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = (f2 >> 48) as u32;
-    stream.serialize_bits(&mut w4, 16)?;
+    // word 0, 32 bits: synchronize_sequence[0..16], current_frame[0..16]
+    stream.serialize_bits(&mut ((f0 | (f1 << 16)) as u32), 32)?;
+    // word 1, 32 bits: current_frame[16..48]
+    stream.serialize_bits(&mut ((f1 >> 16) as u32), 32)?;
+    // word 2, 32 bits: current_frame[48..64], start_frame[0..16]
+    stream.serialize_bits(&mut (((f1 >> 48) | (f2 << 16)) as u32), 32)?;
+    // word 3, 32 bits: start_frame[16..48]
+    stream.serialize_bits(&mut ((f2 >> 16) as u32), 32)?;
+    // word 4, 16 bits: start_frame[48..64]
+    stream.serialize_bits(&mut ((f2 >> 48) as u32), 16)?;
     debug_assert!(value.inputs_count >= 0 && value.inputs_count <= 16, "inputs_count out of range [0, 16]");
     {
         let mut offset_value = value.inputs_count as u32;
@@ -657,14 +581,19 @@ pub fn write_input_packet(stream: &mut WriteStream<'_>, value: &InputPacket) -> 
 #[inline]
 pub fn read_input_packet(stream: &mut ReadStream<'_>, value: &mut InputPacket) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: synchronize_sequence[0..16], current_frame[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: current_frame[16..48]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: current_frame[48..64], start_frame[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: start_frame[16..48]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 16 bits: start_frame[48..64]
     stream.serialize_bits(&mut c, 16)?;
     let c4 = u64::from(c);
     let v0: u64 = c0 & 0xffff;
@@ -681,8 +610,9 @@ pub fn read_input_packet(stream: &mut ReadStream<'_>, value: &mut InputPacket) -
 }
 
 // type ShipCreate
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ShipCreate {
     pub ship_type: ShipType,
     pub position: QuantizedPosition,
@@ -698,24 +628,6 @@ pub struct ShipCreate {
     pub health: i16, // wire [0, 1000]
     pub thrust: i8, // wire [0, 100]
     pub pending: Pending,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ShipCreate {
-    fn default() -> Self {
-        ShipCreate {
-            ship_type: ShipType::NONE,
-            position: QuantizedPosition::default(),
-            rotation: QuantizedRotation::default(),
-            linear_velocity: QuantizedVelocity::default(),
-            has_flags: false,
-            flags: 0,
-            team: Team::NONE,
-            health: 0,
-            thrust: 0,
-            pending: Pending::NONE,
-        }
-    }
 }
 
 // SHIP_CREATE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -745,14 +657,14 @@ pub fn write_ship_create(stream: &mut WriteStream<'_>, value: &ShipCreate) -> Re
         }
     }
     debug_assert!(value.team.0 <= 2, "team above the Team wire range [0, 2]");
-    debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
+    debug_assert!(value.health >= 0 && value.health <= MAX_HEALTH as i16, "health out of range [0, 1000]");
     debug_assert!(value.thrust >= 0 && value.thrust <= 100, "thrust out of range [0, 100]");
-    debug_assert!(value.pending.0 <= 0, "pending above the Pending wire range [0, 0]");
+    debug_assert!(value.pending.0 == 0, "pending above the Pending wire range [0, 0]");
     let f0: u64 = u64::from(value.team.0);
     let f1: u64 = u64::from(value.health as u32);
     let f2: u64 = u64::from(value.thrust as u32);
-    let mut w0 = (f0 | (f1 << 2) | (f2 << 12)) as u32;
-    stream.serialize_bits(&mut w0, 19)?;
+    // word 0, 19 bits: team[0..2], health[0..10], thrust[0..7]
+    stream.serialize_bits(&mut ((f0 | (f1 << 2) | (f2 << 12)) as u32), 19)?;
     Ok(())
 }
 
@@ -777,6 +689,7 @@ pub fn read_ship_create(stream: &mut ReadStream<'_>, value: &mut ShipCreate) -> 
         value.flags = 0;
     }
     let mut c: u32 = 0;
+    // word 0, 19 bits: team[0..2], health[0..10], thrust[0..7]
     stream.serialize_bits(&mut c, 19)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x3;
@@ -794,26 +707,17 @@ pub fn read_ship_create(stream: &mut ReadStream<'_>, value: &mut ShipCreate) -> 
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
     value.thrust = (v2 as i32) as i8;
-    value.pending = Pending(0 as u8);
+    value.pending = Pending(0);
     Ok(())
 }
 
 // type ExpressionProbe
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ExpressionProbe {
     pub hardpoint_index: i32, // wire [0, 31]
     pub spin_rate: i32, // = ROTATION_UNITS as i32 in new() (zero value otherwise); wire [1024, 2048]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ExpressionProbe {
-    fn default() -> Self {
-        ExpressionProbe {
-            hardpoint_index: 0,
-            spin_rate: 0,
-        }
-    }
 }
 
 impl ExpressionProbe {
@@ -821,9 +725,10 @@ impl ExpressionProbe {
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = ExpressionProbe::default();
-        value.spin_rate = ROTATION_UNITS as i32;
-        value
+        ExpressionProbe {
+            spin_rate: ROTATION_UNITS as i32,
+            ..ExpressionProbe::default()
+        }
     }
 }
 
@@ -834,18 +739,19 @@ pub const EXPRESSION_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_expression_probe(stream: &mut WriteStream<'_>, value: &ExpressionProbe) -> Result {
-    debug_assert!(value.hardpoint_index >= 0 && value.hardpoint_index <= 31, "hardpoint_index out of range [0, 31]");
-    debug_assert!(value.spin_rate >= 1024 && value.spin_rate <= 2048, "spin_rate out of range [1024, 2048]");
+    debug_assert!(value.hardpoint_index >= 0 && value.hardpoint_index <= ((SHIP_MAX_LASERS + SHIP_MAX_MISSILES) - 1) as i32, "hardpoint_index out of range [0, 31]");
+    debug_assert!(value.spin_rate >= (-(-ROTATION_UNITS)) as i32 && value.spin_rate <= (ROTATION_UNITS * 2) as i32, "spin_rate out of range [1024, 2048]");
     let f0: u64 = u64::from(value.hardpoint_index as u32);
     let f1: u64 = u64::from((value.spin_rate as u32).wrapping_sub(((-(-ROTATION_UNITS)) as i32) as u32));
-    let mut w0 = (f0 | (f1 << 5)) as u32;
-    stream.serialize_bits(&mut w0, 16)?;
+    // word 0, 16 bits: hardpoint_index[0..5], spin_rate[0..11]
+    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 16)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_expression_probe(stream: &mut ReadStream<'_>, value: &mut ExpressionProbe) -> Result {
     let mut c: u32 = 0;
+    // word 0, 16 bits: hardpoint_index[0..5], spin_rate[0..11]
     stream.serialize_bits(&mut c, 16)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x1f;
@@ -863,8 +769,9 @@ pub const FLOOR_LIMIT: i64 = -9223372036854775808;
 pub const CEILING_COUNT: u64 = 18446744073709551615;
 
 // type ExtremeProbe
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ExtremeProbe {
     pub floor_bound: i64, // wire [-9223372036854775808, 100]
     pub doubled_floor: i64, // wire [-9223372036854775808, 100]
@@ -873,29 +780,17 @@ pub struct ExtremeProbe {
     pub ceiling_default: u64, // = 18446744073709551615 in new() (zero value otherwise)
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ExtremeProbe {
-    fn default() -> Self {
-        ExtremeProbe {
-            floor_bound: 0,
-            doubled_floor: 0,
-            ceiling_range: 0,
-            floor_default: 0,
-            ceiling_default: 0,
-        }
-    }
-}
-
 impl ExtremeProbe {
     // new returns a ExtremeProbe with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = ExtremeProbe::default();
-        value.ceiling_range = 1;
-        value.floor_default = -9223372036854775808;
-        value.ceiling_default = 18446744073709551615;
-        value
+        ExtremeProbe {
+            ceiling_range: 1,
+            floor_default: -9223372036854775808,
+            ceiling_default: 18446744073709551615,
+            ..ExtremeProbe::default()
+        }
     }
 }
 
@@ -913,22 +808,22 @@ pub fn write_extreme_probe(stream: &mut WriteStream<'_>, value: &ExtremeProbe) -
     let f1: u64 = (value.doubled_floor as u64).wrapping_sub((-9223372036854775808_i64) as u64);
     let f2: u64 = value.ceiling_range - 1;
     let f3: u64 = value.floor_default as u64;
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = f2 as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f2 >> 32) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = f3 as u32;
-    stream.serialize_bits(&mut w6, 32)?;
-    let mut w7 = (f3 >> 32) as u32;
-    stream.serialize_bits(&mut w7, 32)?;
+    // word 0, 32 bits: floor_bound[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: floor_bound[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: doubled_floor[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 32 bits: doubled_floor[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    // word 4, 32 bits: ceiling_range[0..32]
+    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    // word 5, 32 bits: ceiling_range[32..64]
+    stream.serialize_bits(&mut ((f2 >> 32) as u32), 32)?;
+    // word 6, 32 bits: floor_default[0..32]
+    stream.serialize_bits(&mut (f3 as u32), 32)?;
+    // word 7, 32 bits: floor_default[32..64]
+    stream.serialize_bits(&mut ((f3 >> 32) as u32), 32)?;
     {
         let mut raw_value = value.ceiling_default;
         stream.serialize_bits64(&mut raw_value, 64)?;
@@ -939,20 +834,28 @@ pub fn write_extreme_probe(stream: &mut WriteStream<'_>, value: &ExtremeProbe) -
 #[inline]
 pub fn read_extreme_probe(stream: &mut ReadStream<'_>, value: &mut ExtremeProbe) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: floor_bound[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: floor_bound[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: doubled_floor[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: doubled_floor[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: ceiling_range[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: ceiling_range[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 32 bits: floor_default[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c6 = u64::from(c);
+    // word 7, 32 bits: floor_default[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -978,8 +881,9 @@ pub fn read_extreme_probe(stream: &mut ReadStream<'_>, value: &mut ExtremeProbe)
 }
 
 // type ExtremeRow
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ExtremeRow {
     pub clamped_floor: i64, // wire [-9223372036854775808, 100]
     pub clamped_ceiling: u64, // = 1 in new() (zero value otherwise); wire [1, 18446744073709551614]
@@ -987,28 +891,17 @@ pub struct ExtremeRow {
     pub ceiling_def: u64, // = 18446744073709551615 in new() (zero value otherwise)
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ExtremeRow {
-    fn default() -> Self {
-        ExtremeRow {
-            clamped_floor: 0,
-            clamped_ceiling: 0,
-            floor_def: 0,
-            ceiling_def: 0,
-        }
-    }
-}
-
 impl ExtremeRow {
     // new returns a ExtremeRow with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = ExtremeRow::default();
-        value.clamped_ceiling = 1;
-        value.floor_def = -9223372036854775808;
-        value.ceiling_def = 18446744073709551615;
-        value
+        ExtremeRow {
+            clamped_ceiling: 1,
+            floor_def: -9223372036854775808,
+            ceiling_def: 18446744073709551615,
+            ..ExtremeRow::default()
+        }
     }
 }
 
@@ -1025,42 +918,50 @@ pub fn write_extreme_row(stream: &mut WriteStream<'_>, value: &ExtremeRow) -> Re
     let f1: u64 = value.clamped_ceiling - 1;
     let f2: u64 = value.floor_def as u64;
     let f3: u64 = value.ceiling_def;
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = f2 as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f2 >> 32) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = f3 as u32;
-    stream.serialize_bits(&mut w6, 32)?;
-    let mut w7 = (f3 >> 32) as u32;
-    stream.serialize_bits(&mut w7, 32)?;
+    // word 0, 32 bits: clamped_floor[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: clamped_floor[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: clamped_ceiling[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 32 bits: clamped_ceiling[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    // word 4, 32 bits: floor_def[0..32]
+    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    // word 5, 32 bits: floor_def[32..64]
+    stream.serialize_bits(&mut ((f2 >> 32) as u32), 32)?;
+    // word 6, 32 bits: ceiling_def[0..32]
+    stream.serialize_bits(&mut (f3 as u32), 32)?;
+    // word 7, 32 bits: ceiling_def[32..64]
+    stream.serialize_bits(&mut ((f3 >> 32) as u32), 32)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_extreme_row(stream: &mut ReadStream<'_>, value: &mut ExtremeRow) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: clamped_floor[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: clamped_floor[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: clamped_ceiling[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: clamped_ceiling[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: floor_def[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: floor_def[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 32 bits: ceiling_def[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c6 = u64::from(c);
+    // word 7, 32 bits: ceiling_def[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);

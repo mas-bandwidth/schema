@@ -8,8 +8,9 @@ use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
 // type ArmsAgree
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArmsAgree {
     pub lead: u32,
     pub flag: bool,
@@ -25,19 +26,6 @@ pub struct ArmsAgree {
     pub tail: u32,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArmsAgree {
-    fn default() -> Self {
-        ArmsAgree {
-            lead: 0,
-            flag: false,
-            a: 0,
-            b: 0,
-            tail: 0,
-        }
-    }
-}
-
 // ARMS_AGREE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // ARMS_AGREE_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
 pub const ARMS_AGREE_MAX_BITS: u64 = 24;
@@ -48,8 +36,8 @@ pub fn write_arms_agree(stream: &mut WriteStream<'_>, value: &ArmsAgree) -> Resu
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
-    let mut w0 = (f0 | (f1 << 5)) as u32;
-    stream.serialize_bits(&mut w0, 6)?;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
     if value.flag {
         debug_assert!(value.a < 1 << 11, "a above the bits(11) wire width");
         {
@@ -74,6 +62,7 @@ pub fn write_arms_agree(stream: &mut WriteStream<'_>, value: &ArmsAgree) -> Resu
 #[inline]
 pub fn read_arms_agree(stream: &mut ReadStream<'_>, value: &mut ArmsAgree) -> Result {
     let mut c: u32 = 0;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x1f;
@@ -92,8 +81,9 @@ pub fn read_arms_agree(stream: &mut ReadStream<'_>, value: &mut ArmsAgree) -> Re
 }
 
 // type ArmsDisagree
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArmsDisagree {
     pub lead: u32,
     pub flag: bool,
@@ -109,19 +99,6 @@ pub struct ArmsDisagree {
     pub tail: u32,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArmsDisagree {
-    fn default() -> Self {
-        ArmsDisagree {
-            lead: 0,
-            flag: false,
-            a: 0,
-            b: 0,
-            tail: 0,
-        }
-    }
-}
-
 // ARMS_DISAGREE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // ARMS_DISAGREE_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
 pub const ARMS_DISAGREE_MAX_BITS: u64 = 24;
@@ -132,8 +109,8 @@ pub fn write_arms_disagree(stream: &mut WriteStream<'_>, value: &ArmsDisagree) -
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
-    let mut w0 = (f0 | (f1 << 5)) as u32;
-    stream.serialize_bits(&mut w0, 6)?;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
     if value.flag {
         debug_assert!(value.a < 1 << 11, "a above the bits(11) wire width");
         {
@@ -158,6 +135,7 @@ pub fn write_arms_disagree(stream: &mut WriteStream<'_>, value: &ArmsDisagree) -
 #[inline]
 pub fn read_arms_disagree(stream: &mut ReadStream<'_>, value: &mut ArmsDisagree) -> Result {
     let mut c: u32 = 0;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x1f;
@@ -176,8 +154,9 @@ pub fn read_arms_disagree(stream: &mut ReadStream<'_>, value: &mut ArmsDisagree)
 }
 
 // type ArmEmpty
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArmEmpty {
     pub lead: u32,
     pub flag: bool,
@@ -187,18 +166,6 @@ pub struct ArmEmpty {
     pub a: u32,
 
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArmEmpty {
-    fn default() -> Self {
-        ArmEmpty {
-            lead: 0,
-            flag: false,
-            a: 0,
-            tail: 0,
-        }
-    }
 }
 
 // ARM_EMPTY_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -211,8 +178,8 @@ pub fn write_arm_empty(stream: &mut WriteStream<'_>, value: &ArmEmpty) -> Result
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
-    let mut w0 = (f0 | (f1 << 5)) as u32;
-    stream.serialize_bits(&mut w0, 6)?;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
     if value.flag {
         debug_assert!(value.a < 1 << 19, "a above the bits(19) wire width");
         {
@@ -231,6 +198,7 @@ pub fn write_arm_empty(stream: &mut WriteStream<'_>, value: &ArmEmpty) -> Result
 #[inline]
 pub fn read_arm_empty(stream: &mut ReadStream<'_>, value: &mut ArmEmpty) -> Result {
     let mut c: u32 = 0;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x1f;
@@ -247,8 +215,9 @@ pub fn read_arm_empty(stream: &mut ReadStream<'_>, value: &mut ArmEmpty) -> Resu
 }
 
 // type ArmsNested
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArmsNested {
     pub lead: u32,
     pub outer: bool,
@@ -272,21 +241,6 @@ pub struct ArmsNested {
     pub tail: u32,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArmsNested {
-    fn default() -> Self {
-        ArmsNested {
-            lead: 0,
-            outer: false,
-            inner: false,
-            x: 0,
-            y: 0,
-            z: 0,
-            tail: 0,
-        }
-    }
-}
-
 // ARMS_NESTED_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // ARMS_NESTED_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
 pub const ARMS_NESTED_MAX_BITS: u64 = 40;
@@ -297,8 +251,8 @@ pub fn write_arms_nested(stream: &mut WriteStream<'_>, value: &ArmsNested) -> Re
     debug_assert!(value.lead < 1 << 3, "lead above the bits(3) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.outer);
-    let mut w0 = (f0 | (f1 << 3)) as u32;
-    stream.serialize_bits(&mut w0, 4)?;
+    // word 0, 4 bits: lead[0..3], outer[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 3)) as u32), 4)?;
     if value.outer {
         {
             let mut bool_value = value.inner;
@@ -335,6 +289,7 @@ pub fn write_arms_nested(stream: &mut WriteStream<'_>, value: &ArmsNested) -> Re
 #[inline]
 pub fn read_arms_nested(stream: &mut ReadStream<'_>, value: &mut ArmsNested) -> Result {
     let mut c: u32 = 0;
+    // word 0, 4 bits: lead[0..3], outer[0..1]
     stream.serialize_bits(&mut c, 4)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x7;
@@ -362,8 +317,9 @@ pub fn read_arms_nested(stream: &mut ReadStream<'_>, value: &mut ArmsNested) -> 
 }
 
 // type ArmAlign
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArmAlign {
     pub lead: u32,
     pub flag: bool,
@@ -380,20 +336,6 @@ pub struct ArmAlign {
     pub tail: u32,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArmAlign {
-    fn default() -> Self {
-        ArmAlign {
-            lead: 0,
-            flag: false,
-            s: [0; 4],
-            s_length: 0,
-            b: 0,
-            tail: 0,
-        }
-    }
-}
-
 // ARM_ALIGN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // ARM_ALIGN_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
 pub const ARM_ALIGN_MAX_BITS: u64 = 55;
@@ -404,8 +346,8 @@ pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
-    let mut w0 = (f0 | (f1 << 5)) as u32;
-    stream.serialize_bits(&mut w0, 6)?;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
     if value.flag {
         debug_assert!(value.s_length >= 0 && value.s_length <= 4, "s_length out of range [0, 4]");
         {
@@ -431,6 +373,7 @@ pub fn write_arm_align(stream: &mut WriteStream<'_>, value: &ArmAlign) -> Result
 #[inline]
 pub fn read_arm_align(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Result {
     let mut c: u32 = 0;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x1f;
@@ -459,8 +402,9 @@ pub fn read_arm_align(stream: &mut ReadStream<'_>, value: &mut ArmAlign) -> Resu
 }
 
 // type ArmArray
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArmArray {
     pub lead: u32,
     pub flag: bool,
@@ -477,20 +421,6 @@ pub struct ArmArray {
     pub tail: u32,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArmArray {
-    fn default() -> Self {
-        ArmArray {
-            lead: 0,
-            flag: false,
-            items: [0; 3],
-            items_count: 0,
-            b: 0,
-            tail: 0,
-        }
-    }
-}
-
 // ARM_ARRAY_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // ARM_ARRAY_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
 pub const ARM_ARRAY_MAX_BITS: u64 = 54;
@@ -501,8 +431,8 @@ pub fn write_arm_array(stream: &mut WriteStream<'_>, value: &ArmArray) -> Result
     debug_assert!(value.lead < 1 << 5, "lead above the bits(5) wire width");
     let f0: u64 = u64::from(value.lead);
     let f1: u64 = u64::from(value.flag);
-    let mut w0 = (f0 | (f1 << 5)) as u32;
-    stream.serialize_bits(&mut w0, 6)?;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 5)) as u32), 6)?;
     if value.flag {
         debug_assert!(value.items_count >= 0 && value.items_count <= 3, "items_count out of range [0, 3]");
         {
@@ -534,6 +464,7 @@ pub fn write_arm_array(stream: &mut WriteStream<'_>, value: &ArmArray) -> Result
 #[inline]
 pub fn read_arm_array(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Result {
     let mut c: u32 = 0;
+    // word 0, 6 bits: lead[0..5], flag[0..1]
     stream.serialize_bits(&mut c, 6)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x1f;
@@ -560,19 +491,11 @@ pub fn read_arm_array(stream: &mut ReadStream<'_>, value: &mut ArmArray) -> Resu
 }
 
 // type Narrow
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Narrow {
     pub n: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Narrow {
-    fn default() -> Self {
-        Narrow {
-            n: 0,
-        }
-    }
 }
 
 // NARROW_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -597,19 +520,11 @@ pub fn read_narrow(stream: &mut ReadStream<'_>, value: &mut Narrow) -> Result {
 }
 
 // type Wide
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Wide {
     pub w: u64,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Wide {
-    fn default() -> Self {
-        Wide {
-            w: 0,
-        }
-    }
 }
 
 // WIDE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -635,7 +550,7 @@ pub fn read_wide(stream: &mut ReadStream<'_>, value: &mut Wide) -> Result {
 
 // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct UnevenType(pub u8);
 
 impl UnevenType {
@@ -644,6 +559,17 @@ impl UnevenType {
     pub const WIDE: UnevenType = UnevenType(2);
     pub const COUNT: UnevenType = UnevenType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: UnevenType = UnevenType(2); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_uneven_type(self)
+    }
+}
+
+impl core::fmt::Display for UnevenType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `UnevenType` value, out-of-set included.
@@ -659,7 +585,7 @@ pub fn enum_name_uneven_type(value: UnevenType) -> &'static str {
 // Uneven — at most one of the arms. The default is None (the empty union);
 // every read reconstructs the selected payload with its declared initial
 // values, even at the same tag, and replaces the whole value on success.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum Uneven {
     #[default]
     None,
@@ -712,23 +638,13 @@ pub fn read_uneven(stream: &mut ReadStream<'_>, value: &mut Uneven) -> Result {
 }
 
 // type HoldsUneven
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct HoldsUneven {
     pub lead: u32,
     pub u: Uneven,
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for HoldsUneven {
-    fn default() -> Self {
-        HoldsUneven {
-            lead: 0,
-            u: Uneven::None,
-            tail: 0,
-        }
-    }
 }
 
 // HOLDS_UNEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -761,25 +677,14 @@ pub fn read_holds_uneven(stream: &mut ReadStream<'_>, value: &mut HoldsUneven) -
 }
 
 // type ArrUneven
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArrUneven {
     pub lead: u32,
     pub items: [Uneven; 3], // used count beside it; wire count in [0, 3]
     pub items_count: i32,
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArrUneven {
-    fn default() -> Self {
-        ArrUneven {
-            lead: 0,
-            items: [Uneven::None; 3],
-            items_count: 0,
-            tail: 0,
-        }
-    }
 }
 
 // ARR_UNEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -822,8 +727,9 @@ pub fn read_arr_uneven(stream: &mut ReadStream<'_>, value: &mut ArrUneven) -> Re
 }
 
 // type RegainAfterAlign
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct RegainAfterAlign {
     pub lead: u32,
     pub items: [u16; 3], // used count beside it; wire count in [0, 3]
@@ -834,23 +740,6 @@ pub struct RegainAfterAlign {
     pub q: u32,
     pub r: u32,
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for RegainAfterAlign {
-    fn default() -> Self {
-        RegainAfterAlign {
-            lead: 0,
-            items: [0; 3],
-            items_count: 0,
-            s: [0; 4],
-            s_length: 0,
-            p: 0,
-            q: 0,
-            r: 0,
-            tail: 0,
-        }
-    }
 }
 
 // REGAIN_AFTER_ALIGN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -890,12 +779,12 @@ pub fn write_regain_after_align(stream: &mut WriteStream<'_>, value: &RegainAfte
     let f1: u64 = u64::from(value.q);
     let f2: u64 = u64::from(value.r);
     let f3: u64 = u64::from(value.tail);
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f1 | (f2 << 29)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f2 >> 3) | (f3 << 16)) as u32;
-    stream.serialize_bits(&mut w2, 20)?;
+    // word 0, 32 bits: p[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: q[0..29], r[0..3]
+    stream.serialize_bits(&mut ((f1 | (f2 << 29)) as u32), 32)?;
+    // word 2, 20 bits: r[3..19], tail[0..4]
+    stream.serialize_bits(&mut (((f2 >> 3) | (f3 << 16)) as u32), 20)?;
     Ok(())
 }
 
@@ -921,10 +810,13 @@ pub fn read_regain_after_align(stream: &mut ReadStream<'_>, value: &mut RegainAf
         }
     }
     let mut c: u32 = 0;
+    // word 0, 32 bits: p[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: q[0..29], r[0..3]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 20 bits: r[3..19], tail[0..4]
     stream.serialize_bits(&mut c, 20)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;

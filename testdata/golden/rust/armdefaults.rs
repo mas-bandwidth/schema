@@ -8,23 +8,13 @@ use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
 // type DefaultArm
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct DefaultArm {
     pub entries: [ProbeConfig; 2], // used count beside it; wire count in [0, 2]
     pub entries_count: i32,
     pub marker: u8, // wire [0, 7]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for DefaultArm {
-    fn default() -> Self {
-        DefaultArm {
-            entries: [ProbeConfig::default(); 2],
-            entries_count: 0,
-            marker: 0,
-        }
-    }
 }
 
 impl DefaultArm {
@@ -32,11 +22,10 @@ impl DefaultArm {
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = DefaultArm::default();
-        for element in value.entries.iter_mut() {
-            *element = ProbeConfig::new();
+        DefaultArm {
+            entries: [ProbeConfig::new(); 2],
+            ..DefaultArm::default()
         }
-        value
     }
 }
 
@@ -79,7 +68,7 @@ pub fn read_default_arm(stream: &mut ReadStream<'_>, value: &mut DefaultArm) -> 
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct DefaultChoiceType(pub u8);
 
 impl DefaultChoiceType {
@@ -88,6 +77,17 @@ impl DefaultChoiceType {
     pub const SECOND: DefaultChoiceType = DefaultChoiceType(2);
     pub const COUNT: DefaultChoiceType = DefaultChoiceType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: DefaultChoiceType = DefaultChoiceType(2); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_default_choice_type(self)
+    }
+}
+
+impl core::fmt::Display for DefaultChoiceType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `DefaultChoiceType` value, out-of-set included.
@@ -103,7 +103,7 @@ pub fn enum_name_default_choice_type(value: DefaultChoiceType) -> &'static str {
 // DefaultChoice — at most one of the arms. The default is None (the empty union);
 // every read reconstructs the selected payload with its declared initial
 // values, even at the same tag, and replaces the whole value on success.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum DefaultChoice {
     #[default]
     None,
@@ -156,19 +156,11 @@ pub fn read_default_choice(stream: &mut ReadStream<'_>, value: &mut DefaultChoic
 }
 
 // type DefaultChoicePacket
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct DefaultChoicePacket {
     pub choice: DefaultChoice,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for DefaultChoicePacket {
-    fn default() -> Self {
-        DefaultChoicePacket {
-            choice: DefaultChoice::None,
-        }
-    }
 }
 
 // DEFAULT_CHOICE_PACKET_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -189,23 +181,13 @@ pub fn read_default_choice_packet(stream: &mut ReadStream<'_>, value: &mut Defau
 }
 
 // type DefaultBulkArm
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct DefaultBulkArm {
     pub payload: DefaultArm,
     pub data: [u8; 2], // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
     pub data_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for DefaultBulkArm {
-    fn default() -> Self {
-        DefaultBulkArm {
-            payload: DefaultArm::default(),
-            data: [0; 2],
-            data_length: 0,
-        }
-    }
 }
 
 impl DefaultBulkArm {
@@ -213,9 +195,10 @@ impl DefaultBulkArm {
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = DefaultBulkArm::default();
-        value.payload = DefaultArm::new();
-        value
+        DefaultBulkArm {
+            payload: DefaultArm::new(),
+            ..DefaultBulkArm::default()
+        }
     }
 }
 
@@ -246,7 +229,7 @@ pub fn read_default_bulk_arm(stream: &mut ReadStream<'_>, value: &mut DefaultBul
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct DefaultBulkChoiceType(pub u8);
 
 impl DefaultBulkChoiceType {
@@ -255,6 +238,17 @@ impl DefaultBulkChoiceType {
     pub const SECOND: DefaultBulkChoiceType = DefaultBulkChoiceType(2);
     pub const COUNT: DefaultBulkChoiceType = DefaultBulkChoiceType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: DefaultBulkChoiceType = DefaultBulkChoiceType(2); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_default_bulk_choice_type(self)
+    }
+}
+
+impl core::fmt::Display for DefaultBulkChoiceType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `DefaultBulkChoiceType` value, out-of-set included.
@@ -270,7 +264,7 @@ pub fn enum_name_default_bulk_choice_type(value: DefaultBulkChoiceType) -> &'sta
 // DefaultBulkChoice — at most one of the arms. The default is None (the empty union);
 // every read reconstructs the selected payload with its declared initial
 // values, even at the same tag, and replaces the whole value on success.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum DefaultBulkChoice {
     #[default]
     None,

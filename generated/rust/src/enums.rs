@@ -7,7 +7,7 @@
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Team(pub u8);
 
 impl Team {
@@ -16,6 +16,17 @@ impl Team {
     pub const BLUE: Team = Team(2);
     pub const COUNT: Team = Team(2); // the declared variant count (SPEC §4.2)
     pub const MAX: Team = Team(2); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_team(self)
+    }
+}
+
+impl core::fmt::Display for Team {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `Team` value, out-of-set included.
@@ -31,7 +42,7 @@ pub fn enum_name_team(value: Team) -> &'static str {
 // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ShipType(pub u8);
 
 impl ShipType {
@@ -43,6 +54,17 @@ impl ShipType {
     pub const CARRIER: ShipType = ShipType(5);
     pub const COUNT: ShipType = ShipType(5); // the declared variant count (SPEC §4.2)
     pub const MAX: ShipType = ShipType(5); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_ship_type(self)
+    }
+}
+
+impl core::fmt::Display for ShipType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `ShipType` value, out-of-set included.
@@ -61,7 +83,7 @@ pub fn enum_name_ship_type(value: ShipType) -> &'static str {
 // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct MissileType(pub u8);
 
 impl MissileType {
@@ -71,6 +93,17 @@ impl MissileType {
     pub const NUKE: MissileType = MissileType(3);
     pub const COUNT: MissileType = MissileType(3); // the declared variant count (SPEC §4.2)
     pub const MAX: MissileType = MissileType(3); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_missile_type(self)
+    }
+}
+
+impl core::fmt::Display for MissileType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `MissileType` value, out-of-set included.
@@ -87,7 +120,7 @@ pub fn enum_name_missile_type(value: MissileType) -> &'static str {
 // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct PropType(pub u8);
 
 impl PropType {
@@ -100,6 +133,17 @@ impl PropType {
     pub const DYSON_PANEL: PropType = PropType(6);
     pub const COUNT: PropType = PropType(6); // the declared variant count (SPEC §4.2)
     pub const MAX: PropType = PropType(6); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_prop_type(self)
+    }
+}
+
+impl core::fmt::Display for PropType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `PropType` value, out-of-set included.
@@ -119,13 +163,24 @@ pub fn enum_name_prop_type(value: PropType) -> &'static str {
 // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Pending(pub u8);
 
 impl Pending {
     pub const NONE: Pending = Pending(0);
     pub const COUNT: Pending = Pending(0); // the declared variant count (SPEC §4.2)
     pub const MAX: Pending = Pending(0); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_pending(self)
+    }
+}
+
+impl core::fmt::Display for Pending {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `Pending` value, out-of-set included.

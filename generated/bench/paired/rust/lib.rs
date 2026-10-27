@@ -4,13 +4,6 @@
 // AGPL-3.0, its output is not.
 // package bench — protocol id 0xc93127c82f083edf
 
-// Two clippy classes are silenced deliberately, crate-wide:
-// - derivable_impls / field_reassign_with_default: Default impls are
-//   hand-emitted as the explicit ZERO form (SPEC §5) and new() reassigns
-//   only the specified defaults — certainty over derive, in every target
-//   the same way, is the point.
-#![allow(clippy::derivable_impls, clippy::field_reassign_with_default)]
-
 mod bench;
 pub use bench::*;
 mod fixedtable; // no items — documentation only

@@ -8,21 +8,12 @@ use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
 // type Vec2
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Vec2 {
     pub x: f64,
     pub y: f64,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Vec2 {
-    fn default() -> Self {
-        Vec2 {
-            x: 0.0,
-            y: 0.0,
-        }
-    }
 }
 
 // VEC2_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -34,26 +25,30 @@ pub const VEC2_MAX_BYTES: usize = 16;
 pub fn write_vec2(stream: &mut WriteStream<'_>, value: &Vec2) -> Result {
     let f0: u64 = value.x.to_bits();
     let f1: u64 = value.y.to_bits();
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
+    // word 0, 32 bits: x[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: x[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: y[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 32 bits: y[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_vec2(stream: &mut ReadStream<'_>, value: &mut Vec2) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: x[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: x[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: y[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: y[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -64,19 +59,11 @@ pub fn read_vec2(stream: &mut ReadStream<'_>, value: &mut Vec2) -> Result {
 }
 
 // type SpanF64
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct SpanF64 {
     pub values: [f64; 2],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for SpanF64 {
-    fn default() -> Self {
-        SpanF64 {
-            values: [0.0; 2],
-        }
-    }
 }
 
 // SPAN_F64_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -104,19 +91,11 @@ pub fn read_span_f64(stream: &mut ReadStream<'_>, value: &mut SpanF64) -> Result
 }
 
 // type SpanU64
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct SpanU64 {
     pub values: [u64; 2],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for SpanU64 {
-    fn default() -> Self {
-        SpanU64 {
-            values: [0; 2],
-        }
-    }
 }
 
 // SPAN_U64_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -144,19 +123,11 @@ pub fn read_span_u64(stream: &mut ReadStream<'_>, value: &mut SpanU64) -> Result
 }
 
 // type SpanI64
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct SpanI64 {
     pub values: [i64; 2],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for SpanI64 {
-    fn default() -> Self {
-        SpanI64 {
-            values: [0; 2],
-        }
-    }
 }
 
 // SPAN_I64_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -188,19 +159,11 @@ pub fn read_span_i64(stream: &mut ReadStream<'_>, value: &mut SpanI64) -> Result
 }
 
 // type SpanOne
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct SpanOne {
     pub values: [u64; 1],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for SpanOne {
-    fn default() -> Self {
-        SpanOne {
-            values: [0; 1],
-        }
-    }
 }
 
 // SPAN_ONE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -228,19 +191,11 @@ pub fn read_span_one(stream: &mut ReadStream<'_>, value: &mut SpanOne) -> Result
 }
 
 // type SpanChunk
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct SpanChunk {
     pub values: [u16; 4],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for SpanChunk {
-    fn default() -> Self {
-        SpanChunk {
-            values: [0; 4],
-        }
-    }
 }
 
 // SPAN_CHUNK_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -272,21 +227,12 @@ pub fn read_span_chunk(stream: &mut ReadStream<'_>, value: &mut SpanChunk) -> Re
 }
 
 // type SpanTail
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct SpanTail {
     pub values: [f64; 2],
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for SpanTail {
-    fn default() -> Self {
-        SpanTail {
-            values: [0.0; 2],
-            tail: 0,
-        }
-    }
 }
 
 // SPAN_TAIL_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -319,21 +265,12 @@ pub fn read_span_tail(stream: &mut ReadStream<'_>, value: &mut SpanTail) -> Resu
 }
 
 // type SpanTwice
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct SpanTwice {
     pub a: [f64; 2],
     pub b: [f64; 2],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for SpanTwice {
-    fn default() -> Self {
-        SpanTwice {
-            a: [0.0; 2],
-            b: [0.0; 2],
-        }
-    }
 }
 
 // SPAN_TWICE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -370,23 +307,13 @@ pub fn read_span_twice(stream: &mut ReadStream<'_>, value: &mut SpanTwice) -> Re
 }
 
 // type Trio
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Trio {
     pub a: u32,
     pub b: u32,
     pub c: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Trio {
-    fn default() -> Self {
-        Trio {
-            a: 0,
-            b: 0,
-            c: 0,
-        }
-    }
 }
 
 // TRIO_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -402,18 +329,20 @@ pub fn write_trio(stream: &mut WriteStream<'_>, value: &Trio) -> Result {
     let f0: u64 = u64::from(value.a);
     let f1: u64 = u64::from(value.b);
     let f2: u64 = u64::from(value.c);
-    let mut w0 = (f0 | (f1 << 20)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f1 >> 12) | (f2 << 8)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
+    // word 0, 32 bits: a[0..20], b[0..12]
+    stream.serialize_bits(&mut ((f0 | (f1 << 20)) as u32), 32)?;
+    // word 1, 32 bits: b[12..20], c[0..24]
+    stream.serialize_bits(&mut (((f1 >> 12) | (f2 << 8)) as u32), 32)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_trio(stream: &mut ReadStream<'_>, value: &mut Trio) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: a[0..20], b[0..12]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: b[12..20], c[0..24]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0xfffff;
@@ -426,19 +355,11 @@ pub fn read_trio(stream: &mut ReadStream<'_>, value: &mut Trio) -> Result {
 }
 
 // type TrioSole
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct TrioSole {
     pub inner: Trio,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for TrioSole {
-    fn default() -> Self {
-        TrioSole {
-            inner: Trio::default(),
-        }
-    }
 }
 
 // TRIO_SOLE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -459,19 +380,11 @@ pub fn read_trio_sole(stream: &mut ReadStream<'_>, value: &mut TrioSole) -> Resu
 }
 
 // type Vec3Sole
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Vec3Sole {
     pub v: Vec3,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Vec3Sole {
-    fn default() -> Self {
-        Vec3Sole {
-            v: Vec3::default(),
-        }
-    }
 }
 
 // VEC3_SOLE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -492,21 +405,12 @@ pub fn read_vec3_sole(stream: &mut ReadStream<'_>, value: &mut Vec3Sole) -> Resu
 }
 
 // type TrioFirst
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct TrioFirst {
     pub inner: Trio,
     pub trailer: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for TrioFirst {
-    fn default() -> Self {
-        TrioFirst {
-            inner: Trio::default(),
-            trailer: 0,
-        }
-    }
 }
 
 // TRIO_FIRST_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -533,8 +437,9 @@ pub fn read_trio_first(stream: &mut ReadStream<'_>, value: &mut TrioFirst) -> Re
 }
 
 // type TrioStraddle
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct TrioStraddle {
     pub pad0: u64,
     pub pad1: u64,
@@ -543,21 +448,6 @@ pub struct TrioStraddle {
     pub pad4: u64,
     pub pad5: u32,
     pub inner: Trio,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for TrioStraddle {
-    fn default() -> Self {
-        TrioStraddle {
-            pad0: 0,
-            pad1: 0,
-            pad2: 0,
-            pad3: 0,
-            pad4: 0,
-            pad5: 0,
-            inner: Trio::default(),
-        }
-    }
 }
 
 // TRIO_STRADDLE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -571,31 +461,31 @@ pub fn write_trio_straddle(stream: &mut WriteStream<'_>, value: &TrioStraddle) -
     let f1: u64 = value.pad1;
     let f2: u64 = value.pad2;
     let f3: u64 = value.pad3;
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = f2 as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f2 >> 32) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = f3 as u32;
-    stream.serialize_bits(&mut w6, 32)?;
-    let mut w7 = (f3 >> 32) as u32;
-    stream.serialize_bits(&mut w7, 32)?;
+    // word 0, 32 bits: pad0[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: pad0[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: pad1[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 32 bits: pad1[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    // word 4, 32 bits: pad2[0..32]
+    stream.serialize_bits(&mut (f2 as u32), 32)?;
+    // word 5, 32 bits: pad2[32..64]
+    stream.serialize_bits(&mut ((f2 >> 32) as u32), 32)?;
+    // word 6, 32 bits: pad3[0..32]
+    stream.serialize_bits(&mut (f3 as u32), 32)?;
+    // word 7, 32 bits: pad3[32..64]
+    stream.serialize_bits(&mut ((f3 >> 32) as u32), 32)?;
     debug_assert!(value.pad5 < 1 << 24, "pad5 above the bits(24) wire width");
     let f0: u64 = value.pad4;
     let f1: u64 = u64::from(value.pad5);
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 24)?;
+    // word 0, 32 bits: pad4[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: pad4[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 24 bits: pad5[0..24]
+    stream.serialize_bits(&mut (f1 as u32), 24)?;
     write_trio(stream, &value.inner)?;
     Ok(())
 }
@@ -603,20 +493,28 @@ pub fn write_trio_straddle(stream: &mut WriteStream<'_>, value: &TrioStraddle) -
 #[inline]
 pub fn read_trio_straddle(stream: &mut ReadStream<'_>, value: &mut TrioStraddle) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: pad0[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: pad0[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: pad1[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: pad1[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: pad2[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: pad2[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 32 bits: pad3[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c6 = u64::from(c);
+    // word 7, 32 bits: pad3[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -628,10 +526,13 @@ pub fn read_trio_straddle(stream: &mut ReadStream<'_>, value: &mut TrioStraddle)
     let v3: u64 = c6 | (c7 << 32);
     value.pad3 = v3;
     let mut c: u32 = 0;
+    // word 0, 32 bits: pad4[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: pad4[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 24 bits: pad5[0..24]
     stream.serialize_bits(&mut c, 24)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);

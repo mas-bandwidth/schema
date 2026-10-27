@@ -39,7 +39,7 @@ pub const MAX_WORLD_UNITS: i64 = 30000;
 // DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct DriveMode(pub u8);
 
 impl DriveMode {
@@ -49,6 +49,17 @@ impl DriveMode {
     pub const LUDICROUS: DriveMode = DriveMode(3);
     pub const COUNT: DriveMode = DriveMode(3); // the declared variant count (SPEC §4.2)
     pub const MAX: DriveMode = DriveMode(3); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_drive_mode(self)
+    }
+}
+
+impl core::fmt::Display for DriveMode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `DriveMode` value, out-of-set included.
@@ -63,27 +74,15 @@ pub fn enum_name_drive_mode(value: DriveMode) -> &'static str {
 }
 
 // type FixedProbe
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct FixedProbe {
     pub angle: i32, // wire [-180, 180]
     pub position: i64, // wire [-30000, 30000]
     pub reach: i128, // wire [-1000000, 1000000]
     pub ticks: i32, // wire [0, 1000000]
     pub samples: [i32; 2], // wire [-8, 8]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for FixedProbe {
-    fn default() -> Self {
-        FixedProbe {
-            angle: 0,
-            position: 0,
-            reach: 0,
-            ticks: 0,
-            samples: [0; 2],
-        }
-    }
 }
 
 // FIXED_PROBE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -136,8 +135,9 @@ pub fn read_fixed_probe(stream: &mut ReadStream<'_>, value: &mut FixedProbe) -> 
 }
 
 // type UnsignedProbe
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct UnsignedProbe {
     pub angle: u32, // wire [0, 360]
     pub span: u64, // wire [0, 281474976710655]
@@ -148,29 +148,15 @@ pub struct UnsignedProbe {
     pub tail: u8,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for UnsignedProbe {
-    fn default() -> Self {
-        UnsignedProbe {
-            angle: 0,
-            span: 0,
-            reach: 0,
-            ticks: 0,
-            samples: [0; 2],
-            locked: 0,
-            tail: 0,
-        }
-    }
-}
-
 impl UnsignedProbe {
     // new returns a UnsignedProbe with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = UnsignedProbe::default();
-        value.locked = 196608;
-        value
+        UnsignedProbe {
+            locked: 196608,
+            ..UnsignedProbe::default()
+        }
     }
 }
 
@@ -208,7 +194,7 @@ pub fn write_unsigned_probe(stream: &mut WriteStream<'_>, value: &UnsignedProbe)
             stream.serialize_fixed(&mut fixed_value, 16, 16, 0, 16)?;
         }
     }
-    debug_assert!(value.locked >= 196608 && value.locked <= 196608, "locked raw value out of range [196608, 196608]");
+    debug_assert!(value.locked == 196608, "locked raw value out of range [196608, 196608]");
     {
         let mut raw_value = value.tail as u32;
         stream.serialize_bits(&mut raw_value, 8)?;
@@ -235,8 +221,9 @@ pub fn read_unsigned_probe(stream: &mut ReadStream<'_>, value: &mut UnsignedProb
 }
 
 // type WideProbe
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WideProbe {
     pub entity_id: u128,
     pub energy: i128, // wire [-5000000000, 5000000000]
@@ -245,28 +232,16 @@ pub struct WideProbe {
     pub seed: u128, // = 36893488147419103232 in new() (zero value otherwise)
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for WideProbe {
-    fn default() -> Self {
-        WideProbe {
-            entity_id: 0,
-            energy: 0,
-            flux: 0,
-            bias: 0,
-            seed: 0,
-        }
-    }
-}
-
 impl WideProbe {
     // new returns a WideProbe with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = WideProbe::default();
-        value.bias = -250;
-        value.seed = 36893488147419103232;
-        value
+        WideProbe {
+            bias: -250,
+            seed: 36893488147419103232,
+            ..WideProbe::default()
+        }
     }
 }
 
@@ -314,8 +289,9 @@ pub fn read_wide_probe(stream: &mut ReadStream<'_>, value: &mut WideProbe) -> Re
 }
 
 // type LudicrousState
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct LudicrousState {
     pub mode: DriveMode,
     pub probe: FixedProbe,
@@ -329,29 +305,15 @@ pub struct LudicrousState {
     pub target_id: u128,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for LudicrousState {
-    fn default() -> Self {
-        LudicrousState {
-            mode: DriveMode::NONE,
-            probe: FixedProbe::default(),
-            wide: WideProbe::default(),
-            keys: [0; 4],
-            keys_count: 0,
-            has_target: false,
-            target_id: 0,
-        }
-    }
-}
-
 impl LudicrousState {
     // new returns a LudicrousState with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = LudicrousState::default();
-        value.wide = WideProbe::new();
-        value
+        LudicrousState {
+            wide: WideProbe::new(),
+            ..LudicrousState::default()
+        }
     }
 }
 
@@ -416,8 +378,9 @@ pub fn read_ludicrous_state(stream: &mut ReadStream<'_>, value: &mut LudicrousSt
 }
 
 // type DegenerateProbe
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct DegenerateProbe {
     pub locked_fixed: i32, // = -196608 in new() (zero value otherwise); wire [-3, -3]
     pub locked_int: i32, // = 7 in new() (zero value otherwise); wire [7, 7]
@@ -425,28 +388,17 @@ pub struct DegenerateProbe {
     pub tail: u8,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for DegenerateProbe {
-    fn default() -> Self {
-        DegenerateProbe {
-            locked_fixed: 0,
-            locked_int: 0,
-            locked_wide: 0,
-            tail: 0,
-        }
-    }
-}
-
 impl DegenerateProbe {
     // new returns a DegenerateProbe with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = DegenerateProbe::default();
-        value.locked_fixed = -196608;
-        value.locked_int = 7;
-        value.locked_wide = -12345678901234;
-        value
+        DegenerateProbe {
+            locked_fixed: -196608,
+            locked_int: 7,
+            locked_wide: -12345678901234,
+            ..DegenerateProbe::default()
+        }
     }
 }
 
@@ -457,9 +409,9 @@ pub const DEGENERATE_PROBE_MAX_BYTES: usize = 8;
 
 #[inline(always)]
 pub fn write_degenerate_probe(stream: &mut WriteStream<'_>, value: &DegenerateProbe) -> Result {
-    debug_assert!(value.locked_fixed >= -196608 && value.locked_fixed <= -196608, "locked_fixed raw value out of range [-196608, -196608]");
-    debug_assert!(value.locked_int >= 7 && value.locked_int <= 7, "locked_int out of range [7, 7]");
-    debug_assert!(value.locked_wide >= -12345678901234 && value.locked_wide <= -12345678901234, "locked_wide out of range [-12345678901234, -12345678901234]");
+    debug_assert!(value.locked_fixed == -196608, "locked_fixed raw value out of range [-196608, -196608]");
+    debug_assert!(value.locked_int == 7, "locked_int out of range [7, 7]");
+    debug_assert!(value.locked_wide == -12345678901234, "locked_wide out of range [-12345678901234, -12345678901234]");
     {
         let mut raw_value = value.tail as u32;
         stream.serialize_bits(&mut raw_value, 8)?;
@@ -481,23 +433,13 @@ pub fn read_degenerate_probe(stream: &mut ReadStream<'_>, value: &mut Degenerate
 }
 
 // type FixedVec
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct FixedVec {
     pub x: i64, // wire [-100000, 100000]
     pub y: i64, // wire [-100000, 100000]
     pub z: i64, // wire [-100000, 100000]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for FixedVec {
-    fn default() -> Self {
-        FixedVec {
-            x: 0,
-            y: 0,
-            z: 0,
-        }
-    }
 }
 
 // FIXED_VEC_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -534,8 +476,9 @@ pub fn read_fixed_vec(stream: &mut ReadStream<'_>, value: &mut FixedVec) -> Resu
 }
 
 // type FixedQuat
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct FixedQuat {
     pub x: i32, // wire [-1, 1]
     pub y: i32, // wire [-1, 1]
@@ -543,26 +486,15 @@ pub struct FixedQuat {
     pub w: i32, // = 1073741824 in new() (zero value otherwise); wire [-1, 1]
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for FixedQuat {
-    fn default() -> Self {
-        FixedQuat {
-            x: 0,
-            y: 0,
-            z: 0,
-            w: 0,
-        }
-    }
-}
-
 impl FixedQuat {
     // new returns a FixedQuat with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = FixedQuat::default();
-        value.w = 1073741824;
-        value
+        FixedQuat {
+            w: 1073741824,
+            ..FixedQuat::default()
+        }
     }
 }
 

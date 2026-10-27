@@ -35,21 +35,12 @@ impl From<core::convert::Infallible> for Error {
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 // type WideSeven
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WideSeven {
     pub text: [u16; 7], // UTF-16 code units (SPEC §4.12)
     pub text_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for WideSeven {
-    fn default() -> Self {
-        WideSeven {
-            text: [0; 7],
-            text_length: 0,
-        }
-    }
 }
 
 // WIDE_SEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -93,21 +84,12 @@ pub fn read_wide_seven(stream: &mut ReadStream<'_>, value: &mut WideSeven) -> Re
 }
 
 // type WideFour
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WideFour {
     pub text: [u16; 4], // UTF-16 code units (SPEC §4.12)
     pub text_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for WideFour {
-    fn default() -> Self {
-        WideFour {
-            text: [0; 4],
-            text_length: 0,
-        }
-    }
 }
 
 // WIDE_FOUR_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -151,21 +133,12 @@ pub fn read_wide_four(stream: &mut ReadStream<'_>, value: &mut WideFour) -> Resu
 }
 
 // type NarrowFifteen
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct NarrowFifteen {
     pub text: [u8; 15], // string(15): max length, used length beside it (SPEC §4.7)
     pub text_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for NarrowFifteen {
-    fn default() -> Self {
-        NarrowFifteen {
-            text: [0; 15],
-            text_length: 0,
-        }
-    }
 }
 
 // NARROW_FIFTEEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -200,21 +173,12 @@ pub fn read_narrow_fifteen(stream: &mut ReadStream<'_>, value: &mut NarrowFiftee
 }
 
 // type WideInterop
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct WideInterop {
     pub caption: [u16; 7], // UTF-16 code units (SPEC §4.12)
     pub caption_length: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for WideInterop {
-    fn default() -> Self {
-        WideInterop {
-            caption: [0; 7],
-            caption_length: 0,
-        }
-    }
 }
 
 // WIDE_INTEROP_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).

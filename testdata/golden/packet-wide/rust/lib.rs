@@ -4,12 +4,5 @@
 // AGPL-3.0, its output is not.
 // package wide — protocol id 0x53835dbf9f05e4d9
 
-// Two clippy classes are silenced deliberately, crate-wide:
-// - derivable_impls / field_reassign_with_default: Default impls are
-//   hand-emitted as the explicit ZERO form (SPEC §5) and new() reassigns
-//   only the specified defaults — certainty over derive, in every target
-//   the same way, is the point.
-#![allow(clippy::derivable_impls, clippy::field_reassign_with_default)]
-
 mod widetext;
 pub use widetext::*;

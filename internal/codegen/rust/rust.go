@@ -107,12 +107,6 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 	b.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	b.WriteString("// AGPL-3.0, its output is not.\n")
 	fmt.Fprintf(&b, "// package %s — protocol id 0x%016x\n\n", u.Package, u.ProtocolId)
-	b.WriteString("// Two clippy classes are silenced deliberately, crate-wide:\n")
-	b.WriteString("// - derivable_impls / field_reassign_with_default: Default impls are\n")
-	b.WriteString("//   hand-emitted as the explicit ZERO form (SPEC §5) and new() reassigns\n")
-	b.WriteString("//   only the specified defaults — certainty over derive, in every target\n")
-	b.WriteString("//   the same way, is the point.\n")
-	b.WriteString("#![allow(clippy::derivable_impls, clippy::field_reassign_with_default)]\n\n")
 	names := make([]string, 0, len(modules))
 	for mod := range modules {
 		names = append(names, mod)
@@ -225,7 +219,9 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 			g.emitFlags(d)
 		case *ir.Struct:
 			g.emitStruct(d)
-			g.emitDefaultImpl(d.Name, d.Fields)
+			if !zeroDerivable(d.Fields) {
+				g.emitDefaultImpl(d.Name, d.Fields)
+			}
 			g.emitConstructor(d)
 			g.emitStructFunctions(d)
 		case *ir.Union:
@@ -244,7 +240,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 func (g *gen) emitTagEnum(name string, members []string, docs []string, comment string) {
 	storage := rustUint(ir.StorageBitsFor(int64(len(members))))
 	g.pf("// %s: %s\n", name, comment)
-	g.pf("#[repr(transparent)]\n#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]\n")
+	g.pf("#[repr(transparent)]\n#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]\n")
 	g.pf("pub struct %s(pub %s);\n\n", name, storage)
 	g.pf("impl %s {\n", name)
 	g.pf("    pub const NONE: %s = %s(0);\n", name, name)
@@ -254,12 +250,26 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 	}
 	g.pf("    pub const COUNT: %s = %s(%d); // the declared variant count (SPEC §4.2)\n", name, name, len(members))
 	g.pf("    pub const MAX: %s = %s(%d); // the exported extent (SPEC §4.2)\n", name, name, len(members))
-	g.pf("}\n\n")
-
 	// the tag enum's name surface is a declared enum's, member for member: a
-	// reader logging which message arrived writes enum_name_<tag>(value)
-	// whichever enum it is. Nothing on the read or write path calls it.
+	// reader logging which message arrived writes `{}` or as_str() whichever
+	// enum it is. Nothing on the read or write path calls it.
+	g.emitEnumNames(name, members)
+}
+
+// emitEnumNames closes an enum newtype's impl block with as_str(), then emits
+// Display over it and the enum_name_<snake> free function every target spells
+// (SPEC §4.8's debug-name table), which holds the match. All three take any
+// value, out-of-set included, and name an unknown one "???".
+func (g *gen) emitEnumNames(name string, members []string) {
 	snake := ir.RustSnake(name)
+	g.pf("\n    /// Debug/log name for any value, out-of-set included.\n")
+	g.pf("    pub fn as_str(self) -> &'static str {\n")
+	g.pf("        enum_name_%s(self)\n    }\n}\n\n", snake)
+
+	g.pf("impl core::fmt::Display for %s {\n", name)
+	g.pf("    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n")
+	g.pf("        f.write_str(self.as_str())\n    }\n}\n\n")
+
 	g.pf("/// Debug/log name for any `%s` value, out-of-set included.\n", name)
 	g.pf("pub fn enum_name_%s(value: %s) -> &'static str {\n", snake, name)
 	g.pf("    match value.0 {\n")
@@ -330,7 +340,11 @@ func (g *gen) emitUnion(d *ir.Union) {
 	g.pf("// %s — at most one of the arms. The default is None (the empty union);\n", d.Name)
 	g.pf("// every read reconstructs the selected payload with its declared initial\n")
 	g.pf("// values, even at the same tag, and replaces the whole value on success.\n")
-	g.pf("#[derive(Clone, Copy, PartialEq, Debug, Default)]\n")
+	if g.unionIsEq(d, map[*ir.Struct]bool{}) {
+		g.pf("#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]\n")
+	} else {
+		g.pf("#[derive(Clone, Copy, PartialEq, Debug, Default)]\n")
+	}
 	g.pf("pub enum %s {\n", d.Name)
 	g.pf("    #[default]\n    None,\n")
 	for _, v := range d.Variants {
@@ -350,7 +364,7 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("// %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2);\n", d.Name, d.Max)
 	g.pf("// a newtype because | max = ... headroom makes non-variant values wire-legal\n")
 	g.allowNonCamel(d.Name)
-	g.pf("#[repr(transparent)]\n#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]\n")
+	g.pf("#[repr(transparent)]\n#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]\n")
 	g.pf("pub struct %s(pub %s);\n\n", d.Name, rustUint(d.StorageBits))
 	g.pf("impl %s {\n", d.Name)
 	g.pf("    pub const NONE: %s = %s(0);\n", d.Name, d.Name)
@@ -360,20 +374,9 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	}
 	g.pf("    pub const COUNT: %s = %s(%d); // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
 	g.pf("    pub const MAX: %s = %s(%d); // the exported extent (SPEC §4.2)\n", d.Name, d.Name, d.Max)
-	g.pf("}\n\n")
-
 	// Debug/log name for any value, out-of-set included — the counterpart of
 	// C++'s and Go's EnumName.
-	snake := ir.RustSnake(d.Name)
-	g.pf("/// Debug/log name for any `%s` value, out-of-set included.\n", d.Name)
-	g.pf("pub fn enum_name_%s(value: %s) -> &'static str {\n", snake, d.Name)
-	g.pf("    match value.0 {\n")
-	g.pf("        0 => \"None\",\n")
-	for i, v := range d.Variants {
-		g.pf("        %d => %q,\n", i+1, v)
-	}
-	g.pf("        _ => \"???\",\n")
-	g.pf("    }\n}\n\n")
+	g.emitEnumNames(d.Name, d.Variants)
 }
 
 func (g *gen) emitFlags(d *ir.Flags) {
@@ -428,8 +431,21 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	// honoured by accident until the day they were not. It also makes the layout match
 	// the C++ struct field for field, which is what "the same data type in
 	// five languages" ought to mean.
+	derives := "Clone, Copy, PartialEq"
+	if g.structIsEq(d, map[*ir.Struct]bool{}) {
+		derives += ", Eq, Hash"
+	}
+	derives += ", Debug"
+	if zeroDerivable(d.Fields) {
+		// the derived Default IS the zero form (SPEC §5): every field's own
+		// Default is its zero, and specified defaults live only in new()
+		derives += ", Default"
+	}
+	if zeroDerivable(d.Fields) {
+		g.pf("// Default is the zero form (SPEC §5); specified defaults live only in new().\n")
+	}
 	g.pf("#[repr(C)]\n")
-	g.pf("#[derive(Clone, Copy, PartialEq, Debug)]\n")
+	g.pf("#[derive(%s)]\n", derives)
 	if len(d.Fields) == 0 {
 		g.pf("pub struct %s {}\n\n", d.Name)
 		return
@@ -439,10 +455,76 @@ func (g *gen) emitStruct(d *ir.Struct) {
 	g.pf("}\n\n")
 }
 
-// emitDefaultImpl hand-emits the zero form for a struct. It is ALWAYS the
+// zeroDerivable reports whether #[derive(Default)] produces the zero form for
+// these fields. Every scalar, enum newtype, flags alias, union (None) and
+// nested struct defaults to its zero; the one gap is std's array Default,
+// implemented only up to length 32, so a longer array or string/bytes buffer
+// keeps the hand-emitted impl.
+func zeroDerivable(fields []*ir.Field) bool {
+	for _, f := range fields {
+		switch {
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+			if f.Type.Size > 32 {
+				return false
+			}
+		case f.Array != ir.ArrayNone:
+			if f.ArrayBound > 32 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// structIsEq reports whether a struct can derive Eq and Hash: no float field,
+// directly or through a nested struct or union arm.
+func (g *gen) structIsEq(d *ir.Struct, seen map[*ir.Struct]bool) bool {
+	if seen[d] {
+		return true
+	}
+	seen[d] = true
+	for _, f := range d.Fields {
+		if !g.fieldIsEq(f, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *gen) fieldIsEq(f *ir.Field, seen map[*ir.Struct]bool) bool {
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return false
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return g.structIsEq(ref, seen)
+		case *ir.Union:
+			return g.unionIsEq(ref, seen)
+		}
+	}
+	return true
+}
+
+func (g *gen) unionIsEq(d *ir.Union, seen map[*ir.Struct]bool) bool {
+	for _, v := range d.Variants {
+		if v.Void() {
+			continue
+		}
+		if v.Ref != nil && !g.structIsEq(v.Ref, seen) {
+			return false
+		}
+		if v.Ref == nil && v.F != nil && !g.fieldIsEq(v.F, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+// emitDefaultImpl hand-emits the zero form for a struct whose arrays are too
+// long for std's derived array Default (zeroDerivable). It is ALWAYS the
 // all-zero value — §5's untaken-branch value and the base new() starts from;
-// specified defaults live only in new(), never here (derive(Default) is not
-// used: hand emission is uniform across array sizes and nested types).
+// specified defaults live only in new(), never here.
 func (g *gen) emitDefaultImpl(name string, fields []*ir.Field) {
 	g.pf("// The zero form (SPEC §5): specified defaults live only in new(), never here.\n")
 	g.pf("impl Default for %s {\n", name)
@@ -511,11 +593,36 @@ func (g *gen) emitConstructor(d *ir.Struct) {
 	g.pf("    // Default::default() is the all-zero form (SPEC §4.2: zero initialization\n")
 	g.pf("    // unless a specified default overrides it).\n")
 	g.pf("    pub fn new() -> Self {\n")
-	g.pf("        let mut value = %s::default();\n", d.Name)
+	var inits []string
+	covered := 0
 	for _, f := range d.Fields {
-		g.emitDefaultInit(f)
+		fi := g.defaultInits(f)
+		inits = append(inits, fi...)
+		covered += len(fi)
 	}
-	g.pf("        value\n    }\n}\n\n")
+	// a struct literal over the zero form rather than field reassignment on a
+	// default() value: the specified defaults read as one declaration
+	g.pf("        %s {\n", d.Name)
+	for _, in := range inits {
+		g.pf("            %s,\n", in)
+	}
+	if covered < storageFieldCount(d.Fields) {
+		g.pf("            ..%s::default()\n", d.Name)
+	}
+	g.pf("        }\n    }\n}\n\n")
+}
+
+// storageFieldCount is the number of Rust struct fields d's schema fields
+// lower to: string/bytes carry a used length, counted arrays a used count.
+func storageFieldCount(fields []*ir.Field) int {
+	n := 0
+	for _, f := range fields {
+		n++
+		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString || f.Array == ir.ArrayCounted {
+			n++
+		}
+	}
+	return n
 }
 
 // hasDefaults reports whether a struct transitively carries a specified default.
@@ -542,42 +649,44 @@ func (g *gen) hasDefaults(d *ir.Struct) bool {
 	return walk(d)
 }
 
-func (g *gen) emitDefaultInit(f *ir.Field) {
-	name := "value." + f.Name
+// defaultInits renders one field's `name: value` entries for new()'s struct
+// literal — none when the field keeps its zero form.
+func (g *gen) defaultInits(f *ir.Field) []string {
+	var out []string
 	if n := f.BornCount(); n > 0 {
 		// a [A..B] count is born at A, the one wire-legal count a fresh value
 		// can carry (SPEC §4.6). The elements below follow their own rule
-		g.pf("        %s_count = %d;\n", name, n)
+		out = append(out, fmt.Sprintf("%s_count: %d", f.Name, n))
 	}
 	if f.HasDefault {
 		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-			// new() starts from the zero form, so copying only the literal
-			// prefix preserves zero backing tails without escaping source text.
+			// the literal prefix over a zero backing tail, built in place
+			// without escaping source text
 			if len(f.DefBytes) > 0 {
-				g.pf("        %s[..%d].copy_from_slice(&[", name, len(f.DefBytes))
+				var bytes []string
 				for _, b := range f.DefBytes {
-					g.pf("0x%02x, ", b)
+					bytes = append(bytes, fmt.Sprintf("0x%02x", b))
 				}
-				g.pf("]);\n")
+				size := g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize")
+				out = append(out, fmt.Sprintf("%s: {\n                let mut buffer = [0; %s];\n                buffer[..%d].copy_from_slice(&[%s]);\n                buffer\n            }",
+					f.Name, size, len(f.DefBytes), strings.Join(bytes, ", ")))
 			}
-			g.pf("        %s_length = %d;\n", name, len(f.DefBytes))
-			return
+			return append(out, fmt.Sprintf("%s_length: %d", f.Name, len(f.DefBytes)))
 		}
-		g.pf("        %s = %s;\n", name, g.defaultValue(f))
-		return
+		return append(out, fmt.Sprintf("%s: %s", f.Name, g.defaultValue(f)))
 	}
 	if f.Type.Kind != ir.TNamed {
-		return
+		return out
 	}
 	inner, ok := f.Type.Ref.(*ir.Struct)
 	if !ok || !g.hasDefaults(inner) {
-		return
+		return out
 	}
 	if f.Array != ir.ArrayNone {
-		g.pf("        for element in %s.iter_mut() {\n            *element = %s::new();\n        }\n", name, inner.Name)
-		return
+		// generated structs are Copy, so the repeat expression is legal
+		return append(out, fmt.Sprintf("%s: [%s::new(); %s]", f.Name, inner.Name, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize")))
 	}
-	g.pf("        %s = %s::new();\n", name, inner.Name)
+	return append(out, fmt.Sprintf("%s: %s::new()", f.Name, inner.Name))
 }
 
 func (g *gen) defaultValue(f *ir.Field) string {

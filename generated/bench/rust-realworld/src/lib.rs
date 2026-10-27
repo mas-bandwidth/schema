@@ -4,12 +4,5 @@
 // AGPL-3.0, its output is not.
 // package realworld — protocol id 0x1922430092518648
 
-// Two clippy classes are silenced deliberately, crate-wide:
-// - derivable_impls / field_reassign_with_default: Default impls are
-//   hand-emitted as the explicit ZERO form (SPEC §5) and new() reassigns
-//   only the specified defaults — certainty over derive, in every target
-//   the same way, is the point.
-#![allow(clippy::derivable_impls, clippy::field_reassign_with_default)]
-
 mod realworld;
 pub use realworld::*;

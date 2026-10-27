@@ -37,7 +37,7 @@ pub type Result<T = ()> = core::result::Result<T, Error>;
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct PacketMode(pub u8);
 
 impl PacketMode {
@@ -49,6 +49,17 @@ impl PacketMode {
     pub const WARPING: PacketMode = PacketMode(5);
     pub const COUNT: PacketMode = PacketMode(5); // the declared variant count (SPEC §4.2)
     pub const MAX: PacketMode = PacketMode(5); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_packet_mode(self)
+    }
+}
+
+impl core::fmt::Display for PacketMode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `PacketMode` value, out-of-set included.
@@ -134,8 +145,9 @@ pub fn flag_names_packet_flags(value: PacketFlags) -> String {
 }
 
 // type RealPacket
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct RealPacket {
     pub f001_int: i32, // wire [-805495, 805495]
     pub f002_f64: f64,
@@ -252,122 +264,18 @@ pub struct RealPacket {
     pub f097_bits: u32,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for RealPacket {
-    fn default() -> Self {
-        RealPacket {
-            f001_int: 0,
-            f002_f64: 0.0,
-            f003_int: 0,
-            f004_cf32: 0.0,
-            f005_uint: 0,
-            f006_int: 0,
-            f007_f32: 0.0,
-            f008_u64: 0,
-            f009_int: 0,
-            f010_f32: 0.0,
-            f011_bits: 0,
-            f012_bool: false,
-            f013_f32: 0.0,
-            f014_uint: 0,
-            f015_int: 0,
-            f016_fixed: 0,
-            f017_uint: 0,
-            f018_int: 0,
-            f019_f64: 0.0,
-            f020_f32: 0.0,
-            f021_ufixed: 0,
-            f022_f32: 0.0,
-            f023_bits: 0,
-            f024_f32: 0.0,
-            f025_fixed: 0,
-            f026_bits: 0,
-            f027_cf32: 0.0,
-            f028_bits: 0,
-            f029_i64: 0,
-            f030_f32: 0.0,
-            f031_bits: 0,
-            f032_int: 0,
-            f033_uint: 0,
-            f034_uint: 0,
-            f035_bits: 0,
-            f036_enum: PacketMode::NONE,
-            f037_bool: false,
-            f038_bool: false,
-            f039_bits: 0,
-            f040_fixed: 0,
-            f041_int: 0,
-            f042_bits: 0,
-            f043_bool: false,
-            f044_f32: 0.0,
-            f045_bits: 0,
-            f046_uint: 0,
-            f047_int: 0,
-            f048_f64: 0.0,
-            f049_ufixed: 0,
-            f050_bool: false,
-            f051_bool: false,
-            f052_int: 0,
-            f053_f32: 0.0,
-            f054_int: 0,
-            f055_bool: false,
-            f056_int: 0,
-            f057_int: 0,
-            f058_f32: 0.0,
-            f059_f64: 0.0,
-            f060_bits: 0,
-            f061_cf32: 0.0,
-            f062_uint: 0,
-            f063_i64: 0,
-            f064_uint: 0,
-            f065_cf32: 0.0,
-            f066_ufixed: 0,
-            f067_cf32: 0.0,
-            f068_cf32: 0.0,
-            f069_bits: 0,
-            f070_uint: 0,
-            f071_cf32: 0.0,
-            f072_cf32: 0.0,
-            f073_int: 0,
-            f074_bool: false,
-            f075_u64: 0,
-            f076_int: 0,
-            f077_int: 0,
-            f078_bits: 0,
-            f079_uint: 0,
-            f080_bool: false,
-            f081_bits: 0,
-            f082_bits: 0,
-            f083_enum: PacketMode::NONE,
-            f084_ufixed: 0,
-            f085_bits: 0,
-            f086_uint: 0,
-            f087_f64: 0.0,
-            f088_int: 0,
-            f089_bits: 0,
-            f090_uint: 0,
-            f091_flags: 0,
-            f092_bool: false,
-            f093_bits: 0,
-            f094_bool: false,
-            f095_fixed: 0,
-            f096_bits: 0,
-            f097_bits: 0,
-        }
-    }
-}
-
 impl RealPacket {
     // new returns a RealPacket with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = RealPacket::default();
-        value.f012_bool = true;
-        value.f043_bool = false;
-        value.f050_bool = true;
-        value.f074_bool = false;
-        value
+        RealPacket {
+            f012_bool: true,
+            f043_bool: false,
+            f050_bool: true,
+            f074_bool: false,
+            ..RealPacket::default()
+        }
     }
 }
 
@@ -383,14 +291,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f0: u64 = u64::from((value.f001_int as u32).wrapping_sub((-805495_i32) as u32));
     let f1: u64 = value.f002_f64.to_bits();
     let f2: u64 = u64::from((value.f003_int as u32).wrapping_sub((-835897_i32) as u32));
-    let mut w0 = (f0 | (f1 << 21)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f1 >> 11) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f1 >> 43) | (f2 << 21)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f2 >> 11) as u32;
-    stream.serialize_bits(&mut w3, 10)?;
+    // word 0, 32 bits: f001_int[0..21], f002_f64[0..11]
+    stream.serialize_bits(&mut ((f0 | (f1 << 21)) as u32), 32)?;
+    // word 1, 32 bits: f002_f64[11..43]
+    stream.serialize_bits(&mut ((f1 >> 11) as u32), 32)?;
+    // word 2, 32 bits: f002_f64[43..64], f003_int[0..11]
+    stream.serialize_bits(&mut (((f1 >> 43) | (f2 << 21)) as u32), 32)?;
+    // word 3, 10 bits: f003_int[11..21]
+    stream.serialize_bits(&mut ((f2 >> 11) as u32), 10)?;
     {
         let mut compressed_value = value.f004_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
@@ -407,28 +315,28 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f5: u64 = u64::from(value.f010_f32.to_bits());
     let f6: u64 = u64::from(value.f011_bits);
     let f7: u64 = u64::from(value.f012_bool);
-    let mut w0 = (f0 | (f1 << 13) | (f2 << 25)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 7) | (f3 << 25)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f3 >> 7) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f3 >> 39) | (f4 << 25) | (f5 << 31)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f5 >> 1) | (f6 << 31)) as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = ((f6 >> 1) | (f7 << 9)) as u32;
-    stream.serialize_bits(&mut w5, 10)?;
+    // word 0, 32 bits: f005_uint[0..13], f006_int[0..12], f007_f32[0..7]
+    stream.serialize_bits(&mut ((f0 | (f1 << 13) | (f2 << 25)) as u32), 32)?;
+    // word 1, 32 bits: f007_f32[7..32], f008_u64[0..7]
+    stream.serialize_bits(&mut (((f2 >> 7) | (f3 << 25)) as u32), 32)?;
+    // word 2, 32 bits: f008_u64[7..39]
+    stream.serialize_bits(&mut ((f3 >> 7) as u32), 32)?;
+    // word 3, 32 bits: f008_u64[39..64], f009_int[0..6], f010_f32[0..1]
+    stream.serialize_bits(&mut (((f3 >> 39) | (f4 << 25) | (f5 << 31)) as u32), 32)?;
+    // word 4, 32 bits: f010_f32[1..32], f011_bits[0..1]
+    stream.serialize_bits(&mut (((f5 >> 1) | (f6 << 31)) as u32), 32)?;
+    // word 5, 10 bits: f011_bits[1..10], f012_bool[0..1]
+    stream.serialize_bits(&mut (((f6 >> 1) | (f7 << 9)) as u32), 10)?;
     if value.f012_bool {
         debug_assert!(value.f014_uint <= 775, "f014_uint out of range [0, 775]");
         debug_assert!(value.f015_int >= -21 && value.f015_int <= 21, "f015_int out of range [-21, 21]");
         let f0: u64 = u64::from(value.f013_f32.to_bits());
         let f1: u64 = u64::from(value.f014_uint as u32);
         let f2: u64 = u64::from((value.f015_int as u32).wrapping_sub((-21_i32) as u32));
-        let mut w0 = f0 as u32;
-        stream.serialize_bits(&mut w0, 32)?;
-        let mut w1 = (f1 | (f2 << 10)) as u32;
-        stream.serialize_bits(&mut w1, 16)?;
+        // word 0, 32 bits: f013_f32[0..32]
+        stream.serialize_bits(&mut (f0 as u32), 32)?;
+        // word 1, 16 bits: f014_uint[0..10], f015_int[0..6]
+        stream.serialize_bits(&mut ((f1 | (f2 << 10)) as u32), 16)?;
         debug_assert!(value.f016_fixed >= -37748736 && value.f016_fixed <= 37748736, "f016_fixed raw value out of range [-37748736, 37748736]");
         {
             let mut fixed_value = value.f016_fixed;
@@ -444,14 +352,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f0: u64 = u64::from((value.f018_int as u32).wrapping_sub((-834_i32) as u32));
     let f1: u64 = value.f019_f64.to_bits();
     let f2: u64 = u64::from(value.f020_f32.to_bits());
-    let mut w0 = (f0 | (f1 << 11)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f1 >> 21) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f1 >> 53) | (f2 << 11)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f2 >> 21) as u32;
-    stream.serialize_bits(&mut w3, 11)?;
+    // word 0, 32 bits: f018_int[0..11], f019_f64[0..21]
+    stream.serialize_bits(&mut ((f0 | (f1 << 11)) as u32), 32)?;
+    // word 1, 32 bits: f019_f64[21..53]
+    stream.serialize_bits(&mut ((f1 >> 21) as u32), 32)?;
+    // word 2, 32 bits: f019_f64[53..64], f020_f32[0..21]
+    stream.serialize_bits(&mut (((f1 >> 53) | (f2 << 11)) as u32), 32)?;
+    // word 3, 11 bits: f020_f32[21..32]
+    stream.serialize_bits(&mut ((f2 >> 21) as u32), 11)?;
     debug_assert!(value.f021_ufixed <= 102977536, "f021_ufixed raw value out of range [0, 102977536]");
     {
         let mut fixed_value = value.f021_ufixed;
@@ -461,12 +369,12 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f0: u64 = u64::from(value.f022_f32.to_bits());
     let f1: u64 = u64::from(value.f023_bits);
     let f2: u64 = u64::from(value.f024_f32.to_bits());
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f1 | (f2 << 25)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f2 >> 7) as u32;
-    stream.serialize_bits(&mut w2, 25)?;
+    // word 0, 32 bits: f022_f32[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: f023_bits[0..25], f024_f32[0..7]
+    stream.serialize_bits(&mut ((f1 | (f2 << 25)) as u32), 32)?;
+    // word 2, 25 bits: f024_f32[7..32]
+    stream.serialize_bits(&mut ((f2 >> 7) as u32), 25)?;
     debug_assert!(value.f025_fixed >= -30464 && value.f025_fixed <= 30464, "f025_fixed raw value out of range [-30464, 30464]");
     {
         let mut fixed_value = value.f025_fixed;
@@ -501,18 +409,18 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f9: u64 = u64::from(value.f037_bool);
     let f10: u64 = u64::from(value.f038_bool);
     let f11: u64 = u64::from(value.f039_bits);
-    let mut w0 = (f0 | (f1 << 4)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f1 >> 28) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f1 >> 60) | (f2 << 4)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f2 >> 28) | (f3 << 4) | (f4 << 5) | (f5 << 8) | (f6 << 26)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f6 >> 6) | (f7 << 8) | (f8 << 17) | (f9 << 20) | (f10 << 21) | (f11 << 22)) as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f11 >> 10) as u32;
-    stream.serialize_bits(&mut w5, 9)?;
+    // word 0, 32 bits: f028_bits[0..4], f029_i64[0..28]
+    stream.serialize_bits(&mut ((f0 | (f1 << 4)) as u32), 32)?;
+    // word 1, 32 bits: f029_i64[28..60]
+    stream.serialize_bits(&mut ((f1 >> 28) as u32), 32)?;
+    // word 2, 32 bits: f029_i64[60..64], f030_f32[0..28]
+    stream.serialize_bits(&mut (((f1 >> 60) | (f2 << 4)) as u32), 32)?;
+    // word 3, 32 bits: f030_f32[28..32], f031_bits[0..1], f032_int[0..3], f033_uint[0..18], f034_uint[0..6]
+    stream.serialize_bits(&mut (((f2 >> 28) | (f3 << 4) | (f4 << 5) | (f5 << 8) | (f6 << 26)) as u32), 32)?;
+    // word 4, 32 bits: f034_uint[6..14], f035_bits[0..9], f036_enum[0..3], f037_bool[0..1], f038_bool[0..1], f039_bits[0..10]
+    stream.serialize_bits(&mut (((f6 >> 6) | (f7 << 8) | (f8 << 17) | (f9 << 20) | (f10 << 21) | (f11 << 22)) as u32), 32)?;
+    // word 5, 9 bits: f039_bits[10..19]
+    stream.serialize_bits(&mut ((f11 >> 10) as u32), 9)?;
     debug_assert!(value.f040_fixed >= -20480 && value.f040_fixed <= 20480, "f040_fixed raw value out of range [-20480, 20480]");
     {
         let mut fixed_value = value.f040_fixed;
@@ -523,10 +431,10 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f0: u64 = u64::from((value.f041_int as u32).wrapping_sub((-55_i32) as u32));
     let f1: u64 = u64::from(value.f042_bits);
     let f2: u64 = u64::from(value.f043_bool);
-    let mut w0 = (f0 | (f1 << 7)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f1 >> 25) | (f2 << 5)) as u32;
-    stream.serialize_bits(&mut w1, 6)?;
+    // word 0, 32 bits: f041_int[0..7], f042_bits[0..25]
+    stream.serialize_bits(&mut ((f0 | (f1 << 7)) as u32), 32)?;
+    // word 1, 6 bits: f042_bits[25..30], f043_bool[0..1]
+    stream.serialize_bits(&mut (((f1 >> 25) | (f2 << 5)) as u32), 6)?;
     if value.f043_bool {
         debug_assert!(value.f045_bits < 1 << 12, "f045_bits above the bits(12) wire width");
         debug_assert!(value.f046_uint <= 76063, "f046_uint out of range [0, 76063]");
@@ -535,12 +443,12 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let f1: u64 = u64::from(value.f045_bits);
         let f2: u64 = u64::from(value.f046_uint);
         let f3: u64 = u64::from((value.f047_int as u32).wrapping_sub((-430976_i32) as u32));
-        let mut w0 = f0 as u32;
-        stream.serialize_bits(&mut w0, 32)?;
-        let mut w1 = (f1 | (f2 << 12) | (f3 << 29)) as u32;
-        stream.serialize_bits(&mut w1, 32)?;
-        let mut w2 = (f3 >> 3) as u32;
-        stream.serialize_bits(&mut w2, 17)?;
+        // word 0, 32 bits: f044_f32[0..32]
+        stream.serialize_bits(&mut (f0 as u32), 32)?;
+        // word 1, 32 bits: f045_bits[0..12], f046_uint[0..17], f047_int[0..3]
+        stream.serialize_bits(&mut ((f1 | (f2 << 12) | (f3 << 29)) as u32), 32)?;
+        // word 2, 17 bits: f047_int[3..20]
+        stream.serialize_bits(&mut ((f3 >> 3) as u32), 17)?;
     }
     {
         let mut float_value = value.f048_f64;
@@ -562,10 +470,10 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let f1: u64 = u64::from((value.f052_int as u32).wrapping_sub((-57_i32) as u32));
         let f2: u64 = u64::from(value.f053_f32.to_bits());
         let f3: u64 = u64::from((value.f054_int as u32).wrapping_sub((-35_i32) as u32));
-        let mut w0 = (f0 | (f1 << 1) | (f2 << 8)) as u32;
-        stream.serialize_bits(&mut w0, 32)?;
-        let mut w1 = ((f2 >> 24) | (f3 << 8)) as u32;
-        stream.serialize_bits(&mut w1, 15)?;
+        // word 0, 32 bits: f051_bool[0..1], f052_int[0..7], f053_f32[0..24]
+        stream.serialize_bits(&mut ((f0 | (f1 << 1) | (f2 << 8)) as u32), 32)?;
+        // word 1, 15 bits: f053_f32[24..32], f054_int[0..7]
+        stream.serialize_bits(&mut (((f2 >> 24) | (f3 << 8)) as u32), 15)?;
     }
     debug_assert!(value.f056_int >= -13 && value.f056_int <= 13, "f056_int out of range [-13, 13]");
     debug_assert!(value.f057_int >= -15 && value.f057_int <= 15, "f057_int out of range [-15, 15]");
@@ -576,14 +484,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f3: u64 = u64::from(value.f058_f32.to_bits());
     let f4: u64 = value.f059_f64.to_bits();
     let f5: u64 = u64::from(value.f060_bits);
-    let mut w0 = (f0 | (f1 << 1) | (f2 << 6) | (f3 << 11)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f3 >> 21) | (f4 << 11)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f4 >> 21) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f4 >> 53) | (f5 << 11)) as u32;
-    stream.serialize_bits(&mut w3, 19)?;
+    // word 0, 32 bits: f055_bool[0..1], f056_int[0..5], f057_int[0..5], f058_f32[0..21]
+    stream.serialize_bits(&mut ((f0 | (f1 << 1) | (f2 << 6) | (f3 << 11)) as u32), 32)?;
+    // word 1, 32 bits: f058_f32[21..32], f059_f64[0..21]
+    stream.serialize_bits(&mut (((f3 >> 21) | (f4 << 11)) as u32), 32)?;
+    // word 2, 32 bits: f059_f64[21..53]
+    stream.serialize_bits(&mut ((f4 >> 21) as u32), 32)?;
+    // word 3, 19 bits: f059_f64[53..64], f060_bits[0..8]
+    stream.serialize_bits(&mut (((f4 >> 53) | (f5 << 11)) as u32), 19)?;
     {
         let mut compressed_value = value.f061_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
@@ -593,12 +501,12 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f0: u64 = u64::from(value.f062_uint as u32);
     let f1: u64 = value.f063_i64 as u64;
     let f2: u64 = u64::from(value.f064_uint as u32);
-    let mut w0 = (f0 | (f1 << 9)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f1 >> 23) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f1 >> 55) | (f2 << 9)) as u32;
-    stream.serialize_bits(&mut w2, 18)?;
+    // word 0, 32 bits: f062_uint[0..9], f063_i64[0..23]
+    stream.serialize_bits(&mut ((f0 | (f1 << 9)) as u32), 32)?;
+    // word 1, 32 bits: f063_i64[23..55]
+    stream.serialize_bits(&mut ((f1 >> 23) as u32), 32)?;
+    // word 2, 18 bits: f063_i64[55..64], f064_uint[0..9]
+    stream.serialize_bits(&mut (((f1 >> 55) | (f2 << 9)) as u32), 18)?;
     {
         let mut compressed_value = value.f065_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 60, 6, 30.0_f32, 0.0_f32)?; // compressed float [0.0, 30.0] @ 0.5, constants folded at generation
@@ -620,8 +528,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     debug_assert!(value.f070_uint <= 2, "f070_uint out of range [0, 2]");
     let f0: u64 = u64::from(value.f069_bits);
     let f1: u64 = u64::from(value.f070_uint as u32);
-    let mut w0 = (f0 | (f1 << 11)) as u32;
-    stream.serialize_bits(&mut w0, 13)?;
+    // word 0, 13 bits: f069_bits[0..11], f070_uint[0..2]
+    stream.serialize_bits(&mut ((f0 | (f1 << 11)) as u32), 13)?;
     {
         let mut compressed_value = value.f071_cf32;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
@@ -633,8 +541,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     debug_assert!(value.f073_int >= -4 && value.f073_int <= 4, "f073_int out of range [-4, 4]");
     let f0: u64 = u64::from((value.f073_int as u32).wrapping_sub((-4_i32) as u32));
     let f1: u64 = u64::from(value.f074_bool);
-    let mut w0 = (f0 | (f1 << 4)) as u32;
-    stream.serialize_bits(&mut w0, 5)?;
+    // word 0, 5 bits: f073_int[0..4], f074_bool[0..1]
+    stream.serialize_bits(&mut ((f0 | (f1 << 4)) as u32), 5)?;
     if value.f074_bool {
         debug_assert!(value.f076_int >= -26218 && value.f076_int <= 26218, "f076_int out of range [-26218, 26218]");
         debug_assert!(value.f077_int >= -17 && value.f077_int <= 17, "f077_int out of range [-17, 17]");
@@ -645,14 +553,14 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let f2: u64 = u64::from((value.f077_int as u32).wrapping_sub((-17_i32) as u32));
         let f3: u64 = u64::from(value.f078_bits);
         let f4: u64 = u64::from(value.f079_uint as u32);
-        let mut w0 = f0 as u32;
-        stream.serialize_bits(&mut w0, 32)?;
-        let mut w1 = (f0 >> 32) as u32;
-        stream.serialize_bits(&mut w1, 32)?;
-        let mut w2 = (f1 | (f2 << 16) | (f3 << 22) | (f4 << 31)) as u32;
-        stream.serialize_bits(&mut w2, 32)?;
-        let mut w3 = (f4 >> 1) as u32;
-        stream.serialize_bits(&mut w3, 4)?;
+        // word 0, 32 bits: f075_u64[0..32]
+        stream.serialize_bits(&mut (f0 as u32), 32)?;
+        // word 1, 32 bits: f075_u64[32..64]
+        stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+        // word 2, 32 bits: f076_int[0..16], f077_int[0..6], f078_bits[0..9], f079_uint[0..1]
+        stream.serialize_bits(&mut ((f1 | (f2 << 16) | (f3 << 22) | (f4 << 31)) as u32), 32)?;
+        // word 3, 4 bits: f079_uint[1..5]
+        stream.serialize_bits(&mut ((f4 >> 1) as u32), 4)?;
     }
     debug_assert!(value.f081_bits < 1 << 29, "f081_bits above the bits(29) wire width");
     debug_assert!(value.f082_bits < 1 << 25, "f082_bits above the bits(25) wire width");
@@ -661,10 +569,10 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f1: u64 = u64::from(value.f081_bits);
     let f2: u64 = u64::from(value.f082_bits);
     let f3: u64 = u64::from(value.f083_enum.0);
-    let mut w0 = (f0 | (f1 << 1) | (f2 << 30)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 2) | (f3 << 23)) as u32;
-    stream.serialize_bits(&mut w1, 26)?;
+    // word 0, 32 bits: f080_bool[0..1], f081_bits[0..29], f082_bits[0..2]
+    stream.serialize_bits(&mut ((f0 | (f1 << 1) | (f2 << 30)) as u32), 32)?;
+    // word 1, 26 bits: f082_bits[2..25], f083_enum[0..3]
+    stream.serialize_bits(&mut (((f2 >> 2) | (f3 << 23)) as u32), 26)?;
     debug_assert!(value.f084_ufixed <= 128, "f084_ufixed raw value out of range [0, 128]");
     {
         let mut fixed_value = value.f084_ufixed;
@@ -686,22 +594,22 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     let f7: u64 = u64::from(value.f092_bool);
     let f8: u64 = value.f093_bits;
     let f9: u64 = u64::from(value.f094_bool);
-    let mut w0 = (f0 | (f1 << 21) | (f2 << 30)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f2 >> 2) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = ((f2 >> 34) | (f3 << 30)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f3 >> 2) | (f4 << 9)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f4 >> 23) | (f5 << 25)) as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = ((f5 >> 7) | (f6 << 1) | (f7 << 6) | (f8 << 7)) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = (f8 >> 25) as u32;
-    stream.serialize_bits(&mut w6, 32)?;
-    let mut w7 = ((f8 >> 57) | (f9 << 7)) as u32;
-    stream.serialize_bits(&mut w7, 8)?;
+    // word 0, 32 bits: f085_bits[0..21], f086_uint[0..9], f087_f64[0..2]
+    stream.serialize_bits(&mut ((f0 | (f1 << 21) | (f2 << 30)) as u32), 32)?;
+    // word 1, 32 bits: f087_f64[2..34]
+    stream.serialize_bits(&mut ((f2 >> 2) as u32), 32)?;
+    // word 2, 32 bits: f087_f64[34..64], f088_int[0..2]
+    stream.serialize_bits(&mut (((f2 >> 34) | (f3 << 30)) as u32), 32)?;
+    // word 3, 32 bits: f088_int[2..11], f089_bits[0..23]
+    stream.serialize_bits(&mut (((f3 >> 2) | (f4 << 9)) as u32), 32)?;
+    // word 4, 32 bits: f089_bits[23..48], f090_uint[0..7]
+    stream.serialize_bits(&mut (((f4 >> 23) | (f5 << 25)) as u32), 32)?;
+    // word 5, 32 bits: f090_uint[7..8], f091_flags[0..5], f092_bool[0..1], f093_bits[0..25]
+    stream.serialize_bits(&mut (((f5 >> 7) | (f6 << 1) | (f7 << 6) | (f8 << 7)) as u32), 32)?;
+    // word 6, 32 bits: f093_bits[25..57]
+    stream.serialize_bits(&mut ((f8 >> 25) as u32), 32)?;
+    // word 7, 8 bits: f093_bits[57..64], f094_bool[0..1]
+    stream.serialize_bits(&mut (((f8 >> 57) | (f9 << 7)) as u32), 8)?;
     debug_assert!(value.f095_fixed >= -103350272 && value.f095_fixed <= 103350272, "f095_fixed raw value out of range [-103350272, 103350272]");
     {
         let mut fixed_value = value.f095_fixed;
@@ -711,20 +619,24 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     debug_assert!(value.f097_bits < 1 << 12, "f097_bits above the bits(12) wire width");
     let f0: u64 = u64::from(value.f096_bits);
     let f1: u64 = u64::from(value.f097_bits);
-    let mut w0 = (f0 | (f1 << 18)) as u32;
-    stream.serialize_bits(&mut w0, 30)?;
+    // word 0, 30 bits: f096_bits[0..18], f097_bits[0..12]
+    stream.serialize_bits(&mut ((f0 | (f1 << 18)) as u32), 30)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: f001_int[0..21], f002_f64[0..11]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f002_f64[11..43]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: f002_f64[43..64], f003_int[0..11]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 10 bits: f003_int[11..21]
     stream.serialize_bits(&mut c, 10)?;
     let c3 = u64::from(c);
     let v0: u64 = c0 & 0x1fffff;
@@ -741,16 +653,22 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f003_int = (v2 as u32).wrapping_add((-835897_i32) as u32) as i32;
     stream.serialize_compressed_float_precomputed(&mut value.f004_cf32, 20000, 15, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 0.1, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 32 bits: f005_uint[0..13], f006_int[0..12], f007_f32[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f007_f32[7..32], f008_u64[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: f008_u64[7..39]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: f008_u64[39..64], f009_int[0..6], f010_f32[0..1]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: f010_f32[1..32], f011_bits[0..1]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 10 bits: f011_bits[1..10], f012_bool[0..1]
     stream.serialize_bits(&mut c, 10)?;
     let c5 = u64::from(c);
     let v0: u64 = c0 & 0x1fff;
@@ -780,8 +698,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f012_bool = v7 != 0;
     if value.f012_bool {
         let mut c: u32 = 0;
+        // word 0, 32 bits: f013_f32[0..32]
         stream.serialize_bits(&mut c, 32)?;
         let c0 = u64::from(c);
+        // word 1, 16 bits: f014_uint[0..10], f015_int[0..6]
         stream.serialize_bits(&mut c, 16)?;
         let c1 = u64::from(c);
         let v0: u64 = c0 & 0xffffffff;
@@ -810,12 +730,16 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
         value.f017_uint = 0;
     }
     let mut c: u32 = 0;
+    // word 0, 32 bits: f018_int[0..11], f019_f64[0..21]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f019_f64[21..53]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: f019_f64[53..64], f020_f32[0..21]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 11 bits: f020_f32[21..32]
     stream.serialize_bits(&mut c, 11)?;
     let c3 = u64::from(c);
     let v0: u64 = c0 & 0x7ff;
@@ -829,10 +753,13 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f020_f32 = f32::from_bits(v2 as u32);
     stream.serialize_fixed(&mut value.f021_ufixed, 20, 12, 0, 25141)?;
     let mut c: u32 = 0;
+    // word 0, 32 bits: f022_f32[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f023_bits[0..25], f024_f32[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 25 bits: f024_f32[7..32]
     stream.serialize_bits(&mut c, 25)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
@@ -845,16 +772,22 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_bits(&mut value.f026_bits, 9)?;
     stream.serialize_compressed_float_precomputed(&mut value.f027_cf32, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 32 bits: f028_bits[0..4], f029_i64[0..28]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f029_i64[28..60]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: f029_i64[60..64], f030_f32[0..28]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: f030_f32[28..32], f031_bits[0..1], f032_int[0..3], f033_uint[0..18], f034_uint[0..6]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: f034_uint[6..14], f035_bits[0..9], f036_enum[0..3], f037_bool[0..1], f038_bool[0..1], f039_bits[0..10]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 9 bits: f039_bits[10..19]
     stream.serialize_bits(&mut c, 9)?;
     let c5 = u64::from(c);
     let v0: u64 = c0 & 0xf;
@@ -895,8 +828,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f039_bits = v11 as u32;
     stream.serialize_fixed(&mut value.f040_fixed, 4, 12, -5, 5)?;
     let mut c: u32 = 0;
+    // word 0, 32 bits: f041_int[0..7], f042_bits[0..25]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 6 bits: f042_bits[25..30], f043_bool[0..1]
     stream.serialize_bits(&mut c, 6)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0x7f;
@@ -910,10 +845,13 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f043_bool = v2 != 0;
     if value.f043_bool {
         let mut c: u32 = 0;
+        // word 0, 32 bits: f044_f32[0..32]
         stream.serialize_bits(&mut c, 32)?;
         let c0 = u64::from(c);
+        // word 1, 32 bits: f045_bits[0..12], f046_uint[0..17], f047_int[0..3]
         stream.serialize_bits(&mut c, 32)?;
         let c1 = u64::from(c);
+        // word 2, 17 bits: f047_int[3..20]
         stream.serialize_bits(&mut c, 17)?;
         let c2 = u64::from(c);
         let v0: u64 = c0 & 0xffffffff;
@@ -941,8 +879,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_bool(&mut value.f050_bool)?;
     if value.f050_bool {
         let mut c: u32 = 0;
+        // word 0, 32 bits: f051_bool[0..1], f052_int[0..7], f053_f32[0..24]
         stream.serialize_bits(&mut c, 32)?;
         let c0 = u64::from(c);
+        // word 1, 15 bits: f053_f32[24..32], f054_int[0..7]
         stream.serialize_bits(&mut c, 15)?;
         let c1 = u64::from(c);
         let v0: u64 = c0 & 0x1;
@@ -966,12 +906,16 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
         value.f054_int = 0;
     }
     let mut c: u32 = 0;
+    // word 0, 32 bits: f055_bool[0..1], f056_int[0..5], f057_int[0..5], f058_f32[0..21]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f058_f32[21..32], f059_f64[0..21]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: f059_f64[21..53]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 19 bits: f059_f64[53..64], f060_bits[0..8]
     stream.serialize_bits(&mut c, 19)?;
     let c3 = u64::from(c);
     let v0: u64 = c0 & 0x1;
@@ -994,10 +938,13 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f060_bits = v5 as u32;
     stream.serialize_compressed_float_precomputed(&mut value.f061_cf32, 360, 9, 180.0_f32, -90.0_f32)?; // compressed float [-90.0, 90.0] @ 0.5, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 32 bits: f062_uint[0..9], f063_i64[0..23]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f063_i64[23..55]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 18 bits: f063_i64[55..64], f064_uint[0..9]
     stream.serialize_bits(&mut c, 18)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0x1ff;
@@ -1017,6 +964,7 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_compressed_float_precomputed(&mut value.f067_cf32, 800, 10, 200.0_f32, -100.0_f32)?; // compressed float [-100.0, 100.0] @ 0.25, constants folded at generation
     stream.serialize_compressed_float_precomputed(&mut value.f068_cf32, 2000, 11, 2000.0_f32, 0.0_f32)?; // compressed float [0.0, 2000.0] @ 1.0, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 13 bits: f069_bits[0..11], f070_uint[0..2]
     stream.serialize_bits(&mut c, 13)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x7ff;
@@ -1029,6 +977,7 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_compressed_float_precomputed(&mut value.f071_cf32, 500, 9, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.02, constants folded at generation
     stream.serialize_compressed_float_precomputed(&mut value.f072_cf32, 10000, 14, 100.0_f32, 0.0_f32)?; // compressed float [0.0, 100.0] @ 0.01, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 5 bits: f073_int[0..4], f074_bool[0..1]
     stream.serialize_bits(&mut c, 5)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0xf;
@@ -1040,12 +989,16 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f074_bool = v1 != 0;
     if value.f074_bool {
         let mut c: u32 = 0;
+        // word 0, 32 bits: f075_u64[0..32]
         stream.serialize_bits(&mut c, 32)?;
         let c0 = u64::from(c);
+        // word 1, 32 bits: f075_u64[32..64]
         stream.serialize_bits(&mut c, 32)?;
         let c1 = u64::from(c);
+        // word 2, 32 bits: f076_int[0..16], f077_int[0..6], f078_bits[0..9], f079_uint[0..1]
         stream.serialize_bits(&mut c, 32)?;
         let c2 = u64::from(c);
+        // word 3, 4 bits: f079_uint[1..5]
         stream.serialize_bits(&mut c, 4)?;
         let c3 = u64::from(c);
         let v0: u64 = c0 | (c1 << 32);
@@ -1075,8 +1028,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
         value.f079_uint = 0;
     }
     let mut c: u32 = 0;
+    // word 0, 32 bits: f080_bool[0..1], f081_bits[0..29], f082_bits[0..2]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 26 bits: f082_bits[2..25], f083_enum[0..3]
     stream.serialize_bits(&mut c, 26)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0x1;
@@ -1092,20 +1047,28 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f083_enum = PacketMode(v3 as u8);
     stream.serialize_fixed(&mut value.f084_ufixed, 1, 7, 0, 1)?;
     let mut c: u32 = 0;
+    // word 0, 32 bits: f085_bits[0..21], f086_uint[0..9], f087_f64[0..2]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: f087_f64[2..34]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: f087_f64[34..64], f088_int[0..2]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: f088_int[2..11], f089_bits[0..23]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: f089_bits[23..48], f090_uint[0..7]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: f090_uint[7..8], f091_flags[0..5], f092_bool[0..1], f093_bits[0..25]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 32 bits: f093_bits[25..57]
     stream.serialize_bits(&mut c, 32)?;
     let c6 = u64::from(c);
+    // word 7, 8 bits: f093_bits[57..64], f094_bool[0..1]
     stream.serialize_bits(&mut c, 8)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 & 0x1fffff;
@@ -1139,6 +1102,7 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     value.f094_bool = v9 != 0;
     stream.serialize_fixed(&mut value.f095_fixed, 16, 16, -1577, 1577)?;
     let mut c: u32 = 0;
+    // word 0, 30 bits: f096_bits[0..18], f097_bits[0..12]
     stream.serialize_bits(&mut c, 30)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x3ffff;

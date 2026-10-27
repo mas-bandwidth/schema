@@ -8,21 +8,12 @@ use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
 
 // type W13
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct W13 {
     pub items: [u16; 12], // used count beside it; wire count in [0, 12]
     pub items_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for W13 {
-    fn default() -> Self {
-        W13 {
-            items: [0; 12],
-            items_count: 0,
-        }
-    }
 }
 
 // W13_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -61,21 +52,12 @@ pub fn read_w13(stream: &mut ReadStream<'_>, value: &mut W13) -> Result {
 }
 
 // type W17
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct W17 {
     pub items: [u32; 9], // used count beside it; wire count in [0, 9]
     pub items_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for W17 {
-    fn default() -> Self {
-        W17 {
-            items: [0; 9],
-            items_count: 0,
-        }
-    }
 }
 
 // W17_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -114,21 +96,12 @@ pub fn read_w17(stream: &mut ReadStream<'_>, value: &mut W17) -> Result {
 }
 
 // type W26
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct W26 {
     pub items: [u32; 6], // used count beside it; wire count in [0, 6]
     pub items_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for W26 {
-    fn default() -> Self {
-        W26 {
-            items: [0; 6],
-            items_count: 0,
-        }
-    }
 }
 
 // W26_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -167,21 +140,12 @@ pub fn read_w26(stream: &mut ReadStream<'_>, value: &mut W26) -> Result {
 }
 
 // type W1
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct W1 {
     pub items: [u8; 20], // used count beside it; wire count in [0, 20]
     pub items_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for W1 {
-    fn default() -> Self {
-        W1 {
-            items: [0; 20],
-            items_count: 0,
-        }
-    }
 }
 
 // W1_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -220,21 +184,12 @@ pub fn read_w1(stream: &mut ReadStream<'_>, value: &mut W1) -> Result {
 }
 
 // type W52
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct W52 {
     pub items: [u64; 3], // used count beside it; wire count in [0, 3]
     pub items_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for W52 {
-    fn default() -> Self {
-        W52 {
-            items: [0; 3],
-            items_count: 0,
-        }
-    }
 }
 
 // W52_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -273,21 +228,12 @@ pub fn read_w52(stream: &mut ReadStream<'_>, value: &mut W52) -> Result {
 }
 
 // type W50
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct W50 {
     pub items: [u64; 3], // used count beside it; wire count in [0, 3]
     pub items_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for W50 {
-    fn default() -> Self {
-        W50 {
-            items: [0; 3],
-            items_count: 0,
-        }
-    }
 }
 
 // W50_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -326,19 +272,11 @@ pub fn read_w50(stream: &mut ReadStream<'_>, value: &mut W50) -> Result {
 }
 
 // type F13
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct F13 {
     pub items: [u16; 7], // wire [0, 8191]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for F13 {
-    fn default() -> Self {
-        F13 {
-            items: [0; 7],
-        }
-    }
 }
 
 // F13_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -371,21 +309,12 @@ pub fn read_f13(stream: &mut ReadStream<'_>, value: &mut F13) -> Result {
 }
 
 // type Tri3
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Tri3 {
     pub a: u32,
     pub b: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Tri3 {
-    fn default() -> Self {
-        Tri3 {
-            a: 0,
-            b: 0,
-        }
-    }
 }
 
 // TRI3_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -399,14 +328,15 @@ pub fn write_tri3(stream: &mut WriteStream<'_>, value: &Tri3) -> Result {
     debug_assert!(value.b < 1 << 2, "b above the bits(2) wire width");
     let f0: u64 = u64::from(value.a);
     let f1: u64 = u64::from(value.b);
-    let mut w0 = (f0 | (f1 << 1)) as u32;
-    stream.serialize_bits(&mut w0, 3)?;
+    // word 0, 3 bits: a[0..1], b[0..2]
+    stream.serialize_bits(&mut ((f0 | (f1 << 1)) as u32), 3)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_tri3(stream: &mut ReadStream<'_>, value: &mut Tri3) -> Result {
     let mut c: u32 = 0;
+    // word 0, 3 bits: a[0..1], b[0..2]
     stream.serialize_bits(&mut c, 3)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x1;
@@ -417,21 +347,12 @@ pub fn read_tri3(stream: &mut ReadStream<'_>, value: &mut Tri3) -> Result {
 }
 
 // type ArrTri3
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArrTri3 {
     pub items: [Tri3; 10], // used count beside it; wire count in [0, 10]
     pub items_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArrTri3 {
-    fn default() -> Self {
-        ArrTri3 {
-            items: [Tri3::default(); 10],
-            items_count: 0,
-        }
-    }
 }
 
 // ARR_TRI3_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -462,21 +383,12 @@ pub fn read_arr_tri3(stream: &mut ReadStream<'_>, value: &mut ArrTri3) -> Result
 }
 
 // type Eleven
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Eleven {
     pub a: u32,
     pub b: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Eleven {
-    fn default() -> Self {
-        Eleven {
-            a: 0,
-            b: 0,
-        }
-    }
 }
 
 // ELEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -490,14 +402,15 @@ pub fn write_eleven(stream: &mut WriteStream<'_>, value: &Eleven) -> Result {
     debug_assert!(value.b < 1 << 8, "b above the bits(8) wire width");
     let f0: u64 = u64::from(value.a);
     let f1: u64 = u64::from(value.b);
-    let mut w0 = (f0 | (f1 << 3)) as u32;
-    stream.serialize_bits(&mut w0, 11)?;
+    // word 0, 11 bits: a[0..3], b[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 3)) as u32), 11)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_eleven(stream: &mut ReadStream<'_>, value: &mut Eleven) -> Result {
     let mut c: u32 = 0;
+    // word 0, 11 bits: a[0..3], b[0..8]
     stream.serialize_bits(&mut c, 11)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x7;
@@ -508,19 +421,11 @@ pub fn read_eleven(stream: &mut ReadStream<'_>, value: &mut Eleven) -> Result {
 }
 
 // type ArrEleven
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArrEleven {
     pub items: [Eleven; 9],
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArrEleven {
-    fn default() -> Self {
-        ArrEleven {
-            items: [Eleven::default(); 9],
-        }
-    }
 }
 
 // ARR_ELEVEN_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -545,16 +450,10 @@ pub fn read_arr_eleven(stream: &mut ReadStream<'_>, value: &mut ArrEleven) -> Re
 }
 
 // type EmptyA
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct EmptyA {}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for EmptyA {
-    fn default() -> Self {
-        EmptyA {}
-    }
-}
 
 // EMPTY_A_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // EMPTY_A_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
@@ -574,16 +473,10 @@ pub fn read_empty_a(stream: &mut ReadStream<'_>, value: &mut EmptyA) -> Result {
 }
 
 // type EmptyB
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct EmptyB {}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for EmptyB {
-    fn default() -> Self {
-        EmptyB {}
-    }
-}
 
 // EMPTY_B_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // EMPTY_B_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
@@ -604,7 +497,7 @@ pub fn read_empty_b(stream: &mut ReadStream<'_>, value: &mut EmptyB) -> Result {
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct EmptyUnionType(pub u8);
 
 impl EmptyUnionType {
@@ -613,6 +506,17 @@ impl EmptyUnionType {
     pub const B: EmptyUnionType = EmptyUnionType(2);
     pub const COUNT: EmptyUnionType = EmptyUnionType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: EmptyUnionType = EmptyUnionType(2); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_empty_union_type(self)
+    }
+}
+
+impl core::fmt::Display for EmptyUnionType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `EmptyUnionType` value, out-of-set included.
@@ -628,7 +532,7 @@ pub fn enum_name_empty_union_type(value: EmptyUnionType) -> &'static str {
 // EmptyUnion — at most one of the arms. The default is None (the empty union);
 // every read reconstructs the selected payload with its declared initial
 // values, even at the same tag, and replaces the whole value on success.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum EmptyUnion {
     #[default]
     None,
@@ -681,23 +585,13 @@ pub fn read_empty_union(stream: &mut ReadStream<'_>, value: &mut EmptyUnion) -> 
 }
 
 // type HoldsEmptyUnion
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct HoldsEmptyUnion {
     pub lead: u32,
     pub u: EmptyUnion,
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for HoldsEmptyUnion {
-    fn default() -> Self {
-        HoldsEmptyUnion {
-            lead: 0,
-            u: EmptyUnion::None,
-            tail: 0,
-        }
-    }
 }
 
 // HOLDS_EMPTY_UNION_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -730,8 +624,9 @@ pub fn read_holds_empty_union(stream: &mut ReadStream<'_>, value: &mut HoldsEmpt
 }
 
 // type Strs
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Strs {
     pub lead: u32,
     pub s: [u8; 8], // string(8): max length, used length beside it (SPEC §4.7)
@@ -739,20 +634,6 @@ pub struct Strs {
     pub b: [u8; 8], // bytes(8): fixed buffer, used length beside it (SPEC §4.7)
     pub b_length: i32,
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Strs {
-    fn default() -> Self {
-        Strs {
-            lead: 0,
-            s: [0; 8],
-            s_length: 0,
-            b: [0; 8],
-            b_length: 0,
-            tail: 0,
-        }
-    }
 }
 
 // STRS_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -807,25 +688,14 @@ pub fn read_strs(stream: &mut ReadStream<'_>, value: &mut Strs) -> Result {
 }
 
 // type ArrNested
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ArrNested {
     pub lead: u32,
     pub items: [Eleven; 4], // used count beside it; wire count in [0, 4]
     pub items_count: i32,
     pub tail: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ArrNested {
-    fn default() -> Self {
-        ArrNested {
-            lead: 0,
-            items: [Eleven::default(); 4],
-            items_count: 0,
-            tail: 0,
-        }
-    }
 }
 
 // ARR_NESTED_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -868,19 +738,11 @@ pub fn read_arr_nested(stream: &mut ReadStream<'_>, value: &mut ArrNested) -> Re
 }
 
 // type Sole
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Sole {
     pub only: u32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Sole {
-    fn default() -> Self {
-        Sole {
-            only: 0,
-        }
-    }
 }
 
 // SOLE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).

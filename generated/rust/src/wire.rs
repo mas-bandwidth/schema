@@ -18,7 +18,7 @@ pub const SPIN_RATE: f64 = 1.5;
 // Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 // a newtype because | max = ... headroom makes non-variant values wire-legal
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Weapon(pub u8);
 
 impl Weapon {
@@ -28,6 +28,17 @@ impl Weapon {
     pub const RAILGUN: Weapon = Weapon(3);
     pub const COUNT: Weapon = Weapon(3); // the declared variant count (SPEC §4.2)
     pub const MAX: Weapon = Weapon(15); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_weapon(self)
+    }
+}
+
+impl core::fmt::Display for Weapon {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `Weapon` value, out-of-set included.
@@ -95,21 +106,12 @@ pub fn flag_names_probe_flags(value: ProbeFlags) -> String {
 }
 
 // type ProbeHeader
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeHeader {
     pub version: u32,
     pub probe_id: u64,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeHeader {
-    fn default() -> Self {
-        ProbeHeader {
-            version: 0,
-            probe_id: 0,
-        }
-    }
 }
 
 // PROBE_HEADER_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -123,8 +125,8 @@ pub fn write_probe_header(stream: &mut WriteStream<'_>, value: &ProbeHeader) -> 
     let f0: u64 = 171_u64; // const(171, 8) — SPEC §4.3
     let f1: u64 = u64::from(value.version);
     let f2: u64 = 0; // reserved(5) — zeros on the wire
-    let mut w0 = (f0 | (f1 << 8) | (f2 << 11)) as u32;
-    stream.serialize_bits(&mut w0, 16)?;
+    // word 0, 16 bits: const(171)[0..8], version[0..3], reserved[0..5]
+    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 11)) as u32), 16)?;
     stream.serialize_align()?;
     {
         let mut raw_value = value.probe_id;
@@ -136,6 +138,7 @@ pub fn write_probe_header(stream: &mut WriteStream<'_>, value: &ProbeHeader) -> 
 #[inline]
 pub fn read_probe_header(stream: &mut ReadStream<'_>, value: &mut ProbeHeader) -> Result {
     let mut c: u32 = 0;
+    // word 0, 16 bits: const(171)[0..8], version[0..3], reserved[0..5]
     stream.serialize_bits(&mut c, 16)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0xff;
@@ -156,27 +159,15 @@ pub fn read_probe_header(stream: &mut ReadStream<'_>, value: &mut ProbeHeader) -
 }
 
 // type ProbeBits
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeBits {
     pub small: u32,
     pub boundary: u64,
     pub wide: u64,
     pub sensor: u32, // wire [0, 4294967295]
     pub nonce: u64, // wire [0, 18446744073709551615]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeBits {
-    fn default() -> Self {
-        ProbeBits {
-            small: 0,
-            boundary: 0,
-            wide: 0,
-            sensor: 0,
-            nonce: 0,
-        }
-    }
 }
 
 // PROBE_BITS_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -193,38 +184,45 @@ pub fn write_probe_bits(stream: &mut WriteStream<'_>, value: &ProbeBits) -> Resu
     let f2: u64 = value.wide;
     let f3: u64 = value.sensor as u64;
     let f4: u64 = value.nonce;
-    let mut w0 = (f0 | (f1 << 9)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f1 >> 23) | (f2 << 10)) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f2 >> 22) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = ((f2 >> 54) | (f3 << 10)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f3 >> 22) | (f4 << 10)) as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f4 >> 22) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = (f4 >> 54) as u32;
-    stream.serialize_bits(&mut w6, 10)?;
+    // word 0, 32 bits: small[0..9], boundary[0..23]
+    stream.serialize_bits(&mut ((f0 | (f1 << 9)) as u32), 32)?;
+    // word 1, 32 bits: boundary[23..33], wide[0..22]
+    stream.serialize_bits(&mut (((f1 >> 23) | (f2 << 10)) as u32), 32)?;
+    // word 2, 32 bits: wide[22..54]
+    stream.serialize_bits(&mut ((f2 >> 22) as u32), 32)?;
+    // word 3, 32 bits: wide[54..64], sensor[0..22]
+    stream.serialize_bits(&mut (((f2 >> 54) | (f3 << 10)) as u32), 32)?;
+    // word 4, 32 bits: sensor[22..32], nonce[0..22]
+    stream.serialize_bits(&mut (((f3 >> 22) | (f4 << 10)) as u32), 32)?;
+    // word 5, 32 bits: nonce[22..54]
+    stream.serialize_bits(&mut ((f4 >> 22) as u32), 32)?;
+    // word 6, 10 bits: nonce[54..64]
+    stream.serialize_bits(&mut ((f4 >> 54) as u32), 10)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_probe_bits(stream: &mut ReadStream<'_>, value: &mut ProbeBits) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: small[0..9], boundary[0..23]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: boundary[23..33], wide[0..22]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: wide[22..54]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: wide[54..64], sensor[0..22]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: sensor[22..32], nonce[0..22]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: nonce[22..54]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 10 bits: nonce[54..64]
     stream.serialize_bits(&mut c, 10)?;
     let c6 = u64::from(c);
     let v0: u64 = c0 & 0x1ff;
@@ -241,8 +239,9 @@ pub fn read_probe_bits(stream: &mut ReadStream<'_>, value: &mut ProbeBits) -> Re
 }
 
 // type ProbeSample
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct ProbeSample {
     pub active: bool, // = true in new() (zero value otherwise)
     pub orientation: f32, // compressed float [-180.0, 180.0] @ 0.01
@@ -266,33 +265,16 @@ pub struct ProbeSample {
     pub samples_count: i32,
 }
 
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeSample {
-    fn default() -> Self {
-        ProbeSample {
-            active: false,
-            orientation: 0.0,
-            raw_delta: 0,
-            big_delta: 0,
-            weapon: Weapon::NONE,
-            has_target: false,
-            target_id: 0,
-            idle_ticks: 0,
-            samples: [0; 8],
-            samples_count: 0,
-        }
-    }
-}
-
 impl ProbeSample {
     // new returns a ProbeSample with its specified defaults applied; the plain
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = ProbeSample::default();
-        value.active = true;
-        value.samples_count = 1;
-        value
+        ProbeSample {
+            active: true,
+            samples_count: 1,
+            ..ProbeSample::default()
+        }
     }
 }
 
@@ -313,18 +295,18 @@ pub fn write_probe_sample(stream: &mut WriteStream<'_>, value: &ProbeSample) -> 
     }
     let f0: u64 = u64::from(value.raw_delta as u32);
     let f1: u64 = value.big_delta as u64;
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = f1 as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
+    // word 0, 32 bits: raw_delta[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: big_delta[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 2, 32 bits: big_delta[32..64]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
     if value.active {
         debug_assert!(value.weapon.0 <= 15, "weapon above the Weapon wire range [0, 15]");
         let f0: u64 = u64::from(value.weapon.0);
         let f1: u64 = u64::from(value.has_target);
-        let mut w0 = (f0 | (f1 << 4)) as u32;
-        stream.serialize_bits(&mut w0, 5)?;
+        // word 0, 5 bits: weapon[0..4], has_target[0..1]
+        stream.serialize_bits(&mut ((f0 | (f1 << 4)) as u32), 5)?;
         if value.has_target {
             {
                 let mut raw_value = value.target_id as u32;
@@ -356,10 +338,13 @@ pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -
     stream.serialize_bool(&mut value.active)?;
     stream.serialize_compressed_float_precomputed(&mut value.orientation, 36000, 16, 360.0_f32, -180.0_f32)?; // compressed float [-180.0, 180.0] @ 0.01, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 32 bits: raw_delta[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: big_delta[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: big_delta[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
@@ -368,6 +353,7 @@ pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -
     value.big_delta = v1 as i64;
     if value.active {
         let mut c: u32 = 0;
+        // word 0, 5 bits: weapon[0..4], has_target[0..1]
         stream.serialize_bits(&mut c, 5)?;
         let c0 = u64::from(c);
         let v0: u64 = c0 & 0xf;
@@ -402,19 +388,11 @@ pub fn read_probe_sample(stream: &mut ReadStream<'_>, value: &mut ProbeSample) -
 }
 
 // type ProbeRing
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeRing {
     pub radius: u16,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeRing {
-    fn default() -> Self {
-        ProbeRing {
-            radius: 0,
-        }
-    }
 }
 
 // PROBE_RING_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -442,21 +420,12 @@ pub fn read_probe_ring(stream: &mut ReadStream<'_>, value: &mut ProbeRing) -> Re
 }
 
 // type ProbeSlab
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeSlab {
     pub width: u8, // wire [0, 100]
     pub height: u8,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeSlab {
-    fn default() -> Self {
-        ProbeSlab {
-            width: 0,
-            height: 0,
-        }
-    }
 }
 
 // PROBE_SLAB_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -469,14 +438,15 @@ pub fn write_probe_slab(stream: &mut WriteStream<'_>, value: &ProbeSlab) -> Resu
     debug_assert!(value.width <= 100, "width out of range [0, 100]");
     let f0: u64 = u64::from(value.width as u32);
     let f1: u64 = u64::from(value.height);
-    let mut w0 = (f0 | (f1 << 7)) as u32;
-    stream.serialize_bits(&mut w0, 15)?;
+    // word 0, 15 bits: width[0..7], height[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 7)) as u32), 15)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_probe_slab(stream: &mut ReadStream<'_>, value: &mut ProbeSlab) -> Result {
     let mut c: u32 = 0;
+    // word 0, 15 bits: width[0..7], height[0..8]
     stream.serialize_bits(&mut c, 15)?;
     let c0 = u64::from(c);
     let v0: u64 = c0 & 0x7f;
@@ -491,7 +461,7 @@ pub fn read_probe_slab(stream: &mut ReadStream<'_>, value: &mut ProbeSlab) -> Re
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeShapeType(pub u8);
 
 impl ProbeShapeType {
@@ -500,6 +470,17 @@ impl ProbeShapeType {
     pub const SLAB: ProbeShapeType = ProbeShapeType(2);
     pub const COUNT: ProbeShapeType = ProbeShapeType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: ProbeShapeType = ProbeShapeType(2); // the exported extent (SPEC §4.2)
+
+    /// Debug/log name for any value, out-of-set included.
+    pub fn as_str(self) -> &'static str {
+        enum_name_probe_shape_type(self)
+    }
+}
+
+impl core::fmt::Display for ProbeShapeType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Debug/log name for any `ProbeShapeType` value, out-of-set included.
@@ -515,7 +496,7 @@ pub fn enum_name_probe_shape_type(value: ProbeShapeType) -> &'static str {
 // ProbeShape — at most one of the arms. The default is None (the empty union);
 // every read reconstructs the selected payload with its declared initial
 // values, even at the same tag, and replaces the whole value on success.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum ProbeShape {
     #[default]
     None,
@@ -568,27 +549,15 @@ pub fn read_probe_shape(stream: &mut ReadStream<'_>, value: &mut ProbeShape) -> 
 }
 
 // type ProbeCollider
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeCollider {
     pub armor: u8,
     pub shape: ProbeShape,
     pub backup: ProbeShape,
     pub extras: [ProbeShape; 2], // used count beside it; wire count in [0, 2]
     pub extras_count: i32,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeCollider {
-    fn default() -> Self {
-        ProbeCollider {
-            armor: 0,
-            shape: ProbeShape::None,
-            backup: ProbeShape::None,
-            extras: [ProbeShape::None; 2],
-            extras_count: 0,
-        }
-    }
 }
 
 // PROBE_COLLIDER_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -632,21 +601,12 @@ pub fn read_probe_collider(stream: &mut ReadStream<'_>, value: &mut ProbeCollide
 }
 
 // type ProbeConfig
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeConfig {
     pub retries: i32, // = -1 in new() (zero value otherwise)
     pub preferred: Weapon, // = Weapon::RAILGUN in new() (zero value otherwise)
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeConfig {
-    fn default() -> Self {
-        ProbeConfig {
-            retries: 0,
-            preferred: Weapon::NONE,
-        }
-    }
 }
 
 impl ProbeConfig {
@@ -654,10 +614,10 @@ impl ProbeConfig {
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = ProbeConfig::default();
-        value.retries = -1;
-        value.preferred = Weapon::RAILGUN;
-        value
+        ProbeConfig {
+            retries: -1,
+            preferred: Weapon::RAILGUN,
+        }
     }
 }
 
@@ -671,18 +631,20 @@ pub fn write_probe_config(stream: &mut WriteStream<'_>, value: &ProbeConfig) -> 
     debug_assert!(value.preferred.0 <= 15, "preferred above the Weapon wire range [0, 15]");
     let f0: u64 = u64::from(value.retries as u32);
     let f1: u64 = u64::from(value.preferred.0);
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = f1 as u32;
-    stream.serialize_bits(&mut w1, 4)?;
+    // word 0, 32 bits: retries[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 4 bits: preferred[0..4]
+    stream.serialize_bits(&mut (f1 as u32), 4)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_probe_config(stream: &mut ReadStream<'_>, value: &mut ProbeConfig) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: retries[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 4 bits: preferred[0..4]
     stream.serialize_bits(&mut c, 4)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
@@ -693,21 +655,12 @@ pub fn read_probe_config(stream: &mut ReadStream<'_>, value: &mut ProbeConfig) -
 }
 
 // type ProbeArray
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct ProbeArray {
     pub samples: [ProbeSample; 2],
     pub config: ProbeConfig,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeArray {
-    fn default() -> Self {
-        ProbeArray {
-            samples: [ProbeSample::default(); 2],
-            config: ProbeConfig::default(),
-        }
-    }
 }
 
 impl ProbeArray {
@@ -715,12 +668,10 @@ impl ProbeArray {
     // Default::default() is the all-zero form (SPEC §4.2: zero initialization
     // unless a specified default overrides it).
     pub fn new() -> Self {
-        let mut value = ProbeArray::default();
-        for element in value.samples.iter_mut() {
-            *element = ProbeSample::new();
+        ProbeArray {
+            samples: [ProbeSample::new(); 2],
+            config: ProbeConfig::new(),
         }
-        value.config = ProbeConfig::new();
-        value
     }
 }
 
@@ -748,16 +699,10 @@ pub fn read_probe_array(stream: &mut ReadStream<'_>, value: &mut ProbeArray) -> 
 }
 
 // type Heartbeat
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Heartbeat {}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Heartbeat {
-    fn default() -> Self {
-        Heartbeat {}
-    }
-}
 
 // HEARTBEAT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // HEARTBEAT_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
@@ -777,25 +722,14 @@ pub fn read_heartbeat(stream: &mut ReadStream<'_>, value: &mut Heartbeat) -> Res
 }
 
 // type Test
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Test {
     pub test_a: u16,
     pub test_b: i16, // wire [0, 1000]
     pub test_c: i16, // wire [0, 1000]
     pub test_d: i16, // wire [0, 1000]
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for Test {
-    fn default() -> Self {
-        Test {
-            test_a: 0,
-            test_b: 0,
-            test_c: 0,
-            test_d: 0,
-        }
-    }
 }
 
 // TEST_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -812,18 +746,20 @@ pub fn write_test(stream: &mut WriteStream<'_>, value: &Test) -> Result {
     let f1: u64 = u64::from(value.test_b as u32);
     let f2: u64 = u64::from(value.test_c as u32);
     let f3: u64 = u64::from(value.test_d as u32);
-    let mut w0 = (f0 | (f1 << 16) | (f2 << 26)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = ((f2 >> 6) | (f3 << 4)) as u32;
-    stream.serialize_bits(&mut w1, 14)?;
+    // word 0, 32 bits: test_a[0..16], test_b[0..10], test_c[0..6]
+    stream.serialize_bits(&mut ((f0 | (f1 << 16) | (f2 << 26)) as u32), 32)?;
+    // word 1, 14 bits: test_c[6..10], test_d[0..10]
+    stream.serialize_bits(&mut (((f2 >> 6) | (f3 << 4)) as u32), 14)?;
     Ok(())
 }
 
 #[inline]
 pub fn read_test(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: test_a[0..16], test_b[0..10], test_c[0..6]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 14 bits: test_c[6..10], test_d[0..10]
     stream.serialize_bits(&mut c, 14)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0xffff;
@@ -848,7 +784,7 @@ pub fn read_test(stream: &mut ReadStream<'_>, value: &mut Test) -> Result {
 
 // type Block
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Block {
     pub data: [u8; MAX_BLOCK_SIZE as usize], // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
     pub data_length: i32,
@@ -889,7 +825,7 @@ pub fn read_block(stream: &mut ReadStream<'_>, value: &mut Block) -> Result {
 
 // type Chat
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Chat {
     pub text: [u8; MAX_CHAT_LENGTH as usize], // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
     pub text_length: i32,
@@ -937,23 +873,13 @@ pub fn read_chat(stream: &mut ReadStream<'_>, value: &mut Chat) -> Result {
 }
 
 // type ProbeReport
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct ProbeReport {
     pub header: ProbeHeader,
     pub flags: ProbeFlags,
     pub echo: Test,
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for ProbeReport {
-    fn default() -> Self {
-        ProbeReport {
-            header: ProbeHeader::default(),
-            flags: 0,
-            echo: Test::default(),
-        }
-    }
 }
 
 // PROBE_REPORT_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
@@ -1065,10 +991,10 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
     let f4: u64 = u64::from(value.e);
     let f5: u64 = u64::from(value.f);
     let f6: u64 = u64::from(value.g);
-    let mut w0 = (f0 | (f1 << 8) | (f2 << 16) | (f3 << 24)) as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f4 | (f5 << 8) | (f6 << 16)) as u32;
-    stream.serialize_bits(&mut w1, 17)?;
+    // word 0, 32 bits: a[0..8], b[0..8], c[0..8], d[0..8]
+    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 16) | (f3 << 24)) as u32), 32)?;
+    // word 1, 17 bits: e[0..8], f[0..8], g[0..1]
+    stream.serialize_bits(&mut ((f4 | (f5 << 8) | (f6 << 16)) as u32), 17)?;
     debug_assert!(value.items_count >= 0 && value.items_count <= 16, "items_count out of range [0, 16]");
     {
         let mut offset_value = value.items_count as u32;
@@ -1096,31 +1022,31 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
     let f4: u64 = u64::from(value.uint16_value);
     let f5: u64 = u64::from(value.uint32_value);
     let f6: u64 = value.uint64_value;
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = (f1 | (f2 << 8) | (f3 << 24)) as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f4 | (f5 << 16)) as u32;
-    stream.serialize_bits(&mut w3, 32)?;
-    let mut w4 = ((f5 >> 16) | (f6 << 16)) as u32;
-    stream.serialize_bits(&mut w4, 32)?;
-    let mut w5 = (f6 >> 16) as u32;
-    stream.serialize_bits(&mut w5, 32)?;
-    let mut w6 = (f6 >> 48) as u32;
-    stream.serialize_bits(&mut w6, 16)?;
+    // word 0, 32 bits: double_value[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: double_value[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: int8_value[0..8], int16_value[0..16], uint8_value[0..8]
+    stream.serialize_bits(&mut ((f1 | (f2 << 8) | (f3 << 24)) as u32), 32)?;
+    // word 3, 32 bits: uint16_value[0..16], uint32_value[0..16]
+    stream.serialize_bits(&mut ((f4 | (f5 << 16)) as u32), 32)?;
+    // word 4, 32 bits: uint32_value[16..32], uint64_value[0..16]
+    stream.serialize_bits(&mut (((f5 >> 16) | (f6 << 16)) as u32), 32)?;
+    // word 5, 32 bits: uint64_value[16..48]
+    stream.serialize_bits(&mut ((f6 >> 16) as u32), 32)?;
+    // word 6, 16 bits: uint64_value[48..64]
+    stream.serialize_bits(&mut ((f6 >> 48) as u32), 16)?;
     debug_assert!(value.int64_range >= -1000000000000 && value.int64_range <= 1000000000000, "int64_range out of range [-1000000000000, 1000000000000]");
     let f0: u64 = value.int64_full as u64;
     let f1: u64 = (value.int64_range as u64).wrapping_sub((-1000000000000_i64) as u64);
-    let mut w0 = f0 as u32;
-    stream.serialize_bits(&mut w0, 32)?;
-    let mut w1 = (f0 >> 32) as u32;
-    stream.serialize_bits(&mut w1, 32)?;
-    let mut w2 = f1 as u32;
-    stream.serialize_bits(&mut w2, 32)?;
-    let mut w3 = (f1 >> 32) as u32;
-    stream.serialize_bits(&mut w3, 9)?;
+    // word 0, 32 bits: int64_full[0..32]
+    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    // word 1, 32 bits: int64_full[32..64]
+    stream.serialize_bits(&mut ((f0 >> 32) as u32), 32)?;
+    // word 2, 32 bits: int64_range[0..32]
+    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    // word 3, 9 bits: int64_range[32..41]
+    stream.serialize_bits(&mut ((f1 >> 32) as u32), 9)?;
     stream.serialize_align()?;
     stream.write_bytes(&value.fixed_bytes); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     debug_assert!(value.text_length >= 0 && value.text_length <= 255, "text_length out of range [0, 255]");
@@ -1135,8 +1061,10 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
 #[inline]
 pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Result {
     let mut c: u32 = 0;
+    // word 0, 32 bits: a[0..8], b[0..8], c[0..8], d[0..8]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 17 bits: e[0..8], f[0..8], g[0..1]
     stream.serialize_bits(&mut c, 17)?;
     let c1 = u64::from(c);
     let v0: u64 = c0 & 0xff;
@@ -1169,18 +1097,25 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
     stream.serialize_f32(&mut value.float_value)?;
     stream.serialize_compressed_float_precomputed(&mut value.compressed_float_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     let mut c: u32 = 0;
+    // word 0, 32 bits: double_value[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: double_value[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: int8_value[0..8], int16_value[0..16], uint8_value[0..8]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 32 bits: uint16_value[0..16], uint32_value[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
+    // word 4, 32 bits: uint32_value[16..32], uint64_value[0..16]
     stream.serialize_bits(&mut c, 32)?;
     let c4 = u64::from(c);
+    // word 5, 32 bits: uint64_value[16..48]
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
+    // word 6, 16 bits: uint64_value[48..64]
     stream.serialize_bits(&mut c, 16)?;
     let c6 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -1198,12 +1133,16 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
     let v6: u64 = (c4 >> 16) | (c5 << 16) | (c6 << 48);
     value.uint64_value = v6;
     let mut c: u32 = 0;
+    // word 0, 32 bits: int64_full[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    // word 1, 32 bits: int64_full[32..64]
     stream.serialize_bits(&mut c, 32)?;
     let c1 = u64::from(c);
+    // word 2, 32 bits: int64_range[0..32]
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
+    // word 3, 9 bits: int64_range[32..41]
     stream.serialize_bits(&mut c, 9)?;
     let c3 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
@@ -1229,21 +1168,12 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
 }
 
 // type CompressedProbe
+// Default is the zero form (SPEC §5); specified defaults live only in new().
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct CompressedProbe {
     pub boundary: f32, // compressed float [0.0, 10.0] @ 0.01
     pub offset: f32, // compressed float [-5.0, 5.0] @ 0.001
-}
-
-// The zero form (SPEC §5): specified defaults live only in new(), never here.
-impl Default for CompressedProbe {
-    fn default() -> Self {
-        CompressedProbe {
-            boundary: 0.0,
-            offset: 0.0,
-        }
-    }
 }
 
 // COMPRESSED_PROBE_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
