@@ -11,14 +11,6 @@
 #include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,141 +22,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
-#ifndef SCHEMA_UTF8_VALID_DEFINED
-#define SCHEMA_UTF8_VALID_DEFINED
-/* string(N) refuses malformed UTF-8 on read in every build mode (SPEC §4.7).
-   Rejects truncated sequences, bare continuations, overlongs,
-   surrogates and code points past U+10FFFF. */
-static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )
-{
-    int32_t i = 0;
-    while ( i < length )
-    {
-        serialize_uint8_t lead = bytes[i];
-        int32_t continuations;
-        serialize_uint32_t code_point;
-        int32_t k;
-        if ( lead < 0x80 )
-        {
-            i++;
-            continue;
-        }
-        else if ( ( lead & 0xE0 ) == 0xC0 )
-        {
-            continuations = 1;
-            code_point = lead & 0x1F;
-        }
-        else if ( ( lead & 0xF0 ) == 0xE0 )
-        {
-            continuations = 2;
-            code_point = lead & 0x0F;
-        }
-        else if ( ( lead & 0xF8 ) == 0xF0 )
-        {
-            continuations = 3;
-            code_point = lead & 0x07;
-        }
-        else
-        {
-            return 0;
-        }
-        if ( continuations >= length - i )
-        {
-            return 0;
-        }
-        for ( k = 1; k <= continuations; k++ )
-        {
-            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )
-            {
-                return 0;
-            }
-            code_point = ( code_point << 6 ) | (serialize_uint32_t) ( bytes[i + k] & 0x3F );
-        }
-        if ( continuations == 1 && code_point < 0x80 )
-        {
-            return 0;
-        }
-        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) )
-        {
-            return 0;
-        }
-        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )
-        {
-            return 0;
-        }
-        i += 1 + continuations;
-    }
-    return 1;
-}
-#endif /* SCHEMA_UTF8_VALID_DEFINED */
-
-#ifndef SCHEMA_INTERIOR_NULL_DEFINED
-#define SCHEMA_INTERIOR_NULL_DEFINED
-/* string(N) carries bytes excluding 0x00: an interior null is content every
-   generated reader refuses (SPEC §4.7) — generated-code validation; no
-   serialize primitive performs it. The scan is word-wise: eight bytes per
-   step under the zero-byte idiom, and a payload of eight bytes or more
-   re-tests its final eight bytes as one whole (overlapping) word, so every
-   load stays inside the payload the stream already delivered. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const serialize_uint8_t * bytes, int32_t length )
-{
-    serialize_uint64_t word;
-    int32_t i = 0;
-    if ( length >= 8 )
-    {
-        for ( ; i <= length - 8; i += 8 )
-        {
-            memcpy( &word, bytes + i, 8 );
-            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
-            {
-                return 1;
-            }
-        }
-        if ( i < length )
-        {
-            memcpy( &word, bytes + length - 8, 8 );
-            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
-            {
-                return 1;
-            }
-        }
-        return 0;
-    }
-    for ( ; i < length; i++ )
-    {
-        if ( bytes[i] == 0 )
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-#endif /* SCHEMA_INTERIOR_NULL_DEFINED */
-
 /* Writes BenchPacket. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_write_stream_t * stream, const BenchPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_packet( serialize_write_stream_t * stream, const bench_bench_packet_t * value )
 {
     serialize_assert( (serialize_int64_t) value->a >= -100 && (serialize_int64_t) value->a <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->a - (serialize_uint32_t) ( -100 ), 8 ) )
@@ -225,7 +84,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_packet( serialize_wri
 }
 
 /* Reads BenchPacket. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_stream_t * stream, BenchPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_packet( serialize_read_stream_t * stream, bench_bench_packet_t * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -329,7 +188,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_packet( serialize_read_
 }
 
 /* Writes BenchInts. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write_stream_t * stream, const BenchInts * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_ints( serialize_write_stream_t * stream, const bench_bench_ints_t * value )
 {
     serialize_assert( (serialize_int64_t) value->f0 >= -100 && (serialize_int64_t) value->f0 <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f0 - (serialize_uint32_t) ( -100 ), 8 ) )
@@ -385,7 +244,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_ints( serialize_write
 }
 
 /* Reads BenchInts. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_stream_t * stream, BenchInts * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_ints( serialize_read_stream_t * stream, bench_bench_ints_t * value )
 {
     /* fixed 110-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 110 )
@@ -521,7 +380,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_ints( serialize_read_st
 }
 
 /* Writes BenchBits. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_bits( serialize_write_stream_t * stream, const BenchBits * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_bits( serialize_write_stream_t * stream, const bench_bench_bits_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->b7, 7 ) )
     {
@@ -566,7 +425,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_bits( serialize_write
 }
 
 /* Reads BenchBits. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_bits( serialize_read_stream_t * stream, BenchBits * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_bits( serialize_read_stream_t * stream, bench_bench_bits_t * value )
 {
     /* fixed 156-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 156 )
@@ -647,7 +506,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_bits( serialize_read_st
 }
 
 /* Writes MixedEntity. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_write_stream_t * stream, const MixedEntity * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_entity( serialize_write_stream_t * stream, const bench_mixed_entity_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->entity_id, 12 ) )
     {
@@ -696,7 +555,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_wri
     {
         return 0;
     }
-    serialize_assert( value->weapon <= MIXED_WEAPON_MAX );
+    serialize_assert( value->weapon <= BENCH_MIXED_WEAPON_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->weapon, 4 ) )
     {
         return 0;
@@ -718,7 +577,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_entity( serialize_wri
 }
 
 /* Reads MixedEntity. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_stream_t * stream, MixedEntity * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_entity( serialize_read_stream_t * stream, bench_mixed_entity_t * value )
 {
     /* fixed 135-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 135 )
@@ -842,7 +701,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_
         {
             return 0;
         }
-        value->weapon = (MixedWeapon) enum_value;
+        value->weapon = (bench_mixed_weapon_t) enum_value;
     }
     {
         serialize_uint32_t flags_value = 0;
@@ -850,7 +709,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_
         {
             return 0;
         }
-        value->damage = (MixedDamage) flags_value;
+        value->damage = (bench_mixed_damage_t) flags_value;
     }
     {
         int bool_value = 0;
@@ -872,7 +731,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_entity( serialize_read_
 }
 
 /* Writes MixedStat. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_stat( serialize_write_stream_t * stream, const MixedStat * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_stat( serialize_write_stream_t * stream, const bench_mixed_stat_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->stat_id, 8 ) )
     {
@@ -887,7 +746,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_stat( serialize_write
 }
 
 /* Reads MixedStat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_stat( serialize_read_stream_t * stream, MixedStat * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_stat( serialize_read_stream_t * stream, bench_mixed_stat_t * value )
 {
     /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 18 )
@@ -917,7 +776,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_stat( serialize_read_st
 }
 
 /* Writes MixedHitEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_hit_event( serialize_write_stream_t * stream, const MixedHitEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_hit_event( serialize_write_stream_t * stream, const bench_mixed_hit_event_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->target_id, 12 ) )
     {
@@ -941,7 +800,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_hit_event( serialize_
 }
 
 /* Reads MixedHitEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_read_stream_t * stream, MixedHitEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_hit_event( serialize_read_stream_t * stream, bench_mixed_hit_event_t * value )
 {
     /* fixed 28-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 28 )
@@ -989,7 +848,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_hit_event( serialize_re
 }
 
 /* Writes MixedChatEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_chat_event( serialize_write_stream_t * stream, const MixedChatEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_chat_event( serialize_write_stream_t * stream, const bench_mixed_chat_event_t * value )
 {
     serialize_assert( (serialize_int64_t) value->channel >= 0 && (serialize_int64_t) value->channel <= 3 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->channel ), 2 ) )
@@ -1004,7 +863,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_chat_event( serialize
 }
 
 /* Reads MixedChatEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_chat_event( serialize_read_stream_t * stream, MixedChatEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_chat_event( serialize_read_stream_t * stream, bench_mixed_chat_event_t * value )
 {
     /* fixed 14-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 14 )
@@ -1034,7 +893,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_chat_event( serialize_r
 }
 
 /* Writes MixedPickupEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_pickup_event( serialize_write_stream_t * stream, const MixedPickupEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_pickup_event( serialize_write_stream_t * stream, const bench_mixed_pickup_event_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->item_id, 10 ) )
     {
@@ -1049,7 +908,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_pickup_event( seriali
 }
 
 /* Reads MixedPickupEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_pickup_event( serialize_read_stream_t * stream, MixedPickupEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_pickup_event( serialize_read_stream_t * stream, bench_mixed_pickup_event_t * value )
 {
     /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 18 )
@@ -1079,9 +938,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_pickup_event( serialize
 }
 
 /* Writes MixedEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_event( serialize_write_stream_t * stream, const MixedEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_mixed_event( serialize_write_stream_t * stream, const bench_mixed_event_t * value )
 {
-    serialize_assert( value->type <= MIXED_EVENT_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
+    serialize_assert( value->type <= BENCH_MIXED_EVENT_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -1089,18 +948,18 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_mixed_event( serialize_writ
     switch ( value->type )
     {
         case 1:
-            return write_mixed_hit_event( stream, &value->as.hit );
+            return bench_write_mixed_hit_event( stream, &value->as.hit );
         case 2:
-            return write_mixed_chat_event( stream, &value->as.chat );
+            return bench_write_mixed_chat_event( stream, &value->as.chat );
         case 3:
-            return write_mixed_pickup_event( stream, &value->as.pickup );
+            return bench_write_mixed_pickup_event( stream, &value->as.pickup );
         default:
             return 1; /* None — the tag is the whole wire (SPEC §4.8) */
     }
 }
 
 /* Reads MixedEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_event( serialize_read_stream_t * stream, MixedEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_mixed_event( serialize_read_stream_t * stream, bench_mixed_event_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -1108,30 +967,30 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_mixed_event( serialize_read_s
         {
             return 0;
         }
-        if ( tag_value > MIXED_EVENT_TYPE_MAX )
+        if ( tag_value > BENCH_MIXED_EVENT_TYPE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
-        value->type = (MixedEventType) tag_value;
+        value->type = (bench_mixed_event_type_t) tag_value;
     }
     switch ( value->type )
     {
         case 1:
             memset( &value->as.hit, 0, sizeof( value->as.hit ) );
-            return read_mixed_hit_event( stream, &value->as.hit );
+            return bench_read_mixed_hit_event( stream, &value->as.hit );
         case 2:
             memset( &value->as.chat, 0, sizeof( value->as.chat ) );
-            return read_mixed_chat_event( stream, &value->as.chat );
+            return bench_read_mixed_chat_event( stream, &value->as.chat );
         case 3:
             memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
-            return read_mixed_pickup_event( stream, &value->as.pickup );
+            return bench_read_mixed_pickup_event( stream, &value->as.pickup );
         default:
             return 1; /* None */
     }
 }
 
 /* Writes BenchMixed. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_write_stream_t * stream, const BenchMixed * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serialize_write_stream_t * stream, const bench_bench_mixed_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) 49374ULL, 16 ) /* const(49374, 16) — SPEC §4.3 */ )
     {
@@ -1208,7 +1067,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
         int32_t i;
         for ( i = 0; i < value->entities_count; i++ )
         {
-            if ( !write_mixed_entity( stream, &value->entities[i] ) )
+            if ( !bench_write_mixed_entity( stream, &value->entities[i] ) )
             {
                 return 0;
             }
@@ -1223,13 +1082,13 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
         int32_t i;
         for ( i = 0; i < value->stats_count; i++ )
         {
-            if ( !write_mixed_stat( stream, &value->stats[i] ) )
+            if ( !bench_write_mixed_stat( stream, &value->stats[i] ) )
             {
                 return 0;
             }
         }
     }
-    if ( !write_mixed_event( stream, &value->game_event ) )
+    if ( !bench_write_mixed_event( stream, &value->game_event ) )
     {
         return 0;
     }
@@ -1331,7 +1190,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
 }
 
 /* Reads BenchMixed. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_stream_t * stream, BenchMixed * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_read_stream_t * stream, bench_bench_mixed_t * value )
 {
     {
         serialize_uint32_t const_value = 0;
@@ -1450,7 +1309,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
         int32_t i;
         for ( i = 0; i < value->entities_count; i++ )
         {
-            if ( !read_mixed_entity( stream, &value->entities[i] ) )
+            if ( !bench_read_mixed_entity( stream, &value->entities[i] ) )
             {
                 return 0;
             }
@@ -1464,13 +1323,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
         int32_t i;
         for ( i = 0; i < value->stats_count; i++ )
         {
-            if ( !read_mixed_stat( stream, &value->stats[i] ) )
+            if ( !bench_read_mixed_stat( stream, &value->stats[i] ) )
             {
                 return 0;
             }
         }
     }
-    if ( !read_mixed_event( stream, &value->game_event ) )
+    if ( !bench_read_mixed_event( stream, &value->game_event ) )
     {
         return 0;
     }
@@ -1496,11 +1355,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
     {
         return 0;
     }
-    if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->player_name, value->player_name_length ) )
+    if ( !schema_utf8_valid_( (const uint8_t *) value->player_name, value->player_name_length ) )
     {
         return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
-    if ( schema_interior_null_( (const serialize_uint8_t *) value->player_name, value->player_name_length ) )
+    if ( schema_interior_null_( (const uint8_t *) value->player_name, value->player_name_length ) )
     {
         return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
     }

@@ -169,7 +169,7 @@ func TestIssue710TableRecovery(t *testing.T) {
 	}
 	cpp.WriteString("return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", cpp.String())
-	cfiles, err := c.Generate(u, "c", Options{})
+	cfiles, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestIssue710PacketStringBounds(t *testing.T) {
 			}
 			var source string
 			for _, data := range files {
-				if strings.Contains(string(data), "schema_utf8_valid") {
+				if strings.Contains(string(data), "int schema_utf8_valid_(") || strings.Contains(string(data), "bool schema_utf8_valid(") {
 					source = string(data)
 					break
 				}
@@ -369,7 +369,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 	}
 	cpp.WriteString("return 0;}\n")
 	issue710CompileRun(t, dir, "c++", ".cpp", cpp.String())
-	cfiles, err := New().Generate(u, "c", Options{})
+	cfiles, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 
 func TestIssue710CTableBounds(t *testing.T) {
 	u := unitFromSource(t, "package p\ntable Root { value int32 }\n")
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)
 	}

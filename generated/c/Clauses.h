@@ -8,15 +8,11 @@
 #define SCHEMA_EXAMPLE_CLAUSES_H
 
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,219 +20,219 @@ extern "C" {
 
 
 /* type W13 */
-typedef struct W13 {
+typedef struct EXAMPLE_W13 {
     uint16_t items[12];
     int32_t items_count;
-} W13;
+} EXAMPLE_W13;
 
-#define W13_MAX_BITS 160   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W13_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXAMPLE_W13_MAX_BITS 160   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_W13_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type W17 */
-typedef struct W17 {
+typedef struct EXAMPLE_W17 {
     uint32_t items[9];
     int32_t items_count;
-} W17;
+} EXAMPLE_W17;
 
-#define W17_MAX_BITS 157   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W17_MAX_BYTES 24
+#define EXAMPLE_W17_MAX_BITS 157   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_W17_MAX_BYTES 24
 
 
 /* type W26 */
-typedef struct W26 {
+typedef struct EXAMPLE_W26 {
     uint32_t items[6];
     int32_t items_count;
-} W26;
+} EXAMPLE_W26;
 
-#define W26_MAX_BITS 159   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W26_MAX_BYTES 24
+#define EXAMPLE_W26_MAX_BITS 159   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_W26_MAX_BYTES 24
 
 
 /* type W1 */
-typedef struct W1 {
+typedef struct EXAMPLE_W1 {
     uint8_t items[20];
     int32_t items_count;
-} W1;
+} EXAMPLE_W1;
 
-#define W1_MAX_BITS 25   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W1_MAX_BYTES 8
+#define EXAMPLE_W1_MAX_BITS 25   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_W1_MAX_BYTES 8
 
 
 /* type W52 */
-typedef struct W52 {
+typedef struct EXAMPLE_W52 {
     uint64_t items[3];
     int32_t items_count;
-} W52;
+} EXAMPLE_W52;
 
-#define W52_MAX_BITS 158   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W52_MAX_BYTES 24
+#define EXAMPLE_W52_MAX_BITS 158   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_W52_MAX_BYTES 24
 
 
 /* type W50 */
-typedef struct W50 {
+typedef struct EXAMPLE_W50 {
     uint64_t items[3];
     int32_t items_count;
-} W50;
+} EXAMPLE_W50;
 
-#define W50_MAX_BITS 152   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define W50_MAX_BYTES 24
+#define EXAMPLE_W50_MAX_BITS 152   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_W50_MAX_BYTES 24
 
 
 /* type F13 */
-typedef struct F13 {
+typedef struct EXAMPLE_F13 {
     uint16_t items[7];
-} F13;
+} EXAMPLE_F13;
 
-#define F13_MAX_BITS 91   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define F13_MAX_BYTES 16
+#define EXAMPLE_F13_MAX_BITS 91   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_F13_MAX_BYTES 16
 
 
 /* type Tri3 */
-typedef struct Tri3 {
+typedef struct example_tri3_t {
     uint32_t a;
     uint32_t b;
-} Tri3;
+} example_tri3_t;
 
-#define TRI3_MAX_BITS 3   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRI3_MAX_BYTES 8
+#define EXAMPLE_TRI3_MAX_BITS 3   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_TRI3_MAX_BYTES 8
 
 
 /* type ArrTri3 */
-typedef struct ArrTri3 {
-    Tri3 items[10];
+typedef struct example_arr_tri3_t {
+    example_tri3_t items[10];
     int32_t items_count;
-} ArrTri3;
+} example_arr_tri3_t;
 
-#define ARR_TRI3_MAX_BITS 34   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_TRI3_MAX_BYTES 8
+#define EXAMPLE_ARR_TRI3_MAX_BITS 34   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARR_TRI3_MAX_BYTES 8
 
 
 /* type Eleven */
-typedef struct Eleven {
+typedef struct example_eleven_t {
     uint32_t a;
     uint32_t b;
-} Eleven;
+} example_eleven_t;
 
-#define ELEVEN_MAX_BITS 11   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ELEVEN_MAX_BYTES 8
+#define EXAMPLE_ELEVEN_MAX_BITS 11   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ELEVEN_MAX_BYTES 8
 
 
 /* type ArrEleven */
-typedef struct ArrEleven {
-    Eleven items[9];
-} ArrEleven;
+typedef struct example_arr_eleven_t {
+    example_eleven_t items[9];
+} example_arr_eleven_t;
 
-#define ARR_ELEVEN_MAX_BITS 99   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_ELEVEN_MAX_BYTES 16
+#define EXAMPLE_ARR_ELEVEN_MAX_BITS 99   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARR_ELEVEN_MAX_BYTES 16
 
 
 /* type EmptyA */
-typedef struct EmptyA {
+typedef struct example_empty_a_t {
     char unused_; /* C has no empty struct; carries no wire bits */
-} EmptyA;
+} example_empty_a_t;
 
 
 /* type EmptyB */
-typedef struct EmptyB {
+typedef struct example_empty_b_t {
     char unused_; /* C has no empty struct; carries no wire bits */
-} EmptyB;
+} example_empty_b_t;
 
 
 /* union EmptyUnion — first-class one-of (SPEC §4.8): the tag says which arm is
    live; None = 0 is the empty union, and the tag range is [0, 2]. */
-typedef uint8_t EmptyUnionType;
-#define EMPTY_UNION_TYPE_NONE 0
-#define EMPTY_UNION_TYPE_A 1
-#define EMPTY_UNION_TYPE_B 2
-#define EMPTY_UNION_TYPE_COUNT 2
-#define EMPTY_UNION_TYPE_MAX 2
+typedef uint8_t example_empty_union_type_t;
+#define EXAMPLE_EMPTY_UNION_TYPE_NONE 0
+#define EXAMPLE_EMPTY_UNION_TYPE_A 1
+#define EXAMPLE_EMPTY_UNION_TYPE_B 2
+#define EXAMPLE_EMPTY_UNION_TYPE_COUNT 2
+#define EXAMPLE_EMPTY_UNION_TYPE_MAX 2
 
 /* Debug/log name for any EmptyUnionType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_empty_union_type( EmptyUnionType value )
+static SCHEMA_UNUSED const char * example_enum_name_empty_union_type( example_empty_union_type_t value )
 {
     switch ( value )
     {
-        case EMPTY_UNION_TYPE_NONE: return "None";
+        case EXAMPLE_EMPTY_UNION_TYPE_NONE: return "None";
         case 1: return "A";
         case 2: return "B";
         default: return "???";
     }
 }
 
-typedef struct EmptyUnion {
-    EmptyUnionType type;
+typedef struct example_empty_union_t {
+    example_empty_union_type_t type;
     union {
-        EmptyA a;
-        EmptyB b;
+        example_empty_a_t a;
+        example_empty_b_t b;
     } as;
-} EmptyUnion;
+} example_empty_union_t;
 
-#define EMPTY_UNION_MAX_BITS 2   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define EMPTY_UNION_MAX_BYTES 8
+#define EXAMPLE_EMPTY_UNION_MAX_BITS 2   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
+#define EXAMPLE_EMPTY_UNION_MAX_BYTES 8
 
 /* Selectors for EmptyUnion: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
    the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
-static SCHEMA_UNUSED EmptyA * empty_union_select_a( EmptyUnion * value )
+static SCHEMA_UNUSED example_empty_a_t * example_empty_union_select_a( example_empty_union_t * value )
 {
-    value->type = EMPTY_UNION_TYPE_A;
+    value->type = EXAMPLE_EMPTY_UNION_TYPE_A;
     memset( &value->as.a, 0, sizeof( value->as.a ) );
     return &value->as.a;
 }
 
-static SCHEMA_UNUSED EmptyB * empty_union_select_b( EmptyUnion * value )
+static SCHEMA_UNUSED example_empty_b_t * example_empty_union_select_b( example_empty_union_t * value )
 {
-    value->type = EMPTY_UNION_TYPE_B;
+    value->type = EXAMPLE_EMPTY_UNION_TYPE_B;
     memset( &value->as.b, 0, sizeof( value->as.b ) );
     return &value->as.b;
 }
 
 
 /* type HoldsEmptyUnion */
-typedef struct HoldsEmptyUnion {
+typedef struct example_holds_empty_union_t {
     uint32_t lead;
-    EmptyUnion u;
+    example_empty_union_t u;
     uint32_t tail;
-} HoldsEmptyUnion;
+} example_holds_empty_union_t;
 
-#define HOLDS_EMPTY_UNION_MAX_BITS 14   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HOLDS_EMPTY_UNION_MAX_BYTES 8
+#define EXAMPLE_HOLDS_EMPTY_UNION_MAX_BITS 14   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_HOLDS_EMPTY_UNION_MAX_BYTES 8
 
 
 /* type Strs */
-typedef struct Strs {
+typedef struct example_strs_t {
     uint32_t lead;
     char s[8 + 1]; /* string(8): N + 1 for the terminator the wire does not carry */
     int32_t s_length;
     uint8_t b[8];
     int32_t b_length;
     uint32_t tail;
-} Strs;
+} example_strs_t;
 
-#define STRS_MAX_BITS 158   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define STRS_MAX_BYTES 24
+#define EXAMPLE_STRS_MAX_BITS 158   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_STRS_MAX_BYTES 24
 
 
 /* type ArrNested */
-typedef struct ArrNested {
+typedef struct example_arr_nested_t {
     uint32_t lead;
-    Eleven items[4];
+    example_eleven_t items[4];
     int32_t items_count;
     uint32_t tail;
-} ArrNested;
+} example_arr_nested_t;
 
-#define ARR_NESTED_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_NESTED_MAX_BYTES 8
+#define EXAMPLE_ARR_NESTED_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARR_NESTED_MAX_BYTES 8
 
 
 /* type Sole */
-typedef struct Sole {
+typedef struct example_sole_t {
     uint32_t only;
-} Sole;
+} example_sole_t;
 
-#define SOLE_MAX_BITS 13   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SOLE_MAX_BYTES 8
+#define EXAMPLE_SOLE_MAX_BITS 13   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SOLE_MAX_BYTES 8
 
 #ifdef __cplusplus
 }

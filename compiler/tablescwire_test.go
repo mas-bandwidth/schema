@@ -115,7 +115,7 @@ func runCTableWireProbe(t *testing.T, u *ir.Unit, source string) {
 	if err != nil {
 		t.Skip("generated C execution requires cc")
 	}
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -799,7 +799,7 @@ int main(void) {
 
 // A generated map entry is storage reached through its owning map, never a root.
 func TestCTableMapEntryNotRoot(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, mapSrc), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, mapSrc))
 	if err != nil {
 		t.Fatal(err)
 	}

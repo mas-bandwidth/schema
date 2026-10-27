@@ -34,13 +34,13 @@ int main( void )
     {
         /* the abort message is the point of the child, not of this log */
         FILE * quiet = freopen( "/dev/null", "w", stderr );
-        KeyedConfig cfg;
+        tabledemo_keyed_config_t cfg;
         /* a None key is what a defaulted enum field holds, which is how one
            reaches an accessor in a real program */
-        Team key = TEAM_NONE;
+        tabledemo_team_t key = TABLEDEMO_TEAM_NONE;
         (void) quiet;
-        keyed_config_reset( &cfg );
-        SCHEMA_TABLE_KEYED_AT( cfg.teams, key, TEAM_MAX ).spawn_count = 1; /* never reached */
+        tabledemo_keyed_config_reset( &cfg );
+        SCHEMA_TABLEDEMO_TABLE_KEYED_AT( cfg.teams, key, TABLEDEMO_TEAM_MAX ).spawn_count = 1; /* never reached */
         _exit( 0 );
     }
     if ( child < 0 )

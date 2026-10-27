@@ -57,10 +57,10 @@ func TestIssue759PacketBoolLayoutAgreesWithTable(t *testing.T) {
 	}
 
 	table := string(files["ProbeTable.h"])
-	if !strings.Contains(table, "offsetof( Pair, firing ) == 1") {
+	if !strings.Contains(table, "offsetof( probe_pair_t, firing ) == 1") {
 		t.Errorf("table layout must keep offsetof(Pair, firing)==1; got:\n%s", table)
 	}
-	if strings.Contains(table, "offsetof( Pair, firing ) == 4") {
+	if strings.Contains(table, "offsetof( probe_pair_t, firing ) == 4") {
 		t.Error("do not weaken the adjacent-bool layout assert to hide int storage")
 	}
 

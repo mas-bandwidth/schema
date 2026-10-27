@@ -9,15 +9,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,47 +28,47 @@ extern "C" {
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t TableWeapon;
-#define TABLE_WEAPON_NONE 0
-#define TABLE_WEAPON_FISTS 1
-#define TABLE_WEAPON_PISTOL 2
-#define TABLE_WEAPON_SHOTGUN 3
-#define TABLE_WEAPON_RIFLE 4
-#define TABLE_WEAPON_SNIPER 5
-#define TABLE_WEAPON_SMG 6
-#define TABLE_WEAPON_ROCKET 7
-#define TABLE_WEAPON_GRENADE 8
-#define TABLE_WEAPON_PLASMA 9
-#define TABLE_WEAPON_RAILGUN 10
-#define TABLE_WEAPON_FLAMER 11
-#define TABLE_WEAPON_MINE 12
-#define TABLE_WEAPON_TURRET 13
-#define TABLE_WEAPON_DRONE 14
-#define TABLE_WEAPON_REPAIR 15
-#define TABLE_WEAPON_COUNT 15
-#define TABLE_WEAPON_MAX 15
+typedef uint8_t benchtable_table_weapon_t;
+#define BENCHTABLE_TABLE_WEAPON_NONE 0
+#define BENCHTABLE_TABLE_WEAPON_FISTS 1
+#define BENCHTABLE_TABLE_WEAPON_PISTOL 2
+#define BENCHTABLE_TABLE_WEAPON_SHOTGUN 3
+#define BENCHTABLE_TABLE_WEAPON_RIFLE 4
+#define BENCHTABLE_TABLE_WEAPON_SNIPER 5
+#define BENCHTABLE_TABLE_WEAPON_SMG 6
+#define BENCHTABLE_TABLE_WEAPON_ROCKET 7
+#define BENCHTABLE_TABLE_WEAPON_GRENADE 8
+#define BENCHTABLE_TABLE_WEAPON_PLASMA 9
+#define BENCHTABLE_TABLE_WEAPON_RAILGUN 10
+#define BENCHTABLE_TABLE_WEAPON_FLAMER 11
+#define BENCHTABLE_TABLE_WEAPON_MINE 12
+#define BENCHTABLE_TABLE_WEAPON_TURRET 13
+#define BENCHTABLE_TABLE_WEAPON_DRONE 14
+#define BENCHTABLE_TABLE_WEAPON_REPAIR 15
+#define BENCHTABLE_TABLE_WEAPON_COUNT 15
+#define BENCHTABLE_TABLE_WEAPON_MAX 15
 
 /* Debug/log name for any TableWeapon value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_table_weapon( TableWeapon value )
+static SCHEMA_UNUSED const char * benchtable_enum_name_table_weapon( benchtable_table_weapon_t value )
 {
     switch ( value )
     {
-        case TABLE_WEAPON_NONE: return "None";
-        case TABLE_WEAPON_FISTS: return "Fists";
-        case TABLE_WEAPON_PISTOL: return "Pistol";
-        case TABLE_WEAPON_SHOTGUN: return "Shotgun";
-        case TABLE_WEAPON_RIFLE: return "Rifle";
-        case TABLE_WEAPON_SNIPER: return "Sniper";
-        case TABLE_WEAPON_SMG: return "Smg";
-        case TABLE_WEAPON_ROCKET: return "Rocket";
-        case TABLE_WEAPON_GRENADE: return "Grenade";
-        case TABLE_WEAPON_PLASMA: return "Plasma";
-        case TABLE_WEAPON_RAILGUN: return "Railgun";
-        case TABLE_WEAPON_FLAMER: return "Flamer";
-        case TABLE_WEAPON_MINE: return "Mine";
-        case TABLE_WEAPON_TURRET: return "Turret";
-        case TABLE_WEAPON_DRONE: return "Drone";
-        case TABLE_WEAPON_REPAIR: return "Repair";
+        case BENCHTABLE_TABLE_WEAPON_NONE: return "None";
+        case BENCHTABLE_TABLE_WEAPON_FISTS: return "Fists";
+        case BENCHTABLE_TABLE_WEAPON_PISTOL: return "Pistol";
+        case BENCHTABLE_TABLE_WEAPON_SHOTGUN: return "Shotgun";
+        case BENCHTABLE_TABLE_WEAPON_RIFLE: return "Rifle";
+        case BENCHTABLE_TABLE_WEAPON_SNIPER: return "Sniper";
+        case BENCHTABLE_TABLE_WEAPON_SMG: return "Smg";
+        case BENCHTABLE_TABLE_WEAPON_ROCKET: return "Rocket";
+        case BENCHTABLE_TABLE_WEAPON_GRENADE: return "Grenade";
+        case BENCHTABLE_TABLE_WEAPON_PLASMA: return "Plasma";
+        case BENCHTABLE_TABLE_WEAPON_RAILGUN: return "Railgun";
+        case BENCHTABLE_TABLE_WEAPON_FLAMER: return "Flamer";
+        case BENCHTABLE_TABLE_WEAPON_MINE: return "Mine";
+        case BENCHTABLE_TABLE_WEAPON_TURRET: return "Turret";
+        case BENCHTABLE_TABLE_WEAPON_DRONE: return "Drone";
+        case BENCHTABLE_TABLE_WEAPON_REPAIR: return "Repair";
         default: return "???";
     }
 }
@@ -80,19 +76,19 @@ static SCHEMA_UNUSED const char * enum_name_table_weapon( TableWeapon value )
 
 /* flags TableDamage — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 8 bits (SPEC §4.2) */
-typedef uint64_t TableDamage;
-#define TABLE_DAMAGE_BLEEDING (1ULL << 0)
-#define TABLE_DAMAGE_BURNING (1ULL << 1)
-#define TABLE_DAMAGE_STUNNED (1ULL << 2)
-#define TABLE_DAMAGE_SLOWED (1ULL << 3)
-#define TABLE_DAMAGE_POISONED (1ULL << 4)
-#define TABLE_DAMAGE_SHIELDED (1ULL << 5)
-#define TABLE_DAMAGE_AIRBORNE (1ULL << 6)
-#define TABLE_DAMAGE_DOWNED (1ULL << 7)
-#define TABLE_DAMAGE_COUNT 8 /* the declared variant count (SPEC §4.2) */
+typedef uint64_t benchtable_table_damage_t;
+#define BENCHTABLE_TABLE_DAMAGE_BLEEDING (1ULL << 0)
+#define BENCHTABLE_TABLE_DAMAGE_BURNING (1ULL << 1)
+#define BENCHTABLE_TABLE_DAMAGE_STUNNED (1ULL << 2)
+#define BENCHTABLE_TABLE_DAMAGE_SLOWED (1ULL << 3)
+#define BENCHTABLE_TABLE_DAMAGE_POISONED (1ULL << 4)
+#define BENCHTABLE_TABLE_DAMAGE_SHIELDED (1ULL << 5)
+#define BENCHTABLE_TABLE_DAMAGE_AIRBORNE (1ULL << 6)
+#define BENCHTABLE_TABLE_DAMAGE_DOWNED (1ULL << 7)
+#define BENCHTABLE_TABLE_DAMAGE_COUNT 8 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of TableDamage — out-of-range bits name as "???". */
-static SCHEMA_UNUSED const char * flag_name_table_damage( int bit )
+static SCHEMA_UNUSED const char * benchtable_flag_name_table_damage( int bit )
 {
     switch ( bit )
     {
@@ -108,78 +104,44 @@ static SCHEMA_UNUSED const char * flag_name_table_damage( int bit )
     }
 }
 
-#ifndef SCHEMA_FLAG_APPEND_DEFINED
-#define SCHEMA_FLAG_APPEND_DEFINED
-static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )
-{
-    if ( position > 0 && position < buffer_size - 1 )
-    {
-        buffer[position++] = '|';
-    }
-    while ( *name && position < buffer_size - 1 )
-    {
-        buffer[position++] = *name++;
-    }
-    return position;
-}
-
-static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )
-{
-    int shift = 60;
-    position = schema_flag_append_( buffer, buffer_size, position, "0x" );
-    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
-    {
-        shift -= 4;
-    }
-    for ( ; shift >= 0; shift -= 4 )
-    {
-        if ( position < buffer_size - 1 )
-        {
-            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
-        }
-    }
-    return position;
-}
-#endif /* SCHEMA_FLAG_APPEND_DEFINED */
-
 /* Renders the set bits of value into buffer as "A|B" — "0" for the empty
    set, bits past the declared variants as hex — NUL-terminates and returns
    buffer; TABLE_DAMAGE_NAMES_MAX bytes always suffice. */
-#define TABLE_DAMAGE_NAMES_MAX 86
-static SCHEMA_UNUSED const char * flag_names_table_damage( uint64_t value, char * buffer, int buffer_size )
+#define BENCHTABLE_TABLE_DAMAGE_NAMES_MAX 86
+static SCHEMA_UNUSED const char * benchtable_flag_names_table_damage( uint64_t value, char * buffer, int buffer_size )
 {
     int position = 0;
     if ( value & ( 1ULL << 0 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 0 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 0 ) );
     }
     if ( value & ( 1ULL << 1 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 1 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 1 ) );
     }
     if ( value & ( 1ULL << 2 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 2 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 2 ) );
     }
     if ( value & ( 1ULL << 3 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 3 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 3 ) );
     }
     if ( value & ( 1ULL << 4 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 4 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 4 ) );
     }
     if ( value & ( 1ULL << 5 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 5 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 5 ) );
     }
     if ( value & ( 1ULL << 6 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 6 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 6 ) );
     }
     if ( value & ( 1ULL << 7 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_table_damage( 7 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, benchtable_flag_name_table_damage( 7 ) );
     }
     if ( value >> 8 )
     {
@@ -198,53 +160,53 @@ static SCHEMA_UNUSED const char * flag_names_table_damage( uint64_t value, char 
 
 
 /* type TableHitEvent */
-typedef struct TableHitEvent {
+typedef struct benchtable_table_hit_event_t {
     uint32_t target_id;
     int32_t damage;
     int32_t hit_kind;
     bool crit;
-} TableHitEvent;
+} benchtable_table_hit_event_t;
 
-#define TABLE_HIT_EVENT_MAX_BITS 28   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TABLE_HIT_EVENT_MAX_BYTES 8  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define BENCHTABLE_TABLE_HIT_EVENT_MAX_BITS 28   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define BENCHTABLE_TABLE_HIT_EVENT_MAX_BYTES 8  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type TableChatEvent */
-typedef struct TableChatEvent {
+typedef struct benchtable_table_chat_event_t {
     int32_t channel;
     uint32_t speaker;
-} TableChatEvent;
+} benchtable_table_chat_event_t;
 
-#define TABLE_CHAT_EVENT_MAX_BITS 14   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TABLE_CHAT_EVENT_MAX_BYTES 8
+#define BENCHTABLE_TABLE_CHAT_EVENT_MAX_BITS 14   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define BENCHTABLE_TABLE_CHAT_EVENT_MAX_BYTES 8
 
 
 /* type TablePickupEvent */
-typedef struct TablePickupEvent {
+typedef struct benchtable_table_pickup_event_t {
     uint32_t item_id;
     int32_t amount;
-} TablePickupEvent;
+} benchtable_table_pickup_event_t;
 
-#define TABLE_PICKUP_EVENT_MAX_BITS 18   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TABLE_PICKUP_EVENT_MAX_BYTES 8
+#define BENCHTABLE_TABLE_PICKUP_EVENT_MAX_BITS 18   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define BENCHTABLE_TABLE_PICKUP_EVENT_MAX_BYTES 8
 
 
 /* union TableEvent — first-class one-of (SPEC §4.8): the tag says which arm is
    live; None = 0 is the empty union, and the tag range is [0, 3]. */
-typedef uint8_t TableEventType;
-#define TABLE_EVENT_TYPE_NONE 0
-#define TABLE_EVENT_TYPE_HIT 1
-#define TABLE_EVENT_TYPE_CHAT 2
-#define TABLE_EVENT_TYPE_PICKUP 3
-#define TABLE_EVENT_TYPE_COUNT 3
-#define TABLE_EVENT_TYPE_MAX 3
+typedef uint8_t benchtable_table_event_type_t;
+#define BENCHTABLE_TABLE_EVENT_TYPE_NONE 0
+#define BENCHTABLE_TABLE_EVENT_TYPE_HIT 1
+#define BENCHTABLE_TABLE_EVENT_TYPE_CHAT 2
+#define BENCHTABLE_TABLE_EVENT_TYPE_PICKUP 3
+#define BENCHTABLE_TABLE_EVENT_TYPE_COUNT 3
+#define BENCHTABLE_TABLE_EVENT_TYPE_MAX 3
 
 /* Debug/log name for any TableEventType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_table_event_type( TableEventType value )
+static SCHEMA_UNUSED const char * benchtable_enum_name_table_event_type( benchtable_table_event_type_t value )
 {
     switch ( value )
     {
-        case TABLE_EVENT_TYPE_NONE: return "None";
+        case BENCHTABLE_TABLE_EVENT_TYPE_NONE: return "None";
         case 1: return "Hit";
         case 2: return "Chat";
         case 3: return "Pickup";
@@ -252,38 +214,38 @@ static SCHEMA_UNUSED const char * enum_name_table_event_type( TableEventType val
     }
 }
 
-typedef struct TableEvent {
-    TableEventType type;
+typedef struct benchtable_table_event_t {
+    benchtable_table_event_type_t type;
     union {
-        TableHitEvent hit;
-        TableChatEvent chat;
-        TablePickupEvent pickup;
+        benchtable_table_hit_event_t hit;
+        benchtable_table_chat_event_t chat;
+        benchtable_table_pickup_event_t pickup;
     } as;
-} TableEvent;
+} benchtable_table_event_t;
 
-#define TABLE_EVENT_MAX_BITS 30   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define TABLE_EVENT_MAX_BYTES 8
+#define BENCHTABLE_TABLE_EVENT_MAX_BITS 30   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
+#define BENCHTABLE_TABLE_EVENT_MAX_BYTES 8
 
 /* Selectors for TableEvent: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
    the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
-static SCHEMA_UNUSED TableHitEvent * table_event_select_hit( TableEvent * value )
+static SCHEMA_UNUSED benchtable_table_hit_event_t * benchtable_table_event_select_hit( benchtable_table_event_t * value )
 {
-    value->type = TABLE_EVENT_TYPE_HIT;
+    value->type = BENCHTABLE_TABLE_EVENT_TYPE_HIT;
     memset( &value->as.hit, 0, sizeof( value->as.hit ) );
     return &value->as.hit;
 }
 
-static SCHEMA_UNUSED TableChatEvent * table_event_select_chat( TableEvent * value )
+static SCHEMA_UNUSED benchtable_table_chat_event_t * benchtable_table_event_select_chat( benchtable_table_event_t * value )
 {
-    value->type = TABLE_EVENT_TYPE_CHAT;
+    value->type = BENCHTABLE_TABLE_EVENT_TYPE_CHAT;
     memset( &value->as.chat, 0, sizeof( value->as.chat ) );
     return &value->as.chat;
 }
 
-static SCHEMA_UNUSED TablePickupEvent * table_event_select_pickup( TableEvent * value )
+static SCHEMA_UNUSED benchtable_table_pickup_event_t * benchtable_table_event_select_pickup( benchtable_table_event_t * value )
 {
-    value->type = TABLE_EVENT_TYPE_PICKUP;
+    value->type = BENCHTABLE_TABLE_EVENT_TYPE_PICKUP;
     memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
     return &value->as.pickup;
 }

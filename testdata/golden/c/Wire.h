@@ -9,47 +9,43 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "Constants.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define PROBE_ID (0xDEADBEEFCAFE)
-#define HALF_TURN 180.0
-#define TICK_RATE 60.0
-#define SPIN_RATE 1.5
+#define EXAMPLE_PROBE_ID (0xDEADBEEFCAFE)
+#define EXAMPLE_HALF_TURN 180.0
+#define EXAMPLE_TICK_RATE 60.0
+#define EXAMPLE_SPIN_RATE 1.5
 
 /* enum Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t Weapon;
-#define WEAPON_NONE 0
-#define WEAPON_LASER 1
-#define WEAPON_MISSILE 2
-#define WEAPON_RAILGUN 3
-#define WEAPON_COUNT 3
-#define WEAPON_MAX 15
+typedef uint8_t example_weapon_t;
+#define EXAMPLE_WEAPON_NONE 0
+#define EXAMPLE_WEAPON_LASER 1
+#define EXAMPLE_WEAPON_MISSILE 2
+#define EXAMPLE_WEAPON_RAILGUN 3
+#define EXAMPLE_WEAPON_COUNT 3
+#define EXAMPLE_WEAPON_MAX 15
 
 /* Debug/log name for any Weapon value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_weapon( Weapon value )
+static SCHEMA_UNUSED const char * example_enum_name_weapon( example_weapon_t value )
 {
     switch ( value )
     {
-        case WEAPON_NONE: return "None";
-        case WEAPON_LASER: return "Laser";
-        case WEAPON_MISSILE: return "Missile";
-        case WEAPON_RAILGUN: return "Railgun";
+        case EXAMPLE_WEAPON_NONE: return "None";
+        case EXAMPLE_WEAPON_LASER: return "Laser";
+        case EXAMPLE_WEAPON_MISSILE: return "Missile";
+        case EXAMPLE_WEAPON_RAILGUN: return "Railgun";
         default: return "???";
     }
 }
@@ -57,14 +53,14 @@ static SCHEMA_UNUSED const char * enum_name_weapon( Weapon value )
 
 /* flags ProbeFlags — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 8 bits (SPEC §4.2) */
-typedef uint64_t ProbeFlags;
-#define PROBE_FLAGS_ARMED (1ULL << 0)
-#define PROBE_FLAGS_CLOAKED (1ULL << 1)
-#define PROBE_FLAGS_DAMAGED (1ULL << 2)
-#define PROBE_FLAGS_COUNT 3 /* the declared variant count (SPEC §4.2) */
+typedef uint64_t example_probe_flags_t;
+#define EXAMPLE_PROBE_FLAGS_ARMED (1ULL << 0)
+#define EXAMPLE_PROBE_FLAGS_CLOAKED (1ULL << 1)
+#define EXAMPLE_PROBE_FLAGS_DAMAGED (1ULL << 2)
+#define EXAMPLE_PROBE_FLAGS_COUNT 3 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of ProbeFlags — out-of-range bits name as "???". */
-static SCHEMA_UNUSED const char * flag_name_probe_flags( int bit )
+static SCHEMA_UNUSED const char * example_flag_name_probe_flags( int bit )
 {
     switch ( bit )
     {
@@ -75,58 +71,24 @@ static SCHEMA_UNUSED const char * flag_name_probe_flags( int bit )
     }
 }
 
-#ifndef SCHEMA_FLAG_APPEND_DEFINED
-#define SCHEMA_FLAG_APPEND_DEFINED
-static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )
-{
-    if ( position > 0 && position < buffer_size - 1 )
-    {
-        buffer[position++] = '|';
-    }
-    while ( *name && position < buffer_size - 1 )
-    {
-        buffer[position++] = *name++;
-    }
-    return position;
-}
-
-static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )
-{
-    int shift = 60;
-    position = schema_flag_append_( buffer, buffer_size, position, "0x" );
-    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
-    {
-        shift -= 4;
-    }
-    for ( ; shift >= 0; shift -= 4 )
-    {
-        if ( position < buffer_size - 1 )
-        {
-            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
-        }
-    }
-    return position;
-}
-#endif /* SCHEMA_FLAG_APPEND_DEFINED */
-
 /* Renders the set bits of value into buffer as "A|B" — "0" for the empty
    set, bits past the declared variants as hex — NUL-terminates and returns
    buffer; PROBE_FLAGS_NAMES_MAX bytes always suffice. */
-#define PROBE_FLAGS_NAMES_MAX 42
-static SCHEMA_UNUSED const char * flag_names_probe_flags( uint64_t value, char * buffer, int buffer_size )
+#define EXAMPLE_PROBE_FLAGS_NAMES_MAX 42
+static SCHEMA_UNUSED const char * example_flag_names_probe_flags( uint64_t value, char * buffer, int buffer_size )
 {
     int position = 0;
     if ( value & ( 1ULL << 0 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_probe_flags( 0 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, example_flag_name_probe_flags( 0 ) );
     }
     if ( value & ( 1ULL << 1 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_probe_flags( 1 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, example_flag_name_probe_flags( 1 ) );
     }
     if ( value & ( 1ULL << 2 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_probe_flags( 2 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, example_flag_name_probe_flags( 2 ) );
     }
     if ( value >> 3 )
     {
@@ -145,51 +107,51 @@ static SCHEMA_UNUSED const char * flag_names_probe_flags( uint64_t value, char *
 
 
 /* type ProbeHeader */
-typedef struct ProbeHeader {
+typedef struct example_probe_header_t {
     uint32_t version;
     uint64_t probe_id;
-} ProbeHeader;
+} example_probe_header_t;
 
-#define PROBE_HEADER_MAX_BITS 87   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_HEADER_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXAMPLE_PROBE_HEADER_MAX_BITS 87   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_HEADER_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ProbeBits */
-typedef struct ProbeBits {
+typedef struct example_probe_bits_t {
     uint32_t small;
     uint64_t boundary;
     uint64_t wide;
     uint32_t sensor;
     uint64_t nonce;
-} ProbeBits;
+} example_probe_bits_t;
 
-#define PROBE_BITS_MAX_BITS 202   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_BITS_MAX_BYTES 32
+#define EXAMPLE_PROBE_BITS_MAX_BITS 202   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_BITS_MAX_BYTES 32
 
 
 /* type ProbeSample */
-typedef struct ProbeSample {
+typedef struct example_probe_sample_t {
     bool active;
     float orientation;
     int32_t raw_delta;
     int64_t big_delta;
-    Weapon weapon;
+    example_weapon_t weapon;
     bool has_target;
     uint16_t target_id;
     uint32_t idle_ticks;
     uint16_t samples[8];
     int32_t samples_count;
-} ProbeSample;
+} example_probe_sample_t;
 
-#define PROBE_SAMPLE_MAX_BITS 276   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_SAMPLE_MAX_BYTES 40
+#define EXAMPLE_PROBE_SAMPLE_MAX_BITS 276   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_SAMPLE_MAX_BYTES 40
 
 /* Returns a new ProbeSample with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED ProbeSample new_probe_sample( void )
+static SCHEMA_UNUSED example_probe_sample_t example_new_probe_sample( void )
 {
-    ProbeSample value;
+    example_probe_sample_t value;
     memset( &value, 0, sizeof( value ) );
     value.active = true;
     value.samples_count = 1;
@@ -198,188 +160,188 @@ static SCHEMA_UNUSED ProbeSample new_probe_sample( void )
 
 
 /* type ProbeRing */
-typedef struct ProbeRing {
+typedef struct example_probe_ring_t {
     uint16_t radius;
-} ProbeRing;
+} example_probe_ring_t;
 
-#define PROBE_RING_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_RING_MAX_BYTES 8
+#define EXAMPLE_PROBE_RING_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_RING_MAX_BYTES 8
 
 
 /* type ProbeSlab */
-typedef struct ProbeSlab {
+typedef struct example_probe_slab_t {
     uint8_t width;
     uint8_t height;
-} ProbeSlab;
+} example_probe_slab_t;
 
-#define PROBE_SLAB_MAX_BITS 15   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_SLAB_MAX_BYTES 8
+#define EXAMPLE_PROBE_SLAB_MAX_BITS 15   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_SLAB_MAX_BYTES 8
 
 
 /* union ProbeShape — first-class one-of (SPEC §4.8): the tag says which arm is
    live; None = 0 is the empty union, and the tag range is [0, 2]. */
-typedef uint8_t ProbeShapeType;
-#define PROBE_SHAPE_TYPE_NONE 0
-#define PROBE_SHAPE_TYPE_RING 1
-#define PROBE_SHAPE_TYPE_SLAB 2
-#define PROBE_SHAPE_TYPE_COUNT 2
-#define PROBE_SHAPE_TYPE_MAX 2
+typedef uint8_t example_probe_shape_type_t;
+#define EXAMPLE_PROBE_SHAPE_TYPE_NONE 0
+#define EXAMPLE_PROBE_SHAPE_TYPE_RING 1
+#define EXAMPLE_PROBE_SHAPE_TYPE_SLAB 2
+#define EXAMPLE_PROBE_SHAPE_TYPE_COUNT 2
+#define EXAMPLE_PROBE_SHAPE_TYPE_MAX 2
 
 /* Debug/log name for any ProbeShapeType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_probe_shape_type( ProbeShapeType value )
+static SCHEMA_UNUSED const char * example_enum_name_probe_shape_type( example_probe_shape_type_t value )
 {
     switch ( value )
     {
-        case PROBE_SHAPE_TYPE_NONE: return "None";
+        case EXAMPLE_PROBE_SHAPE_TYPE_NONE: return "None";
         case 1: return "Ring";
         case 2: return "Slab";
         default: return "???";
     }
 }
 
-typedef struct ProbeShape {
-    ProbeShapeType type;
+typedef struct example_probe_shape_t {
+    example_probe_shape_type_t type;
     union {
-        ProbeRing ring;
-        ProbeSlab slab;
+        example_probe_ring_t ring;
+        example_probe_slab_t slab;
     } as;
-} ProbeShape;
+} example_probe_shape_t;
 
-#define PROBE_SHAPE_MAX_BITS 18   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define PROBE_SHAPE_MAX_BYTES 8
+#define EXAMPLE_PROBE_SHAPE_MAX_BITS 18   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
+#define EXAMPLE_PROBE_SHAPE_MAX_BYTES 8
 
 /* Selectors for ProbeShape: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
    the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
-static SCHEMA_UNUSED ProbeRing * probe_shape_select_ring( ProbeShape * value )
+static SCHEMA_UNUSED example_probe_ring_t * example_probe_shape_select_ring( example_probe_shape_t * value )
 {
-    value->type = PROBE_SHAPE_TYPE_RING;
+    value->type = EXAMPLE_PROBE_SHAPE_TYPE_RING;
     memset( &value->as.ring, 0, sizeof( value->as.ring ) );
     return &value->as.ring;
 }
 
-static SCHEMA_UNUSED ProbeSlab * probe_shape_select_slab( ProbeShape * value )
+static SCHEMA_UNUSED example_probe_slab_t * example_probe_shape_select_slab( example_probe_shape_t * value )
 {
-    value->type = PROBE_SHAPE_TYPE_SLAB;
+    value->type = EXAMPLE_PROBE_SHAPE_TYPE_SLAB;
     memset( &value->as.slab, 0, sizeof( value->as.slab ) );
     return &value->as.slab;
 }
 
 
 /* type ProbeCollider */
-typedef struct ProbeCollider {
+typedef struct example_probe_collider_t {
     uint8_t armor;
-    ProbeShape shape;
-    ProbeShape backup;
-    ProbeShape extras[2];
+    example_probe_shape_t shape;
+    example_probe_shape_t backup;
+    example_probe_shape_t extras[2];
     int32_t extras_count;
-} ProbeCollider;
+} example_probe_collider_t;
 
-#define PROBE_COLLIDER_MAX_BITS 82   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_COLLIDER_MAX_BYTES 16
+#define EXAMPLE_PROBE_COLLIDER_MAX_BITS 82   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_COLLIDER_MAX_BYTES 16
 
 
 /* type ProbeConfig */
-typedef struct ProbeConfig {
+typedef struct example_probe_config_t {
     int32_t retries;
-    Weapon preferred;
-} ProbeConfig;
+    example_weapon_t preferred;
+} example_probe_config_t;
 
-#define PROBE_CONFIG_MAX_BITS 36   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_CONFIG_MAX_BYTES 8
+#define EXAMPLE_PROBE_CONFIG_MAX_BITS 36   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_CONFIG_MAX_BYTES 8
 
 /* Returns a new ProbeConfig with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED ProbeConfig new_probe_config( void )
+static SCHEMA_UNUSED example_probe_config_t example_new_probe_config( void )
 {
-    ProbeConfig value;
+    example_probe_config_t value;
     memset( &value, 0, sizeof( value ) );
     value.retries = -1;
-    value.preferred = WEAPON_RAILGUN;
+    value.preferred = EXAMPLE_WEAPON_RAILGUN;
     return value;
 }
 
 
 /* type ProbeArray */
-typedef struct ProbeArray {
-    ProbeSample samples[2];
-    ProbeConfig config;
-} ProbeArray;
+typedef struct example_probe_array_t {
+    example_probe_sample_t samples[2];
+    example_probe_config_t config;
+} example_probe_array_t;
 
-#define PROBE_ARRAY_MAX_BITS 588   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_ARRAY_MAX_BYTES 80
+#define EXAMPLE_PROBE_ARRAY_MAX_BITS 588   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_ARRAY_MAX_BYTES 80
 
 /* Returns a new ProbeArray with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED ProbeArray new_probe_array( void )
+static SCHEMA_UNUSED example_probe_array_t example_new_probe_array( void )
 {
-    ProbeArray value;
+    example_probe_array_t value;
     memset( &value, 0, sizeof( value ) );
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
         {
-            value.samples[i] = new_probe_sample();
+            value.samples[i] = example_new_probe_sample();
         }
     }
-    value.config = new_probe_config();
+    value.config = example_new_probe_config();
     return value;
 }
 
 
 /* type Heartbeat */
-typedef struct Heartbeat {
+typedef struct example_heartbeat_t {
     char unused_; /* C has no empty struct; carries no wire bits */
-} Heartbeat;
+} example_heartbeat_t;
 
 
 /* type Test */
-typedef struct Test {
+typedef struct example_test_t {
     uint16_t test_a;
     int16_t test_b;
     int16_t test_c;
     int16_t test_d;
-} Test;
+} example_test_t;
 
-#define TEST_MAX_BITS 46   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TEST_MAX_BYTES 8
+#define EXAMPLE_TEST_MAX_BITS 46   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_TEST_MAX_BYTES 8
 
 
 /* type Block */
-typedef struct Block {
-    uint8_t data[MAX_BLOCK_SIZE];
+typedef struct example_block_t {
+    uint8_t data[EXAMPLE_MAX_BLOCK_SIZE];
     int32_t data_length;
-} Block;
+} example_block_t;
 
-#define BLOCK_MAX_BITS 16018   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define BLOCK_MAX_BYTES 2008
+#define EXAMPLE_BLOCK_MAX_BITS 16018   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_BLOCK_MAX_BYTES 2008
 
 
 /* type Chat */
-typedef struct Chat {
-    char text[MAX_CHAT_LENGTH + 1]; /* string(MaxChatLength): N + 1 for the terminator the wire does not carry */
+typedef struct example_chat_t {
+    char text[EXAMPLE_MAX_CHAT_LENGTH + 1]; /* string(MaxChatLength): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
-} Chat;
+} example_chat_t;
 
-#define CHAT_MAX_BITS 2064   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define CHAT_MAX_BYTES 264
+#define EXAMPLE_CHAT_MAX_BITS 2064   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_CHAT_MAX_BYTES 264
 
 
 /* type ProbeReport */
-typedef struct ProbeReport {
-    ProbeHeader header;
-    ProbeFlags flags;
-    Test echo;
-} ProbeReport;
+typedef struct example_probe_report_t {
+    example_probe_header_t header;
+    example_probe_flags_t flags;
+    example_test_t echo;
+} example_probe_report_t;
 
-#define PROBE_REPORT_MAX_BITS 141   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define PROBE_REPORT_MAX_BYTES 24
+#define EXAMPLE_PROBE_REPORT_MAX_BITS 141   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_PROBE_REPORT_MAX_BYTES 24
 
 
 /* type TestData */
-typedef struct TestData {
+typedef struct example_test_data_t {
     int32_t a;
     int32_t b;
     int32_t c;
@@ -403,20 +365,20 @@ typedef struct TestData {
     uint8_t fixed_bytes[17];
     char text[255 + 1]; /* string(255): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
-} TestData;
+} example_test_data_t;
 
-#define TEST_DATA_MAX_BITS 2735   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TEST_DATA_MAX_BYTES 344
+#define EXAMPLE_TEST_DATA_MAX_BITS 2735   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_TEST_DATA_MAX_BYTES 344
 
 
 /* type CompressedProbe */
-typedef struct CompressedProbe {
+typedef struct example_compressed_probe_t {
     float boundary;
     float offset;
-} CompressedProbe;
+} example_compressed_probe_t;
 
-#define COMPRESSED_PROBE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define COMPRESSED_PROBE_MAX_BYTES 8
+#define EXAMPLE_COMPRESSED_PROBE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_COMPRESSED_PROBE_MAX_BYTES 8
 
 #ifdef __cplusplus
 }

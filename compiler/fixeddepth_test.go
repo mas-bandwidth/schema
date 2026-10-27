@@ -181,7 +181,9 @@ var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", 
 // deliberately not the runtime's own `table_fixed_*` surface: every leg emits
 // that whether or not any table uses it, which is exactly how five legs dropped
 // the form for years without a test noticing.
-var fixedDepthTableMark = regexp.MustCompile(`(?i)\b(deep_fixed|DeepFixed|deepFixed|DEEP_FIXED)[A-Za-z_]*\b`)
+// C spells it under the unit's package (fixdepth_deep_fixed_save, SPEC §6.3),
+// so a leading underscore is a boundary too.
+var fixedDepthTableMark = regexp.MustCompile(`(?i)(?:\b|_)(deep_fixed|DeepFixed|deepFixed|DEEP_FIXED)[A-Za-z_]*\b`)
 
 func fixedDepthMarks(t *testing.T, lang string, u *ir.Unit) int {
 	t.Helper()

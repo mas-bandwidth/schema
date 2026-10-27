@@ -10,17 +10,17 @@
 #include "fixedform.h"
 
 #define PlanCapacity 8192
-static TableFixedEntry g_plan[PlanCapacity];
+static tblfu2_table_fixed_entry_t g_plan[PlanCapacity];
 
 void fixed_fu2_read_fu1( const uint8_t * data, int64_t bytes )
 {
-    FuRoot back[2];
-    TableReport r;
+    tblfu2_fu_root_t back[2];
+    tblfu2_table_report_t r;
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fu_root_fixed_load( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
+    fixed_check( tblfu2_fu_root_fixed_load( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
                  "C text under an arm: the compiled read takes both records" );
-    fixed_check( back[0].pick.type == PICK_TYPE_LABELLED, "C text under an arm: compiled, the SECOND arm" );
+    fixed_check( back[0].pick.type == TBLFU2_PICK_TYPE_LABELLED, "C text under an arm: compiled, the SECOND arm" );
     fixed_check( back[0].pick.as.labelled.lead == 101,
                  "C text under an arm: compiled, the scalar BEFORE the text" );
     fixed_check( back[0].pick.as.labelled.label_length == 5 &&
@@ -32,7 +32,7 @@ void fixed_fu2_read_fu1( const uint8_t * data, int64_t bytes )
                  "C text under an arm: compiled, the rest of the labelled record" );
     fixed_check( back[0].extra == 11,
                  "C text under an arm: the field FU1 does not carry took its declared default" );
-    fixed_check( back[1].pick.type == PICK_TYPE_PLAIN && back[1].pick.as.plain.n == 303 && back[1].tail == 12,
+    fixed_check( back[1].pick.type == TBLFU2_PICK_TYPE_PLAIN && back[1].pick.as.plain.n == 303 && back[1].tail == 12,
                  "C text under an arm: compiled, the FIRST arm as well" );
     fixed_check( back[1].extra == 11,
                  "C text under an arm: compiled, `extra` defaults on the FIRST arm too" );

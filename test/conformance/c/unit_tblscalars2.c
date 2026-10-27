@@ -1,4 +1,6 @@
 #include "Scalars2Table.h"
+#define SCHEMA_CONFORMANCE_PACKAGE scalardemo2
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER SCALARDEMO2
 #include "unit.h"
 
 SCHEMA_CONFORMANCE_CODEC( SimState, sim_state )

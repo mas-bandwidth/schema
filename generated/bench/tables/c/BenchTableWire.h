@@ -11,14 +11,6 @@
 #include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,30 +22,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
 /* Writes TableHitEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_hit_event( serialize_write_stream_t * stream, const TableHitEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_hit_event( serialize_write_stream_t * stream, const benchtable_table_hit_event_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->target_id, 12 ) )
     {
@@ -77,7 +47,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_hit_event( serialize_
 }
 
 /* Reads TableHitEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_read_stream_t * stream, TableHitEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_hit_event( serialize_read_stream_t * stream, benchtable_table_hit_event_t * value )
 {
     /* fixed 28-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 28 )
@@ -125,7 +95,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_hit_event( serialize_re
 }
 
 /* Writes TableChatEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_chat_event( serialize_write_stream_t * stream, const TableChatEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_chat_event( serialize_write_stream_t * stream, const benchtable_table_chat_event_t * value )
 {
     serialize_assert( (serialize_int64_t) value->channel >= 0 && (serialize_int64_t) value->channel <= 3 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->channel ), 2 ) )
@@ -140,7 +110,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_chat_event( serialize
 }
 
 /* Reads TableChatEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_chat_event( serialize_read_stream_t * stream, TableChatEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_chat_event( serialize_read_stream_t * stream, benchtable_table_chat_event_t * value )
 {
     /* fixed 14-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 14 )
@@ -170,7 +140,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_chat_event( serialize_r
 }
 
 /* Writes TablePickupEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_pickup_event( serialize_write_stream_t * stream, const TablePickupEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_pickup_event( serialize_write_stream_t * stream, const benchtable_table_pickup_event_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->item_id, 10 ) )
     {
@@ -185,7 +155,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_pickup_event( seriali
 }
 
 /* Reads TablePickupEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_pickup_event( serialize_read_stream_t * stream, TablePickupEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_pickup_event( serialize_read_stream_t * stream, benchtable_table_pickup_event_t * value )
 {
     /* fixed 18-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 18 )
@@ -215,9 +185,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_pickup_event( serialize
 }
 
 /* Writes TableEvent. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_event( serialize_write_stream_t * stream, const TableEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int benchtable_write_table_event( serialize_write_stream_t * stream, const benchtable_table_event_t * value )
 {
-    serialize_assert( value->type <= TABLE_EVENT_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
+    serialize_assert( value->type <= BENCHTABLE_TABLE_EVENT_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -225,18 +195,18 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_table_event( serialize_writ
     switch ( value->type )
     {
         case 1:
-            return write_table_hit_event( stream, &value->as.hit );
+            return benchtable_write_table_hit_event( stream, &value->as.hit );
         case 2:
-            return write_table_chat_event( stream, &value->as.chat );
+            return benchtable_write_table_chat_event( stream, &value->as.chat );
         case 3:
-            return write_table_pickup_event( stream, &value->as.pickup );
+            return benchtable_write_table_pickup_event( stream, &value->as.pickup );
         default:
             return 1; /* None — the tag is the whole wire (SPEC §4.8) */
     }
 }
 
 /* Reads TableEvent. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_event( serialize_read_stream_t * stream, TableEvent * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int benchtable_read_table_event( serialize_read_stream_t * stream, benchtable_table_event_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -244,23 +214,23 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_table_event( serialize_read_s
         {
             return 0;
         }
-        if ( tag_value > TABLE_EVENT_TYPE_MAX )
+        if ( tag_value > BENCHTABLE_TABLE_EVENT_TYPE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
-        value->type = (TableEventType) tag_value;
+        value->type = (benchtable_table_event_type_t) tag_value;
     }
     switch ( value->type )
     {
         case 1:
             memset( &value->as.hit, 0, sizeof( value->as.hit ) );
-            return read_table_hit_event( stream, &value->as.hit );
+            return benchtable_read_table_hit_event( stream, &value->as.hit );
         case 2:
             memset( &value->as.chat, 0, sizeof( value->as.chat ) );
-            return read_table_chat_event( stream, &value->as.chat );
+            return benchtable_read_table_chat_event( stream, &value->as.chat );
         case 3:
             memset( &value->as.pickup, 0, sizeof( value->as.pickup ) );
-            return read_table_pickup_event( stream, &value->as.pickup );
+            return benchtable_read_table_pickup_event( stream, &value->as.pickup );
         default:
             return 1; /* None */
     }

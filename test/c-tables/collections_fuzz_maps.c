@@ -11,6 +11,8 @@
 #include "maps/SpansTable.h"
 #include "maps/TextTable.h"
 #include "maps/TrailsTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE mapdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER MAPDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Depth,depth)
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Text,text)

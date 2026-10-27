@@ -29,21 +29,21 @@
    last-wins and counted; a key present with the wrong JSON type is skipped
    and counted, never coerced. */
 
-#define kTableJsonMaxDepth 128
+#define BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH 128
 
 /* A key longer than this cannot name a field, so it is skipped as unknown. */
-#define kTableJsonMaxKey 256
+#define BLOCKDEMO_K_TABLE_JSON_MAX_KEY 256
 
 /* The longest numeric token the walk will convert. Anything longer is a
    value no field can hold and counts as a kind mismatch. */
-#define kTableJsonMaxNumber 512
+#define BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER 512
 
 /* The decimal point the C runtime is CURRENTLY using. Number conversion is
    the one locale-sensitive corner of the grammar — JSON's point is always
    '.', the runtime's is whatever the program set — so every number crosses
    this one character on the way out and on the way back in. Nothing else in
    the walk consults the locale. */
-static SCHEMA_UNUSED char table_json_decimal_point( void )
+static SCHEMA_UNUSED char blockdemo_table_json_decimal_point( void )
 {
     const struct lconv * conv = localeconv();
     if ( conv != NULL && conv->decimal_point != NULL && conv->decimal_point[0] != 0 )
@@ -59,7 +59,7 @@ static SCHEMA_UNUSED char table_json_decimal_point( void )
 
 /* finite: not a NaN, not an infinity. Written without <math.h> — the walk's
    runtime surface stays the handful of functions it already names. */
-static SCHEMA_UNUSED int table_json_finite( double v )
+static SCHEMA_UNUSED int blockdemo_table_json_finite( double v )
 {
     return v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
 }
@@ -72,19 +72,19 @@ static SCHEMA_UNUSED int table_json_finite( double v )
    "???" — and it is not a name: writing it would put a spelling in the text
    that the reader then counts as unknown, turning a refusal into a silent
    loss. */
-static SCHEMA_UNUSED const char * table_json_variant_name( const TableFieldInfo * f, uint64_t value )
+static SCHEMA_UNUSED const char * blockdemo_table_json_variant_name( const blockdemo_table_field_info_t * f, uint64_t value )
 {
     if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return NULL; }
     return f->variants[value].name;
 }
 
-static SCHEMA_UNUSED const char * table_json_key_name( const TableFieldInfo * f, uint64_t key )
+static SCHEMA_UNUSED const char * blockdemo_table_json_key_name( const blockdemo_table_field_info_t * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return NULL; }
     return f->keys[key].name;
 }
 
-static SCHEMA_UNUSED uint64_t table_json_get_raw( const void * storage, uint32_t width )
+static SCHEMA_UNUSED uint64_t blockdemo_table_json_get_raw( const void * storage, uint32_t width )
 {
     switch ( width )
     {
@@ -97,7 +97,7 @@ static SCHEMA_UNUSED uint64_t table_json_get_raw( const void * storage, uint32_t
     return 0;
 }
 
-static SCHEMA_UNUSED void table_json_set_raw( void * storage, uint32_t width, uint64_t value )
+static SCHEMA_UNUSED void blockdemo_table_json_set_raw( void * storage, uint32_t width, uint64_t value )
 {
     switch ( width )
     {
@@ -109,9 +109,9 @@ static SCHEMA_UNUSED void table_json_set_raw( void * storage, uint32_t width, ui
     }
 }
 
-static SCHEMA_UNUSED int64_t table_json_get_signed( const void * storage, uint32_t width )
+static SCHEMA_UNUSED int64_t blockdemo_table_json_get_signed( const void * storage, uint32_t width )
 {
-    uint64_t raw = table_json_get_raw( storage, width );
+    uint64_t raw = blockdemo_table_json_get_raw( storage, width );
     if ( width < 8 )
     {
         uint64_t sign = (uint64_t) 1 << ( width * 8 - 1 );
@@ -123,30 +123,30 @@ static SCHEMA_UNUSED int64_t table_json_get_signed( const void * storage, uint32
     return (int64_t) raw;
 }
 
-typedef struct TableJsonWide
+typedef struct blockdemo_table_json_wide_t
 {
     uint64_t lo;
     uint64_t hi;
-} TableJsonWide;
+} blockdemo_table_json_wide_t;
 
-static SCHEMA_UNUSED int table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
-static SCHEMA_UNUSED int table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
-static SCHEMA_UNUSED int table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+static SCHEMA_UNUSED int blockdemo_table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
+static SCHEMA_UNUSED int blockdemo_table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
+static SCHEMA_UNUSED int blockdemo_table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
 
-static SCHEMA_UNUSED int table_json_wide_zero( TableJsonWide v ) { return v.lo == 0 && v.hi == 0; }
-static SCHEMA_UNUSED int table_json_wide_negative( TableJsonWide v ) { return ( v.hi >> 63 ) != 0; }
+static SCHEMA_UNUSED int blockdemo_table_json_wide_zero( blockdemo_table_json_wide_t v ) { return v.lo == 0 && v.hi == 0; }
+static SCHEMA_UNUSED int blockdemo_table_json_wide_negative( blockdemo_table_json_wide_t v ) { return ( v.hi >> 63 ) != 0; }
 
-static SCHEMA_UNUSED int table_json_wide_compare( TableJsonWide a, TableJsonWide b, int is_signed )
+static SCHEMA_UNUSED int blockdemo_table_json_wide_compare( blockdemo_table_json_wide_t a, blockdemo_table_json_wide_t b, int is_signed )
 {
-    if ( is_signed && table_json_wide_negative( a ) != table_json_wide_negative( b ) ) { return table_json_wide_negative( a ) ? -1 : 1; }
+    if ( is_signed && blockdemo_table_json_wide_negative( a ) != blockdemo_table_json_wide_negative( b ) ) { return blockdemo_table_json_wide_negative( a ) ? -1 : 1; }
     if ( a.hi != b.hi ) { return a.hi < b.hi ? -1 : 1; }
     if ( a.lo != b.lo ) { return a.lo < b.lo ? -1 : 1; }
     return 0;
 }
 
-static SCHEMA_UNUSED TableJsonWide table_json_wide_shl( TableJsonWide v, int n )
+static SCHEMA_UNUSED blockdemo_table_json_wide_t blockdemo_table_json_wide_shl( blockdemo_table_json_wide_t v, int n )
 {
-    TableJsonWide r = { 0, 0 };
+    blockdemo_table_json_wide_t r = { 0, 0 };
     if ( n <= 0 ) { return v; }
     if ( n >= 128 ) { return r; }
     if ( n >= 64 ) { r.hi = v.lo << ( n - 64 ); return r; }
@@ -155,9 +155,9 @@ static SCHEMA_UNUSED TableJsonWide table_json_wide_shl( TableJsonWide v, int n )
     return r;
 }
 
-static SCHEMA_UNUSED TableJsonWide table_json_wide_shr( TableJsonWide v, int n )
+static SCHEMA_UNUSED blockdemo_table_json_wide_t blockdemo_table_json_wide_shr( blockdemo_table_json_wide_t v, int n )
 {
-    TableJsonWide r = { 0, 0 };
+    blockdemo_table_json_wide_t r = { 0, 0 };
     if ( n <= 0 ) { return v; }
     if ( n >= 128 ) { return r; }
     if ( n >= 64 ) { r.lo = v.hi >> ( n - 64 ); return r; }
@@ -166,16 +166,16 @@ static SCHEMA_UNUSED TableJsonWide table_json_wide_shr( TableJsonWide v, int n )
     return r;
 }
 
-static SCHEMA_UNUSED TableJsonWide table_json_wide_neg( TableJsonWide v )
+static SCHEMA_UNUSED blockdemo_table_json_wide_t blockdemo_table_json_wide_neg( blockdemo_table_json_wide_t v )
 {
-    TableJsonWide r;
+    blockdemo_table_json_wide_t r;
     r.lo = ~v.lo + 1;
     r.hi = ~v.hi + ( r.lo == 0 ? 1 : 0 );
     return r;
 }
 
 // v = v * m + a; the return is the carry out of 128 bits
-static SCHEMA_UNUSED uint32_t table_json_wide_mul_add( TableJsonWide * v, uint32_t m, uint32_t a )
+static SCHEMA_UNUSED uint32_t blockdemo_table_json_wide_mul_add( blockdemo_table_json_wide_t * v, uint32_t m, uint32_t a )
 {
     uint64_t limb[4] = { v->lo & 0xffffffffull, v->lo >> 32, v->hi & 0xffffffffull, v->hi >> 32 };
     uint64_t carry = a;
@@ -191,7 +191,7 @@ static SCHEMA_UNUSED uint32_t table_json_wide_mul_add( TableJsonWide * v, uint32
 }
 
 // v = v / d; the return is the remainder
-static SCHEMA_UNUSED uint32_t table_json_wide_div( TableJsonWide * v, uint32_t d )
+static SCHEMA_UNUSED uint32_t blockdemo_table_json_wide_div( blockdemo_table_json_wide_t * v, uint32_t d )
 {
     uint64_t limb[4] = { v->lo & 0xffffffffull, v->lo >> 32, v->hi & 0xffffffffull, v->hi >> 32 };
     uint64_t rem = 0;
@@ -210,9 +210,9 @@ static SCHEMA_UNUSED uint32_t table_json_wide_div( TableJsonWide * v, uint32_t d
 // pair — native __int128 in the host's byte order, or the emulated struct with
 // its low lane first — so the lanes are read in the host's order; a narrower
 // storage is one lane, sign-extended for a signed kind.
-static SCHEMA_UNUSED TableJsonWide table_json_wide_load( const void * storage, uint32_t width, int is_signed )
+static SCHEMA_UNUSED blockdemo_table_json_wide_t blockdemo_table_json_wide_load( const void * storage, uint32_t width, int is_signed )
 {
-    TableJsonWide v = { 0, 0 };
+    blockdemo_table_json_wide_t v = { 0, 0 };
     if ( width == 16 )
     {
         uint64_t half[2];
@@ -220,12 +220,12 @@ static SCHEMA_UNUSED TableJsonWide table_json_wide_load( const void * storage, u
         v.lo = half[0]; v.hi = half[1];
         return v;
     }
-    v.lo = is_signed ? (uint64_t) table_json_get_signed( storage, width ) : table_json_get_raw( storage, width );
+    v.lo = is_signed ? (uint64_t) blockdemo_table_json_get_signed( storage, width ) : blockdemo_table_json_get_raw( storage, width );
     v.hi = ( is_signed && ( v.lo >> 63 ) != 0 ) ? ~(uint64_t) ( 0 ) : 0;
     return v;
 }
 
-static SCHEMA_UNUSED void table_json_wide_store( void * storage, uint32_t width, TableJsonWide v )
+static SCHEMA_UNUSED void blockdemo_table_json_wide_store( void * storage, uint32_t width, blockdemo_table_json_wide_t v )
 {
     if ( width == 16 )
     {
@@ -234,14 +234,14 @@ static SCHEMA_UNUSED void table_json_wide_store( void * storage, uint32_t width,
         memcpy( storage, half, 16 );
         return;
     }
-    table_json_set_raw( storage, width, v.lo );
+    blockdemo_table_json_set_raw( storage, width, v.lo );
 }
 
 
 /* a counted field's companion: a string's length, a bytes' length, a counted
    array's count. Bounded by the declared extent on the way out, so a storage
    invariant a caller broke cannot walk off the end of the array. */
-static SCHEMA_UNUSED int32_t table_json_count( const void * base, const TableFieldInfo * f )
+static SCHEMA_UNUSED int32_t blockdemo_table_json_count( const void * base, const blockdemo_table_field_info_t * f )
 {
     int32_t count = 0;
     if ( !f->counted )
@@ -254,7 +254,7 @@ static SCHEMA_UNUSED int32_t table_json_count( const void * base, const TableFie
     return count;
 }
 
-static SCHEMA_UNUSED void table_json_set_count( void * base, const TableFieldInfo * f, int32_t count )
+static SCHEMA_UNUSED void blockdemo_table_json_set_count( void * base, const blockdemo_table_field_info_t * f, int32_t count )
 {
     if ( f->counted )
     {
@@ -276,7 +276,7 @@ static SCHEMA_UNUSED void table_json_set_count( void * base, const TableFieldInf
    bytes(N) is the one kind whose element kind does not decide its form: it
    shares u8 with a plain array of u8, and rides as base64. The schema type
    name settles it, and "bytes" is a keyword no declaration can claim. */
-static SCHEMA_UNUSED int table_json_is_bytes( const TableFieldInfo * f )
+static SCHEMA_UNUSED int blockdemo_table_json_is_bytes( const blockdemo_table_field_info_t * f )
 {
     return f->is_array && f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0;
 }
@@ -284,7 +284,7 @@ static SCHEMA_UNUSED int table_json_is_bytes( const TableFieldInfo * f )
 /* An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
    keyed by variant name, not a positional array, because that is what the
    storage is — one slot per variant, addressed by the variant. */
-static SCHEMA_UNUSED int table_json_is_keyed( const TableFieldInfo * f )
+static SCHEMA_UNUSED int blockdemo_table_json_is_keyed( const blockdemo_table_field_info_t * f )
 {
     return f->keys != NULL;
 }
@@ -292,7 +292,7 @@ static SCHEMA_UNUSED int table_json_is_keyed( const TableFieldInfo * f )
 /* THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot i
    holds the key i + 1 and nothing is stored for None. This is the ONE place
    the walker spells the shift. */
-static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
+static SCHEMA_UNUSED uint64_t blockdemo_table_json_keyed_slot_key( int64_t slot )
 {
     return (uint64_t) ( slot + 1 );
 }
@@ -301,45 +301,45 @@ static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
    [0, array_bound) does, unless the enum carries max-headroom variants outside
    a table closure. Such headroom has no declared name. A full identity may
    be zero, so identity alone cannot distinguish a valid key. */
-static SCHEMA_UNUSED int table_json_keyed_slot_valid( const TableFieldInfo * f, int64_t slot )
+static SCHEMA_UNUSED int blockdemo_table_json_keyed_slot_valid( const blockdemo_table_field_info_t * f, int64_t slot )
 {
-    return table_json_key_name( f, table_json_keyed_slot_key( slot ) ) != NULL;
+    return blockdemo_table_json_key_name( f, blockdemo_table_json_keyed_slot_key( slot ) ) != NULL;
 }
 
-static SCHEMA_UNUSED int table_json_is_flags( const TableFieldInfo * f )
+static SCHEMA_UNUSED int blockdemo_table_json_is_flags( const blockdemo_table_field_info_t * f )
 {
     return f->variants != NULL && !f->has_variant_ids;
 }
 
-static SCHEMA_UNUSED int table_json_is_enum( const TableFieldInfo * f )
+static SCHEMA_UNUSED int blockdemo_table_json_is_enum( const blockdemo_table_field_info_t * f )
 {
     return f->variants != NULL && f->has_variant_ids && f->arms == NULL;
 }
 
-static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
+static SCHEMA_UNUSED char blockdemo_table_json_shape( const blockdemo_table_field_info_t * f )
 {
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
-    if ( table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
-    if ( table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
+    if ( blockdemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
+    if ( blockdemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
     if ( f->sequence==2 ) { return 'o'; }
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
-    if ( table_json_is_enum( f ) ) { return 's'; }
-    if ( table_json_is_flags( f ) ) { return 'a'; }
+    if ( blockdemo_table_json_is_enum( f ) ) { return 's'; }
+    if ( blockdemo_table_json_is_flags( f ) ) { return 'a'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
 
 /* the ELEMENT shape of an array field — the same classifier one level down */
-static SCHEMA_UNUSED char table_json_element_shape( const TableFieldInfo * f )
+static SCHEMA_UNUSED char blockdemo_table_json_element_shape( const blockdemo_table_field_info_t * f )
 {
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
     if ( f->kind == 13 ) { return 'o'; }
-    if ( table_json_is_enum( f ) ) { return 's'; }
-    if ( table_json_is_flags( f ) ) { return 'a'; }
+    if ( blockdemo_table_json_is_enum( f ) ) { return 's'; }
+    if ( blockdemo_table_json_is_flags( f ) ) { return 'a'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -351,7 +351,7 @@ static SCHEMA_UNUSED char table_json_element_shape( const TableFieldInfo * f )
    "active && has_target"), so evaluating it is a walk of the same
    descriptor. Nothing is inferred in the other direction: reading places
    every key it can name, and the guard is a plain bool key (§16.2). */
-static SCHEMA_UNUSED int table_json_guard_holds( const void * base, const TableTypeInfo * info, const char * guard )
+static SCHEMA_UNUSED int blockdemo_table_json_guard_holds( const void * base, const blockdemo_table_type_info_t * info, const char * guard )
 {
     const char * p = guard;
     for ( ;; )
@@ -369,10 +369,10 @@ static SCHEMA_UNUSED int table_json_guard_holds( const void * base, const TableT
         length = (size_t) ( p - start );
         for ( i = 0; i < info->num_fields; i++ )
         {
-            const TableFieldInfo * f = &info->fields[i];
+            const blockdemo_table_field_info_t * f = &info->fields[i];
             if ( strlen( f->name ) == length && strncmp( f->name, start, length ) == 0 )
             {
-                value = table_json_get_raw( (const uint8_t *) base + f->offset, f->elem_size ) != 0;
+                value = blockdemo_table_json_get_raw( (const uint8_t *) base + f->offset, f->elem_size ) != 0;
                 break;
             }
         }
@@ -385,16 +385,16 @@ static SCHEMA_UNUSED int table_json_guard_holds( const void * base, const TableT
    The writer sink MEASURES when the buffer is NULL and WRITES when it is
    not, over one code path — so measure and write agree byte for byte, the
    wire's invariant (§9) carried across. */
-typedef struct TableJsonOut
+typedef struct blockdemo_table_json_out_t
 {
     char * buffer;
     int64_t capacity;
     int64_t offset;
     int overflow;
     void * graph;
-} TableJsonOut;
+} blockdemo_table_json_out_t;
 
-static SCHEMA_UNUSED void table_json_raw( TableJsonOut * out, const char * data, int64_t count )
+static SCHEMA_UNUSED void blockdemo_table_json_raw( blockdemo_table_json_out_t * out, const char * data, int64_t count )
 {
     if ( out->buffer != NULL )
     {
@@ -404,24 +404,24 @@ static SCHEMA_UNUSED void table_json_raw( TableJsonOut * out, const char * data,
     out->offset += count;
 }
 
-static SCHEMA_UNUSED void table_json_put( TableJsonOut * out, char c ) { table_json_raw( out, &c, 1 ); }
+static SCHEMA_UNUSED void blockdemo_table_json_put( blockdemo_table_json_out_t * out, char c ) { blockdemo_table_json_raw( out, &c, 1 ); }
 
-static SCHEMA_UNUSED void table_json_text( TableJsonOut * out, const char * s ) { table_json_raw( out, s, (int64_t) strlen( s ) ); }
+static SCHEMA_UNUSED void blockdemo_table_json_text( blockdemo_table_json_out_t * out, const char * s ) { blockdemo_table_json_raw( out, s, (int64_t) strlen( s ) ); }
 
-static SCHEMA_UNUSED void table_json_line( TableJsonOut * out, int32_t depth )
+static SCHEMA_UNUSED void blockdemo_table_json_line( blockdemo_table_json_out_t * out, int32_t depth )
 {
     int32_t i;
-    table_json_put( out, '\n' );
-    for ( i = 0; i < depth; i++ ) { table_json_raw( out, "  ", 2 ); }
+    blockdemo_table_json_put( out, '\n' );
+    for ( i = 0; i < depth; i++ ) { blockdemo_table_json_raw( out, "  ", 2 ); }
 }
 
-static SCHEMA_UNUSED const char * table_json_base64_alphabet( void )
+static SCHEMA_UNUSED const char * blockdemo_table_json_base64_alphabet( void )
 {
     return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 }
 
 /* Byte-indexed sextets; -1 is invalid, including NUL and high bytes. */
-static SCHEMA_UNUSED int32_t table_json_base64_value( uint8_t c )
+static SCHEMA_UNUSED int32_t blockdemo_table_json_base64_value( uint8_t c )
 {
     static const int8_t values[256] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -444,11 +444,11 @@ static SCHEMA_UNUSED int32_t table_json_base64_value( uint8_t c )
     return values[c];
 }
 
-static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uint8_t * data, int32_t length )
+static SCHEMA_UNUSED void blockdemo_table_json_write_base64( blockdemo_table_json_out_t * out, const uint8_t * data, int32_t length )
 {
-    const char * alphabet = table_json_base64_alphabet();
+    const char * alphabet = blockdemo_table_json_base64_alphabet();
     int32_t i = 0;
-    table_json_put( out, '"' );
+    blockdemo_table_json_put( out, '"' );
     for ( ; length - i >= 3; i += 3 )
     {
         uint32_t triple = ( (uint32_t) data[i] << 16 ) | ( (uint32_t) data[i+1] << 8 ) | (uint32_t) data[i+2];
@@ -457,7 +457,7 @@ static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uin
         quad[1] = alphabet[ ( triple >> 12 ) & 0x3f ];
         quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ];
         quad[3] = alphabet[ triple & 0x3f ];
-        table_json_raw( out, quad, 4 );
+        blockdemo_table_json_raw( out, quad, 4 );
     }
     if ( i < length )
     {
@@ -470,15 +470,15 @@ static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uin
         quad[2] = '=';
         quad[3] = '=';
         if ( left == 2 ) { quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ]; }
-        table_json_raw( out, quad, 4 );
+        blockdemo_table_json_raw( out, quad, 4 );
     }
-    table_json_put( out, '"' );
+    blockdemo_table_json_put( out, '"' );
 }
 
 /* One UTF-8 sequence at s, or -1 when the bytes there are not one. Rejects
    the lot: a stray continuation, an overlong form, a surrogate half, and
    anything past U+10FFFF. */
-static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining, int32_t * width )
+static SCHEMA_UNUSED int32_t blockdemo_table_json_utf8( const char * s, int32_t remaining, int32_t * width )
 {
     unsigned char lead = (unsigned char) s[0];
     int32_t want = 0;
@@ -507,60 +507,60 @@ static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining,
 /* A JSON text must be valid UTF-8 (RFC 8259 section 8.1). Caller-filled storage can still contain
    invalid bytes; write each such byte as U+FFFD rather than emitting invalid
    JSON. The text reader also replaces ill-formed sequences before clamping. */
-static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const char * s, int32_t length )
+static SCHEMA_UNUSED void blockdemo_table_json_write_string( blockdemo_table_json_out_t * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
     int32_t i;
-    table_json_put( out, '"' );
+    blockdemo_table_json_put( out, '"' );
     for ( i = 0; i < length; i++ )
     {
         unsigned char c = (unsigned char) s[i];
         switch ( c )
         {
-            case '"':  table_json_raw( out, "\\\"", 2 ); break;
-            case '\\': table_json_raw( out, "\\\\", 2 ); break;
-            case '\b': table_json_raw( out, "\\b", 2 ); break;
-            case '\f': table_json_raw( out, "\\f", 2 ); break;
-            case '\n': table_json_raw( out, "\\n", 2 ); break;
-            case '\r': table_json_raw( out, "\\r", 2 ); break;
-            case '\t': table_json_raw( out, "\\t", 2 ); break;
+            case '"':  blockdemo_table_json_raw( out, "\\\"", 2 ); break;
+            case '\\': blockdemo_table_json_raw( out, "\\\\", 2 ); break;
+            case '\b': blockdemo_table_json_raw( out, "\\b", 2 ); break;
+            case '\f': blockdemo_table_json_raw( out, "\\f", 2 ); break;
+            case '\n': blockdemo_table_json_raw( out, "\\n", 2 ); break;
+            case '\r': blockdemo_table_json_raw( out, "\\r", 2 ); break;
+            case '\t': blockdemo_table_json_raw( out, "\\t", 2 ); break;
             default:
                 if ( c < 0x20 )
                 {
                     char escape[6];
                     escape[0] = '\\'; escape[1] = 'u'; escape[2] = '0'; escape[3] = '0';
                     escape[4] = hex[ c >> 4 ]; escape[5] = hex[ c & 0xf ];
-                    table_json_raw( out, escape, 6 );
+                    blockdemo_table_json_raw( out, escape, 6 );
                 }
                 else if ( c < 0x80 )
                 {
-                    table_json_put( out, (char) c );
+                    blockdemo_table_json_put( out, (char) c );
                 }
                 else
                 {
                     int32_t width = 0;
-                    if ( table_json_utf8( s + i, length - i, &width ) < 0 )
+                    if ( blockdemo_table_json_utf8( s + i, length - i, &width ) < 0 )
                     {
-                        table_json_raw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
+                        blockdemo_table_json_raw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
                     }
                     else
                     {
-                        table_json_raw( out, s + i, width );
+                        blockdemo_table_json_raw( out, s + i, width );
                         i += width - 1;
                     }
                 }
                 break;
         }
     }
-    table_json_put( out, '"' );
+    blockdemo_table_json_put( out, '"' );
 }
 
-static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit );
+static SCHEMA_UNUSED int32_t blockdemo_table_json_encode_utf8( uint32_t code, char * unit );
 
-static SCHEMA_UNUSED void table_json_write_w_string( TableJsonOut * out, const uint16_t * s, int32_t length )
+static SCHEMA_UNUSED void blockdemo_table_json_write_w_string( blockdemo_table_json_out_t * out, const uint16_t * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
-    table_json_put( out, '"' );
+    blockdemo_table_json_put( out, '"' );
     for ( int32_t i = 0; i < length; i++ )
     {
         uint32_t code = (uint32_t) (uint16_t) s[i];
@@ -576,30 +576,30 @@ static SCHEMA_UNUSED void table_json_write_w_string( TableJsonOut * out, const u
         if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; } // an unpaired surrogate
         switch ( code )
         {
-            case '"':  table_json_raw( out, "\\\"", 2 ); continue;
-            case '\\': table_json_raw( out, "\\\\", 2 ); continue;
-            case '\b': table_json_raw( out, "\\b", 2 ); continue;
-            case '\f': table_json_raw( out, "\\f", 2 ); continue;
-            case '\n': table_json_raw( out, "\\n", 2 ); continue;
-            case '\r': table_json_raw( out, "\\r", 2 ); continue;
-            case '\t': table_json_raw( out, "\\t", 2 ); continue;
+            case '"':  blockdemo_table_json_raw( out, "\\\"", 2 ); continue;
+            case '\\': blockdemo_table_json_raw( out, "\\\\", 2 ); continue;
+            case '\b': blockdemo_table_json_raw( out, "\\b", 2 ); continue;
+            case '\f': blockdemo_table_json_raw( out, "\\f", 2 ); continue;
+            case '\n': blockdemo_table_json_raw( out, "\\n", 2 ); continue;
+            case '\r': blockdemo_table_json_raw( out, "\\r", 2 ); continue;
+            case '\t': blockdemo_table_json_raw( out, "\\t", 2 ); continue;
             default: break;
         }
         if ( code < 0x20 )
         {
             char escape[6] = { '\\', 'u', '0', '0', hex[ code >> 4 ], hex[ code & 0xf ] };
-            table_json_raw( out, escape, 6 );
+            blockdemo_table_json_raw( out, escape, 6 );
             continue;
         }
         char encoded[4];
-        const int32_t encoded_length = table_json_encode_utf8( code, encoded );
-        table_json_raw( out, encoded, encoded_length );
+        const int32_t encoded_length = blockdemo_table_json_encode_utf8( code, encoded );
+        blockdemo_table_json_raw( out, encoded, encoded_length );
     }
-    table_json_put( out, '"' );
+    blockdemo_table_json_put( out, '"' );
 }
 
 
-static SCHEMA_UNUSED void table_json_write_unsigned( TableJsonOut * out, uint64_t value )
+static SCHEMA_UNUSED void blockdemo_table_json_write_unsigned( blockdemo_table_json_out_t * out, uint64_t value )
 {
     char digits[24];
     char text[24];
@@ -611,18 +611,18 @@ static SCHEMA_UNUSED void table_json_write_unsigned( TableJsonOut * out, uint64_
         value /= 10;
     } while ( value != 0 );
     for ( i = 0; i < n; i++ ) { text[i] = digits[n - 1 - i]; }
-    table_json_raw( out, text, n );
+    blockdemo_table_json_raw( out, text, n );
 }
 
-static SCHEMA_UNUSED void table_json_write_signed( TableJsonOut * out, int64_t value )
+static SCHEMA_UNUSED void blockdemo_table_json_write_signed( blockdemo_table_json_out_t * out, int64_t value )
 {
     if ( value < 0 )
     {
-        table_json_put( out, '-' );
-        table_json_write_unsigned( out, (uint64_t) 0 - (uint64_t) value );
+        blockdemo_table_json_put( out, '-' );
+        blockdemo_table_json_write_unsigned( out, (uint64_t) 0 - (uint64_t) value );
         return;
     }
-    table_json_write_unsigned( out, (uint64_t) value );
+    blockdemo_table_json_write_unsigned( out, (uint64_t) value );
 }
 
 /* A float writes at the SHORTEST precision that reads back as the same value
@@ -630,53 +630,53 @@ static SCHEMA_UNUSED void table_json_write_signed( TableJsonOut * out, int64_t v
    readable. Non-finite values have no JSON spelling at all, and the writer
    REFUSES rather than losing one silently — the same rule measure and save
    already apply to an enum value no variant names (§5). */
-static SCHEMA_UNUSED void table_json_write_wide( TableJsonOut * out, const void * storage, const TableFieldInfo * f )
+static SCHEMA_UNUSED void blockdemo_table_json_write_wide( blockdemo_table_json_out_t * out, const void * storage, const blockdemo_table_field_info_t * f )
 {
-    int is_signed = table_json_kind_wide_signed( f->kind );
-    TableJsonWide v = table_json_wide_load( storage, f->elem_size, is_signed );
-    if ( is_signed && table_json_wide_negative( v ) )
+    int is_signed = blockdemo_table_json_kind_wide_signed( f->kind );
+    blockdemo_table_json_wide_t v = blockdemo_table_json_wide_load( storage, f->elem_size, is_signed );
+    if ( is_signed && blockdemo_table_json_wide_negative( v ) )
     {
-        table_json_put( out, '-' );
-        v = table_json_wide_neg( v );
+        blockdemo_table_json_put( out, '-' );
+        v = blockdemo_table_json_wide_neg( v );
     }
     int frac = f->frac_bits;
-    TableJsonWide whole = table_json_wide_shr( v, frac );
+    blockdemo_table_json_wide_t whole = blockdemo_table_json_wide_shr( v, frac );
     char digits[40];
     int32_t n = 0;
     do
     {
-        digits[n++] = (char) ( '0' + (int) table_json_wide_div( &whole, 10 ) );
-    } while ( !table_json_wide_zero( whole ) );
+        digits[n++] = (char) ( '0' + (int) blockdemo_table_json_wide_div( &whole, 10 ) );
+    } while ( !blockdemo_table_json_wide_zero( whole ) );
     char text[40];
     for ( int32_t i = 0; i < n; i++ ) { text[i] = digits[n - 1 - i]; }
-    table_json_raw( out, text, n );
-    if ( !table_json_kind_fixed( f->kind ) ) { return; }
-    table_json_put( out, '.' );
+    blockdemo_table_json_raw( out, text, n );
+    if ( !blockdemo_table_json_kind_fixed( f->kind ) ) { return; }
+    blockdemo_table_json_put( out, '.' );
     // the fraction bits alone: v with everything at and above bit F cleared
-    TableJsonWide fraction = v;
+    blockdemo_table_json_wide_t fraction = v;
     if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
     else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     if ( frac == 0 ) { fraction.lo = 0; }
-    if ( table_json_wide_zero( fraction ) )
+    if ( blockdemo_table_json_wide_zero( fraction ) )
     {
-        table_json_put( out, '0' );
+        blockdemo_table_json_put( out, '0' );
         return;
     }
-    while ( !table_json_wide_zero( fraction ) )
+    while ( !blockdemo_table_json_wide_zero( fraction ) )
     {
         // ×10: the digit is what lands at and above bit F, including the
         // carry out of 128 bits when F leaves no room for it below
-        uint32_t carry = table_json_wide_mul_add( &fraction, 10, 0 );
-        uint64_t digit = table_json_wide_shr( fraction, frac ).lo;
+        uint32_t carry = blockdemo_table_json_wide_mul_add( &fraction, 10, 0 );
+        uint64_t digit = blockdemo_table_json_wide_shr( fraction, frac ).lo;
         if ( frac > 64 ) { digit |= (uint64_t) ( carry ) << ( 128 - frac ); }
-        table_json_put( out, (char) ( '0' + (int) digit ) );
+        blockdemo_table_json_put( out, (char) ( '0' + (int) digit ) );
         if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
         else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     }
 }
 
 
-static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double value, int single )
+static SCHEMA_UNUSED int blockdemo_table_json_write_float( blockdemo_table_json_out_t * out, double value, int single )
 {
     char text[64];
     int low = single ? 6 : 15;
@@ -684,7 +684,7 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
     int length = 0;
     int digits;
     char point;
-    if ( !table_json_finite( value ) ) { return 0; }
+    if ( !blockdemo_table_json_finite( value ) ) { return 0; }
     for ( digits = low; ; digits++ )
     {
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
@@ -701,7 +701,7 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
             if ( strtod( text, NULL ) == value ) { break; }
         }
     }
-    point = table_json_decimal_point();
+    point = blockdemo_table_json_decimal_point();
     if ( point != '.' )
     {
         int i;
@@ -710,93 +710,93 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
             if ( text[i] == point ) { text[i] = '.'; }
         }
     }
-    table_json_raw( out, text, length );
+    blockdemo_table_json_raw( out, text, length );
     return 1;
 }
 
-static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth );
+static SCHEMA_UNUSED int blockdemo_table_json_write_value( blockdemo_table_json_out_t * out, const void * base, const blockdemo_table_type_info_t * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
-static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth );
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
-static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+static SCHEMA_UNUSED int blockdemo_table_json_write_field( blockdemo_table_json_out_t * out, const void * base, const blockdemo_table_field_info_t * f, int32_t depth );
+#ifdef SCHEMA_BLOCKDEMO_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int blockdemo_table_json_write_list(blockdemo_table_json_out_t * out,const void * storage,const blockdemo_table_field_info_t * f,int32_t depth);
+#ifdef SCHEMA_BLOCKDEMO_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int blockdemo_table_json_write_map(blockdemo_table_json_out_t * out,const void * storage,const blockdemo_table_field_info_t * f,int32_t depth);
 #endif
 #endif
-#ifdef SCHEMA_TABLE_GRAPH_RUNTIME
-static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth );
+#ifdef SCHEMA_BLOCKDEMO_TABLE_GRAPH_RUNTIME
+static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_json_out_t * out, const void * slot, const blockdemo_table_field_info_t * f, int32_t depth );
 #else
-static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_json_out_t * out, const void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
-static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void * storage, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_write_scalar( blockdemo_table_json_out_t * out, const void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
-    if ( f->kind == 17 ) { return table_json_write_pointer(out,storage,f,depth); }
+    if ( f->kind == 17 ) { return blockdemo_table_json_write_pointer(out,storage,f,depth); }
     if ( f->arms != NULL )
     {
         /* a union is an object with ONE key, the arm's name; None is {} */
-        const TableUnionInfo * arms = f->arms;
-        uint64_t tag = table_json_get_raw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
+        const blockdemo_table_union_info_t * arms = f->arms;
+        uint64_t tag = blockdemo_table_json_get_raw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
         const char * arm;
         if ( tag == 0 )
         {
-            table_json_raw( out, "{}", 2 );
+            blockdemo_table_json_raw( out, "{}", 2 );
             return 1;
         }
         if ( (int64_t) tag > f->enum_max )
         {
             return 0; /* a tag no arm names, exactly as measure refuses it */
         }
-        arm = table_json_variant_name( f, tag );
+        arm = blockdemo_table_json_variant_name( f, tag );
         /* and refuse on the NAME, not merely on the bound: §16.2 says a value
            no variant NAMES is refused, so the check is the name. */
         if ( arm == NULL ) { return 0; }
-        table_json_put( out, '{' );
-        table_json_line( out, depth + 1 );
-        table_json_write_string( out, arm, (int32_t) strlen( arm ) );
-        table_json_raw( out, ": ", 2 );
+        blockdemo_table_json_put( out, '{' );
+        blockdemo_table_json_line( out, depth + 1 );
+        blockdemo_table_json_write_string( out, arm, (int32_t) strlen( arm ) );
+        blockdemo_table_json_raw( out, ": ", 2 );
         if ( arms->arms[tag].field != NULL ) {
-            if ( !table_json_write_field( out, storage, arms->arms[tag].field, depth+1 ) ) { return 0; }
-        } else if ( arms->arms[tag].table == NULL ) { table_json_raw( out, "null", 4 ); }
-        else if ( !table_json_write_value( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
+            if ( !blockdemo_table_json_write_field( out, storage, arms->arms[tag].field, depth+1 ) ) { return 0; }
+        } else if ( arms->arms[tag].table == NULL ) { blockdemo_table_json_raw( out, "null", 4 ); }
+        else if ( !blockdemo_table_json_write_value( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
         {
             return 0;
         }
-        table_json_line( out, depth );
-        table_json_put( out, '}' );
+        blockdemo_table_json_line( out, depth );
+        blockdemo_table_json_put( out, '}' );
         return 1;
     }
     if ( f->kind == 13 )
     {
-        return table_json_write_value( out, storage, f->table, depth );
+        return blockdemo_table_json_write_value( out, storage, f->table, depth );
     }
-    if ( table_json_is_enum( f ) )
+    if ( blockdemo_table_json_is_enum( f ) )
     {
-        uint64_t value = table_json_get_raw( storage, f->elem_size );
+        uint64_t value = blockdemo_table_json_get_raw( storage, f->elem_size );
         const char * name;
         /* a value no variant names has no text spelling, exactly as it has no
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
-        if ( value != 0 && table_json_variant_name( f, value ) == NULL ) { return 0; }
-        name = table_json_variant_name( f, value );
+        if ( value != 0 && blockdemo_table_json_variant_name( f, value ) == NULL ) { return 0; }
+        name = blockdemo_table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
-        table_json_write_string( out, name, (int32_t) strlen( name ) );
+        blockdemo_table_json_write_string( out, name, (int32_t) strlen( name ) );
         return 1;
     }
-    if ( table_json_is_flags( f ) )
+    if ( blockdemo_table_json_is_flags( f ) )
     {
-        uint64_t bits = table_json_get_raw( storage, f->elem_size );
+        uint64_t bits = blockdemo_table_json_get_raw( storage, f->elem_size );
         int first = 1;
         int64_t bit;
         if ( bits == 0 )
         {
-            table_json_raw( out, "[]", 2 );
+            blockdemo_table_json_raw( out, "[]", 2 );
             return 1;
         }
-        table_json_put( out, '[' );
+        blockdemo_table_json_put( out, '[' );
         for ( bit = 0; bit < 64; bit++ )
         {
             const char * name;
@@ -805,171 +805,171 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
             {
                 return 0; /* a bit no variant names has no text spelling */
             }
-            name = table_json_variant_name( f, (uint64_t) bit );
+            name = blockdemo_table_json_variant_name( f, (uint64_t) bit );
             if ( name == NULL ) { return 0; }
-            if ( !first ) { table_json_put( out, ',' ); }
+            if ( !first ) { blockdemo_table_json_put( out, ',' ); }
             first = 0;
-            table_json_line( out, depth + 1 );
-            table_json_write_string( out, name, (int32_t) strlen( name ) );
+            blockdemo_table_json_line( out, depth + 1 );
+            blockdemo_table_json_write_string( out, name, (int32_t) strlen( name ) );
         }
-        table_json_line( out, depth );
-        table_json_put( out, ']' );
+        blockdemo_table_json_line( out, depth );
+        blockdemo_table_json_put( out, ']' );
         return 1;
     }
-    if ( table_json_kind_wide( f->kind ) ) { table_json_write_wide( out, storage, f ); return 1; }
+    if ( blockdemo_table_json_kind_wide( f->kind ) ) { blockdemo_table_json_write_wide( out, storage, f ); return 1; }
     switch ( f->kind )
     {
         case 1:
-            table_json_text( out, table_json_get_raw( storage, f->elem_size ) != 0 ? "true" : "false" );
+            blockdemo_table_json_text( out, blockdemo_table_json_get_raw( storage, f->elem_size ) != 0 ? "true" : "false" );
             return 1;
         case 10:
         {
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
-            return table_json_write_float( out, (double) v, 1 );
+            return blockdemo_table_json_write_float( out, (double) v, 1 );
         }
         case 11:
         {
             double v = 0.0;
             memcpy( &v, storage, sizeof( v ) );
-            return table_json_write_float( out, v, 0 );
+            return blockdemo_table_json_write_float( out, v, 0 );
         }
         case 2: case 3: case 4: case 5:
-            table_json_write_signed( out, table_json_get_signed( storage, f->elem_size ) );
+            blockdemo_table_json_write_signed( out, blockdemo_table_json_get_signed( storage, f->elem_size ) );
             return 1;
         default:
-            table_json_write_unsigned( out, table_json_get_raw( storage, f->elem_size ) );
+            blockdemo_table_json_write_unsigned( out, blockdemo_table_json_get_raw( storage, f->elem_size ) );
             return 1;
     }
 }
 
-static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_write_field( blockdemo_table_json_out_t * out, const void * base, const blockdemo_table_field_info_t * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-    if(f->sequence==1) { return table_json_write_list(out,storage,f,depth); }
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
-    if(f->sequence==2) { return table_json_write_map(out,storage,f,depth); }
+#ifdef SCHEMA_BLOCKDEMO_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return blockdemo_table_json_write_list(out,storage,f,depth); }
+#ifdef SCHEMA_BLOCKDEMO_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return blockdemo_table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
     if ( f->kind == 33 ) {
-        table_json_write_w_string( out, (const uint16_t *)(const void *)storage, table_json_count( base, f ) ); return 1;
+        blockdemo_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, blockdemo_table_json_count( base, f ) ); return 1;
     }
     if ( f->kind == 12 )
     {
-        table_json_write_string( out, (const char *) storage, table_json_count( base, f ) );
+        blockdemo_table_json_write_string( out, (const char *) storage, blockdemo_table_json_count( base, f ) );
         return 1;
     }
-    if ( table_json_is_bytes( f ) )
+    if ( blockdemo_table_json_is_bytes( f ) )
     {
-        table_json_write_base64( out, storage, table_json_count( base, f ) );
+        blockdemo_table_json_write_base64( out, storage, blockdemo_table_json_count( base, f ) );
         return 1;
     }
-    if ( table_json_is_keyed( f ) )
+    if ( blockdemo_table_json_is_keyed( f ) )
     {
         /* one entry per SLOT, keyed by the variant that owns it, so inserting
            a variant next season moves nothing in the text either. Slot i holds
            the key i + 1: nothing is stored for None, so nothing is written for it. */
         int first = 1;
         int64_t slot;
-        table_json_put( out, '{' );
+        blockdemo_table_json_put( out, '{' );
         for ( slot = 0; slot < f->array_bound; slot++ )
         {
             const char * key;
-            if ( !table_json_keyed_slot_valid( f, slot ) ) { continue; }
-            if ( !first ) { table_json_put( out, ',' ); }
+            if ( !blockdemo_table_json_keyed_slot_valid( f, slot ) ) { continue; }
+            if ( !first ) { blockdemo_table_json_put( out, ',' ); }
             first = 0;
-            table_json_line( out, depth + 1 );
-            key = table_json_key_name( f, table_json_keyed_slot_key( slot ) );
-            table_json_write_string( out, key, (int32_t) strlen( key ) );
-            table_json_raw( out, ": ", 2 );
-            if ( !table_json_write_scalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
+            blockdemo_table_json_line( out, depth + 1 );
+            key = blockdemo_table_json_key_name( f, blockdemo_table_json_keyed_slot_key( slot ) );
+            blockdemo_table_json_write_string( out, key, (int32_t) strlen( key ) );
+            blockdemo_table_json_raw( out, ": ", 2 );
+            if ( !blockdemo_table_json_write_scalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
         }
-        if ( first ) { table_json_raw( out, "}", 1 ); return 1; }
-        table_json_line( out, depth );
-        table_json_put( out, '}' );
+        if ( first ) { blockdemo_table_json_raw( out, "}", 1 ); return 1; }
+        blockdemo_table_json_line( out, depth );
+        blockdemo_table_json_put( out, '}' );
         return 1;
     }
     if ( f->is_array )
     {
-        int32_t count = table_json_count( base, f );
+        int32_t count = blockdemo_table_json_count( base, f );
         int32_t i;
         if ( count == 0 )
         {
-            table_json_raw( out, "[]", 2 );
+            blockdemo_table_json_raw( out, "[]", 2 );
             return 1;
         }
-        table_json_put( out, '[' );
+        blockdemo_table_json_put( out, '[' );
         for ( i = 0; i < count; i++ )
         {
-            if ( i > 0 ) { table_json_put( out, ',' ); }
-            table_json_line( out, depth + 1 );
-            if ( !table_json_write_scalar( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) )
+            if ( i > 0 ) { blockdemo_table_json_put( out, ',' ); }
+            blockdemo_table_json_line( out, depth + 1 );
+            if ( !blockdemo_table_json_write_scalar( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
         }
-        table_json_line( out, depth );
-        table_json_put( out, ']' );
+        blockdemo_table_json_line( out, depth );
+        blockdemo_table_json_put( out, ']' );
         return 1;
     }
-    return table_json_write_scalar( out, storage, f, depth );
+    return blockdemo_table_json_write_scalar( out, storage, f, depth );
 }
 
 /* One instance, every field, in DECLARATION ORDER, defaults included — a
    text is for people and tools, and a text that elides is a text a reader
    has to know the schema to complete. */
-static SCHEMA_UNUSED int table_json_write_fields( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth, int * any )
+static SCHEMA_UNUSED int blockdemo_table_json_write_fields( blockdemo_table_json_out_t * out, const void * base, const blockdemo_table_type_info_t * info, int32_t depth, int * any )
 {
-    if ( depth > kTableJsonMaxDepth ) { return 0; }
+    if ( depth > BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
     int32_t i;
     for ( i = 0; i < info->num_fields; i++ )
     {
-        const TableFieldInfo * f = &info->fields[i];
-        if ( f->guard[0] != 0 && !table_json_guard_holds( base, info, f->guard ) ) { continue; }
+        const blockdemo_table_field_info_t * f = &info->fields[i];
+        if ( f->guard[0] != 0 && !blockdemo_table_json_guard_holds( base, info, f->guard ) ) { continue; }
         /* an ABSENT optional writes no key: presence of the key IS the
            presence (§16.2), so an absent field is an absent key and nothing
            else would read back as absent */
         if ( f->optional &&
-             table_json_get_raw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
+             blockdemo_table_json_get_raw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
         {
             continue;
         }
-        if ( !*any ) { table_json_put( out, '{' ); }
-        else { table_json_put( out, ',' ); }
+        if ( !*any ) { blockdemo_table_json_put( out, '{' ); }
+        else { blockdemo_table_json_put( out, ',' ); }
         *any = 1;
-        table_json_line( out, depth + 1 );
-        table_json_write_string( out, f->json, (int32_t) strlen( f->json ) );
-        table_json_raw( out, ": ", 2 );
-        if ( !table_json_write_field( out, base, f, depth + 1 ) ) { return 0; }
+        blockdemo_table_json_line( out, depth + 1 );
+        blockdemo_table_json_write_string( out, f->json, (int32_t) strlen( f->json ) );
+        blockdemo_table_json_raw( out, ": ", 2 );
+        if ( !blockdemo_table_json_write_field( out, base, f, depth + 1 ) ) { return 0; }
     }
     return 1;
 }
 
-static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_write_value( blockdemo_table_json_out_t * out, const void * base, const blockdemo_table_type_info_t * info, int32_t depth )
 {
     int any = 0;
-    if ( !table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
-    if ( !any ) { table_json_raw(out,"{}",2); return 1; }
-    table_json_line(out,depth); table_json_put(out,'}'); return 1;
+    if ( !blockdemo_table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
+    if ( !any ) { blockdemo_table_json_raw(out,"{}",2); return 1; }
+    blockdemo_table_json_line(out,depth); blockdemo_table_json_put(out,'}'); return 1;
 }
 
 /* ---- reading ---- */
 
-typedef struct TableJsonIn
+typedef struct blockdemo_table_json_in_t
 {
     const char * text;
     int64_t size;
     int64_t pos;
-    TableReport * report;
+    blockdemo_table_report_t * report;
     int bad; /* the text is not JSON: the walk stops and keeps what it placed */
     void * graph;
-} TableJsonIn;
+} blockdemo_table_json_in_t;
 
-static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
+static SCHEMA_UNUSED void blockdemo_table_json_space( blockdemo_table_json_in_t * in )
 {
     while ( in->pos < in->size )
     {
@@ -995,16 +995,16 @@ static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
     }
 }
 
-static SCHEMA_UNUSED char table_json_peek( TableJsonIn * in )
+static SCHEMA_UNUSED char blockdemo_table_json_peek( blockdemo_table_json_in_t * in )
 {
-    table_json_space( in );
+    blockdemo_table_json_space( in );
     return in->pos < in->size ? in->text[in->pos] : 0;
 }
 
 /* the shape of the value sitting at the cursor, without consuming it */
-static SCHEMA_UNUSED char table_json_value_shape( TableJsonIn * in )
+static SCHEMA_UNUSED char blockdemo_table_json_value_shape( blockdemo_table_json_in_t * in )
 {
-    char c = table_json_peek( in );
+    char c = blockdemo_table_json_peek( in );
     switch ( c )
     {
         case '{': return 'o';
@@ -1017,7 +1017,7 @@ static SCHEMA_UNUSED char table_json_value_shape( TableJsonIn * in )
     }
 }
 
-static SCHEMA_UNUSED int table_json_literal( TableJsonIn * in, const char * word )
+static SCHEMA_UNUSED int blockdemo_table_json_literal( blockdemo_table_json_in_t * in, const char * word )
 {
     int64_t length = (int64_t) strlen( word );
     if ( in->pos + length > in->size || memcmp( in->text + in->pos, word, (size_t) length ) != 0 )
@@ -1030,7 +1030,7 @@ static SCHEMA_UNUSED int table_json_literal( TableJsonIn * in, const char * word
 }
 
 /* one \uXXXX escape body; -1 when the four hex digits are not there */
-static SCHEMA_UNUSED int table_json_hex4( TableJsonIn * in )
+static SCHEMA_UNUSED int blockdemo_table_json_hex4( blockdemo_table_json_in_t * in )
 {
     int value = 0;
     int i;
@@ -1056,7 +1056,7 @@ static SCHEMA_UNUSED int table_json_hex4( TableJsonIn * in )
    §16.3). 0 when it begins valid JSON that is never a base64 symbol, an
    escape or a UTF-8 sequence, consumed whole so an escaped quote cannot end
    the body. 1 when the byte stands alone for the base64 grammar to judge. */
-static SCHEMA_UNUSED int table_json_base64_step( TableJsonIn * in, char c )
+static SCHEMA_UNUSED int blockdemo_table_json_base64_step( blockdemo_table_json_in_t * in, char c )
 {
     if ( (unsigned char) c < 0x20 ) { in->bad = 1; return -1; }
     if ( c == '\\' )
@@ -1067,7 +1067,7 @@ static SCHEMA_UNUSED int table_json_base64_step( TableJsonIn * in, char c )
         switch ( escape )
         {
             case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't': return 0;
-            case 'u': if ( table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
+            case 'u': if ( blockdemo_table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
             default: in->bad = 1; return -1;
         }
     }
@@ -1075,14 +1075,14 @@ static SCHEMA_UNUSED int table_json_base64_step( TableJsonIn * in, char c )
     {
         int32_t width = 0;
         int64_t left = in->size - ( in->pos - 1 );
-        if ( table_json_utf8( in->text + in->pos - 1, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { in->bad = 1; return -1; }
+        if ( blockdemo_table_json_utf8( in->text + in->pos - 1, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { in->bad = 1; return -1; }
         in->pos += width - 1;
         return 0;
     }
     return 1;
 }
 
-static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit )
+static SCHEMA_UNUSED int32_t blockdemo_table_json_encode_utf8( uint32_t code, char * unit )
 {
     if ( code < 0x80 ) { unit[0] = (char) code; return 1; }
     if ( code < 0x800 )
@@ -1111,7 +1111,7 @@ static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit 
    never cut through a multi-byte character. Clamping is counted, never
    fatal, exactly as it is on the wire (§4). A NULL destination scans past a
    string without keeping it. */
-static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, int32_t * unit_length_out )
+static SCHEMA_UNUSED int blockdemo_table_json_scan_unit( blockdemo_table_json_in_t * in, char * unit, int32_t * unit_length_out )
 {
     int32_t unit_length = 0;
     *unit_length_out = 0;
@@ -1136,7 +1136,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                 case 't':  unit[0] = '\t'; unit_length = 1; break;
                 case 'u':
                 {
-                    int high = table_json_hex4( in );
+                    int high = blockdemo_table_json_hex4( in );
                     if ( high < 0 ) { in->bad = 1; return 0; }
                     uint32_t code = (uint32_t) high;
                     if ( high >= 0xd800 && high <= 0xdbff && in->pos + 2 <= in->size &&
@@ -1144,7 +1144,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                     {
                         int64_t mark = in->pos;
                         in->pos += 2;
-                        int low = table_json_hex4( in );
+                        int low = blockdemo_table_json_hex4( in );
                         if ( low >= 0xdc00 && low <= 0xdfff )
                         {
                             code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
@@ -1159,7 +1159,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                     // CESU-8 — invalid UTF-8 — out of input that was valid
                     // JSON, so it reads as the replacement character
                     if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
-                    unit_length = table_json_encode_utf8( code, unit );
+                    unit_length = blockdemo_table_json_encode_utf8( code, unit );
                     break;
                 }
                 default: in->bad = 1; return 0;
@@ -1197,7 +1197,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
             // value. The scan reads on past a clamp, so a byte at or past the
             // bound is judged too (row str-illformed-at-bound).
             int32_t checked_width = 0;
-            if ( table_json_utf8( unit, unit_length, &checked_width ) < 0 )
+            if ( blockdemo_table_json_utf8( unit, unit_length, &checked_width ) < 0 )
             {
                 in->bad = 1;
                 return 0;
@@ -1213,17 +1213,17 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
    UTF-8 refusal next, then the caller's capacity. Report the used UTF-8
    length; text says the string is bound for text storage, where a zero
    refuses. */
-static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out, int32_t capacity, int32_t * length, int text )
+static SCHEMA_UNUSED int blockdemo_table_json_scan_string_as( blockdemo_table_json_in_t * in, char * out, int32_t capacity, int32_t * length, int text )
 {
     int32_t placed = 0;
     int clamped = 0;
-    if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    if ( blockdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     for ( ;; )
     {
         char unit[4];
         int32_t unit_length = 0;
-        if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( !blockdemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
         if ( out == NULL ) { placed += unit_length; }
@@ -1247,21 +1247,21 @@ static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out
 
 /* A string the read only names or skips: an object key, an enum or flags
    name, an arm key, a skipped value. A zero in one stores nothing. */
-static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+static SCHEMA_UNUSED int blockdemo_table_json_scan_string( blockdemo_table_json_in_t * in, char * out, int32_t capacity, int32_t * length )
 {
-    return table_json_scan_string_as( in, out, capacity, length, 0 );
+    return blockdemo_table_json_scan_string_as( in, out, capacity, length, 0 );
 }
 
 /* A string the read PLACES IN TEXT STORAGE: a string(N) or *string value, a
    text-list element, a map key. NO READ STORES A ZERO (docs/SPEC-TABLES.md
    §16.3, text_holds_zero): a \u0000 there refuses the read. */
-static SCHEMA_UNUSED int table_json_scan_text( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+static SCHEMA_UNUSED int blockdemo_table_json_scan_text( blockdemo_table_json_in_t * in, char * out, int32_t capacity, int32_t * length )
 {
-    return table_json_scan_string_as( in, out, capacity, length, 1 );
+    return blockdemo_table_json_scan_string_as( in, out, capacity, length, 1 );
 }
 
 
-static SCHEMA_UNUSED uint32_t table_json_decode_utf8( const char * unit, int32_t unit_length )
+static SCHEMA_UNUSED uint32_t blockdemo_table_json_decode_utf8( const char * unit, int32_t unit_length )
 {
     const unsigned char lead = (unsigned char) unit[0];
     if ( unit_length == 1 ) { return lead; }
@@ -1281,9 +1281,9 @@ static SCHEMA_UNUSED uint32_t table_json_decode_utf8( const char * unit, int32_t
 // the field is therefore clamped at N code units with a pair never split, and
 // a high surrogate left without its low half is dropped with it, which is the
 // same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
-static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * out, int32_t capacity, int32_t * length )
+static SCHEMA_UNUSED int blockdemo_table_json_scan_w_string( blockdemo_table_json_in_t * in, uint16_t * out, int32_t capacity, int32_t * length )
 {
-    if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    if ( blockdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     int32_t placed = 0;
     int clamped = 0;
@@ -1291,9 +1291,9 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
     {
         char unit[4];
         int32_t unit_length = 0;
-        if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( !blockdemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
-        const uint32_t code = table_json_decode_utf8( unit, unit_length );
+        const uint32_t code = blockdemo_table_json_decode_utf8( unit, unit_length );
         if ( code == 0 ) { in->bad = 1; return 0; } /* a wstring value is text storage: text_holds_zero (§16.3) */
         uint16_t units[2];
         int32_t units_length = 1;
@@ -1347,10 +1347,10 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
    already promises. A permissive scan would hand "1-2" to a digit loop and
    report a clamp, and a config pipeline would never hear about it. Leading
    "+", leading zeros, ".5" and "3." are not JSON either. */
-static SCHEMA_UNUSED int table_json_walk_number( TableJsonIn * in, int * integral )
+static SCHEMA_UNUSED int blockdemo_table_json_walk_number( blockdemo_table_json_in_t * in, int * integral )
 {
     int whole = 1;
-    table_json_space( in );
+    blockdemo_table_json_space( in );
     if ( in->pos < in->size && in->text[in->pos] == '-' ) { in->pos++; }
     /* int: a lone zero, or a non-zero digit and any digits after it */
     if ( in->pos >= in->size ) { return 0; }
@@ -1388,13 +1388,13 @@ static SCHEMA_UNUSED int table_json_walk_number( TableJsonIn * in, int * integra
 }
 
 /* the same production, with the token kept for conversion */
-static SCHEMA_UNUSED int table_json_scan_number( TableJsonIn * in, char * token, int32_t capacity, int32_t * length, int * integral )
+static SCHEMA_UNUSED int blockdemo_table_json_scan_number( blockdemo_table_json_in_t * in, char * token, int32_t capacity, int32_t * length, int * integral )
 {
     int64_t start;
     int64_t count;
-    table_json_space( in );
+    blockdemo_table_json_space( in );
     start = in->pos;
-    if ( !table_json_walk_number( in, integral ) ) { return 0; }
+    if ( !blockdemo_table_json_walk_number( in, integral ) ) { return 0; }
     count = in->pos - start;
     if ( count <= 0 || count >= capacity ) { return 0; }
     memcpy( token, in->text + start, (size_t) count );
@@ -1406,13 +1406,13 @@ static SCHEMA_UNUSED int table_json_scan_number( TableJsonIn * in, char * token,
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
    character on its way in */
-static SCHEMA_UNUSED double table_json_token_double( const char * token, int32_t length, int single )
+static SCHEMA_UNUSED double blockdemo_table_json_token_double( const char * token, int32_t length, int single )
 {
-    char work[kTableJsonMaxNumber];
+    char work[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER];
     char point;
     memcpy( work, token, (size_t) length );
     work[length] = 0;
-    point = table_json_decimal_point();
+    point = blockdemo_table_json_decimal_point();
     if ( point != '.' )
     {
         int32_t i;
@@ -1428,7 +1428,7 @@ static SCHEMA_UNUSED double table_json_token_double( const char * token, int32_t
 /* the token's exact integer, parsed digit by digit so no width and no
    locale can move it. Saturation is reported as a clamp, the wire's rule for
    a value outside what the reader can hold (§4). */
-static SCHEMA_UNUSED int64_t table_json_token_integer( const char * token, int32_t length, int is_signed, int * saturated )
+static SCHEMA_UNUSED int64_t blockdemo_table_json_token_integer( const char * token, int32_t length, int is_signed, int * saturated )
 {
     int32_t i = 0;
     int negative = 0;
@@ -1466,42 +1466,42 @@ static SCHEMA_UNUSED int64_t table_json_token_integer( const char * token, int32
     return (int64_t) magnitude;
 }
 
-#ifdef SCHEMA_TABLE_GRAPH_RUNTIME
-static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot, const TableFieldInfo * f, int32_t depth );
-static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key );
+#ifdef SCHEMA_BLOCKDEMO_TABLE_GRAPH_RUNTIME
+static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth );
+static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key );
 #else
-static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 { (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
-static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key )
+static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key )
 { (void)key; in->bad = 1; return 0; }
 #endif
 
-static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth );
+static SCHEMA_UNUSED int blockdemo_table_json_skip_value( blockdemo_table_json_in_t * in, int32_t depth );
 
-static SCHEMA_UNUSED int table_json_skip_container( TableJsonIn * in, char close, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_skip_container( blockdemo_table_json_in_t * in, char close, int32_t depth )
 {
-    if ( depth > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
+    if ( depth > BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
     int first = 1;
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
-        char c = table_json_peek( in );
+        char c = blockdemo_table_json_peek( in );
         if ( c == close ) { in->pos++; return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
         int consumed = 0;
         if ( close == '}' )
         {
-            char key[kTableJsonMaxKey];
+            char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
             int32_t length = 0;
-            if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
+            if ( !blockdemo_table_json_scan_string(in,key,BLOCKDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
             key[length] = 0;
-            if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+            if ( blockdemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
-            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
+            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !blockdemo_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
         }
         first = 0;
-        if ( !consumed && !table_json_skip_value( in, depth + 1 ) ) { return 0; }
-        c = table_json_peek( in );
+        if ( !consumed && !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        c = blockdemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
         if ( c == close ) { in->pos++; return 1; }
         in->bad = 1;
@@ -1509,17 +1509,17 @@ static SCHEMA_UNUSED int table_json_skip_container( TableJsonIn * in, char close
     }
 }
 
-static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_skip_value( blockdemo_table_json_in_t * in, int32_t depth )
 {
-    char c = table_json_peek( in );
+    char c = blockdemo_table_json_peek( in );
     switch ( c )
     {
-        case '{': return table_json_skip_container( in, '}', depth );
-        case '[': return table_json_skip_container( in, ']', depth );
-        case '"': return table_json_scan_string( in, NULL, 0, NULL );
-        case 't': return table_json_literal( in, "true" );
-        case 'f': return table_json_literal( in, "false" );
-        case 'n': return table_json_literal( in, "null" );
+        case '{': return blockdemo_table_json_skip_container( in, '}', depth );
+        case '[': return blockdemo_table_json_skip_container( in, ']', depth );
+        case '"': return blockdemo_table_json_scan_string( in, NULL, 0, NULL );
+        case 't': return blockdemo_table_json_literal( in, "true" );
+        case 'f': return blockdemo_table_json_literal( in, "false" );
+        case 'n': return blockdemo_table_json_literal( in, "null" );
         case 0:   in->bad = 1; return 0;
         default:
         {
@@ -1528,30 +1528,30 @@ static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth 
                the SAME production the value path scans, so an unknown key
                cannot smuggle past a number a named key would refuse. */
             int integral = 0;
-            if ( !table_json_walk_number( in, &integral ) ) { in->bad = 1; return 0; }
+            if ( !blockdemo_table_json_walk_number( in, &integral ) ) { in->bad = 1; return 0; }
             return 1;
         }
     }
 }
 
-static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth );
-static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
+static SCHEMA_UNUSED int blockdemo_table_json_read_table( blockdemo_table_json_in_t * in, void * base, const blockdemo_table_type_info_t * info, int32_t depth );
+static SCHEMA_UNUSED int blockdemo_table_json_read_table_keys( blockdemo_table_json_in_t * in, void * base, const blockdemo_table_type_info_t * info, int32_t depth, const char * first_key );
 
-typedef struct TableJsonInteger
+typedef struct blockdemo_table_json_integer_t
 {
     uint64_t magnitude; // |value|, exact for every integral token 64 bits hold
     int negative;
     int fractional;    // a genuinely fractional VALUE: the wrong shape for an integer
     int saturated;     // a magnitude past what 64 bits hold, held at that edge
     int finite;        // 0: no integer target holds it at all
-} TableJsonInteger;
+} blockdemo_table_json_integer_t;
 
 // THE FIELD'S INTERPRETATION: the token, parsed digit by digit so no width and
 // no locale can move it, and through the runtime's converter only where the
 // spelling carries a fraction or an exponent
-static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, int32_t length, int integral )
+static SCHEMA_UNUSED blockdemo_table_json_integer_t blockdemo_table_json_interpret( const char * token, int32_t length, int integral )
 {
-    TableJsonInteger out;
+    blockdemo_table_json_integer_t out;
     out.magnitude = 0;
     out.negative = 0;
     out.fractional = 0;
@@ -1579,8 +1579,8 @@ static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, 
         if ( out.magnitude == 0 ) { out.negative = 0; } // -0 IS zero
         return out;
     }
-    const double d = table_json_token_double( token, length, 0 );
-    if ( !table_json_finite( d ) ) { out.finite = 0; return out; }
+    const double d = blockdemo_table_json_token_double( token, length, 0 );
+    if ( !blockdemo_table_json_finite( d ) ) { out.finite = 0; return out; }
     out.negative = d < 0;
     const double whole = out.negative ? -d : d;
     // THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what sixty-four
@@ -1599,9 +1599,9 @@ static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, 
     return out;
 }
 
-static SCHEMA_UNUSED TableJsonInteger table_json_integer_of( double bound )
+static SCHEMA_UNUSED blockdemo_table_json_integer_t blockdemo_table_json_integer_of( double bound )
 {
-    TableJsonInteger out;
+    blockdemo_table_json_integer_t out;
     out.magnitude = 0;
     out.negative = bound < 0;
     out.fractional = 0;
@@ -1617,7 +1617,7 @@ static SCHEMA_UNUSED TableJsonInteger table_json_integer_of( double bound )
 // storage, signed or not. Answers what the target holds and whether the domain
 // MOVED it. An unsigned magnitude above INT64_MAX rides out as its bit pattern,
 // which is the storage's own image of it and not a negative number.
-static SCHEMA_UNUSED int64_t table_json_integer_in_domain( TableJsonInteger number, int is_signed, int32_t bytes, int * moved )
+static SCHEMA_UNUSED int64_t blockdemo_table_json_integer_in_domain( blockdemo_table_json_integer_t number, int is_signed, int32_t bytes, int * moved )
 {
     *moved = 0;
     uint64_t magnitude = number.magnitude;
@@ -1642,9 +1642,9 @@ static SCHEMA_UNUSED int64_t table_json_integer_in_domain( TableJsonInteger numb
 }
 
 
-static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * token, int32_t length, void * storage, const TableFieldInfo * f )
+static SCHEMA_UNUSED int blockdemo_table_json_read_wide( blockdemo_table_json_in_t * in, const char * token, int32_t length, void * storage, const blockdemo_table_field_info_t * f )
 {
-    int is_signed = table_json_kind_wide_signed( f->kind );
+    int is_signed = blockdemo_table_json_kind_wide_signed( f->kind );
     int frac = f->frac_bits;
     int32_t i = 0;
     int negative = 0;
@@ -1680,11 +1680,11 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
     while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
 
-    TableJsonWide raw = { 0, 0 };
+    blockdemo_table_json_wide_t raw = { 0, 0 };
     int saturated = 0;
-    TableJsonWide signed_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) >> 1 };
-    TableJsonWide signed_min = { 0, (uint64_t) ( 1 ) << 63 };
-    TableJsonWide unsigned_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) };
+    blockdemo_table_json_wide_t signed_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) >> 1 };
+    blockdemo_table_json_wide_t signed_min = { 0, (uint64_t) ( 1 ) << 63 };
+    blockdemo_table_json_wide_t unsigned_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) };
     if ( start == end )
     {
         // zero, and -0 IS zero
@@ -1706,14 +1706,14 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
         // its magnitude: its digits, with the zeros a negative point puts in
         // front, doubled F times; each doubling's carry is the next bit, and
         // the value is exact iff nothing is left after the last one
-        char fd[kTableJsonMaxNumber + 48];
+        char fd[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER + 48];
         int32_t fn = 0;
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
         for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         }
-        TableJsonWide fraction = { 0, 0 };
+        blockdemo_table_json_wide_t fraction = { 0, 0 };
         for ( int b = 0; b < frac; b++ )
         {
             int carry = 0;
@@ -1723,7 +1723,7 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
                 fd[k] = (char) ( d % 10 );
                 carry = d / 10;
             }
-            fraction = table_json_wide_shl( fraction, 1 );
+            fraction = blockdemo_table_json_wide_shl( fraction, 1 );
             fraction.lo |= (uint64_t) carry;
         }
         for ( int32_t k = 0; k < fn; k++ )
@@ -1735,112 +1735,112 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
             }
         }
         // then the whole part, saturating past 128 bits
-        TableJsonWide whole = { 0, 0 };
+        blockdemo_table_json_wide_t whole = { 0, 0 };
         for ( int64_t k = start; k < start + point && !saturated; k++ )
         {
             uint32_t digit = k < end ? (uint32_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' ) : 0;
-            if ( table_json_wide_mul_add( &whole, 10, digit ) != 0 ) { saturated = 1; }
+            if ( blockdemo_table_json_wide_mul_add( &whole, 10, digit ) != 0 ) { saturated = 1; }
         }
-        if ( !saturated && frac > 0 && !table_json_wide_zero( table_json_wide_shr( whole, 128 - frac ) ) ) { saturated = 1; }
+        if ( !saturated && frac > 0 && !blockdemo_table_json_wide_zero( blockdemo_table_json_wide_shr( whole, 128 - frac ) ) ) { saturated = 1; }
         if ( !saturated )
         {
-            raw = table_json_wide_shl( whole, frac );
+            raw = blockdemo_table_json_wide_shl( whole, frac );
             raw.lo |= fraction.lo;
             raw.hi |= fraction.hi;
         }
         if ( is_signed )
         {
-            if ( !saturated && !negative && table_json_wide_negative( raw ) ) { saturated = 1; }
-            if ( !saturated && negative && table_json_wide_compare( raw, signed_min, 0 ) > 0 ) { saturated = 1; }
+            if ( !saturated && !negative && blockdemo_table_json_wide_negative( raw ) ) { saturated = 1; }
+            if ( !saturated && negative && blockdemo_table_json_wide_compare( raw, signed_min, 0 ) > 0 ) { saturated = 1; }
             if ( saturated ) { raw = negative ? signed_min : signed_max; }
-            else if ( negative ) { raw = table_json_wide_neg( raw ); }
+            else if ( negative ) { raw = blockdemo_table_json_wide_neg( raw ); }
         }
         else
         {
             if ( saturated ) { raw = unsigned_max; }
-            if ( negative && !table_json_wide_zero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = 1; }
+            if ( negative && !blockdemo_table_json_wide_zero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = 1; }
         }
     }
     if ( saturated ) { in->report->clamped++; }
     if ( f->wide != NULL )
     {
-        TableJsonWide lo = { f->wide->lo[0], f->wide->lo[1] };
-        TableJsonWide hi = { f->wide->hi[0], f->wide->hi[1] };
-        if ( table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->clamped++; }
-        else if ( table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->clamped++; }
+        blockdemo_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
+        blockdemo_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
+        if ( blockdemo_table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->clamped++; }
+        else if ( blockdemo_table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->clamped++; }
     }
-    table_json_wide_store( storage, f->elem_size, raw );
+    blockdemo_table_json_wide_store( storage, f->elem_size, raw );
     return 1;
 }
 
 
 /* place one scalar at one storage address */
-static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth );
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
-static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_in_t * in, void * base, const blockdemo_table_field_info_t * f, int32_t depth );
+#ifdef SCHEMA_BLOCKDEMO_TABLE_SEQUENCE_RUNTIME
+static SCHEMA_UNUSED int blockdemo_table_json_read_list(blockdemo_table_json_in_t * in,void * storage,const blockdemo_table_field_info_t * f,int32_t depth);
+#ifdef SCHEMA_BLOCKDEMO_TABLE_MAP_RUNTIME
+static SCHEMA_UNUSED int blockdemo_table_json_read_map(blockdemo_table_json_in_t * in,void * storage,const blockdemo_table_field_info_t * f,int32_t depth);
 #endif
 #endif
-static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
-    char token[kTableJsonMaxNumber];
+    char token[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER];
     int32_t length = 0;
     int integral = 0;
     if ( f->kind == 17 )
     {
-        if ( table_json_value_shape(in) == 'z' ) { table_json_set_raw(storage,f->elem_size,0); return table_json_literal(in,"null"); }
-        return table_json_read_pointer(in,storage,f,depth);
+        if ( blockdemo_table_json_value_shape(in) == 'z' ) { blockdemo_table_json_set_raw(storage,f->elem_size,0); return blockdemo_table_json_literal(in,"null"); }
+        return blockdemo_table_json_read_pointer(in,storage,f,depth);
     }
     if ( f->arms != NULL )
     {
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
-        const TableUnionInfo * arms = f->arms;
-        char key[kTableJsonMaxKey];
+        const blockdemo_table_union_info_t * arms = f->arms;
+        char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
         int32_t key_length = 0;
         int64_t tag = 0;
         int64_t t;
         char c;
-        if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( blockdemo_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
-        table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
-        if ( table_json_peek( in ) == '}' ) { in->pos++; return 1; }
-        if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+        blockdemo_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
+        if ( blockdemo_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
+        if ( !blockdemo_table_json_scan_string( in, key, BLOCKDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
-        if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+        if ( blockdemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( t = 1; t <= f->enum_max; t++ )
         {
-            const char * name = table_json_variant_name( f, (uint64_t) t );
+            const char * name = blockdemo_table_json_variant_name( f, (uint64_t) t );
             if ( name != NULL && strcmp( name, key ) == 0 ) { tag = t; break; }
         }
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         }
         else
         {
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
-            const TableFieldInfo * arm = arms->arms[tag].field;
-            char want = arm != NULL ? table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
-            if ( table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && table_json_value_shape(in) == 'z') ) {
+            const blockdemo_table_field_info_t * arm = arms->arms[tag].field;
+            char want = arm != NULL ? blockdemo_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
+            if ( blockdemo_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && blockdemo_table_json_value_shape(in) == 'z') ) {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth+1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
                     memset( payload, 0, arms->arms[tag].size );
-                    if ( !table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
+                    if ( !blockdemo_table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
                 } else if ( arms->arms[tag].table != NULL ) {
                     arms->arms[tag].table->reset( payload );
-                    if ( !table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
-                } else if ( !table_json_literal( in, "null" ) ) { return 0; }
-                table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
+                    if ( !blockdemo_table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
+                } else if ( !blockdemo_table_json_literal( in, "null" ) ) { return 0; }
+                blockdemo_table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
             }
         }
-        c = table_json_peek( in );
-        if ( c == ',' ) { in->pos++; c = table_json_peek( in ); }
+        c = blockdemo_table_json_peek( in );
+        if ( c == ',' ) { in->pos++; c = blockdemo_table_json_peek( in ); }
         if ( c == '}' ) { in->pos++; return 1; }
         in->bad = 1; /* a second key: a one-of with two arms is not a value */
         return 0;
@@ -1848,56 +1848,56 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     if ( f->kind == 13 )
     {
         f->table->reset( storage );
-        return table_json_read_table( in, storage, f->table, depth + 1 );
+        return blockdemo_table_json_read_table( in, storage, f->table, depth + 1 );
     }
-    if ( table_json_is_enum( f ) )
+    if ( blockdemo_table_json_is_enum( f ) )
     {
-        char name[kTableJsonMaxKey];
+        char name[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
         int32_t name_length = 0;
         int64_t v;
-        if ( !table_json_scan_string( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
+        if ( !blockdemo_table_json_scan_string( in, name, BLOCKDEMO_K_TABLE_JSON_MAX_KEY - 1, &name_length ) ) { return 0; }
         name[name_length] = 0;
         for ( v = 0; v <= f->enum_max; v++ )
         {
-            const char * variant = table_json_variant_name( f, (uint64_t) v );
+            const char * variant = blockdemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && strcmp( variant, name ) == 0 )
             {
-                table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                blockdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
                 return 1;
             }
         }
         /* a name this build cannot name reads as None and counts as unknown,
            exactly as an unknown variant id does on the wire (§4) */
-        table_json_set_raw( storage, f->elem_size, 0 );
+        blockdemo_table_json_set_raw( storage, f->elem_size, 0 );
         in->report->unknown++;
         return 1;
     }
-    if ( table_json_is_flags( f ) )
+    if ( blockdemo_table_json_is_flags( f ) )
     {
         uint64_t bits = 0;
-        if ( table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( blockdemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( ;; )
         {
-            char c = table_json_peek( in );
+            char c = blockdemo_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( c != '"' )
             {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else
             {
-                char name[kTableJsonMaxKey];
+                char name[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
                 int32_t name_length = 0;
                 int found = 0;
                 int64_t bit;
-                if ( !table_json_scan_string( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
+                if ( !blockdemo_table_json_scan_string( in, name, BLOCKDEMO_K_TABLE_JSON_MAX_KEY - 1, &name_length ) ) { return 0; }
                 name[name_length] = 0;
                 for ( bit = 0; bit <= f->enum_max; bit++ )
                 {
-                    const char * variant = table_json_variant_name( f, (uint64_t) bit );
+                    const char * variant = blockdemo_table_json_variant_name( f, (uint64_t) bit );
                     if ( variant != NULL && strcmp( variant, name ) == 0 )
                     {
                         bits |= (uint64_t) 1 << bit;
@@ -1907,33 +1907,33 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
                 }
                 if ( !found ) { in->report->unknown++; }
             }
-            c = table_json_peek( in );
+            c = blockdemo_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
             if ( c == ']' ) { in->pos++; break; }
             in->bad = 1;
             return 0;
         }
-        table_json_set_raw( storage, f->elem_size, bits );
+        blockdemo_table_json_set_raw( storage, f->elem_size, bits );
         return 1;
     }
     if ( f->kind == 1 )
     {
-        char c = table_json_peek( in );
-        if ( c == 't' ) { if ( !table_json_literal( in, "true" ) ) { return 0; } table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
-        if ( !table_json_literal( in, "false" ) ) { return 0; }
-        table_json_set_raw( storage, f->elem_size, 0 );
+        char c = blockdemo_table_json_peek( in );
+        if ( c == 't' ) { if ( !blockdemo_table_json_literal( in, "true" ) ) { return 0; } blockdemo_table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
+        if ( !blockdemo_table_json_literal( in, "false" ) ) { return 0; }
+        blockdemo_table_json_set_raw( storage, f->elem_size, 0 );
         return 1;
     }
-    if ( !table_json_scan_number( in, token, kTableJsonMaxNumber, &length, &integral ) )
+    if ( !blockdemo_table_json_scan_number( in, token, BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
     }
-    if ( table_json_kind_wide( f->kind ) ) { return table_json_read_wide( in, token, length, storage, f ); }
+    if ( blockdemo_table_json_kind_wide( f->kind ) ) { return blockdemo_table_json_read_wide( in, token, length, storage, f ); }
     if ( f->kind == 10 || f->kind == 11 )
     {
         int single = f->kind == 10;
-        double fvalue = table_json_token_double( token, length, single );
+        double fvalue = blockdemo_table_json_token_double( token, length, single );
         /* A magnitude the field's format cannot hold is the WRONG SHAPE for
            the kind, and it never reaches storage: 1e400 is not a float64 and
            1e300 is not a float32. Storing the infinity the conversion
@@ -1941,7 +1941,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
            ToJsonMeasure then refuses forever (a non-finite float has no JSON
            spelling), and §16.1's one invariant is that a text which reads
            clean writes back. */
-        if ( !table_json_finite( fvalue ) )
+        if ( !blockdemo_table_json_finite( fvalue ) )
         {
             in->report->kind_mismatch++;
             return 1;
@@ -1954,7 +1954,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         if ( single )
         {
             float narrow = (float) fvalue;
-            if ( !table_json_finite( (double) narrow ) )
+            if ( !blockdemo_table_json_finite( (double) narrow ) )
             {
                 in->report->kind_mismatch++;
                 return 1;
@@ -1973,7 +1973,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     // emits them that way, and this walker's own float writer emits 1e+21. Only
     // a genuinely fractional value is the wrong shape for the kind.
     const int is_signed = f->kind >= 2 && f->kind <= 5;
-    const TableJsonInteger number = table_json_interpret( token, length, integral );
+    const blockdemo_table_json_integer_t number = blockdemo_table_json_interpret( token, length, integral );
     if ( !number.finite || number.fractional )
     {
         in->report->kind_mismatch++;
@@ -1984,44 +1984,44 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     // so a text and a wire loaded from the same data land the same instance.
     // The comparison is on the value's OWN scale, correctly signed past
     // INT64_MAX, where the storage's bit pattern is not a number to compare.
-    TableJsonInteger bounded = number;
+    blockdemo_table_json_integer_t bounded = number;
     if ( f->has_range )
     {
         const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = table_json_integer_of( f->range_min ); in->report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = table_json_integer_of( f->range_max ); in->report->clamped++; }
+        if ( scale < f->range_min ) { bounded = blockdemo_table_json_integer_of( f->range_min ); in->report->clamped++; }
+        else if ( scale > f->range_max ) { bounded = blockdemo_table_json_integer_of( f->range_max ); in->report->clamped++; }
     }
     int moved = 0;
-    const int64_t value = table_json_integer_in_domain( bounded, is_signed, (int32_t) f->elem_size, &moved );
+    const int64_t value = blockdemo_table_json_integer_in_domain( bounded, is_signed, (int32_t) f->elem_size, &moved );
     if ( moved ) { in->report->clamped++; }
-    table_json_set_raw( storage, f->elem_size, (uint64_t) value );
+    blockdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) value );
     return 1;
 }
 
-static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_in_t * in, void * base, const blockdemo_table_field_info_t * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-    if(f->sequence==1) { return table_json_read_list(in,storage,f,depth); }
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
-    if(f->sequence==2) { return table_json_read_map(in,storage,f,depth); }
+#ifdef SCHEMA_BLOCKDEMO_TABLE_SEQUENCE_RUNTIME
+    if(f->sequence==1) { return blockdemo_table_json_read_list(in,storage,f,depth); }
+#ifdef SCHEMA_BLOCKDEMO_TABLE_MAP_RUNTIME
+    if(f->sequence==2) { return blockdemo_table_json_read_map(in,storage,f,depth); }
 #endif
 #endif
     if ( f->kind == 33 ) {
         int32_t length = 0;
-        if ( !table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
+        if ( !blockdemo_table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
         ((uint16_t *)(void *)storage)[length] = 0;
-        table_json_set_count( base, f, length ); return 1;
+        blockdemo_table_json_set_count( base, f, length ); return 1;
     }
     if ( f->kind == 12 )
     {
         int32_t length = 0;
-        if ( !table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
+        if ( !blockdemo_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
-        table_json_set_count( base, f, length );
+        blockdemo_table_json_set_count( base, f, length );
         return 1;
     }
-    if ( table_json_is_bytes( f ) )
+    if ( blockdemo_table_json_is_bytes( f ) )
     {
         /* The JSON layer decides first (table_json_base64_step): a body that
            is not a JSON string is malformed, and one that is JSON but carries
@@ -2037,7 +2037,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         uint32_t accumulator = 0;
         int32_t held = 0;
         int clamped = 0;
-        if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+        if ( blockdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
         in->pos++;
         mark = in->pos;
         for ( ;; )
@@ -2048,13 +2048,13 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( in->pos >= in->size ) { in->bad = 1; return 0; }
             c = in->text[in->pos++];
             if ( c == '"' ) { break; }
-            step = table_json_base64_step( in, c );
+            step = blockdemo_table_json_base64_step( in, c );
             if ( step < 0 ) { return 0; }
             if ( step == 0 ) { malformed = 1; continue; }
             if ( malformed ) { continue; }
             if ( c == '=' ) { pad++; continue; }
             if ( pad > 0 ) { malformed = 1; continue; }
-            val = table_json_base64_value( (uint8_t) c );
+            val = blockdemo_table_json_base64_value( (uint8_t) c );
             if ( val < 0 ) { malformed = 1; continue; }
             symbols++;
         }
@@ -2077,13 +2077,13 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        table_json_set_count( base, f, 0 );
+        blockdemo_table_json_set_count( base, f, 0 );
         for ( at = mark; ; at++ )
         {
             char c = in->text[at];
             int32_t symbol;
             if ( c == '"' || c == '=' ) { break; }
-            symbol = table_json_base64_value( (uint8_t) c );
+            symbol = blockdemo_table_json_base64_value( (uint8_t) c );
             accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
             held += 6;
             if ( held >= 8 )
@@ -2100,10 +2100,10 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             }
         }
         if ( clamped ) { in->report->clamped++; }
-        table_json_set_count( base, f, placed );
+        blockdemo_table_json_set_count( base, f, placed );
         return 1;
     }
-    if ( table_json_is_keyed( f ) )
+    if ( blockdemo_table_json_is_keyed( f ) )
     {
         /* every slot back to its declared defaults first, so a key the text
            omits keeps them and a repeated field key cannot leave an earlier
@@ -2111,7 +2111,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         int32_t i;
         char shape;
         uint64_t seen[8];
-        if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( blockdemo_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( i = 0; i < f->array_bound; i++ )
         {
@@ -2119,7 +2119,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
-        shape = table_json_element_shape( f );
+        shape = blockdemo_table_json_element_shape( f );
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
@@ -2128,24 +2128,24 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         memset( seen, 0, sizeof( seen ) );
         for ( ;; )
         {
-            char c = table_json_peek( in );
-            char key[kTableJsonMaxKey];
+            char c = blockdemo_table_json_peek( in );
+            char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
             int32_t key_length = 0;
             int64_t slot = -1;
             int64_t v;
             if ( c == '}' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+            if ( !blockdemo_table_json_scan_string( in, key, BLOCKDEMO_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
             key[key_length] = 0;
-            if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+            if ( blockdemo_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
             for ( v = 0; v < f->array_bound; v++ )
             {
                 /* nothing is stored for None, so "None" finds no slot and is
                    an unknown key like any other name this reader cannot place */
                 const char * name;
-                if ( !table_json_keyed_slot_valid( f, v ) ) { continue; }
-                name = table_json_key_name( f, table_json_keyed_slot_key( v ) );
+                if ( !blockdemo_table_json_keyed_slot_valid( f, v ) ) { continue; }
+                name = blockdemo_table_json_key_name( f, blockdemo_table_json_keyed_slot_key( v ) );
                 if ( name != NULL && strcmp( name, key ) == 0 ) { slot = v; break; }
             }
             if ( slot >= 0 && slot < 512 )
@@ -2157,18 +2157,18 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( slot < 0 )
             {
                 in->report->unknown++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( table_json_value_shape( in ) != shape && !(f->kind == 17 && table_json_value_shape(in) == 'z') )
+            else if ( blockdemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && blockdemo_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( !table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
+            else if ( !blockdemo_table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
-            c = table_json_peek( in );
+            c = blockdemo_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
             if ( c == '}' ) { in->pos++; break; }
             in->bad = 1;
@@ -2186,7 +2186,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
            table and a union arm already get. */
         int32_t placed = 0;
         char shape;
-        if ( table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( blockdemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         if ( f->kind == 13 )
         {
@@ -2200,11 +2200,11 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         {
             memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
         }
-        table_json_set_count( base, f, 0 );
-        shape = table_json_element_shape( f );
+        blockdemo_table_json_set_count( base, f, 0 );
+        shape = blockdemo_table_json_element_shape( f );
         for ( ;; )
         {
-            char c = table_json_peek( in );
+            char c = blockdemo_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( placed >= f->array_bound )
@@ -2212,20 +2212,20 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( table_json_value_shape( in ) != shape && !(f->kind == 17 && table_json_value_shape(in) == 'z') )
+            else if ( blockdemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && blockdemo_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 placed++;
             }
             else
             {
-                if ( !table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
+                if ( !blockdemo_table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
                 placed++;
             }
-            c = table_json_peek( in );
+            c = blockdemo_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
             if ( c == ']' ) { in->pos++; break; }
             in->bad = 1;
@@ -2233,17 +2233,17 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
-        table_json_set_count( base, f, placed );
+        blockdemo_table_json_set_count( base, f, placed );
         return 1;
     }
-    return table_json_read_scalar( in, storage, f, depth );
+    return blockdemo_table_json_read_scalar( in, storage, f, depth );
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
-static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
+static SCHEMA_UNUSED int blockdemo_table_json_read_table_keys( blockdemo_table_json_in_t * in, void * base, const blockdemo_table_type_info_t * info, int32_t depth, const char * first_key )
 {
     /* duplicate tracking, bounded and allocation-free: a table with more
        fields than this still reads, its repeats simply stop being counted */
@@ -2252,19 +2252,19 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
     for ( ;; )
     {
         char c = 0;
-        char key[kTableJsonMaxKey];
+        char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
         int32_t key_length = 0;
         int32_t index = -1;
         int32_t i;
         if ( first_key != NULL ) { memcpy(key,first_key,strlen(first_key)+1); first_key = NULL; }
         else
         {
-            c = table_json_peek(in);
+            c = blockdemo_table_json_peek(in);
             if ( c == '}' ) { in->pos++; return 1; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&key_length) ) { return 0; }
+            if ( !blockdemo_table_json_scan_string(in,key,BLOCKDEMO_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
-            if ( table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
+            if ( blockdemo_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
         }
         for ( i = 0; i < info->num_fields; i++ )
@@ -2283,11 +2283,11 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
         if ( index < 0 )
         {
             in->report->unknown++;
-            if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         }
         else
         {
-            const TableFieldInfo * f = &info->fields[index];
+            const blockdemo_table_field_info_t * f = &info->fields[index];
             char got;
             if ( index < 512 )
             {
@@ -2299,35 +2299,35 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
                is the key being present, so an optional is set present
                whatever its value — with one exception the page names: a JSON
                null, which reads as ABSENT rather than as a value. */
-            got = table_json_value_shape( in );
+            got = blockdemo_table_json_value_shape( in );
             if ( f->optional && got == 'z' )
             {
-                if ( !table_json_literal( in, "null" ) ) { return 0; }
+                if ( !blockdemo_table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
                    occurrence is null must not leave an earlier value standing */
                 if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
-                table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
+                blockdemo_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
             else
             {
-                if ( got != table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
+                if ( got != blockdemo_table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
                     in->report->kind_mismatch++;
-                    if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                    if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 }
-                else if ( !table_json_read_field( in, base, f, depth ) )
+                else if ( !blockdemo_table_json_read_field( in, base, f, depth ) )
                 {
                     return 0;
                 }
                 if ( f->optional )
                 {
-                    table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 1 );
+                    blockdemo_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 1 );
                 }
             }
         }
-        c = table_json_peek( in );
+        c = blockdemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
         if ( c == '}' ) { in->pos++; return 1; }
         in->bad = 1;
@@ -2337,17 +2337,17 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
 
 /* ---- the two entry points the per-table wrappers name ---- */
 
-static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth )
+static SCHEMA_UNUSED int blockdemo_table_json_read_table( blockdemo_table_json_in_t * in, void * base, const blockdemo_table_type_info_t * info, int32_t depth )
 {
-    if ( depth > kTableJsonMaxDepth || table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( depth > BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH || blockdemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
-    return table_json_read_table_keys(in,base,info,depth,NULL);
+    return blockdemo_table_json_read_table_keys(in,base,info,depth,NULL);
 }
 
-static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int blockdemo_table_json_read( void * value, const blockdemo_table_type_info_t * info, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    TableReport ignored;
-    TableJsonIn in;
+    blockdemo_table_report_t ignored;
+    blockdemo_table_json_in_t in;
     int ok;
     memset( &ignored, 0, sizeof( ignored ) );
     in.text = text;
@@ -2362,10 +2362,10 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
         in.report->malformed = 1;
         return 0;
     }
-    ok = table_json_read_table( &in, value, info, 0 );
+    ok = blockdemo_table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
-        table_json_space( &in );
+        blockdemo_table_json_space( &in );
         if ( in.pos != in.size ) { in.bad = 1; } /* trailing rubbish is not one text */
     }
     if ( in.bad || !ok )
@@ -2376,15 +2376,15 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
     return 1;
 }
 
-static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTypeInfo * info, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t blockdemo_table_json_write( const void * value, const blockdemo_table_type_info_t * info, char * buffer, int64_t capacity )
 {
-    TableJsonOut out;
+    blockdemo_table_json_out_t out;
     out.buffer = buffer;
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = 0;
     out.graph = NULL;
-    if ( !table_json_write_value( &out, value, info, 0 ) ) { return -1; }
+    if ( !blockdemo_table_json_write_value( &out, value, info, 0 ) ) { return -1; }
     /* THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
        §16.1). Every writer emits it — this walk, the reference's and
        "schema unpack" — and every reader accepts a text with or without one,
@@ -2393,376 +2393,376 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
        convention: a text that is written to a file, pasted into a diff and
        handed back through a pipe has to be one text in all three places, and a
        buffer whose last byte is a closing brace is the one shape that is not. */
-    table_json_put( &out, '\n' );
+    blockdemo_table_json_put( &out, '\n' );
     if ( out.overflow ) { return -1; }
     return out.offset;
 }
 
 /* ---- json walk: end ---- */
 
-static const TableFieldInfo schema_blockdemo_render_camera_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderCamera, position ), (uint32_t) sizeof( ( (RenderCamera *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderCamera, rotation ), (uint32_t) sizeof( ( (RenderCamera *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderCamera, camera_id ), (uint32_t) sizeof( ( (RenderCamera *) 0 )->camera_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderCamera, camera_type ), (uint32_t) sizeof( ( (RenderCamera *) 0 )->camera_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderCamera, target_object_id ), (uint32_t) sizeof( ( (RenderCamera *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, 0, 0, 0, 0, (uint32_t) offsetof( RenderCamera, fov ), (uint32_t) sizeof( ( (RenderCamera *) 0 )->fov ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_camera_fields_[] = {
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, position ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, camera_id ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->camera_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, camera_type ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->camera_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, fov ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->fov ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_camera_info_ = { "RenderCamera", (uint32_t) sizeof( RenderCamera ), 6, schema_blockdemo_render_camera_fields_, schema_blockdemo_render_camera_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_camera_info_ = { "RenderCamera", (uint32_t) sizeof( blockdemo_render_camera_t ), 6, schema_blockdemo_render_camera_fields_, schema_blockdemo_render_camera_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_ship_flags_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_ship_flags_variants_[] = {
     { "FiringLaser", 0 },
     { "Boosting", 0 },
     { "Braking", 0 },
     { "Aiming", 0 },
 };
-static const TableVariantInfo schema_blockdemo_render_ship_ship_type_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_ship_ship_type_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Fighter", 0xd011f7c3c15285c2ull },
     { "Bomber", 0xa8216aa1c554cb8aull },
     { "Freighter", 0x6c2321a3d00e23dbull },
 };
-static const TableVariantInfo schema_blockdemo_render_ship_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_ship_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_ship_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, position ), (uint32_t) sizeof( ( (RenderShip *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, rotation ), (uint32_t) sizeof( ( (RenderShip *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, flags ), (uint32_t) sizeof( ( (RenderShip *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_flags_variants_, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, object_id ), (uint32_t) sizeof( ( (RenderShip *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, target_object_id ), (uint32_t) sizeof( ( (RenderShip *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, thrust ), (uint32_t) sizeof( ( (RenderShip *) 0 )->thrust ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, object_sequence ), (uint32_t) sizeof( ( (RenderShip *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, ship_type ), (uint32_t) sizeof( ( (RenderShip *) 0 )->ship_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_ship_type_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, team ), (uint32_t) sizeof( ( (RenderShip *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_ship_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, has_target_lock ), (uint32_t) sizeof( ( (RenderShip *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( RenderShip, predicted_explode ), (uint32_t) sizeof( ( (RenderShip *) 0 )->predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_ship_fields_[] = {
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, position ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_flags_variants_, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, thrust ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->thrust ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, ship_type ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->ship_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_ship_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, team ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_ship_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, has_target_lock ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, predicted_explode ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_ship_info_ = { "RenderShip", (uint32_t) sizeof( RenderShip ), 11, schema_blockdemo_render_ship_fields_, schema_blockdemo_render_ship_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_ship_info_ = { "RenderShip", (uint32_t) sizeof( blockdemo_render_ship_t ), 11, schema_blockdemo_render_ship_fields_, schema_blockdemo_render_ship_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_turret_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_turret_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_turret_fields_[] = {
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, rotation ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, flags ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, object_id ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, parent_object_id ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, turret_index ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->turret_index ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, target_object_id ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, object_sequence ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, team ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_turret_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( RenderTurret, has_target_lock ), (uint32_t) sizeof( ( (RenderTurret *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_turret_fields_[] = {
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, parent_object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, turret_index ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->turret_index ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, team ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_turret_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, has_target_lock ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_turret_info_ = { "RenderTurret", (uint32_t) sizeof( RenderTurret ), 9, schema_blockdemo_render_turret_fields_, schema_blockdemo_render_turret_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_turret_info_ = { "RenderTurret", (uint32_t) sizeof( blockdemo_render_turret_t ), 9, schema_blockdemo_render_turret_fields_, schema_blockdemo_render_turret_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_missile_missile_type_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_missile_missile_type_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Seeker", 0xf5d0a4d25a76afcaull },
     { "Dumb", 0x478d7972f6d9075dull },
 };
-static const TableVariantInfo schema_blockdemo_render_missile_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_missile_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_missile_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderMissile, position ), (uint32_t) sizeof( ( (RenderMissile *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderMissile, rotation ), (uint32_t) sizeof( ( (RenderMissile *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RenderMissile, flags ), (uint32_t) sizeof( ( (RenderMissile *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderMissile, object_id ), (uint32_t) sizeof( ( (RenderMissile *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RenderMissile, object_sequence ), (uint32_t) sizeof( ( (RenderMissile *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderMissile, missile_type ), (uint32_t) sizeof( ( (RenderMissile *) 0 )->missile_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_missile_missile_type_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderMissile, team ), (uint32_t) sizeof( ( (RenderMissile *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_missile_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_missile_fields_[] = {
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, position ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, missile_type ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->missile_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_missile_missile_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, team ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_missile_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_missile_info_ = { "RenderMissile", (uint32_t) sizeof( RenderMissile ), 7, schema_blockdemo_render_missile_fields_, schema_blockdemo_render_missile_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_missile_info_ = { "RenderMissile", (uint32_t) sizeof( blockdemo_render_missile_t ), 7, schema_blockdemo_render_missile_fields_, schema_blockdemo_render_missile_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_dynamic_prop_prop_type_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_dynamic_prop_prop_type_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Rock", 0xcaa6172bef74e234ull },
     { "Station", 0x4f98acac2852d653ull },
     { "Beacon", 0x7f3a7e4744ea3019ull },
 };
-static const TableVariantInfo schema_blockdemo_render_dynamic_prop_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_dynamic_prop_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_dynamic_prop_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderDynamicProp, position ), (uint32_t) sizeof( ( (RenderDynamicProp *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderDynamicProp, rotation ), (uint32_t) sizeof( ( (RenderDynamicProp *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RenderDynamicProp, flags ), (uint32_t) sizeof( ( (RenderDynamicProp *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderDynamicProp, object_id ), (uint32_t) sizeof( ( (RenderDynamicProp *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RenderDynamicProp, object_sequence ), (uint32_t) sizeof( ( (RenderDynamicProp *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderDynamicProp, prop_type ), (uint32_t) sizeof( ( (RenderDynamicProp *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_dynamic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderDynamicProp, team ), (uint32_t) sizeof( ( (RenderDynamicProp *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_dynamic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_dynamic_prop_fields_[] = {
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_dynamic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_dynamic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_dynamic_prop_info_ = { "RenderDynamicProp", (uint32_t) sizeof( RenderDynamicProp ), 7, schema_blockdemo_render_dynamic_prop_fields_, schema_blockdemo_render_dynamic_prop_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_dynamic_prop_info_ = { "RenderDynamicProp", (uint32_t) sizeof( blockdemo_render_dynamic_prop_t ), 7, schema_blockdemo_render_dynamic_prop_fields_, schema_blockdemo_render_dynamic_prop_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_static_prop_prop_type_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_static_prop_prop_type_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Rock", 0xcaa6172bef74e234ull },
     { "Station", 0x4f98acac2852d653ull },
     { "Beacon", 0x7f3a7e4744ea3019ull },
 };
-static const TableVariantInfo schema_blockdemo_render_static_prop_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_static_prop_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_static_prop_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderStaticProp, position ), (uint32_t) sizeof( ( (RenderStaticProp *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderStaticProp, rotation ), (uint32_t) sizeof( ( (RenderStaticProp *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderStaticProp, scale ), (uint32_t) sizeof( ( (RenderStaticProp *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RenderStaticProp, flags ), (uint32_t) sizeof( ( (RenderStaticProp *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderStaticProp, static_prop_id ), (uint32_t) sizeof( ( (RenderStaticProp *) 0 )->static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderStaticProp, prop_type ), (uint32_t) sizeof( ( (RenderStaticProp *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_static_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderStaticProp, team ), (uint32_t) sizeof( ( (RenderStaticProp *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_static_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_static_prop_fields_[] = {
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, scale ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, static_prop_id ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_static_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_static_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_static_prop_info_ = { "RenderStaticProp", (uint32_t) sizeof( RenderStaticProp ), 7, schema_blockdemo_render_static_prop_fields_, schema_blockdemo_render_static_prop_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_static_prop_info_ = { "RenderStaticProp", (uint32_t) sizeof( blockdemo_render_static_prop_t ), 7, schema_blockdemo_render_static_prop_fields_, schema_blockdemo_render_static_prop_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_cosmetic_prop_prop_type_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_cosmetic_prop_prop_type_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Rock", 0xcaa6172bef74e234ull },
     { "Station", 0x4f98acac2852d653ull },
     { "Beacon", 0x7f3a7e4744ea3019ull },
 };
-static const TableVariantInfo schema_blockdemo_render_cosmetic_prop_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_cosmetic_prop_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_cosmetic_prop_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, position ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, rotation ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, scale ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, flags ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, cosmetic_prop_id ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_sequence ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_type ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_cosmetic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderCosmeticProp, team ), (uint32_t) sizeof( ( (RenderCosmeticProp *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_cosmetic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_cosmetic_prop_fields_[] = {
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, scale ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, cosmetic_prop_id ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, prop_sequence ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_cosmetic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_cosmetic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_cosmetic_prop_info_ = { "RenderCosmeticProp", (uint32_t) sizeof( RenderCosmeticProp ), 8, schema_blockdemo_render_cosmetic_prop_fields_, schema_blockdemo_render_cosmetic_prop_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_cosmetic_prop_info_ = { "RenderCosmeticProp", (uint32_t) sizeof( blockdemo_render_cosmetic_prop_t ), 8, schema_blockdemo_render_cosmetic_prop_fields_, schema_blockdemo_render_cosmetic_prop_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_laser_laser_type_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_laser_laser_type_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Pulse", 0x94e8a172d8f4805eull },
     { "Beam", 0xa0745aa7967eeffaull },
 };
-static const TableVariantInfo schema_blockdemo_render_laser_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_laser_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_laser_fields_[] = {
-    { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderLaser, start ), (uint32_t) sizeof( ( (RenderLaser *) 0 )->start ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderLaser, finish ), (uint32_t) sizeof( ( (RenderLaser *) 0 )->finish ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderLaser, t ), (uint32_t) sizeof( ( (RenderLaser *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderLaser, laser_id ), (uint32_t) sizeof( ( (RenderLaser *) 0 )->laser_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderLaser, laser_type ), (uint32_t) sizeof( ( (RenderLaser *) 0 )->laser_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_laser_laser_type_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderLaser, team ), (uint32_t) sizeof( ( (RenderLaser *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_laser_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_laser_fields_[] = {
+    { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, start ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->start ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, finish ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->finish ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, t ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, laser_id ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->laser_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, laser_type ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->laser_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_laser_laser_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, team ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_laser_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_laser_info_ = { "RenderLaser", (uint32_t) sizeof( RenderLaser ), 6, schema_blockdemo_render_laser_fields_, schema_blockdemo_render_laser_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_laser_info_ = { "RenderLaser", (uint32_t) sizeof( blockdemo_render_laser_t ), 6, schema_blockdemo_render_laser_fields_, schema_blockdemo_render_laser_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_blockdemo_render_explosion_explosion_type_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_explosion_explosion_type_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Small", 0x3d2cc8d952adebecull },
     { "Large", 0xc8736ef79380e634ull },
 };
-static const TableVariantInfo schema_blockdemo_render_explosion_team_variants_[] = {
+static const blockdemo_table_variant_info_t schema_blockdemo_render_explosion_team_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Red", 0x9ff1de19feac1b7cull },
     { "Blue", 0xecf3d3a7c1693e2dull },
     { "Green", 0xcf00d78fd5953f1cull },
     { "Gold", 0xc416c97e0d3218b3ull },
 };
-static const TableFieldInfo schema_blockdemo_render_explosion_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderExplosion, position ), (uint32_t) sizeof( ( (RenderExplosion *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( RenderExplosion, rotation ), (uint32_t) sizeof( ( (RenderExplosion *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderExplosion, t ), (uint32_t) sizeof( ( (RenderExplosion *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderExplosion, explosion_id ), (uint32_t) sizeof( ( (RenderExplosion *) 0 )->explosion_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( RenderExplosion, parent_object_id ), (uint32_t) sizeof( ( (RenderExplosion *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderExplosion, explosion_type ), (uint32_t) sizeof( ( (RenderExplosion *) 0 )->explosion_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_explosion_explosion_type_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( RenderExplosion, team ), (uint32_t) sizeof( ( (RenderExplosion *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_explosion_team_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_explosion_fields_[] = {
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, position ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, t ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, explosion_id ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->explosion_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, parent_object_id ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, explosion_type ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->explosion_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_explosion_explosion_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, team ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_explosion_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_explosion_info_ = { "RenderExplosion", (uint32_t) sizeof( RenderExplosion ), 7, schema_blockdemo_render_explosion_fields_, schema_blockdemo_render_explosion_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_explosion_info_ = { "RenderExplosion", (uint32_t) sizeof( blockdemo_render_explosion_t ), 7, schema_blockdemo_render_explosion_fields_, schema_blockdemo_render_explosion_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableFieldInfo schema_blockdemo_render_frame_fields_[] = {
-    { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( RenderFrame, version ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, 1, 1, 0, 1, (uint32_t) offsetof( RenderFrame, cameras ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->cameras[0] ), (uint32_t) offsetof( RenderFrame, cameras_count ), 0xffffffffu, &schema_blockdemo_render_camera_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, 1, 1, 0, 4096, (uint32_t) offsetof( RenderFrame, ships ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->ships[0] ), (uint32_t) offsetof( RenderFrame, ships_count ), 0xffffffffu, &schema_blockdemo_render_ship_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, 1, 1, 0, 1024, (uint32_t) offsetof( RenderFrame, turrets ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->turrets[0] ), (uint32_t) offsetof( RenderFrame, turrets_count ), 0xffffffffu, &schema_blockdemo_render_turret_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, 1, 1, 0, 4096, (uint32_t) offsetof( RenderFrame, missiles ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->missiles[0] ), (uint32_t) offsetof( RenderFrame, missiles_count ), 0xffffffffu, &schema_blockdemo_render_missile_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, 1, 1, 0, 4096, (uint32_t) offsetof( RenderFrame, dynamic_props ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->dynamic_props[0] ), (uint32_t) offsetof( RenderFrame, dynamic_props_count ), 0xffffffffu, &schema_blockdemo_render_dynamic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, 1, 1, 0, 20000, (uint32_t) offsetof( RenderFrame, static_props ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->static_props[0] ), (uint32_t) offsetof( RenderFrame, static_props_count ), 0xffffffffu, &schema_blockdemo_render_static_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, 1, 1, 0, 8192, (uint32_t) offsetof( RenderFrame, cosmetic_props ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->cosmetic_props[0] ), (uint32_t) offsetof( RenderFrame, cosmetic_props_count ), 0xffffffffu, &schema_blockdemo_render_cosmetic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, 1, 1, 0, 32000, (uint32_t) offsetof( RenderFrame, lasers ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->lasers[0] ), (uint32_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, &schema_blockdemo_render_laser_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, 1, 1, 0, 32000, (uint32_t) offsetof( RenderFrame, explosions ), (uint32_t) sizeof( ( (RenderFrame *) 0 )->explosions[0] ), (uint32_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, &schema_blockdemo_render_explosion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_frame_fields_[] = {
+    { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_frame_t, version ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, 1, 1, 0, 1, (uint32_t) offsetof( blockdemo_render_frame_t, cameras ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->cameras[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, cameras_count ), 0xffffffffu, &schema_blockdemo_render_camera_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, 1, 1, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, ships ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->ships[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, ships_count ), 0xffffffffu, &schema_blockdemo_render_ship_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, 1, 1, 0, 1024, (uint32_t) offsetof( blockdemo_render_frame_t, turrets ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->turrets[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, turrets_count ), 0xffffffffu, &schema_blockdemo_render_turret_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, 1, 1, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, missiles ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->missiles[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, missiles_count ), 0xffffffffu, &schema_blockdemo_render_missile_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, 1, 1, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, dynamic_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->dynamic_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, dynamic_props_count ), 0xffffffffu, &schema_blockdemo_render_dynamic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, 1, 1, 0, 20000, (uint32_t) offsetof( blockdemo_render_frame_t, static_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->static_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, static_props_count ), 0xffffffffu, &schema_blockdemo_render_static_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, 1, 1, 0, 8192, (uint32_t) offsetof( blockdemo_render_frame_t, cosmetic_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->cosmetic_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, cosmetic_props_count ), 0xffffffffu, &schema_blockdemo_render_cosmetic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, 1, 1, 0, 32000, (uint32_t) offsetof( blockdemo_render_frame_t, lasers ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->lasers[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, lasers_count ), 0xffffffffu, &schema_blockdemo_render_laser_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, 1, 1, 0, 32000, (uint32_t) offsetof( blockdemo_render_frame_t, explosions ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->explosions[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, explosions_count ), 0xffffffffu, &schema_blockdemo_render_explosion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_frame_info_ = { "RenderFrame", (uint32_t) sizeof( RenderFrame ), 10, schema_blockdemo_render_frame_fields_, schema_blockdemo_render_frame_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_frame_info_ = { "RenderFrame", (uint32_t) sizeof( blockdemo_render_frame_t ), 10, schema_blockdemo_render_frame_fields_, schema_blockdemo_render_frame_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableFieldInfo schema_blockdemo_render_vector3_fields_[] = {
-    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderVector3, x ), (uint32_t) sizeof( ( (RenderVector3 *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderVector3, y ), (uint32_t) sizeof( ( (RenderVector3 *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderVector3, z ), (uint32_t) sizeof( ( (RenderVector3 *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_vector3_fields_[] = {
+    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, x ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, y ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, z ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_vector3_info_ = { "RenderVector3", (uint32_t) sizeof( RenderVector3 ), 3, schema_blockdemo_render_vector3_fields_, schema_blockdemo_render_vector3_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_vector3_info_ = { "RenderVector3", (uint32_t) sizeof( blockdemo_render_vector3_t ), 3, schema_blockdemo_render_vector3_fields_, schema_blockdemo_render_vector3_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-static const TableFieldInfo schema_blockdemo_render_quaternion_fields_[] = {
-    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderQuaternion, x ), (uint32_t) sizeof( ( (RenderQuaternion *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderQuaternion, y ), (uint32_t) sizeof( ( (RenderQuaternion *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderQuaternion, z ), (uint32_t) sizeof( ( (RenderQuaternion *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( RenderQuaternion, w ), (uint32_t) sizeof( ( (RenderQuaternion *) 0 )->w ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const blockdemo_table_field_info_t schema_blockdemo_render_quaternion_fields_[] = {
+    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, x ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, y ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, z ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, w ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->w ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_blockdemo_render_quaternion_info_ = { "RenderQuaternion", (uint32_t) sizeof( RenderQuaternion ), 4, schema_blockdemo_render_quaternion_fields_, schema_blockdemo_render_quaternion_reset_raw_, TableDocNone, 0, NULL };
+const blockdemo_table_type_info_t schema_blockdemo_render_quaternion_info_ = { "RenderQuaternion", (uint32_t) sizeof( blockdemo_render_quaternion_t ), 4, schema_blockdemo_render_quaternion_fields_, schema_blockdemo_render_quaternion_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL };
 
-int schema_blockdemo_render_camera_from_json_( RenderCamera * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_camera_from_json_( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_camera_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_camera_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_camera_to_json_( const RenderCamera * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_camera_to_json_( const blockdemo_render_camera_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_camera_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_camera_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_ship_from_json_( RenderShip * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_ship_from_json_( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_ship_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_ship_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_ship_to_json_( const RenderShip * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_ship_to_json_( const blockdemo_render_ship_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_ship_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_ship_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_turret_from_json_( RenderTurret * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_turret_from_json_( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_turret_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_turret_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_turret_to_json_( const RenderTurret * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_turret_to_json_( const blockdemo_render_turret_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_turret_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_turret_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_missile_from_json_( RenderMissile * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_missile_from_json_( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_missile_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_missile_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_missile_to_json_( const RenderMissile * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_missile_to_json_( const blockdemo_render_missile_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_missile_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_missile_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_dynamic_prop_from_json_( RenderDynamicProp * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_dynamic_prop_from_json_( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_dynamic_prop_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_dynamic_prop_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_dynamic_prop_to_json_( const RenderDynamicProp * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_dynamic_prop_to_json_( const blockdemo_render_dynamic_prop_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_dynamic_prop_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_dynamic_prop_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_static_prop_from_json_( RenderStaticProp * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_static_prop_from_json_( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_static_prop_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_static_prop_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_static_prop_to_json_( const RenderStaticProp * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_static_prop_to_json_( const blockdemo_render_static_prop_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_static_prop_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_static_prop_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_cosmetic_prop_from_json_( RenderCosmeticProp * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_cosmetic_prop_from_json_( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_cosmetic_prop_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_cosmetic_prop_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_cosmetic_prop_to_json_( const RenderCosmeticProp * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_cosmetic_prop_to_json_( const blockdemo_render_cosmetic_prop_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_cosmetic_prop_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_cosmetic_prop_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_laser_from_json_( RenderLaser * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_laser_from_json_( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_laser_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_laser_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_laser_to_json_( const RenderLaser * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_laser_to_json_( const blockdemo_render_laser_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_laser_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_laser_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_explosion_from_json_( RenderExplosion * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_explosion_from_json_( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_explosion_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_explosion_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_explosion_to_json_( const RenderExplosion * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_explosion_to_json_( const blockdemo_render_explosion_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_explosion_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_explosion_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_frame_from_json_( RenderFrame * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_frame_from_json_( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_frame_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_frame_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_frame_to_json_( const RenderFrame * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_frame_to_json_( const blockdemo_render_frame_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_frame_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_frame_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_vector3_from_json_( RenderVector3 * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_vector3_from_json_( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_vector3_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_vector3_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_vector3_to_json_( const RenderVector3 * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_vector3_to_json_( const blockdemo_render_vector3_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_vector3_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_vector3_info_, buffer, capacity );
 }
 
-int schema_blockdemo_render_quaternion_from_json_( RenderQuaternion * value, const char * text, int64_t bytes, TableReport * report )
+int schema_blockdemo_render_quaternion_from_json_( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return table_json_read( value, &schema_blockdemo_render_quaternion_info_, text, bytes, report );
+    return blockdemo_table_json_read( value, &schema_blockdemo_render_quaternion_info_, text, bytes, report );
 }
 
-int64_t schema_blockdemo_render_quaternion_to_json_( const RenderQuaternion * value, char * buffer, int64_t capacity )
+int64_t schema_blockdemo_render_quaternion_to_json_( const blockdemo_render_quaternion_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_blockdemo_render_quaternion_info_, buffer, capacity );
+    return blockdemo_table_json_write( value, &schema_blockdemo_render_quaternion_info_, buffer, capacity );
 }
 

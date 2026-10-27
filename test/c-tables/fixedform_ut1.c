@@ -17,41 +17,41 @@
 #include "fixedform.h"
 
 #define PlanCapacity 8192
-static TableFixedEntry g_plan[PlanCapacity];
+static tblut1_table_fixed_entry_t g_plan[PlanCapacity];
 
-static void fill( UtRoot * value )
+static void fill( tblut1_ut_root_t * value )
 {
-    ut_root_reset( value );
+    tblut1_ut_root_reset( value );
     value->head = 42;
     value->tail = 99;
-    value->pick.type = PICK_TYPE_B; /* the SECOND arm */
+    value->pick.type = TBLUT1_PICK_TYPE_B; /* the SECOND arm */
     memcpy( value->pick.as.b.label, "seven77", 8 );
     value->pick.as.b.label_length = 7;
     value->pick.as.b.m = 1234;
 }
 
-int64_t fixed_ut1_bytes( void ) { return ut_root_fixed_measure( 1 ); }
+int64_t fixed_ut1_bytes( void ) { return tblut1_ut_root_fixed_measure( 1 ); }
 
 int64_t fixed_ut1_write( uint8_t * buffer, int64_t capacity )
 {
-    UtRoot v;
+    tblut1_ut_root_t v;
     fill( &v );
-    return ut_root_fixed_save( &v, 1, buffer, capacity );
+    return tblut1_ut_root_fixed_save( &v, 1, buffer, capacity );
 }
 
 void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
 {
-    UtRoot back;
-    TableReport r;
+    tblut1_ut_root_t back;
+    tblut1_table_report_t r;
 
-    fixed_check( ut_root_fixed_plan[3].op == kTableFixedText, "C two lanes: the plan's fourth entry is the text" );
-    fixed_check( ut_root_fixed_plan[3].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
-    fixed_check( ut_root_fixed_plan[3].meta == kTableFixedTextUtf8, "C two lanes: meta is the utf8 flavour" );
+    fixed_check( tblut1_ut_root_fixed_plan[3].op == TBLUT1_K_TABLE_FIXED_TEXT, "C two lanes: the plan's fourth entry is the text" );
+    fixed_check( tblut1_ut_root_fixed_plan[3].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
+    fixed_check( tblut1_ut_root_fixed_plan[3].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C two lanes: the record reads" );
-    fixed_check( back.pick.type == PICK_TYPE_B, "C two lanes: the arm" );
+    fixed_check( back.pick.type == TBLUT1_PICK_TYPE_B, "C two lanes: the arm" );
     fixed_check( back.pick.as.b.label_length == 7 && strcmp( back.pick.as.b.label, "seven77" ) == 0,
                  "C two lanes: the arm's string(8), whole" );
     fixed_check( back.pick.as.b.m == 1234 && back.head == 42 && back.tail == 99,
@@ -66,20 +66,20 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
    lands two bytes early. */
 void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes )
 {
-    static TableFixedEntry shared[16];
-    UtRoot wrong;
-    TableReport r;
+    static tblut1_table_fixed_entry_t shared[16];
+    tblut1_ut_root_t wrong;
+    tblut1_table_report_t r;
     const uint8_t * body;
     int32_t i;
 
     (void) bytes;
-    for ( i = 0; i < ut_root_fixed_plan_count; i++ ) { shared[i] = ut_root_fixed_plan[i]; }
+    for ( i = 0; i < tblut1_ut_root_fixed_plan_count; i++ ) { shared[i] = tblut1_ut_root_fixed_plan[i]; }
     shared[3].meta = shared[3].arg; /* ONE LANE, as it was */
 
-    ut_root_reset( &wrong );
+    tblut1_ut_root_reset( &wrong );
     memset( &r, 0, sizeof( r ) );
-    body = data + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( ut_root_fixed_layout ) + 8;
-    table_fixed_run( shared, ut_root_fixed_plan_count, ut_root_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, ut_root_fixed_guards );
+    body = data + TBLUT1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblut1_ut_root_fixed_layout ) + 8;
+    tblut1_table_fixed_run( shared, tblut1_ut_root_fixed_plan_count, tblut1_ut_root_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, tblut1_ut_root_fixed_guards );
     fixed_check( wrong.pick.as.b.label_length != 7 || strcmp( wrong.pick.as.b.label, "seven77" ) != 0,
                  "C NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
 }
@@ -87,12 +87,12 @@ void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes )
 /* ...and the other direction: a UT2 record whose arm is `b` at ordinal 3. */
 void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes )
 {
-    UtRoot back;
-    TableReport r;
+    tblut1_ut_root_t back;
+    tblut1_table_report_t r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C two lanes, back: the record reads" );
-    fixed_check( back.pick.type == PICK_TYPE_B, "C two lanes, back: arm 3 lands as arm 2, by name" );
+    fixed_check( back.pick.type == TBLUT1_PICK_TYPE_B, "C two lanes, back: arm 3 lands as arm 2, by name" );
     fixed_check( back.pick.as.b.label_length == 5 && strcmp( back.pick.as.b.label, "third" ) == 0,
                  "C two lanes, back: the arm's string(8), whole" );
     fixed_check( back.pick.as.b.m == 555, "C two lanes, back: the arm's other field" );
@@ -103,21 +103,21 @@ void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes )
 void fixed_ut1_bounds( void )
 {
     static uint8_t file[4096];
-    UtRoot v, back;
-    TableReport r;
+    tblut1_ut_root_t v, back;
+    tblut1_table_report_t r;
     int64_t n;
 
-    ut_root_reset( &v );
+    tblut1_ut_root_reset( &v );
     v.head = 1;
     v.tail = 2;
-    v.pick.type = (PickType) 7; /* UT1 declares two arms */
-    n = ut_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
-    fixed_check( n == ut_root_fixed_measure( 1 ), "C bounds: UT1 save" );
+    v.pick.type = (tblut1_pick_type_t) 7; /* UT1 declares two arms */
+    n = tblut1_ut_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+    fixed_check( n == tblut1_ut_root_fixed_measure( 1 ), "C bounds: UT1 save" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( ut_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblut1_ut_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds: the union record reads" );
-    fixed_check( back.pick.type == PICK_TYPE_NONE, "C ORDINAL: a tag past the arm count lands None" );
+    fixed_check( back.pick.type == TBLUT1_PICK_TYPE_NONE, "C ORDINAL: a tag past the arm count lands None" );
     fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );
     fixed_check( back.head == 1 && back.tail == 2, "C ORDINAL: the rest of the record stands" );
 }

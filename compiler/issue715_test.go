@@ -104,7 +104,7 @@ int main(void) {
 	})
 
 	t.Run("c", func(t *testing.T) {
-		files, err := c.Generate(u, "c", Options{})
+		files, err := generateCUnqualified(u)
 		if err != nil {
 			t.Fatalf("generate c: %v", err)
 		}

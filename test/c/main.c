@@ -67,7 +67,7 @@ static void golden_wire( const char * name, const unsigned char * data, int byte
     }
 }
 
-static void fill_test_data( TestData * in )
+static void fill_test_data( example_test_data_t * in )
 {
     int i;
     memset( in, 0, sizeof( *in ) );
@@ -110,22 +110,22 @@ static void test_default_arm_initialization( void )
     uint64_t write_words[2] = { 0, 0 };
     unsigned char * oracle = (unsigned char *) oracle_words;
     unsigned char * buffer = (unsigned char *) write_words;
-    DefaultChoice input, output;
+    example_default_choice_t input, output;
     serialize_write_stream_t ws;
     serialize_read_stream_t rs;
     int attempt, i;
     oracle[0] = 0x51;
 
     memset( &input, 0, sizeof( input ) );
-    input.type = DEFAULT_CHOICE_TYPE_FIRST;
-    input.as.first = new_default_arm();
+    input.type = EXAMPLE_DEFAULT_CHOICE_TYPE_FIRST;
+    input.as.first = example_new_default_arm();
     check( input.as.first.entries_count == 0, "DefaultArm constructor count is zero" );
     for ( i = 0; i < 2; i++ )
-        check( input.as.first.entries[i].retries == -1 && input.as.first.entries[i].preferred == WEAPON_RAILGUN,
+        check( input.as.first.entries[i].retries == -1 && input.as.first.entries[i].preferred == EXAMPLE_WEAPON_RAILGUN,
                "DefaultArm constructor initializes both backing entries" );
     input.as.first.marker = 5;
     serialize_write_stream_init( &ws, buffer, sizeof( write_words ) );
-    if ( !write_default_choice( &ws, &input ) )
+    if ( !example_write_default_choice( &ws, &input ) )
     {
         check( 0, "write constructed DefaultChoice" );
         return;
@@ -136,7 +136,7 @@ static void test_default_arm_initialization( void )
            "DefaultChoice writes the independent 0x51 oracle" );
 
     memset( &output, 0, sizeof( output ) );
-    output.type = DEFAULT_CHOICE_TYPE_SECOND;
+    output.type = EXAMPLE_DEFAULT_CHOICE_TYPE_SECOND;
     for ( attempt = 0; attempt < 2; attempt++ )
     {
         /* The second pass leaves the decoded First tag in place. Both reads
@@ -146,23 +146,23 @@ static void test_default_arm_initialization( void )
         for ( i = 0; i < 2; i++ )
         {
             output.as.first.entries[i].retries = 123;
-            output.as.first.entries[i].preferred = WEAPON_LASER;
+            output.as.first.entries[i].preferred = EXAMPLE_WEAPON_LASER;
         }
         serialize_read_stream_init( &rs, oracle, 1 );
-        if ( !read_default_choice( &rs, &output ) )
+        if ( !example_read_default_choice( &rs, &output ) )
         {
             check( 0, "read independent DefaultChoice oracle" );
             return;
         }
         const int consumed_ok = serialize_read_bits_processed( &rs ) == 7;
-        const int selected_ok = output.type == DEFAULT_CHOICE_TYPE_FIRST && output.as.first.entries_count == 0 && output.as.first.marker == 5;
+        const int selected_ok = output.type == EXAMPLE_DEFAULT_CHOICE_TYPE_FIRST && output.as.first.entries_count == 0 && output.as.first.marker == 5;
         check( consumed_ok, "DefaultChoice consumes exactly 7 bits" );
         check( selected_ok, "DefaultChoice selects First and reads count zero, marker five" );
         /* The control's backing-default marker requires a successful oracle decode. */
         if ( !consumed_ok || !selected_ok )
             return;
         for ( i = 0; i < 2; i++ )
-            check( output.as.first.entries[i].retries == -1 && output.as.first.entries[i].preferred == WEAPON_RAILGUN,
+            check( output.as.first.entries[i].retries == -1 && output.as.first.entries[i].preferred == EXAMPLE_WEAPON_RAILGUN,
                    "DefaultChoice reconstructs both backing entries, including repeated tags" );
     }
 }
@@ -177,43 +177,43 @@ int main( void )
 
     /* ---- ShipCreate: the bool-gated flags branch, both ways ---- */
     {
-        ShipCreate in, out;
+        example_ship_create_t in, out;
         memset( &in, 0, sizeof( in ) );
-        in.ship_type = SHIP_TYPE_BOMBER;
+        in.ship_type = EXAMPLE_SHIP_TYPE_BOMBER;
         in.position.x = 1000; in.position.y = -2000; in.position.z = 3000;
         in.has_flags = 1;
-        in.flags = SHIP_FLAGS_BOOSTING | SHIP_FLAGS_AIMING;
-        in.team = TEAM_BLUE;
+        in.flags = EXAMPLE_SHIP_FLAGS_BOOSTING | EXAMPLE_SHIP_FLAGS_AIMING;
+        in.team = EXAMPLE_TEAM_BLUE;
         in.health = 750;
         in.thrust = 55;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_ship_create( &w, &in ), "write ShipCreate" );
+        check( example_write_ship_create( &w, &in ), "write ShipCreate" );
         serialize_write_flush( &w );
         golden_wire( "shipcreate_flags", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_ship_create( &r, &out ), "read ShipCreate" );
-        check( out.ship_type == SHIP_TYPE_BOMBER && out.team == TEAM_BLUE, "ShipCreate enums round-trip" );
+        check( example_read_ship_create( &r, &out ), "read ShipCreate" );
+        check( out.ship_type == EXAMPLE_SHIP_TYPE_BOMBER && out.team == EXAMPLE_TEAM_BLUE, "ShipCreate enums round-trip" );
         check( out.health == 750 && out.thrust == 55, "ShipCreate ranged ints round-trip" );
-        check( out.flags == ( SHIP_FLAGS_BOOSTING | SHIP_FLAGS_AIMING ), "ShipCreate flags round-trip" );
+        check( out.flags == ( EXAMPLE_SHIP_FLAGS_BOOSTING | EXAMPLE_SHIP_FLAGS_AIMING ), "ShipCreate flags round-trip" );
 
         /* the untaken branch must read as zero (SPEC §5) */
         in.has_flags = 0;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_ship_create( &w, &in ), "write ShipCreate no flags" );
+        check( example_write_ship_create( &w, &in ), "write ShipCreate no flags" );
         serialize_write_flush( &w );
         memset( &out, 0, sizeof( out ) );
         out.flags = 0xFF; /* dirty — the read must clear it */
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_ship_create( &r, &out ), "read ShipCreate no flags" );
+        check( example_read_ship_create( &r, &out ), "read ShipCreate no flags" );
         check( !out.has_flags && out.flags == 0, "untaken branch reads as zero (SPEC §5)" );
     }
 
     /* ---- RigidBody: the back-reference example, both branch sides ---- */
     {
-        RigidBody in, out;
+        example_rigid_body_t in, out;
         memset( &in, 0, sizeof( in ) );
         in.position.x = 1.5; in.position.y = -2.5; in.position.z = 3.25;
         in.orientation.x = 0.1; in.orientation.y = 0.2; in.orientation.z = 0.3; in.orientation.w = 0.9;
@@ -222,13 +222,13 @@ int main( void )
         in.angular_velocity.x = 0.25; in.angular_velocity.y = 0.5; in.angular_velocity.z = 0.75;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_rigid_body( &w, &in ), "write RigidBody moving" );
+        check( example_write_rigid_body( &w, &in ), "write RigidBody moving" );
         serialize_write_flush( &w );
         golden_wire( "rigidbody_moving", buffer, serialize_write_bytes_processed( &w ) );
 
         in.at_rest = 1;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_rigid_body( &w, &in ), "write RigidBody at rest" );
+        check( example_write_rigid_body( &w, &in ), "write RigidBody at rest" );
         serialize_write_flush( &w );
         golden_wire( "rigidbody_at_rest", buffer, serialize_write_bytes_processed( &w ) );
 
@@ -236,7 +236,7 @@ int main( void )
         memset( &out, 0, sizeof( out ) );
         out.linear_velocity.x = 99.0;
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_rigid_body( &r, &out ), "read RigidBody at rest" );
+        check( example_read_rigid_body( &r, &out ), "read RigidBody at rest" );
         check( out.at_rest, "at_rest reads true" );
         check( out.linear_velocity.x == 0.0 && out.linear_velocity.y == 0.0 && out.linear_velocity.z == 0.0 &&
                out.angular_velocity.x == 0.0 && out.angular_velocity.y == 0.0 && out.angular_velocity.z == 0.0,
@@ -245,19 +245,19 @@ int main( void )
 
     /* ---- Chat: the string framing ---- */
     {
-        Chat in, out;
+        example_chat_t in, out;
         memset( &in, 0, sizeof( in ) );
         memcpy( in.text, "wire parity", 11 );
         in.text_length = 11;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_chat( &w, &in ), "write Chat" );
+        check( example_write_chat( &w, &in ), "write Chat" );
         serialize_write_flush( &w );
         golden_wire( "chat", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_chat( &r, &out ), "read Chat" );
+        check( example_read_chat( &r, &out ), "read Chat" );
         check( out.text_length == 11 && memcmp( out.text, "wire parity", 11 ) == 0, "Chat round-trips" );
     }
 
@@ -272,45 +272,45 @@ int main( void )
        overlapping tail word judges, and a null on the short-string per-byte
        path. */
     {
-        Chat in, out;
+        example_chat_t in, out;
 
         memset( &in, 0, sizeof( in ) );
         memcpy( in.text, "interior null defense s", 23 ); /* 2 words + 7-byte tail */
         in.text_length = 23;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_chat( &w, &in ), "write Chat for doctoring" );
+        check( example_write_chat( &w, &in ), "write Chat for doctoring" );
         serialize_write_flush( &w );
 
         buffer[2 + 11] = 0; /* inside the second full scan word */
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( !read_chat( &r, &out ), "an interior null is refused (SPEC §4.7)" );
+        check( !example_read_chat( &r, &out ), "an interior null is refused (SPEC §4.7)" );
 
         buffer[2 + 11] = 'x';
         buffer[2 + 22] = 0; /* the FINAL payload byte — the overlapping tail word judges it */
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( !read_chat( &r, &out ), "a null in the overlap-tail word is refused" );
+        check( !example_read_chat( &r, &out ), "a null in the overlap-tail word is refused" );
 
         memcpy( in.text, "sixteen bytes ok", 16 ); /* two exact words, no tail */
         in.text_length = 16;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_chat( &w, &in ), "write Chat eight-multiple" );
+        check( example_write_chat( &w, &in ), "write Chat eight-multiple" );
         serialize_write_flush( &w );
         buffer[2 + 15] = 0; /* last byte of an eight-multiple payload */
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( !read_chat( &r, &out ), "a null in the last full-word byte is refused" );
+        check( !example_read_chat( &r, &out ), "a null in the last full-word byte is refused" );
 
         memcpy( in.text, "hello", 5 ); /* below one word: the per-byte path */
         in.text_length = 5;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_chat( &w, &in ), "write short Chat" );
+        check( example_write_chat( &w, &in ), "write short Chat" );
         serialize_write_flush( &w );
         buffer[2 + 2] = 0;
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( !read_chat( &r, &out ), "a short string's interior null is refused" );
+        check( !example_read_chat( &r, &out ), "a short string's interior null is refused" );
     }
 
     /* ---- Chat: the accept neighbors — 0x00 nowhere in [0, length) passes at
@@ -318,7 +318,7 @@ int main( void )
        a one-byte tail, two exact words (SPEC §4.7) ---- */
     {
         static const int32_t boundary_lengths[] = { 0, 1, 8, 9, 16 };
-        Chat in, out;
+        example_chat_t in, out;
         int li, i;
         for ( li = 0; li < (int) ( sizeof( boundary_lengths ) / sizeof( boundary_lengths[0] ) ); li++ )
         {
@@ -330,12 +330,12 @@ int main( void )
             }
             in.text_length = length;
             serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-            check( write_chat( &w, &in ), "write Chat boundary length" );
+            check( example_write_chat( &w, &in ), "write Chat boundary length" );
             serialize_write_flush( &w );
 
             memset( &out, 0xEF, sizeof( out ) ); /* dirty — the reader must supply the terminator */
             serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-            check( read_chat( &r, &out ), "read Chat boundary length" );
+            check( example_read_chat( &r, &out ), "read Chat boundary length" );
             check( out.text_length == length && memcmp( out.text, in.text, (size_t) length ) == 0,
                    "Chat boundary length round-trips" );
             check( out.text[length] == 0, "the reader supplies the terminator" );
@@ -344,7 +344,7 @@ int main( void )
 
     /* ---- ProbeBits: the full-range uint32/uint64 paths ---- */
     {
-        ProbeBits in, out;
+        example_probe_bits_t in, out;
         memset( &in, 0, sizeof( in ) );
         in.small = 0x1FF;
         in.boundary = 0x1FFFFFFFFULL;
@@ -353,13 +353,13 @@ int main( void )
         in.nonce = 18446744073709551615ULL;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_probe_bits( &w, &in ), "write ProbeBits" );
+        check( example_write_probe_bits( &w, &in ), "write ProbeBits" );
         serialize_write_flush( &w );
         golden_wire( "probebits", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_probe_bits( &r, &out ), "read ProbeBits" );
+        check( example_read_probe_bits( &r, &out ), "read ProbeBits" );
         check( out.small == in.small && out.boundary == in.boundary && out.wide == in.wide &&
                out.sensor == in.sensor && out.nonce == in.nonce,
                "ProbeBits round-trips — 9/33/64-bit and full-range paths" );
@@ -369,43 +369,43 @@ int main( void )
        round trip, the None arm, an array of unions, and the refusal
        negative controls ---- */
     {
-        ProbeCollider in, out;
+        example_probe_collider_t in, out;
         int bytes;
         memset( &in, 0, sizeof( in ) );
-        check( in.shape.type == PROBE_SHAPE_TYPE_NONE, "zero IS the empty union" );
-        check( PROBE_SHAPE_MAX_BITS == 2 + 16, "MAX_BITS is tag + the largest arm" );
+        check( in.shape.type == EXAMPLE_PROBE_SHAPE_TYPE_NONE, "zero IS the empty union" );
+        check( EXAMPLE_PROBE_SHAPE_MAX_BITS == 2 + 16, "MAX_BITS is tag + the largest arm" );
 
         in.armor = 7;
-        in.shape.type = PROBE_SHAPE_TYPE_SLAB;
+        in.shape.type = EXAMPLE_PROBE_SHAPE_TYPE_SLAB;
         in.shape.as.slab.width = 42;
         in.shape.as.slab.height = 9;
         /* in.backup stays None — the empty arm costs the tag bits only */
         in.extras_count = 1;
-        in.extras[0].type = PROBE_SHAPE_TYPE_RING;
+        in.extras[0].type = EXAMPLE_PROBE_SHAPE_TYPE_RING;
         in.extras[0].as.ring.radius = 777;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_probe_collider( &w, &in ), "write ProbeCollider" );
+        check( example_write_probe_collider( &w, &in ), "write ProbeCollider" );
         serialize_write_flush( &w );
         bytes = serialize_write_bytes_processed( &w );
         golden_wire( "probecollider", buffer, bytes );
 
         memset( &out, 0, sizeof( out ) );
-        out.backup.type = PROBE_SHAPE_TYPE_RING; /* dirty — the read must restore None */
+        out.backup.type = EXAMPLE_PROBE_SHAPE_TYPE_RING; /* dirty — the read must restore None */
         serialize_read_stream_init( &r, buffer, bytes );
-        check( read_probe_collider( &r, &out ), "read ProbeCollider" );
-        check( out.armor == 7 && out.shape.type == PROBE_SHAPE_TYPE_SLAB &&
+        check( example_read_probe_collider( &r, &out ), "read ProbeCollider" );
+        check( out.armor == 7 && out.shape.type == EXAMPLE_PROBE_SHAPE_TYPE_SLAB &&
                out.shape.as.slab.width == 42 && out.shape.as.slab.height == 9,
                "the selected arm round-trips" );
-        check( out.backup.type == PROBE_SHAPE_TYPE_NONE, "the None arm reads back empty" );
-        check( out.extras_count == 1 && out.extras[0].type == PROBE_SHAPE_TYPE_RING &&
+        check( out.backup.type == EXAMPLE_PROBE_SHAPE_TYPE_NONE, "the None arm reads back empty" );
+        check( out.extras_count == 1 && out.extras[0].type == EXAMPLE_PROBE_SHAPE_TYPE_RING &&
                out.extras[0].as.ring.radius == 777, "the union array round-trips" );
 
         /* NEGATIVE CONTROL — perturb the tag: 2 bits at bit offset 8, range
            [0, 2]; forcing both bits makes 3 and the read must refuse */
         buffer[1] |= 0x03;
         serialize_read_stream_init( &r, buffer, bytes );
-        check( !read_probe_collider( &r, &out ), "an out-of-range union tag is refused (SPEC §4.8)" );
+        check( !example_read_probe_collider( &r, &out ), "an out-of-range union tag is refused (SPEC §4.8)" );
         buffer[1] = (unsigned char) ( buffer[1] & ~0x03 ) | 0x02; /* restore tag = 2 */
 
         /* NEGATIVE CONTROL — corrupt the arm payload: width rides 7 bits at
@@ -413,7 +413,7 @@ int main( void )
         buffer[1] |= 0xFC;
         buffer[2] |= 0x01;
         serialize_read_stream_init( &r, buffer, bytes );
-        check( !read_probe_collider( &r, &out ), "a corrupt union arm payload is refused (SPEC §4.8)" );
+        check( !example_read_probe_collider( &r, &out ), "a corrupt union arm payload is refused (SPEC §4.8)" );
 
         /* NO write-side case for an out-of-set tag: the tag on WRITE is a
            caller-error contract like every other write-side value, a
@@ -424,17 +424,17 @@ int main( void )
 
     /* ---- TestData: signed narrows, full-range ints, align, fixed bytes, string ---- */
     {
-        TestData in, out;
+        example_test_data_t in, out;
         fill_test_data( &in );
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_test_data( &w, &in ), "write TestData" );
+        check( example_write_test_data( &w, &in ), "write TestData" );
         serialize_write_flush( &w );
         golden_wire( "testdata", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_test_data( &r, &out ), "read TestData" );
+        check( example_read_test_data( &r, &out ), "read TestData" );
         check( out.a == in.a && out.b == in.b && out.c == in.c, "TestData ranged ints" );
         check( out.uint32_value == in.uint32_value && out.uint64_value == in.uint64_value,
                "TestData full-range unsigned" );
@@ -452,19 +452,19 @@ int main( void )
        (double: 141). The same pinned instance as the C++ leg, against the
        same golden. */
     {
-        CompressedProbe in, out;
+        example_compressed_probe_t in, out;
         memset( &in, 0, sizeof( in ) );
         in.boundary = 0.005f;
         in.offset = -4.8585f;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_compressed_probe( &w, &in ), "write CompressedProbe" );
+        check( example_write_compressed_probe( &w, &in ), "write CompressedProbe" );
         serialize_write_flush( &w );
         golden_wire( "compressed_probe", buffer, serialize_write_bytes_processed( &w ) );
 
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_compressed_probe( &r, &out ), "read CompressedProbe" );
+        check( example_read_compressed_probe( &r, &out ), "read CompressedProbe" );
         check( out.boundary == 1.0f / 1000.0f * 10.0f, "boundary reconstructs integer 1" );
         check( out.offset == 142.0f / 10000.0f * 10.0f - 5.0f, "offset reconstructs integer 142" );
 
@@ -505,7 +505,7 @@ int main( void )
 
     /* ---- InputPacket: the counted array ---- */
     {
-        InputPacket packet;
+        example_input_packet_t packet;
         memset( &packet, 0, sizeof( packet ) );
         packet.synchronize_sequence = 7;
         packet.current_frame = 123456789;
@@ -517,7 +517,7 @@ int main( void )
         packet.inputs[1].boost = 1;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_input_packet( &w, &packet ), "write InputPacket" );
+        check( example_write_input_packet( &w, &packet ), "write InputPacket" );
         serialize_write_flush( &w );
         golden_wire( "inputpacket", buffer, serialize_write_bytes_processed( &w ) );
     }
@@ -527,29 +527,29 @@ int main( void )
        the then arm left the else-fields holding whatever the caller's memory
        had. Nothing failed: the wire was correct and the storage was stale. */
     {
-        ProbeSample in, out;
+        example_probe_sample_t in, out;
 
         memset( &in, 0, sizeof( in ) );
         in.active = 1;
         in.orientation = 45.0f;
         in.raw_delta = 7;
         in.big_delta = 9;
-        in.weapon = WEAPON_RAILGUN;
+        in.weapon = EXAMPLE_WEAPON_RAILGUN;
         in.has_target = 1;
         in.target_id = 4242;
         in.samples_count = 1;   /* [1..8]: the minimum is 1, not 0 */
         in.samples[0] = 99;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_probe_sample( &w, &in ), "write ProbeSample active" );
+        check( example_write_probe_sample( &w, &in ), "write ProbeSample active" );
         serialize_write_flush( &w );
 
         /* dirty every member the ACTIVE arm does not write */
         memset( &out, 0xEF, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_probe_sample( &r, &out ), "read ProbeSample active" );
+        check( example_read_probe_sample( &r, &out ), "read ProbeSample active" );
         check( out.active, "active reads true" );
-        check( out.weapon == WEAPON_RAILGUN, "the taken arm decodes" );
+        check( out.weapon == EXAMPLE_WEAPON_RAILGUN, "the taken arm decodes" );
         check( out.idle_ticks == 0,
                "the UNTAKEN else field is zeroed when the then arm is taken (SPEC §5)" );
 
@@ -557,12 +557,12 @@ int main( void )
         in.active = 0;
         in.idle_ticks = 1234;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_probe_sample( &w, &in ), "write ProbeSample idle" );
+        check( example_write_probe_sample( &w, &in ), "write ProbeSample idle" );
         serialize_write_flush( &w );
 
         memset( &out, 0xEF, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_probe_sample( &r, &out ), "read ProbeSample idle" );
+        check( example_read_probe_sample( &r, &out ), "read ProbeSample idle" );
         check( !out.active && out.idle_ticks == 1234, "the else arm decodes" );
         check( out.weapon == 0 && out.target_id == 0,
                "the UNTAKEN then fields are zeroed when the else arm is taken (SPEC §5)" );
@@ -570,12 +570,12 @@ int main( void )
 
     /* ---- flag_name / flag_names: per-bit names and the set renderer ---- */
     {
-        char buffer[SHIP_FLAGS_NAMES_MAX];
-        check( strcmp( flag_name_ship_flags( 0 ), "FiringLaser" ) == 0, "flag_name names bit 0" );
-        check( strcmp( flag_name_ship_flags( 9 ), "???" ) == 0, "flag_name is out-of-range safe" );
-        check( strcmp( flag_names_ship_flags( 0, buffer, sizeof( buffer ) ), "0" ) == 0, "flag_names renders the empty set as 0" );
-        check( strcmp( flag_names_ship_flags( SHIP_FLAGS_FIRING_LASER | SHIP_FLAGS_BRAKING, buffer, sizeof( buffer ) ), "FiringLaser|Braking" ) == 0, "flag_names renders the set bits" );
-        check( strcmp( flag_names_ship_flags( SHIP_FLAGS_AIMING | ( 1ULL << 63 ), buffer, sizeof( buffer ) ), "Aiming|0x8000000000000000" ) == 0, "flag_names renders unknown high bits as hex" );
+        char buffer[EXAMPLE_SHIP_FLAGS_NAMES_MAX];
+        check( strcmp( example_flag_name_ship_flags( 0 ), "FiringLaser" ) == 0, "flag_name names bit 0" );
+        check( strcmp( example_flag_name_ship_flags( 9 ), "???" ) == 0, "flag_name is out-of-range safe" );
+        check( strcmp( example_flag_names_ship_flags( 0, buffer, sizeof( buffer ) ), "0" ) == 0, "flag_names renders the empty set as 0" );
+        check( strcmp( example_flag_names_ship_flags( EXAMPLE_SHIP_FLAGS_FIRING_LASER | EXAMPLE_SHIP_FLAGS_BRAKING, buffer, sizeof( buffer ) ), "FiringLaser|Braking" ) == 0, "flag_names renders the set bits" );
+        check( strcmp( example_flag_names_ship_flags( EXAMPLE_SHIP_FLAGS_AIMING | ( 1ULL << 63 ), buffer, sizeof( buffer ) ), "Aiming|0x8000000000000000" ) == 0, "flag_names renders unknown high bits as hex" );
     }
 
     /* ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
@@ -585,14 +585,14 @@ int main( void )
        elements an emitter places TWICE is invisible to a same-language round
        trip; only the byte compare against another language's bytes names it. */
     {
-        Vec2 vec2; SpanF64 span_f64; SpanU64 span_u64; SpanI64 span_i64;
-        SpanOne span_one; SpanChunk span_chunk; SpanTail span_tail;
-        SpanTwice span_twice; Trio trio; TrioSole trio_sole;
-        TrioFirst trio_first; TrioStraddle straddle;
-        Vec2 r_vec2; SpanF64 r_span_f64; SpanU64 r_span_u64; SpanI64 r_span_i64;
-        SpanOne r_span_one; SpanChunk r_span_chunk; SpanTail r_span_tail;
-        SpanTwice r_span_twice; Trio r_trio; TrioSole r_trio_sole;
-        TrioFirst r_trio_first; TrioStraddle r_straddle;
+        example_vec2_t vec2; example_span_f64_t span_f64; example_span_u64_t span_u64; example_span_i64_t span_i64;
+        example_span_one_t span_one; example_span_chunk_t span_chunk; example_span_tail_t span_tail;
+        example_span_twice_t span_twice; example_trio_t trio; example_trio_sole_t trio_sole;
+        example_trio_first_t trio_first; example_trio_straddle_t straddle;
+        example_vec2_t r_vec2; example_span_f64_t r_span_f64; example_span_u64_t r_span_u64; example_span_i64_t r_span_i64;
+        example_span_one_t r_span_one; example_span_chunk_t r_span_chunk; example_span_tail_t r_span_tail;
+        example_span_twice_t r_span_twice; example_trio_t r_trio; example_trio_sole_t r_trio_sole;
+        example_trio_first_t r_trio_first; example_trio_straddle_t r_straddle;
 
         memset( &vec2, 0, sizeof( vec2 ) );
         vec2.x = 1.5; vec2.y = -2.25;
@@ -641,18 +641,18 @@ int main( void )
         straddle.inner.a = 0x11111; straddle.inner.b = 0x22222; straddle.inner.c = 0x33333;
 
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_vec2( &w, &vec2 ), "write Vec2" );
-        check( write_span_f64( &w, &span_f64 ), "write SpanF64" );
-        check( write_span_u64( &w, &span_u64 ), "write SpanU64" );
-        check( write_span_i64( &w, &span_i64 ), "write SpanI64" );
-        check( write_span_one( &w, &span_one ), "write SpanOne" );
-        check( write_span_chunk( &w, &span_chunk ), "write SpanChunk" );
-        check( write_span_tail( &w, &span_tail ), "write SpanTail" );
-        check( write_span_twice( &w, &span_twice ), "write SpanTwice" );
-        check( write_trio( &w, &trio ), "write Trio" );
-        check( write_trio_sole( &w, &trio_sole ), "write TrioSole" );
-        check( write_trio_first( &w, &trio_first ), "write TrioFirst" );
-        check( write_trio_straddle( &w, &straddle ), "write TrioStraddle" );
+        check( example_write_vec2( &w, &vec2 ), "write Vec2" );
+        check( example_write_span_f64( &w, &span_f64 ), "write SpanF64" );
+        check( example_write_span_u64( &w, &span_u64 ), "write SpanU64" );
+        check( example_write_span_i64( &w, &span_i64 ), "write SpanI64" );
+        check( example_write_span_one( &w, &span_one ), "write SpanOne" );
+        check( example_write_span_chunk( &w, &span_chunk ), "write SpanChunk" );
+        check( example_write_span_tail( &w, &span_tail ), "write SpanTail" );
+        check( example_write_span_twice( &w, &span_twice ), "write SpanTwice" );
+        check( example_write_trio( &w, &trio ), "write Trio" );
+        check( example_write_trio_sole( &w, &trio_sole ), "write TrioSole" );
+        check( example_write_trio_first( &w, &trio_first ), "write TrioFirst" );
+        check( example_write_trio_straddle( &w, &straddle ), "write TrioStraddle" );
         check( serialize_write_bits_processed( &w ) == 128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
                "the twelve degenerate shapes ride their declared widths and nothing more" );
         serialize_write_flush( &w );
@@ -674,18 +674,18 @@ int main( void )
         memset( &r_straddle, 0xEF, sizeof( r_straddle ) );
 
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_vec2( &r, &r_vec2 ), "read Vec2" );
-        check( read_span_f64( &r, &r_span_f64 ), "read SpanF64" );
-        check( read_span_u64( &r, &r_span_u64 ), "read SpanU64" );
-        check( read_span_i64( &r, &r_span_i64 ), "read SpanI64" );
-        check( read_span_one( &r, &r_span_one ), "read SpanOne" );
-        check( read_span_chunk( &r, &r_span_chunk ), "read SpanChunk" );
-        check( read_span_tail( &r, &r_span_tail ), "read SpanTail" );
-        check( read_span_twice( &r, &r_span_twice ), "read SpanTwice" );
-        check( read_trio( &r, &r_trio ), "read Trio" );
-        check( read_trio_sole( &r, &r_trio_sole ), "read TrioSole" );
-        check( read_trio_first( &r, &r_trio_first ), "read TrioFirst" );
-        check( read_trio_straddle( &r, &r_straddle ), "read TrioStraddle" );
+        check( example_read_vec2( &r, &r_vec2 ), "read Vec2" );
+        check( example_read_span_f64( &r, &r_span_f64 ), "read SpanF64" );
+        check( example_read_span_u64( &r, &r_span_u64 ), "read SpanU64" );
+        check( example_read_span_i64( &r, &r_span_i64 ), "read SpanI64" );
+        check( example_read_span_one( &r, &r_span_one ), "read SpanOne" );
+        check( example_read_span_chunk( &r, &r_span_chunk ), "read SpanChunk" );
+        check( example_read_span_tail( &r, &r_span_tail ), "read SpanTail" );
+        check( example_read_span_twice( &r, &r_span_twice ), "read SpanTwice" );
+        check( example_read_trio( &r, &r_trio ), "read Trio" );
+        check( example_read_trio_sole( &r, &r_trio_sole ), "read TrioSole" );
+        check( example_read_trio_first( &r, &r_trio_first ), "read TrioFirst" );
+        check( example_read_trio_straddle( &r, &r_straddle ), "read TrioStraddle" );
 
         check( r_vec2.x == 1.5 && r_vec2.y == -2.25, "Vec2 round-trips" );
         check( r_span_f64.values[0] == 3.5 && r_span_f64.values[1] == -4.75, "SpanF64 round-trips" );
@@ -761,9 +761,9 @@ int main( void )
             static const int strs_bits[] = { 27, 155, 75 };
             int k;
 
-            W13 w13; W17 w17; W26 w26; W1 w1; W52 w52; W50 w50; F13 f13;
-            ArrTri3 tri; ArrEleven eleven; HoldsEmptyUnion hu; Strs strs;
-            ArrNested nested; Sole sole;
+            EXAMPLE_W13 w13; EXAMPLE_W17 w17; EXAMPLE_W26 w26; EXAMPLE_W1 w1; EXAMPLE_W52 w52; EXAMPLE_W50 w50; EXAMPLE_F13 f13;
+            example_arr_tri3_t tri; example_arr_eleven_t eleven; example_holds_empty_union_t hu; example_strs_t strs;
+            example_arr_nested_t nested; example_sole_t sole;
 
             for ( k = 0; k < 7; k++ )
             {
@@ -771,7 +771,7 @@ int main( void )
                 memset( &w13, 0, sizeof( w13 ) );
                 w13.items_count = c;
                 for ( i = 0; i < c; i++ ) w13.items[i] = (uint16_t) ( 8191 - i * 733 );
-                EMIT( 4 + 13 * c, write_w13( &ws, &w13 ) );
+                EMIT( 4 + 13 * c, example_write_w13( &ws, &w13 ) );
             }
             for ( k = 0; k < 6; k++ )
             {
@@ -779,7 +779,7 @@ int main( void )
                 memset( &w17, 0, sizeof( w17 ) );
                 w17.items_count = c;
                 for ( i = 0; i < c; i++ ) w17.items[i] = (uint32_t) ( 131071 - i * 11117 );
-                EMIT( 4 + 17 * c, write_w17( &ws, &w17 ) );
+                EMIT( 4 + 17 * c, example_write_w17( &ws, &w17 ) );
             }
             for ( k = 0; k < 5; k++ )
             {
@@ -787,7 +787,7 @@ int main( void )
                 memset( &w26, 0, sizeof( w26 ) );
                 w26.items_count = c;
                 for ( i = 0; i < c; i++ ) w26.items[i] = (uint32_t) ( 67108863 - i * 5555555 );
-                EMIT( 3 + 26 * c, write_w26( &ws, &w26 ) );
+                EMIT( 3 + 26 * c, example_write_w26( &ws, &w26 ) );
             }
             for ( k = 0; k < 6; k++ )
             {
@@ -795,25 +795,25 @@ int main( void )
                 memset( &w1, 0, sizeof( w1 ) );
                 w1.items_count = c;
                 for ( i = 0; i < c; i++ ) w1.items[i] = (uint8_t) ( i % 2 );
-                EMIT( 5 + c, write_w1( &ws, &w1 ) );
+                EMIT( 5 + c, example_write_w1( &ws, &w1 ) );
             }
             for ( c = 0; c <= 3; c++ )
             {
                 memset( &w52, 0, sizeof( w52 ) );
                 w52.items_count = c;
                 for ( i = 0; i < c; i++ ) w52.items[i] = 4503599627370495ULL - (uint64_t) i * 123456789ULL;
-                EMIT( 2 + 52 * c, write_w52( &ws, &w52 ) );
+                EMIT( 2 + 52 * c, example_write_w52( &ws, &w52 ) );
             }
             for ( c = 0; c <= 3; c++ )
             {
                 memset( &w50, 0, sizeof( w50 ) );
                 w50.items_count = c;
                 for ( i = 0; i < c; i++ ) w50.items[i] = 1125899906842623ULL - (uint64_t) i * 987654321ULL;
-                EMIT( 2 + 50 * c, write_w50( &ws, &w50 ) );
+                EMIT( 2 + 50 * c, example_write_w50( &ws, &w50 ) );
             }
             memset( &f13, 0, sizeof( f13 ) );
             for ( i = 0; i < 7; i++ ) f13.items[i] = (uint16_t) ( 8191 - i * 911 );
-            EMIT( 91, write_f13( &ws, &f13 ) );
+            EMIT( 91, example_write_f13( &ws, &f13 ) );
 
             for ( k = 0; k < 6; k++ )
             {
@@ -821,12 +821,12 @@ int main( void )
                 memset( &tri, 0, sizeof( tri ) );
                 tri.items_count = c;
                 for ( i = 0; i < c; i++ ) { tri.items[i].a = (uint32_t) ( i % 2 ); tri.items[i].b = (uint32_t) ( i % 4 ); }
-                EMIT( 4 + 3 * c, write_arr_tri3( &ws, &tri ) );
+                EMIT( 4 + 3 * c, example_write_arr_tri3( &ws, &tri ) );
             }
 
             memset( &eleven, 0, sizeof( eleven ) );
             for ( i = 0; i < 9; i++ ) { eleven.items[i].a = (uint32_t) ( i % 8 ); eleven.items[i].b = (uint32_t) ( 255 - i * 17 ); }
-            EMIT( 99, write_arr_eleven( &ws, &eleven ) );
+            EMIT( 99, example_write_arr_eleven( &ws, &eleven ) );
 
             /* lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag */
             for ( k = 0; k <= 2; k++ )
@@ -834,8 +834,8 @@ int main( void )
                 memset( &hu, 0, sizeof( hu ) );
                 hu.lead = 21;
                 hu.tail = 99;
-                hu.u.type = (EmptyUnionType) k;
-                EMIT( 14, write_holds_empty_union( &ws, &hu ) );
+                hu.u.type = (example_empty_union_type_t) k;
+                EMIT( 14, example_write_holds_empty_union( &ws, &hu ) );
             }
 
             /* lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
@@ -860,7 +860,7 @@ int main( void )
                     for ( i = 0; i < 3; i++ ) strs.b[i] = (uint8_t) ( i + 1 );
                     strs.b_length = 3;
                 }
-                EMIT( strs_bits[k], write_strs( &ws, &strs ) );
+                EMIT( strs_bits[k], example_write_strs( &ws, &strs ) );
             }
 
             for ( c = 0; c <= 4; c++ )
@@ -870,12 +870,12 @@ int main( void )
                 nested.tail = 5;
                 nested.items_count = c;
                 for ( i = 0; i < c; i++ ) { nested.items[i].a = (uint32_t) ( i % 8 ); nested.items[i].b = (uint32_t) ( 200 - i * 7 ); }
-                EMIT( 11 + 11 * c, write_arr_nested( &ws, &nested ) );
+                EMIT( 11 + 11 * c, example_write_arr_nested( &ws, &nested ) );
             }
 
             memset( &sole, 0, sizeof( sole ) );
             sole.only = 5555;
-            EMIT( 13, write_sole( &ws, &sole ) );
+            EMIT( 13, example_write_sole( &ws, &sole ) );
 
             golden_wire( "clauses", arrangement, stream_len );
 
@@ -886,7 +886,7 @@ int main( void )
             {
                 c = w13_counts[k];
                 memset( &w13, 0xEF, sizeof( w13 ) );
-                CONSUME( 4 + 13 * c, read_w13( &rs, &w13 ) );
+                CONSUME( 4 + 13 * c, example_read_w13( &rs, &w13 ) );
                 check( w13.items_count == c, "W13 count round-trips" );
                 for ( i = 0; i < c; i++ ) check( w13.items[i] == (uint16_t) ( 8191 - i * 733 ), "W13 element round-trips" );
             }
@@ -894,7 +894,7 @@ int main( void )
             {
                 c = w17_counts[k];
                 memset( &w17, 0xEF, sizeof( w17 ) );
-                CONSUME( 4 + 17 * c, read_w17( &rs, &w17 ) );
+                CONSUME( 4 + 17 * c, example_read_w17( &rs, &w17 ) );
                 check( w17.items_count == c, "W17 count round-trips" );
                 for ( i = 0; i < c; i++ ) check( w17.items[i] == (uint32_t) ( 131071 - i * 11117 ), "W17 element round-trips" );
             }
@@ -902,7 +902,7 @@ int main( void )
             {
                 c = w26_counts[k];
                 memset( &w26, 0xEF, sizeof( w26 ) );
-                CONSUME( 3 + 26 * c, read_w26( &rs, &w26 ) );
+                CONSUME( 3 + 26 * c, example_read_w26( &rs, &w26 ) );
                 check( w26.items_count == c, "W26 count round-trips" );
                 for ( i = 0; i < c; i++ ) check( w26.items[i] == (uint32_t) ( 67108863 - i * 5555555 ), "W26 element round-trips" );
             }
@@ -910,54 +910,54 @@ int main( void )
             {
                 c = w1_counts[k];
                 memset( &w1, 0xEF, sizeof( w1 ) );
-                CONSUME( 5 + c, read_w1( &rs, &w1 ) );
+                CONSUME( 5 + c, example_read_w1( &rs, &w1 ) );
                 check( w1.items_count == c, "W1 count round-trips" );
                 for ( i = 0; i < c; i++ ) check( w1.items[i] == (uint8_t) ( i % 2 ), "W1 element round-trips" );
             }
             for ( c = 0; c <= 3; c++ )
             {
                 memset( &w52, 0xEF, sizeof( w52 ) );
-                CONSUME( 2 + 52 * c, read_w52( &rs, &w52 ) );
+                CONSUME( 2 + 52 * c, example_read_w52( &rs, &w52 ) );
                 check( w52.items_count == c, "W52 count round-trips" );
                 for ( i = 0; i < c; i++ ) check( w52.items[i] == 4503599627370495ULL - (uint64_t) i * 123456789ULL, "W52 element round-trips" );
             }
             for ( c = 0; c <= 3; c++ )
             {
                 memset( &w50, 0xEF, sizeof( w50 ) );
-                CONSUME( 2 + 50 * c, read_w50( &rs, &w50 ) );
+                CONSUME( 2 + 50 * c, example_read_w50( &rs, &w50 ) );
                 check( w50.items_count == c, "W50 count round-trips" );
                 for ( i = 0; i < c; i++ ) check( w50.items[i] == 1125899906842623ULL - (uint64_t) i * 987654321ULL, "W50 element round-trips" );
             }
             memset( &f13, 0xEF, sizeof( f13 ) );
-            CONSUME( 91, read_f13( &rs, &f13 ) );
+            CONSUME( 91, example_read_f13( &rs, &f13 ) );
             for ( i = 0; i < 7; i++ ) check( f13.items[i] == (uint16_t) ( 8191 - i * 911 ), "F13 element round-trips" );
 
             for ( k = 0; k < 6; k++ )
             {
                 c = tri_counts[k];
                 memset( &tri, 0xEF, sizeof( tri ) );
-                CONSUME( 4 + 3 * c, read_arr_tri3( &rs, &tri ) );
+                CONSUME( 4 + 3 * c, example_read_arr_tri3( &rs, &tri ) );
                 check( tri.items_count == c, "ArrTri3 count round-trips" );
                 for ( i = 0; i < c; i++ )
                     check( tri.items[i].a == (uint32_t) ( i % 2 ) && tri.items[i].b == (uint32_t) ( i % 4 ), "ArrTri3 element round-trips" );
             }
 
             memset( &eleven, 0xEF, sizeof( eleven ) );
-            CONSUME( 99, read_arr_eleven( &rs, &eleven ) );
+            CONSUME( 99, example_read_arr_eleven( &rs, &eleven ) );
             for ( i = 0; i < 9; i++ )
                 check( eleven.items[i].a == (uint32_t) ( i % 8 ) && eleven.items[i].b == (uint32_t) ( 255 - i * 17 ), "ArrEleven element round-trips" );
 
             for ( k = 0; k <= 2; k++ )
             {
                 memset( &hu, 0xEF, sizeof( hu ) );
-                CONSUME( 14, read_holds_empty_union( &rs, &hu ) );
-                check( hu.lead == 21 && hu.tail == 99 && hu.u.type == (EmptyUnionType) k, "HoldsEmptyUnion round-trips" );
+                CONSUME( 14, example_read_holds_empty_union( &rs, &hu ) );
+                check( hu.lead == 21 && hu.tail == 99 && hu.u.type == (example_empty_union_type_t) k, "HoldsEmptyUnion round-trips" );
             }
 
             for ( k = 0; k <= 2; k++ )
             {
                 memset( &strs, 0xEF, sizeof( strs ) );
-                CONSUME( strs_bits[k], read_strs( &rs, &strs ) );
+                CONSUME( strs_bits[k], example_read_strs( &rs, &strs ) );
                 check( strs.lead == 21 && strs.tail == 5, "Strs lead and tail round-trip" );
                 if ( k == 0 ) check( strs.s_length == 0 && strs.b_length == 0, "Strs empty round-trips" );
                 if ( k == 1 ) check( strs.s_length == 8 && strcmp( strs.s, "abcdefgh" ) == 0 && strs.b_length == 8 && strs.b[7] == 0xF7, "Strs full round-trips" );
@@ -967,14 +967,14 @@ int main( void )
             for ( c = 0; c <= 4; c++ )
             {
                 memset( &nested, 0xEF, sizeof( nested ) );
-                CONSUME( 11 + 11 * c, read_arr_nested( &rs, &nested ) );
+                CONSUME( 11 + 11 * c, example_read_arr_nested( &rs, &nested ) );
                 check( nested.items_count == c && nested.lead == 21 && nested.tail == 5, "ArrNested round-trips" );
                 for ( i = 0; i < c; i++ )
                     check( nested.items[i].a == (uint32_t) ( i % 8 ) && nested.items[i].b == (uint32_t) ( 200 - i * 7 ), "ArrNested element round-trips" );
             }
 
             memset( &sole, 0xEF, sizeof( sole ) );
-            CONSUME( 13, read_sole( &rs, &sole ) );
+            CONSUME( 13, example_read_sole( &rs, &sole ) );
             check( sole.only == 5555, "Sole round-trips" );
             check( read_off == stream_len, "the clauses reads consume the whole golden" );
         }
@@ -987,9 +987,9 @@ int main( void )
         stream_len = 0;
         read_off = 0;
         {
-            ArmsAgree agree; ArmsDisagree disagree; ArmEmpty arm_empty;
-            ArmAlign align_str, align_empty; ArmsNested an; ArmArray aa;
-            HoldsUneven hun; ArrUneven au; RegainAfterAlign ra;
+            example_arms_agree_t agree; example_arms_disagree_t disagree; example_arm_empty_t arm_empty;
+            example_arm_align_t align_str, align_empty; example_arms_nested_t an; example_arm_array_t aa;
+            example_holds_uneven_t hun; example_arr_uneven_t au; example_regain_after_align_t ra;
             static const int uneven_item_bits[] = { 0, 5, 44, 49 };
             static const int uneven_bits[] = { 18, 21, 55 };
             int k, after_align;
@@ -1000,24 +1000,24 @@ int main( void )
                    keeps the wrong arm is a value mismatch, not just a width one */
                 memset( &agree, 0, sizeof( agree ) );
                 agree.lead = 21; agree.flag = f; agree.a = 1234; agree.b = 1500; agree.tail = 99;
-                EMIT( 24, write_arms_agree( &ws, &agree ) );
+                EMIT( 24, example_write_arms_agree( &ws, &agree ) );
 
                 memset( &disagree, 0, sizeof( disagree ) );
                 disagree.lead = 21; disagree.flag = f; disagree.a = 1234; disagree.b = 5; disagree.tail = 99;
-                EMIT( f ? 24 : 16, write_arms_disagree( &ws, &disagree ) );
+                EMIT( f ? 24 : 16, example_write_arms_disagree( &ws, &disagree ) );
 
                 memset( &arm_empty, 0, sizeof( arm_empty ) );
                 arm_empty.lead = 21; arm_empty.flag = f; arm_empty.a = 456789; arm_empty.tail = 99;
-                EMIT( f ? 32 : 13, write_arm_empty( &ws, &arm_empty ) );
+                EMIT( f ? 32 : 13, example_write_arm_empty( &ws, &arm_empty ) );
 
                 memset( &align_str, 0, sizeof( align_str ) );
                 align_str.lead = 21; align_str.flag = f; memcpy( align_str.s, "abcd", 4 );
                 align_str.s_length = 4; align_str.b = 1000; align_str.tail = 99;
-                EMIT( f ? 55 : 23, write_arm_align( &ws, &align_str ) );
+                EMIT( f ? 55 : 23, example_write_arm_align( &ws, &align_str ) );
 
                 memset( &align_empty, 0, sizeof( align_empty ) );
                 align_empty.lead = 21; align_empty.flag = f; align_empty.b = 1000; align_empty.tail = 99;
-                EMIT( 23, write_arm_align( &ws, &align_empty ) );
+                EMIT( 23, example_write_arm_align( &ws, &align_empty ) );
             }
 
             for ( o = 0; o <= 1; o++ )
@@ -1027,7 +1027,7 @@ int main( void )
                     memset( &an, 0, sizeof( an ) );
                     an.lead = 5; an.outer = o; an.inner = in;
                     an.x = 500000000; an.y = 17; an.z = 4000; an.tail = 33;
-                    EMIT( o ? ( in ? 40 : 16 ) : 23, write_arms_nested( &ws, &an ) );
+                    EMIT( o ? ( in ? 40 : 16 ) : 23, example_write_arms_nested( &ws, &an ) );
                 }
             }
 
@@ -1038,7 +1038,7 @@ int main( void )
                     memset( &aa, 0, sizeof( aa ) );
                     aa.lead = 21; aa.flag = f; aa.items_count = c; aa.b = 300; aa.tail = 99;
                     for ( i = 0; i < c; i++ ) aa.items[i] = (uint16_t) ( 8191 - i * 777 );
-                    EMIT( f ? 15 + 13 * c : 22, write_arm_array( &ws, &aa ) );
+                    EMIT( f ? 15 + 13 * c : 22, example_write_arm_array( &ws, &aa ) );
                 }
             }
 
@@ -1047,10 +1047,10 @@ int main( void )
             {
                 memset( &hun, 0, sizeof( hun ) );
                 hun.lead = 21; hun.tail = 1500;
-                hun.u.type = (UnevenType) k;
+                hun.u.type = (example_uneven_type_t) k;
                 if ( k == 1 ) hun.u.as.narrow.n = 5;
                 if ( k == 2 ) hun.u.as.wide.w = 123456789012ULL;
-                EMIT( uneven_bits[k], write_holds_uneven( &ws, &hun ) );
+                EMIT( uneven_bits[k], example_write_holds_uneven( &ws, &hun ) );
             }
 
             /* alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37) */
@@ -1062,16 +1062,16 @@ int main( void )
                 {
                     if ( i % 2 == 0 )
                     {
-                        au.items[i].type = UNEVEN_TYPE_NARROW;
+                        au.items[i].type = EXAMPLE_UNEVEN_TYPE_NARROW;
                         au.items[i].as.narrow.n = (uint32_t) ( i % 8 );
                     }
                     else
                     {
-                        au.items[i].type = UNEVEN_TYPE_WIDE;
+                        au.items[i].type = EXAMPLE_UNEVEN_TYPE_WIDE;
                         au.items[i].as.wide.w = 99887766554ULL + (uint64_t) i;
                     }
                 }
-                EMIT( 10 + uneven_item_bits[c], write_arr_uneven( &ws, &au ) );
+                EMIT( 10 + uneven_item_bits[c], example_write_arr_uneven( &ws, &au ) );
             }
 
             /* lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s,
@@ -1086,7 +1086,7 @@ int main( void )
                     for ( i = 0; i < c; i++ ) ra.items[i] = (uint16_t) ( 8191 - i * 999 );
                     ra.p = 0xDEADBEEFu; ra.q = ( 1u << 29 ) - 7; ra.r = ( 1u << 19 ) - 3; ra.tail = 9;
                     after_align = ( ( 5 + 2 + 13 * c + 3 ) + 7 ) / 8 * 8;
-                    EMIT( after_align + 8 * sl + 84, write_regain_after_align( &ws, &ra ) );
+                    EMIT( after_align + 8 * sl + 84, example_write_regain_after_align( &ws, &ra ) );
                 }
             }
 
@@ -1095,31 +1095,31 @@ int main( void )
             for ( f = 0; f <= 1; f++ )
             {
                 memset( &agree, 0xEF, sizeof( agree ) );
-                CONSUME( 24, read_arms_agree( &rs, &agree ) );
+                CONSUME( 24, example_read_arms_agree( &rs, &agree ) );
                 check( agree.lead == 21 && agree.flag == f && agree.tail == 99, "ArmsAgree round-trips" );
                 check( f ? ( agree.a == 1234 && agree.b == 0 ) : ( agree.b == 1500 && agree.a == 0 ),
                        "ArmsAgree's untaken side reads as zero (SPEC §5)" );
 
                 memset( &disagree, 0xEF, sizeof( disagree ) );
-                CONSUME( f ? 24 : 16, read_arms_disagree( &rs, &disagree ) );
+                CONSUME( f ? 24 : 16, example_read_arms_disagree( &rs, &disagree ) );
                 check( disagree.lead == 21 && disagree.tail == 99, "ArmsDisagree round-trips" );
                 check( f ? ( disagree.a == 1234 && disagree.b == 0 ) : ( disagree.b == 5 && disagree.a == 0 ),
                        "ArmsDisagree's untaken side reads as zero" );
 
                 memset( &arm_empty, 0xEF, sizeof( arm_empty ) );
-                CONSUME( f ? 32 : 13, read_arm_empty( &rs, &arm_empty ) );
+                CONSUME( f ? 32 : 13, example_read_arm_empty( &rs, &arm_empty ) );
                 check( arm_empty.lead == 21 && arm_empty.tail == 99, "ArmEmpty round-trips" );
                 check( arm_empty.a == ( f ? 456789u : 0u ), "ArmEmpty's absent arm reads as zero" );
 
                 memset( &align_str, 0xEF, sizeof( align_str ) );
-                CONSUME( f ? 55 : 23, read_arm_align( &rs, &align_str ) );
+                CONSUME( f ? 55 : 23, example_read_arm_align( &rs, &align_str ) );
                 check( align_str.lead == 21 && align_str.tail == 99, "ArmAlign round-trips" );
                 check( f ? ( align_str.s_length == 4 && strcmp( align_str.s, "abcd" ) == 0 && align_str.b == 0 )
                          : ( align_str.b == 1000 && align_str.s_length == 0 ),
                        "ArmAlign's untaken side reads as zero" );
 
                 memset( &align_empty, 0xEF, sizeof( align_empty ) );
-                CONSUME( 23, read_arm_align( &rs, &align_empty ) );
+                CONSUME( 23, example_read_arm_align( &rs, &align_empty ) );
                 check( align_empty.lead == 21 && align_empty.tail == 99, "ArmAlign with an empty string round-trips" );
                 check( f ? ( align_empty.s_length == 0 && align_empty.b == 0 ) : ( align_empty.b == 1000 ),
                        "ArmAlign's empty string round-trips" );
@@ -1130,7 +1130,7 @@ int main( void )
                 for ( in = 0; in <= 1; in++ )
                 {
                     memset( &an, 0xEF, sizeof( an ) );
-                    CONSUME( o ? ( in ? 40 : 16 ) : 23, read_arms_nested( &rs, &an ) );
+                    CONSUME( o ? ( in ? 40 : 16 ) : 23, example_read_arms_nested( &rs, &an ) );
                     check( an.lead == 5 && an.tail == 33 && an.outer == o, "ArmsNested round-trips" );
                     if ( o )
                     {
@@ -1150,7 +1150,7 @@ int main( void )
                 for ( c = 0; c <= 3; c++ )
                 {
                     memset( &aa, 0xEF, sizeof( aa ) );
-                    CONSUME( f ? 15 + 13 * c : 22, read_arm_array( &rs, &aa ) );
+                    CONSUME( f ? 15 + 13 * c : 22, example_read_arm_array( &rs, &aa ) );
                     check( aa.lead == 21 && aa.tail == 99, "ArmArray round-trips" );
                     if ( f )
                     {
@@ -1167,8 +1167,8 @@ int main( void )
             for ( k = 0; k <= 2; k++ )
             {
                 memset( &hun, 0xEF, sizeof( hun ) );
-                CONSUME( uneven_bits[k], read_holds_uneven( &rs, &hun ) );
-                check( hun.lead == 21 && hun.tail == 1500 && hun.u.type == (UnevenType) k, "HoldsUneven round-trips" );
+                CONSUME( uneven_bits[k], example_read_holds_uneven( &rs, &hun ) );
+                check( hun.lead == 21 && hun.tail == 1500 && hun.u.type == (example_uneven_type_t) k, "HoldsUneven round-trips" );
                 if ( k == 1 ) check( hun.u.as.narrow.n == 5, "HoldsUneven's narrow arm round-trips" );
                 if ( k == 2 ) check( hun.u.as.wide.w == 123456789012ULL, "HoldsUneven's wide arm round-trips" );
             }
@@ -1176,14 +1176,14 @@ int main( void )
             for ( c = 0; c <= 3; c++ )
             {
                 memset( &au, 0xEF, sizeof( au ) );
-                CONSUME( 10 + uneven_item_bits[c], read_arr_uneven( &rs, &au ) );
+                CONSUME( 10 + uneven_item_bits[c], example_read_arr_uneven( &rs, &au ) );
                 check( au.items_count == c && au.lead == 21 && au.tail == 5, "ArrUneven round-trips" );
                 for ( i = 0; i < c; i++ )
                 {
                     if ( i % 2 == 0 )
-                        check( au.items[i].type == UNEVEN_TYPE_NARROW && au.items[i].as.narrow.n == (uint32_t) ( i % 8 ), "ArrUneven narrow element round-trips" );
+                        check( au.items[i].type == EXAMPLE_UNEVEN_TYPE_NARROW && au.items[i].as.narrow.n == (uint32_t) ( i % 8 ), "ArrUneven narrow element round-trips" );
                     else
-                        check( au.items[i].type == UNEVEN_TYPE_WIDE && au.items[i].as.wide.w == 99887766554ULL + (uint64_t) i, "ArrUneven wide element round-trips" );
+                        check( au.items[i].type == EXAMPLE_UNEVEN_TYPE_WIDE && au.items[i].as.wide.w == 99887766554ULL + (uint64_t) i, "ArrUneven wide element round-trips" );
                 }
             }
 
@@ -1193,7 +1193,7 @@ int main( void )
                 {
                     memset( &ra, 0xEF, sizeof( ra ) );
                     after_align = ( ( 5 + 2 + 13 * c + 3 ) + 7 ) / 8 * 8;
-                    CONSUME( after_align + 8 * sl + 84, read_regain_after_align( &rs, &ra ) );
+                    CONSUME( after_align + 8 * sl + 84, example_read_regain_after_align( &rs, &ra ) );
                     check( ra.lead == 21 && ra.items_count == c && ra.s_length == sl, "RegainAfterAlign round-trips" );
                     check( ra.p == 0xDEADBEEFu && ra.q == ( 1u << 29 ) - 7 && ra.r == ( 1u << 19 ) - 3 && ra.tail == 9,
                            "RegainAfterAlign's static run after the align round-trips" );
@@ -1213,40 +1213,40 @@ int main( void )
        exactly the values that matter; the sanitizer build of this file is
        what calls the old form out. */
     {
-        ExtremeProbe in, out;
-        ExtremeRow row_in, row_out;
-        in = new_extreme_probe();
+        example_extreme_probe_t in, out;
+        example_extreme_row_t row_in, row_out;
+        in = example_new_extreme_probe();
         in.floor_bound = 100;
         in.doubled_floor = 0;
         in.ceiling_range = 18446744073709551615ULL;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_extreme_probe( &w, &in ), "write ExtremeProbe at the top of an INT64_MIN range" );
+        check( example_write_extreme_probe( &w, &in ), "write ExtremeProbe at the top of an INT64_MIN range" );
         serialize_write_flush( &w );
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_extreme_probe( &r, &out ), "read ExtremeProbe" );
+        check( example_read_extreme_probe( &r, &out ), "read ExtremeProbe" );
         check( out.floor_bound == 100 && out.doubled_floor == 0, "an INT64_MIN-floored range round-trips values >= 0" );
         check( out.ceiling_range == 18446744073709551615ULL, "a UINT64_MAX-capped range round-trips its ceiling" );
 
         in.floor_bound = ( -9223372036854775807LL - 1 );
         in.doubled_floor = ( -9223372036854775807LL - 1 );
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_extreme_probe( &w, &in ), "write ExtremeProbe at the floor" );
+        check( example_write_extreme_probe( &w, &in ), "write ExtremeProbe at the floor" );
         serialize_write_flush( &w );
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_extreme_probe( &r, &out ), "read ExtremeProbe at the floor" );
+        check( example_read_extreme_probe( &r, &out ), "read ExtremeProbe at the floor" );
         check( out.floor_bound == ( -9223372036854775807LL - 1 ) && out.doubled_floor == ( -9223372036854775807LL - 1 ),
                "an INT64_MIN-floored range round-trips the floor itself" );
 
-        row_in = new_extreme_row();
+        row_in = example_new_extreme_row();
         row_in.clamped_floor = 100;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
-        check( write_extreme_row( &w, &row_in ), "write ExtremeRow" );
+        check( example_write_extreme_row( &w, &row_in ), "write ExtremeRow" );
         serialize_write_flush( &w );
         memset( &row_out, 0, sizeof( row_out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( read_extreme_row( &r, &row_out ), "read ExtremeRow" );
+        check( example_read_extreme_row( &r, &row_out ), "read ExtremeRow" );
         check( row_out.clamped_floor == 100, "ExtremeRow round-trips a value >= 0 over an INT64_MIN floor" );
     }
 
@@ -1256,14 +1256,14 @@ int main( void )
        carried in 14 bits that can hold up to 16383) must leave the stream
        failed, not just return 0. */
     {
-        Handle out;
+        example_handle_t out;
         serialize_write_stream_init( &w, buffer, sizeof( buffer ) );
         check( serialize_write_bits( &w, 16383, 14 ), "write an out-of-range object_id" );
         check( serialize_write_bits( &w, 7, 8 ), "write object_sequence" );
         serialize_write_flush( &w );
         memset( &out, 0, sizeof( out ) );
         serialize_read_stream_init( &r, buffer, serialize_write_bytes_processed( &w ) );
-        check( !read_handle( &r, &out ), "an object_id past MAX_OBJECTS - 1 is refused" );
+        check( !example_read_handle( &r, &out ), "an object_id past MAX_OBJECTS - 1 is refused" );
         check( serialize_read_error( &r ), "the refusal latches the stream error (check once at the end)" );
     }
 

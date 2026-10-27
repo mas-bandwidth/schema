@@ -25,11 +25,9 @@
    reason is the LINKER rather than the preprocessor: two units of the same
    schema family link into one program — two generations of one schema is the
    case the conformance driver itself is — so nothing this backend emits may
-   be spelled the same way by two packages. They do NOT share a translation
-   unit and cannot: C has no namespace, so two units' headers in one TU
-   redefine TableReport, TableWriter and every other runtime name, which is the
-   packet emitter's standing limit (SPEC §6.1) and not something tables
-   changed. A per-package macro is what keeps the LINK legal. */
+   be spelled the same way by two packages. The target's qualification pass
+   gives every other runtime name the package too (SPEC §6.3), so two units'
+   headers share a translation unit as well as a link. */
 #ifndef SCHEMA_LUDICROUS_TABLE_INLINE
 #if defined( _MSC_VER )
 #define SCHEMA_LUDICROUS_TABLE_INLINE __forceinline
@@ -40,42 +38,9 @@
 #endif
 #endif
 
-/* A COMPILE-TIME assertion under -std=c99, which has none of its own. C11's
-   _Static_assert carries the message into the build log verbatim and is used
-   wherever the compiler has it; everywhere else the negative array bound is
-   the same refusal with a tag a reader can find. The tag is unique per record
-   and field, and each record is asserted by the ONE header that declares it,
-   so no two of these ever meet. */
-#ifndef SCHEMA_TABLE_STATIC_ASSERT
-#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) _Static_assert( cond, message )
-#elif defined( __cplusplus ) && __cplusplus >= 201103L
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) static_assert( cond, message )
-#else
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) typedef char schema_table_assert_##tag[ ( cond ) ? 1 : -1 ]
-#endif
-#endif
-
-/* A record's ALIGNMENT, which the cook's layout contract asserts and which the
-   cook's Open compares the header's alignment word against (§7.1, §20.3).
-   C99 has no alignof either; C11's _Alignof, the two GNU spellings and MSVC's
-   cover every compiler this repo builds under, and the last form is the
-   portable definition of the same number. */
-#ifndef SCHEMA_TABLE_ALIGNOF
-#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L
-#define SCHEMA_TABLE_ALIGNOF( T ) _Alignof( T )
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_TABLE_ALIGNOF( T ) __alignof__( T )
-#elif defined( _MSC_VER )
-#define SCHEMA_TABLE_ALIGNOF( T ) __alignof( T )
-#else
-#define SCHEMA_TABLE_ALIGNOF( T ) ( (size_t) offsetof( struct { char schema_pad_; T schema_member_; }, schema_member_ ) )
-#endif
-#endif
-
 /* The table-wire read report — the permissive contract's ledger. Silence
    (all zero) means the data matched this reader's schema exactly. */
-typedef struct TableReport
+typedef struct ludicrous_table_report_t
 {
     int32_t unknown;       /* unknown field ids skipped (newer data) */
     int32_t kind_mismatch; /* known id, changed type — skipped, never misdecoded */
@@ -98,9 +63,9 @@ typedef struct TableReport
        operator's other answer, a layout this build served and has retired
        (§5.9 #7). Zero on every other path, refusal or read. */
     uint64_t layout_hash;
-} TableReport;
+} ludicrous_table_report_t;
 
-enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
+enum SCHEMA_LUDICROUS_TABLE_REFUSAL_REASON { SCHEMA_LUDICROUS_TABLE_NO_REFUSAL, SCHEMA_LUDICROUS_TABLE_NEWER_FORM, SCHEMA_LUDICROUS_TABLE_MESSAGE_FORM_AS_FILE };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -109,29 +74,29 @@ enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_F
    enough to walk, print, diff, edit or bind any table value at runtime with
    no schema files. <name>_table_type() returns <Name>'s descriptor. */
 
-struct TableTypeInfo;
-struct TableFieldInfo;
+struct ludicrous_table_type_info_t;
+struct ludicrous_table_field_info_t;
 
 /* One arm of a union field: where its payload sits inside the union's storage
    and what its payload looks like. The arm's NAME and its table-wire id ride
    in the field's own vocabulary table at the same tag, so nothing is spelled
    twice (docs/SPEC-TABLES.md §8). */
-typedef struct TableUnionArmInfo
+typedef struct ludicrous_table_union_arm_info_t
 {
     uint32_t offset;                    /* offsetof the arm's payload within the union storage */
-    const struct TableTypeInfo * table; /* the arm payload's descriptor */
-    const struct TableFieldInfo * field; /* non-body arm, relative to union storage */
+    const struct ludicrous_table_type_info_t * table; /* the arm payload's descriptor */
+    const struct ludicrous_table_field_info_t * field; /* non-body arm, relative to union storage */
     uint32_t size; /* bytes established when this arm is selected */
-} TableUnionArmInfo;
+} ludicrous_table_union_arm_info_t;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
    [0, enum_max]; index 0 is the EMPTY arm and carries no payload. */
-typedef struct TableUnionInfo
+typedef struct ludicrous_table_union_info_t
 {
     uint32_t tag_offset; /* offsetof the tag within the union storage */
     uint32_t tag_size;   /* sizeof the tag */
-    const TableUnionArmInfo * arms;
-} TableUnionInfo;
+    const ludicrous_table_union_arm_info_t * arms;
+} ludicrous_table_union_info_t;
 
 /* ONE ENTRY OF A VOCABULARY, and the whole of what C++ spells as a pair of
    captureless lambdas. An enum's values, a union's arms and a flags field's
@@ -145,22 +110,22 @@ typedef struct TableUnionInfo
    FLAGS field's variants are BIT POSITIONS and have no per-variant wire id
    (§4), so has_ids is 0 there and 1 for an enum and a union: a vocabulary
    with names and no ids is what says "flags". */
-typedef struct TableVariantInfo
+typedef struct ludicrous_table_variant_info_t
 {
     const char * name;
     uint64_t id;
-} TableVariantInfo;
+} ludicrous_table_variant_info_t;
 
 /* THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
    block carries a doc column pointing at this one object, so absence costs a
    unit no string data and a printer concatenates doc columns with no null
    test. One definition per translation unit, and the descriptors of a unit
    are one, so every absent doc compares equal by address. */
-static SCHEMA_UNUSED const char TableDocNone[1] = "";
+static SCHEMA_UNUSED const char LUDICROUS_TABLE_DOC_NONE[1] = "";
 
-typedef struct TableWideRange { uint64_t lo[2], hi[2]; } TableWideRange;
+typedef struct ludicrous_table_wide_range_t { uint64_t lo[2], hi[2]; } ludicrous_table_wide_range_t;
 
-typedef struct TableFieldInfo
+typedef struct ludicrous_table_field_info_t
 {
     const char * name;      /* schema field name, e.g. "health" */
     const char * json;      /* the TEXT form's key: the json = "key" attribute, else name (§16.3) */
@@ -175,11 +140,11 @@ typedef struct TableFieldInfo
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
     uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
     uint32_t present_offset; /* offsetof the _present companion, or 0xffffffff */
-    const struct TableTypeInfo * table; /* nested table's descriptor, or NULL */
+    const struct ludicrous_table_type_info_t * table; /* nested table's descriptor, or NULL */
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
     double range_max;
-    const TableWideRange * wide; /* exact raw range for wide/fixed storage */
+    const ludicrous_table_wide_range_t * wide; /* exact raw range for wide/fixed storage */
     int32_t frac_bits;
     int64_t enum_max;       /* enums: highest valid value (None = 0 always valid);
                                unions: the arm count (tag range [0, enum_max]);
@@ -187,7 +152,7 @@ typedef struct TableFieldInfo
     /* the vocabulary, indexed the same way enum_max bounds: an enum's value ->
        (name, id), a union's tag -> (arm name, arm id), a FLAGS field's bit
        index -> (variant name, 0). NULL for every other kind. */
-    const TableVariantInfo * variants;
+    const ludicrous_table_variant_info_t * variants;
     int has_variant_ids;    /* 1 for an enum or a union, 0 for flags (§4) */
     /* an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
        variant of key_type_name, the key k at index k-1, and its slots ride
@@ -195,10 +160,10 @@ typedef struct TableFieldInfo
        indexed by the KEY — walk [0, array_bound) and ask about index + 1 to
        print slots by name. NULL on every other field. */
     const char * key_type_name;
-    const TableVariantInfo * keys;
+    const ludicrous_table_variant_info_t * keys;
     int64_t key_max;        /* the key enum's highest value, bounding keys */
     /* union fields: the tag and its arms. NULL for every other kind. */
-    const TableUnionInfo * arms;
+    const ludicrous_table_union_info_t * arms;
     const char * guard;     /* branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded */
     /* what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
        block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -210,14 +175,14 @@ typedef struct TableFieldInfo
     const char * const * tags;
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
-} TableFieldInfo;
+} ludicrous_table_field_info_t;
 
-typedef struct TableTypeInfo
+typedef struct ludicrous_table_type_info_t
 {
     const char * name;   /* schema type name */
     uint32_t size;       /* sizeof the storage struct */
     int32_t num_fields;
-    const TableFieldInfo * fields;
+    const ludicrous_table_field_info_t * fields;
     /* put one instance back at its declared defaults, in place. A generic
        walker that fills a value has to be able to establish the defaults an
        absent field takes, and it holds no type to spell — this is the one
@@ -229,21 +194,21 @@ typedef struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
-} TableTypeInfo;
+} ludicrous_table_type_info_t;
 
 
 
-static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
-static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
-static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
-static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+static SCHEMA_UNUSED float ludicrous_table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
+static SCHEMA_UNUSED uint32_t ludicrous_table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
+static SCHEMA_UNUSED double ludicrous_table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
+static SCHEMA_UNUSED uint64_t ludicrous_table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
 #endif /* SCHEMA_LUDICROUS_TABLE_PRIMITIVES */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef struct ViewConstant
+typedef struct ludicrous_view_constant_t
 {
     const char * name;
     const char * file;       // the declaring schema file's basename
@@ -255,9 +220,9 @@ typedef struct ViewConstant
                              // "" when there is none, never NULL (§8.1)
     int32_t num_tags;             // the declaration's tags (SPEC §4.2), in
     const char * const * tags;    // DECLARED order; 0 and NULL when there are none
-} ViewConstant;
+} ludicrous_view_constant_t;
 
-typedef struct ViewVariant          // one enum variant, one flags bit, one union arm
+typedef struct ludicrous_view_variant_t          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
@@ -268,11 +233,11 @@ typedef struct ViewVariant          // one enum variant, one flags bit, one unio
                                     // name, or a general arm's spelling
                                     // ("int32", "string(64)", "*Chunk"); NULL on
                                     // a payload-free arm and on every other row
-    const TableTypeInfo * payload;  // that payload's descriptor — never NULL for
+    const ludicrous_table_type_info_t * payload;  // that payload's descriptor — never NULL for
                                     // an arm naming a `type` or a `table` (§8.2);
                                     // NULL on a general arm, on a payload-free
                                     // arm, on tag 0, and on an enum or flags row
-    const TableFieldInfo * field;   // a general arm's FIELD descriptor: its kind,
+    const ludicrous_table_field_info_t * field;   // a general arm's FIELD descriptor: its kind,
                                     // width, bounds, capacity, companions and the
                                     // offsets §8.1 takes within the union's
                                     // storage. NULL on an arm naming a `type` or
@@ -284,64 +249,64 @@ typedef struct ViewVariant          // one enum variant, one flags bit, one unio
     const char * const * tags;      // 0 and NULL when there are none. On a general
                                     // arm the `field` descriptor above carries the
                                     // same two values (§8.1)
-} ViewVariant;
+} ludicrous_view_variant_t;
 
-typedef struct ViewVocabulary       // an enum, a flags or a union declaration
+typedef struct ludicrous_view_vocabulary_t       // an enum, a flags or a union declaration
 {
     const char * name;
     const char * file;
     int64_t max;            // highest value / highest bit index / highest tag
     int32_t storage_bits;
     int32_t num_variants;
-    const ViewVariant * variants;
+    const ludicrous_view_variant_t * variants;
     const char * doc;             // the declaration's own `///` block; "" when none
     int32_t num_tags;             // the declaration's own tags, in DECLARED order;
     const char * const * tags;    // 0 and NULL when there are none
-} ViewVocabulary;
+} ludicrous_view_vocabulary_t;
 
-typedef struct ViewType             // one declaration: a type, or a table
+typedef struct ludicrous_view_type_t             // one declaration: a type, or a table
 {
     const char * name;
     const char * file;
     int table;                     // declared `table`
-    const TableTypeInfo * type;     // §8.1's descriptor: the properties, and this
+    const ludicrous_table_type_info_t * type;     // §8.1's descriptor: the properties, and this
                                     // declaration's own doc and tags beside them
     const char * doc;               // the `///` block above it; "" when none. The
                                     // same text `type->doc` carries (§8.1)
     int32_t num_tags;               // the declaration's tags (SPEC §4.2), in
     const char * const * tags;      // DECLARED order; the same list `type` carries
-} ViewType;
+} ludicrous_view_type_t;
 
-typedef struct UnitViewInfo
+typedef struct ludicrous_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const ViewType * types;
-    int32_t num_tables;     const ViewType * tables;
-    int32_t num_enums;      const ViewVocabulary * enums;
-    int32_t num_flags;      const ViewVocabulary * flags;
-    int32_t num_unions;     const ViewVocabulary * unions;
-    int32_t num_constants;  const ViewConstant * constants;
-} UnitViewInfo;
+    int32_t num_types;      const ludicrous_view_type_t * types;
+    int32_t num_tables;     const ludicrous_view_type_t * tables;
+    int32_t num_enums;      const ludicrous_view_vocabulary_t * enums;
+    int32_t num_flags;      const ludicrous_view_vocabulary_t * flags;
+    int32_t num_unions;     const ludicrous_view_vocabulary_t * unions;
+    int32_t num_constants;  const ludicrous_view_constant_t * constants;
+} ludicrous_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
 
-static SCHEMA_UNUSED void degenerate_probe_reset( DegenerateProbe * value );
+static SCHEMA_UNUSED void ludicrous_degenerate_probe_reset( ludicrous_degenerate_probe_t * value );
 static SCHEMA_UNUSED void schema_ludicrous_degenerate_probe_reset_raw_( void * storage );
-static SCHEMA_UNUSED void fixed_probe_reset( FixedProbe * value );
+static SCHEMA_UNUSED void ludicrous_fixed_probe_reset( ludicrous_fixed_probe_t * value );
 static SCHEMA_UNUSED void schema_ludicrous_fixed_probe_reset_raw_( void * storage );
-static SCHEMA_UNUSED void fixed_quat_reset( FixedQuat * value );
+static SCHEMA_UNUSED void ludicrous_fixed_quat_reset( ludicrous_fixed_quat_t * value );
 static SCHEMA_UNUSED void schema_ludicrous_fixed_quat_reset_raw_( void * storage );
-static SCHEMA_UNUSED void fixed_vec_reset( FixedVec * value );
+static SCHEMA_UNUSED void ludicrous_fixed_vec_reset( ludicrous_fixed_vec_t * value );
 static SCHEMA_UNUSED void schema_ludicrous_fixed_vec_reset_raw_( void * storage );
-static SCHEMA_UNUSED void ludicrous_state_reset( LudicrousState * value );
+static SCHEMA_UNUSED void ludicrous_ludicrous_state_reset( ludicrous_ludicrous_state_t * value );
 static SCHEMA_UNUSED void schema_ludicrous_ludicrous_state_reset_raw_( void * storage );
-static SCHEMA_UNUSED void unsigned_probe_reset( UnsignedProbe * value );
+static SCHEMA_UNUSED void ludicrous_unsigned_probe_reset( ludicrous_unsigned_probe_t * value );
 static SCHEMA_UNUSED void schema_ludicrous_unsigned_probe_reset_raw_( void * storage );
-static SCHEMA_UNUSED void wide_probe_reset( WideProbe * value );
+static SCHEMA_UNUSED void ludicrous_wide_probe_reset( ludicrous_wide_probe_t * value );
 static SCHEMA_UNUSED void schema_ludicrous_wide_probe_reset_raw_( void * storage );
 
-static SCHEMA_UNUSED void degenerate_probe_reset( DegenerateProbe * value )
+static SCHEMA_UNUSED void ludicrous_degenerate_probe_reset( ludicrous_degenerate_probe_t * value )
 {
     value->locked_fixed = -196608;
     value->locked_int = 7;
@@ -349,11 +314,11 @@ static SCHEMA_UNUSED void degenerate_probe_reset( DegenerateProbe * value )
     value->tail = 0;
 }
 
-static SCHEMA_UNUSED void schema_ludicrous_degenerate_probe_reset_raw_( void * storage ) { degenerate_probe_reset( (DegenerateProbe *) storage ); }
+static SCHEMA_UNUSED void schema_ludicrous_degenerate_probe_reset_raw_( void * storage ) { ludicrous_degenerate_probe_reset( (ludicrous_degenerate_probe_t *) storage ); }
 
-extern const TableTypeInfo schema_ludicrous_degenerate_probe_info_;
-static SCHEMA_UNUSED const TableTypeInfo * degenerate_probe_table_type(void) { return &schema_ludicrous_degenerate_probe_info_; }
-static SCHEMA_UNUSED void fixed_probe_reset( FixedProbe * value )
+extern const ludicrous_table_type_info_t schema_ludicrous_degenerate_probe_info_;
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_degenerate_probe_table_type(void) { return &schema_ludicrous_degenerate_probe_info_; }
+static SCHEMA_UNUSED void ludicrous_fixed_probe_reset( ludicrous_fixed_probe_t * value )
 {
     value->angle = 0;
     value->position = 0;
@@ -362,11 +327,11 @@ static SCHEMA_UNUSED void fixed_probe_reset( FixedProbe * value )
     memset( value->samples, 0, sizeof( value->samples ) );
 }
 
-static SCHEMA_UNUSED void schema_ludicrous_fixed_probe_reset_raw_( void * storage ) { fixed_probe_reset( (FixedProbe *) storage ); }
+static SCHEMA_UNUSED void schema_ludicrous_fixed_probe_reset_raw_( void * storage ) { ludicrous_fixed_probe_reset( (ludicrous_fixed_probe_t *) storage ); }
 
-extern const TableTypeInfo schema_ludicrous_fixed_probe_info_;
-static SCHEMA_UNUSED const TableTypeInfo * fixed_probe_table_type(void) { return &schema_ludicrous_fixed_probe_info_; }
-static SCHEMA_UNUSED void fixed_quat_reset( FixedQuat * value )
+extern const ludicrous_table_type_info_t schema_ludicrous_fixed_probe_info_;
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_probe_table_type(void) { return &schema_ludicrous_fixed_probe_info_; }
+static SCHEMA_UNUSED void ludicrous_fixed_quat_reset( ludicrous_fixed_quat_t * value )
 {
     value->x = 0;
     value->y = 0;
@@ -374,37 +339,37 @@ static SCHEMA_UNUSED void fixed_quat_reset( FixedQuat * value )
     value->w = 1073741824;
 }
 
-static SCHEMA_UNUSED void schema_ludicrous_fixed_quat_reset_raw_( void * storage ) { fixed_quat_reset( (FixedQuat *) storage ); }
+static SCHEMA_UNUSED void schema_ludicrous_fixed_quat_reset_raw_( void * storage ) { ludicrous_fixed_quat_reset( (ludicrous_fixed_quat_t *) storage ); }
 
-extern const TableTypeInfo schema_ludicrous_fixed_quat_info_;
-static SCHEMA_UNUSED const TableTypeInfo * fixed_quat_table_type(void) { return &schema_ludicrous_fixed_quat_info_; }
-static SCHEMA_UNUSED void fixed_vec_reset( FixedVec * value )
+extern const ludicrous_table_type_info_t schema_ludicrous_fixed_quat_info_;
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_quat_table_type(void) { return &schema_ludicrous_fixed_quat_info_; }
+static SCHEMA_UNUSED void ludicrous_fixed_vec_reset( ludicrous_fixed_vec_t * value )
 {
     value->x = 0;
     value->y = 0;
     value->z = 0;
 }
 
-static SCHEMA_UNUSED void schema_ludicrous_fixed_vec_reset_raw_( void * storage ) { fixed_vec_reset( (FixedVec *) storage ); }
+static SCHEMA_UNUSED void schema_ludicrous_fixed_vec_reset_raw_( void * storage ) { ludicrous_fixed_vec_reset( (ludicrous_fixed_vec_t *) storage ); }
 
-extern const TableTypeInfo schema_ludicrous_fixed_vec_info_;
-static SCHEMA_UNUSED const TableTypeInfo * fixed_vec_table_type(void) { return &schema_ludicrous_fixed_vec_info_; }
-static SCHEMA_UNUSED void ludicrous_state_reset( LudicrousState * value )
+extern const ludicrous_table_type_info_t schema_ludicrous_fixed_vec_info_;
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_vec_table_type(void) { return &schema_ludicrous_fixed_vec_info_; }
+static SCHEMA_UNUSED void ludicrous_ludicrous_state_reset( ludicrous_ludicrous_state_t * value )
 {
-    value->mode = DRIVE_MODE_NONE;
-    fixed_probe_reset( &value->probe );
-    wide_probe_reset( &value->wide );
+    value->mode = LUDICROUS_DRIVE_MODE_NONE;
+    ludicrous_fixed_probe_reset( &value->probe );
+    ludicrous_wide_probe_reset( &value->wide );
     memset( value->keys, 0, sizeof( value->keys ) );
     value->keys_count = 0;
     value->has_target = 0;
     value->target_id = serialize_uint128_make( 0ull, 0ull );
 }
 
-static SCHEMA_UNUSED void schema_ludicrous_ludicrous_state_reset_raw_( void * storage ) { ludicrous_state_reset( (LudicrousState *) storage ); }
+static SCHEMA_UNUSED void schema_ludicrous_ludicrous_state_reset_raw_( void * storage ) { ludicrous_ludicrous_state_reset( (ludicrous_ludicrous_state_t *) storage ); }
 
-extern const TableTypeInfo schema_ludicrous_ludicrous_state_info_;
-static SCHEMA_UNUSED const TableTypeInfo * ludicrous_state_table_type(void) { return &schema_ludicrous_ludicrous_state_info_; }
-static SCHEMA_UNUSED void unsigned_probe_reset( UnsignedProbe * value )
+extern const ludicrous_table_type_info_t schema_ludicrous_ludicrous_state_info_;
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_ludicrous_state_table_type(void) { return &schema_ludicrous_ludicrous_state_info_; }
+static SCHEMA_UNUSED void ludicrous_unsigned_probe_reset( ludicrous_unsigned_probe_t * value )
 {
     value->angle = 0;
     value->span = 0;
@@ -415,11 +380,11 @@ static SCHEMA_UNUSED void unsigned_probe_reset( UnsignedProbe * value )
     value->tail = 0;
 }
 
-static SCHEMA_UNUSED void schema_ludicrous_unsigned_probe_reset_raw_( void * storage ) { unsigned_probe_reset( (UnsignedProbe *) storage ); }
+static SCHEMA_UNUSED void schema_ludicrous_unsigned_probe_reset_raw_( void * storage ) { ludicrous_unsigned_probe_reset( (ludicrous_unsigned_probe_t *) storage ); }
 
-extern const TableTypeInfo schema_ludicrous_unsigned_probe_info_;
-static SCHEMA_UNUSED const TableTypeInfo * unsigned_probe_table_type(void) { return &schema_ludicrous_unsigned_probe_info_; }
-static SCHEMA_UNUSED void wide_probe_reset( WideProbe * value )
+extern const ludicrous_table_type_info_t schema_ludicrous_unsigned_probe_info_;
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_unsigned_probe_table_type(void) { return &schema_ludicrous_unsigned_probe_info_; }
+static SCHEMA_UNUSED void ludicrous_wide_probe_reset( ludicrous_wide_probe_t * value )
 {
     value->entity_id = serialize_uint128_make( 0ull, 0ull );
     value->energy = serialize_int128_make( 0ull, 0ull );
@@ -428,12 +393,12 @@ static SCHEMA_UNUSED void wide_probe_reset( WideProbe * value )
     value->seed = serialize_uint128_make( 2ull, 0ull );
 }
 
-static SCHEMA_UNUSED void schema_ludicrous_wide_probe_reset_raw_( void * storage ) { wide_probe_reset( (WideProbe *) storage ); }
+static SCHEMA_UNUSED void schema_ludicrous_wide_probe_reset_raw_( void * storage ) { ludicrous_wide_probe_reset( (ludicrous_wide_probe_t *) storage ); }
 
-extern const TableTypeInfo schema_ludicrous_wide_probe_info_;
-static SCHEMA_UNUSED const TableTypeInfo * wide_probe_table_type(void) { return &schema_ludicrous_wide_probe_info_; }
-const UnitViewInfo * schema_ludicrous_unit_view_(void);
-static SCHEMA_UNUSED const UnitViewInfo * unit_view(void) { return schema_ludicrous_unit_view_(); }
+extern const ludicrous_table_type_info_t schema_ludicrous_wide_probe_info_;
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_wide_probe_table_type(void) { return &schema_ludicrous_wide_probe_info_; }
+const ludicrous_unit_view_info_t * schema_ludicrous_unit_view_(void);
+static SCHEMA_UNUSED const ludicrous_unit_view_info_t * ludicrous_unit_view(void) { return schema_ludicrous_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

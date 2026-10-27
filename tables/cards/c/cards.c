@@ -111,12 +111,12 @@ static void fixed_view(const char *buf, int32_t len, int32_t cap,
    opaque body and every collection element, before bytes are published.
    ctx names the builder arena for a mutable root and is NULL for a loaded
    self-relative region. It ports checkCard in tables/cards/cards.go. */
-static int check_card(const Card *root, const TableCtx *ctx, char *err,
+static int check_card(const cards_card_t *root, const cards_table_ctx_t *ctx, char *err,
                       size_t err_cap) {
-    TableStringView body;
+    cards_table_string_view_t body;
     int32_t i;
     if (root == NULL) return fail(err, err_cap, "cards: nil card");
-    body = table_string_at(ctx, &root->body);
+    body = cards_table_string_at(ctx, &root->body);
     if (root->body.value != 0) {
         if (body.length > CARDS_MAX_BODY_BYTES)
             return failf(err, err_cap,
@@ -130,7 +130,7 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
     /* The six collections share the entry ceiling (docs/SPEC-TABLES.md §2.9). */
     {
         const struct {
-            const TableList *list;
+            const cards_table_list_t *list;
             const char *name;
         } lists[6] = {{&root->paths, "paths"},   {&root->_new, "_new"},
                       {&root->shared, "shared"}, {&root->needs, "needs"},
@@ -149,14 +149,14 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
     /* Element well-formedness: every collection element is valid UTF-8
        without NUL (docs/SPEC-TABLES.md §2.9). */
     {
-        TableSequenceCursor cur;
-        const PathText *e;
-        const TableList *sets[3] = {&root->paths, &root->_new, &root->shared};
+        cards_table_sequence_cursor_t cur;
+        const cards_path_text_t *e;
+        const cards_table_list_t *sets[3] = {&root->paths, &root->_new, &root->shared};
         const char *names[3] = {"paths", "_new", "shared"};
         int si;
         for (si = 0; si < 3; si++) {
-            cur = card_paths_each(ctx, sets[si]);
-            while ((e = (const PathText *)table_sequence_next(&cur)) != NULL) {
+            cur = cards_card_paths_each(ctx, sets[si]);
+            while ((e = (const cards_path_text_t *)cards_table_sequence_next(&cur)) != NULL) {
                 const uint8_t *d;
                 int64_t n;
                 fixed_view(e->s, e->s_length, 192, &d, &n);
@@ -168,9 +168,9 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
             }
         }
         {
-            const CardID *ce;
-            cur = card_needs_each(ctx, &root->needs);
-            while ((ce = (const CardID *)table_sequence_next(&cur)) != NULL) {
+            const cards_card_id_t *ce;
+            cur = cards_card_needs_each(ctx, &root->needs);
+            while ((ce = (const cards_card_id_t *)cards_table_sequence_next(&cur)) != NULL) {
                 const uint8_t *d;
                 int64_t n;
                 fixed_view(ce->s, ce->s_length, 64, &d, &n);
@@ -181,12 +181,12 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
             }
         }
         {
-            const KeyValue *kv;
-            cur = card_extra_each(ctx, &root->extra);
-            while ((kv = (const KeyValue *)table_sequence_next(&cur)) != NULL) {
+            const cards_key_value_t *kv;
+            cur = cards_card_extra_each(ctx, &root->extra);
+            while ((kv = (const cards_key_value_t *)cards_table_sequence_next(&cur)) != NULL) {
                 const uint8_t *d;
                 int64_t n;
-                TableStringView v;
+                cards_table_string_view_t v;
                 fixed_view(kv->key, kv->key_length, 32, &d, &n);
                 if (!utf8_valid(d, n))
                     return fail(err, err_cap,
@@ -232,7 +232,7 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
                     memchr(d, '\n', (size_t)n) != NULL)
                     return fail(err, err_cap,
                                 "cards: extra has a key with a CR or LF");
-                v = table_string_at(ctx, &kv->value);
+                v = cards_table_string_at(ctx, &kv->value);
                 if (kv->value.value != 0) {
                     if (!utf8_valid((const uint8_t *)v.data, v.length))
                         return fail(err, err_cap,
@@ -246,9 +246,9 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
             }
         }
         {
-            const Consumer *co;
-            cur = card_consumers_each(ctx, &root->consumers);
-            while ((co = (const Consumer *)table_sequence_next(&cur)) != NULL) {
+            const cards_consumer_t *co;
+            cur = cards_card_consumers_each(ctx, &root->consumers);
+            while ((co = (const cards_consumer_t *)cards_table_sequence_next(&cur)) != NULL) {
                 const struct {
                     const char *buf;
                     int32_t len;
@@ -280,31 +280,31 @@ static int check_card(const Card *root, const TableCtx *ctx, char *err,
 
 /* adopt_builder locks a filled builder, saves its wire and hands the packed
    region and wire to out (docs/SPEC-TABLES.md §6.2). */
-static int adopt_builder(CardBuilder *b, CardsRecord *out, char *err,
+static int adopt_builder(cards_card_builder_t *b, CardsRecord *out, char *err,
                          size_t err_cap) {
-    TableReport report;
-    const Card *root;
+    cards_table_report_t report;
+    const cards_card_t *root;
     int64_t size;
     uint8_t *wire;
     memset(&report, 0, sizeof(report));
-    if (!card_builder_lock(b)) {
-        card_builder_shutdown(b);
+    if (!cards_card_builder_lock(b)) {
+        cards_card_builder_shutdown(b);
         return fail(err, err_cap, "cards: packing failed");
     }
-    root = (const Card *)(const void *)b->region;
-    size = card_measure(NULL, root);
+    root = (const cards_card_t *)(const void *)b->region;
+    size = cards_card_measure(NULL, root);
     if (size < 0) {
-        card_builder_shutdown(b);
+        cards_card_builder_shutdown(b);
         return fail(err, err_cap, "cards: measure refused the built card");
     }
     wire = (uint8_t *)malloc((size_t)(size > 0 ? size : 1));
     if (wire == NULL) {
-        card_builder_shutdown(b);
+        cards_card_builder_shutdown(b);
         return fail(err, err_cap, "cards: allocation failed");
     }
-    if (card_save(NULL, root, wire, size) != size) {
+    if (cards_card_save(NULL, root, wire, size) != size) {
         free(wire);
-        card_builder_shutdown(b);
+        cards_card_builder_shutdown(b);
         return fail(err, err_cap, "cards: save did not fill the measured wire");
     }
     memset(out, 0, sizeof(*out));
@@ -312,10 +312,10 @@ static int adopt_builder(CardBuilder *b, CardsRecord *out, char *err,
     out->wire_len = size;
     out->region = b->region;
     out->region_len = b->region_bytes;
-    out->root = (const Card *)(const void *)out->region;
+    out->root = (const cards_card_t *)(const void *)out->region;
     b->region = NULL;
     b->region_bytes = 0;
-    card_builder_shutdown(b);
+    cards_card_builder_shutdown(b);
     return 1;
 }
 
@@ -323,21 +323,21 @@ static int adopt_builder(CardBuilder *b, CardsRecord *out, char *err,
    wire to record and report, refusing malformed input, never upgrading
    implicitly. The record owns a heap copy of its wire. */
 int cards_load(const uint8_t *wire, int64_t wire_len, CardsRecord *out,
-               TableReport *report, char *err, size_t err_cap) {
-    TableReport rep;
+               cards_table_report_t *report, char *err, size_t err_cap) {
+    cards_table_report_t rep;
     int64_t n;
     uint8_t *region;
-    const Card *root;
+    const cards_card_t *root;
     memset(&rep, 0, sizeof(rep));
     memset(out, 0, sizeof(*out));
-    n = card_load_measure(wire, wire_len);
+    n = cards_card_load_measure(wire, wire_len);
     if (n < 0) {
         if (report != NULL) *report = rep;
         return fail(err, err_cap, "cards: wire is not a card");
     }
     region = (uint8_t *)aligned_alloc64(n);
     if (region == NULL) return fail(err, err_cap, "cards: allocation failed");
-    root = card_load(region, n, wire, wire_len, &rep);
+    root = cards_card_load(region, n, wire, wire_len, &rep);
     if (root == NULL) {
         free(region);
         if (report != NULL) *report = rep;
@@ -368,26 +368,26 @@ int cards_load(const uint8_t *wire, int64_t wire_len, CardsRecord *out,
    the customer bounds before any record is published. */
 int cards_from_json(const uint8_t *text, int64_t text_len, CardsRecord *out,
                     char *err, size_t err_cap) {
-    CardBuilder b;
-    TableReport report;
-    TableCtx ctx;
+    cards_card_builder_t b;
+    cards_table_report_t report;
+    cards_table_ctx_t ctx;
     memset(out, 0, sizeof(*out));
     memset(&report, 0, sizeof(report));
-    if (!card_builder_init(&b))
+    if (!cards_card_builder_init(&b))
         return fail(err, err_cap, "cards: arena initialization failed");
-    if (!card_from_json(&b, (const char *)text, text_len, &report) ||
+    if (!cards_card_from_json(&b, (const char *)text, text_len, &report) ||
         report.malformed) {
-        card_builder_shutdown(&b);
+        cards_card_builder_shutdown(&b);
         return fail(err, err_cap, "cards: JSON is malformed");
     }
     if (report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0) {
-        card_builder_shutdown(&b);
+        cards_card_builder_shutdown(&b);
         return fail(err, err_cap,
                     "cards: JSON has loss events: refused, never truncated");
     }
     ctx.arena = &b.arena;
-    if (!check_card(card_builder_root(&b), &ctx, err, err_cap)) {
-        card_builder_shutdown(&b);
+    if (!check_card(cards_card_builder_root(&b), &ctx, err, err_cap)) {
+        cards_card_builder_shutdown(&b);
         return 0;
     }
     if (!adopt_builder(&b, out, err, err_cap)) return 0;
@@ -403,12 +403,12 @@ int cards_to_json(const CardsRecord *record, uint8_t **out, int64_t *out_len,
     uint8_t *buf;
     if (record == NULL || record->root == NULL)
         return fail(err, err_cap, "cards: nil record");
-    size = card_to_json_measure(record->root);
+    size = cards_card_to_json_measure(record->root);
     if (size < 0)
         return fail(err, err_cap, "cards: the card has no JSON spelling");
     buf = (uint8_t *)malloc((size_t)(size > 0 ? size : 1));
     if (buf == NULL) return fail(err, err_cap, "cards: allocation failed");
-    if (card_to_json(record->root, (char *)buf, size) != size) {
+    if (cards_card_to_json(record->root, (char *)buf, size) != size) {
         free(buf);
         return fail(err, err_cap, "cards: JSON write did not fill the measured text");
     }
@@ -614,18 +614,18 @@ static int is_hex_str(const char *s) {
 }
 
 static int parse_tier_str(const char *s, int *out) {
-    if (strcmp(s, "flash") == 0) { *out = TIER_FLASH; return 1; }
-    if (strcmp(s, "pro") == 0) { *out = TIER_PRO; return 1; }
-    if (strcmp(s, "heavy") == 0) { *out = TIER_HEAVY; return 1; }
-    if (strcmp(s, "frontier") == 0) { *out = TIER_FRONTIER; return 1; }
+    if (strcmp(s, "flash") == 0) { *out = CARDS_TIER_FLASH; return 1; }
+    if (strcmp(s, "pro") == 0) { *out = CARDS_TIER_PRO; return 1; }
+    if (strcmp(s, "heavy") == 0) { *out = CARDS_TIER_HEAVY; return 1; }
+    if (strcmp(s, "frontier") == 0) { *out = CARDS_TIER_FRONTIER; return 1; }
     return 0;
 }
 
 static int parse_priority_str(const char *s, int *out) {
-    if (strcmp(s, "normal") == 0) { *out = PRIORITY_NORMAL; return 1; }
-    if (strcmp(s, "high") == 0) { *out = PRIORITY_HIGH; return 1; }
-    if (strcmp(s, "critical") == 0) { *out = PRIORITY_CRITICAL; return 1; }
-    if (strcmp(s, "blocker") == 0) { *out = PRIORITY_BLOCKER; return 1; }
+    if (strcmp(s, "normal") == 0) { *out = CARDS_PRIORITY_NORMAL; return 1; }
+    if (strcmp(s, "high") == 0) { *out = CARDS_PRIORITY_HIGH; return 1; }
+    if (strcmp(s, "critical") == 0) { *out = CARDS_PRIORITY_CRITICAL; return 1; }
+    if (strcmp(s, "blocker") == 0) { *out = CARDS_PRIORITY_BLOCKER; return 1; }
     return 0;
 }
 
@@ -759,9 +759,9 @@ int cards_parse(const uint8_t *text, int64_t text_len, CardsRecord *out,
     int seen_count = 0, seen_cap = 0;
     const uint8_t *body;
     int64_t body_len;
-    CardBuilder b;
-    TableCtx ctx;
-    Card *root;
+    cards_card_builder_t b;
+    cards_table_ctx_t ctx;
+    cards_card_t *root;
     int k;
 
     memset(&p, 0, sizeof(p));
@@ -1080,62 +1080,62 @@ int cards_parse(const uint8_t *text, int64_t text_len, CardsRecord *out,
     body_len = text_len - last_header_end;
 
     /* Build through the generated builder and checked write (§6.2). */
-    if (!card_builder_init(&b)) {
+    if (!cards_card_builder_init(&b)) {
         fail(err, err_cap, "cards: arena initialization failed");
         goto done;
     }
-    root = card_builder_root(&b);
+    root = cards_card_builder_root(&b);
     assign_fixed(root->id, &root->id_length, p.id != NULL ? p.id : "");
     assign_fixed(root->sha, &root->sha_length, p.sha != NULL ? p.sha : "");
-    root->tier = (Tier)p.tier;
+    root->tier = (cards_tier_t)p.tier;
     assign_fixed(root->repo, &root->repo_length, p.repo != NULL ? p.repo : "");
     assign_fixed(root->_base, &root->_base_length, p.base != NULL ? p.base : "");
     assign_fixed(root->kind, &root->kind_length, p.kind != NULL ? p.kind : "");
-    root->priority = (Priority)p.priority;
+    root->priority = (cards_priority_t)p.priority;
     assign_fixed(root->stream, &root->stream_length, "");
     {
         int e2;
         for (e2 = 0; e2 < p.paths.count; e2++) {
-            PathText *row = card_paths_add(&b.main, &root->paths);
-            if (row == NULL) { card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a paths element"); goto done; }
+            cards_path_text_t *row = cards_card_paths_add(&b.main, &root->paths);
+            if (row == NULL) { cards_card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a paths element"); goto done; }
             assign_fixed(row->s, &row->s_length, p.paths.items[e2]);
         }
         for (e2 = 0; e2 < p.news.count; e2++) {
-            PathText *row = card_new_add(&b.main, &root->_new);
-            if (row == NULL) { card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a new element"); goto done; }
+            cards_path_text_t *row = cards_card_new_add(&b.main, &root->_new);
+            if (row == NULL) { cards_card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a new element"); goto done; }
             assign_fixed(row->s, &row->s_length, p.news.items[e2]);
         }
         for (e2 = 0; e2 < p.shared.count; e2++) {
-            PathText *row = card_shared_add(&b.main, &root->shared);
-            if (row == NULL) { card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a shared element"); goto done; }
+            cards_path_text_t *row = cards_card_shared_add(&b.main, &root->shared);
+            if (row == NULL) { cards_card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a shared element"); goto done; }
             assign_fixed(row->s, &row->s_length, p.shared.items[e2]);
         }
         for (e2 = 0; e2 < p.needs.count; e2++) {
-            CardID *row = card_needs_add(&b.main, &root->needs);
-            if (row == NULL) { card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a needs element"); goto done; }
+            cards_card_id_t *row = cards_card_needs_add(&b.main, &root->needs);
+            if (row == NULL) { cards_card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused a needs element"); goto done; }
             assign_fixed(row->s, &row->s_length, p.needs.items[e2]);
         }
         for (e2 = 0; e2 < p.extra_keys.count; e2++) {
-            KeyValue *row = card_extra_add(&b.main, &root->extra);
-            if (row == NULL) { card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused an extra element"); goto done; }
+            cards_key_value_t *row = cards_card_extra_add(&b.main, &root->extra);
+            if (row == NULL) { cards_card_builder_shutdown(&b); fail(err, err_cap, "cards: builder refused an extra element"); goto done; }
             assign_fixed(row->key, &row->key_length, p.extra_keys.items[e2]);
-            table_string_emplace(&b.main, &row->value, p.extra_vals.items[e2],
+            cards_table_string_emplace(&b.main, &row->value, p.extra_vals.items[e2],
                                  (int64_t)strlen(p.extra_vals.items[e2]));
         }
     }
     assign_fixed(root->test, &root->test_length, p.test != NULL ? p.test : "");
     if (p.done_when != NULL && p.done_when[0] != '\0')
-        table_string_emplace(&b.main, &root->done, p.done_when,
+        cards_table_string_emplace(&b.main, &root->done, p.done_when,
                              (int64_t)strlen(p.done_when));
     root->deadline_minutes = p.deadline;
     if (p.source != NULL && p.source[0] != '\0')
-        table_string_emplace(&b.main, &root->source, p.source,
+        cards_table_string_emplace(&b.main, &root->source, p.source,
                              (int64_t)strlen(p.source));
     if (body_len > 0)
-        table_string_emplace(&b.main, &root->body, (const char *)body, body_len);
+        cards_table_string_emplace(&b.main, &root->body, (const char *)body, body_len);
     ctx.arena = &b.arena;
     if (!check_card(root, &ctx, err, err_cap)) {
-        card_builder_shutdown(&b);
+        cards_card_builder_shutdown(&b);
         goto done;
     }
     result = adopt_builder(&b, out, err, err_cap);
@@ -1158,21 +1158,21 @@ done:
 
 static const char *tier_name(int t) {
     switch (t) {
-    case TIER_FLASH: return "flash";
-    case TIER_PRO: return "pro";
-    case TIER_HEAVY: return "heavy";
-    case TIER_FRONTIER: return "frontier";
+    case CARDS_TIER_FLASH: return "flash";
+    case CARDS_TIER_PRO: return "pro";
+    case CARDS_TIER_HEAVY: return "heavy";
+    case CARDS_TIER_FRONTIER: return "frontier";
     }
     return NULL;
 }
 
 static const char *priority_name(int t) {
     switch (t) {
-    case PRIORITY_NONE: return "";
-    case PRIORITY_NORMAL: return "normal";
-    case PRIORITY_HIGH: return "high";
-    case PRIORITY_CRITICAL: return "critical";
-    case PRIORITY_BLOCKER: return "blocker";
+    case CARDS_PRIORITY_NONE: return "";
+    case CARDS_PRIORITY_NORMAL: return "normal";
+    case CARDS_PRIORITY_HIGH: return "high";
+    case CARDS_PRIORITY_CRITICAL: return "critical";
+    case CARDS_PRIORITY_BLOCKER: return "blocker";
     }
     return NULL;
 }
@@ -1189,19 +1189,19 @@ static void emit_fixed(DynBuf *out, const char *key, const char *buf, int32_t le
     dyn_put(out, "\n", 1);
 }
 
-static void emit_ptr(DynBuf *out, const char *key, const TableRef *ref) {
-    TableStringView v;
+static void emit_ptr(DynBuf *out, const char *key, const cards_table_ref_t *ref) {
+    cards_table_string_view_t v;
     if (ref->value == 0) return;
-    v = table_string_at(NULL, ref);
+    v = cards_table_string_at(NULL, ref);
     dyn_str(out, key);
     dyn_str(out, ": ");
     dyn_put(out, v.data, v.length);
     dyn_put(out, "\n", 1);
 }
 
-static void emit_list_paths(DynBuf *out, const char *key, const TableList *list,
+static void emit_list_paths(DynBuf *out, const char *key, const cards_table_list_t *list,
                             int is_id) {
-    TableSequenceCursor cur;
+    cards_table_sequence_cursor_t cur;
     const void *e;
     int first = 1;
     int32_t idx;
@@ -1209,10 +1209,10 @@ static void emit_list_paths(DynBuf *out, const char *key, const TableList *list,
     dyn_str(out, key);
     dyn_str(out, ": ");
     if (is_id) {
-        cur = card_needs_each(NULL, list);
+        cur = cards_card_needs_each(NULL, list);
         (void)cur;
         for (idx = 0; idx < list->count; idx++) {
-            const CardID *el = card_needs_at(list, idx);
+            const cards_card_id_t *el = cards_card_needs_at(list, idx);
             const uint8_t *d;
             int64_t n;
             if (el == NULL) continue;
@@ -1223,7 +1223,7 @@ static void emit_list_paths(DynBuf *out, const char *key, const TableList *list,
         }
     } else {
         for (idx = 0; idx < list->count; idx++) {
-            const PathText *el = card_paths_at(list, idx);
+            const cards_path_text_t *el = cards_card_paths_at(list, idx);
             const uint8_t *d;
             int64_t n;
             if (el == NULL) continue;
@@ -1242,20 +1242,20 @@ static void emit_list_paths(DynBuf *out, const char *key, const TableList *list,
    verbatim (docs/SPEC-TABLES.md §6.2, §16). */
 int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
                  char *err, size_t err_cap) {
-    TableReport rep;
+    cards_table_report_t rep;
     int64_t n;
     uint8_t *region;
-    const Card *root;
+    const cards_card_t *root;
     DynBuf buf;
     const char *tn, *pn;
     if (record == NULL || record->wire == NULL)
         return fail(err, err_cap, "cards: nil record");
     memset(&rep, 0, sizeof(rep));
-    n = card_load_measure(record->wire, record->wire_len);
+    n = cards_card_load_measure(record->wire, record->wire_len);
     if (n < 0) return fail(err, err_cap, "cards: wire is not a card");
     region = (uint8_t *)aligned_alloc64(n);
     if (region == NULL) return fail(err, err_cap, "cards: allocation failed");
-    root = card_load(region, n, record->wire, record->wire_len, &rep);
+    root = cards_card_load(region, n, record->wire, record->wire_len, &rep);
     if (root == NULL) {
         free(region);
         return fail(err, err_cap, "cards: wire is malformed");
@@ -1316,23 +1316,23 @@ int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
     {
         int32_t idx;
         for (idx = 0; idx < root->extra.count; idx++) {
-            const KeyValue *e = card_extra_at(&root->extra, idx);
+            const cards_key_value_t *e = cards_card_extra_at(&root->extra, idx);
             const uint8_t *d;
             int64_t m;
-            TableStringView v;
+            cards_table_string_view_t v;
             if (e == NULL) continue;
             fixed_view(e->key, e->key_length, 32, &d, &m);
             dyn_put(&buf, d, m);
             dyn_str(&buf, ": ");
             if (e->value.value != 0) {
-                v = table_string_at(NULL, &e->value);
+                v = cards_table_string_at(NULL, &e->value);
                 dyn_put(&buf, v.data, v.length);
             }
             dyn_put(&buf, "\n", 1);
         }
     }
     if (root->body.value != 0) {
-        TableStringView v = table_string_at(NULL, &root->body);
+        cards_table_string_view_t v = cards_table_string_at(NULL, &root->body);
         dyn_put(&buf, v.data, v.length);
     }
     free(region);
@@ -1350,7 +1350,7 @@ int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
 /* cards_lossy names the read events that make a record unsafe to rewrite or
    hash (docs/SPEC-TABLES.md §4 tolerance, §6.6 retain-unknown). Unknown,
    Retained and Widened alone are not loss. */
-static int cards_lossy(const TableReport *rep, char *err, size_t err_cap) {
+static int cards_lossy(const cards_table_report_t *rep, char *err, size_t err_cap) {
     if (rep->retain_lost > 0)
         return fail(err, err_cap, "cards: retained field(s) lost, refusing to replace");
     if (rep->unknown > 0)
@@ -1369,7 +1369,7 @@ static int cards_lossy(const TableReport *rep, char *err, size_t err_cap) {
    (docs/SPEC-TABLES.md §6.6): a retained field that could not be kept, a kind
    mismatch, a clamped value or framing damage. Unknown, Retained and Widened
    alone are not loss (§4). */
-static int cards_upgrade_loss(const TableReport *rep, char *err, size_t err_cap) {
+static int cards_upgrade_loss(const cards_table_report_t *rep, char *err, size_t err_cap) {
     if (rep->retain_lost > 0)
         return fail(err, err_cap, "cards: retained field(s) lost, refusing to replace");
     if (rep->kind_mismatch > 0)
@@ -1386,7 +1386,7 @@ static int cards_upgrade_loss(const TableReport *rep, char *err, size_t err_cap)
    measure and save — publishing only on complete success. It keeps
    tla/CardVersioning.tla NoFieldLost, BodyUnchanged and RefusalKeepsOriginal. */
 int cards_upgrade(const uint8_t *wire, int64_t wire_len, uint8_t **out,
-                  int64_t *out_len, TableReport *report, char *err,
+                  int64_t *out_len, cards_table_report_t *report, char *err,
                   size_t err_cap) {
     return cards_upgrade_ex(wire, wire_len, out, out_len, report,
                             CARDS_MAX_RETAIN_BYTES, CARDS_MAX_RETAIN_IDS, err,
@@ -1394,20 +1394,20 @@ int cards_upgrade(const uint8_t *wire, int64_t wire_len, uint8_t **out,
 }
 
 int cards_upgrade_ex(const uint8_t *wire, int64_t wire_len, uint8_t **out,
-                     int64_t *out_len, TableReport *report, int64_t retain_bytes,
+                     int64_t *out_len, cards_table_report_t *report, int64_t retain_bytes,
                      int retain_ids, char *err, size_t err_cap) {
-    TableReport rep;
+    cards_table_report_t rep;
     int64_t n, size;
     uint8_t *region;
     uint8_t *buffer;
-    TableRetain retain;
-    const Card *root;
+    cards_table_retain_t retain;
+    const cards_card_t *root;
     memset(&rep, 0, sizeof(rep));
     if (out != NULL) *out = NULL;
     if (out_len != NULL) *out_len = 0;
     if (retain_bytes < 0 || retain_ids < 0)
         return fail(err, err_cap, "cards: upgrade: negative retention capacity");
-    n = card_load_measure(wire, wire_len);
+    n = cards_card_load_measure(wire, wire_len);
     if (n < 0) {
         if (report != NULL) *report = rep;
         return fail(err, err_cap, "cards: upgrade: wire is malformed");
@@ -1417,7 +1417,7 @@ int cards_upgrade_ex(const uint8_t *wire, int64_t wire_len, uint8_t **out,
     memset(&retain, 0, sizeof(retain));
     retain.bytes = (uint8_t *)malloc((size_t)(retain_bytes > 0 ? retain_bytes : 1));
     retain.capacity = retain_bytes;
-    retain.ids = (TableRetainId *)malloc((size_t)(retain_ids > 0 ? retain_ids : 1) * sizeof(TableRetainId));
+    retain.ids = (cards_table_retain_id_t *)malloc((size_t)(retain_ids > 0 ? retain_ids : 1) * sizeof(cards_table_retain_id_t));
     retain.id_capacity = retain_ids;
     if (retain.bytes == NULL || retain.ids == NULL) {
         free(retain.bytes);
@@ -1500,12 +1500,12 @@ static int frame_text(DynBuf *b, const uint8_t *data, int64_t len) {
 
 /* frame_list is the framed spelling of one PathText list: count then each
    length-prefixed element (edit.go hashPathList). */
-static int frame_list(DynBuf *b, const TableList *list) {
+static int frame_list(DynBuf *b, const cards_table_list_t *list) {
     int32_t i;
     if (list->count < 0) return 0;
     if (!frame_u64(b, (uint64_t)list->count)) return 0;
     for (i = 0; i < list->count; i++) {
-        const PathText *e = card_paths_at(list, i);
+        const cards_path_text_t *e = cards_card_paths_at(list, i);
         int64_t n;
         if (e == NULL) return 0;
         n = e->s_length;
@@ -1524,7 +1524,7 @@ static int frame_list(DynBuf *b, const TableList *list) {
 int cards_task_hash(const CardsRecord *record, uint8_t out_hex[65], char *err,
                     size_t err_cap) {
     DynBuf b;
-    TableBytesView body, done;
+    cards_table_bytes_view_t body, done;
     const uint8_t *test;
     int64_t test_len;
     uint8_t digest[32];
@@ -1532,8 +1532,8 @@ int cards_task_hash(const CardsRecord *record, uint8_t out_hex[65], char *err,
         return fail(err, err_cap, "cards: nil record");
     if (!cards_lossy(&record->report, err, err_cap)) return 0;
     memset(&b, 0, sizeof(b));
-    body = table_bytes_at(NULL, &record->root->body);
-    done = table_bytes_at(NULL, &record->root->done);
+    body = cards_table_bytes_at(NULL, &record->root->body);
+    done = cards_table_bytes_at(NULL, &record->root->done);
     test = (const uint8_t *)record->root->test;
     test_len = record->root->test_length;
     if (test_len > 192) test_len = 192;
@@ -1558,53 +1558,53 @@ int cards_task_hash(const CardsRecord *record, uint8_t out_hex[65], char *err,
 typedef struct EditCtx {
     const char *const *values;
     int count;
-    Tier tier;
-    Priority priority;
-    Column column;
+    cards_tier_t tier;
+    cards_priority_t priority;
+    cards_column_t column;
     const char *holder;
 } EditCtx;
 
-static int edit_needs(Card *root, TableWorker *w, const EditCtx *c) {
+static int edit_needs(cards_card_t *root, cards_table_worker_t *w, const EditCtx *c) {
     int i;
     memset(&root->needs, 0, sizeof(root->needs));
     for (i = 0; i < c->count; i++) {
-        CardID *e = card_needs_add(w, &root->needs);
+        cards_card_id_t *e = cards_card_needs_add(w, &root->needs);
         if (e == NULL) return 0;
         assign_fixed(e->s, &e->s_length, c->values[i]);
     }
     return 1;
 }
 
-static int edit_paths(Card *root, TableWorker *w, const EditCtx *c) {
+static int edit_paths(cards_card_t *root, cards_table_worker_t *w, const EditCtx *c) {
     int i;
     memset(&root->paths, 0, sizeof(root->paths));
     for (i = 0; i < c->count; i++) {
-        PathText *e = card_paths_add(w, &root->paths);
+        cards_path_text_t *e = cards_card_paths_add(w, &root->paths);
         if (e == NULL) return 0;
         assign_fixed(e->s, &e->s_length, c->values[i]);
     }
     return 1;
 }
 
-static int edit_tier(Card *root, TableWorker *w, const EditCtx *c) {
+static int edit_tier(cards_card_t *root, cards_table_worker_t *w, const EditCtx *c) {
     (void)w;
     root->tier = c->tier;
     return 1;
 }
 
-static int edit_priority(Card *root, TableWorker *w, const EditCtx *c) {
+static int edit_priority(cards_card_t *root, cards_table_worker_t *w, const EditCtx *c) {
     (void)w;
     root->priority = c->priority;
     return 1;
 }
 
-static int edit_column(Card *root, TableWorker *w, const EditCtx *c) {
+static int edit_column(cards_card_t *root, cards_table_worker_t *w, const EditCtx *c) {
     (void)w;
     root->column = c->column;
     return 1;
 }
 
-static int edit_holder(Card *root, TableWorker *w, const EditCtx *c) {
+static int edit_holder(cards_card_t *root, cards_table_worker_t *w, const EditCtx *c) {
     (void)w;
     assign_fixed(root->holder, &root->holder_length, c->holder);
     return 1;
@@ -1616,33 +1616,33 @@ static int edit_holder(Card *root, TableWorker *w, const EditCtx *c) {
    swap the record's owned wire and region. A refusal leaves the wire
    byte-equal and drops the unknown fields an ordinary rewrite cannot carry
    (CardHops EditDropsUnknown). */
-static int edit_common(CardsRecord *r, int (*mutate)(Card *, TableWorker *, const EditCtx *),
+static int edit_common(CardsRecord *r, int (*mutate)(cards_card_t *, cards_table_worker_t *, const EditCtx *),
                        const EditCtx *c, char *err, size_t err_cap) {
-    CardBuilder b;
-    TableReport rep;
+    cards_card_builder_t b;
+    cards_table_report_t rep;
     CardsRecord tmp;
-    TableCtx ctx;
+    cards_table_ctx_t ctx;
     if (r == NULL || r->root == NULL)
         return fail(err, err_cap, "cards: nil record");
     if (!cards_lossy(&r->report, err, err_cap)) return 0;
-    if (!card_builder_init(&b))
+    if (!cards_card_builder_init(&b))
         return fail(err, err_cap, "cards: arena initialization failed");
     memset(&rep, 0, sizeof(rep));
-    if (!card_load_builder(&b, r->wire, r->wire_len, &rep)) {
-        card_builder_shutdown(&b);
+    if (!cards_card_load_builder(&b, r->wire, r->wire_len, &rep)) {
+        cards_card_builder_shutdown(&b);
         return fail(err, err_cap, "cards: reload into builder failed");
     }
     if (!cards_lossy(&rep, err, err_cap)) {
-        card_builder_shutdown(&b);
+        cards_card_builder_shutdown(&b);
         return 0;
     }
-    if (!mutate(card_builder_root(&b), &b.main, c)) {
-        card_builder_shutdown(&b);
+    if (!mutate(cards_card_builder_root(&b), &b.main, c)) {
+        cards_card_builder_shutdown(&b);
         return fail(err, err_cap, "cards: builder refused the edit");
     }
     ctx.arena = &b.arena;
-    if (!check_card(card_builder_root(&b), &ctx, err, err_cap)) {
-        card_builder_shutdown(&b);
+    if (!check_card(cards_card_builder_root(&b), &ctx, err, err_cap)) {
+        cards_card_builder_shutdown(&b);
         return 0;
     }
     if (!adopt_builder(&b, &tmp, err, err_cap)) return 0;
@@ -1692,31 +1692,31 @@ int cards_set_paths(CardsRecord *record, const char *const *values, int count,
     return edit_common(record, edit_paths, &c, err, err_cap);
 }
 
-int cards_set_tier(CardsRecord *record, Tier tier, char *err, size_t err_cap) {
+int cards_set_tier(CardsRecord *record, cards_tier_t tier, char *err, size_t err_cap) {
     EditCtx c;
     memset(&c, 0, sizeof(c));
-    if (tier > TIER_MAX)
+    if (tier > CARDS_TIER_MAX)
         return failf(err, err_cap, "cards: tier %d is not a declared variant", (int)tier);
     c.tier = tier;
     return edit_common(record, edit_tier, &c, err, err_cap);
 }
 
-int cards_set_priority(CardsRecord *record, Priority priority, char *err,
+int cards_set_priority(CardsRecord *record, cards_priority_t priority, char *err,
                        size_t err_cap) {
     EditCtx c;
     memset(&c, 0, sizeof(c));
-    if (priority > PRIORITY_MAX)
+    if (priority > CARDS_PRIORITY_MAX)
         return failf(err, err_cap, "cards: priority %d is not a declared variant",
                      (int)priority);
     c.priority = priority;
     return edit_common(record, edit_priority, &c, err, err_cap);
 }
 
-int cards_set_column(CardsRecord *record, Column column, char *err,
+int cards_set_column(CardsRecord *record, cards_column_t column, char *err,
                      size_t err_cap) {
     EditCtx c;
     memset(&c, 0, sizeof(c));
-    if (column > COLUMN_MAX)
+    if (column > CARDS_COLUMN_MAX)
         return failf(err, err_cap, "cards: column %d is not a declared variant",
                      (int)column);
     c.column = column;
@@ -1741,15 +1741,15 @@ int cards_set_holder(CardsRecord *record, const char *holder, char *err,
    descriptors. The vocabulary is the generated one, so tla/CardHops.tla
    ImplementationsAgree holds: every leg walks the same field names. */
 int cards_view(uint8_t **out, int64_t *out_len, char *err, size_t err_cap) {
-    const UnitViewInfo *v = unit_view();
+    const cards_unit_view_info_t *v = cards_unit_view();
     DynBuf buf;
     int t, f;
     if (v == NULL) return fail(err, err_cap, "cards: no unit view");
     memset(&buf, 0, sizeof(buf));
     for (t = 0; t < v->num_tables; t++) {
-        const TableTypeInfo *ti = v->tables[t].type;
+        const cards_table_type_info_t *ti = v->tables[t].type;
         for (f = 0; ti != NULL && f < ti->num_fields; f++) {
-            const TableFieldInfo *fi = &ti->fields[f];
+            const cards_table_field_info_t *fi = &ti->fields[f];
             const char *shape = fi->is_pointer ? "blob"
                                 : (fi->sequence == 1 ? "list" : "value");
             char bound[16];

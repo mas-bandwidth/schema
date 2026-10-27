@@ -8,7 +8,7 @@
 int main(void)
 {
     uint32_t buffer[64] = {0};
-    WideSeven value;
+    wide_wide_seven_t value;
     serialize_write_stream_t w;
     serialize_read_stream_t r;
     memset(&value, 0, sizeof(value));
@@ -24,22 +24,22 @@ int main(void)
     value.text_length = 1;
     value.text[0] = 0xd800;
     serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-    check(write_wide_seven(&w, &value)); /* pairing is read-side */
+    check(wide_write_wide_seven(&w, &value)); /* pairing is read-side */
     serialize_write_flush(&w);
     serialize_read_stream_init(&r, (unsigned char *)buffer, serialize_write_bytes_processed(&w));
-    check(!read_wide_seven(&r, &value));
+    check(!wide_read_wide_seven(&r, &value));
     value.text[0] = 0xffff;
     serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-    check(write_wide_seven(&w, &value));
+    check(wide_write_wide_seven(&w, &value));
     serialize_write_flush(&w);
     memset(value.text, 0x7f, sizeof(value.text));
     serialize_read_stream_init(&r, (unsigned char *)buffer, serialize_write_bytes_processed(&w));
-    check(read_wide_seven(&r, &value));
+    check(wide_read_wide_seven(&r, &value));
     check(value.text_length == 1 && value.text[0] == 0xffff && value.text[1] == 0 && value.text[2] == 0x7f7f);
     {
-        Conditional sent, received;
-        Choice choice, out;
-        Box box = new_box();
+        wideprobe_conditional_t sent, received;
+        wideprobe_choice_t choice, out;
+        wideprobe_box_t box = wideprobe_new_box();
         int i;
         check(box.counted_count == 1 && box.counted[0].value_length == 0 && box.items[1].value[3] == 0);
         memset(&sent, 0, sizeof(sent));
@@ -48,43 +48,43 @@ int main(void)
         sent.text[0] = 0xd800;
         sent.text[1] = 0xdc00;
         serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-        check(write_conditional(&w, &sent));
+        check(wideprobe_write_conditional(&w, &sent));
         check(serialize_write_bits_processed(&w) == 68); /* 1 + 3 + 2*32, no align */
         serialize_write_flush(&w);
         check((((unsigned char *)buffer)[0] & 15) == 5); /* true | (length 2 << 1) */
         memset(&received, 0x7f, sizeof(received));
         serialize_read_stream_init(&r, (unsigned char *)buffer, serialize_write_bytes_processed(&w));
-        check(read_conditional(&r, &received) && received.text[0] == 0xd800 && received.text[1] == 0xdc00);
+        check(wideprobe_read_conditional(&r, &received) && received.text[0] == 0xd800 && received.text[1] == 0xdc00);
         sent.enabled = 0;
         serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-        check(write_conditional(&w, &sent));
+        check(wideprobe_write_conditional(&w, &sent));
         serialize_write_flush(&w);
         serialize_read_stream_init(&r, (unsigned char *)buffer, serialize_write_bytes_processed(&w));
-        check(read_conditional(&r, &received) && received.text_length == 0);
+        check(wideprobe_read_conditional(&r, &received) && received.text_length == 0);
         for (i = 0; i < 5; i++) { check(received.text[i] == 0); }
         memset(&choice, 0, sizeof(choice));
-        choice.type = CHOICE_TYPE_TEXT;
+        choice.type = WIDEPROBE_CHOICE_TYPE_TEXT;
         choice.as.text.value_length = 1;
         choice.as.text.value[0] = 0xffff;
         serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-        check(write_choice(&w, &choice));
+        check(wideprobe_write_choice(&w, &choice));
         serialize_write_flush(&w);
         for (i = 0; i < 2; i++) {
             memset(&out, 0x7f, sizeof(out));
-            out.type = CHOICE_TYPE_TEXT;
+            out.type = WIDEPROBE_CHOICE_TYPE_TEXT;
             serialize_read_stream_init(&r, (unsigned char *)buffer, serialize_write_bytes_processed(&w));
-            check(read_choice(&r, &out));
+            check(wideprobe_read_choice(&r, &out));
             check(out.as.text.value_length == 1 && out.as.text.value[0] == 0xffff && out.as.text.value[3] == 0);
         }
         box.items[0] = choice.as.text;
         box.counted[0] = choice.as.text;
         box.choice = choice;
         serialize_write_stream_init(&w, (unsigned char *)buffer, sizeof(buffer));
-        check(write_box(&w, &box));
+        check(wideprobe_write_box(&w, &box));
         serialize_write_flush(&w);
         memset(&box, 0x7f, sizeof(box));
         serialize_read_stream_init(&r, (unsigned char *)buffer, serialize_write_bytes_processed(&w));
-        check(read_box(&r, &box));
+        check(wideprobe_read_box(&r, &box));
         check(box.items[0].value[0] == 0xffff && box.items[1].value_length == 0 && box.counted_count == 1 && box.counted[0].value[0] == 0xffff);
         check(box.counted[1].value[3] == 0x7f7f && box.choice.as.text.value[3] == 0);
     }

@@ -9,16 +9,12 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 #include <math.h>     /* floor — the quantize pair */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "Constants.h"
 #include "Enums.h"
 
@@ -28,87 +24,87 @@ extern "C" {
 
 
 /* type Vec3 */
-typedef struct Vec3 {
+typedef struct example_vec3_t {
     double x;
     double y;
     double z;
-} Vec3;
+} example_vec3_t;
 
-#define VEC3_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC3_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXAMPLE_VEC3_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_VEC3_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type Quat */
-typedef struct Quat {
+typedef struct example_quat_t {
     double x;
     double y;
     double z;
     double w;
-} Quat;
+} example_quat_t;
 
-#define QUAT_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUAT_MAX_BYTES 32
+#define EXAMPLE_QUAT_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_QUAT_MAX_BYTES 32
 
 
 /* type Handle */
-typedef struct Handle {
+typedef struct example_handle_t {
     int32_t object_id;
     uint8_t object_sequence;
-} Handle;
+} example_handle_t;
 
-#define HANDLE_MAX_BITS 22   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HANDLE_MAX_BYTES 8
+#define EXAMPLE_HANDLE_MAX_BITS 22   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_HANDLE_MAX_BYTES 8
 
 
 /* type QuantizedPosition */
-typedef struct QuantizedPosition {
+typedef struct example_quantized_position_t {
     int32_t x;
     int32_t y;
     int32_t z;
-} QuantizedPosition;
+} example_quantized_position_t;
 
-#define QUANTIZED_POSITION_MAX_BITS 75   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_POSITION_MAX_BYTES 16
+#define EXAMPLE_QUANTIZED_POSITION_MAX_BITS 75   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_QUANTIZED_POSITION_MAX_BYTES 16
 
 
 /* type QuantizedVelocity */
-typedef struct QuantizedVelocity {
+typedef struct example_quantized_velocity_t {
     int32_t x;
     int32_t y;
     int32_t z;
-} QuantizedVelocity;
+} example_quantized_velocity_t;
 
-#define QUANTIZED_VELOCITY_MAX_BITS 69   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_VELOCITY_MAX_BYTES 16
+#define EXAMPLE_QUANTIZED_VELOCITY_MAX_BITS 69   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_QUANTIZED_VELOCITY_MAX_BYTES 16
 
 
 /* type QuantizedRotation */
-typedef struct QuantizedRotation {
+typedef struct example_quantized_rotation_t {
     int16_t x;
     int16_t y;
     int16_t z;
     int16_t w;
-} QuantizedRotation;
+} example_quantized_rotation_t;
 
-#define QUANTIZED_ROTATION_MAX_BITS 48   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define QUANTIZED_ROTATION_MAX_BYTES 8
+#define EXAMPLE_QUANTIZED_ROTATION_MAX_BITS 48   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_QUANTIZED_ROTATION_MAX_BYTES 8
 
 
 /* type RigidBody */
-typedef struct RigidBody {
-    Vec3 position;
-    Quat orientation;
+typedef struct example_rigid_body_t {
+    example_vec3_t position;
+    example_quat_t orientation;
     bool at_rest;
-    Vec3 linear_velocity;
-    Vec3 angular_velocity;
-} RigidBody;
+    example_vec3_t linear_velocity;
+    example_vec3_t angular_velocity;
+} example_rigid_body_t;
 
-#define RIGID_BODY_MAX_BITS 833   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RIGID_BODY_MAX_BYTES 112
+#define EXAMPLE_RIGID_BODY_MAX_BITS 833   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_RIGID_BODY_MAX_BYTES 112
 
 
 /* type Input */
-typedef struct Input {
+typedef struct example_input_t {
     float stick_x;
     float stick_y;
     float throttle;
@@ -122,84 +118,84 @@ typedef struct Input {
     bool lock_on;
     bool zoom;
     bool ping;
-} Input;
+} example_input_t;
 
-#define INPUT_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_MAX_BYTES 24
+#define EXAMPLE_INPUT_MAX_BITS 168   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_INPUT_MAX_BYTES 24
 
 
 /* type InputPacket */
-typedef struct InputPacket {
+typedef struct example_input_packet_t {
     uint16_t synchronize_sequence;
     uint64_t current_frame;
     uint64_t start_frame;
-    Input inputs[MAX_INPUTS_PER_PACKET];
+    example_input_t inputs[EXAMPLE_MAX_INPUTS_PER_PACKET];
     int32_t inputs_count;
-} InputPacket;
+} example_input_packet_t;
 
-#define INPUT_PACKET_MAX_BITS 2837   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define INPUT_PACKET_MAX_BYTES 360
+#define EXAMPLE_INPUT_PACKET_MAX_BITS 2837   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_INPUT_PACKET_MAX_BYTES 360
 
 
 /* type ShipCreate */
-typedef struct ShipCreate {
-    ShipType ship_type;
-    QuantizedPosition position;
-    QuantizedRotation rotation;
-    QuantizedVelocity linear_velocity;
+typedef struct example_ship_create_t {
+    example_ship_type_t ship_type;
+    example_quantized_position_t position;
+    example_quantized_rotation_t rotation;
+    example_quantized_velocity_t linear_velocity;
     bool has_flags;
-    ShipFlags flags;
-    Team team;
+    example_ship_flags_t flags;
+    example_team_t team;
     int16_t health;
     int8_t thrust;
-    Pending pending;
-} ShipCreate;
+    example_pending_t pending;
+} example_ship_create_t;
 
-#define SHIP_CREATE_MAX_BITS 219   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SHIP_CREATE_MAX_BYTES 32
+#define EXAMPLE_SHIP_CREATE_MAX_BITS 219   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SHIP_CREATE_MAX_BYTES 32
 
 
 /* type ExpressionProbe */
-typedef struct ExpressionProbe {
+typedef struct example_expression_probe_t {
     int32_t hardpoint_index;
     int32_t spin_rate;
-} ExpressionProbe;
+} example_expression_probe_t;
 
-#define EXPRESSION_PROBE_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXPRESSION_PROBE_MAX_BYTES 8
+#define EXAMPLE_EXPRESSION_PROBE_MAX_BITS 16   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_EXPRESSION_PROBE_MAX_BYTES 8
 
 /* Returns a new ExpressionProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED ExpressionProbe new_expression_probe( void )
+static SCHEMA_UNUSED example_expression_probe_t example_new_expression_probe( void )
 {
-    ExpressionProbe value;
+    example_expression_probe_t value;
     memset( &value, 0, sizeof( value ) );
-    value.spin_rate = ROTATION_UNITS;
+    value.spin_rate = EXAMPLE_ROTATION_UNITS;
     return value;
 }
 
-#define FLOOR_LIMIT ( -9223372036854775807LL - 1 )
-#define CEILING_COUNT (18446744073709551615ULL)
+#define EXAMPLE_FLOOR_LIMIT ( -9223372036854775807LL - 1 )
+#define EXAMPLE_CEILING_COUNT (18446744073709551615ULL)
 
 /* type ExtremeProbe */
-typedef struct ExtremeProbe {
+typedef struct example_extreme_probe_t {
     int64_t floor_bound;
     int64_t doubled_floor;
     uint64_t ceiling_range;
     int64_t floor_default;
     uint64_t ceiling_default;
-} ExtremeProbe;
+} example_extreme_probe_t;
 
-#define EXTREME_PROBE_MAX_BITS 320   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_PROBE_MAX_BYTES 40
+#define EXAMPLE_EXTREME_PROBE_MAX_BITS 320   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_EXTREME_PROBE_MAX_BYTES 40
 
 /* Returns a new ExtremeProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED ExtremeProbe new_extreme_probe( void )
+static SCHEMA_UNUSED example_extreme_probe_t example_new_extreme_probe( void )
 {
-    ExtremeProbe value;
+    example_extreme_probe_t value;
     memset( &value, 0, sizeof( value ) );
     value.ceiling_range = 1;
     value.floor_default = ( -9223372036854775807LL - 1 );
@@ -209,22 +205,22 @@ static SCHEMA_UNUSED ExtremeProbe new_extreme_probe( void )
 
 
 /* type ExtremeRow */
-typedef struct ExtremeRow {
+typedef struct example_extreme_row_t {
     int64_t clamped_floor;
     uint64_t clamped_ceiling;
     int64_t floor_def;
     uint64_t ceiling_def;
-} ExtremeRow;
+} example_extreme_row_t;
 
-#define EXTREME_ROW_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define EXTREME_ROW_MAX_BYTES 32
+#define EXAMPLE_EXTREME_ROW_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_EXTREME_ROW_MAX_BYTES 32
 
 /* Returns a new ExtremeRow with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED ExtremeRow new_extreme_row( void )
+static SCHEMA_UNUSED example_extreme_row_t example_new_extreme_row( void )
 {
-    ExtremeRow value;
+    example_extreme_row_t value;
     memset( &value, 0, sizeof( value ) );
     value.clamped_ceiling = 1;
     value.floor_def = ( -9223372036854775807LL - 1 );

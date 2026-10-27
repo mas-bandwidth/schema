@@ -1,4 +1,6 @@
 #include "M1Table.h"
+#define SCHEMA_CONFORMANCE_PACKAGE tblm1
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER TBLM1
 #include "unit.h"
 SCHEMA_CONFORMANCE_CODEC( Msg, msg )
 static const ConformanceCodec codecs[] = {

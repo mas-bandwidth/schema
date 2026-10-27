@@ -1,5 +1,7 @@
 /* The wide scalar and fixed-point corpus, under the same erased C surface. */
 #include "ScalarsTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE scalardemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER SCALARDEMO
 #include "unit.h"
 
 SCHEMA_CONFORMANCE_CODEC( SimState, sim_state )

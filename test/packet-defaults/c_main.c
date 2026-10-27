@@ -13,9 +13,9 @@ static int check( int condition, const char * name )
     return condition;
 }
 
-static Sample expected_sample( void )
+static packetdefaults_sample_t expected_sample( void )
 {
-    Sample value;
+    packetdefaults_sample_t value;
     memset( &value, 0, sizeof( value ) );
     memcpy( value.name, name_bytes, sizeof( name_bytes ) );
     value.name_length = 6;
@@ -25,9 +25,9 @@ static Sample expected_sample( void )
     return value;
 }
 
-static Sample short_sample( void )
+static packetdefaults_sample_t short_sample( void )
 {
-    Sample value;
+    packetdefaults_sample_t value;
     memset( &value, 0, sizeof( value ) );
     value.name[0] = 'A'; value.name_length = 1;
     value.token[1] = 0xff; value.token_length = 2;
@@ -35,9 +35,9 @@ static Sample short_sample( void )
     return value;
 }
 
-static Sample dirty_sample( void )
+static packetdefaults_sample_t dirty_sample( void )
 {
-    Sample value = expected_sample();
+    packetdefaults_sample_t value = expected_sample();
     memcpy( value.name, "dirty!", 6 );
     memset( value.token, 0xa1, sizeof( value.token ) );
     value.caps = 7;
@@ -48,7 +48,7 @@ static Sample dirty_sample( void )
 }
 
 /* Compare fields, not padding or inactive union storage. */
-static int equal_sample( const Sample * a, const Sample * b )
+static int equal_sample( const packetdefaults_sample_t * a, const packetdefaults_sample_t * b )
 {
     return a->name_length == b->name_length && memcmp( a->name, b->name, sizeof( a->name ) ) == 0 &&
            a->token_length == b->token_length && memcmp( a->token, b->token, sizeof( a->token ) ) == 0 &&
@@ -57,7 +57,7 @@ static int equal_sample( const Sample * a, const Sample * b )
            a->empty_token_length == b->empty_token_length && memcmp( a->empty_token, b->empty_token, sizeof( a->empty_token ) ) == 0;
 }
 
-static int equal_batch( const Batch * a, const Batch * b )
+static int equal_batch( const packetdefaults_batch_t * a, const packetdefaults_batch_t * b )
 {
     int i;
     if ( a->counted_count != b->counted_count || !equal_sample( &a->head, &b->head ) ) return 0;
@@ -66,23 +66,23 @@ static int equal_batch( const Batch * a, const Batch * b )
     return 1;
 }
 
-static int equal_zero_count( const ZeroCount * a, const ZeroCount * b )
+static int equal_zero_count( const packetdefaults_zero_count_t * a, const packetdefaults_zero_count_t * b )
 {
     return a->items_count == b->items_count && equal_sample( &a->items[0], &b->items[0] ) &&
            equal_sample( &a->items[1], &b->items[1] );
 }
 
-static int equal_conditional( const Conditional * a, const Conditional * b )
+static int equal_conditional( const packetdefaults_conditional_t * a, const packetdefaults_conditional_t * b )
 {
     return a->enabled == b->enabled && equal_sample( &a->value, &b->value );
 }
 
-static int equal_choice( const Choice * a, const Choice * b )
+static int equal_choice( const packetdefaults_choice_t * a, const packetdefaults_choice_t * b )
 {
     if ( a->type != b->type ) return 0;
-    if ( a->type == CHOICE_TYPE_SAMPLE ) return equal_sample( &a->as.sample, &b->as.sample );
-    if ( a->type == CHOICE_TYPE_CONDITIONAL ) return equal_conditional( &a->as.conditional, &b->as.conditional );
-    return a->type == CHOICE_TYPE_NONE;
+    if ( a->type == PACKETDEFAULTS_CHOICE_TYPE_SAMPLE ) return equal_sample( &a->as.sample, &b->as.sample );
+    if ( a->type == PACKETDEFAULTS_CHOICE_TYPE_CONDITIONAL ) return equal_conditional( &a->as.conditional, &b->as.conditional );
+    return a->type == PACKETDEFAULTS_CHOICE_TYPE_NONE;
 }
 
 typedef int ( * Writer )( serialize_write_stream_t *, const void * );
@@ -90,14 +90,14 @@ typedef int ( * Reader )( serialize_read_stream_t *, void * );
 typedef int ( * Equal )( const void *, const void * );
 
 #define CODEC( Type, name ) \
-    static int emit_##name( serialize_write_stream_t * s, const void * v ) { return write_##name( s, (const Type *) v ); } \
-    static int parse_##name( serialize_read_stream_t * s, void * v ) { return read_##name( s, (Type *) v ); } \
+    static int emit_##name( serialize_write_stream_t * s, const void * v ) { return packetdefaults_write_##name( s, (const Type *) v ); } \
+    static int parse_##name( serialize_read_stream_t * s, void * v ) { return packetdefaults_read_##name( s, (Type *) v ); } \
     static int compare_##name( const void * a, const void * b ) { return equal_##name( (const Type *) a, (const Type *) b ); }
-CODEC( Sample, sample )
-CODEC( Batch, batch )
-CODEC( ZeroCount, zero_count )
-CODEC( Conditional, conditional )
-CODEC( Choice, choice )
+CODEC( packetdefaults_sample_t, sample )
+CODEC( packetdefaults_batch_t, batch )
+CODEC( packetdefaults_zero_count_t, zero_count )
+CODEC( packetdefaults_conditional_t, conditional )
+CODEC( packetdefaults_choice_t, choice )
 
 static void read_check( const char * name, const void * wire, int bytes, int bits,
                         void * value, const void * want, Reader read, Equal equal )
@@ -140,12 +140,12 @@ static void golden( const char * directory, const char * name, const void * valu
     read_check( name, expected, (int) bytes, bits, initial, want, read, equal );
 }
 
-static void choice_roundtrip( const char * name, const Choice * value, Choice * reused, const Choice * want )
+static void choice_roundtrip( const char * name, const packetdefaults_choice_t * value, packetdefaults_choice_t * reused, const packetdefaults_choice_t * want )
 {
     uint64_t buffer[512] = { 0 };
     serialize_write_stream_t stream;
     serialize_write_stream_init( &stream, buffer, sizeof( buffer ) );
-    if ( !check( write_choice( &stream, value ), name ) ) return;
+    if ( !check( packetdefaults_write_choice( &stream, value ), name ) ) return;
     serialize_write_flush( &stream );
     read_check( name, buffer, serialize_write_bytes_processed( &stream ), serialize_write_bits_processed( &stream ),
                 reused, want, parse_choice, compare_choice );
@@ -154,14 +154,14 @@ static void choice_roundtrip( const char * name, const Choice * value, Choice * 
 static void run( const char * directory )
 {
     int i, attempt;
-    Sample expected = expected_sample(), sample = new_sample(), zero, initial, want;
-    Batch batch = new_batch(), batch_initial, batch_want;
-    ZeroCount zero_count = new_zero_count(), zero_initial, zero_want;
-    Conditional conditional = new_conditional(), conditional_initial, conditional_want;
-    Choice choice, choice_initial, choice_want;
-    EmptyOnly empty = new_empty_only();
-    Prefix prefix = new_prefix();
-    WideMask wide = new_wide_mask();
+    packetdefaults_sample_t expected = expected_sample(), sample = packetdefaults_new_sample(), zero, initial, want;
+    packetdefaults_batch_t batch = packetdefaults_new_batch(), batch_initial, batch_want;
+    packetdefaults_zero_count_t zero_count = packetdefaults_new_zero_count(), zero_initial, zero_want;
+    packetdefaults_conditional_t conditional = packetdefaults_new_conditional(), conditional_initial, conditional_want;
+    packetdefaults_choice_t choice, choice_initial, choice_want;
+    packetdefaults_empty_only_t empty = packetdefaults_new_empty_only();
+    packetdefaults_prefix_t prefix = packetdefaults_new_prefix();
+    packetdefaults_wide_mask_t wide = packetdefaults_new_wide_mask();
     const uint8_t prefix_name[6] = { 0xc3, 0xa9 };
     const uint8_t prefix_token[5] = { 0x5c, 0x6e };
     const uint8_t zeros[4] = { 0 };
@@ -182,16 +182,16 @@ static void run( const char * directory )
         const uint8_t bytes[16] = { 0, 0, 0, 0, 0, 0, 0, 0x80, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
         serialize_write_stream_t stream;
         serialize_read_stream_t reader;
-        WideMask decoded;
+        packetdefaults_wide_mask_t decoded;
         memset( &decoded, 0, sizeof( decoded ) );
         memcpy( oracle, bytes, sizeof( bytes ) );
         serialize_write_stream_init( &stream, buffer, sizeof( buffer ) );
-        check( write_wide_mask( &stream, &wide ), "wide flags write" );
+        check( packetdefaults_write_wide_mask( &stream, &wide ), "wide flags write" );
         check( serialize_write_bits_processed( &stream ) == 128, "wide flags have no elision" );
         serialize_write_flush( &stream );
         check( memcmp( buffer, bytes, sizeof( bytes ) ) == 0, "wide flags literal wire" );
         serialize_read_stream_init( &reader, oracle, sizeof( bytes ) );
-        check( read_wide_mask( &reader, &decoded ) && serialize_read_bits_processed( &reader ) == 128 &&
+        check( packetdefaults_read_wide_mask( &reader, &decoded ) && serialize_read_bits_processed( &reader ) == 128 &&
                decoded.high == wide.high && decoded.all == wide.all, "wide flags literal read" );
     }
     initial = zero;
@@ -199,7 +199,7 @@ static void run( const char * directory )
         uint64_t buffer[4] = { 0 }, oracle[4] = { 0 };
         /* 5 | (1<<32)<<3 | 2<<36 = 0x2800000005, exactly 38 bits. */
         const uint8_t bytes[5] = { 0x05, 0, 0, 0, 0x28 };
-        SplitMask split, decoded;
+        packetdefaults_split_mask_t split, decoded;
         serialize_write_stream_t writer;
         serialize_read_stream_t reader;
         memset( &split, 0, sizeof( split ) );
@@ -207,12 +207,12 @@ static void run( const char * directory )
         split.lead = 5; split.mask = UINT64_C(1) << 32; split.tail = 2;
         memcpy( oracle, bytes, sizeof( bytes ) );
         serialize_write_stream_init( &writer, buffer, sizeof( buffer ) );
-        check( write_split_mask( &writer, &split ), "33-bit flags write" );
+        check( packetdefaults_write_split_mask( &writer, &split ), "33-bit flags write" );
         check( serialize_write_bits_processed( &writer ) == 38, "33-bit flags spend exactly 33 bits" );
         serialize_write_flush( &writer );
         check( memcmp( buffer, bytes, sizeof( bytes ) ) == 0, "33-bit flags literal wire" );
         serialize_read_stream_init( &reader, oracle, sizeof( bytes ) );
-        check( read_split_mask( &reader, &decoded ) && serialize_read_bits_processed( &reader ) == 38 &&
+        check( packetdefaults_read_split_mask( &reader, &decoded ) && serialize_read_bits_processed( &reader ) == 38 &&
                decoded.lead == 5 && decoded.mask == split.mask && decoded.tail == 2, "33-bit flags literal read" );
     }
     golden( directory, "sample-defaults", &sample, &initial, &expected, emit_sample, parse_sample, compare_sample );
@@ -238,9 +238,9 @@ static void run( const char * directory )
     memset( &conditional_want, 0, sizeof( conditional_want ) );
     golden( directory, "conditional-off", &conditional, &conditional_initial, &conditional_want, emit_conditional, parse_conditional, compare_conditional );
     memset( &choice, 0, sizeof( choice ) );
-    check( choice.type == CHOICE_TYPE_NONE, "union zero tag is None" );
-    choice.type = CHOICE_TYPE_SAMPLE; choice.as.sample = sample;
-    choice_initial.type = CHOICE_TYPE_CONDITIONAL;
+    check( choice.type == PACKETDEFAULTS_CHOICE_TYPE_NONE, "union zero tag is None" );
+    choice.type = PACKETDEFAULTS_CHOICE_TYPE_SAMPLE; choice.as.sample = sample;
+    choice_initial.type = PACKETDEFAULTS_CHOICE_TYPE_CONDITIONAL;
     choice_initial.as.conditional.enabled = 1; choice_initial.as.conditional.value = dirty_sample();
     choice_want = choice;
     golden( directory, "choice-sample", &choice, &choice_initial, &choice_want, emit_choice, parse_choice, compare_choice );
@@ -256,25 +256,25 @@ static void run( const char * directory )
     golden( directory, "sample-empty", &zero, &initial, &want, emit_sample, parse_sample, compare_sample );
     for ( i = 0; i < 2; i++ )
     {
-        choice.type = CHOICE_TYPE_SAMPLE; choice.as.sample = i ? zero : short_sample();
-        choice_want.type = CHOICE_TYPE_SAMPLE; choice_want.as.sample = expected;
+        choice.type = PACKETDEFAULTS_CHOICE_TYPE_SAMPLE; choice.as.sample = i ? zero : short_sample();
+        choice_want.type = PACKETDEFAULTS_CHOICE_TYPE_SAMPLE; choice_want.as.sample = expected;
         choice_want.as.sample.name_length = i ? 0 : 1;
         choice_want.as.sample.name[0] = i ? 0 : 'A';
         if ( !i ) choice_want.as.sample.name[1] = 0;
         choice_want.as.sample.token_length = i ? 0 : 2;
         if ( !i ) { choice_want.as.sample.token[0] = 0; choice_want.as.sample.token[1] = 0xff; }
         choice_want.as.sample.caps = i ? 0 : 2;
-        choice_initial.type = CHOICE_TYPE_CONDITIONAL;
+        choice_initial.type = PACKETDEFAULTS_CHOICE_TYPE_CONDITIONAL;
         for ( attempt = 0; attempt < 2; attempt++ )
         {
             choice_initial.as.sample = dirty_sample();
             choice_roundtrip( "union selection restores declared tails", &choice, &choice_initial, &choice_want );
         }
     }
-    choice.type = CHOICE_TYPE_CONDITIONAL; choice.as.conditional = conditional;
-    choice_want.type = CHOICE_TYPE_CONDITIONAL;
+    choice.type = PACKETDEFAULTS_CHOICE_TYPE_CONDITIONAL; choice.as.conditional = conditional;
+    choice_want.type = PACKETDEFAULTS_CHOICE_TYPE_CONDITIONAL;
     memset( &choice_want.as.conditional, 0, sizeof( choice_want.as.conditional ) );
-    choice_initial.type = CHOICE_TYPE_SAMPLE;
+    choice_initial.type = PACKETDEFAULTS_CHOICE_TYPE_SAMPLE;
     for ( attempt = 0; attempt < 2; attempt++ )
     {
         choice_initial.as.conditional.enabled = 1; choice_initial.as.conditional.value = dirty_sample();

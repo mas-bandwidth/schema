@@ -9,15 +9,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,45 +21,45 @@ extern "C" {
 
 
 /* type ArmsAgree */
-typedef struct ArmsAgree {
+typedef struct example_arms_agree_t {
     uint32_t lead;
     bool flag;
     uint32_t a;
     uint32_t b;
     uint32_t tail;
-} ArmsAgree;
+} example_arms_agree_t;
 
-#define ARMS_AGREE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARMS_AGREE_MAX_BYTES 8  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXAMPLE_ARMS_AGREE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARMS_AGREE_MAX_BYTES 8  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type ArmsDisagree */
-typedef struct ArmsDisagree {
+typedef struct example_arms_disagree_t {
     uint32_t lead;
     bool flag;
     uint32_t a;
     uint32_t b;
     uint32_t tail;
-} ArmsDisagree;
+} example_arms_disagree_t;
 
-#define ARMS_DISAGREE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARMS_DISAGREE_MAX_BYTES 8
+#define EXAMPLE_ARMS_DISAGREE_MAX_BITS 24   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARMS_DISAGREE_MAX_BYTES 8
 
 
 /* type ArmEmpty */
-typedef struct ArmEmpty {
+typedef struct example_arm_empty_t {
     uint32_t lead;
     bool flag;
     uint32_t a;
     uint32_t tail;
-} ArmEmpty;
+} example_arm_empty_t;
 
-#define ARM_EMPTY_MAX_BITS 32   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARM_EMPTY_MAX_BYTES 8
+#define EXAMPLE_ARM_EMPTY_MAX_BITS 32   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARM_EMPTY_MAX_BYTES 8
 
 
 /* type ArmsNested */
-typedef struct ArmsNested {
+typedef struct example_arms_nested_t {
     uint32_t lead;
     bool outer;
     bool inner;
@@ -71,133 +67,133 @@ typedef struct ArmsNested {
     uint32_t y;
     uint32_t z;
     uint32_t tail;
-} ArmsNested;
+} example_arms_nested_t;
 
-#define ARMS_NESTED_MAX_BITS 40   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARMS_NESTED_MAX_BYTES 8
+#define EXAMPLE_ARMS_NESTED_MAX_BITS 40   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARMS_NESTED_MAX_BYTES 8
 
 
 /* type ArmAlign */
-typedef struct ArmAlign {
+typedef struct example_arm_align_t {
     uint32_t lead;
     bool flag;
     char s[4 + 1]; /* string(4): N + 1 for the terminator the wire does not carry */
     int32_t s_length;
     uint32_t b;
     uint32_t tail;
-} ArmAlign;
+} example_arm_align_t;
 
-#define ARM_ALIGN_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARM_ALIGN_MAX_BYTES 8
+#define EXAMPLE_ARM_ALIGN_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARM_ALIGN_MAX_BYTES 8
 
 
 /* type ArmArray */
-typedef struct ArmArray {
+typedef struct example_arm_array_t {
     uint32_t lead;
     bool flag;
     uint16_t items[3];
     int32_t items_count;
     uint32_t b;
     uint32_t tail;
-} ArmArray;
+} example_arm_array_t;
 
-#define ARM_ARRAY_MAX_BITS 54   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARM_ARRAY_MAX_BYTES 8
+#define EXAMPLE_ARM_ARRAY_MAX_BITS 54   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARM_ARRAY_MAX_BYTES 8
 
 
 /* type Narrow */
-typedef struct Narrow {
+typedef struct example_narrow_t {
     uint32_t n;
-} Narrow;
+} example_narrow_t;
 
-#define NARROW_MAX_BITS 3   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define NARROW_MAX_BYTES 8
+#define EXAMPLE_NARROW_MAX_BITS 3   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_NARROW_MAX_BYTES 8
 
 
 /* type Wide */
-typedef struct Wide {
+typedef struct example_wide_t {
     uint64_t w;
-} Wide;
+} example_wide_t;
 
-#define WIDE_MAX_BITS 37   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_MAX_BYTES 8
+#define EXAMPLE_WIDE_MAX_BITS 37   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_WIDE_MAX_BYTES 8
 
 
 /* union Uneven — first-class one-of (SPEC §4.8): the tag says which arm is
    live; None = 0 is the empty union, and the tag range is [0, 2]. */
-typedef uint8_t UnevenType;
-#define UNEVEN_TYPE_NONE 0
-#define UNEVEN_TYPE_NARROW 1
-#define UNEVEN_TYPE_WIDE 2
-#define UNEVEN_TYPE_COUNT 2
-#define UNEVEN_TYPE_MAX 2
+typedef uint8_t example_uneven_type_t;
+#define EXAMPLE_UNEVEN_TYPE_NONE 0
+#define EXAMPLE_UNEVEN_TYPE_NARROW 1
+#define EXAMPLE_UNEVEN_TYPE_WIDE 2
+#define EXAMPLE_UNEVEN_TYPE_COUNT 2
+#define EXAMPLE_UNEVEN_TYPE_MAX 2
 
 /* Debug/log name for any UnevenType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_uneven_type( UnevenType value )
+static SCHEMA_UNUSED const char * example_enum_name_uneven_type( example_uneven_type_t value )
 {
     switch ( value )
     {
-        case UNEVEN_TYPE_NONE: return "None";
+        case EXAMPLE_UNEVEN_TYPE_NONE: return "None";
         case 1: return "Narrow";
         case 2: return "Wide";
         default: return "???";
     }
 }
 
-typedef struct Uneven {
-    UnevenType type;
+typedef struct example_uneven_t {
+    example_uneven_type_t type;
     union {
-        Narrow narrow;
-        Wide wide;
+        example_narrow_t narrow;
+        example_wide_t wide;
     } as;
-} Uneven;
+} example_uneven_t;
 
-#define UNEVEN_MAX_BITS 39   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define UNEVEN_MAX_BYTES 8
+#define EXAMPLE_UNEVEN_MAX_BITS 39   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
+#define EXAMPLE_UNEVEN_MAX_BYTES 8
 
 /* Selectors for Uneven: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
    the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
-static SCHEMA_UNUSED Narrow * uneven_select_narrow( Uneven * value )
+static SCHEMA_UNUSED example_narrow_t * example_uneven_select_narrow( example_uneven_t * value )
 {
-    value->type = UNEVEN_TYPE_NARROW;
+    value->type = EXAMPLE_UNEVEN_TYPE_NARROW;
     memset( &value->as.narrow, 0, sizeof( value->as.narrow ) );
     return &value->as.narrow;
 }
 
-static SCHEMA_UNUSED Wide * uneven_select_wide( Uneven * value )
+static SCHEMA_UNUSED example_wide_t * example_uneven_select_wide( example_uneven_t * value )
 {
-    value->type = UNEVEN_TYPE_WIDE;
+    value->type = EXAMPLE_UNEVEN_TYPE_WIDE;
     memset( &value->as.wide, 0, sizeof( value->as.wide ) );
     return &value->as.wide;
 }
 
 
 /* type HoldsUneven */
-typedef struct HoldsUneven {
+typedef struct example_holds_uneven_t {
     uint32_t lead;
-    Uneven u;
+    example_uneven_t u;
     uint32_t tail;
-} HoldsUneven;
+} example_holds_uneven_t;
 
-#define HOLDS_UNEVEN_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define HOLDS_UNEVEN_MAX_BYTES 8
+#define EXAMPLE_HOLDS_UNEVEN_MAX_BITS 55   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_HOLDS_UNEVEN_MAX_BYTES 8
 
 
 /* type ArrUneven */
-typedef struct ArrUneven {
+typedef struct example_arr_uneven_t {
     uint32_t lead;
-    Uneven items[3];
+    example_uneven_t items[3];
     int32_t items_count;
     uint32_t tail;
-} ArrUneven;
+} example_arr_uneven_t;
 
-#define ARR_UNEVEN_MAX_BITS 127   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define ARR_UNEVEN_MAX_BYTES 16
+#define EXAMPLE_ARR_UNEVEN_MAX_BITS 127   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_ARR_UNEVEN_MAX_BYTES 16
 
 
 /* type RegainAfterAlign */
-typedef struct RegainAfterAlign {
+typedef struct example_regain_after_align_t {
     uint32_t lead;
     uint16_t items[3];
     int32_t items_count;
@@ -207,10 +203,10 @@ typedef struct RegainAfterAlign {
     uint32_t q;
     uint32_t r;
     uint32_t tail;
-} RegainAfterAlign;
+} example_regain_after_align_t;
 
-#define REGAIN_AFTER_ALIGN_MAX_BITS 172   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define REGAIN_AFTER_ALIGN_MAX_BYTES 24
+#define EXAMPLE_REGAIN_AFTER_ALIGN_MAX_BITS 172   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_REGAIN_AFTER_ALIGN_MAX_BYTES 24
 
 #ifdef __cplusplus
 }

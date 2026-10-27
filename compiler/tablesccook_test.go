@@ -58,7 +58,7 @@ table Root {
 		}
 		fmt.Fprintf(&arrays, "static const uint8_t %s[]={%s};\n", name, octets(cooked))
 	}
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ fixed table Root {
  keys [Key]int32
 }
 `)
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,10 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do { if(!(x)) { fprintf(stderr,"%s:%d: %s\n",name,__LINE__,#x); return 0; } } while(0)
+/* TYPE and FN are the qualified spellings (SPEC §6.3): mapdemo_depth_t,
+   mapdemo_depth; the including file names its package's report type as
+   COLLECTION_REPORT. */
 #define COLLECTION_CASE(TYPE,FN,NAME,NEED) \
 static int check_##NAME(void) { \
  const char * name=#NAME; FILE * input; uint8_t wire[65536],saved[65536]; size_t bytes; int64_t needed,text_bytes; \
- uint8_t * region; char * text; const TYPE * root; TYPE##Builder builder; TableReport report={0}; \
+ uint8_t * region; char * text; const TYPE * root; FN##_builder_t builder; COLLECTION_REPORT report={0}; \
  input=fopen("testdata/wire/tables/" #NAME ".bin","rb");CHECK(input!=NULL);bytes=fread(wire,1,sizeof(wire),input);fclose(input); \
  needed=FN##_load_measure(wire,(int64_t)bytes);CHECK(needed==NEED); \
  region=(uint8_t *)malloc((size_t)needed);CHECK(region!=NULL); \

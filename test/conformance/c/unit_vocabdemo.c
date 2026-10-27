@@ -1,4 +1,6 @@
 #include "VocabTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE vocabdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER VOCABDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_CODEC( Wide00, wide00 )
 SCHEMA_CONFORMANCE_CODEC( Wide09, wide09 )

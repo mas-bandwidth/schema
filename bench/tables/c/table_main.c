@@ -29,6 +29,22 @@
 #include <stdint.h>
 #include <time.h>
 
+/* The two builds measure two units: the paired one (package bench) and the
+   standalone table corpus (package benchtable). Every generated name carries
+   its unit's package (SPEC §6.3), so the runtime names this file shares
+   between the builds are spelled through the build's package. */
+#if defined(BENCH_MATCHED)
+#define BENCH_Q( n ) bench_##n
+#define BENCH_QU( n ) BENCH_##n
+#define BENCH_QS( n ) SCHEMA_BENCH_##n
+#define BENCH_QL( n ) schema_bench_##n
+#else
+#define BENCH_Q( n ) benchtable_##n
+#define BENCH_QU( n ) BENCHTABLE_##n
+#define BENCH_QS( n ) SCHEMA_BENCHTABLE_##n
+#define BENCH_QL( n ) schema_benchtable_##n
+#endif
+
 #if defined(BENCH_MATCHED)
 #include "BenchTable.h"
 /* THE FIXED FORM'S HALF (docs/SPEC-TABLES.md §3.4) rides in the MATCHED build
@@ -41,10 +57,10 @@
    same NDEBUG build, so serialize.h compiles its checks away exactly as the
    packet leg's build does — checks `removed`. */
 #include "BenchWire.h"
-#define TableMixed BenchMixed
-#define table_mixed_reset bench_mixed_reset
-#define table_mixed_save bench_mixed_save
-#define table_mixed_load bench_mixed_load
+#define benchtable_table_mixed_t bench_bench_mixed_t
+#define benchtable_table_mixed_reset bench_bench_mixed_reset
+#define benchtable_table_mixed_save bench_bench_mixed_save
+#define benchtable_table_mixed_load bench_bench_mixed_load
 #else
 #include "BenchTableTable.h"
 #endif
@@ -359,14 +375,14 @@ static double load_variants( const char * name )
    Public Load restores declared defaults before overlaying the fields on the
    wire (§3). That work stays inside the clock; the runner adds no separate reset. */
 
-static TableMixed g_instances[NumVariants];
-static TableMixed g_out;
+static benchtable_table_mixed_t g_instances[NumVariants];
+static benchtable_table_mixed_t g_out;
 
-static int bench_load( TableMixed * value, const uint8_t * bytes, int64_t size )
+static int bench_load( benchtable_table_mixed_t * value, const uint8_t * bytes, int64_t size )
 {
-    TableReport report;
+    BENCH_Q( table_report_t ) report;
     memset( &report, 0, sizeof( report ) );
-    return table_mixed_load( value, bytes, size, &report ) && !report.malformed;
+    return benchtable_table_mixed_load( value, bytes, size, &report ) && !report.malformed;
 }
 
 static void bench_table( const char * name, const char * golden, long base_iters )
@@ -390,13 +406,13 @@ static void bench_table( const char * name, const char * golden, long base_iters
     for ( k = 0; k < NumVariants; k++ )
     {
         int64_t wrote;
-        table_mixed_reset( &g_instances[k] );
+        benchtable_table_mixed_reset( &g_instances[k] );
         if ( !bench_load( &g_instances[k], variant( k ), g_lengths[k] ) )
         {
             fail( name, "load of a variant failed" );
             return;
         }
-        wrote = table_mixed_save( &g_instances[k], g_twin, BufferSize );
+        wrote = benchtable_table_mixed_save( &g_instances[k], g_twin, BufferSize );
         if ( wrote != g_lengths[k] || memcmp( g_twin, variant( k ), (size_t) g_lengths[k] ) != 0 )
         {
             fail( name, "variant round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
@@ -415,7 +431,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
             fail( name, "load into reused target failed" );
             return;
         }
-        wrote = table_mixed_save( &g_out, g_twin, BufferSize );
+        wrote = benchtable_table_mixed_save( &g_out, g_twin, BufferSize );
         if ( wrote != g_lengths[index] || memcmp( g_twin, variant( index ), (size_t) g_lengths[index] ) != 0 )
         {
             fail( name, "reused target round-trip bytes differ" );
@@ -432,7 +448,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
         double elapsed;
         for ( i = 0; i < iters; i++ )
         {
-            const int64_t wrote = table_mixed_save( &g_instances[i & ( NumVariants - 1 )], g_buffer, BufferSize );
+            const int64_t wrote = benchtable_table_mixed_save( &g_instances[i & ( NumVariants - 1 )], g_buffer, BufferSize );
             if ( wrote != g_lengths[i & ( NumVariants - 1 )] ) { fail( name, "save failed in loop" ); return; }
             bench_escape( g_buffer );
             g_sink = g_sink + (uint64_t) wrote;
@@ -454,7 +470,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
                 fail( name, "load failed in loop" );
                 return;
             }
-            wrote = table_mixed_save( &g_out, g_buffer, BufferSize );
+            wrote = benchtable_table_mixed_save( &g_out, g_buffer, BufferSize );
             if ( wrote != g_lengths[i & ( NumVariants - 1 )] ) { fail( name, "re-save failed in loop" ); return; }
             bench_escape( g_buffer );
             g_sink = g_sink + (uint64_t) wrote;
@@ -497,18 +513,18 @@ static void bench_table( const char * name, const char * golden, long base_iters
    it is checked first and by itself. */
 
 #define FixedCount 64
-static FixedTable g_fixed_values[FixedCount];
-static FixedTable g_fixed_out[FixedCount];
+static bench_fixed_table_t g_fixed_values[FixedCount];
+static bench_fixed_table_t g_fixed_out[FixedCount];
 /* the plan storage the caller owns; the identity path never touches it, and a
    stranger's layout compiles into it (§3.4: this codec never allocates) */
 #define FixedPlanCapacity 4096
-static TableFixedEntry g_fixed_plan[FixedPlanCapacity];
+static BENCH_Q( table_fixed_entry_t ) g_fixed_plan[FixedPlanCapacity];
 
-static int64_t fixed_load_all( FixedTable * values, const uint8_t * bytes, int64_t size )
+static int64_t fixed_load_all( bench_fixed_table_t * values, const uint8_t * bytes, int64_t size )
 {
-    TableReport report;
+    BENCH_Q( table_report_t ) report;
     memset( &report, 0, sizeof( report ) );
-    return fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
+    return bench_fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
 /* ------------------------------------------------------------------------
@@ -576,7 +592,7 @@ static void bench_fixed_read( const char * name, const uint8_t * file, size_t fi
    generated PACKET type named once, at its storage declaration */
 static uint8_t * g_packet_variants = NULL;
 static size_t g_packet_record = 0;
-typedef BenchMixed PacketRecord;
+typedef bench_bench_mixed_t PacketRecord;
 static PacketRecord g_packet_in[NumVariants];
 static PacketRecord g_packet_out;
 
@@ -633,13 +649,13 @@ static int gate_mixed_read( const char * name )
         serialize_write_stream_t ws;
         memset( &g_packet_in[k], 0, sizeof( g_packet_in[k] ) );
         serialize_read_stream_init( &rs, packet_variant( k ), (int) g_packet_record );
-        if ( !read_bench_mixed( &rs, &g_packet_in[k] ) )
+        if ( !bench_read_bench_mixed( &rs, &g_packet_in[k] ) )
         {
             fail( name, "decode of a packet variant failed" );
             goto done;
         }
         serialize_write_stream_init( &ws, g_twin, BufferSize );
-        if ( !write_bench_mixed( &ws, &g_packet_in[k] ) )
+        if ( !bench_write_bench_mixed( &ws, &g_packet_in[k] ) )
         {
             fail( name, "re-encode of a decoded packet variant failed" );
             goto done;
@@ -675,7 +691,7 @@ static void bench_mixed_read( const char * name, long iters )
         {
             serialize_read_stream_t rs;
             serialize_read_stream_init( &rs, packet_variant( (int) ( i & ( NumVariants - 1 ) ) ), (int) g_packet_record );
-            if ( !read_bench_mixed( &rs, &g_packet_out ) )
+            if ( !bench_read_bench_mixed( &rs, &g_packet_out ) )
             {
                 fail( name, "read failed in loop" );
                 return;
@@ -706,7 +722,7 @@ static size_t g_lineage_bytes = 0;
 #define g_plan_poisoned g_fixed_values
 #define plan_load_all( values, report ) \
     ( memset( ( report ), 0, sizeof( *( report ) ) ), \
-      fixed_table_fixed_load( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
+      bench_fixed_table_fixed_load( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
 
 /* THE PLAN READ'S ANSWER, pinned before any clock. Gates P1, P3 and P4 below
    are shape-blind: no field is named, only the lineage the build laid down and
@@ -739,7 +755,7 @@ static size_t g_lineage_bytes = 0;
 #define PlanOldTextCap 8
 #define PlanOldWeaponVariants 12
 #define PlanWidenedPerRecord 64
-static FixedTable g_plan_expected[FixedCount];
+static bench_fixed_table_t g_plan_expected[FixedCount];
 
 /* the answer for the 64 identity records the earlier gates held byte for byte
    to the C++ reference (g_fixed_values, before gate P3 poisons it). The
@@ -747,17 +763,17 @@ static FixedTable g_plan_expected[FixedCount];
    never written down here. */
 static void plan_expected_build( void )
 {
-    FixedTable defaults;
+    bench_fixed_table_t defaults;
     int k, e, j;
-    fixed_table_reset( &defaults );
+    bench_fixed_table_reset( &defaults );
     memcpy( (void *) g_plan_expected, (const void *) g_fixed_values, sizeof( g_plan_expected ) );
     for ( k = 0; k < FixedCount; k++ )
     {
-        BenchMixed * v = &g_plan_expected[k].value;
+        bench_bench_mixed_t * v = &g_plan_expected[k].value;
         for ( e = 0; e < v->entities_count; e++ )
         {
             const int w = (int) v->entities[e].weapon;
-            if ( w > PlanOldWeaponVariants ) { v->entities[e].weapon = (MixedWeapon) ( ( ( w - 1 ) % PlanOldWeaponVariants ) + 1 ); }
+            if ( w > PlanOldWeaponVariants ) { v->entities[e].weapon = (bench_mixed_weapon_t) ( ( ( w - 1 ) % PlanOldWeaponVariants ) + 1 ); }
         }
         if ( v->stats_count > PlanOldStatsBound ) { v->stats_count = PlanOldStatsBound; }
         for ( j = PlanOldStatsBound; j < (int) ( sizeof( v->stats ) / sizeof( v->stats[0] ) ); j++ ) { v->stats[j] = defaults.value.stats[j]; }
@@ -774,7 +790,7 @@ static void plan_expected_build( void )
    `why`, the first thing that is not (counters first, then the first record
    whose saved bytes differ). `got` and `want` are the plan read and the
    answer saved whole, `plan_read` and `plan_answer` the records themselves. */
-static const char * plan_read_verdict( const TableReport * report, int64_t loaded, const FixedTable * plan_read, const FixedTable * plan_answer, const uint8_t * got, const uint8_t * want, size_t saved_bytes, char * why, size_t why_bytes )
+static const char * plan_read_verdict( const BENCH_Q( table_report_t ) * report, int64_t loaded, const bench_fixed_table_t * plan_read, const bench_fixed_table_t * plan_answer, const uint8_t * got, const uint8_t * want, size_t saved_bytes, char * why, size_t why_bytes )
 {
     if ( loaded != FixedCount )
     {
@@ -794,14 +810,14 @@ static const char * plan_read_verdict( const TableReport * report, int64_t loade
     /* the saved image is not one fixed width per record, so the first differing
        record is found by saving each record alone */
     {
-        const size_t one = (size_t) fixed_table_fixed_measure( 1 );
+        const size_t one = (size_t) bench_fixed_table_fixed_measure( 1 );
         uint8_t * x = (uint8_t *) malloc( one );
         uint8_t * y = (uint8_t *) malloc( one );
         int k, first = -1;
         for ( k = 0; x != NULL && y != NULL && k < FixedCount && first < 0; k++ )
         {
-            const int64_t nx = fixed_table_fixed_save( &plan_read[k], 1, x, (int64_t) one );
-            const int64_t ny = fixed_table_fixed_save( &plan_answer[k], 1, y, (int64_t) one );
+            const int64_t nx = bench_fixed_table_fixed_save( &plan_read[k], 1, x, (int64_t) one );
+            const int64_t ny = bench_fixed_table_fixed_save( &plan_answer[k], 1, y, (int64_t) one );
             if ( nx != ny || nx < 0 || memcmp( x, y, (size_t) nx ) != 0 ) { first = k; }
         }
         free( x );
@@ -820,7 +836,7 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
     uint8_t * a = NULL;
     uint8_t * b = NULL;
     uint8_t * c = NULL;
-    TableReport report;
+    BENCH_Q( table_report_t ) report;
     uint32_t embedded;
     int ok = 0;
     snprintf( path, sizeof( path ), "%s/bench_lineage.bin", g_lineage_dir );
@@ -840,11 +856,11 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
        the older one first, and the lineage file carries that older layout's
        hash and bytes — so the read below runs a plan, never the identity. */
     embedded = (uint32_t) g_lineage[16] | (uint32_t) g_lineage[17] << 8 | (uint32_t) g_lineage[18] << 16 | (uint32_t) g_lineage[19] << 24;
-    if ( fixed_table_fixed_known_count != 2 ||
-         table_fixed_get64( g_lineage + 8 ) != fixed_table_fixed_known[0].hash ||
-         fixed_table_fixed_known[0].hash == fixed_table_fixed_hash ||
-         (int64_t) layout_bytes != fixed_table_fixed_known[0].layout_bytes ||
-         memcmp( layout, fixed_table_fixed_known[0].layout, layout_bytes ) != 0 ||
+    if ( bench_fixed_table_fixed_known_count != 2 ||
+         BENCH_Q( table_fixed_get64 )( g_lineage + 8 ) != bench_fixed_table_fixed_known[0].hash ||
+         bench_fixed_table_fixed_known[0].hash == bench_fixed_table_fixed_hash ||
+         (int64_t) layout_bytes != bench_fixed_table_fixed_known[0].layout_bytes ||
+         memcmp( layout, bench_fixed_table_fixed_known[0].layout, layout_bytes ) != 0 ||
          (size_t) embedded != layout_bytes || 20 + layout_bytes > g_lineage_bytes ||
          memcmp( g_lineage + 20, layout, layout_bytes ) != 0 )
     {
@@ -862,7 +878,7 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
        they do not agree with this. Pattern: bfb8be239 (Elixir, PR #1984) and
        lineage.rs `expected` (Rust); counter: docs/FIXED-FORM-ALGORITHM.md 5.4. */
     plan_expected_build();
-    saved_bytes = (size_t) fixed_table_fixed_measure( FixedCount );
+    saved_bytes = (size_t) bench_fixed_table_fixed_measure( FixedCount );
     a = (uint8_t *) malloc( saved_bytes );
     b = (uint8_t *) malloc( saved_bytes );
     c = (uint8_t *) malloc( saved_bytes );
@@ -875,15 +891,15 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
         char why[512];
         memset( &report, 0, sizeof( report ) );
         const int64_t loaded = plan_load_all( g_plan_out, &report );
-        if ( fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
-             fixed_table_fixed_save( g_plan_expected, FixedCount, c, (int64_t) saved_bytes ) != (int64_t) saved_bytes )
+        if ( bench_fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
+             bench_fixed_table_fixed_save( g_plan_expected, FixedCount, c, (int64_t) saved_bytes ) != (int64_t) saved_bytes )
         {
             fail( name, "the plan read or the plan's answer did not save" );
             goto done;
         }
         fprintf( stderr, "%-18s plan read of %d records: widened %d (expected %d x %d = %d), clamped %d (lineage 0x%016llx -> 0x%016llx)\n", name, FixedCount,
                  (int) report.widened, FixedCount, PlanWidenedPerRecord, FixedCount * PlanWidenedPerRecord, (int) report.clamped,
-                 (unsigned long long) fixed_table_fixed_known[0].hash, (unsigned long long) fixed_table_fixed_hash );
+                 (unsigned long long) bench_fixed_table_fixed_known[0].hash, (unsigned long long) bench_fixed_table_fixed_hash );
         if ( plan_read_verdict( &report, loaded, g_plan_out, g_plan_expected, a, c, saved_bytes, why, sizeof( why ) ) != NULL )
         {
             char message[640];
@@ -898,8 +914,8 @@ static int gate_plan_read( const char * name, const uint8_t * identity_file, siz
        bytes, so padding never decides it. */
     memset( (void *) g_plan_poisoned, 0xA5, sizeof( g_plan_poisoned ) );
     if ( plan_load_all( g_plan_poisoned, &report ) != FixedCount ||
-         fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
-         fixed_table_fixed_save( g_plan_poisoned, FixedCount, b, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
+         bench_fixed_table_fixed_save( g_plan_out, FixedCount, a, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
+         bench_fixed_table_fixed_save( g_plan_poisoned, FixedCount, b, (int64_t) saved_bytes ) != (int64_t) saved_bytes ||
          memcmp( a, b, saved_bytes ) != 0 )
     {
         fail( name, "a poisoned destination read to a different answer" );
@@ -925,7 +941,7 @@ done:
 static void bench_plan_read( const char * name, long iters )
 {
     double rates[MaxNumRuns];
-    TableReport report;
+    BENCH_Q( table_report_t ) report;
     RunStats s;
     int run;
     long i;
@@ -1016,8 +1032,8 @@ static void bench_fixed( const char * name, long base_iters )
        — the positions, the ids, the kinds, the record's size, the hash every
        record carries — is settled by these bytes, so this one comparison is
        what says this leg speaks the reference's form and not a near miss. */
-    if ( layout_bytes != (size_t) fixed_table_fixed_layout_bytes ||
-         memcmp( layout, fixed_table_fixed_layout, layout_bytes ) != 0 )
+    if ( layout_bytes != (size_t) bench_fixed_table_fixed_layout_bytes ||
+         memcmp( layout, bench_fixed_table_fixed_layout, layout_bytes ) != 0 )
     {
         fail( name, "this build's LAYOUT is not the corpus's, byte for byte" );
         goto done;
@@ -1031,7 +1047,7 @@ static void bench_fixed( const char * name, long base_iters )
     }
 
     /* gate 3: writing them back reproduces the file, byte for byte. */
-    if ( fixed_table_fixed_save( g_fixed_values, FixedCount, twin, (int64_t) file_bytes ) != (int64_t) file_bytes ||
+    if ( bench_fixed_table_fixed_save( g_fixed_values, FixedCount, twin, (int64_t) file_bytes ) != (int64_t) file_bytes ||
          memcmp( twin, file, file_bytes ) != 0 )
     {
         fail( name, "round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus" );
@@ -1043,7 +1059,7 @@ static void bench_fixed( const char * name, long base_iters )
     for ( k = 0; k < 2; k++ )
     {
         if ( fixed_load_all( g_fixed_out, file, (int64_t) file_bytes ) != FixedCount ||
-             fixed_table_fixed_save( g_fixed_out, FixedCount, twin, (int64_t) file_bytes ) != (int64_t) file_bytes ||
+             bench_fixed_table_fixed_save( g_fixed_out, FixedCount, twin, (int64_t) file_bytes ) != (int64_t) file_bytes ||
              memcmp( twin, file, file_bytes ) != 0 )
         {
             fail( name, "reused target round-trip bytes differ" );
@@ -1066,7 +1082,7 @@ static void bench_fixed( const char * name, long base_iters )
         double elapsed;
         for ( i = 0; i < iters; i += FixedCount )
         {
-            const int64_t wrote = fixed_table_fixed_save( g_fixed_values, FixedCount, twin, (int64_t) file_bytes );
+            const int64_t wrote = bench_fixed_table_fixed_save( g_fixed_values, FixedCount, twin, (int64_t) file_bytes );
             if ( wrote != (int64_t) file_bytes ) { fail( name, "save failed in loop" ); goto done; }
             bench_escape( twin );
             g_sink = g_sink + (uint64_t) wrote;
@@ -1088,7 +1104,7 @@ static void bench_fixed( const char * name, long base_iters )
                 fail( name, "load failed in loop" );
                 goto done;
             }
-            wrote = fixed_table_fixed_save( g_fixed_out, FixedCount, twin, (int64_t) file_bytes );
+            wrote = bench_fixed_table_fixed_save( g_fixed_out, FixedCount, twin, (int64_t) file_bytes );
             if ( wrote != (int64_t) file_bytes ) { fail( name, "re-save failed in loop" ); goto done; }
             bench_escape( twin );
             g_sink = g_sink + (uint64_t) wrote;

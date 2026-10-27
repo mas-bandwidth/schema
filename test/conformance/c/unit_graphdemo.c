@@ -17,12 +17,14 @@
 #include "GraphTable.h"
 #include "MarksTable.h"
 #include "PartsTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE graphdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER GRAPHDEMO
 #include "unit.h"
 
 /* ---- the roots a cook may be opened at ---- */
 
-typedef const void * ( *CookOpenFn )( const void * bytes, uint64_t length,TableRefuseReason * reason );
-typedef const TableTypeInfo * ( *CookTypeFn )( void );
+typedef const void * ( *CookOpenFn )( const void * bytes, uint64_t length,graphdemo_table_refuse_reason_t * reason );
+typedef const graphdemo_table_type_info_t * ( *CookTypeFn )( void );
 
 typedef struct CookRoot
 {
@@ -31,26 +33,26 @@ typedef struct CookRoot
     CookTypeFn type;
 } CookRoot;
 
-static const void * open_scene( const void * b, uint64_t n,TableRefuseReason * reason ) { return scene_open_ex( b, n,reason ); }
-static const void * open_depot( const void * b, uint64_t n,TableRefuseReason * reason ) { return depot_open_ex( b, n,reason ); }
-static const void * open_album( const void * b, uint64_t n,TableRefuseReason * reason ) { return album_open_ex( b, n,reason ); }
-static const void * open_tree( const void * b, uint64_t n,TableRefuseReason * reason ) { return tree_node_open_ex( b, n,reason ); }
-static const void * open_list( const void * b, uint64_t n,TableRefuseReason * reason ) { return list_node_open_ex( b, n,reason ); }
-static const void * open_marker( const void * b, uint64_t n,TableRefuseReason * reason ) { return marker_open_ex( b, n,reason ); }
+static const void * open_scene( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_scene_open_ex( b, n,reason ); }
+static const void * open_depot( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_depot_open_ex( b, n,reason ); }
+static const void * open_album( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_album_open_ex( b, n,reason ); }
+static const void * open_tree( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_tree_node_open_ex( b, n,reason ); }
+static const void * open_list( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_list_node_open_ex( b, n,reason ); }
+static const void * open_marker( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_marker_open_ex( b, n,reason ); }
 /* the FIXED class: a cook of one is ONE REGION OF ONE NODE (§7), and it is the
    same header match. */
-static const void * open_settings( const void * b, uint64_t n,TableRefuseReason * reason ) { return settings_open_ex( b, n,reason ); }
-static const void * open_stamp( const void * b, uint64_t n,TableRefuseReason * reason ) { return stamp_open_ex( b, n,reason ); }
+static const void * open_settings( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_settings_open_ex( b, n,reason ); }
+static const void * open_stamp( const void * b, uint64_t n,graphdemo_table_refuse_reason_t * reason ) { return graphdemo_stamp_open_ex( b, n,reason ); }
 
 static const CookRoot roots[] = {
-    { "Scene", open_scene, scene_table_type },
-    { "Depot", open_depot, depot_table_type },
-    { "Album", open_album, album_table_type },
-    { "TreeNode", open_tree, tree_node_table_type },
-    { "ListNode", open_list, list_node_table_type },
-    { "Marker", open_marker, marker_table_type },
-    { "Settings", open_settings, settings_table_type },
-    { "Stamp", open_stamp, stamp_table_type }
+    { "Scene", open_scene, graphdemo_scene_table_type },
+    { "Depot", open_depot, graphdemo_depot_table_type },
+    { "Album", open_album, graphdemo_album_table_type },
+    { "TreeNode", open_tree, graphdemo_tree_node_table_type },
+    { "ListNode", open_list, graphdemo_list_node_table_type },
+    { "Marker", open_marker, graphdemo_marker_table_type },
+    { "Settings", open_settings, graphdemo_settings_table_type },
+    { "Stamp", open_stamp, graphdemo_stamp_table_type }
 };
 
 static const CookRoot * find_root( const char * name )
@@ -70,7 +72,7 @@ static const CookRoot * find_root( const char * name )
 typedef struct Reached
 {
     uint64_t offset;
-    const TableTypeInfo * type;
+    const graphdemo_table_type_info_t * type;
 } Reached;
 
 typedef struct Walk
@@ -184,15 +186,15 @@ static void dump_line( Walk * w, const char * path, const char * value )
     conformance_text_add( w->out, "\n" );
 }
 
-static int64_t field_slots( const TableFieldInfo * f )
+static int64_t field_slots( const graphdemo_table_field_info_t * f )
 {
     if ( !f->is_array ) { return 1; }
     return f->array_bound;
 }
 
-static void walk_storage( Walk * w, const uint8_t * storage, const TableTypeInfo * type, int depth, const char * path );
+static void walk_storage( Walk * w, const uint8_t * storage, const graphdemo_table_type_info_t * type, int depth, const char * path );
 
-static void walk_node( Walk * w, uint64_t offset, const TableTypeInfo * type, int depth )
+static void walk_node( Walk * w, uint64_t offset, const graphdemo_table_type_info_t * type, int depth )
 {
     char header[256];
     int index;
@@ -225,12 +227,12 @@ static void walk_node( Walk * w, uint64_t offset, const TableTypeInfo * type, in
     walk_storage( w, w->region + offset, type, depth, "" );
 }
 
-static void walk_storage( Walk * w, const uint8_t * storage, const TableTypeInfo * type, int depth, const char * path )
+static void walk_storage( Walk * w, const uint8_t * storage, const graphdemo_table_type_info_t * type, int depth, const char * path )
 {
     int i;
     for ( i = 0; i < type->num_fields && !w->failed; i++ )
     {
-        const TableFieldInfo * f = &type->fields[i];
+        const graphdemo_table_field_info_t * f = &type->fields[i];
         char name[512];
         char slot_path[576];
         char value[1024];

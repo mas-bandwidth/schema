@@ -302,7 +302,7 @@ func runCRefOrdinal(t *testing.T, files map[string][]byte, driver, binary, runFa
 // C emitter wrote, over elided nested tables, an enum-keyed array at every
 // elision shape, and an array long enough to move a reference's LEB128 width.
 func TestCTableRefOrdinalBytes(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, cRefOrdinalSchema()), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, cRefOrdinalSchema()))
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -464,7 +464,7 @@ int main( void )
 // reached by both call sites, an eliding keyed slot beside a live one, and the
 // value still there after a load and a re-save.
 func TestCTableRefOrdinalSharedId(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, cRefOrdinalCollisionSchema), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, cRefOrdinalCollisionSchema))
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

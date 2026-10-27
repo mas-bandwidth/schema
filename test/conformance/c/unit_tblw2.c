@@ -1,4 +1,6 @@
 #include "W2Table.h"
+#define SCHEMA_CONFORMANCE_PACKAGE tblw2
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER TBLW2
 #include "unit.h"
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Fleet,fleet)
 const ConformanceCodec * conformance_codecs_tblw2(int * count)

@@ -8,6 +8,10 @@
 #define SCHEMA_EXAMPLE_DEGENERATE_H
 
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include "Types.h"
 
 #ifdef __cplusplus
@@ -16,132 +20,132 @@ extern "C" {
 
 
 /* type Vec2 */
-typedef struct Vec2 {
+typedef struct example_vec2_t {
     double x;
     double y;
-} Vec2;
+} example_vec2_t;
 
-#define VEC2_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC2_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXAMPLE_VEC2_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_VEC2_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type SpanF64 */
-typedef struct SpanF64 {
+typedef struct example_span_f64_t {
     double values[2];
-} SpanF64;
+} example_span_f64_t;
 
-#define SPAN_F64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_F64_MAX_BYTES 16
+#define EXAMPLE_SPAN_F64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SPAN_F64_MAX_BYTES 16
 
 
 /* type SpanU64 */
-typedef struct SpanU64 {
+typedef struct example_span_u64_t {
     uint64_t values[2];
-} SpanU64;
+} example_span_u64_t;
 
-#define SPAN_U64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_U64_MAX_BYTES 16
+#define EXAMPLE_SPAN_U64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SPAN_U64_MAX_BYTES 16
 
 
 /* type SpanI64 */
-typedef struct SpanI64 {
+typedef struct example_span_i64_t {
     int64_t values[2];
-} SpanI64;
+} example_span_i64_t;
 
-#define SPAN_I64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_I64_MAX_BYTES 16
+#define EXAMPLE_SPAN_I64_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SPAN_I64_MAX_BYTES 16
 
 
 /* type SpanOne */
-typedef struct SpanOne {
+typedef struct example_span_one_t {
     uint64_t values[1];
-} SpanOne;
+} example_span_one_t;
 
-#define SPAN_ONE_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_ONE_MAX_BYTES 8
+#define EXAMPLE_SPAN_ONE_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SPAN_ONE_MAX_BYTES 8
 
 
 /* type SpanChunk */
-typedef struct SpanChunk {
+typedef struct example_span_chunk_t {
     uint16_t values[4];
-} SpanChunk;
+} example_span_chunk_t;
 
-#define SPAN_CHUNK_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_CHUNK_MAX_BYTES 8
+#define EXAMPLE_SPAN_CHUNK_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SPAN_CHUNK_MAX_BYTES 8
 
 
 /* type SpanTail */
-typedef struct SpanTail {
+typedef struct example_span_tail_t {
     double values[2];
     uint32_t tail;
-} SpanTail;
+} example_span_tail_t;
 
-#define SPAN_TAIL_MAX_BITS 160   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_TAIL_MAX_BYTES 24
+#define EXAMPLE_SPAN_TAIL_MAX_BITS 160   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SPAN_TAIL_MAX_BYTES 24
 
 
 /* type SpanTwice */
-typedef struct SpanTwice {
+typedef struct example_span_twice_t {
     double a[2];
     double b[2];
-} SpanTwice;
+} example_span_twice_t;
 
-#define SPAN_TWICE_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define SPAN_TWICE_MAX_BYTES 32
+#define EXAMPLE_SPAN_TWICE_MAX_BITS 256   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_SPAN_TWICE_MAX_BYTES 32
 
 
 /* type Trio */
-typedef struct Trio {
+typedef struct example_trio_t {
     uint32_t a;
     uint32_t b;
     uint32_t c;
-} Trio;
+} example_trio_t;
 
-#define TRIO_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_MAX_BYTES 8
+#define EXAMPLE_TRIO_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_TRIO_MAX_BYTES 8
 
 
 /* type TrioSole */
-typedef struct TrioSole {
-    Trio inner;
-} TrioSole;
+typedef struct example_trio_sole_t {
+    example_trio_t inner;
+} example_trio_sole_t;
 
-#define TRIO_SOLE_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_SOLE_MAX_BYTES 8
+#define EXAMPLE_TRIO_SOLE_MAX_BITS 64   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_TRIO_SOLE_MAX_BYTES 8
 
 
 /* type Vec3Sole */
-typedef struct Vec3Sole {
-    Vec3 v;
-} Vec3Sole;
+typedef struct example_vec3_sole_t {
+    example_vec3_t v;
+} example_vec3_sole_t;
 
-#define VEC3_SOLE_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define VEC3_SOLE_MAX_BYTES 24
+#define EXAMPLE_VEC3_SOLE_MAX_BITS 192   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_VEC3_SOLE_MAX_BYTES 24
 
 
 /* type TrioFirst */
-typedef struct TrioFirst {
-    Trio inner;
+typedef struct example_trio_first_t {
+    example_trio_t inner;
     uint32_t trailer;
-} TrioFirst;
+} example_trio_first_t;
 
-#define TRIO_FIRST_MAX_BITS 80   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_FIRST_MAX_BYTES 16
+#define EXAMPLE_TRIO_FIRST_MAX_BITS 80   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_TRIO_FIRST_MAX_BYTES 16
 
 
 /* type TrioStraddle */
-typedef struct TrioStraddle {
+typedef struct example_trio_straddle_t {
     uint64_t pad0;
     uint64_t pad1;
     uint64_t pad2;
     uint64_t pad3;
     uint64_t pad4;
     uint32_t pad5;
-    Trio inner;
-} TrioStraddle;
+    example_trio_t inner;
+} example_trio_straddle_t;
 
-#define TRIO_STRADDLE_MAX_BITS 408   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define TRIO_STRADDLE_MAX_BYTES 56
+#define EXAMPLE_TRIO_STRADDLE_MAX_BITS 408   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_TRIO_STRADDLE_MAX_BYTES 56
 
 #ifdef __cplusplus
 }

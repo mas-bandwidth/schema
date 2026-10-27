@@ -48,36 +48,36 @@ extern "C" {
 #endif /* SCHEMA_BENCHTABLE_BUILD_VERSION */
 
 
-#ifndef SCHEMA_TABLE_ALLOCATOR_RUNTIME
-#define SCHEMA_TABLE_ALLOCATOR_RUNTIME
-#ifndef schema_allocate
+#ifndef SCHEMA_BENCHTABLE_TABLE_ALLOCATOR_RUNTIME
+#define SCHEMA_BENCHTABLE_TABLE_ALLOCATOR_RUNTIME
+#ifndef schema_benchtable_allocate
 #include <stdlib.h>
-#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
+#define schema_benchtable_allocate(bytes) calloc(1,(size_t)(bytes))
 #endif
-#ifndef schema_release
+#ifndef schema_benchtable_release
 #include <stdlib.h>
-#define schema_release(pointer) free(pointer)
+#define schema_benchtable_release(pointer) free(pointer)
 #endif
-typedef struct TableAllocator
+typedef struct benchtable_table_allocator_t
 {
     void * (*alloc)(void * context,int64_t bytes);
     void (*free)(void * context,void * pointer);
     void * context;
-} TableAllocator;
-static SCHEMA_UNUSED void * table_default_allocate(void * context,int64_t bytes)
-{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
-static SCHEMA_UNUSED void table_default_release(void * context,void * pointer)
-{ (void)context; schema_release(pointer); }
-static SCHEMA_UNUSED TableAllocator table_default_allocator(void)
+} benchtable_table_allocator_t;
+static SCHEMA_UNUSED void * benchtable_table_default_allocate(void * context,int64_t bytes)
+{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_benchtable_allocate(bytes) : NULL; }
+static SCHEMA_UNUSED void benchtable_table_default_release(void * context,void * pointer)
+{ (void)context; schema_benchtable_release(pointer); }
+static SCHEMA_UNUSED benchtable_table_allocator_t benchtable_table_default_allocator(void)
 {
-    TableAllocator allocator={table_default_allocate,table_default_release,NULL}; return allocator;
+    benchtable_table_allocator_t allocator={benchtable_table_default_allocate,benchtable_table_default_release,NULL}; return allocator;
 }
-static SCHEMA_UNUSED void * table_allocate(TableAllocator allocator,int64_t bytes)
+static SCHEMA_UNUSED void * benchtable_table_allocate(benchtable_table_allocator_t allocator,int64_t bytes)
 {
     if(allocator.alloc==NULL || allocator.free==NULL || bytes<=0 || (uint64_t)bytes>SIZE_MAX) { return NULL; }
     return allocator.alloc(allocator.context,bytes);
 }
-static SCHEMA_UNUSED void table_release(TableAllocator allocator,void * pointer)
+static SCHEMA_UNUSED void benchtable_table_release(benchtable_table_allocator_t allocator,void * pointer)
 { if(allocator.free!=NULL) { allocator.free(allocator.context,pointer); } }
 #endif
 #ifndef SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES
@@ -91,12 +91,12 @@ static SCHEMA_UNUSED void table_release(TableAllocator allocator,void * pointer)
    projection (§2.7). A consumer reads all three FROM THE INSTANCE, never from
    its own constants — that is the difference between a generated pair of
    structs and an ABI (§19.2). */
-typedef struct TableBlockTriple
+typedef struct benchtable_table_block_triple_t
 {
     uint64_t offset_of; /* block-relative: the block relocates by plain memcpy */
     uint32_t count;     /* rows the producer filled; rows past it are not part of the block */
     uint32_t stride;    /* the pitch the consumer indexes with, from the data */
-} TableBlockTriple;
+} benchtable_table_block_triple_t;
 
 /* THE CALLER'S ALLOCATOR, with malloc semantics. A block's storage is one
    extent sized from the declared maxima and allocated ONCE, at build time,
@@ -104,18 +104,18 @@ typedef struct TableBlockTriple
    The FILL path allocates nothing and takes no lock, which is the obligation
    §19.1 states; "the block form never allocates" would be a claim about who
    owns the extent, and the answer is that the caller does. */
-typedef TableAllocator TableBlockAllocator;
+typedef benchtable_table_allocator_t benchtable_table_block_allocator_t;
 
 /* The default triple, for a caller that has no allocator of its own to hand
    in. Nothing in the generated surface reaches for it: a caller names it. */
-static SCHEMA_UNUSED void * table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
-static SCHEMA_UNUSED void table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
+static SCHEMA_UNUSED void * benchtable_table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_benchtable_allocate(bytes) : NULL; }
+static SCHEMA_UNUSED void benchtable_table_block_default_free( void * context, void * pointer ) { (void) context; schema_benchtable_release( pointer ); }
 
-static SCHEMA_UNUSED TableBlockAllocator table_block_default_allocator( void )
+static SCHEMA_UNUSED benchtable_table_block_allocator_t benchtable_table_block_default_allocator( void )
 {
-    TableBlockAllocator allocator;
-    allocator.alloc = table_block_default_alloc;
-    allocator.free = table_block_default_free;
+    benchtable_table_block_allocator_t allocator;
+    allocator.alloc = benchtable_table_block_default_alloc;
+    allocator.free = benchtable_table_block_default_free;
     allocator.context = NULL;
     return allocator;
 }
@@ -125,41 +125,41 @@ static SCHEMA_UNUSED TableBlockAllocator table_block_default_allocator( void )
    big-endian fix-up path is a named obligation, not something a consumer
    improvises row by row. */
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-static SCHEMA_UNUSED const uint64_t table_block_byte_order = 2; /* big */
+static SCHEMA_UNUSED const uint64_t benchtable_table_block_byte_order = 2; /* big */
 #else
-static SCHEMA_UNUSED const uint64_t table_block_byte_order = 1; /* little */
+static SCHEMA_UNUSED const uint64_t benchtable_table_block_byte_order = 1; /* little */
 #endif
 
 /* Why Begin refused: the array, its count and its maximum (§19.1). Clamping a
    count to its maximum before Begin is the PRODUCER's job — Begin is a
    contract check, not a policy — and a producer at sixty hertz that silently
    drops a frame is worse than one that does not. */
-typedef struct TableBlockRefusal
+typedef struct benchtable_table_block_refusal_t
 {
     const char * array;
     int64_t count;
     int64_t maximum;
-} TableBlockRefusal;
+} benchtable_table_block_refusal_t;
 
 /* One array's rows, at the pitch the instance gives (§19.2). A call site never
    spells the pitch arithmetic itself, for the same reason a keyed array's call
    sites should not re-derive their own slot rule. In a block this build just
    laid out, the pitch IS sizeof, which is what makes the Span accessor beside
    each of these a contiguous typed pointer. */
-typedef struct TableBlockRows
+typedef struct benchtable_table_block_rows_t
 {
     uint8_t * base;
     int32_t count;
     int32_t stride;
-} TableBlockRows;
+} benchtable_table_block_rows_t;
 
-static SCHEMA_UNUSED void * table_block_row_at( const TableBlockRows * rows, int32_t index )
+static SCHEMA_UNUSED void * benchtable_table_block_row_at( const benchtable_table_block_rows_t * rows, int32_t index )
 {
     return (void *) ( rows->base + (ptrdiff_t) index * rows->stride );
 }
 
-typedef struct TableBlockConstRows { const uint8_t * base; int32_t count, stride; } TableBlockConstRows;
-static SCHEMA_UNUSED const void * table_block_row_at_const(const TableBlockConstRows * rows,int32_t index)
+typedef struct benchtable_table_block_const_rows_t { const uint8_t * base; int32_t count, stride; } benchtable_table_block_const_rows_t;
+static SCHEMA_UNUSED const void * benchtable_table_block_row_at_const(const benchtable_table_block_const_rows_t * rows,int32_t index)
 { return rows->base+(ptrdiff_t)index*rows->stride; }
 
 /* ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
@@ -170,9 +170,9 @@ static SCHEMA_UNUSED const void * table_block_row_at_const(const TableBlockConst
    the spelling that produced any of it. They are constant data, so this costs
    a lookup, not a parse — and they are immutable, so any thread may read
    them. */
-struct TableBlockInfo;
+struct benchtable_table_block_info_t;
 
-typedef struct TableBlockFieldInfo
+typedef struct benchtable_table_block_field_info_t
 {
     const char * name;
     uint32_t offset;  /* the field's offset in the record this descriptor describes */
@@ -203,30 +203,30 @@ typedef struct TableBlockFieldInfo
        column. C needs no lazy factory here — the descriptors are constant data
        in one translation unit, so a forward declaration makes the address a
        constant expression whatever order the records fall in. */
-    const struct TableBlockInfo * element;
-} TableBlockFieldInfo;
+    const struct benchtable_table_block_info_t * element;
+} benchtable_table_block_field_info_t;
 
 /* One record's layout as DATA — the whole mechanism behind the block form's
    read side. A block-form table's own descriptor describes its PROJECTION; the
    element descriptor of each out-of-line array describes that array's ROW, and
    so on down. */
-typedef struct TableBlockInfo
+typedef struct benchtable_table_block_info_t
 {
     const char * name;
     uint64_t build_version; /* the unit's (docs/SPEC-TABLES.md §20) */
     uint32_t size;          /* the record's own sizeof: a projection's, or a row's */
     uint32_t align;
     int32_t num_fields;
-    const TableBlockFieldInfo * fields;
-} TableBlockInfo;
+    const benchtable_table_block_field_info_t * fields;
+} benchtable_table_block_info_t;
 
 /* The block's magic, and the byte-order check with it (§19.1). It is stored in
    the producer's NATIVE order; a consumer that reads back the byte-swapped
    value has found a foreign byte order, and one that reads back anything else
    has not found a block at all. */
-static SCHEMA_UNUSED const uint64_t table_block_magic = 0x4b4c42414d484353ull;
+static SCHEMA_UNUSED const uint64_t benchtable_table_block_magic = 0x4b4c42414d484353ull;
 
-static SCHEMA_UNUSED uint64_t table_block_byteswap64( uint64_t v )
+static SCHEMA_UNUSED uint64_t benchtable_table_block_byteswap64( uint64_t v )
 {
     return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
          | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
@@ -235,17 +235,17 @@ static SCHEMA_UNUSED uint64_t table_block_byteswap64( uint64_t v )
 
 /* the prologue read BYTEWISE: the magic is the one field read without assuming
    the order the rest of the block is in */
-static SCHEMA_UNUSED uint64_t table_block_read64( const uint8_t * p )
+static SCHEMA_UNUSED uint64_t benchtable_table_block_read64( const uint8_t * p )
 {
     uint64_t v = 0;
     memcpy( &v, p, 8 );
     return v;
 }
 
-static SCHEMA_UNUSED uint32_t table_block_read32(const uint8_t * p)
+static SCHEMA_UNUSED uint32_t benchtable_table_block_read32(const uint8_t * p)
 { uint32_t value; memcpy(&value,p,4); return value; }
 
-static SCHEMA_UNUSED int64_t table_block_align( int64_t offset, int64_t alignment )
+static SCHEMA_UNUSED int64_t benchtable_table_block_align( int64_t offset, int64_t alignment )
 {
     return ( offset + alignment - 1 ) / alignment * alignment;
 }
@@ -260,10 +260,10 @@ static SCHEMA_UNUSED int64_t table_block_align( int64_t offset, int64_t alignmen
 
 /* The counts, gathered before Begin — nothing about counting is concurrent
    (docs/SPEC-TABLES.md §19.1). Clamping a count to its maximum is the PRODUCER's job. */
-typedef struct TableEntityCounts
+typedef struct benchtable_table_entity_counts_t
 {
     int32_t unused; /* the table declares no out-of-line array */
-} TableEntityCounts;
+} benchtable_table_entity_counts_t;
 
 /* The block's STORAGE, sized from the declared maxima: one extent, allocated
    once, never grown, never pooled (docs/SPEC-TABLES.md §19.1). The sum is loose by
@@ -273,18 +273,18 @@ typedef struct TableEntityCounts
    released through the same triple. The fill path allocates nothing. */
 #define SCHEMA_BENCHTABLE_TABLE_ENTITY_BLOCK_MAX_BYTES 128
 
-typedef struct TableEntityBlockStorage
+typedef struct benchtable_table_entity_block_storage_t
 {
     uint8_t * base;      /* the extent, 64-byte aligned */
     void * allocation;   /* what the allocator handed back */
-    TableBlockAllocator allocator;
-} TableEntityBlockStorage;
+    benchtable_table_block_allocator_t allocator;
+} benchtable_table_entity_block_storage_t;
 
 /* Create allocates SCHEMA_BENCHTABLE_TABLE_ENTITY_BLOCK_MAX_BYTES + 63 bytes through the caller's triple
    and aligns the base inside them: malloc's guarantee is not a cache
    line's, and the 64-byte base is what keeps two workers filling
    different arrays off one line (§19.1). One call, at build time. */
-static SCHEMA_UNUSED int table_entity_block_storage_create( TableEntityBlockStorage * storage, const TableBlockAllocator * from )
+static SCHEMA_UNUSED int benchtable_table_entity_block_storage_create( benchtable_table_entity_block_storage_t * storage, const benchtable_table_block_allocator_t * from )
 {
     uintptr_t raw;
     storage->allocator = *from;
@@ -295,7 +295,7 @@ static SCHEMA_UNUSED int table_entity_block_storage_create( TableEntityBlockStor
     return 1;
 }
 
-static SCHEMA_UNUSED void table_entity_block_storage_destroy( TableEntityBlockStorage * storage )
+static SCHEMA_UNUSED void benchtable_table_entity_block_storage_destroy( benchtable_table_entity_block_storage_t * storage )
 {
     if ( storage->allocation != NULL ) { storage->allocator.free( storage->allocator.context, storage->allocation ); }
     storage->allocation = NULL;
@@ -305,7 +305,7 @@ static SCHEMA_UNUSED void table_entity_block_storage_destroy( TableEntityBlockSt
 /* The PROJECTION: a record like any other, following the same C ABI rule
    (§19.3) — its own offsets are part of the contract, not scaffolding
    around it. It opens with the generated PROLOGUE of three uint64s. */
-typedef struct TableEntityBlockProjection
+typedef struct benchtable_table_entity_block_projection_t
 {
     uint64_t magic;         /* generated: identifies a schema block */
     uint64_t build_version; /* generated: the unit's build version (docs/SPEC-TABLES.md §20) */
@@ -320,11 +320,11 @@ typedef struct TableEntityBlockProjection
     int32_t vel_y;
     int32_t vel_z;
     int32_t health;
-    TableWeapon weapon;
-    TableDamage damage;
+    benchtable_table_weapon_t weapon;
+    benchtable_table_damage_t damage;
     bool moving;
     bool firing;
-} TableEntityBlockProjection;
+} benchtable_table_entity_block_projection_t;
 
 /* The block: one extent, 64-byte aligned at its base, the PROJECTION at
    offset 0 and then each out-of-line array in declaration order
@@ -334,46 +334,46 @@ typedef struct TableEntityBlockProjection
    A block is valid until the next Begin on the SAME storage, which invalidates
    every block over it and every row pointer taken from one. Double-buffering
    is therefore two storages, and it is the caller's. */
-typedef struct TableEntityBlock
+typedef struct benchtable_table_entity_block_t
 {
     uint8_t * base;                    /* the extent's base, 64-byte aligned */
-    TableEntityBlockProjection * projection;    /* the projection, at offset 0 */
+    benchtable_table_entity_block_projection_t * projection;    /* the projection, at offset 0 */
     int64_t bytes;                     /* the extent in use */
-} TableEntityBlock;
+} benchtable_table_entity_block_t;
 
-typedef struct TableEntityBlockConst { const uint8_t * base; const TableEntityBlockProjection * projection; int64_t bytes; } TableEntityBlockConst;
-static SCHEMA_UNUSED int64_t table_entity_block_bytes_const(const TableEntityBlockConst * block) { return block->bytes; }
+typedef struct benchtable_table_entity_block_const_t { const uint8_t * base; const benchtable_table_entity_block_projection_t * projection; int64_t bytes; } benchtable_table_entity_block_const_t;
+static SCHEMA_UNUSED int64_t benchtable_table_entity_block_bytes_const(const benchtable_table_entity_block_const_t * block) { return block->bytes; }
 /* this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant
    data, defined in the .c beside this header. A consumer holding this reads
    the triples out of an instance and points at rows, with no hand-written
    struct per table. */
-extern const TableBlockInfo schema_benchtable_table_entity_block_info_;
-static SCHEMA_UNUSED const TableBlockInfo * table_entity_block_type( void ) { return &schema_benchtable_table_entity_block_info_; }
+extern const benchtable_table_block_info_t schema_benchtable_table_entity_block_info_;
+static SCHEMA_UNUSED const benchtable_table_block_info_t * benchtable_table_entity_block_type( void ) { return &schema_benchtable_table_entity_block_info_; }
 
 /* The LAYOUT CONTRACT (docs/SPEC-TABLES.md §19.3). The compiler derived every
    number below from the declaration; these assertions are this compiler saying
    whether it agrees. Neither side's layout is inferred from the other's —
    both are checked against their own compiler's model, which is the only way
    a two-language contract can be held by a compiler that generates both. */
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_triple_size, sizeof( TableBlockTriple ) == 16, "a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_triple_members, offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, "a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_size, sizeof( TableEntityBlockProjection ) == 88, "TableEntity's block projection sizeof moved: the other backends assert 88 for the same declaration (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_align, SCHEMA_TABLE_ALIGNOF( TableEntityBlockProjection ) == 8, "TableEntity's block projection alignof moved (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_prologue, offsetof( TableEntityBlockProjection, magic ) == 0 && offsetof( TableEntityBlockProjection, build_version ) == 8 && offsetof( TableEntityBlockProjection, byte_order ) == 16, "the block prologue is magic at 0, build_version at 8, byte_order at 16 (docs/SPEC-TABLES.md §19.1, §20)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_entity_id, offsetof( TableEntityBlockProjection, entity_id ) == 24, "TableEntity's projection field entity_id moved: the other backends assert 24 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_pos_x, offsetof( TableEntityBlockProjection, pos_x ) == 28, "TableEntity's projection field pos_x moved: the other backends assert 28 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_pos_y, offsetof( TableEntityBlockProjection, pos_y ) == 32, "TableEntity's projection field pos_y moved: the other backends assert 32 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_pos_z, offsetof( TableEntityBlockProjection, pos_z ) == 36, "TableEntity's projection field pos_z moved: the other backends assert 36 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_yaw, offsetof( TableEntityBlockProjection, yaw ) == 40, "TableEntity's projection field yaw moved: the other backends assert 40 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_pitch, offsetof( TableEntityBlockProjection, pitch ) == 44, "TableEntity's projection field pitch moved: the other backends assert 44 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_vel_x, offsetof( TableEntityBlockProjection, vel_x ) == 48, "TableEntity's projection field vel_x moved: the other backends assert 48 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_vel_y, offsetof( TableEntityBlockProjection, vel_y ) == 52, "TableEntity's projection field vel_y moved: the other backends assert 52 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_vel_z, offsetof( TableEntityBlockProjection, vel_z ) == 56, "TableEntity's projection field vel_z moved: the other backends assert 56 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_health, offsetof( TableEntityBlockProjection, health ) == 60, "TableEntity's projection field health moved: the other backends assert 60 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_weapon, offsetof( TableEntityBlockProjection, weapon ) == 64, "TableEntity's projection field weapon moved: the other backends assert 64 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_damage, offsetof( TableEntityBlockProjection, damage ) == 72, "TableEntity's projection field damage moved: the other backends assert 72 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_moving, offsetof( TableEntityBlockProjection, moving ) == 80, "TableEntity's projection field moving moved: the other backends assert 80 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_firing, offsetof( TableEntityBlockProjection, firing ) == 81, "TableEntity's projection field firing moved: the other backends assert 81 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_triple_size, sizeof( benchtable_table_block_triple_t ) == 16, "a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_triple_members, offsetof( benchtable_table_block_triple_t, offset_of ) == 0 && offsetof( benchtable_table_block_triple_t, count ) == 8 && offsetof( benchtable_table_block_triple_t, stride ) == 12, "a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_size, sizeof( benchtable_table_entity_block_projection_t ) == 88, "TableEntity's block projection sizeof moved: the other backends assert 88 for the same declaration (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_align, SCHEMA_TABLE_ALIGNOF( benchtable_table_entity_block_projection_t ) == 8, "TableEntity's block projection alignof moved (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_prologue, offsetof( benchtable_table_entity_block_projection_t, magic ) == 0 && offsetof( benchtable_table_entity_block_projection_t, build_version ) == 8 && offsetof( benchtable_table_entity_block_projection_t, byte_order ) == 16, "the block prologue is magic at 0, build_version at 8, byte_order at 16 (docs/SPEC-TABLES.md §19.1, §20)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_entity_id, offsetof( benchtable_table_entity_block_projection_t, entity_id ) == 24, "TableEntity's projection field entity_id moved: the other backends assert 24 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_pos_x, offsetof( benchtable_table_entity_block_projection_t, pos_x ) == 28, "TableEntity's projection field pos_x moved: the other backends assert 28 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_pos_y, offsetof( benchtable_table_entity_block_projection_t, pos_y ) == 32, "TableEntity's projection field pos_y moved: the other backends assert 32 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_pos_z, offsetof( benchtable_table_entity_block_projection_t, pos_z ) == 36, "TableEntity's projection field pos_z moved: the other backends assert 36 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_yaw, offsetof( benchtable_table_entity_block_projection_t, yaw ) == 40, "TableEntity's projection field yaw moved: the other backends assert 40 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_pitch, offsetof( benchtable_table_entity_block_projection_t, pitch ) == 44, "TableEntity's projection field pitch moved: the other backends assert 44 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_vel_x, offsetof( benchtable_table_entity_block_projection_t, vel_x ) == 48, "TableEntity's projection field vel_x moved: the other backends assert 48 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_vel_y, offsetof( benchtable_table_entity_block_projection_t, vel_y ) == 52, "TableEntity's projection field vel_y moved: the other backends assert 52 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_vel_z, offsetof( benchtable_table_entity_block_projection_t, vel_z ) == 56, "TableEntity's projection field vel_z moved: the other backends assert 56 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_health, offsetof( benchtable_table_entity_block_projection_t, health ) == 60, "TableEntity's projection field health moved: the other backends assert 60 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_weapon, offsetof( benchtable_table_entity_block_projection_t, weapon ) == 64, "TableEntity's projection field weapon moved: the other backends assert 64 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_damage, offsetof( benchtable_table_entity_block_projection_t, damage ) == 72, "TableEntity's projection field damage moved: the other backends assert 72 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_moving, offsetof( benchtable_table_entity_block_projection_t, moving ) == 80, "TableEntity's projection field moving moved: the other backends assert 80 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_firing, offsetof( benchtable_table_entity_block_projection_t, firing ) == 81, "TableEntity's projection field firing moved: the other backends assert 81 (docs/SPEC-TABLES.md §19.3)" );
 
 /* ---- block fill path: begin ----
    THE MULTI-THREADED FILL IS AN OBLIGATION ON THIS BACKEND, not a permission
@@ -393,18 +393,18 @@ SCHEMA_TABLE_STATIC_ASSERT( TableEntity_projection_firing, offsetof( TableEntity
 
    Begin and BlockBytes are SINGLE-THREADED: call Begin before the workers and
    BlockBytes after they join (§19.1). `refusal` may be NULL. */
-static SCHEMA_UNUSED int table_entity_block_begin( TableEntityBlock * block, TableEntityBlockStorage * storage, const TableEntityCounts * counts, TableBlockRefusal * refusal )
+static SCHEMA_UNUSED int benchtable_table_entity_block_begin( benchtable_table_entity_block_t * block, benchtable_table_entity_block_storage_t * storage, const benchtable_table_entity_counts_t * counts, benchtable_table_block_refusal_t * refusal )
 {
     int64_t offset;
     (void) counts; (void) refusal; /* no out-of-line array: no count to refuse */
     if ( storage->base == NULL ) { return 0; } /* Create was not called, or the allocator refused */
     block->base = storage->base;
-    block->projection = (TableEntityBlockProjection *) (void *) storage->base;
-    block->projection->magic = table_block_magic;
+    block->projection = (benchtable_table_entity_block_projection_t *) (void *) storage->base;
+    block->projection->magic = benchtable_table_block_magic;
     block->projection->build_version = SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE;
-    block->projection->byte_order = table_block_byte_order;
+    block->projection->byte_order = benchtable_table_block_byte_order;
     offset = 88; /* sizeof the projection */
-    block->bytes = table_block_align( offset, 64 );
+    block->bytes = benchtable_table_block_align( offset, 64 );
     return 1;
 }
 
@@ -414,11 +414,11 @@ static SCHEMA_UNUSED int table_entity_block_begin( TableEntityBlock * block, Tab
    to the maxima. The tail — the bytes between the last row and the rounding —
    is UNSPECIFIED, because zeroing megabytes per frame is the cost this form
    exists to avoid. */
-static SCHEMA_UNUSED int64_t table_entity_block_bytes( const TableEntityBlock * block )
+static SCHEMA_UNUSED int64_t benchtable_table_entity_block_bytes( const benchtable_table_entity_block_t * block )
 {
     int64_t used = 88;
     (void) block; /* no out-of-line array: the extent is the projection's own */
-    return table_block_align( used, 64 );
+    return benchtable_table_block_align( used, 64 );
 }
 
 /* ---- block fill path: end ---- */
@@ -438,19 +438,19 @@ static SCHEMA_UNUSED int64_t table_entity_block_bytes( const TableEntityBlock * 
    and ship together — so a consumer older than its producer is not a case. A
    mismatch is a refusal; regenerate both sides. Data that must outlive the
    build that wrote it takes the wire (§3), which this same table still has. */
-int schema_benchtable_table_entity_block_open_( TableEntityBlock * block, void * base, int64_t bytes );
-static SCHEMA_UNUSED int table_entity_block_open( TableEntityBlock * block, void * base, int64_t bytes )
+int schema_benchtable_table_entity_block_open_( benchtable_table_entity_block_t * block, void * base, int64_t bytes );
+static SCHEMA_UNUSED int benchtable_table_entity_block_open( benchtable_table_entity_block_t * block, void * base, int64_t bytes )
 {
     return schema_benchtable_table_entity_block_open_( block, base, bytes );
 }
 
-int schema_benchtable_table_entity_block_open_ex_(TableEntityBlock * block,void * base,int64_t bytes,TableRefuseReason * reason);
-static SCHEMA_UNUSED int table_entity_block_open_ex(TableEntityBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_entity_block_open_ex_(benchtable_table_entity_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
+static SCHEMA_UNUSED int benchtable_table_entity_block_open_ex(benchtable_table_entity_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 { return schema_benchtable_table_entity_block_open_ex_(block,base,bytes,reason); }
-int schema_benchtable_table_entity_block_open_const_ex_(TableEntityBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason);
-static SCHEMA_UNUSED int table_entity_block_open_const_ex(TableEntityBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_entity_block_open_const_ex_(benchtable_table_entity_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
+static SCHEMA_UNUSED int benchtable_table_entity_block_open_const_ex(benchtable_table_entity_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 { return schema_benchtable_table_entity_block_open_const_ex_(block,base,bytes,reason); }
-static SCHEMA_UNUSED int table_entity_block_open_const(TableEntityBlockConst * block,const void * base,int64_t bytes)
+static SCHEMA_UNUSED int benchtable_table_entity_block_open_const(benchtable_table_entity_block_const_t * block,const void * base,int64_t bytes)
 { return schema_benchtable_table_entity_block_open_const_ex_(block,base,bytes,NULL); }
 /* ---- the block form of table TableEntity: end ---- */
 
@@ -458,10 +458,10 @@ static SCHEMA_UNUSED int table_entity_block_open_const(TableEntityBlockConst * b
 
 /* The counts, gathered before Begin — nothing about counting is concurrent
    (docs/SPEC-TABLES.md §19.1). Clamping a count to its maximum is the PRODUCER's job. */
-typedef struct TableStatCounts
+typedef struct benchtable_table_stat_counts_t
 {
     int32_t unused; /* the table declares no out-of-line array */
-} TableStatCounts;
+} benchtable_table_stat_counts_t;
 
 /* The block's STORAGE, sized from the declared maxima: one extent, allocated
    once, never grown, never pooled (docs/SPEC-TABLES.md §19.1). The sum is loose by
@@ -471,18 +471,18 @@ typedef struct TableStatCounts
    released through the same triple. The fill path allocates nothing. */
 #define SCHEMA_BENCHTABLE_TABLE_STAT_BLOCK_MAX_BYTES 64
 
-typedef struct TableStatBlockStorage
+typedef struct benchtable_table_stat_block_storage_t
 {
     uint8_t * base;      /* the extent, 64-byte aligned */
     void * allocation;   /* what the allocator handed back */
-    TableBlockAllocator allocator;
-} TableStatBlockStorage;
+    benchtable_table_block_allocator_t allocator;
+} benchtable_table_stat_block_storage_t;
 
 /* Create allocates SCHEMA_BENCHTABLE_TABLE_STAT_BLOCK_MAX_BYTES + 63 bytes through the caller's triple
    and aligns the base inside them: malloc's guarantee is not a cache
    line's, and the 64-byte base is what keeps two workers filling
    different arrays off one line (§19.1). One call, at build time. */
-static SCHEMA_UNUSED int table_stat_block_storage_create( TableStatBlockStorage * storage, const TableBlockAllocator * from )
+static SCHEMA_UNUSED int benchtable_table_stat_block_storage_create( benchtable_table_stat_block_storage_t * storage, const benchtable_table_block_allocator_t * from )
 {
     uintptr_t raw;
     storage->allocator = *from;
@@ -493,7 +493,7 @@ static SCHEMA_UNUSED int table_stat_block_storage_create( TableStatBlockStorage 
     return 1;
 }
 
-static SCHEMA_UNUSED void table_stat_block_storage_destroy( TableStatBlockStorage * storage )
+static SCHEMA_UNUSED void benchtable_table_stat_block_storage_destroy( benchtable_table_stat_block_storage_t * storage )
 {
     if ( storage->allocation != NULL ) { storage->allocator.free( storage->allocator.context, storage->allocation ); }
     storage->allocation = NULL;
@@ -503,14 +503,14 @@ static SCHEMA_UNUSED void table_stat_block_storage_destroy( TableStatBlockStorag
 /* The PROJECTION: a record like any other, following the same C ABI rule
    (§19.3) — its own offsets are part of the contract, not scaffolding
    around it. It opens with the generated PROLOGUE of three uint64s. */
-typedef struct TableStatBlockProjection
+typedef struct benchtable_table_stat_block_projection_t
 {
     uint64_t magic;         /* generated: identifies a schema block */
     uint64_t build_version; /* generated: the unit's build version (docs/SPEC-TABLES.md §20) */
     uint64_t byte_order;    /* generated: 1 little, 2 big — the producer stamps its own */
     uint32_t stat_id;
     int32_t delta;
-} TableStatBlockProjection;
+} benchtable_table_stat_block_projection_t;
 
 /* The block: one extent, 64-byte aligned at its base, the PROJECTION at
    offset 0 and then each out-of-line array in declaration order
@@ -520,34 +520,34 @@ typedef struct TableStatBlockProjection
    A block is valid until the next Begin on the SAME storage, which invalidates
    every block over it and every row pointer taken from one. Double-buffering
    is therefore two storages, and it is the caller's. */
-typedef struct TableStatBlock
+typedef struct benchtable_table_stat_block_t
 {
     uint8_t * base;                    /* the extent's base, 64-byte aligned */
-    TableStatBlockProjection * projection;    /* the projection, at offset 0 */
+    benchtable_table_stat_block_projection_t * projection;    /* the projection, at offset 0 */
     int64_t bytes;                     /* the extent in use */
-} TableStatBlock;
+} benchtable_table_stat_block_t;
 
-typedef struct TableStatBlockConst { const uint8_t * base; const TableStatBlockProjection * projection; int64_t bytes; } TableStatBlockConst;
-static SCHEMA_UNUSED int64_t table_stat_block_bytes_const(const TableStatBlockConst * block) { return block->bytes; }
+typedef struct benchtable_table_stat_block_const_t { const uint8_t * base; const benchtable_table_stat_block_projection_t * projection; int64_t bytes; } benchtable_table_stat_block_const_t;
+static SCHEMA_UNUSED int64_t benchtable_table_stat_block_bytes_const(const benchtable_table_stat_block_const_t * block) { return block->bytes; }
 /* this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant
    data, defined in the .c beside this header. A consumer holding this reads
    the triples out of an instance and points at rows, with no hand-written
    struct per table. */
-extern const TableBlockInfo schema_benchtable_table_stat_block_info_;
-static SCHEMA_UNUSED const TableBlockInfo * table_stat_block_type( void ) { return &schema_benchtable_table_stat_block_info_; }
+extern const benchtable_table_block_info_t schema_benchtable_table_stat_block_info_;
+static SCHEMA_UNUSED const benchtable_table_block_info_t * benchtable_table_stat_block_type( void ) { return &schema_benchtable_table_stat_block_info_; }
 
 /* The LAYOUT CONTRACT (docs/SPEC-TABLES.md §19.3). The compiler derived every
    number below from the declaration; these assertions are this compiler saying
    whether it agrees. Neither side's layout is inferred from the other's —
    both are checked against their own compiler's model, which is the only way
    a two-language contract can be held by a compiler that generates both. */
-SCHEMA_TABLE_STATIC_ASSERT( TableStat_triple_size, sizeof( TableBlockTriple ) == 16, "a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableStat_triple_members, offsetof( TableBlockTriple, offset_of ) == 0 && offsetof( TableBlockTriple, count ) == 8 && offsetof( TableBlockTriple, stride ) == 12, "a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableStat_projection_size, sizeof( TableStatBlockProjection ) == 32, "TableStat's block projection sizeof moved: the other backends assert 32 for the same declaration (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableStat_projection_align, SCHEMA_TABLE_ALIGNOF( TableStatBlockProjection ) == 8, "TableStat's block projection alignof moved (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableStat_prologue, offsetof( TableStatBlockProjection, magic ) == 0 && offsetof( TableStatBlockProjection, build_version ) == 8 && offsetof( TableStatBlockProjection, byte_order ) == 16, "the block prologue is magic at 0, build_version at 8, byte_order at 16 (docs/SPEC-TABLES.md §19.1, §20)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableStat_projection_stat_id, offsetof( TableStatBlockProjection, stat_id ) == 24, "TableStat's projection field stat_id moved: the other backends assert 24 (docs/SPEC-TABLES.md §19.3)" );
-SCHEMA_TABLE_STATIC_ASSERT( TableStat_projection_delta, offsetof( TableStatBlockProjection, delta ) == 28, "TableStat's projection field delta moved: the other backends assert 28 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_triple_size, sizeof( benchtable_table_block_triple_t ) == 16, "a triple is sixteen bytes with no interior padding (docs/SPEC-TABLES.md §2.7)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_triple_members, offsetof( benchtable_table_block_triple_t, offset_of ) == 0 && offsetof( benchtable_table_block_triple_t, count ) == 8 && offsetof( benchtable_table_block_triple_t, stride ) == 12, "a triple's members sit at 0/8/12 (docs/SPEC-TABLES.md §2.7)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_projection_size, sizeof( benchtable_table_stat_block_projection_t ) == 32, "TableStat's block projection sizeof moved: the other backends assert 32 for the same declaration (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_projection_align, SCHEMA_TABLE_ALIGNOF( benchtable_table_stat_block_projection_t ) == 8, "TableStat's block projection alignof moved (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_prologue, offsetof( benchtable_table_stat_block_projection_t, magic ) == 0 && offsetof( benchtable_table_stat_block_projection_t, build_version ) == 8 && offsetof( benchtable_table_stat_block_projection_t, byte_order ) == 16, "the block prologue is magic at 0, build_version at 8, byte_order at 16 (docs/SPEC-TABLES.md §19.1, §20)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_projection_stat_id, offsetof( benchtable_table_stat_block_projection_t, stat_id ) == 24, "TableStat's projection field stat_id moved: the other backends assert 24 (docs/SPEC-TABLES.md §19.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_projection_delta, offsetof( benchtable_table_stat_block_projection_t, delta ) == 28, "TableStat's projection field delta moved: the other backends assert 28 (docs/SPEC-TABLES.md §19.3)" );
 
 /* ---- block fill path: begin ----
    THE MULTI-THREADED FILL IS AN OBLIGATION ON THIS BACKEND, not a permission
@@ -567,18 +567,18 @@ SCHEMA_TABLE_STATIC_ASSERT( TableStat_projection_delta, offsetof( TableStatBlock
 
    Begin and BlockBytes are SINGLE-THREADED: call Begin before the workers and
    BlockBytes after they join (§19.1). `refusal` may be NULL. */
-static SCHEMA_UNUSED int table_stat_block_begin( TableStatBlock * block, TableStatBlockStorage * storage, const TableStatCounts * counts, TableBlockRefusal * refusal )
+static SCHEMA_UNUSED int benchtable_table_stat_block_begin( benchtable_table_stat_block_t * block, benchtable_table_stat_block_storage_t * storage, const benchtable_table_stat_counts_t * counts, benchtable_table_block_refusal_t * refusal )
 {
     int64_t offset;
     (void) counts; (void) refusal; /* no out-of-line array: no count to refuse */
     if ( storage->base == NULL ) { return 0; } /* Create was not called, or the allocator refused */
     block->base = storage->base;
-    block->projection = (TableStatBlockProjection *) (void *) storage->base;
-    block->projection->magic = table_block_magic;
+    block->projection = (benchtable_table_stat_block_projection_t *) (void *) storage->base;
+    block->projection->magic = benchtable_table_block_magic;
     block->projection->build_version = SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE;
-    block->projection->byte_order = table_block_byte_order;
+    block->projection->byte_order = benchtable_table_block_byte_order;
     offset = 32; /* sizeof the projection */
-    block->bytes = table_block_align( offset, 64 );
+    block->bytes = benchtable_table_block_align( offset, 64 );
     return 1;
 }
 
@@ -588,11 +588,11 @@ static SCHEMA_UNUSED int table_stat_block_begin( TableStatBlock * block, TableSt
    to the maxima. The tail — the bytes between the last row and the rounding —
    is UNSPECIFIED, because zeroing megabytes per frame is the cost this form
    exists to avoid. */
-static SCHEMA_UNUSED int64_t table_stat_block_bytes( const TableStatBlock * block )
+static SCHEMA_UNUSED int64_t benchtable_table_stat_block_bytes( const benchtable_table_stat_block_t * block )
 {
     int64_t used = 32;
     (void) block; /* no out-of-line array: the extent is the projection's own */
-    return table_block_align( used, 64 );
+    return benchtable_table_block_align( used, 64 );
 }
 
 /* ---- block fill path: end ---- */
@@ -612,19 +612,19 @@ static SCHEMA_UNUSED int64_t table_stat_block_bytes( const TableStatBlock * bloc
    and ship together — so a consumer older than its producer is not a case. A
    mismatch is a refusal; regenerate both sides. Data that must outlive the
    build that wrote it takes the wire (§3), which this same table still has. */
-int schema_benchtable_table_stat_block_open_( TableStatBlock * block, void * base, int64_t bytes );
-static SCHEMA_UNUSED int table_stat_block_open( TableStatBlock * block, void * base, int64_t bytes )
+int schema_benchtable_table_stat_block_open_( benchtable_table_stat_block_t * block, void * base, int64_t bytes );
+static SCHEMA_UNUSED int benchtable_table_stat_block_open( benchtable_table_stat_block_t * block, void * base, int64_t bytes )
 {
     return schema_benchtable_table_stat_block_open_( block, base, bytes );
 }
 
-int schema_benchtable_table_stat_block_open_ex_(TableStatBlock * block,void * base,int64_t bytes,TableRefuseReason * reason);
-static SCHEMA_UNUSED int table_stat_block_open_ex(TableStatBlock * block,void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_stat_block_open_ex_(benchtable_table_stat_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
+static SCHEMA_UNUSED int benchtable_table_stat_block_open_ex(benchtable_table_stat_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 { return schema_benchtable_table_stat_block_open_ex_(block,base,bytes,reason); }
-int schema_benchtable_table_stat_block_open_const_ex_(TableStatBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason);
-static SCHEMA_UNUSED int table_stat_block_open_const_ex(TableStatBlockConst * block,const void * base,int64_t bytes,TableRefuseReason * reason)
+int schema_benchtable_table_stat_block_open_const_ex_(benchtable_table_stat_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
+static SCHEMA_UNUSED int benchtable_table_stat_block_open_const_ex(benchtable_table_stat_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
 { return schema_benchtable_table_stat_block_open_const_ex_(block,base,bytes,reason); }
-static SCHEMA_UNUSED int table_stat_block_open_const(TableStatBlockConst * block,const void * base,int64_t bytes)
+static SCHEMA_UNUSED int benchtable_table_stat_block_open_const(benchtable_table_stat_block_const_t * block,const void * base,int64_t bytes)
 { return schema_benchtable_table_stat_block_open_const_ex_(block,base,bytes,NULL); }
 /* ---- the block form of table TableStat: end ---- */
 

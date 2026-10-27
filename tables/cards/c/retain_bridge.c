@@ -9,18 +9,18 @@
 
 #include "CardTable.c"
 
-const Card *cards_retain_load(uint8_t *region, int64_t region_bytes,
+const cards_card_t *cards_retain_load(uint8_t *region, int64_t region_bytes,
                               const uint8_t *wire, int64_t wire_bytes,
-                              TableRetain *retain, TableReport *report) {
-    return card_load_retain(region, region_bytes, wire, wire_bytes, retain,
+                              cards_table_retain_t *retain, cards_table_report_t *report) {
+    return cards_card_load_retain(region, region_bytes, wire, wire_bytes, retain,
                             report);
 }
 
-int64_t cards_retain_measure(const Card *root, TableRetain *retain) {
-    return card_measure_retain(root, retain);
+int64_t cards_retain_measure(const cards_card_t *root, cards_table_retain_t *retain) {
+    return cards_card_measure_retain(root, retain);
 }
 
-int64_t cards_retain_save(const Card *root, TableRetain *retain, uint8_t *buffer,
-                          int64_t capacity, TableReport *report) {
-    return card_save_retain(root, retain, buffer, capacity, report);
+int64_t cards_retain_save(const cards_card_t *root, cards_table_retain_t *retain, uint8_t *buffer,
+                          int64_t capacity, cards_table_report_t *report) {
+    return cards_card_save_retain(root, retain, buffer, capacity, report);
 }

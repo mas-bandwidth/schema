@@ -3,6 +3,8 @@
 #include "lists/ReportTable.h"
 #include "lists/SaveTable.h"
 #include "lists/SharedTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE listdemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER LISTDEMO
 #include "unit.h"
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Save,save)
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Mixed,mixed)

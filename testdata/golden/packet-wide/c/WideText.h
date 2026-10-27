@@ -8,6 +8,10 @@
 #define SCHEMA_WIDE_WIDE_TEXT_H
 
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,43 +23,43 @@ extern "C" {
 
 
 /* type WideSeven */
-typedef struct WideSeven {
+typedef struct wide_wide_seven_t {
     uint16_t text[7 + 1]; /* UTF-16 code units, plus the read terminator (SPEC §4.12) */
     int32_t text_length;
-} WideSeven;
+} wide_wide_seven_t;
 
-#define WIDE_SEVEN_MAX_BITS 227   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_SEVEN_MAX_BYTES 32  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define WIDE_WIDE_SEVEN_MAX_BITS 227   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define WIDE_WIDE_SEVEN_MAX_BYTES 32  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type WideFour */
-typedef struct WideFour {
+typedef struct wide_wide_four_t {
     uint16_t text[4 + 1]; /* UTF-16 code units, plus the read terminator (SPEC §4.12) */
     int32_t text_length;
-} WideFour;
+} wide_wide_four_t;
 
-#define WIDE_FOUR_MAX_BITS 131   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_FOUR_MAX_BYTES 24
+#define WIDE_WIDE_FOUR_MAX_BITS 131   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define WIDE_WIDE_FOUR_MAX_BYTES 24
 
 
 /* type NarrowFifteen */
-typedef struct NarrowFifteen {
+typedef struct wide_narrow_fifteen_t {
     char text[15 + 1]; /* string(15): N + 1 for the terminator the wire does not carry */
     int32_t text_length;
-} NarrowFifteen;
+} wide_narrow_fifteen_t;
 
-#define NARROW_FIFTEEN_MAX_BITS 131   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define NARROW_FIFTEEN_MAX_BYTES 24
+#define WIDE_NARROW_FIFTEEN_MAX_BITS 131   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define WIDE_NARROW_FIFTEEN_MAX_BYTES 24
 
 
 /* type WideInterop */
-typedef struct WideInterop {
+typedef struct wide_wide_interop_t {
     uint16_t caption[7 + 1]; /* UTF-16 code units, plus the read terminator (SPEC §4.12) */
     int32_t caption_length;
-} WideInterop;
+} wide_wide_interop_t;
 
-#define WIDE_INTEROP_MAX_BITS 227   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_INTEROP_MAX_BYTES 32
+#define WIDE_WIDE_INTEROP_MAX_BITS 227   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define WIDE_WIDE_INTEROP_MAX_BYTES 32
 
 #ifdef __cplusplus
 }

@@ -10,14 +10,6 @@
 #include "Wire.h"
 #include <string.h>   /* memset, strlen */
 #include "serialize.h"
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "ConstantsWire.h"
 
 #ifdef __cplusplus
@@ -31,141 +23,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
-#ifndef SCHEMA_UTF8_VALID_DEFINED
-#define SCHEMA_UTF8_VALID_DEFINED
-/* string(N) refuses malformed UTF-8 on read in every build mode (SPEC §4.7).
-   Rejects truncated sequences, bare continuations, overlongs,
-   surrogates and code points past U+10FFFF. */
-static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )
-{
-    int32_t i = 0;
-    while ( i < length )
-    {
-        serialize_uint8_t lead = bytes[i];
-        int32_t continuations;
-        serialize_uint32_t code_point;
-        int32_t k;
-        if ( lead < 0x80 )
-        {
-            i++;
-            continue;
-        }
-        else if ( ( lead & 0xE0 ) == 0xC0 )
-        {
-            continuations = 1;
-            code_point = lead & 0x1F;
-        }
-        else if ( ( lead & 0xF0 ) == 0xE0 )
-        {
-            continuations = 2;
-            code_point = lead & 0x0F;
-        }
-        else if ( ( lead & 0xF8 ) == 0xF0 )
-        {
-            continuations = 3;
-            code_point = lead & 0x07;
-        }
-        else
-        {
-            return 0;
-        }
-        if ( continuations >= length - i )
-        {
-            return 0;
-        }
-        for ( k = 1; k <= continuations; k++ )
-        {
-            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )
-            {
-                return 0;
-            }
-            code_point = ( code_point << 6 ) | (serialize_uint32_t) ( bytes[i + k] & 0x3F );
-        }
-        if ( continuations == 1 && code_point < 0x80 )
-        {
-            return 0;
-        }
-        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) )
-        {
-            return 0;
-        }
-        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )
-        {
-            return 0;
-        }
-        i += 1 + continuations;
-    }
-    return 1;
-}
-#endif /* SCHEMA_UTF8_VALID_DEFINED */
-
-#ifndef SCHEMA_INTERIOR_NULL_DEFINED
-#define SCHEMA_INTERIOR_NULL_DEFINED
-/* string(N) carries bytes excluding 0x00: an interior null is content every
-   generated reader refuses (SPEC §4.7) — generated-code validation; no
-   serialize primitive performs it. The scan is word-wise: eight bytes per
-   step under the zero-byte idiom, and a payload of eight bytes or more
-   re-tests its final eight bytes as one whole (overlapping) word, so every
-   load stays inside the payload the stream already delivered. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const serialize_uint8_t * bytes, int32_t length )
-{
-    serialize_uint64_t word;
-    int32_t i = 0;
-    if ( length >= 8 )
-    {
-        for ( ; i <= length - 8; i += 8 )
-        {
-            memcpy( &word, bytes + i, 8 );
-            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
-            {
-                return 1;
-            }
-        }
-        if ( i < length )
-        {
-            memcpy( &word, bytes + length - 8, 8 );
-            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
-            {
-                return 1;
-            }
-        }
-        return 0;
-    }
-    for ( ; i < length; i++ )
-    {
-        if ( bytes[i] == 0 )
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-#endif /* SCHEMA_INTERIOR_NULL_DEFINED */
-
 /* Writes ProbeHeader. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_header( serialize_write_stream_t * stream, const ProbeHeader * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_header( serialize_write_stream_t * stream, const example_probe_header_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) 171ULL, 8 ) /* const(171, 8) — SPEC §4.3 */ )
     {
@@ -191,7 +50,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_header( serialize_wri
 }
 
 /* Reads ProbeHeader. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_header( serialize_read_stream_t * stream, ProbeHeader * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_header( serialize_read_stream_t * stream, example_probe_header_t * value )
 {
     {
         serialize_uint32_t const_value = 0;
@@ -239,7 +98,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_header( serialize_read_
 }
 
 /* Writes ProbeBits. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_bits( serialize_write_stream_t * stream, const ProbeBits * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_bits( serialize_write_stream_t * stream, const example_probe_bits_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->small, 9 ) )
     {
@@ -286,7 +145,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_bits( serialize_write
 }
 
 /* Reads ProbeBits. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_bits( serialize_read_stream_t * stream, ProbeBits * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_bits( serialize_read_stream_t * stream, example_probe_bits_t * value )
 {
     /* fixed 202-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 202 )
@@ -357,7 +216,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_bits( serialize_read_st
 }
 
 /* Writes ProbeSample. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_write_stream_t * stream, const ProbeSample * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_sample( serialize_write_stream_t * stream, const example_probe_sample_t * value )
 {
     if ( !serialize_write_bool( stream, value->active ) )
     {
@@ -377,7 +236,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_wri
     }
     if ( value->active )
     {
-        serialize_assert( value->weapon <= WEAPON_MAX );
+        serialize_assert( value->weapon <= EXAMPLE_WEAPON_MAX );
         if ( !serialize_write_bits( stream, (serialize_uint32_t) value->weapon, 4 ) )
         {
             return 0;
@@ -420,7 +279,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_sample( serialize_wri
 }
 
 /* Reads ProbeSample. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_stream_t * stream, ProbeSample * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_sample( serialize_read_stream_t * stream, example_probe_sample_t * value )
 {
     {
         int bool_value = 0;
@@ -458,7 +317,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_
             {
                 return 0;
             }
-            value->weapon = (Weapon) enum_value;
+            value->weapon = (example_weapon_t) enum_value;
         }
         {
             int bool_value = 0;
@@ -521,7 +380,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_sample( serialize_read_
 }
 
 /* Writes ProbeRing. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_ring( serialize_write_stream_t * stream, const ProbeRing * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_ring( serialize_write_stream_t * stream, const example_probe_ring_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->radius, 16 ) )
     {
@@ -531,7 +390,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_ring( serialize_write
 }
 
 /* Reads ProbeRing. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_ring( serialize_read_stream_t * stream, ProbeRing * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_ring( serialize_read_stream_t * stream, example_probe_ring_t * value )
 {
     /* fixed 16-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 16 )
@@ -551,7 +410,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_ring( serialize_read_st
 }
 
 /* Writes ProbeSlab. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_slab( serialize_write_stream_t * stream, const ProbeSlab * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_slab( serialize_write_stream_t * stream, const example_probe_slab_t * value )
 {
     serialize_assert( (serialize_int64_t) value->width <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->width ), 7 ) )
@@ -566,7 +425,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_slab( serialize_write
 }
 
 /* Reads ProbeSlab. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_slab( serialize_read_stream_t * stream, ProbeSlab * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_slab( serialize_read_stream_t * stream, example_probe_slab_t * value )
 {
     /* fixed 15-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 15 )
@@ -600,9 +459,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_slab( serialize_read_st
 }
 
 /* Writes ProbeShape. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_shape( serialize_write_stream_t * stream, const ProbeShape * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_shape( serialize_write_stream_t * stream, const example_probe_shape_t * value )
 {
-    serialize_assert( value->type <= PROBE_SHAPE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
+    serialize_assert( value->type <= EXAMPLE_PROBE_SHAPE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -610,16 +469,16 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_shape( serialize_writ
     switch ( value->type )
     {
         case 1:
-            return write_probe_ring( stream, &value->as.ring );
+            return example_write_probe_ring( stream, &value->as.ring );
         case 2:
-            return write_probe_slab( stream, &value->as.slab );
+            return example_write_probe_slab( stream, &value->as.slab );
         default:
             return 1; /* None — the tag is the whole wire (SPEC §4.8) */
     }
 }
 
 /* Reads ProbeShape. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_shape( serialize_read_stream_t * stream, ProbeShape * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_shape( serialize_read_stream_t * stream, example_probe_shape_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -627,37 +486,37 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_shape( serialize_read_s
         {
             return 0;
         }
-        if ( tag_value > PROBE_SHAPE_TYPE_MAX )
+        if ( tag_value > EXAMPLE_PROBE_SHAPE_TYPE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
-        value->type = (ProbeShapeType) tag_value;
+        value->type = (example_probe_shape_type_t) tag_value;
     }
     switch ( value->type )
     {
         case 1:
             memset( &value->as.ring, 0, sizeof( value->as.ring ) );
-            return read_probe_ring( stream, &value->as.ring );
+            return example_read_probe_ring( stream, &value->as.ring );
         case 2:
             memset( &value->as.slab, 0, sizeof( value->as.slab ) );
-            return read_probe_slab( stream, &value->as.slab );
+            return example_read_probe_slab( stream, &value->as.slab );
         default:
             return 1; /* None */
     }
 }
 
 /* Writes ProbeCollider. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_collider( serialize_write_stream_t * stream, const ProbeCollider * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_collider( serialize_write_stream_t * stream, const example_probe_collider_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->armor, 8 ) )
     {
         return 0;
     }
-    if ( !write_probe_shape( stream, &value->shape ) )
+    if ( !example_write_probe_shape( stream, &value->shape ) )
     {
         return 0;
     }
-    if ( !write_probe_shape( stream, &value->backup ) )
+    if ( !example_write_probe_shape( stream, &value->backup ) )
     {
         return 0;
     }
@@ -670,7 +529,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_collider( serialize_w
         int32_t i;
         for ( i = 0; i < value->extras_count; i++ )
         {
-            if ( !write_probe_shape( stream, &value->extras[i] ) )
+            if ( !example_write_probe_shape( stream, &value->extras[i] ) )
             {
                 return 0;
             }
@@ -680,7 +539,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_collider( serialize_w
 }
 
 /* Reads ProbeCollider. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_collider( serialize_read_stream_t * stream, ProbeCollider * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_collider( serialize_read_stream_t * stream, example_probe_collider_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -690,11 +549,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_collider( serialize_rea
         }
         value->armor = (uint8_t) raw;
     }
-    if ( !read_probe_shape( stream, &value->shape ) )
+    if ( !example_read_probe_shape( stream, &value->shape ) )
     {
         return 0;
     }
-    if ( !read_probe_shape( stream, &value->backup ) )
+    if ( !example_read_probe_shape( stream, &value->backup ) )
     {
         return 0;
     }
@@ -706,7 +565,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_collider( serialize_rea
         int32_t i;
         for ( i = 0; i < value->extras_count; i++ )
         {
-            if ( !read_probe_shape( stream, &value->extras[i] ) )
+            if ( !example_read_probe_shape( stream, &value->extras[i] ) )
             {
                 return 0;
             }
@@ -716,13 +575,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_collider( serialize_rea
 }
 
 /* Writes ProbeConfig. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_config( serialize_write_stream_t * stream, const ProbeConfig * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_config( serialize_write_stream_t * stream, const example_probe_config_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->retries, 32 ) )
     {
         return 0;
     }
-    serialize_assert( value->preferred <= WEAPON_MAX );
+    serialize_assert( value->preferred <= EXAMPLE_WEAPON_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->preferred, 4 ) )
     {
         return 0;
@@ -731,7 +590,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_config( serialize_wri
 }
 
 /* Reads ProbeConfig. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_config( serialize_read_stream_t * stream, ProbeConfig * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_config( serialize_read_stream_t * stream, example_probe_config_t * value )
 {
     /* fixed 36-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 36 )
@@ -753,25 +612,25 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_config( serialize_read_
         {
             return 0;
         }
-        value->preferred = (Weapon) enum_value;
+        value->preferred = (example_weapon_t) enum_value;
     }
     return 1;
 }
 
 /* Writes ProbeArray. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_array( serialize_write_stream_t * stream, const ProbeArray * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_array( serialize_write_stream_t * stream, const example_probe_array_t * value )
 {
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
         {
-            if ( !write_probe_sample( stream, &value->samples[i] ) )
+            if ( !example_write_probe_sample( stream, &value->samples[i] ) )
             {
                 return 0;
             }
         }
     }
-    if ( !write_probe_config( stream, &value->config ) )
+    if ( !example_write_probe_config( stream, &value->config ) )
     {
         return 0;
     }
@@ -779,19 +638,19 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_array( serialize_writ
 }
 
 /* Reads ProbeArray. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_array( serialize_read_stream_t * stream, ProbeArray * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_array( serialize_read_stream_t * stream, example_probe_array_t * value )
 {
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
         {
-            if ( !read_probe_sample( stream, &value->samples[i] ) )
+            if ( !example_read_probe_sample( stream, &value->samples[i] ) )
             {
                 return 0;
             }
         }
     }
-    if ( !read_probe_config( stream, &value->config ) )
+    if ( !example_read_probe_config( stream, &value->config ) )
     {
         return 0;
     }
@@ -799,7 +658,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_array( serialize_read_s
 }
 
 /* Writes Heartbeat. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_heartbeat( serialize_write_stream_t * stream, const Heartbeat * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_heartbeat( serialize_write_stream_t * stream, const example_heartbeat_t * value )
 {
     (void) stream;
     (void) value;
@@ -807,7 +666,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_heartbeat( serialize_write_
 }
 
 /* Reads Heartbeat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_heartbeat( serialize_read_stream_t * stream, Heartbeat * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_heartbeat( serialize_read_stream_t * stream, example_heartbeat_t * value )
 {
     (void) stream;
     (void) value;
@@ -815,7 +674,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_heartbeat( serialize_read_str
 }
 
 /* Writes Test. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_stream_t * stream, const Test * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test( serialize_write_stream_t * stream, const example_test_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->test_a, 16 ) )
     {
@@ -840,7 +699,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test( serialize_write_strea
 }
 
 /* Reads Test. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t * stream, Test * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test( serialize_read_stream_t * stream, example_test_t * value )
 {
     /* fixed 46-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 46 )
@@ -902,9 +761,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test( serialize_read_stream_t
 }
 
 /* Writes Block. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stream_t * stream, const Block * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_block( serialize_write_stream_t * stream, const example_block_t * value )
 {
-    if ( !serialize_write_int( stream, value->data_length, 0, MAX_BLOCK_SIZE ) )
+    if ( !serialize_write_int( stream, value->data_length, 0, EXAMPLE_MAX_BLOCK_SIZE ) )
     {
         return 0;
     }
@@ -916,9 +775,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_block( serialize_write_stre
 }
 
 /* Reads Block. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_t * stream, Block * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_block( serialize_read_stream_t * stream, example_block_t * value )
 {
-    if ( !serialize_read_int( stream, &value->data_length, 0, MAX_BLOCK_SIZE ) )
+    if ( !serialize_read_int( stream, &value->data_length, 0, EXAMPLE_MAX_BLOCK_SIZE ) )
     {
         return 0;
     }
@@ -930,7 +789,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_block( serialize_read_stream_
 }
 
 /* Writes Chat. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_stream_t * stream, const Chat * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_chat( serialize_write_stream_t * stream, const example_chat_t * value )
 {
     {
         int32_t i;
@@ -939,7 +798,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_strea
             serialize_assert( value->text[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
     }
-    if ( !serialize_write_int( stream, value->text_length, 0, MAX_CHAT_LENGTH ) )
+    if ( !serialize_write_int( stream, value->text_length, 0, EXAMPLE_MAX_CHAT_LENGTH ) )
     {
         return 0;
     }
@@ -951,9 +810,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_chat( serialize_write_strea
 }
 
 /* Reads Chat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t * stream, Chat * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_chat( serialize_read_stream_t * stream, example_chat_t * value )
 {
-    if ( !serialize_read_int( stream, &value->text_length, 0, MAX_CHAT_LENGTH ) )
+    if ( !serialize_read_int( stream, &value->text_length, 0, EXAMPLE_MAX_CHAT_LENGTH ) )
     {
         return 0;
     }
@@ -961,11 +820,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t
     {
         return 0;
     }
-    if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    if ( !schema_utf8_valid_( (const uint8_t *) value->text, value->text_length ) )
     {
         return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
-    if ( schema_interior_null_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    if ( schema_interior_null_( (const uint8_t *) value->text, value->text_length ) )
     {
         return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
@@ -974,9 +833,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_chat( serialize_read_stream_t
 }
 
 /* Writes ProbeReport. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_report( serialize_write_stream_t * stream, const ProbeReport * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_probe_report( serialize_write_stream_t * stream, const example_probe_report_t * value )
 {
-    if ( !write_probe_header( stream, &value->header ) )
+    if ( !example_write_probe_header( stream, &value->header ) )
     {
         return 0;
     }
@@ -985,7 +844,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_report( serialize_wri
     {
         return 0;
     }
-    if ( !write_test( stream, &value->echo ) )
+    if ( !example_write_test( stream, &value->echo ) )
     {
         return 0;
     }
@@ -993,9 +852,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_probe_report( serialize_wri
 }
 
 /* Reads ProbeReport. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_report( serialize_read_stream_t * stream, ProbeReport * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_probe_report( serialize_read_stream_t * stream, example_probe_report_t * value )
 {
-    if ( !read_probe_header( stream, &value->header ) )
+    if ( !example_read_probe_header( stream, &value->header ) )
     {
         return 0;
     }
@@ -1005,9 +864,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_report( serialize_read_
         {
             return 0;
         }
-        value->flags = (ProbeFlags) flags_value;
+        value->flags = (example_probe_flags_t) flags_value;
     }
-    if ( !read_test( stream, &value->echo ) )
+    if ( !example_read_test( stream, &value->echo ) )
     {
         return 0;
     }
@@ -1015,7 +874,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_probe_report( serialize_read_
 }
 
 /* Writes TestData. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_stream_t * stream, const TestData * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_test_data( serialize_write_stream_t * stream, const example_test_data_t * value )
 {
     serialize_assert( (serialize_int64_t) value->a >= -100 && (serialize_int64_t) value->a <= 100 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->a - (serialize_uint32_t) ( -100 ), 8 ) )
@@ -1143,7 +1002,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_test_data( serialize_write_
 }
 
 /* Reads TestData. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_stream_t * stream, TestData * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_test_data( serialize_read_stream_t * stream, example_test_data_t * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -1342,11 +1201,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
     {
         return 0;
     }
-    if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    if ( !schema_utf8_valid_( (const uint8_t *) value->text, value->text_length ) )
     {
         return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
-    if ( schema_interior_null_( (const serialize_uint8_t *) value->text, value->text_length ) )
+    if ( schema_interior_null_( (const uint8_t *) value->text, value->text_length ) )
     {
         return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
     }
@@ -1355,7 +1214,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_test_data( serialize_read_str
 }
 
 /* Writes CompressedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_compressed_probe( serialize_write_stream_t * stream, const CompressedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_compressed_probe( serialize_write_stream_t * stream, const example_compressed_probe_t * value )
 {
     if ( !serialize_write_compressed_float_precomputed( stream, value->boundary, 1000u, 10, 10.0f, 0.0f ) )
     {
@@ -1369,7 +1228,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_compressed_probe( serialize
 }
 
 /* Reads CompressedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_compressed_probe( serialize_read_stream_t * stream, CompressedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_compressed_probe( serialize_read_stream_t * stream, example_compressed_probe_t * value )
 {
     /* fixed 24-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 24 )

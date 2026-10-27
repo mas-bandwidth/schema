@@ -12,9 +12,9 @@
 
    THIS IS THE FX1 READER ON A FILE BUILT AROUND FX2'S LAYOUT, which is what
    the reference does too (its `good` is written by tblfx2 and read by tblfx1).
-   C has no namespace, so the two generations cannot share a translation unit
-   (fixedform.h says why): the FX2 bytes arrive as a parameter, exactly as they
-   do for fixed_fx1_read_fx2.
+   The FX2 bytes arrive as a parameter, exactly as they do for
+   fixed_fx1_read_fx2, one translation unit per generation as fixedform.h
+   lays the leg out.
 
    The file is the HEADER (docs/SPEC-TABLES.md §3: the form byte, seven
    reserved zero bytes, the layout hash at 8, the body at 16), then `u32 layout
@@ -40,7 +40,7 @@
 /* the plan storage the caller owns; no layout below ever gets as far as
    compiling, which is the point — a refusal costs no plan */
 #define PlanCapacity 1024
-static TableFixedEntry g_plan[PlanCapacity];
+static tblfx1_table_fixed_entry_t g_plan[PlanCapacity];
 
 /* THIS LEG ALLOCATES NOTHING, HERE LEAST OF ALL. fixedform_main.c holds its
    own bytes in a static g_buffer and so does every translation unit beside
@@ -51,10 +51,10 @@ static uint8_t g_broken[BrokenBytes];
 
 #define DeepEntries 4097u
 #define DeepLayoutBytes ( 4u + DeepEntries * 17u )
-#define DeepFileBytes ( (size_t) kTableFixedHeaderBytes + 4u + DeepLayoutBytes )
+#define DeepFileBytes ( (size_t) TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4u + DeepLayoutBytes )
 static uint8_t g_deep[DeepFileBytes];
 
-#define LayoutAt ( (size_t) kTableFixedHeaderBytes + 4u )
+#define LayoutAt ( (size_t) TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4u )
 #define Entry0At ( LayoutAt + 4u )
 
 static uint8_t * entry_at( uint8_t * f, size_t k ) { return f + Entry0At + k * 17u; }
@@ -64,10 +64,10 @@ static uint8_t * entry_at( uint8_t * f, size_t k ) { return f + Entry0At + k * 1
 static void put_entry( uint8_t * f, size_t k, uint64_t id, uint8_t kind, uint32_t size, uint32_t children )
 {
     uint8_t * e = entry_at( f, k );
-    table_fixed_put64( e, id );
+    tblfx1_table_fixed_put64( e, id );
     e[8] = kind;
-    table_fixed_put32( e + 9, size );
-    table_fixed_put32( e + 13, children );
+    tblfx1_table_fixed_put32( e + 9, size );
+    tblfx1_table_fixed_put32( e + 13, children );
 }
 
 /* THE FILE AROUND A HAND-BUILT LAYOUT: the form byte, the layout's length, the
@@ -79,20 +79,20 @@ static int64_t hand_built( uint8_t * f, uint32_t entries )
 {
     const uint32_t layout_bytes = 4u + entries * 17u;
     f[0] = 3; /* the fixed form's byte */
-    table_fixed_put32( f + LayoutAt, entries );
-    table_fixed_put32( f + kTableFixedHeaderBytes, layout_bytes );
-    table_fixed_put64( f + kTableFixedHashAt, table_fixed_hash_of( f + LayoutAt, (int64_t) layout_bytes ) );
-    return (int64_t) kTableFixedHeaderBytes + 4 + (int64_t) layout_bytes;
+    tblfx1_table_fixed_put32( f + LayoutAt, entries );
+    tblfx1_table_fixed_put32( f + TBLFX1_K_TABLE_FIXED_HEADER_BYTES, layout_bytes );
+    tblfx1_table_fixed_put64( f + TBLFX1_K_TABLE_FIXED_HASH_AT, tblfx1_table_fixed_hash_of( f + LayoutAt, (int64_t) layout_bytes ) );
+    return (int64_t) TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) layout_bytes;
 }
 
 static void refuses( const uint8_t * broken, int64_t bytes, int want, const char * what )
 {
-    FxRoot v;
-    TableReport r;
+    tblfx1_fx_root_t v;
+    tblfx1_table_report_t r;
     int64_t n;
-    fx_root_reset( &v );
+    tblfx1_fx_root_reset( &v );
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &v, 1, broken, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load( &v, 1, broken, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n < 0 && r.refused && r.reason == want, what );
     /* NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
        record would be the damage the refusal exists to prevent. */
@@ -109,11 +109,11 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
     /* THE NEGATIVE CONTROL, FIRST: the UNBROKEN file READS, so every refusal
        below is the ONE break and not the file. */
     {
-        FxRoot v;
-        TableReport r;
-        fx_root_reset( &v );
+        tblfx1_fx_root_t v;
+        tblfx1_table_report_t r;
+        tblfx1_fx_root_reset( &v );
         memset( &r, 0, sizeof( r ) );
-        fixed_check( fx_root_fixed_load( &v, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1 && !r.refused,
+        fixed_check( tblfx1_fx_root_fixed_load( &v, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1 && !r.refused,
                      "C layout validation: the unbroken file reads, so the breaks below are the breaks" );
     }
 
@@ -121,16 +121,16 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
     {
         uint32_t count;
         memcpy( g_broken, data, (size_t) bytes );
-        count = table_fixed_get32( g_broken + LayoutAt );
-        table_fixed_put32( g_broken + LayoutAt, count + 1u );
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_COUNT_MISMATCH,
+        count = tblfx1_table_fixed_get32( g_broken + LayoutAt );
+        tblfx1_table_fixed_put32( g_broken + LayoutAt, count + 1u );
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_COUNT_MISMATCH,
                  "RULE: the entry count fits the layout length exactly" );
     }
     {
         /* a count of ZERO is not a layout either: there is no root to walk */
         memcpy( g_broken, data, (size_t) bytes );
-        table_fixed_put32( g_broken + LayoutAt, 0u );
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_COUNT_MISMATCH,
+        tblfx1_table_fixed_put32( g_broken + LayoutAt, 0u );
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_COUNT_MISMATCH,
                  "RULE: an entry count of zero is not a layout" );
     }
 
@@ -140,7 +140,7 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
     {
         memcpy( g_broken, data, (size_t) bytes );
         entry_at( g_broken, 1 )[8] = 200; /* a kind no form byte this build carries defines */
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN,
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_KIND_UNKNOWN,
                  "RULE: a kind outside the closed set is REFUSED, not skipped" );
     }
 
@@ -148,7 +148,7 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
     {
         memcpy( g_broken, data, (size_t) bytes );
         entry_at( g_broken, 0 )[8] = 14; /* an array as the root of a record */
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_KIND_INVALID,
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_KIND_INVALID,
                  "RULE: the root entry is a TABLE" );
     }
 
@@ -158,19 +158,19 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
           8, size 4, no children. */
     {
         memcpy( g_broken, data, (size_t) bytes );
-        fixed_check( entry_at( g_broken, 1 )[8] == 8 && table_fixed_get32( entry_at( g_broken, 1 ) + 9 ) == 4u,
+        fixed_check( entry_at( g_broken, 1 )[8] == 8 && tblfx1_table_fixed_get32( entry_at( g_broken, 1 ) + 9 ) == 4u,
                      "C layout validation: entry 1 really is a four-byte uint32 leaf" );
-        table_fixed_put32( entry_at( g_broken, 1 ) + 9, 5u ); /* a uint32 leaf in five bytes */
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH,
+        tblfx1_table_fixed_put32( entry_at( g_broken, 1 ) + 9, 5u ); /* a uint32 leaf in five bytes */
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_SIZE_MISMATCH,
                  "RULE: a constant size its kind does not admit" );
     }
     {
         /* and a TABLE's size is the SUM of its children's, not a number of its own */
         uint32_t body;
         memcpy( g_broken, data, (size_t) bytes );
-        body = table_fixed_get32( entry_at( g_broken, 0 ) + 9 );
-        table_fixed_put32( entry_at( g_broken, 0 ) + 9, body + 4u );
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH,
+        body = tblfx1_table_fixed_get32( entry_at( g_broken, 0 ) + 9 );
+        tblfx1_table_fixed_put32( entry_at( g_broken, 0 ) + 9, body + 4u );
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_SIZE_MISMATCH,
                  "RULE: a table's size is the sum of its fields'" );
     }
 
@@ -178,9 +178,9 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
     {
         uint32_t kids;
         memcpy( g_broken, data, (size_t) bytes );
-        kids = table_fixed_get32( entry_at( g_broken, 0 ) + 13 );
-        table_fixed_put32( entry_at( g_broken, 0 ) + 13, kids + 1u );
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED,
+        kids = tblfx1_table_fixed_get32( entry_at( g_broken, 0 ) + 13 );
+        tblfx1_table_fixed_put32( entry_at( g_broken, 0 ) + 13, kids + 1u );
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_TREE_UNCLOSED,
                  "RULE: the tree runs out of layout" );
     }
     {
@@ -197,15 +197,15 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
         put_entry( g_broken, 2, 3u, 32u, 0u, 0u );
         put_entry( g_broken, 3, 4u, 32u, 0u, 0u );
         total = hand_built( g_broken, 4u );
-        refuses( g_broken, total, SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED,
+        refuses( g_broken, total, SCHEMA_TBLFX1_TABLE_LAYOUT_TREE_UNCLOSED,
                  "RULE: the layout outlasts the tree" );
     }
 
     /* 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW */
     {
         memcpy( g_broken, data, (size_t) bytes );
-        table_fixed_put32( entry_at( g_broken, 0 ) + 9, 65537u );
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE,
+        tblfx1_table_fixed_put32( entry_at( g_broken, 0 ) + 9, 65537u );
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_RECORD_TOO_LARGE,
                  "RULE: a record size past 65536" );
     }
     {
@@ -213,8 +213,8 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
            precisely so a u32 that overflows is CAUGHT rather than wrapped into
            a small number that then agrees with a parent. */
         memcpy( g_broken, data, (size_t) bytes );
-        table_fixed_put32( entry_at( g_broken, 1 ) + 9, 0xFFFFFFFFu );
-        refuses( g_broken, bytes, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE,
+        tblfx1_table_fixed_put32( entry_at( g_broken, 1 ) + 9, 0xFFFFFFFFu );
+        refuses( g_broken, bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_RECORD_TOO_LARGE,
                  "RULE: a size that would overflow the sum" );
     }
 
@@ -234,7 +234,7 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
         }
         put_entry( g_deep, depth, 2u, 1u, 1u, 0u ); /* a bool at the bottom */
         total = hand_built( g_deep, depth + 1u );
-        refuses( g_deep, total, SCHEMA_TABLE_LAYOUT_TOO_DEEP,
+        refuses( g_deep, total, SCHEMA_TBLFX1_TABLE_LAYOUT_TOO_DEEP,
                  "RULE: a nesting depth past the walk's own bound" );
     }
 
@@ -245,10 +245,10 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
         const uint32_t layout_bytes = 2u;
         memset( g_broken, 0, LayoutAt + layout_bytes );
         g_broken[0] = 3;
-        table_fixed_put32( g_broken + kTableFixedHeaderBytes, layout_bytes );
-        table_fixed_put64( g_broken + kTableFixedHashAt,
-                           table_fixed_hash_of( g_broken + LayoutAt, (int64_t) layout_bytes ) );
-        refuses( g_broken, (int64_t) LayoutAt + layout_bytes, SCHEMA_TABLE_LAYOUT_MALFORMED,
+        tblfx1_table_fixed_put32( g_broken + TBLFX1_K_TABLE_FIXED_HEADER_BYTES, layout_bytes );
+        tblfx1_table_fixed_put64( g_broken + TBLFX1_K_TABLE_FIXED_HASH_AT,
+                           tblfx1_table_fixed_hash_of( g_broken + LayoutAt, (int64_t) layout_bytes ) );
+        refuses( g_broken, (int64_t) LayoutAt + layout_bytes, SCHEMA_TBLFX1_TABLE_LAYOUT_MALFORMED,
                  "RULE: fewer bytes than a header is layout_malformed" );
     }
 }

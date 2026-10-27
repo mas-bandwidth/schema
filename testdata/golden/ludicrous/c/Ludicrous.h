@@ -9,16 +9,12 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
 #include "serialize.h"   /* serialize_int128_t: C has no 128-bit builtin */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,49 +24,49 @@ extern "C" {
    sides at the same id speak identical bits; there is no other versioning. */
 #define LUDICROUS_PROTOCOL_ID 0xf4a226f4166d919bULL
 
-#define MAX_WORLD_UNITS (30000)
+#define LUDICROUS_MAX_WORLD_UNITS (30000)
 
 /* enum DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3]
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t DriveMode;
-#define DRIVE_MODE_NONE 0
-#define DRIVE_MODE_CRUISE 1
-#define DRIVE_MODE_WARP 2
-#define DRIVE_MODE_LUDICROUS 3
-#define DRIVE_MODE_COUNT 3
-#define DRIVE_MODE_MAX 3
+typedef uint8_t ludicrous_drive_mode_t;
+#define LUDICROUS_DRIVE_MODE_NONE 0
+#define LUDICROUS_DRIVE_MODE_CRUISE 1
+#define LUDICROUS_DRIVE_MODE_WARP 2
+#define LUDICROUS_DRIVE_MODE_LUDICROUS 3
+#define LUDICROUS_DRIVE_MODE_COUNT 3
+#define LUDICROUS_DRIVE_MODE_MAX 3
 
 /* Debug/log name for any DriveMode value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_drive_mode( DriveMode value )
+static SCHEMA_UNUSED const char * ludicrous_enum_name_drive_mode( ludicrous_drive_mode_t value )
 {
     switch ( value )
     {
-        case DRIVE_MODE_NONE: return "None";
-        case DRIVE_MODE_CRUISE: return "Cruise";
-        case DRIVE_MODE_WARP: return "Warp";
-        case DRIVE_MODE_LUDICROUS: return "Ludicrous";
+        case LUDICROUS_DRIVE_MODE_NONE: return "None";
+        case LUDICROUS_DRIVE_MODE_CRUISE: return "Cruise";
+        case LUDICROUS_DRIVE_MODE_WARP: return "Warp";
+        case LUDICROUS_DRIVE_MODE_LUDICROUS: return "Ludicrous";
         default: return "???";
     }
 }
 
 
 /* type FixedProbe */
-typedef struct FixedProbe {
+typedef struct ludicrous_fixed_probe_t {
     int32_t angle;
     int64_t position;
     serialize_int128_t reach;
     int32_t ticks;
     int32_t samples[2];
-} FixedProbe;
+} ludicrous_fixed_probe_t;
 
-#define FIXED_PROBE_MAX_BITS 156   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_PROBE_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define LUDICROUS_FIXED_PROBE_MAX_BITS 156   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define LUDICROUS_FIXED_PROBE_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type UnsignedProbe */
-typedef struct UnsignedProbe {
+typedef struct ludicrous_unsigned_probe_t {
     uint32_t angle;
     uint64_t span;
     serialize_uint128_t reach;
@@ -78,17 +74,17 @@ typedef struct UnsignedProbe {
     uint32_t samples[2];
     uint32_t locked;
     uint8_t tail;
-} UnsignedProbe;
+} ludicrous_unsigned_probe_t;
 
-#define UNSIGNED_PROBE_MAX_BITS 196   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define UNSIGNED_PROBE_MAX_BYTES 32
+#define LUDICROUS_UNSIGNED_PROBE_MAX_BITS 196   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define LUDICROUS_UNSIGNED_PROBE_MAX_BYTES 32
 
 /* Returns a new UnsignedProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED UnsignedProbe new_unsigned_probe( void )
+static SCHEMA_UNUSED ludicrous_unsigned_probe_t ludicrous_new_unsigned_probe( void )
 {
-    UnsignedProbe value;
+    ludicrous_unsigned_probe_t value;
     memset( &value, 0, sizeof( value ) );
     value.locked = 196608;
     return value;
@@ -96,23 +92,23 @@ static SCHEMA_UNUSED UnsignedProbe new_unsigned_probe( void )
 
 
 /* type WideProbe */
-typedef struct WideProbe {
+typedef struct ludicrous_wide_probe_t {
     serialize_uint128_t entity_id;
     serialize_int128_t energy;
     serialize_int128_t flux;
     serialize_int128_t bias;
     serialize_uint128_t seed;
-} WideProbe;
+} ludicrous_wide_probe_t;
 
-#define WIDE_PROBE_MAX_BITS 403   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define WIDE_PROBE_MAX_BYTES 56
+#define LUDICROUS_WIDE_PROBE_MAX_BITS 403   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define LUDICROUS_WIDE_PROBE_MAX_BYTES 56
 
 /* Returns a new WideProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED WideProbe new_wide_probe( void )
+static SCHEMA_UNUSED ludicrous_wide_probe_t ludicrous_new_wide_probe( void )
 {
-    WideProbe value;
+    ludicrous_wide_probe_t value;
     memset( &value, 0, sizeof( value ) );
     value.bias = serialize_int128_from_int64( -250 );
     value.seed = serialize_uint128_make( 2ULL, 0ULL );
@@ -121,48 +117,48 @@ static SCHEMA_UNUSED WideProbe new_wide_probe( void )
 
 
 /* type LudicrousState */
-typedef struct LudicrousState {
-    DriveMode mode;
-    FixedProbe probe;
-    WideProbe wide;
+typedef struct ludicrous_ludicrous_state_t {
+    ludicrous_drive_mode_t mode;
+    ludicrous_fixed_probe_t probe;
+    ludicrous_wide_probe_t wide;
     serialize_uint128_t keys[4];
     int32_t keys_count;
     bool has_target;
     serialize_uint128_t target_id;
-} LudicrousState;
+} ludicrous_ludicrous_state_t;
 
-#define LUDICROUS_STATE_MAX_BITS 1205   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define LUDICROUS_STATE_MAX_BYTES 152
+#define LUDICROUS_LUDICROUS_STATE_MAX_BITS 1205   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define LUDICROUS_LUDICROUS_STATE_MAX_BYTES 152
 
 /* Returns a new LudicrousState with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED LudicrousState new_ludicrous_state( void )
+static SCHEMA_UNUSED ludicrous_ludicrous_state_t ludicrous_new_ludicrous_state( void )
 {
-    LudicrousState value;
+    ludicrous_ludicrous_state_t value;
     memset( &value, 0, sizeof( value ) );
-    value.wide = new_wide_probe();
+    value.wide = ludicrous_new_wide_probe();
     return value;
 }
 
 
 /* type DegenerateProbe */
-typedef struct DegenerateProbe {
+typedef struct ludicrous_degenerate_probe_t {
     int32_t locked_fixed;
     int32_t locked_int;
     serialize_int128_t locked_wide;
     uint8_t tail;
-} DegenerateProbe;
+} ludicrous_degenerate_probe_t;
 
-#define DEGENERATE_PROBE_MAX_BITS 8   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEGENERATE_PROBE_MAX_BYTES 8
+#define LUDICROUS_DEGENERATE_PROBE_MAX_BITS 8   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define LUDICROUS_DEGENERATE_PROBE_MAX_BYTES 8
 
 /* Returns a new DegenerateProbe with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED DegenerateProbe new_degenerate_probe( void )
+static SCHEMA_UNUSED ludicrous_degenerate_probe_t ludicrous_new_degenerate_probe( void )
 {
-    DegenerateProbe value;
+    ludicrous_degenerate_probe_t value;
     memset( &value, 0, sizeof( value ) );
     value.locked_fixed = -196608;
     value.locked_int = 7;
@@ -172,33 +168,33 @@ static SCHEMA_UNUSED DegenerateProbe new_degenerate_probe( void )
 
 
 /* type FixedVec */
-typedef struct FixedVec {
+typedef struct ludicrous_fixed_vec_t {
     int64_t x;
     int64_t y;
     int64_t z;
-} FixedVec;
+} ludicrous_fixed_vec_t;
 
-#define FIXED_VEC_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_VEC_MAX_BYTES 16
+#define LUDICROUS_FIXED_VEC_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define LUDICROUS_FIXED_VEC_MAX_BYTES 16
 
 
 /* type FixedQuat */
-typedef struct FixedQuat {
+typedef struct ludicrous_fixed_quat_t {
     int32_t x;
     int32_t y;
     int32_t z;
     int32_t w;
-} FixedQuat;
+} ludicrous_fixed_quat_t;
 
-#define FIXED_QUAT_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define FIXED_QUAT_MAX_BYTES 16
+#define LUDICROUS_FIXED_QUAT_MAX_BITS 128   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define LUDICROUS_FIXED_QUAT_MAX_BYTES 16
 
 /* Returns a new FixedQuat with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED FixedQuat new_fixed_quat( void )
+static SCHEMA_UNUSED ludicrous_fixed_quat_t ludicrous_new_fixed_quat( void )
 {
-    FixedQuat value;
+    ludicrous_fixed_quat_t value;
     memset( &value, 0, sizeof( value ) );
     value.w = 1073741824;
     return value;

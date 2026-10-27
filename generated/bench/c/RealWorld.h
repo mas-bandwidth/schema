@@ -9,15 +9,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,27 +28,27 @@ extern "C" {
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t PacketMode;
-#define PACKET_MODE_NONE 0
-#define PACKET_MODE_IDLE 1
-#define PACKET_MODE_ACTIVE 2
-#define PACKET_MODE_COMBAT 3
-#define PACKET_MODE_DOCKED 4
-#define PACKET_MODE_WARPING 5
-#define PACKET_MODE_COUNT 5
-#define PACKET_MODE_MAX 5
+typedef uint8_t realworld_packet_mode_t;
+#define REALWORLD_PACKET_MODE_NONE 0
+#define REALWORLD_PACKET_MODE_IDLE 1
+#define REALWORLD_PACKET_MODE_ACTIVE 2
+#define REALWORLD_PACKET_MODE_COMBAT 3
+#define REALWORLD_PACKET_MODE_DOCKED 4
+#define REALWORLD_PACKET_MODE_WARPING 5
+#define REALWORLD_PACKET_MODE_COUNT 5
+#define REALWORLD_PACKET_MODE_MAX 5
 
 /* Debug/log name for any PacketMode value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_packet_mode( PacketMode value )
+static SCHEMA_UNUSED const char * realworld_enum_name_packet_mode( realworld_packet_mode_t value )
 {
     switch ( value )
     {
-        case PACKET_MODE_NONE: return "None";
-        case PACKET_MODE_IDLE: return "Idle";
-        case PACKET_MODE_ACTIVE: return "Active";
-        case PACKET_MODE_COMBAT: return "Combat";
-        case PACKET_MODE_DOCKED: return "Docked";
-        case PACKET_MODE_WARPING: return "Warping";
+        case REALWORLD_PACKET_MODE_NONE: return "None";
+        case REALWORLD_PACKET_MODE_IDLE: return "Idle";
+        case REALWORLD_PACKET_MODE_ACTIVE: return "Active";
+        case REALWORLD_PACKET_MODE_COMBAT: return "Combat";
+        case REALWORLD_PACKET_MODE_DOCKED: return "Docked";
+        case REALWORLD_PACKET_MODE_WARPING: return "Warping";
         default: return "???";
     }
 }
@@ -60,16 +56,16 @@ static SCHEMA_UNUSED const char * enum_name_packet_mode( PacketMode value )
 
 /* flags PacketFlags — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 5 bits (SPEC §4.2) */
-typedef uint64_t PacketFlags;
-#define PACKET_FLAGS_SHIELDED (1ULL << 0)
-#define PACKET_FLAGS_CLOAKED (1ULL << 1)
-#define PACKET_FLAGS_OVERHEATED (1ULL << 2)
-#define PACKET_FLAGS_LOW_POWER (1ULL << 3)
-#define PACKET_FLAGS_JAMMING (1ULL << 4)
-#define PACKET_FLAGS_COUNT 5 /* the declared variant count (SPEC §4.2) */
+typedef uint64_t realworld_packet_flags_t;
+#define REALWORLD_PACKET_FLAGS_SHIELDED (1ULL << 0)
+#define REALWORLD_PACKET_FLAGS_CLOAKED (1ULL << 1)
+#define REALWORLD_PACKET_FLAGS_OVERHEATED (1ULL << 2)
+#define REALWORLD_PACKET_FLAGS_LOW_POWER (1ULL << 3)
+#define REALWORLD_PACKET_FLAGS_JAMMING (1ULL << 4)
+#define REALWORLD_PACKET_FLAGS_COUNT 5 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of PacketFlags — out-of-range bits name as "???". */
-static SCHEMA_UNUSED const char * flag_name_packet_flags( int bit )
+static SCHEMA_UNUSED const char * realworld_flag_name_packet_flags( int bit )
 {
     switch ( bit )
     {
@@ -82,66 +78,32 @@ static SCHEMA_UNUSED const char * flag_name_packet_flags( int bit )
     }
 }
 
-#ifndef SCHEMA_FLAG_APPEND_DEFINED
-#define SCHEMA_FLAG_APPEND_DEFINED
-static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )
-{
-    if ( position > 0 && position < buffer_size - 1 )
-    {
-        buffer[position++] = '|';
-    }
-    while ( *name && position < buffer_size - 1 )
-    {
-        buffer[position++] = *name++;
-    }
-    return position;
-}
-
-static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )
-{
-    int shift = 60;
-    position = schema_flag_append_( buffer, buffer_size, position, "0x" );
-    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
-    {
-        shift -= 4;
-    }
-    for ( ; shift >= 0; shift -= 4 )
-    {
-        if ( position < buffer_size - 1 )
-        {
-            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
-        }
-    }
-    return position;
-}
-#endif /* SCHEMA_FLAG_APPEND_DEFINED */
-
 /* Renders the set bits of value into buffer as "A|B" — "0" for the empty
    set, bits past the declared variants as hex — NUL-terminates and returns
    buffer; PACKET_FLAGS_NAMES_MAX bytes always suffice. */
-#define PACKET_FLAGS_NAMES_MAX 65
-static SCHEMA_UNUSED const char * flag_names_packet_flags( uint64_t value, char * buffer, int buffer_size )
+#define REALWORLD_PACKET_FLAGS_NAMES_MAX 65
+static SCHEMA_UNUSED const char * realworld_flag_names_packet_flags( uint64_t value, char * buffer, int buffer_size )
 {
     int position = 0;
     if ( value & ( 1ULL << 0 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 0 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, realworld_flag_name_packet_flags( 0 ) );
     }
     if ( value & ( 1ULL << 1 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 1 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, realworld_flag_name_packet_flags( 1 ) );
     }
     if ( value & ( 1ULL << 2 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 2 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, realworld_flag_name_packet_flags( 2 ) );
     }
     if ( value & ( 1ULL << 3 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 3 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, realworld_flag_name_packet_flags( 3 ) );
     }
     if ( value & ( 1ULL << 4 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_packet_flags( 4 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, realworld_flag_name_packet_flags( 4 ) );
     }
     if ( value >> 5 )
     {
@@ -160,7 +122,7 @@ static SCHEMA_UNUSED const char * flag_names_packet_flags( uint64_t value, char 
 
 
 /* type RealPacket */
-typedef struct RealPacket {
+typedef struct realworld_real_packet_t {
     int32_t f001_int;
     double f002_f64;
     int32_t f003_int;
@@ -196,7 +158,7 @@ typedef struct RealPacket {
     uint32_t f033_uint;
     uint16_t f034_uint;
     uint32_t f035_bits;
-    PacketMode f036_enum;
+    realworld_packet_mode_t f036_enum;
     bool f037_bool;
     bool f038_bool;
     uint32_t f039_bits;
@@ -243,7 +205,7 @@ typedef struct RealPacket {
     bool f080_bool;
     uint32_t f081_bits;
     uint32_t f082_bits;
-    PacketMode f083_enum;
+    realworld_packet_mode_t f083_enum;
     uint8_t f084_ufixed;
     uint32_t f085_bits;
     uint16_t f086_uint;
@@ -251,24 +213,24 @@ typedef struct RealPacket {
     int16_t f088_int;
     uint64_t f089_bits;
     uint8_t f090_uint;
-    PacketFlags f091_flags;
+    realworld_packet_flags_t f091_flags;
     bool f092_bool;
     uint64_t f093_bits;
     bool f094_bool;
     int32_t f095_fixed;
     uint32_t f096_bits;
     uint32_t f097_bits;
-} RealPacket;
+} realworld_real_packet_t;
 
-#define REAL_PACKET_MAX_BITS 1810   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define REAL_PACKET_MAX_BYTES 232  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define REALWORLD_REAL_PACKET_MAX_BITS 1810   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define REALWORLD_REAL_PACKET_MAX_BYTES 232  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a new RealPacket with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED RealPacket new_real_packet( void )
+static SCHEMA_UNUSED realworld_real_packet_t realworld_new_real_packet( void )
 {
-    RealPacket value;
+    realworld_real_packet_t value;
     memset( &value, 0, sizeof( value ) );
     value.f012_bool = true;
     value.f050_bool = true;

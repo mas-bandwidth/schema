@@ -111,12 +111,11 @@ build/schema_test_c_ludicrous: generated/c-ludicrous/.stamp test/c-ludicrous/mai
 # <Base>Table.h — one name, two languages — and a shared directory would have
 # them overwrite each other.
 #
-# UNIT PER DIRECTORY IS LOAD-BEARING HERE and not a convention: C has no
-# namespaces, so tblv1's Cfg and tblv2's Cfg are one struct name, and every
-# unit's Table header defines the same TableReport. Two units can be LINKED
-# together — the generated externals carry the package (internal/codegen/ctable's
-# `sym`) — but they cannot be INCLUDED into one translation unit, which is what
-# the conformance driver's file-per-unit shape is about.
+# UNIT PER DIRECTORY: every unit emits its own SchemaRuntime.h and its file
+# names collide across units (two Table headers of one base), so each unit has
+# a directory. The NAMES do not collide: every one carries its package (SPEC
+# §6.3), so tblv1's Cfg is tblv1_cfg_t and tblv2's is tblv2_cfg_t, and two
+# units' headers share a translation unit (tables-c-two-units).
 #
 # THE C CORPUS'S ONE GENERATION LIST, parameterised by generator binary and
 # output root for the same reason the C++ tables_generate (Main Makefile) is:
@@ -248,7 +247,9 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 	done
 	@echo "tables C zero-cost gate: value-only tables carry no pointer machinery"
 
-# THE GENERIC-WALK GATE, C side (docs/SPEC-TABLES.md §16). The text form is ONE
+# THE GENERIC-WALK GATE, C side (docs/SPEC-TABLES.md §16). Every name the walk
+# reaches carries its unit's package (SPEC §6.3), so the package is the one
+# thing normalised before the comparison: the walk is otherwise byte-identical. The text form is ONE
 # walk over the reflection descriptors, not a per-table codec — that is the
 # property which makes it schema's rather than a packer's. The walker's source
 # must therefore be the SAME BYTES in every generated .c of the corpus, whose
@@ -261,7 +262,10 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 	@rm -rf build/json-walk-c && mkdir -p build/json-walk-c
 	@for f in build/tables-generated-c/*/*Table.c; do \
 		out=build/json-walk-c/$$(echo $$f | tr / _); \
-		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+		pkg=$$(grep -o 'package [a-z0-9_]*' $$f | head -1 | cut -d' ' -f2); \
+		PKG=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z'); \
+		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f \
+			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out; \
 		if [ ! -s $$out ]; then \
 			if grep -q "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
 			echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; \
@@ -924,7 +928,7 @@ tables-c-view: bin/schema test/c-tables/view_main.c
 		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
 		./bin/schema generate --lang c --out build/c-view/$$dir $$source; \
 		$(CC) $(TABLES_CFLAGS) -Ibuild/c-view/$$dir -I$(SERIALIZE_C) \
-			-DVIEW_HEADER="\"$${cap}View.h\"" test/c-tables/view_main.c \
+			-DVIEW_HEADER="\"$${cap}View.h\"" -DVIEW_PACKAGE=$$pkg -DVIEW_PACKAGE_UPPER=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z') test/c-tables/view_main.c \
 			build/c-view/$$dir/*Table.c build/c-view/$$dir/*View.c -o build/c-view/prog-$$pkg -lm; \
 		./build/c-view/prog-$$pkg > build/c-view/$$pkg.listing; \
 	done
@@ -1526,3 +1530,50 @@ cards-c-conformance-hash-negative-control: build/conformance-harness build/cards
 	@echo 'cards C hash negative control: one changed task-hash digit turns exactly taskhash red'
 
 test-c: cards-c-test cards-c-conformance cards-c-conformance-negative-control cards-c-conformance-upgrade-negative-control cards-c-conformance-hash-negative-control
+
+# TWO UNITS, ONE TRANSLATION UNIT (SPEC §6.3). Every name a C unit declares
+# carries its package (internal/codegen/cqualify) and the runtime they share is
+# SchemaRuntime.h, so two generations of one schema (tblw1 and tblw2, which
+# declare the same names) build into ONE translation unit under -Werror and
+# carry a value across, under the sanitizers.
+build/c-two-units/main: build/tables-generated-c/.stamp test/c-two-units/main.c
+	@mkdir -p build/c-two-units
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -I$(SERIALIZE_C) \
+		test/c-two-units/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: tables-c-two-units tables-c-two-units-negative-controls
+tables-c-two-units: build/c-two-units/main
+	./build/c-two-units/main
+
+# The two controls, each required to go RED:
+#   * runtime: the second unit is stamped with a different SchemaRuntime.h
+#     version (two compilers), and the build must stop on the #error that names
+#     the mismatch rather than silently use the first unit's runtime;
+#   * qualify: the qualification pass is sabotaged to a pass-through, and the
+#     same translation unit must fail to build on the redefinitions.
+tables-c-two-units-negative-controls: build/c-two-units/main
+	@rm -rf build/c-two-units/runtime && mkdir -p build/c-two-units/runtime
+	@cp -R build/tables-generated-c/w2 build/c-two-units/runtime/w2
+	@v=$$(grep -o 'SCHEMA_RUNTIME_VERSION 0x[0-9a-f]*ULL' build/c-two-units/runtime/w2/SchemaRuntime.h | awk '{print $$2}'); \
+		[ -n "$$v" ] || { echo "NEGATIVE CONTROL: no runtime version found"; exit 1; }; \
+		for f in build/c-two-units/runtime/w2/*.h; do sed -i.bak "s/$$v/0x0123456789abcdefULL/g" $$f && rm -f $$f.bak; done
+	@if $(CC) $(TABLES_CFLAGS_CONTROL) -Ibuild/tables-generated-c/w1 -Ibuild/c-two-units/runtime/w2 -I$(SERIALIZE_C) \
+		-c test/c-two-units/main.c -o build/c-two-units/runtime/main.o > build/c-two-units/runtime/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: two units with different SchemaRuntime.h versions built into one translation unit"; exit 1; fi
+	@grep -q 'generated against a different SchemaRuntime.h' build/c-two-units/runtime/log || { cat build/c-two-units/runtime/log; exit 1; }
+	@echo 'negative control: a SchemaRuntime.h version mismatch stops the build by name'
+	@rm -rf build/c-two-units/qualify && mkdir -p build/c-two-units/qualify
+	@sed 's|return cqualify.Qualify(files, u.Package)|_ = cqualify.Qualify; return files, nil // SABOTAGED|' compiler/target_c.go > build/c-two-units/qualify/target_c.go.txt
+	@n=$$(grep -c SABOTAGED build/c-two-units/qualify/target_c.go.txt); \
+		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the sabotage patched $$n lines, expected exactly 1"; exit 1; fi
+	@printf '{"Replace":{"%s/compiler/target_c.go":"%s/build/c-two-units/qualify/target_c.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-two-units/qualify/overlay.json
+	go build -overlay build/c-two-units/qualify/overlay.json -o build/c-two-units/qualify/schema ./cmd/schema
+	./build/c-two-units/qualify/schema generate --lang c --out build/c-two-units/qualify/w1 test/tables/W1.schema
+	./build/c-two-units/qualify/schema generate --lang c --out build/c-two-units/qualify/w2 test/tables/W2.schema
+	@if $(CC) $(TABLES_CFLAGS_CONTROL) -Ibuild/c-two-units/qualify/w1 -Ibuild/c-two-units/qualify/w2 -I$(SERIALIZE_C) \
+		-c test/c-two-units/main.c -o build/c-two-units/qualify/main.o > build/c-two-units/qualify/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: two unqualified units built into one translation unit"; exit 1; fi
+	@grep -q 'redefinition' build/c-two-units/qualify/log || { head -20 build/c-two-units/qualify/log; exit 1; }
+	@echo 'negative control: without the package, the same translation unit fails on redefinitions'
+
+test-c: tables-c-two-units tables-c-two-units-negative-controls

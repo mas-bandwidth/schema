@@ -359,9 +359,9 @@ static void report( const char * bench, const char * path, long iters, int bytes
    ------------------------------------------------------------------------------------------ */
 
 #define BM_SUFFIX gen_bench_mixed
-#define BM_TYPE BenchMixed
-#define BM_WRITE write_bench_mixed
-#define BM_READ read_bench_mixed
+#define BM_TYPE bench_bench_mixed_t
+#define BM_WRITE bench_write_bench_mixed
+#define BM_READ bench_read_bench_mixed
 #include "bench_datadriven.inc"
 
 #define BENCH_NOINLINE __attribute__(( noinline ))
