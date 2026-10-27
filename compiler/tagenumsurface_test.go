@@ -74,9 +74,10 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		nameFunc: "inline const char * EnumName( WeaponFireType value )",
 	},
 	"cs": {
-		count:    "    Count = 2, // the declared variant count (SPEC §4.2)",
-		max:      "    Max = 2, // the exported extent (SPEC §4.2)",
-		nameFunc: "public static string EnumNameWeaponFireType(ulong value)",
+		// no Count, and Max is a typed constant beside the enum: a member
+		// valued like the last arm would alias it (SPEC §4.2)
+		max:      "public const WeaponFireType WeaponFireTypeMax = (WeaponFireType)2; // the exported extent (SPEC §4.2)",
+		nameFunc: "public static string EnumNameWeaponFireType(WeaponFireType value)",
 	},
 	"dart": {
 		count:    "  static const int count = 2; // the declared variant count (SPEC §4.2)",

@@ -46,18 +46,11 @@ namespace Wide
     {
         // WideSevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // WideSevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long WideSevenMaxBits = 227;
-        public const long WideSevenMaxBytes = 32;
+        public const int WideSevenMaxBits = 227;
+        public const int WideSevenMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroWideSeven(WideSeven value)
-        {
-            Array.Clear(value.Text, 0, 7);
-            value.TextLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitWideSeven(WideSeven value)
         {
             Array.Clear(value.Text, 0, 7);
             value.TextLength = 0;
@@ -114,18 +107,11 @@ namespace Wide
 
         // WideFourMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // WideFourMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long WideFourMaxBits = 131;
-        public const long WideFourMaxBytes = 24;
+        public const int WideFourMaxBits = 131;
+        public const int WideFourMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroWideFour(WideFour value)
-        {
-            Array.Clear(value.Text, 0, 4);
-            value.TextLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitWideFour(WideFour value)
         {
             Array.Clear(value.Text, 0, 4);
             value.TextLength = 0;
@@ -182,18 +168,11 @@ namespace Wide
 
         // NarrowFifteenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // NarrowFifteenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long NarrowFifteenMaxBits = 131;
-        public const long NarrowFifteenMaxBytes = 24;
+        public const int NarrowFifteenMaxBits = 131;
+        public const int NarrowFifteenMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroNarrowFifteen(NarrowFifteen value)
-        {
-            Array.Clear(value.Text, 0, 15);
-            value.TextLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitNarrowFifteen(NarrowFifteen value)
         {
             Array.Clear(value.Text, 0, 15);
             value.TextLength = 0;
@@ -258,18 +237,11 @@ namespace Wide
 
         // WideInteropMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // WideInteropMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long WideInteropMaxBits = 227;
-        public const long WideInteropMaxBytes = 32;
+        public const int WideInteropMaxBits = 227;
+        public const int WideInteropMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroWideInterop(WideInterop value)
-        {
-            Array.Clear(value.Caption, 0, 7);
-            value.CaptionLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitWideInterop(WideInterop value)
         {
             Array.Clear(value.Caption, 0, 7);
             value.CaptionLength = 0;

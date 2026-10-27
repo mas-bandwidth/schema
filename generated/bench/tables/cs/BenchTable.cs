@@ -18,6 +18,7 @@
 // the caller's responsibility to be correct on the write side; every check
 // the reader needs is on the read side and runs in every build.
 
+using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
@@ -46,8 +47,22 @@ namespace Benchtable
         Turret = 13,
         Drone = 14,
         Repair = 15,
-        Count = 15, // the declared variant count (SPEC §4.2)
-        Max = 15, // the exported extent (SPEC §4.2)
+    }
+
+    // TableDamage — one bit per variant, consumed as masks; wire 8 bits (SPEC §4.2).
+    // The backing type is ulong in every declaration, the full width §4.2
+    // requires, so bits a newer build appended survive a read and a rewrite.
+    [Flags]
+    public enum TableDamage : ulong
+    {
+        Bleeding = 1ul << 0,
+        Burning = 1ul << 1,
+        Stunned = 1ul << 2,
+        Slowed = 1ul << 3,
+        Poisoned = 1ul << 4,
+        Shielded = 1ul << 5,
+        Airborne = 1ul << 6,
+        Downed = 1ul << 7,
     }
 
     // type TableHitEvent
@@ -80,8 +95,6 @@ namespace Benchtable
         Hit = 1,
         Chat = 2,
         Pickup = 3,
-        Count = 3, // the declared variant count (SPEC §4.2)
-        Max = 3, // the exported extent (SPEC §4.2)
     }
 
     // TableEvent — at most one of the arms; Type says which. Construction is the empty
@@ -105,60 +118,51 @@ namespace Benchtable
         // sides at the same id speak identical bits; there is no other versioning.
         public const ulong ProtocolId = 0x0926221bcb6f475f;
 
-        // EnumNameTableWeapon: debug/log/tooling name for any TableWeapon wire value —
+        public const TableWeapon TableWeaponMax = (TableWeapon)15; // the exported extent (SPEC §4.2)
+
+        // EnumNameTableWeapon: debug/log/tooling name for any TableWeapon value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameTableWeapon(ulong value)
+        public static string EnumNameTableWeapon(TableWeapon value)
         {
             switch (value)
             {
-                case (ulong)TableWeapon.None:
+                case TableWeapon.None:
                     return "None";
-                case (ulong)TableWeapon.Fists:
+                case TableWeapon.Fists:
                     return "Fists";
-                case (ulong)TableWeapon.Pistol:
+                case TableWeapon.Pistol:
                     return "Pistol";
-                case (ulong)TableWeapon.Shotgun:
+                case TableWeapon.Shotgun:
                     return "Shotgun";
-                case (ulong)TableWeapon.Rifle:
+                case TableWeapon.Rifle:
                     return "Rifle";
-                case (ulong)TableWeapon.Sniper:
+                case TableWeapon.Sniper:
                     return "Sniper";
-                case (ulong)TableWeapon.Smg:
+                case TableWeapon.Smg:
                     return "Smg";
-                case (ulong)TableWeapon.Rocket:
+                case TableWeapon.Rocket:
                     return "Rocket";
-                case (ulong)TableWeapon.Grenade:
+                case TableWeapon.Grenade:
                     return "Grenade";
-                case (ulong)TableWeapon.Plasma:
+                case TableWeapon.Plasma:
                     return "Plasma";
-                case (ulong)TableWeapon.Railgun:
+                case TableWeapon.Railgun:
                     return "Railgun";
-                case (ulong)TableWeapon.Flamer:
+                case TableWeapon.Flamer:
                     return "Flamer";
-                case (ulong)TableWeapon.Mine:
+                case TableWeapon.Mine:
                     return "Mine";
-                case (ulong)TableWeapon.Turret:
+                case TableWeapon.Turret:
                     return "Turret";
-                case (ulong)TableWeapon.Drone:
+                case TableWeapon.Drone:
                     return "Drone";
-                case (ulong)TableWeapon.Repair:
+                case TableWeapon.Repair:
                     return "Repair";
                 default:
                     return "???";
             }
         }
 
-        // TableDamage — one bit per variant, consumed as masks; flags-typed fields store a
-        // plain ulong, wire 8 bits (SPEC §4.2). Masks are flat PascalCase — the Go
-        // target's spelling exactly, so the checker's existing claims cover them.
-        public const ulong TableDamageBleeding = 1ul << 0;
-        public const ulong TableDamageBurning = 1ul << 1;
-        public const ulong TableDamageStunned = 1ul << 2;
-        public const ulong TableDamageSlowed = 1ul << 3;
-        public const ulong TableDamagePoisoned = 1ul << 4;
-        public const ulong TableDamageShielded = 1ul << 5;
-        public const ulong TableDamageAirborne = 1ul << 6;
-        public const ulong TableDamageDowned = 1ul << 7;
         public const long TableDamageCount = 8; // the declared variant count (SPEC §4.2)
 
         // FlagNameTableDamage: debug/log/tooling name for bit i of TableDamage —
@@ -181,64 +185,56 @@ namespace Benchtable
 
         // FlagNamesTableDamage renders the set bits of value as "A|B" — "0" for the
         // empty set, bits past the declared variants as hex
-        public static string FlagNamesTableDamage(ulong value)
+        public static string FlagNamesTableDamage(TableDamage value)
         {
             string names = "";
-            if ((value & (1ul << 0)) != 0)
+            if ((value & TableDamage.Bleeding) != 0)
             {
                 names += "|Bleeding";
             }
-            if ((value & (1ul << 1)) != 0)
+            if ((value & TableDamage.Burning) != 0)
             {
                 names += "|Burning";
             }
-            if ((value & (1ul << 2)) != 0)
+            if ((value & TableDamage.Stunned) != 0)
             {
                 names += "|Stunned";
             }
-            if ((value & (1ul << 3)) != 0)
+            if ((value & TableDamage.Slowed) != 0)
             {
                 names += "|Slowed";
             }
-            if ((value & (1ul << 4)) != 0)
+            if ((value & TableDamage.Poisoned) != 0)
             {
                 names += "|Poisoned";
             }
-            if ((value & (1ul << 5)) != 0)
+            if ((value & TableDamage.Shielded) != 0)
             {
                 names += "|Shielded";
             }
-            if ((value & (1ul << 6)) != 0)
+            if ((value & TableDamage.Airborne) != 0)
             {
                 names += "|Airborne";
             }
-            if ((value & (1ul << 7)) != 0)
+            if ((value & TableDamage.Downed) != 0)
             {
                 names += "|Downed";
             }
-            if ((value >> 8) != 0)
+            ulong unknown = (ulong)value >> 8;
+            if (unknown != 0)
             {
-                names += "|0x" + ((value >> 8) << 8).ToString("x");
+                names += "|0x" + (unknown << 8).ToString("x");
             }
             return names.Length == 0 ? "0" : names.Substring(1);
         }
 
         // TableHitEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TableHitEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TableHitEventMaxBits = 28;
-        public const long TableHitEventMaxBytes = 8;
+        public const int TableHitEventMaxBits = 28;
+        public const int TableHitEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTableHitEvent(TableHitEvent value)
-        {
-            value.TargetId = 0;
-            value.Damage = 0;
-            value.HitKind = 0;
-            value.Crit = false;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTableHitEvent(TableHitEvent value)
         {
             value.TargetId = 0;
             value.Damage = 0;
@@ -312,18 +308,11 @@ namespace Benchtable
 
         // TableChatEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TableChatEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TableChatEventMaxBits = 14;
-        public const long TableChatEventMaxBytes = 8;
+        public const int TableChatEventMaxBits = 14;
+        public const int TableChatEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTableChatEvent(TableChatEvent value)
-        {
-            value.Channel = 0;
-            value.Speaker = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTableChatEvent(TableChatEvent value)
         {
             value.Channel = 0;
             value.Speaker = 0;
@@ -388,18 +377,11 @@ namespace Benchtable
 
         // TablePickupEventMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TablePickupEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TablePickupEventMaxBits = 18;
-        public const long TablePickupEventMaxBytes = 8;
+        public const int TablePickupEventMaxBits = 18;
+        public const int TablePickupEventMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTablePickupEvent(TablePickupEvent value)
-        {
-            value.ItemId = 0;
-            value.Amount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTablePickupEvent(TablePickupEvent value)
         {
             value.ItemId = 0;
             value.Amount = 0;
@@ -462,19 +444,21 @@ namespace Benchtable
             return true;
         }
 
-        // EnumNameTableEventType: debug/log/tooling name for any TableEventType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameTableEventType(ulong value)
+        public const TableEventType TableEventTypeMax = (TableEventType)3; // the exported extent (SPEC §4.2)
+
+        // EnumNameTableEventType: debug/log/tooling name for any TableEventType value —
+        // out-of-set values name as "???"
+        public static string EnumNameTableEventType(TableEventType value)
         {
             switch (value)
             {
-                case (ulong)TableEventType.None:
+                case TableEventType.None:
                     return "None";
-                case (ulong)TableEventType.Hit:
+                case TableEventType.Hit:
                     return "Hit";
-                case (ulong)TableEventType.Chat:
+                case TableEventType.Chat:
                     return "Chat";
-                case (ulong)TableEventType.Pickup:
+                case TableEventType.Pickup:
                     return "Pickup";
                 default:
                     return "???";
@@ -483,8 +467,8 @@ namespace Benchtable
 
         // TableEventMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // TableEventMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TableEventMaxBits = 30;
-        public const long TableEventMaxBytes = 8;
+        public const int TableEventMaxBits = 30;
+        public const int TableEventMaxBytes = 8;
 
         // ZeroTableEvent resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
@@ -547,13 +531,13 @@ namespace Benchtable
             switch (value.Type)
             {
                 case TableEventType.Hit:
-                    InitTableHitEvent(value.Hit); // every selection starts from construction defaults
+                    ZeroTableHitEvent(value.Hit); // every selection starts from construction defaults
                     return ReadTableHitEventBatch(ref batch, value.Hit);
                 case TableEventType.Chat:
-                    InitTableChatEvent(value.Chat); // every selection starts from construction defaults
+                    ZeroTableChatEvent(value.Chat); // every selection starts from construction defaults
                     return ReadTableChatEventBatch(ref batch, value.Chat);
                 case TableEventType.Pickup:
-                    InitTablePickupEvent(value.Pickup); // every selection starts from construction defaults
+                    ZeroTablePickupEvent(value.Pickup); // every selection starts from construction defaults
                     return ReadTablePickupEventBatch(ref batch, value.Pickup);
             }
             return true; // None

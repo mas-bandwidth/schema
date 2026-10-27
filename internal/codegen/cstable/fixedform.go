@@ -534,10 +534,21 @@ func (b *fixedRootBuild) stampGuard(at int, guard int64, arg uint64, argw byte) 
 
 func (b *fixedRootBuild) scalarReset(f *ir.Field, expr string) string {
 	def := fieldDefaultExpr(f)
-	if enumRef(f) != nil && b.g != nil {
-		def = "global::" + capitalize(b.g.unit.Package) + "." + def
+	if enumRef(f) != nil {
+		def = b.qualified(def)
+	} else if _, flags := f.Type.Ref.(*ir.Flags); flags && f.Type.Kind == ir.TNamed && def != "0" {
+		def = "(" + b.qualified(f.Type.Name) + ")" + f.DefInt.String() + "ul"
 	}
 	return fmt.Sprintf("(t) => { %s = %s; }", expr, def)
+}
+
+// qualified names a declaration of the unit's own namespace from the fixed
+// form's nested one.
+func (b *fixedRootBuild) qualified(name string) string {
+	if b.g == nil {
+		return name
+	}
+	return "global::" + capitalize(b.g.unit.Package) + "." + name
 }
 
 func presentReset(fieldExpr string) string {
@@ -1145,7 +1156,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 		case *ir.Flags:
 			slot := len(b.slots)
 			b.slots = append(b.slots, fixedSlot{
-				setRaw: fmt.Sprintf("(t, v) => %s = v", expr),
+				setRaw: fmt.Sprintf("(t, v) => %s = (%s)v", expr, b.qualified(f.Type.Name)),
 				reset:  b.scalarReset(f, expr),
 			})
 			b.entries = append(b.entries, fixedBlockEntry{
@@ -1262,7 +1273,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 		case *ir.Flags:
 			slot := len(b.slots)
 			b.slots = append(b.slots, fixedSlot{
-				setRaw: fmt.Sprintf("(t, v) => %s = v", expr),
+				setRaw: fmt.Sprintf("(t, v) => %s = (%s)v", expr, b.qualified(f.Type.Name)),
 				reset:  b.scalarReset(f, expr),
 			})
 			b.addPlan(fixedPlanEntry{

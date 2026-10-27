@@ -34,8 +34,6 @@ namespace Ludicrous
         Cruise = 1,
         Warp = 2,
         Ludicrous = 3,
-        Count = 3, // the declared variant count (SPEC §4.2)
-        Max = 3, // the exported extent (SPEC §4.2)
     }
 
     // type FixedProbe
@@ -122,19 +120,21 @@ namespace Ludicrous
 
         public const long MaxWorldUnits = 30000;
 
-        // EnumNameDriveMode: debug/log/tooling name for any DriveMode wire value —
+        public const DriveMode DriveModeMax = (DriveMode)3; // the exported extent (SPEC §4.2)
+
+        // EnumNameDriveMode: debug/log/tooling name for any DriveMode value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameDriveMode(ulong value)
+        public static string EnumNameDriveMode(DriveMode value)
         {
             switch (value)
             {
-                case (ulong)DriveMode.None:
+                case DriveMode.None:
                     return "None";
-                case (ulong)DriveMode.Cruise:
+                case DriveMode.Cruise:
                     return "Cruise";
-                case (ulong)DriveMode.Warp:
+                case DriveMode.Warp:
                     return "Warp";
-                case (ulong)DriveMode.Ludicrous:
+                case DriveMode.Ludicrous:
                     return "Ludicrous";
                 default:
                     return "???";
@@ -143,21 +143,11 @@ namespace Ludicrous
 
         // FixedProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // FixedProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long FixedProbeMaxBits = 156;
-        public const long FixedProbeMaxBytes = 24;
+        public const int FixedProbeMaxBits = 156;
+        public const int FixedProbeMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroFixedProbe(FixedProbe value)
-        {
-            value.Angle = 0;
-            value.Position = 0;
-            value.Reach = 0;
-            value.Ticks = 0;
-            Array.Clear(value.Samples, 0, 2);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitFixedProbe(FixedProbe value)
         {
             value.Angle = 0;
             value.Position = 0;
@@ -224,8 +214,8 @@ namespace Ludicrous
 
         // UnsignedProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // UnsignedProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long UnsignedProbeMaxBits = 196;
-        public const long UnsignedProbeMaxBytes = 32;
+        public const int UnsignedProbeMaxBits = 196;
+        public const int UnsignedProbeMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroUnsignedProbe(UnsignedProbe value)
@@ -326,8 +316,8 @@ namespace Ludicrous
 
         // WideProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // WideProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long WideProbeMaxBits = 403;
-        public const long WideProbeMaxBytes = 56;
+        public const int WideProbeMaxBits = 403;
+        public const int WideProbeMaxBytes = 56;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroWideProbe(WideProbe value)
@@ -401,8 +391,8 @@ namespace Ludicrous
 
         // LudicrousStateMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // LudicrousStateMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long LudicrousStateMaxBits = 1205;
-        public const long LudicrousStateMaxBytes = 152;
+        public const int LudicrousStateMaxBits = 1205;
+        public const int LudicrousStateMaxBytes = 152;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroLudicrousState(LudicrousState value)
@@ -420,7 +410,7 @@ namespace Ludicrous
         public static void InitLudicrousState(LudicrousState value)
         {
             value.Mode = DriveMode.None;
-            InitFixedProbe(value.Probe);
+            ZeroFixedProbe(value.Probe);
             InitWideProbe(value.Wide);
             Array.Clear(value.Keys, 0, 4);
             value.KeysCount = 0;
@@ -524,8 +514,8 @@ namespace Ludicrous
 
         // DegenerateProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // DegenerateProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long DegenerateProbeMaxBits = 8;
-        public const long DegenerateProbeMaxBytes = 8;
+        public const int DegenerateProbeMaxBits = 8;
+        public const int DegenerateProbeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroDegenerateProbe(DegenerateProbe value)
@@ -578,19 +568,11 @@ namespace Ludicrous
 
         // FixedVecMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // FixedVecMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long FixedVecMaxBits = 102;
-        public const long FixedVecMaxBytes = 16;
+        public const int FixedVecMaxBits = 102;
+        public const int FixedVecMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroFixedVec(FixedVec value)
-        {
-            value.X = 0;
-            value.Y = 0;
-            value.Z = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitFixedVec(FixedVec value)
         {
             value.X = 0;
             value.Y = 0;
@@ -633,8 +615,8 @@ namespace Ludicrous
 
         // FixedQuatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // FixedQuatMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long FixedQuatMaxBits = 128;
-        public const long FixedQuatMaxBytes = 16;
+        public const int FixedQuatMaxBits = 128;
+        public const int FixedQuatMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroFixedQuat(FixedQuat value)

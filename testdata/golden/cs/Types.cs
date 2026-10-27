@@ -120,7 +120,7 @@ namespace Example
 
         // has_flags — wire branch; storage holds both sides, a read zeroes the
         // untaken side (SPEC §5)
-        public ulong Flags; // ShipFlags — consumed as masks, ulong storage (SPEC §4.2)
+        public ShipFlags Flags;
 
         public Team Team;
         public short Health; // wire [0, 1000]
@@ -161,19 +161,11 @@ namespace Example
     {
         // Vec3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // Vec3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long Vec3MaxBits = 192;
-        public const long Vec3MaxBytes = 24;
+        public const int Vec3MaxBits = 192;
+        public const int Vec3MaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroVec3(Vec3 value)
-        {
-            value.X = 0.0;
-            value.Y = 0.0;
-            value.Z = 0.0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitVec3(Vec3 value)
         {
             value.X = 0.0;
             value.Y = 0.0;
@@ -238,20 +230,11 @@ namespace Example
 
         // QuatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // QuatMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long QuatMaxBits = 256;
-        public const long QuatMaxBytes = 32;
+        public const int QuatMaxBits = 256;
+        public const int QuatMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuat(Quat value)
-        {
-            value.X = 0.0;
-            value.Y = 0.0;
-            value.Z = 0.0;
-            value.W = 0.0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitQuat(Quat value)
         {
             value.X = 0.0;
             value.Y = 0.0;
@@ -325,18 +308,11 @@ namespace Example
 
         // HandleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // HandleMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long HandleMaxBits = 22;
-        public const long HandleMaxBytes = 8;
+        public const int HandleMaxBits = 22;
+        public const int HandleMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroHandle(Handle value)
-        {
-            value.ObjectId = 0;
-            value.ObjectSequence = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitHandle(Handle value)
         {
             value.ObjectId = 0;
             value.ObjectSequence = 0;
@@ -399,19 +375,11 @@ namespace Example
 
         // QuantizedPositionMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // QuantizedPositionMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long QuantizedPositionMaxBits = 75;
-        public const long QuantizedPositionMaxBytes = 16;
+        public const int QuantizedPositionMaxBits = 75;
+        public const int QuantizedPositionMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedPosition(QuantizedPosition value)
-        {
-            value.X = 0;
-            value.Y = 0;
-            value.Z = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitQuantizedPosition(QuantizedPosition value)
         {
             value.X = 0;
             value.Y = 0;
@@ -483,19 +451,11 @@ namespace Example
 
         // QuantizedVelocityMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // QuantizedVelocityMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long QuantizedVelocityMaxBits = 69;
-        public const long QuantizedVelocityMaxBytes = 16;
+        public const int QuantizedVelocityMaxBits = 69;
+        public const int QuantizedVelocityMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedVelocity(QuantizedVelocity value)
-        {
-            value.X = 0;
-            value.Y = 0;
-            value.Z = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitQuantizedVelocity(QuantizedVelocity value)
         {
             value.X = 0;
             value.Y = 0;
@@ -567,20 +527,11 @@ namespace Example
 
         // QuantizedRotationMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // QuantizedRotationMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long QuantizedRotationMaxBits = 48;
-        public const long QuantizedRotationMaxBytes = 8;
+        public const int QuantizedRotationMaxBits = 48;
+        public const int QuantizedRotationMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroQuantizedRotation(QuantizedRotation value)
-        {
-            value.X = 0;
-            value.Y = 0;
-            value.Z = 0;
-            value.W = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitQuantizedRotation(QuantizedRotation value)
         {
             value.X = 0;
             value.Y = 0;
@@ -670,8 +621,8 @@ namespace Example
 
         // RigidBodyMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // RigidBodyMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long RigidBodyMaxBits = 833;
-        public const long RigidBodyMaxBytes = 112;
+        public const int RigidBodyMaxBits = 833;
+        public const int RigidBodyMaxBytes = 112;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRigidBody(RigidBody value)
@@ -681,16 +632,6 @@ namespace Example
             value.AtRest = false;
             ZeroVec3(value.LinearVelocity);
             ZeroVec3(value.AngularVelocity);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitRigidBody(RigidBody value)
-        {
-            InitVec3(value.Position);
-            InitQuat(value.Orientation);
-            value.AtRest = false;
-            InitVec3(value.LinearVelocity);
-            InitVec3(value.AngularVelocity);
         }
 
         // batch form: stream state stays in registers across the body and End
@@ -778,29 +719,11 @@ namespace Example
 
         // InputMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // InputMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long InputMaxBits = 168;
-        public const long InputMaxBytes = 24;
+        public const int InputMaxBits = 168;
+        public const int InputMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroInput(Input value)
-        {
-            value.StickX = 0.0f;
-            value.StickY = 0.0f;
-            value.Throttle = 0.0f;
-            value.Yaw = 0.0f;
-            value.Pitch = 0.0f;
-            value.Fire = false;
-            value.AltFire = false;
-            value.Boost = false;
-            value.Brake = false;
-            value.Aim = false;
-            value.LockOn = false;
-            value.Zoom = false;
-            value.Ping = false;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitInput(Input value)
         {
             value.StickX = 0.0f;
             value.StickY = 0.0f;
@@ -933,8 +856,8 @@ namespace Example
 
         // InputPacketMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // InputPacketMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long InputPacketMaxBits = 2837;
-        public const long InputPacketMaxBytes = 360;
+        public const int InputPacketMaxBits = 2837;
+        public const int InputPacketMaxBytes = 360;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroInputPacket(InputPacket value)
@@ -945,19 +868,6 @@ namespace Example
             for (int i = 0; i < (int)MaxInputsPerPacket; i++)
             {
                 ZeroInput(value.Inputs[i]);
-            }
-            value.InputsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitInputPacket(InputPacket value)
-        {
-            value.SynchronizeSequence = 0;
-            value.CurrentFrame = 0;
-            value.StartFrame = 0;
-            for (int i = 0; i < (int)MaxInputsPerPacket; i++)
-            {
-                InitInput(value.Inputs[i]);
             }
             value.InputsCount = 0;
         }
@@ -1053,8 +963,8 @@ namespace Example
 
         // ShipCreateMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ShipCreateMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ShipCreateMaxBits = 219;
-        public const long ShipCreateMaxBytes = 32;
+        public const int ShipCreateMaxBits = 219;
+        public const int ShipCreateMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroShipCreate(ShipCreate value)
@@ -1063,21 +973,6 @@ namespace Example
             ZeroQuantizedPosition(value.Position);
             ZeroQuantizedRotation(value.Rotation);
             ZeroQuantizedVelocity(value.LinearVelocity);
-            value.HasFlags = false;
-            value.Flags = 0;
-            value.Team = Team.None;
-            value.Health = 0;
-            value.Thrust = 0;
-            value.Pending = Pending.None;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitShipCreate(ShipCreate value)
-        {
-            value.ShipType = ShipType.None;
-            InitQuantizedPosition(value.Position);
-            InitQuantizedRotation(value.Rotation);
-            InitQuantizedVelocity(value.LinearVelocity);
             value.HasFlags = false;
             value.Flags = 0;
             value.Team = Team.None;
@@ -1126,7 +1021,7 @@ namespace Example
             }
             if (value.HasFlags)
             {
-                Debug.Assert(value.Flags < 1ul << 4, "value.Flags has a mask bit above the 4-bit wire width"); // a mask bit above the wire width cannot ride
+                Debug.Assert((ulong)value.Flags < 1ul << 4, "value.Flags has a mask bit above the 4-bit wire width"); // a mask bit above the wire width cannot ride
                 {
                     uint flagsValue = (uint)value.Flags;
                     if (!batch.SerializeBits(ref flagsValue, 4))
@@ -1197,7 +1092,7 @@ namespace Example
                     {
                         return false;
                     }
-                    value.Flags = flagsValue;
+                    value.Flags = (ShipFlags)flagsValue;
                 }
             }
             else
@@ -1241,8 +1136,8 @@ namespace Example
 
         // ExpressionProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ExpressionProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ExpressionProbeMaxBits = 16;
-        public const long ExpressionProbeMaxBytes = 8;
+        public const int ExpressionProbeMaxBits = 16;
+        public const int ExpressionProbeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroExpressionProbe(ExpressionProbe value)
@@ -1316,8 +1211,8 @@ namespace Example
 
         // ExtremeProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ExtremeProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ExtremeProbeMaxBits = 320;
-        public const long ExtremeProbeMaxBytes = 40;
+        public const int ExtremeProbeMaxBits = 320;
+        public const int ExtremeProbeMaxBytes = 40;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroExtremeProbe(ExtremeProbe value)
@@ -1440,8 +1335,8 @@ namespace Example
 
         // ExtremeRowMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ExtremeRowMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ExtremeRowMaxBits = 256;
-        public const long ExtremeRowMaxBytes = 32;
+        public const int ExtremeRowMaxBits = 256;
+        public const int ExtremeRowMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroExtremeRow(ExtremeRow value)

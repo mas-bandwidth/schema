@@ -4,6 +4,8 @@
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
 
+using System;
+
 namespace Example
 {
 
@@ -15,8 +17,6 @@ namespace Example
         None = 0,
         Red = 1,
         Blue = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);
@@ -30,8 +30,6 @@ namespace Example
         Bomber = 3,
         Destroyer = 4,
         Carrier = 5,
-        Count = 5, // the declared variant count (SPEC §4.2)
-        Max = 5, // the exported extent (SPEC §4.2)
     }
 
     // MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2);
@@ -43,8 +41,6 @@ namespace Example
         Heatseeker = 1,
         Torpedo = 2,
         Nuke = 3,
-        Count = 3, // the declared variant count (SPEC §4.2)
-        Max = 3, // the exported extent (SPEC §4.2)
     }
 
     // PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2);
@@ -59,8 +55,6 @@ namespace Example
         Sphere = 4,
         BlackHole = 5,
         DysonPanel = 6,
-        Count = 6, // the declared variant count (SPEC §4.2)
-        Max = 6, // the exported extent (SPEC §4.2)
     }
 
     // Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2);
@@ -69,8 +63,18 @@ namespace Example
     public enum Pending : byte
     {
         None = 0,
-        Count = 0, // the declared variant count (SPEC §4.2)
-        Max = 0, // the exported extent (SPEC §4.2)
+    }
+
+    // ShipFlags — one bit per variant, consumed as masks; wire 4 bits (SPEC §4.2).
+    // The backing type is ulong in every declaration, the full width §4.2
+    // requires, so bits a newer build appended survive a read and a rewrite.
+    [Flags]
+    public enum ShipFlags : ulong
+    {
+        FiringLaser = 1ul << 0,
+        Boosting = 1ul << 1,
+        Braking = 1ul << 2,
+        Aiming = 1ul << 3,
     }
 
     // Schema carries every generated function and constant of the unit — C# has
@@ -78,110 +82,113 @@ namespace Example
     // home (SPEC §6.1 naming); partial, one slice per generated file.
     public static partial class Schema
     {
-        // EnumNameTeam: debug/log/tooling name for any Team wire value —
+        public const Team TeamMax = (Team)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameTeam: debug/log/tooling name for any Team value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameTeam(ulong value)
+        public static string EnumNameTeam(Team value)
         {
             switch (value)
             {
-                case (ulong)Team.None:
+                case Team.None:
                     return "None";
-                case (ulong)Team.Red:
+                case Team.Red:
                     return "Red";
-                case (ulong)Team.Blue:
+                case Team.Blue:
                     return "Blue";
                 default:
                     return "???";
             }
         }
 
-        // EnumNameShipType: debug/log/tooling name for any ShipType wire value —
+        public const ShipType ShipTypeMax = (ShipType)5; // the exported extent (SPEC §4.2)
+
+        // EnumNameShipType: debug/log/tooling name for any ShipType value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameShipType(ulong value)
+        public static string EnumNameShipType(ShipType value)
         {
             switch (value)
             {
-                case (ulong)ShipType.None:
+                case ShipType.None:
                     return "None";
-                case (ulong)ShipType.Fighter:
+                case ShipType.Fighter:
                     return "Fighter";
-                case (ulong)ShipType.Corvette:
+                case ShipType.Corvette:
                     return "Corvette";
-                case (ulong)ShipType.Bomber:
+                case ShipType.Bomber:
                     return "Bomber";
-                case (ulong)ShipType.Destroyer:
+                case ShipType.Destroyer:
                     return "Destroyer";
-                case (ulong)ShipType.Carrier:
+                case ShipType.Carrier:
                     return "Carrier";
                 default:
                     return "???";
             }
         }
 
-        // EnumNameMissileType: debug/log/tooling name for any MissileType wire value —
+        public const MissileType MissileTypeMax = (MissileType)3; // the exported extent (SPEC §4.2)
+
+        // EnumNameMissileType: debug/log/tooling name for any MissileType value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameMissileType(ulong value)
+        public static string EnumNameMissileType(MissileType value)
         {
             switch (value)
             {
-                case (ulong)MissileType.None:
+                case MissileType.None:
                     return "None";
-                case (ulong)MissileType.Heatseeker:
+                case MissileType.Heatseeker:
                     return "Heatseeker";
-                case (ulong)MissileType.Torpedo:
+                case MissileType.Torpedo:
                     return "Torpedo";
-                case (ulong)MissileType.Nuke:
+                case MissileType.Nuke:
                     return "Nuke";
                 default:
                     return "???";
             }
         }
 
-        // EnumNamePropType: debug/log/tooling name for any PropType wire value —
+        public const PropType PropTypeMax = (PropType)6; // the exported extent (SPEC §4.2)
+
+        // EnumNamePropType: debug/log/tooling name for any PropType value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNamePropType(ulong value)
+        public static string EnumNamePropType(PropType value)
         {
             switch (value)
             {
-                case (ulong)PropType.None:
+                case PropType.None:
                     return "None";
-                case (ulong)PropType.Asteroid:
+                case PropType.Asteroid:
                     return "Asteroid";
-                case (ulong)PropType.Chunk:
+                case PropType.Chunk:
                     return "Chunk";
-                case (ulong)PropType.Fragment:
+                case PropType.Fragment:
                     return "Fragment";
-                case (ulong)PropType.Sphere:
+                case PropType.Sphere:
                     return "Sphere";
-                case (ulong)PropType.BlackHole:
+                case PropType.BlackHole:
                     return "BlackHole";
-                case (ulong)PropType.DysonPanel:
+                case PropType.DysonPanel:
                     return "DysonPanel";
                 default:
                     return "???";
             }
         }
 
-        // EnumNamePending: debug/log/tooling name for any Pending wire value —
+        public const Pending PendingMax = (Pending)0; // the exported extent (SPEC §4.2)
+
+        // EnumNamePending: debug/log/tooling name for any Pending value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNamePending(ulong value)
+        public static string EnumNamePending(Pending value)
         {
             switch (value)
             {
-                case (ulong)Pending.None:
+                case Pending.None:
                     return "None";
                 default:
                     return "???";
             }
         }
 
-        // ShipFlags — one bit per variant, consumed as masks; flags-typed fields store a
-        // plain ulong, wire 4 bits (SPEC §4.2). Masks are flat PascalCase — the Go
-        // target's spelling exactly, so the checker's existing claims cover them.
-        public const ulong ShipFlagsFiringLaser = 1ul << 0;
-        public const ulong ShipFlagsBoosting = 1ul << 1;
-        public const ulong ShipFlagsBraking = 1ul << 2;
-        public const ulong ShipFlagsAiming = 1ul << 3;
         public const long ShipFlagsCount = 4; // the declared variant count (SPEC §4.2)
 
         // FlagNameShipFlags: debug/log/tooling name for bit i of ShipFlags —
@@ -200,28 +207,29 @@ namespace Example
 
         // FlagNamesShipFlags renders the set bits of value as "A|B" — "0" for the
         // empty set, bits past the declared variants as hex
-        public static string FlagNamesShipFlags(ulong value)
+        public static string FlagNamesShipFlags(ShipFlags value)
         {
             string names = "";
-            if ((value & (1ul << 0)) != 0)
+            if ((value & ShipFlags.FiringLaser) != 0)
             {
                 names += "|FiringLaser";
             }
-            if ((value & (1ul << 1)) != 0)
+            if ((value & ShipFlags.Boosting) != 0)
             {
                 names += "|Boosting";
             }
-            if ((value & (1ul << 2)) != 0)
+            if ((value & ShipFlags.Braking) != 0)
             {
                 names += "|Braking";
             }
-            if ((value & (1ul << 3)) != 0)
+            if ((value & ShipFlags.Aiming) != 0)
             {
                 names += "|Aiming";
             }
-            if ((value >> 4) != 0)
+            ulong unknown = (ulong)value >> 4;
+            if (unknown != 0)
             {
-                names += "|0x" + ((value >> 4) << 4).ToString("x");
+                names += "|0x" + (unknown << 4).ToString("x");
             }
             return names.Length == 0 ? "0" : names.Substring(1);
         }

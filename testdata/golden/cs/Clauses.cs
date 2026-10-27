@@ -119,8 +119,6 @@ namespace Example
         None = 0,
         A = 1,
         B = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // EmptyUnion — at most one of the arms; Type says which. Construction is the empty
@@ -183,18 +181,11 @@ namespace Example
     {
         // W13MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // W13MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long W13MaxBits = 160;
-        public const long W13MaxBytes = 24;
+        public const int W13MaxBits = 160;
+        public const int W13MaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW13(W13 value)
-        {
-            Array.Clear(value.Items, 0, 12);
-            value.ItemsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitW13(W13 value)
         {
             Array.Clear(value.Items, 0, 12);
             value.ItemsCount = 0;
@@ -268,18 +259,11 @@ namespace Example
 
         // W17MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // W17MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long W17MaxBits = 157;
-        public const long W17MaxBytes = 24;
+        public const int W17MaxBits = 157;
+        public const int W17MaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW17(W17 value)
-        {
-            Array.Clear(value.Items, 0, 9);
-            value.ItemsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitW17(W17 value)
         {
             Array.Clear(value.Items, 0, 9);
             value.ItemsCount = 0;
@@ -353,18 +337,11 @@ namespace Example
 
         // W26MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // W26MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long W26MaxBits = 159;
-        public const long W26MaxBytes = 24;
+        public const int W26MaxBits = 159;
+        public const int W26MaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW26(W26 value)
-        {
-            Array.Clear(value.Items, 0, 6);
-            value.ItemsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitW26(W26 value)
         {
             Array.Clear(value.Items, 0, 6);
             value.ItemsCount = 0;
@@ -438,18 +415,11 @@ namespace Example
 
         // W1MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // W1MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long W1MaxBits = 25;
-        public const long W1MaxBytes = 8;
+        public const int W1MaxBits = 25;
+        public const int W1MaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW1(W1 value)
-        {
-            Array.Clear(value.Items, 0, 20);
-            value.ItemsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitW1(W1 value)
         {
             Array.Clear(value.Items, 0, 20);
             value.ItemsCount = 0;
@@ -523,18 +493,11 @@ namespace Example
 
         // W52MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // W52MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long W52MaxBits = 158;
-        public const long W52MaxBytes = 24;
+        public const int W52MaxBits = 158;
+        public const int W52MaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW52(W52 value)
-        {
-            Array.Clear(value.Items, 0, 3);
-            value.ItemsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitW52(W52 value)
         {
             Array.Clear(value.Items, 0, 3);
             value.ItemsCount = 0;
@@ -608,18 +571,11 @@ namespace Example
 
         // W50MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // W50MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long W50MaxBits = 152;
-        public const long W50MaxBytes = 24;
+        public const int W50MaxBits = 152;
+        public const int W50MaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroW50(W50 value)
-        {
-            Array.Clear(value.Items, 0, 3);
-            value.ItemsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitW50(W50 value)
         {
             Array.Clear(value.Items, 0, 3);
             value.ItemsCount = 0;
@@ -693,17 +649,11 @@ namespace Example
 
         // F13MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // F13MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long F13MaxBits = 91;
-        public const long F13MaxBytes = 16;
+        public const int F13MaxBits = 91;
+        public const int F13MaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroF13(F13 value)
-        {
-            Array.Clear(value.Items, 0, 7);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitF13(F13 value)
         {
             Array.Clear(value.Items, 0, 7);
         }
@@ -764,18 +714,11 @@ namespace Example
 
         // Tri3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // Tri3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long Tri3MaxBits = 3;
-        public const long Tri3MaxBytes = 8;
+        public const int Tri3MaxBits = 3;
+        public const int Tri3MaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTri3(Tri3 value)
-        {
-            value.A = 0;
-            value.B = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTri3(Tri3 value)
         {
             value.A = 0;
             value.B = 0;
@@ -839,8 +782,8 @@ namespace Example
 
         // ArrTri3MaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArrTri3MaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArrTri3MaxBits = 34;
-        public const long ArrTri3MaxBytes = 8;
+        public const int ArrTri3MaxBits = 34;
+        public const int ArrTri3MaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArrTri3(ArrTri3 value)
@@ -848,16 +791,6 @@ namespace Example
             for (int i = 0; i < 10; i++)
             {
                 ZeroTri3(value.Items[i]);
-            }
-            value.ItemsCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArrTri3(ArrTri3 value)
-        {
-            for (int i = 0; i < 10; i++)
-            {
-                InitTri3(value.Items[i]);
             }
             value.ItemsCount = 0;
         }
@@ -922,18 +855,11 @@ namespace Example
 
         // ElevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ElevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ElevenMaxBits = 11;
-        public const long ElevenMaxBytes = 8;
+        public const int ElevenMaxBits = 11;
+        public const int ElevenMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroEleven(Eleven value)
-        {
-            value.A = 0;
-            value.B = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitEleven(Eleven value)
         {
             value.A = 0;
             value.B = 0;
@@ -997,8 +923,8 @@ namespace Example
 
         // ArrElevenMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArrElevenMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArrElevenMaxBits = 99;
-        public const long ArrElevenMaxBytes = 16;
+        public const int ArrElevenMaxBits = 99;
+        public const int ArrElevenMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArrEleven(ArrEleven value)
@@ -1006,15 +932,6 @@ namespace Example
             for (int i = 0; i < 9; i++)
             {
                 ZeroEleven(value.Items[i]);
-            }
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArrEleven(ArrEleven value)
-        {
-            for (int i = 0; i < 9; i++)
-            {
-                InitEleven(value.Items[i]);
             }
         }
 
@@ -1066,19 +983,13 @@ namespace Example
 
         // EmptyAMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // EmptyAMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long EmptyAMaxBits = 0;
-        public const long EmptyAMaxBytes = 0;
+        public const int EmptyAMaxBits = 0;
+        public const int EmptyAMaxBytes = 0;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroEmptyA(EmptyA value)
         {
             _ = value; // empty body — nothing to reset (SPEC §4.6)
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitEmptyA(EmptyA value)
-        {
-            _ = value; // empty body — nothing to initialize
         }
 
         public static bool WriteEmptyA(WriteStream stream, EmptyA value)
@@ -1109,19 +1020,13 @@ namespace Example
 
         // EmptyBMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // EmptyBMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long EmptyBMaxBits = 0;
-        public const long EmptyBMaxBytes = 0;
+        public const int EmptyBMaxBits = 0;
+        public const int EmptyBMaxBytes = 0;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroEmptyB(EmptyB value)
         {
             _ = value; // empty body — nothing to reset (SPEC §4.6)
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitEmptyB(EmptyB value)
-        {
-            _ = value; // empty body — nothing to initialize
         }
 
         public static bool WriteEmptyB(WriteStream stream, EmptyB value)
@@ -1150,17 +1055,19 @@ namespace Example
             return true;
         }
 
-        // EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameEmptyUnionType(ulong value)
+        public const EmptyUnionType EmptyUnionTypeMax = (EmptyUnionType)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameEmptyUnionType: debug/log/tooling name for any EmptyUnionType value —
+        // out-of-set values name as "???"
+        public static string EnumNameEmptyUnionType(EmptyUnionType value)
         {
             switch (value)
             {
-                case (ulong)EmptyUnionType.None:
+                case EmptyUnionType.None:
                     return "None";
-                case (ulong)EmptyUnionType.A:
+                case EmptyUnionType.A:
                     return "A";
-                case (ulong)EmptyUnionType.B:
+                case EmptyUnionType.B:
                     return "B";
                 default:
                     return "???";
@@ -1169,8 +1076,8 @@ namespace Example
 
         // EmptyUnionMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // EmptyUnionMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long EmptyUnionMaxBits = 2;
-        public const long EmptyUnionMaxBytes = 8;
+        public const int EmptyUnionMaxBits = 2;
+        public const int EmptyUnionMaxBytes = 8;
 
         // ZeroEmptyUnion resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
@@ -1229,10 +1136,10 @@ namespace Example
             switch (value.Type)
             {
                 case EmptyUnionType.A:
-                    InitEmptyA(value.A); // every selection starts from construction defaults
+                    ZeroEmptyA(value.A); // every selection starts from construction defaults
                     return ReadEmptyA(stream, value.A);
                 case EmptyUnionType.B:
-                    InitEmptyB(value.B); // every selection starts from construction defaults
+                    ZeroEmptyB(value.B); // every selection starts from construction defaults
                     return ReadEmptyB(stream, value.B);
             }
             return true; // None
@@ -1251,10 +1158,10 @@ namespace Example
             switch (value.Type)
             {
                 case EmptyUnionType.A:
-                    InitEmptyA(value.A); // every selection starts from construction defaults
+                    ZeroEmptyA(value.A); // every selection starts from construction defaults
                     return ReadEmptyABatch(ref batch, value.A);
                 case EmptyUnionType.B:
-                    InitEmptyB(value.B); // every selection starts from construction defaults
+                    ZeroEmptyB(value.B); // every selection starts from construction defaults
                     return ReadEmptyBBatch(ref batch, value.B);
             }
             return true; // None
@@ -1262,19 +1169,11 @@ namespace Example
 
         // HoldsEmptyUnionMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // HoldsEmptyUnionMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long HoldsEmptyUnionMaxBits = 14;
-        public const long HoldsEmptyUnionMaxBytes = 8;
+        public const int HoldsEmptyUnionMaxBits = 14;
+        public const int HoldsEmptyUnionMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroHoldsEmptyUnion(HoldsEmptyUnion value)
-        {
-            value.Lead = 0;
-            ZeroEmptyUnion(value.U);
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitHoldsEmptyUnion(HoldsEmptyUnion value)
         {
             value.Lead = 0;
             ZeroEmptyUnion(value.U);
@@ -1339,22 +1238,11 @@ namespace Example
 
         // StrsMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // StrsMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long StrsMaxBits = 158;
-        public const long StrsMaxBytes = 24;
+        public const int StrsMaxBits = 158;
+        public const int StrsMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroStrs(Strs value)
-        {
-            value.Lead = 0;
-            Array.Clear(value.S, 0, 8);
-            value.SLength = 0;
-            Array.Clear(value.B, 0, 8);
-            value.BLength = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitStrs(Strs value)
         {
             value.Lead = 0;
             Array.Clear(value.S, 0, 8);
@@ -1459,8 +1347,8 @@ namespace Example
 
         // ArrNestedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ArrNestedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ArrNestedMaxBits = 55;
-        public const long ArrNestedMaxBytes = 8;
+        public const int ArrNestedMaxBits = 55;
+        public const int ArrNestedMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroArrNested(ArrNested value)
@@ -1469,18 +1357,6 @@ namespace Example
             for (int i = 0; i < 4; i++)
             {
                 ZeroEleven(value.Items[i]);
-            }
-            value.ItemsCount = 0;
-            value.Tail = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitArrNested(ArrNested value)
-        {
-            value.Lead = 0;
-            for (int i = 0; i < 4; i++)
-            {
-                InitEleven(value.Items[i]);
             }
             value.ItemsCount = 0;
             value.Tail = 0;
@@ -1562,17 +1438,11 @@ namespace Example
 
         // SoleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // SoleMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long SoleMaxBits = 13;
-        public const long SoleMaxBytes = 8;
+        public const int SoleMaxBits = 13;
+        public const int SoleMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroSole(Sole value)
-        {
-            value.Only = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitSole(Sole value)
         {
             value.Only = 0;
         }

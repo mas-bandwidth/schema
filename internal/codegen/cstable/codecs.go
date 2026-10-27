@@ -46,11 +46,8 @@ func csFieldType(t ir.FieldType) string {
 	case ir.TFloat64:
 		return "double"
 	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			// flags-typed fields store a plain ulong of masks, the packet
-			// emitter's spelling exactly (SPEC §4.2)
-			return "ulong"
-		}
+		// a flags-typed field stores the packet emitter's [Flags] enum,
+		// ulong-backed (SPEC §4.2)
 		return t.Name
 	}
 	return "/* ? */"
@@ -194,8 +191,8 @@ func fieldDefaultExpr(f *ir.Field) string {
 			}
 			return f.Type.Name + ".None"
 		case *ir.Flags:
-			if f.HasDefault && f.DefInt != nil {
-				return f.DefInt.String() + "ul"
+			if f.HasDefault && f.DefInt != nil && f.DefInt.Sign() != 0 {
+				return "(" + f.Type.Name + ")" + f.DefInt.String() + "ul"
 			}
 			return "0"
 		}
@@ -748,9 +745,6 @@ func csRawGet(expr string, t ir.FieldType) string {
 	case ir.TBits:
 		return "(ulong)" + expr
 	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			return expr
-		}
 		return "(ulong)" + expr
 	}
 	return "0ul"
@@ -776,9 +770,6 @@ func csRawSet(expr, src string, t ir.FieldType) string {
 	case ir.TBits:
 		return expr + " = unchecked((" + csFieldType(t) + ")" + src + ");"
 	case ir.TNamed:
-		if _, isFlags := t.Ref.(*ir.Flags); isFlags {
-			return expr + " = " + src + ";"
-		}
 		return expr + " = unchecked((" + t.Name + ")" + src + ");"
 	}
 	return ""
@@ -880,7 +871,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	case f.IsMap(), f.IsList():
 		bound = "int.MaxValue"
 	case f.KeyEnum != "":
-		bound = fmt.Sprintf("(int)global::%s.%s.Max", capitalize(g.unit.Package), f.KeyEnum)
+		bound = fmt.Sprintf("(int)global::%s.Schema.%sMax", capitalize(g.unit.Package), f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
@@ -904,7 +895,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	keyTypeName, keyName, keyId := "null", "null", "null"
 	if f.KeyEnum != "" {
 		keyTypeName = fmt.Sprintf("%q", f.KeyEnum)
-		keyName = fmt.Sprintf("delegate (ulong v) { return EnumName%s(v); }", f.KeyEnum)
+		keyName = enumNameLambda(capitalize(g.unit.Package), f.KeyEnum)
 		keyId = fmt.Sprintf("delegate (ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.KeyEnum)
 	}
 
@@ -940,7 +931,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
-			enumName = fmt.Sprintf("delegate (ulong v) { return EnumName%s(v); }", f.Type.Name)
+			enumName = enumNameLambda(capitalize(g.unit.Package), f.Type.Name)
 			variantId = fmt.Sprintf("delegate (ulong v) { ulong id; TableEnumId((global::%s.%s)v, out id); return id; }", capitalize(g.unit.Package), f.Type.Name)
 		}
 	case *ir.Flags:
@@ -1007,4 +998,12 @@ func rootElemSlots(st *ir.Struct) int {
 		}
 	}
 	return int(slots)
+}
+
+// enumNameLambda adapts EnumName<E>, which takes the enum, to the
+// descriptor's ulong vocabulary column: a value past the exported extent
+// names as "???" before the cast could truncate it through a narrower
+// backing type.
+func enumNameLambda(pkg, enum string) string {
+	return fmt.Sprintf("delegate (ulong v) { return v <= (ulong)%sMax ? EnumName%s((global::%s.%s)v) : \"???\"; }", enum, enum, pkg, enum)
 }

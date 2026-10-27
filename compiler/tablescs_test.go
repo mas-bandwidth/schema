@@ -353,8 +353,8 @@ fixed table Subject {
 	if !strings.Contains(text, "private static class SubjectTableInfo") {
 		t.Errorf("expected SubjectTableInfo holder class in generated output")
 	}
-	if !strings.Contains(text, "(int)global::Vocab.Instance.Max") {
-		t.Errorf("expected qualified (int)global::Vocab.Instance.Max, got:\n%s", text)
+	if !strings.Contains(text, "(int)global::Vocab.Schema.InstanceMax") {
+		t.Errorf("expected qualified (int)global::Vocab.Schema.InstanceMax, got:\n%s", text)
 	}
 	if !strings.Contains(text, "global::Vocab.Build.Second") {
 		t.Errorf("expected qualified global::Vocab.Build.Second in default, got:\n%s", text)

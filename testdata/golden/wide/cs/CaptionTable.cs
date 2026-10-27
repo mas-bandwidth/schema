@@ -20,8 +20,6 @@ namespace Wide
         Wide = 1,
         Narrow = 2,
         Tally = 3,
-        Count = 3,
-        Max = 3,
     }
 
     // Selected arms ride even when empty. Every buffer exists at construction.
@@ -69,14 +67,16 @@ namespace Wide
     // one slice per generated file.
     public static partial class Schema
     {
-        public static string EnumNameBodyType(ulong value)
+        public const BodyType BodyTypeMax = (BodyType)3; // the exported extent (SPEC §4.2)
+
+        public static string EnumNameBodyType(BodyType value)
         {
             switch (value)
             {
-                case 0: return "None";
-                case 1: return "Wide";
-                case 2: return "Narrow";
-                case 3: return "Tally";
+                case BodyType.None: return "None";
+                case BodyType.Wide: return "Wide";
+                case BodyType.Narrow: return "Narrow";
+                case BodyType.Tally: return "Tally";
                 default: return "???";
             }
         }

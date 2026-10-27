@@ -47,21 +47,11 @@ namespace Example
 
         // RenderSpriteMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // RenderSpriteMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long RenderSpriteMaxBits = 138;
-        public const long RenderSpriteMaxBytes = 24;
+        public const int RenderSpriteMaxBits = 138;
+        public const int RenderSpriteMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRenderSprite(RenderSprite value)
-        {
-            value.SortKey = 0;
-            value.MeshId = 0;
-            value.MaterialId = 0;
-            value.Layer = 0;
-            value.Team = Team.None;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitRenderSprite(RenderSprite value)
         {
             value.SortKey = 0;
             value.MeshId = 0;
@@ -158,8 +148,8 @@ namespace Example
 
         // RenderBlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // RenderBlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long RenderBlockMaxBits = 8903;
-        public const long RenderBlockMaxBytes = 1120;
+        public const int RenderBlockMaxBits = 8903;
+        public const int RenderBlockMaxBytes = 1120;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroRenderBlock(RenderBlock value)
@@ -169,18 +159,6 @@ namespace Example
             for (int i = 0; i < (int)RenderBlockMaxSprites; i++)
             {
                 ZeroRenderSprite(value.Sprites[i]);
-            }
-            value.SpritesCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitRenderBlock(RenderBlock value)
-        {
-            value.WorkerIndex = 0;
-            value.SpriteCountHint = 0;
-            for (int i = 0; i < (int)RenderBlockMaxSprites; i++)
-            {
-                InitRenderSprite(value.Sprites[i]);
             }
             value.SpritesCount = 0;
         }

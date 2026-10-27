@@ -21,8 +21,17 @@ namespace Example
         Laser = 1,
         Missile = 2,
         Railgun = 3,
-        Count = 3, // the declared variant count (SPEC §4.2)
-        Max = 15, // the exported extent (SPEC §4.2)
+    }
+
+    // ProbeFlags — one bit per variant, consumed as masks; wire 8 bits (SPEC §4.2).
+    // The backing type is ulong in every declaration, the full width §4.2
+    // requires, so bits a newer build appended survive a read and a rewrite.
+    [Flags]
+    public enum ProbeFlags : ulong
+    {
+        Armed = 1ul << 0,
+        Cloaked = 1ul << 1,
+        Damaged = 1ul << 2,
     }
 
     // type ProbeHeader
@@ -86,8 +95,6 @@ namespace Example
         None = 0,
         Ring = 1,
         Slab = 2,
-        Count = 2, // the declared variant count (SPEC §4.2)
-        Max = 2, // the exported extent (SPEC §4.2)
     }
 
     // ProbeShape — at most one of the arms; Type says which. Construction is the empty
@@ -173,7 +180,7 @@ namespace Example
     public sealed class ProbeReport
     {
         public ProbeHeader Header = new ProbeHeader();
-        public ulong Flags; // ProbeFlags — consumed as masks, ulong storage (SPEC §4.2)
+        public ProbeFlags Flags;
         public Test Echo = new Test();
     }
 
@@ -225,31 +232,27 @@ namespace Example
 
         public const double SpinRate = 1.5;
 
-        // EnumNameWeapon: debug/log/tooling name for any Weapon wire value —
+        public const Weapon WeaponMax = (Weapon)15; // the exported extent (SPEC §4.2)
+
+        // EnumNameWeapon: debug/log/tooling name for any Weapon value —
         // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameWeapon(ulong value)
+        public static string EnumNameWeapon(Weapon value)
         {
             switch (value)
             {
-                case (ulong)Weapon.None:
+                case Weapon.None:
                     return "None";
-                case (ulong)Weapon.Laser:
+                case Weapon.Laser:
                     return "Laser";
-                case (ulong)Weapon.Missile:
+                case Weapon.Missile:
                     return "Missile";
-                case (ulong)Weapon.Railgun:
+                case Weapon.Railgun:
                     return "Railgun";
                 default:
                     return "???";
             }
         }
 
-        // ProbeFlags — one bit per variant, consumed as masks; flags-typed fields store a
-        // plain ulong, wire 8 bits (SPEC §4.2). Masks are flat PascalCase — the Go
-        // target's spelling exactly, so the checker's existing claims cover them.
-        public const ulong ProbeFlagsArmed = 1ul << 0;
-        public const ulong ProbeFlagsCloaked = 1ul << 1;
-        public const ulong ProbeFlagsDamaged = 1ul << 2;
         public const long ProbeFlagsCount = 3; // the declared variant count (SPEC §4.2)
 
         // FlagNameProbeFlags: debug/log/tooling name for bit i of ProbeFlags —
@@ -267,42 +270,36 @@ namespace Example
 
         // FlagNamesProbeFlags renders the set bits of value as "A|B" — "0" for the
         // empty set, bits past the declared variants as hex
-        public static string FlagNamesProbeFlags(ulong value)
+        public static string FlagNamesProbeFlags(ProbeFlags value)
         {
             string names = "";
-            if ((value & (1ul << 0)) != 0)
+            if ((value & ProbeFlags.Armed) != 0)
             {
                 names += "|Armed";
             }
-            if ((value & (1ul << 1)) != 0)
+            if ((value & ProbeFlags.Cloaked) != 0)
             {
                 names += "|Cloaked";
             }
-            if ((value & (1ul << 2)) != 0)
+            if ((value & ProbeFlags.Damaged) != 0)
             {
                 names += "|Damaged";
             }
-            if ((value >> 3) != 0)
+            ulong unknown = (ulong)value >> 3;
+            if (unknown != 0)
             {
-                names += "|0x" + ((value >> 3) << 3).ToString("x");
+                names += "|0x" + (unknown << 3).ToString("x");
             }
             return names.Length == 0 ? "0" : names.Substring(1);
         }
 
         // ProbeHeaderMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeHeaderMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeHeaderMaxBits = 87;
-        public const long ProbeHeaderMaxBytes = 16;
+        public const int ProbeHeaderMaxBits = 87;
+        public const int ProbeHeaderMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeHeader(ProbeHeader value)
-        {
-            value.Version = 0;
-            value.ProbeId = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeHeader(ProbeHeader value)
         {
             value.Version = 0;
             value.ProbeId = 0;
@@ -391,21 +388,11 @@ namespace Example
 
         // ProbeBitsMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeBitsMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeBitsMaxBits = 202;
-        public const long ProbeBitsMaxBytes = 32;
+        public const int ProbeBitsMaxBits = 202;
+        public const int ProbeBitsMaxBytes = 32;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeBits(ProbeBits value)
-        {
-            value.Small = 0;
-            value.Boundary = 0;
-            value.Wide = 0;
-            value.Sensor = 0;
-            value.Nonce = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeBits(ProbeBits value)
         {
             value.Small = 0;
             value.Boundary = 0;
@@ -502,8 +489,8 @@ namespace Example
 
         // ProbeSampleMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeSampleMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeSampleMaxBits = 276;
-        public const long ProbeSampleMaxBytes = 40;
+        public const int ProbeSampleMaxBits = 276;
+        public const int ProbeSampleMaxBytes = 40;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeSample(ProbeSample value)
@@ -725,17 +712,11 @@ namespace Example
 
         // ProbeRingMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeRingMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeRingMaxBits = 16;
-        public const long ProbeRingMaxBytes = 8;
+        public const int ProbeRingMaxBits = 16;
+        public const int ProbeRingMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeRing(ProbeRing value)
-        {
-            value.Radius = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeRing(ProbeRing value)
         {
             value.Radius = 0;
         }
@@ -796,18 +777,11 @@ namespace Example
 
         // ProbeSlabMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeSlabMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeSlabMaxBits = 15;
-        public const long ProbeSlabMaxBytes = 8;
+        public const int ProbeSlabMaxBits = 15;
+        public const int ProbeSlabMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeSlab(ProbeSlab value)
-        {
-            value.Width = 0;
-            value.Height = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeSlab(ProbeSlab value)
         {
             value.Width = 0;
             value.Height = 0;
@@ -872,17 +846,19 @@ namespace Example
             return true;
         }
 
-        // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType wire value —
-        // out-of-set values (wire-legal up to the declared max) name as "???"
-        public static string EnumNameProbeShapeType(ulong value)
+        public const ProbeShapeType ProbeShapeTypeMax = (ProbeShapeType)2; // the exported extent (SPEC §4.2)
+
+        // EnumNameProbeShapeType: debug/log/tooling name for any ProbeShapeType value —
+        // out-of-set values name as "???"
+        public static string EnumNameProbeShapeType(ProbeShapeType value)
         {
             switch (value)
             {
-                case (ulong)ProbeShapeType.None:
+                case ProbeShapeType.None:
                     return "None";
-                case (ulong)ProbeShapeType.Ring:
+                case ProbeShapeType.Ring:
                     return "Ring";
-                case (ulong)ProbeShapeType.Slab:
+                case ProbeShapeType.Slab:
                     return "Slab";
                 default:
                     return "???";
@@ -891,8 +867,8 @@ namespace Example
 
         // ProbeShapeMaxBits is the tag plus the largest arm; None costs the tag only (SPEC §4.8).
         // ProbeShapeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeShapeMaxBits = 18;
-        public const long ProbeShapeMaxBytes = 8;
+        public const int ProbeShapeMaxBits = 18;
+        public const int ProbeShapeMaxBytes = 8;
 
         // ZeroProbeShape resets value to the §5 zero form — the empty union. The tag alone
         // resets: unselected arms are unspecified by rule (SPEC §4.8), and every arm
@@ -953,10 +929,10 @@ namespace Example
             switch (value.Type)
             {
                 case ProbeShapeType.Ring:
-                    InitProbeRing(value.Ring); // every selection starts from construction defaults
+                    ZeroProbeRing(value.Ring); // every selection starts from construction defaults
                     return ReadProbeRingBatch(ref batch, value.Ring);
                 case ProbeShapeType.Slab:
-                    InitProbeSlab(value.Slab); // every selection starts from construction defaults
+                    ZeroProbeSlab(value.Slab); // every selection starts from construction defaults
                     return ReadProbeSlabBatch(ref batch, value.Slab);
             }
             return true; // None
@@ -964,24 +940,11 @@ namespace Example
 
         // ProbeColliderMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeColliderMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeColliderMaxBits = 82;
-        public const long ProbeColliderMaxBytes = 16;
+        public const int ProbeColliderMaxBits = 82;
+        public const int ProbeColliderMaxBytes = 16;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeCollider(ProbeCollider value)
-        {
-            value.Armor = 0;
-            ZeroProbeShape(value.Shape);
-            ZeroProbeShape(value.Backup);
-            for (int i = 0; i < 2; i++)
-            {
-                ZeroProbeShape(value.Extras[i]);
-            }
-            value.ExtrasCount = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeCollider(ProbeCollider value)
         {
             value.Armor = 0;
             ZeroProbeShape(value.Shape);
@@ -1084,8 +1047,8 @@ namespace Example
 
         // ProbeConfigMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeConfigMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeConfigMaxBits = 36;
-        public const long ProbeConfigMaxBytes = 8;
+        public const int ProbeConfigMaxBits = 36;
+        public const int ProbeConfigMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeConfig(ProbeConfig value)
@@ -1160,8 +1123,8 @@ namespace Example
 
         // ProbeArrayMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeArrayMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeArrayMaxBits = 588;
-        public const long ProbeArrayMaxBytes = 80;
+        public const int ProbeArrayMaxBits = 588;
+        public const int ProbeArrayMaxBytes = 80;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeArray(ProbeArray value)
@@ -1239,19 +1202,13 @@ namespace Example
 
         // HeartbeatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // HeartbeatMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long HeartbeatMaxBits = 0;
-        public const long HeartbeatMaxBytes = 0;
+        public const int HeartbeatMaxBits = 0;
+        public const int HeartbeatMaxBytes = 0;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroHeartbeat(Heartbeat value)
         {
             _ = value; // empty body — nothing to reset (SPEC §4.6)
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitHeartbeat(Heartbeat value)
-        {
-            _ = value; // empty body — nothing to initialize
         }
 
         public static bool WriteHeartbeat(WriteStream stream, Heartbeat value)
@@ -1267,20 +1224,11 @@ namespace Example
 
         // TestMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TestMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TestMaxBits = 46;
-        public const long TestMaxBytes = 8;
+        public const int TestMaxBits = 46;
+        public const int TestMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTest(Test value)
-        {
-            value.TestA = 0;
-            value.TestB = 0;
-            value.TestC = 0;
-            value.TestD = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTest(Test value)
         {
             value.TestA = 0;
             value.TestB = 0;
@@ -1369,18 +1317,11 @@ namespace Example
 
         // BlockMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // BlockMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long BlockMaxBits = 16018;
-        public const long BlockMaxBytes = 2008;
+        public const int BlockMaxBits = 16018;
+        public const int BlockMaxBytes = 2008;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroBlock(Block value)
-        {
-            Array.Clear(value.Data, 0, (int)MaxBlockSize);
-            value.DataLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitBlock(Block value)
         {
             Array.Clear(value.Data, 0, (int)MaxBlockSize);
             value.DataLength = 0;
@@ -1418,18 +1359,11 @@ namespace Example
 
         // ChatMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ChatMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ChatMaxBits = 2064;
-        public const long ChatMaxBytes = 264;
+        public const int ChatMaxBits = 2064;
+        public const int ChatMaxBytes = 264;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroChat(Chat value)
-        {
-            Array.Clear(value.Text, 0, (int)MaxChatLength);
-            value.TextLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitChat(Chat value)
         {
             Array.Clear(value.Text, 0, (int)MaxChatLength);
             value.TextLength = 0;
@@ -1494,8 +1428,8 @@ namespace Example
 
         // ProbeReportMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // ProbeReportMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long ProbeReportMaxBits = 141;
-        public const long ProbeReportMaxBytes = 24;
+        public const int ProbeReportMaxBits = 141;
+        public const int ProbeReportMaxBytes = 24;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroProbeReport(ProbeReport value)
@@ -1503,14 +1437,6 @@ namespace Example
             ZeroProbeHeader(value.Header);
             value.Flags = 0;
             ZeroTest(value.Echo);
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitProbeReport(ProbeReport value)
-        {
-            InitProbeHeader(value.Header);
-            value.Flags = 0;
-            InitTest(value.Echo);
         }
 
         // batch form: stream state stays in registers across the body and End
@@ -1531,7 +1457,7 @@ namespace Example
             {
                 return false;
             }
-            Debug.Assert(value.Flags < 1ul << 8, "value.Flags has a mask bit above the 8-bit wire width"); // a mask bit above the wire width cannot ride
+            Debug.Assert((ulong)value.Flags < 1ul << 8, "value.Flags has a mask bit above the 8-bit wire width"); // a mask bit above the wire width cannot ride
             {
                 uint flagsValue = (uint)value.Flags;
                 if (!batch.SerializeBits(ref flagsValue, 8))
@@ -1568,7 +1494,7 @@ namespace Example
                 {
                     return false;
                 }
-                value.Flags = flagsValue;
+                value.Flags = (ProbeFlags)flagsValue;
             }
             if (!ReadTestBatch(ref batch, value.Echo))
             {
@@ -1579,39 +1505,11 @@ namespace Example
 
         // TestDataMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // TestDataMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long TestDataMaxBits = 2735;
-        public const long TestDataMaxBytes = 344;
+        public const int TestDataMaxBits = 2735;
+        public const int TestDataMaxBytes = 344;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroTestData(TestData value)
-        {
-            value.A = 0;
-            value.B = 0;
-            value.C = 0;
-            value.D = 0;
-            value.E = 0;
-            value.F = 0;
-            value.G = false;
-            Array.Clear(value.Items, 0, 16);
-            value.ItemsCount = 0;
-            value.FloatValue = 0.0f;
-            value.CompressedFloatValue = 0.0f;
-            value.DoubleValue = 0.0;
-            value.Int8Value = 0;
-            value.Int16Value = 0;
-            value.Uint8Value = 0;
-            value.Uint16Value = 0;
-            value.Uint32Value = 0;
-            value.Uint64Value = 0;
-            value.Int64Full = 0;
-            value.Int64Range = 0;
-            Array.Clear(value.FixedBytes, 0, 17);
-            Array.Clear(value.Text, 0, 255);
-            value.TextLength = 0;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitTestData(TestData value)
         {
             value.A = 0;
             value.B = 0;
@@ -1884,18 +1782,11 @@ namespace Example
 
         // CompressedProbeMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
         // CompressedProbeMaxBytes is rounded up to the 8-byte write-buffer granularity.
-        public const long CompressedProbeMaxBits = 24;
-        public const long CompressedProbeMaxBytes = 8;
+        public const int CompressedProbeMaxBits = 24;
+        public const int CompressedProbeMaxBytes = 8;
 
         // The §5 zero form: all-zero storage; specified defaults live only in construction.
         public static void ZeroCompressedProbe(CompressedProbe value)
-        {
-            value.Boundary = 0.0f;
-            value.Offset = 0.0f;
-        }
-
-        // Restore construction defaults in place; buffers and objects are retained.
-        public static void InitCompressedProbe(CompressedProbe value)
         {
             value.Boundary = 0.0f;
             value.Offset = 0.0f;

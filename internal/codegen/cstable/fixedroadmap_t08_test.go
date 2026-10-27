@@ -274,9 +274,9 @@ else
 	for i := range 40 {
 		fmt.Fprintf(&tierDecl, "        v%d = %d,\n", i, i+1)
 	}
-	tierDecl.WriteString("        Count = 40,\n        Max = 40,\n    }\n\n    public static partial class Schema\n    {\n        public static string EnumNameTier(ulong value)\n        {\n            switch (value)\n            {\n                case (ulong)Tier.None:\n                    return \"None\";\n")
+	tierDecl.WriteString("    }\n\n    public static partial class Schema\n    {\n        public const Tier TierMax = (Tier)40;\n\n        public static string EnumNameTier(Tier value)\n        {\n            switch (value)\n            {\n                case Tier.None:\n                    return \"None\";\n")
 	for i := range 40 {
-		fmt.Fprintf(&tierDecl, "                case (ulong)Tier.v%d:\n                    return \"v%d\";\n", i, i)
+		fmt.Fprintf(&tierDecl, "                case Tier.v%d:\n                    return \"v%d\";\n", i, i)
 	}
 	tierDecl.WriteString("                default:\n                    return \"???\";\n            }\n        }\n    }\n}\n")
 	t08CSOK(t, poolSchema.String(), `int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<Probe.TableFixedEntry>();
