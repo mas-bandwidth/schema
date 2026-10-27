@@ -6,7 +6,8 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
+#include <string.h>
 #include <new>
 
 #include "serialize.h"
@@ -52,6 +53,33 @@ namespace example {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 #ifndef SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
 #define SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
@@ -170,7 +198,7 @@ SCHEMA_WRITE_INLINE bool WriteW13( serialize::WriteStream & stream, const W13 & 
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 8191 ) );
+        serialize_assert( int32_t( value.items[i] ) <= int32_t( 8191 ) );
         write_bits( stream, uint32_t( value.items[i] ), 13 );
     }
     return true;
@@ -240,7 +268,7 @@ SCHEMA_WRITE_INLINE bool WriteW1( serialize::WriteStream & stream, const W1 & va
     write_bits( stream, uint32_t( value.items_count ), 5 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 1 ) );
+        serialize_assert( int32_t( value.items[i] ) <= int32_t( 1 ) );
         write_bits( stream, uint32_t( value.items[i] ), 1 );
     }
     return true;
@@ -308,7 +336,7 @@ SCHEMA_WRITE_INLINE bool WriteF13( serialize::WriteStream & stream, const F13 & 
 {
     for ( int32_t i = 0; i < 7; i++ )
     {
-        serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 8191 ) );
+        serialize_assert( int32_t( value.items[i] ) <= int32_t( 8191 ) );
         write_bits( stream, uint32_t( value.items[i] ), 13 );
     }
     return true;
@@ -347,10 +375,7 @@ SCHEMA_WRITE_INLINE bool WriteArrTri3( serialize::WriteStream & stream, const Ar
     write_bits( stream, uint32_t( value.items_count ), 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        if ( !WriteTri3( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteTri3, value.items[i] );
     }
     return true;
 }
@@ -360,10 +385,7 @@ SCHEMA_READ_INLINE bool ReadArrTri3( serialize::ReadStream & stream, ArrTri3 & v
     read_int( stream, value.items_count, 0, 10 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        if ( !ReadTri3( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadTri3, value.items[i] );
     }
     return true;
 }
@@ -386,10 +408,7 @@ SCHEMA_WRITE_INLINE bool WriteArrEleven( serialize::WriteStream & stream, const 
 {
     for ( int32_t i = 0; i < 9; i++ )
     {
-        if ( !WriteEleven( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteEleven, value.items[i] );
     }
     return true;
 }
@@ -398,10 +417,7 @@ SCHEMA_READ_INLINE bool ReadArrEleven( serialize::ReadStream & stream, ArrEleven
 {
     for ( int32_t i = 0; i < 9; i++ )
     {
-        if ( !ReadEleven( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadEleven, value.items[i] );
     }
     return true;
 }
@@ -457,7 +473,7 @@ SCHEMA_WRITE_INLINE bool WriteEmptyUnion( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadEmptyUnion( serialize::ReadStream & stream, EmptyUnion & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 2 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, int32_t( EmptyUnionType::Max ) ); // rejects a tag above the count (SPEC §4.8)
     value.type = EmptyUnionType( tag_value );
     switch ( value.type )
     {
@@ -476,10 +492,7 @@ SCHEMA_READ_INLINE bool ReadEmptyUnion( serialize::ReadStream & stream, EmptyUni
 SCHEMA_WRITE_INLINE bool WriteHoldsEmptyUnion( serialize::WriteStream & stream, const HoldsEmptyUnion & value )
 {
     write_bits( stream, value.lead, 5 );
-    if ( !WriteEmptyUnion( stream, value.u ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteEmptyUnion, value.u );
     write_bits( stream, value.tail, 7 );
     return true;
 }
@@ -487,10 +500,7 @@ SCHEMA_WRITE_INLINE bool WriteHoldsEmptyUnion( serialize::WriteStream & stream, 
 SCHEMA_READ_INLINE bool ReadHoldsEmptyUnion( serialize::ReadStream & stream, HoldsEmptyUnion & value )
 {
     read_bits( stream, value.lead, 5 );
-    if ( !ReadEmptyUnion( stream, value.u ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadEmptyUnion, value.u );
     read_bits( stream, value.tail, 7 );
     return true;
 }
@@ -539,10 +549,7 @@ SCHEMA_WRITE_INLINE bool WriteArrNested( serialize::WriteStream & stream, const 
     write_bits( stream, uint32_t( value.items_count ), 3 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        if ( !WriteEleven( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteEleven, value.items[i] );
     }
     write_bits( stream, value.tail, 3 );
     return true;
@@ -554,10 +561,7 @@ SCHEMA_READ_INLINE bool ReadArrNested( serialize::ReadStream & stream, ArrNested
     read_int( stream, value.items_count, 0, 4 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        if ( !ReadEleven( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadEleven, value.items[i] );
     }
     read_bits( stream, value.tail, 3 );
     return true;

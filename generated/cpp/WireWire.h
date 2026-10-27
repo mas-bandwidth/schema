@@ -6,7 +6,8 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
+#include <string.h>
 #include <new>
 
 #include "serialize.h"
@@ -53,6 +54,33 @@ namespace example {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 #ifndef SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
 #define SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
@@ -204,7 +232,6 @@ SCHEMA_WRITE_INLINE bool WriteProbeBits( serialize::WriteStream & stream, const 
     write_bits( stream, value.small, 9 );
     write_bits( stream, value.boundary, 33 );
     write_bits( stream, value.wide, 64 );
-    serialize_assert( int64_t( value.sensor ) >= int64_t( 0 ) && int64_t( value.sensor ) <= int64_t( 4294967295 ) );
     write_bits( stream, uint64_t( value.sensor ), 32 );
     write_bits( stream, value.nonce, 64 );
     return true;
@@ -235,7 +262,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeSample( serialize::WriteStream & stream, cons
     write_bits( stream, value.big_delta, 64 );
     if ( value.active )
     {
-        serialize_assert( int32_t( value.weapon ) >= int32_t( 0 ) && int32_t( value.weapon ) <= int32_t( 15 ) );
+        serialize_assert( int32_t( value.weapon ) <= int32_t( Weapon::Max ) );
         write_bits( stream, uint32_t( value.weapon ), 4 );
         write_bool( stream, value.has_target );
         if ( value.has_target )
@@ -274,7 +301,7 @@ SCHEMA_READ_INLINE bool ReadProbeSample( serialize::ReadStream & stream, ProbeSa
     {
         {
             int32_t enum_value = 0;
-            read_int( stream, enum_value, 0, 15 );
+            read_int( stream, enum_value, 0, int32_t( Weapon::Max ) );
             value.weapon = Weapon( enum_value );
         }
         read_bool( stream, value.has_target );
@@ -329,7 +356,7 @@ SCHEMA_READ_INLINE bool ReadProbeRing( serialize::ReadStream & stream, ProbeRing
 
 SCHEMA_WRITE_INLINE bool WriteProbeSlab( serialize::WriteStream & stream, const ProbeSlab & value )
 {
-    serialize_assert( int32_t( value.width ) >= int32_t( 0 ) && int32_t( value.width ) <= int32_t( 100 ) );
+    serialize_assert( int32_t( value.width ) <= int32_t( 100 ) );
     write_bits( stream, uint32_t( value.width ), 7 );
     write_bits( stream, value.height, 8 );
     return true;
@@ -373,7 +400,7 @@ SCHEMA_WRITE_INLINE bool WriteProbeShape( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeShape & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 2 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, int32_t( ProbeShapeType::Max ) ); // rejects a tag above the count (SPEC §4.8)
     value.type = ProbeShapeType( tag_value );
     switch ( value.type )
     {
@@ -392,22 +419,13 @@ SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeSha
 SCHEMA_WRITE_INLINE bool WriteProbeCollider( serialize::WriteStream & stream, const ProbeCollider & value )
 {
     write_bits( stream, value.armor, 8 );
-    if ( !WriteProbeShape( stream, value.shape ) )
-    {
-        return false;
-    }
-    if ( !WriteProbeShape( stream, value.backup ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteProbeShape, value.shape );
+    schema_write_object( stream, WriteProbeShape, value.backup );
     serialize_assert( int32_t( value.extras_count ) >= int32_t( 0 ) && int32_t( value.extras_count ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.extras_count ), 2 );
     for ( int32_t i = 0; i < value.extras_count; i++ )
     {
-        if ( !WriteProbeShape( stream, value.extras[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteProbeShape, value.extras[i] );
     }
     return true;
 }
@@ -419,21 +437,12 @@ SCHEMA_READ_INLINE bool ReadProbeCollider( serialize::ReadStream & stream, Probe
         read_bits( stream, raw_value, 8 );
         value.armor = uint8_t( raw_value );
     }
-    if ( !ReadProbeShape( stream, value.shape ) )
-    {
-        return false;
-    }
-    if ( !ReadProbeShape( stream, value.backup ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadProbeShape, value.shape );
+    schema_read_object( stream, ReadProbeShape, value.backup );
     read_int( stream, value.extras_count, 0, 2 );
     for ( int32_t i = 0; i < value.extras_count; i++ )
     {
-        if ( !ReadProbeShape( stream, value.extras[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadProbeShape, value.extras[i] );
     }
     return true;
 }
@@ -441,7 +450,7 @@ SCHEMA_READ_INLINE bool ReadProbeCollider( serialize::ReadStream & stream, Probe
 SCHEMA_WRITE_INLINE bool WriteProbeConfig( serialize::WriteStream & stream, const ProbeConfig & value )
 {
     write_bits( stream, uint32_t( value.retries ), 32 );
-    serialize_assert( int32_t( value.preferred ) >= int32_t( 0 ) && int32_t( value.preferred ) <= int32_t( 15 ) );
+    serialize_assert( int32_t( value.preferred ) <= int32_t( Weapon::Max ) );
     write_bits( stream, uint32_t( value.preferred ), 4 );
     return true;
 }
@@ -455,7 +464,7 @@ SCHEMA_READ_INLINE bool ReadProbeConfig( serialize::ReadStream & stream, ProbeCo
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 15 );
+        read_int( stream, enum_value, 0, int32_t( Weapon::Max ) );
         value.preferred = Weapon( enum_value );
     }
     return true;
@@ -465,15 +474,9 @@ SCHEMA_WRITE_INLINE bool WriteProbeArray( serialize::WriteStream & stream, const
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
-        if ( !WriteProbeSample( stream, value.samples[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteProbeSample, value.samples[i] );
     }
-    if ( !WriteProbeConfig( stream, value.config ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteProbeConfig, value.config );
     return true;
 }
 
@@ -481,15 +484,9 @@ SCHEMA_READ_INLINE bool ReadProbeArray( serialize::ReadStream & stream, ProbeArr
 {
     for ( int32_t i = 0; i < 2; i++ )
     {
-        if ( !ReadProbeSample( stream, value.samples[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadProbeSample, value.samples[i] );
     }
-    if ( !ReadProbeConfig( stream, value.config ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadProbeConfig, value.config );
     return true;
 }
 
@@ -589,30 +586,18 @@ SCHEMA_READ_INLINE bool ReadChat( serialize::ReadStream & stream, Chat & value )
 
 SCHEMA_WRITE_INLINE bool WriteProbeReport( serialize::WriteStream & stream, const ProbeReport & value )
 {
-    if ( !WriteProbeHeader( stream, value.header ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteProbeHeader, value.header );
     serialize_assert( value.flags < ( 1ull << 8 ) );
     write_bits( stream, value.flags, 8 );
-    if ( !WriteTest( stream, value.echo ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteTest, value.echo );
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadProbeReport( serialize::ReadStream & stream, ProbeReport & value )
 {
-    if ( !ReadProbeHeader( stream, value.header ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadProbeHeader, value.header );
     read_bits( stream, value.flags, 8 );
-    if ( !ReadTest( stream, value.echo ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadTest, value.echo );
     return true;
 }
 

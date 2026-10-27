@@ -6,7 +6,8 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
+#include <string.h>
 #include <new>
 
 #include "serialize.h"
@@ -52,6 +53,33 @@ namespace bench {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 #ifndef SCHEMA_BENCH_UTF8_VALID_DEFINED
 #define SCHEMA_BENCH_UTF8_VALID_DEFINED
@@ -288,7 +316,7 @@ SCHEMA_WRITE_INLINE bool WriteMixedEntity( serialize::WriteStream & stream, cons
     write_bits( stream, uint32_t( value.vel_z ) - uint32_t( -2048 ), 12 );
     serialize_assert( int32_t( value.health ) >= int32_t( 0 ) && int32_t( value.health ) <= int32_t( 1000 ) );
     write_bits( stream, uint32_t( value.health ), 10 );
-    serialize_assert( int32_t( value.weapon ) >= int32_t( 0 ) && int32_t( value.weapon ) <= int32_t( 15 ) );
+    serialize_assert( int32_t( value.weapon ) <= int32_t( MixedWeapon::Max ) );
     write_bits( stream, uint32_t( value.weapon ), 4 );
     serialize_assert( value.damage < ( 1ull << 8 ) );
     write_bits( stream, value.damage, 8 );
@@ -311,7 +339,7 @@ SCHEMA_READ_INLINE bool ReadMixedEntity( serialize::ReadStream & stream, MixedEn
     read_int( stream, value.health, 0, 1000 );
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 15 );
+        read_int( stream, enum_value, 0, int32_t( MixedWeapon::Max ) );
         value.weapon = MixedWeapon( enum_value );
     }
     read_bits( stream, value.damage, 8 );
@@ -411,7 +439,7 @@ SCHEMA_WRITE_INLINE bool WriteMixedEvent( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEvent & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 3 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, int32_t( MixedEventType::Max ) ); // rejects a tag above the count (SPEC §4.8)
     value.type = MixedEventType( tag_value );
     switch ( value.type )
     {
@@ -451,24 +479,15 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.entities_count ) - uint32_t( 1 ), 3 );
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
-        if ( !WriteMixedEntity( stream, value.entities[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteMixedEntity, value.entities[i] );
     }
     serialize_assert( int32_t( value.stats_count ) >= int32_t( 0 ) && int32_t( value.stats_count ) <= int32_t( 80 ) );
     write_bits( stream, uint32_t( value.stats_count ), 7 );
     for ( int32_t i = 0; i < value.stats_count; i++ )
     {
-        if ( !WriteMixedStat( stream, value.stats[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteMixedStat, value.stats[i] );
     }
-    if ( !WriteMixedEvent( stream, value.game_event ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteMixedEvent, value.game_event );
     for ( int32_t i = 0; i < 4; i++ )
     {
         write_bits( stream, value.loadout[i], 8 );
@@ -540,23 +559,14 @@ SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMix
     read_int( stream, value.entities_count, 1, 8 );
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
-        if ( !ReadMixedEntity( stream, value.entities[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadMixedEntity, value.entities[i] );
     }
     read_int( stream, value.stats_count, 0, 80 );
     for ( int32_t i = 0; i < value.stats_count; i++ )
     {
-        if ( !ReadMixedStat( stream, value.stats[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadMixedStat, value.stats[i] );
     }
-    if ( !ReadMixedEvent( stream, value.game_event ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadMixedEvent, value.game_event );
     for ( int32_t i = 0; i < 4; i++ )
     {
         {

@@ -124,9 +124,9 @@ type Padding {
 	}
 }
 
-// TestUntakenBranchZeroesFloatsAndUnions reaches emitZeroField's float32,
-// float64 and union arms (functions.go:267, 269, 291): an untaken branch side
-// reads as ZERO values (SPEC §5), not as the declared defaults.
+// TestUntakenBranchZeroesFloatsAndUnions reaches emitZeroScalar's float32,
+// float64 and union arms: an untaken branch side reads as ZERO values
+// (SPEC §5), not as the declared defaults — None for a union, by its tag.
 func TestUntakenBranchZeroesFloatsAndUnions(t *testing.T) {
 	t.Parallel()
 	u := unitFromSources(t, map[string]string{
@@ -161,7 +161,7 @@ type Guarded {
 	for _, want := range []string{
 		"value.f = 0.0f;",
 		"value.d = 0.0;",
-		"memset( (void*) &value.s, 0, sizeof( value.s ) );",
+		"value.s.type = ShapeType::None;",
 	} {
 		if !strings.Contains(read, want) {
 			t.Errorf("ReadGuarded must zero the untaken side with %q:\n%s", want, read)

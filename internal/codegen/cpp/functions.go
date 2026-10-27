@@ -100,7 +100,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 		return
 	}
 	g.pf("    int32_t tag_value = 0;\n")
-	g.pf("    read_int( stream, tag_value, 0, %d ); // rejects a tag above the count (SPEC §4.8)\n", d.Max)
+	g.pf("    read_int( stream, tag_value, 0, int32_t( %s::Max ) ); // rejects a tag above the count (SPEC §4.8)\n", tag)
 	g.pf("    value.type = %s( tag_value );\n", tag)
 	g.pf("    switch ( value.type )\n    {\n")
 	g.pf("        case %s::None:\n            return true;\n", tag)
@@ -248,55 +248,100 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 }
 
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
-	name := "value." + f.Name
+	g.emitZeroStorage(f, "value."+f.Name, ind, 0)
+}
+
+// zeroLoopIndex names the loop variable of a zero loop at each nesting depth
+// (an array of structs whose members hold arrays of structs, and so on).
+var zeroLoopIndex = []string{"i", "j", "k", "l", "m", "n"}
+
+// emitZeroStorage writes §5's ZERO value into one field's storage, member by
+// member. Not T{}: aggregate initialization would restore the specified
+// defaults instead of zeroing. Not a raw memset of a struct or union: a
+// generated struct carries default member initializers, so its default
+// constructor is non-trivial and GCC's -Wclass-memaccess refuses the memset
+// (silencing it with a (void*) cast is exactly the smell), and under the
+// native type mapping (SPEC §4.2) the storage is the hand type, a class the
+// generator does not own and should not clear byte-wise behind its back.
+// Typed assignments are what a hand-written reset would say; they
+// reach a mapped type's members through its derivation from the basis, and
+// the compiler folds runs of them into the same stores a memset would make.
+// Scalar arrays and text buffers keep memset: their elements are plain
+// integers, floats and characters, where the raw clear IS the zero value.
+func (g *gen) emitZeroStorage(f *ir.Field, name, ind string, depth int) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		g.needsCstring = true
 		g.pf("%smemset( %s, 0, sizeof( %s ) );\n%s%s_length = 0;\n", ind, name, name, ind, name)
 	case f.Array != ir.ArrayNone:
-		// memset gives §5's ZERO values; T{} would restore specified defaults
-		g.needsCstring = true
-		g.pf("%smemset( (void*) %s, 0, sizeof( %s ) );\n", ind, name, name)
+		if zeroesByMemset(f.Type) {
+			g.needsCstring = true
+			g.pf("%smemset( %s, 0, sizeof( %s ) );\n", ind, name, name)
+		} else {
+			bound := g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))
+			i := fmt.Sprintf("i%d", depth)
+			if depth < len(zeroLoopIndex) {
+				i = zeroLoopIndex[depth]
+			}
+			g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, bound, i, ind)
+			g.emitZeroScalar(f.Type, name+"["+i+"]", ind+"    ", depth+1)
+			g.pf("%s}\n", ind)
+		}
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s%s_count = 0;\n", ind, name)
 		}
 	default:
-		switch f.Type.Kind {
-		case ir.TBool:
-			g.pf("%s%s = false;\n", ind, name)
-		case ir.TFloat32:
-			g.pf("%s%s = 0.0f;\n", ind, name)
-		case ir.TFloat64:
-			g.pf("%s%s = 0.0;\n", ind, name)
-		case ir.TNamed:
-			switch f.Type.Ref.(type) {
-			case *ir.Enum:
-				g.pf("%s%s = %s::None;\n", ind, name, f.Type.Name)
-			case *ir.Flags:
-				g.pf("%s%s = 0;\n", ind, name)
-			case *ir.Struct:
-				// memset, not T{}: §5 wants ZERO values recursively, and
-				// aggregate init would restore specified defaults instead.
-				// The (void*) cast is load-bearing: a generated struct carries
-				// default member initializers, which make its implicit default
-				// constructor non-trivial, and GCC's -Wclass-memaccess then
-				// refuses the memset outright under -Werror. Casting is the
-				// documented way to say the raw clear is deliberate. A T{} or a
-				// template helper would be the usual advice and both are wrong
-				// here — T{} restores defaults instead of zeroing, and a
-				// template costs compile time in a header every translation
-				// unit includes.
-				g.needsCstring = true
-				g.pf("%smemset( (void*) &%s, 0, sizeof( %s ) );\n", ind, name, name)
-			case *ir.Union:
-				// zero IS None: the tag is sentinel-zero, and §5's zero rule
-				// wants the whole value cleared — the struct memset exactly
-				g.needsCstring = true
-				g.pf("%smemset( (void*) &%s, 0, sizeof( %s ) );\n", ind, name, name)
-			}
-		default:
-			g.pf("%s%s = 0;\n", ind, name)
+		g.emitZeroScalar(f.Type, name, ind, depth)
+	}
+}
+
+// zeroesByMemset reports whether an array of this element type is zeroed by
+// a raw memset: every scalar whose storage is a builtin type. Structs and
+// unions are class types (see emitZeroStorage), and 128-bit storage is
+// serialize's emulated pair where the compiler has no native __int128.
+func zeroesByMemset(t ir.FieldType) bool {
+	switch t.Kind {
+	case ir.TInt, ir.TFixed:
+		return t.Width <= 64
+	case ir.TNamed:
+		switch t.Ref.(type) {
+		case *ir.Enum, *ir.Flags:
+			return true
 		}
+		return false
+	}
+	return true
+}
+
+// emitZeroScalar zeroes one value of type t (a field, or one array element).
+func (g *gen) emitZeroScalar(t ir.FieldType, name, ind string, depth int) {
+	switch t.Kind {
+	case ir.TBool:
+		g.pf("%s%s = false;\n", ind, name)
+	case ir.TFloat32:
+		g.pf("%s%s = 0.0f;\n", ind, name)
+	case ir.TFloat64:
+		g.pf("%s%s = 0.0;\n", ind, name)
+	case ir.TNamed:
+		switch ref := t.Ref.(type) {
+		case *ir.Enum:
+			g.pf("%s%s = %s::None;\n", ind, name, t.Name)
+		case *ir.Flags:
+			g.pf("%s%s = 0;\n", ind, name)
+		case *ir.Struct:
+			// recursively, every member — branch members included, since
+			// storage holds both sides of every branch
+			for _, sf := range ref.Fields {
+				g.emitZeroStorage(sf, name+"."+sf.Name, ind, depth)
+			}
+		case *ir.Union:
+			// zero IS None: the tag is sentinel-zero, and an unselected
+			// arm's bytes are indeterminate by the union's own contract
+			// (SPEC §4.8) — selection constructs the arm afresh
+			g.pf("%s%s.type = %sType::None;\n", ind, name, t.Name)
+		}
+	default:
+		g.pf("%s%s = 0;\n", ind, name)
 	}
 }
 
@@ -347,10 +392,50 @@ func intRangePath(min, max *big.Int) string {
 // constants gets the entire benefit the templates exist to deliver with no
 // new call boundary.
 
+// halves says which halves of a write-side range assert can never fire.
+type halves struct{ lo, hi bool }
+
+// vacuousHalves finds the halves of a range assert that are tautologies: a
+// bound at or past the extreme of what the compared expression can hold.
+// The assert compares in castBits (int32_t or int64_t). Where that cast
+// holds the storage's whole value domain without wrapping, the domain's own
+// extremes bound the value; where it can wrap (unsigned storage as wide as
+// the cast), only the cast type's extremes do — and the wrap itself is what
+// a `>= 0` half catches, so that half stays.
+func vacuousHalves(t ir.FieldType, min, max *big.Int, castBits int) halves {
+	castLo := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(castBits-1)))
+	castHi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(castBits-1)), big.NewInt(1))
+	domLo, domHi := castLo, castHi
+	if t.Width > 0 && (t.Signed && t.Width <= castBits || !t.Signed && t.Width < castBits) {
+		if t.Signed {
+			domLo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(t.Width-1)))
+			domHi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width-1)), big.NewInt(1))
+		} else {
+			domLo = big.NewInt(0)
+			domHi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
+		}
+	}
+	return halves{lo: min.Cmp(domLo) <= 0, hi: max.Cmp(domHi) >= 0}
+}
+
+// emitRangeAssert emits the write-side range assert in the cast type,
+// leaving out a half that can never fire (vacuousHalves) — a tautology is
+// noise to a reader and a -Wtautological-compare hazard to a consumer.
+func (g *gen) emitRangeAssert(cast, expr, lo, hi string, vac halves, ind string) {
+	switch {
+	case !vac.lo && !vac.hi:
+		g.pf("%sserialize_assert( %s( %s ) >= %s( %s ) && %s( %s ) <= %s( %s ) );\n", ind, cast, expr, cast, lo, cast, expr, cast, hi)
+	case !vac.lo:
+		g.pf("%sserialize_assert( %s( %s ) >= %s( %s ) );\n", ind, cast, expr, cast, lo)
+	case !vac.hi:
+		g.pf("%sserialize_assert( %s( %s ) <= %s( %s ) );\n", ind, cast, expr, cast, hi)
+	}
+}
+
 // emitWriteRangedFold32 writes an int in [lo,hi] as offset-from-lo in a
 // generation-time bit count (the int32 family: SerializeInteger's encoding).
-func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool, ind string) {
-	g.pf("%sserialize_assert( int32_t( %s ) >= int32_t( %s ) && int32_t( %s ) <= int32_t( %s ) );\n", ind, expr, lo, expr, hi)
+func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool, vac halves, ind string) {
+	g.emitRangeAssert("int32_t", expr, lo, hi, vac, ind)
 	if bits == 0 {
 		// A degenerate range costs ZERO BITS -- the value is known from the
 		// range alone. Emit the range assert and nothing else: write_bits( .., 0 )
@@ -373,7 +458,7 @@ func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool
 // N, so a count range is never degenerate and the zero-bit path a scalar range
 // needs has no case to serve.
 func (g *gen) emitWriteCount(expr, lo, hi string, bits int64, loZero bool, ind string) {
-	g.pf("%sserialize_assert( int32_t( %s ) >= int32_t( %s ) && int32_t( %s ) <= int32_t( %s ) );\n", ind, expr, lo, expr, hi)
+	g.emitRangeAssert("int32_t", expr, lo, hi, halves{}, ind) // int32_t count storage: neither half is vacuous
 	if loZero {
 		g.pf("%swrite_bits( stream, uint32_t( %s ), %d );\n", ind, expr, bits)
 	} else {
@@ -384,8 +469,8 @@ func (g *gen) emitWriteCount(expr, lo, hi string, bits int64, loZero bool, ind s
 // emitWriteRangedFold64 is the int64 family twin (SerializeInteger64's
 // encoding: low dword first, then the high remainder — the write_bits macro's
 // own >32 split, byte-identical).
-func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool, ind string) {
-	g.pf("%sserialize_assert( int64_t( %s ) >= int64_t( %s ) && int64_t( %s ) <= int64_t( %s ) );\n", ind, expr, lo, expr, hi)
+func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool, vac halves, ind string) {
+	g.emitRangeAssert("int64_t", expr, lo, hi, vac, ind)
 	if bits == 0 {
 		// A degenerate range costs ZERO BITS -- the value is known from the
 		// range alone. Emit the range assert and nothing else: write_bits( .., 0 )
@@ -479,9 +564,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
-				g.emitWriteRangedFold32(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, ind)
+				g.emitWriteRangedFold32(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, vacuousHalves(f.Type, f.IntMin, f.IntMax, 32), ind)
 			case "int64":
-				g.emitWriteRangedFold64(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, ind)
+				g.emitWriteRangedFold64(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, vacuousHalves(f.Type, f.IntMin, f.IntMax, 64), ind)
 			default:
 				// full-range unsigned raw offset: this path bypasses the
 				// runtime's ranged calls, so it supplies the write-side range
@@ -546,7 +631,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
 		}
 		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
 		g.pf("%swrite_bytes( stream, %s, %s_length );\n", ind, name, name)
 	case ir.TWString:
 		// length in [0, N], then one 32-BIT GROUP per code unit and NO ALIGN
@@ -562,14 +647,17 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 		g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
 		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
-			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
+			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
 		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			g.emitWriteRangedFold32(name, "0", fmt.Sprintf("%d", ref.Max),
-				bitsRequired(big.NewInt(0), big.NewInt(ref.Max)), true, ind)
+			// the bound is the enum's own Max, named rather than folded; the
+			// low half is vacuous over unsigned enum storage
+			g.emitWriteRangedFold32(name, "0", ref.Name+"::Max",
+				bitsRequired(big.NewInt(0), big.NewInt(ref.Max)), true,
+				vacuousHalves(ir.FieldType{Kind: ir.TInt, Width: ref.StorageBits}, big.NewInt(0), big.NewInt(ref.Max), 32), ind)
 		case *ir.Flags:
 			if ref.WireBits < 64 {
 				// storage is wider than the wire: a mask bit above the wire
@@ -577,10 +665,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				g.pf("%sserialize_assert( %s < ( 1ull << %d ) );\n", ind, name, ref.WireBits)
 			}
 			g.pf("%swrite_bits( stream, %s, %d );\n", ind, name, ref.WireBits)
-		case *ir.Struct:
-			g.pf("%sif ( !Write%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
-		case *ir.Union:
-			g.pf("%sif ( !Write%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
+		case *ir.Struct, *ir.Union:
+			// a nested type's write is a stream operation like every other
+			// field's: the one-way macro spelling (objectmacros.go)
+			g.pf("%sschema_write_object( stream, Write%s, %s );\n", ind, f.Type.Name, name)
 		}
 	}
 }
@@ -766,14 +854,14 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
 			g.pf("%s{\n%s    int32_t enum_value = 0;\n", ind, ind)
-			g.pf("%s    read_int( stream, enum_value, 0, %d );\n", ind, ref.Max)
+			g.pf("%s    read_int( stream, enum_value, 0, int32_t( %s::Max ) );\n", ind, ref.Name)
 			g.pf("%s    %s = %s( enum_value );\n%s}\n", ind, name, f.Type.Name, ind)
 		case *ir.Flags:
 			g.pf("%sread_bits( stream, %s, %d );\n", ind, name, ref.WireBits)
-		case *ir.Struct:
-			g.pf("%sif ( !Read%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
-		case *ir.Union:
-			g.pf("%sif ( !Read%s( stream, %s ) )\n%s{\n%s    return false;\n%s}\n", ind, f.Type.Name, name, ind, ind, ind)
+		case *ir.Struct, *ir.Union:
+			// a refused nested read returns false from here, exactly as a
+			// refused read_* macro does (objectmacros.go)
+			g.pf("%sschema_read_object( stream, Read%s, %s );\n", ind, f.Type.Name, name)
 		}
 	}
 }

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "serialize.h"
 
@@ -53,13 +53,40 @@ namespace example {
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
 
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
+
 SCHEMA_WRITE_INLINE bool WriteRenderSprite( serialize::WriteStream & stream, const RenderSprite & value )
 {
     write_bits( stream, value.sort_key, 64 );
     write_bits( stream, value.mesh_id, 32 );
     write_bits( stream, value.material_id, 32 );
     write_bits( stream, value.layer, 8 );
-    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    serialize_assert( int32_t( value.team ) <= int32_t( Team::Max ) );
     write_bits( stream, uint32_t( value.team ), 2 );
     return true;
 }
@@ -76,7 +103,7 @@ SCHEMA_READ_INLINE bool ReadRenderSprite( serialize::ReadStream & stream, Render
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 2 );
+        read_int( stream, enum_value, 0, int32_t( Team::Max ) );
         value.team = Team( enum_value );
     }
     return true;
@@ -90,10 +117,7 @@ SCHEMA_WRITE_INLINE bool WriteRenderBlock( serialize::WriteStream & stream, cons
     write_bits( stream, uint32_t( value.sprites_count ), 7 );
     for ( int32_t i = 0; i < value.sprites_count; i++ )
     {
-        if ( !WriteRenderSprite( stream, value.sprites[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteRenderSprite, value.sprites[i] );
     }
     return true;
 }
@@ -105,10 +129,7 @@ SCHEMA_READ_INLINE bool ReadRenderBlock( serialize::ReadStream & stream, RenderB
     read_int( stream, value.sprites_count, 0, RenderBlockMaxSprites );
     for ( int32_t i = 0; i < value.sprites_count; i++ )
     {
-        if ( !ReadRenderSprite( stream, value.sprites[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadRenderSprite, value.sprites[i] );
     }
     return true;
 }

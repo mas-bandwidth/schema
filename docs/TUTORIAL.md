@@ -189,7 +189,7 @@ Open `gen/Game.h`:
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 
 namespace starlight {
 
@@ -257,7 +257,7 @@ $ ./starlight
 64 players at 60 Hz, 0.016667 s per tick
 ```
 
-`Game.h` includes `<cstdint>` and nothing else, so this builds with no runtime
+`Game.h` includes `<stdint.h>` and nothing else, so this builds with no runtime
 and no include path beyond `gen`. The serialize runtime arrives in Part 3, with
 `GameWire.h`.
 
@@ -957,10 +957,7 @@ Types nest freely, and a composed field writes its parts inline with no
 pointers and no indirection:
 
 ```cpp
-    if ( !WriteVector3( stream, value.position ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteVector3, value.position );
 ```
 
 ### Aim: storage that speaks your math
@@ -986,7 +983,7 @@ and your type:
 ```cpp
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "Vectors.h"
 

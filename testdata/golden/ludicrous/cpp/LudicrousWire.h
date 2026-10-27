@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "serialize.h"
 
@@ -51,6 +51,33 @@ namespace ludicrous {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteFixedProbe( serialize::WriteStream & stream, const FixedProbe & value )
 {
@@ -164,16 +191,10 @@ SCHEMA_READ_INLINE bool ReadWideProbe( serialize::ReadStream & stream, WideProbe
 
 SCHEMA_WRITE_INLINE bool WriteLudicrousState( serialize::WriteStream & stream, const LudicrousState & value )
 {
-    serialize_assert( int32_t( value.mode ) >= int32_t( 0 ) && int32_t( value.mode ) <= int32_t( 3 ) );
+    serialize_assert( int32_t( value.mode ) <= int32_t( DriveMode::Max ) );
     write_bits( stream, uint32_t( value.mode ), 2 );
-    if ( !WriteFixedProbe( stream, value.probe ) )
-    {
-        return false;
-    }
-    if ( !WriteWideProbe( stream, value.wide ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteFixedProbe, value.probe );
+    schema_write_object( stream, WriteWideProbe, value.wide );
     serialize_assert( int32_t( value.keys_count ) >= int32_t( 0 ) && int32_t( value.keys_count ) <= int32_t( 4 ) );
     write_bits( stream, uint32_t( value.keys_count ), 3 );
     for ( int32_t i = 0; i < value.keys_count; i++ )
@@ -192,17 +213,11 @@ SCHEMA_READ_INLINE bool ReadLudicrousState( serialize::ReadStream & stream, Ludi
 {
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 3 );
+        read_int( stream, enum_value, 0, int32_t( DriveMode::Max ) );
         value.mode = DriveMode( enum_value );
     }
-    if ( !ReadFixedProbe( stream, value.probe ) )
-    {
-        return false;
-    }
-    if ( !ReadWideProbe( stream, value.wide ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadFixedProbe, value.probe );
+    schema_read_object( stream, ReadWideProbe, value.wide );
     read_int( stream, value.keys_count, 0, 4 );
     for ( int32_t i = 0; i < value.keys_count; i++ )
     {
