@@ -2,8 +2,9 @@
 // SAME pinned instances the C++ test pins in testdata/wire/*.bin and
 // byte-compare against those files — cross-language wire identity is the
 // §7.2 gate this leg carries. Plus round-trips through the Dart reader, the
-// §5 branch-zeroing checks, the specified-defaults checks, the measure
-// functions held to the written wire, the refusal vectors (reject, never
+// §5 branch-zeroing checks, the specified-defaults checks, the exact bit
+// length held by the reader (read at it, refused one bit short), the refusal
+// vectors (reject, never
 // clamp — and never throw on hostile bytes), and the bench-corpus pins
 // (bench_*, real_packet) the C++ bench pinner authored.
 //
@@ -72,9 +73,11 @@ bool bytesEqual(Uint8List a, Uint8List b) {
 Uint8List golden(String name) =>
     File('../../testdata/wire/$name.bin').readAsBytesSync();
 
-// The bit-exact measure oracle (#163): the C++ reference writer's exact bit
-// count, pinned beside the byte golden — a measure error confined to the
-// final byte cannot hide behind byte-granularity gates.
+// The bit-exact oracle (#163): the C++ reference writer's exact bit count,
+// pinned beside the byte golden. There is no measure function (SPEC §6.1),
+// so the READER holds it: the wire reads in exactly that many bits and is
+// refused one bit short — an error confined to the final byte cannot hide
+// behind byte-granularity gates.
 int goldenBits(String name) =>
     int.parse(File('../../testdata/wire/$name.bits').readAsStringSync().trim());
 
@@ -85,26 +88,27 @@ final ByteData writeView = ByteData.sublistView(writeBuf);
 Uint8List written(int bytes) => Uint8List.sublistView(writeBuf, 0, bytes);
 
 // goldenWire writes value, byte-compares against the C++-pinned golden,
-// holds measure to the written wire, reads it back, and re-writes to prove
-// byte-identical round-trip — the leg's core instrument.
+// holds the reader to the pinned bit length, reads it back, and re-writes to
+// prove byte-identical round-trip — the leg's core instrument.
 void pin<T>(
   String name,
   T value,
   T out,
   int Function(T, ByteData) write,
   bool Function(T, ByteData, int) read,
-  int Function(T) measure,
 ) {
   final n = write(value, writeView);
   final g = golden(name);
   check(n == g.length, '$name: wrote $n bytes, golden has ${g.length}');
   check(bytesEqual(written(n), g), '$name: Dart bytes == the C++-pinned bytes');
-  final bits = measure(value);
-  check((bits + 7) >>> 3 == n, '$name: measure $bits bits vs $n bytes written');
   final pinnedBits = goldenBits(name);
   check(
-    bits == pinnedBits,
-    '$name: measure $bits bits vs the C++ reference\'s $pinnedBits (bit-exact oracle)',
+    (pinnedBits + 7) >>> 3 == n,
+    '$name: $n bytes written vs the C++ reference\'s $pinnedBits bits',
+  );
+  check(
+    readsExactly(read, out, ByteData.sublistView(g), pinnedBits),
+    '$name: reads in exactly the C++ reference\'s $pinnedBits bits (bit-exact oracle)',
   );
   check(read(out, ByteData.sublistView(g), g.length * 8), '$name: read');
   final n2 = write(out, writeView);
@@ -114,8 +118,18 @@ void pin<T>(
   );
 }
 
+// readsExactly: the wire in view reads in exactly bits bits — accepted at
+// bits, refused one bit short. The refused read runs first, so out ends
+// holding the accepted read.
+bool readsExactly<T>(
+  bool Function(T, ByteData, int) read,
+  T out,
+  ByteData view,
+  int bits,
+) => (bits == 0 || !read(out, view, bits - 1)) && read(out, view, bits);
+
 // float32 rounding for expected-value computation (the generated codecs
-// carry their own private twin).
+// carry the same step as Schema.fround).
 final Float32List _f32 = Float32List(1);
 double fround(double v) {
   _f32[0] = v;
@@ -227,7 +241,10 @@ void testSelectedArmDefaults() {
     input.first.marker = 5;
     final count = writeDefaultChoice(input, writeView);
     check(count == 1 && writeBuf[0] == 0x51, 'DefaultChoice wire is 0x51');
-    check(measureDefaultChoice(input) == 7, 'DefaultChoice uses seven bits');
+    check(
+      readsExactly(readDefaultChoice, DefaultChoice(), writeView, 7),
+      'DefaultChoice uses seven bits',
+    );
   }
 
   final output = DefaultChoice();
@@ -252,7 +269,8 @@ void testSelectedArmDefaults() {
     }
     final readOK = readDefaultChoice(output, wire, 7);
     check(readOK, 'decode DefaultChoice, same tag included');
-    final selectedOK = output.type == DefaultChoiceType.first &&
+    final selectedOK =
+        output.type == DefaultChoiceType.first &&
         first.entriesCount == 0 &&
         first.marker == 5;
     check(selectedOK, 'DefaultChoice selected fields');
@@ -296,14 +314,7 @@ void main() {
   {
     final inp = makeShipCreate();
     final out = ShipCreate();
-    pin(
-      'shipcreate_flags',
-      inp,
-      out,
-      writeShipCreate,
-      readShipCreate,
-      measureShipCreate,
-    );
+    pin('shipcreate_flags', inp, out, writeShipCreate, readShipCreate);
     check(
       out.hasFlags && out.flags == (shipFlagsBoosting | shipFlagsAiming),
       'ShipCreate flags round-trip',
@@ -322,34 +333,16 @@ void main() {
       !out.hasFlags && out.flags == 0,
       'untaken branch reads as zero (SPEC §5)',
     );
-    check(
-      (measureShipCreate(inp) + 7) >>> 3 == n,
-      'measure tracks the untaken branch',
-    );
   }
 
   // ---- RigidBody: the back-reference example, both branch sides ----
   {
     final inp = makeRigidBody();
-    pin(
-      'rigidbody_moving',
-      inp,
-      RigidBody(),
-      writeRigidBody,
-      readRigidBody,
-      measureRigidBody,
-    );
+    pin('rigidbody_moving', inp, RigidBody(), writeRigidBody, readRigidBody);
 
     inp.atRest = true;
     final out = RigidBody();
-    pin(
-      'rigidbody_at_rest',
-      inp,
-      out,
-      writeRigidBody,
-      readRigidBody,
-      measureRigidBody,
-    );
+    pin('rigidbody_at_rest', inp, out, writeRigidBody, readRigidBody);
     // the at-rest read must ZERO both velocities (SPEC §5) — out was read
     // from the at-rest wire after the writer's value had them set
     check(out.atRest, 'at_rest reads true');
@@ -370,7 +363,7 @@ void main() {
     inp.text.setAll(0, textBytes('wire parity'));
     inp.textLength = 11;
     final out = Chat();
-    pin('chat', inp, out, writeChat, readChat, measureChat);
+    pin('chat', inp, out, writeChat, readChat);
     check(
       out.textLength == 11 &&
           bytesEqual(
@@ -389,14 +382,7 @@ void main() {
     final n = writeProbeHeader(inp, writeView);
     check(writeBuf[0] == 0xab, 'const(0xAB, 8) leads the wire');
     final out = ProbeHeader();
-    pin(
-      'probe_header',
-      inp,
-      out,
-      writeProbeHeader,
-      readProbeHeader,
-      measureProbeHeader,
-    );
+    pin('probe_header', inp, out, writeProbeHeader, readProbeHeader);
     check(
       out.version == 5 && out.probeId == 0x1122334455667788,
       'ProbeHeader round-trips',
@@ -417,18 +403,10 @@ void main() {
     InputPacket(),
     writeInputPacket,
     readInputPacket,
-    measureInputPacket,
   );
   {
     final out = TestData();
-    pin(
-      'testdata',
-      testDataInstance(),
-      out,
-      writeTestData,
-      readTestData,
-      measureTestData,
-    );
+    pin('testdata', testDataInstance(), out, writeTestData, readTestData);
     check(
       out.int64Full == 0x8000000000000000 &&
           out.uint64Value == 0xffffffffffffffff &&
@@ -452,7 +430,6 @@ void main() {
       out,
       writeCompressedProbe,
       readCompressedProbe,
-      measureCompressedProbe,
     );
     check(
       out.boundary == fround(fround(1 / 1000) * 10),
@@ -490,7 +467,7 @@ void main() {
     inp.sensor = 4294967295;
     inp.nonce = 0xffffffffffffffff;
     final out = ProbeBits();
-    pin('probebits', inp, out, writeProbeBits, readProbeBits, measureProbeBits);
+    pin('probebits', inp, out, writeProbeBits, readProbeBits);
     check(
       out.wide == 0xfedcba9876543210 && out.nonce == 0xffffffffffffffff,
       'ProbeBits round-trips — 9/33/64-bit and full-range paths',
@@ -519,14 +496,7 @@ void main() {
 
     final out = ProbeCollider();
     out.backup.type = ProbeShapeType.ring; // dirty — the read must restore None
-    pin(
-      'probecollider',
-      inp,
-      out,
-      writeProbeCollider,
-      readProbeCollider,
-      measureProbeCollider,
-    );
+    pin('probecollider', inp, out, writeProbeCollider, readProbeCollider);
     check(
       out.armor == 7 &&
           out.shape.type == ProbeShapeType.slab &&
@@ -556,8 +526,8 @@ void main() {
       'the all-None union wire reads (no MaxBits over-bounding)',
     );
     check(
-      (measureProbeCollider(none) + 7) >>> 3 == n,
-      'measure prices the selected arm, not MaxBits',
+      n < probeColliderMaxBytes,
+      'the write prices the selected arm, not MaxBits',
     );
 
     // NEGATIVE CONTROL — perturb the tag: 2 bits at bit offset 8, range
@@ -620,10 +590,6 @@ void main() {
       out.orientation == 90.0,
       'compressed float round-trips exactly at its resolution',
     );
-    check(
-      (measureProbeSample(inp) + 7) >>> 3 == n,
-      'ProbeSample measure vs written bytes',
-    );
 
     inp.active = false;
     inp.hasTarget = false;
@@ -673,14 +639,7 @@ void main() {
     inp.config.preferred = Weapon.missile;
 
     final out = ProbeArray();
-    pin(
-      'probearray',
-      inp,
-      out,
-      writeProbeArray,
-      readProbeArray,
-      measureProbeArray,
-    );
+    pin('probearray', inp, out, writeProbeArray, readProbeArray);
     check(
       !out.samples[1].active && out.samples[1].idleTicks == 1000,
       'nested else branch round-trips',
@@ -745,13 +704,14 @@ void main() {
           ),
       'Block round-trips — bytes(N) framing',
     );
-    check(measureBlock(inp) % 8 == 0, 'Block wire ends byte-aligned');
+    check(
+      readsExactly(readBlock, Block(), ByteData.sublistView(wire), n * 8),
+      'Block wire ends byte-aligned',
+    );
 
     final hb = Heartbeat();
     check(
-      writeHeartbeat(hb, writeView) == 0 &&
-          readHeartbeat(hb, writeView, 0) &&
-          measureHeartbeat(hb) == 0,
+      writeHeartbeat(hb, writeView) == 0 && readHeartbeat(hb, writeView, 0),
       'Heartbeat — presence is the payload (SPEC §4.6)',
     );
   }
@@ -892,9 +852,8 @@ void main() {
       bench.BenchPacket(),
       bench.writeBenchPacket,
       bench.readBenchPacket,
-      bench.measureBenchPacket,
     );
-    check(bench.measureBenchPacket(packet) == 392, 'BenchPacket is 392 bits');
+    check(goldenBits('bench_packet') == 392, 'BenchPacket is 392 bits');
 
     final ints = bench.BenchInts();
     ints.f0 = -37;
@@ -913,7 +872,6 @@ void main() {
       bench.BenchInts(),
       bench.writeBenchInts,
       bench.readBenchInts,
-      bench.measureBenchInts,
     );
 
     final bits = bench.BenchBits();
@@ -931,7 +889,6 @@ void main() {
       bench.BenchBits(),
       bench.writeBenchBits,
       bench.readBenchBits,
-      bench.measureBenchBits,
     );
 
     // BenchMixed — THE canonical benchmark shape (#184); the pin is
@@ -997,7 +954,6 @@ void main() {
       bench.BenchMixed(),
       bench.writeBenchMixed,
       bench.readBenchMixed,
-      bench.measureBenchMixed,
     );
 
     // RealPacket pins the ALL-DEFAULTS instance: constructed and serialized
@@ -1009,9 +965,8 @@ void main() {
       rw.RealPacket(),
       rw.writeRealPacket,
       rw.readRealPacket,
-      rw.measureRealPacket,
     );
-    check(rw.measureRealPacket(real) == 1629, 'RealPacket is 1629 bits');
+    check(goldenBits('real_packet') == 1629, 'RealPacket is 1629 bits');
   }
 
   // ---- Degenerate.schema: the degenerate arrangements (issue #203) ----
@@ -1090,37 +1045,26 @@ void main() {
 
     // write each message into its own buffer, then concatenate
     final parts = <Uint8List>[];
-    int emit<T>(
-      T value,
-      int Function(T, ByteData) write,
-      int Function(T) measure,
-      String name,
-    ) {
+    int emit<T>(T value, int Function(T, ByteData) write, String name) {
       final buf = Uint8List(256);
       final n = write(value, ByteData.sublistView(buf));
-      check((measure(value) + 7) >>> 3 == n, '$name: measure vs bytes written');
       parts.add(Uint8List.sublistView(buf, 0, n));
       return n;
     }
 
     var total = 0;
-    total += emit(vec2, writeVec2, measureVec2, 'Vec2');
-    total += emit(spanF64, writeSpanF64, measureSpanF64, 'SpanF64');
-    total += emit(spanU64, writeSpanU64, measureSpanU64, 'SpanU64');
-    total += emit(spanI64, writeSpanI64, measureSpanI64, 'SpanI64');
-    total += emit(spanOne, writeSpanOne, measureSpanOne, 'SpanOne');
-    total += emit(spanChunk, writeSpanChunk, measureSpanChunk, 'SpanChunk');
-    total += emit(spanTail, writeSpanTail, measureSpanTail, 'SpanTail');
-    total += emit(spanTwice, writeSpanTwice, measureSpanTwice, 'SpanTwice');
-    total += emit(trio, writeTrio, measureTrio, 'Trio');
-    total += emit(trioSole, writeTrioSole, measureTrioSole, 'TrioSole');
-    total += emit(trioFirst, writeTrioFirst, measureTrioFirst, 'TrioFirst');
-    total += emit(
-      straddle,
-      writeTrioStraddle,
-      measureTrioStraddle,
-      'TrioStraddle',
-    );
+    total += emit(vec2, writeVec2, 'Vec2');
+    total += emit(spanF64, writeSpanF64, 'SpanF64');
+    total += emit(spanU64, writeSpanU64, 'SpanU64');
+    total += emit(spanI64, writeSpanI64, 'SpanI64');
+    total += emit(spanOne, writeSpanOne, 'SpanOne');
+    total += emit(spanChunk, writeSpanChunk, 'SpanChunk');
+    total += emit(spanTail, writeSpanTail, 'SpanTail');
+    total += emit(spanTwice, writeSpanTwice, 'SpanTwice');
+    total += emit(trio, writeTrio, 'Trio');
+    total += emit(trioSole, writeTrioSole, 'TrioSole');
+    total += emit(trioFirst, writeTrioFirst, 'TrioFirst');
+    total += emit(straddle, writeTrioStraddle, 'TrioStraddle');
     check(
       total * 8 ==
           128 + 128 + 128 + 128 + 64 + 64 + 160 + 256 + 64 + 64 + 80 + 408,
@@ -1247,13 +1191,14 @@ void main() {
       int bits,
       T value,
       int Function(T, ByteData) write,
-      int Function(T) measure,
+      bool Function(T, ByteData, int) read,
     ) {
       final buf = Uint8List(64);
       final n = write(value, ByteData.sublistView(buf));
+      // value is written already; reading back into it is the round trip
       check(
-        measure(value) == bits,
-        '$name: measure ${measure(value)}, expected $bits bits',
+        readsExactly(read, value, ByteData.sublistView(buf), bits),
+        '$name: reads in exactly $bits bits',
       );
       check(
         n == (bits + 7) >>> 3,
@@ -1280,49 +1225,49 @@ void main() {
       for (var i = 0; i < c; i++) {
         v.items[i] = 8191 - i * 733;
       }
-      emit('W13/$c', 4 + 13 * c, v, writeW13, measureW13);
+      emit('W13/$c', 4 + 13 * c, v, writeW13, readW13);
     }
     for (final c in [0, 1, 2, 3, 4, 9]) {
       final v = W17()..itemsCount = c;
       for (var i = 0; i < c; i++) {
         v.items[i] = 131071 - i * 11117;
       }
-      emit('W17/$c', 4 + 17 * c, v, writeW17, measureW17);
+      emit('W17/$c', 4 + 17 * c, v, writeW17, readW17);
     }
     for (final c in [0, 1, 2, 3, 6]) {
       final v = W26()..itemsCount = c;
       for (var i = 0; i < c; i++) {
         v.items[i] = 67108863 - i * 5555555;
       }
-      emit('W26/$c', 3 + 26 * c, v, writeW26, measureW26);
+      emit('W26/$c', 3 + 26 * c, v, writeW26, readW26);
     }
     for (final c in [0, 1, 3, 4, 5, 20]) {
       final v = W1()..itemsCount = c;
       for (var i = 0; i < c; i++) {
         v.items[i] = i % 2;
       }
-      emit('W1/$c', 5 + c, v, writeW1, measureW1);
+      emit('W1/$c', 5 + c, v, writeW1, readW1);
     }
     for (var c = 0; c <= 3; c++) {
       final v = W52()..itemsCount = c;
       for (var i = 0; i < c; i++) {
         v.items[i] = 4503599627370495 - i * 123456789;
       }
-      emit('W52/$c', 2 + 52 * c, v, writeW52, measureW52);
+      emit('W52/$c', 2 + 52 * c, v, writeW52, readW52);
     }
     for (var c = 0; c <= 3; c++) {
       final v = W50()..itemsCount = c;
       for (var i = 0; i < c; i++) {
         v.items[i] = 1125899906842623 - i * 987654321;
       }
-      emit('W50/$c', 2 + 50 * c, v, writeW50, measureW50);
+      emit('W50/$c', 2 + 50 * c, v, writeW50, readW50);
     }
     {
       final v = F13();
       for (var i = 0; i < 7; i++) {
         v.items[i] = 8191 - i * 911;
       }
-      emit('F13', 91, v, writeF13, measureF13);
+      emit('F13', 91, v, writeF13, readF13);
     }
     for (final c in [0, 1, 3, 4, 5, 10]) {
       final v = ArrTri3()..itemsCount = c;
@@ -1331,7 +1276,7 @@ void main() {
           ..a = i % 2
           ..b = i % 4;
       }
-      emit('ArrTri3/$c', 4 + 3 * c, v, writeArrTri3, measureArrTri3);
+      emit('ArrTri3/$c', 4 + 3 * c, v, writeArrTri3, readArrTri3);
     }
     {
       final v = ArrEleven();
@@ -1340,7 +1285,7 @@ void main() {
           ..a = i % 8
           ..b = 255 - i * 17;
       }
-      emit('ArrEleven', 99, v, writeArrEleven, measureArrEleven);
+      emit('ArrEleven', 99, v, writeArrEleven, readArrEleven);
     }
     // lead 5 + tag 2 + tail 7 — a zero-bit arm behind a tag costs the tag
     for (final tag in [
@@ -1357,7 +1302,7 @@ void main() {
         14,
         v,
         writeHoldsEmptyUnion,
-        measureHoldsEmptyUnion,
+        readHoldsEmptyUnion,
       );
     }
     // lead 5 + s_length 4 = 9, the align pads 7 to 16; then 8*s bytes,
@@ -1378,7 +1323,7 @@ void main() {
         ..bLength = strsB[k].length;
       v.s.setRange(0, strsS[k].length, strsS[k]);
       v.b.setRange(0, strsB[k].length, strsB[k]);
-      emit('Strs/$k', strsBits[k], v, writeStrs, measureStrs);
+      emit('Strs/$k', strsBits[k], v, writeStrs, readStrs);
     }
     for (var c = 0; c <= 4; c++) {
       final v = ArrNested()
@@ -1390,9 +1335,9 @@ void main() {
           ..a = i % 8
           ..b = 200 - i * 7;
       }
-      emit('ArrNested/$c', 11 + 11 * c, v, writeArrNested, measureArrNested);
+      emit('ArrNested/$c', 11 + 11 * c, v, writeArrNested, readArrNested);
     }
-    emit('Sole', 13, Sole()..only = 5555, writeSole, measureSole);
+    emit('Sole', 13, Sole()..only = 5555, writeSole, readSole);
 
     {
       final joined = joinParts();
@@ -1573,7 +1518,7 @@ void main() {
           ..b = 1500
           ..tail = 99,
         writeArmsAgree,
-        measureArmsAgree,
+        readArmsAgree,
       );
       emit(
         'ArmsDisagree/$f',
@@ -1585,7 +1530,7 @@ void main() {
           ..b = 5
           ..tail = 99,
         writeArmsDisagree,
-        measureArmsDisagree,
+        readArmsDisagree,
       );
       emit(
         'ArmEmpty/$f',
@@ -1596,7 +1541,7 @@ void main() {
           ..a = 456789
           ..tail = 99,
         writeArmEmpty,
-        measureArmEmpty,
+        readArmEmpty,
       );
       final alignStr = ArmAlign()
         ..lead = 21
@@ -1605,13 +1550,7 @@ void main() {
         ..b = 1000
         ..tail = 99;
       alignStr.s.setRange(0, 4, 'abcd'.codeUnits);
-      emit(
-        'ArmAlign/$f',
-        f ? 55 : 23,
-        alignStr,
-        writeArmAlign,
-        measureArmAlign,
-      );
+      emit('ArmAlign/$f', f ? 55 : 23, alignStr, writeArmAlign, readArmAlign);
       emit(
         'ArmAlignEmptyStr/$f',
         23,
@@ -1621,7 +1560,7 @@ void main() {
           ..b = 1000
           ..tail = 99,
         writeArmAlign,
-        measureArmAlign,
+        readArmAlign,
       );
     }
     for (final o in [false, true]) {
@@ -1638,7 +1577,7 @@ void main() {
             ..z = 4000
             ..tail = 33,
           writeArmsNested,
-          measureArmsNested,
+          readArmsNested,
         );
       }
     }
@@ -1658,7 +1597,7 @@ void main() {
           f ? 15 + 13 * c : 22,
           v,
           writeArmArray,
-          measureArmArray,
+          readArmArray,
         );
       }
     }
@@ -1681,7 +1620,7 @@ void main() {
         unevenBits[k],
         v,
         writeHoldsUneven,
-        measureHoldsUneven,
+        readHoldsUneven,
       );
     }
     // alternating arms: item i is Narrow (2 + 3) when even, Wide (2 + 37)
@@ -1705,7 +1644,7 @@ void main() {
         10 + unevenItemBits[c],
         v,
         writeArrUneven,
-        measureArrUneven,
+        readArrUneven,
       );
     }
     // lead 5 + count 2 + 13*c + s_length 3, an align to the byte, 8*s, then a
@@ -1730,7 +1669,7 @@ void main() {
           afterAlign + 8 * sl + 84,
           v,
           writeRegainAfterAlign,
-          measureRegainAfterAlign,
+          readRegainAfterAlign,
         );
       }
     }

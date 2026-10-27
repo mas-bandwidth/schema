@@ -52,20 +52,14 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
   var v = 0;
   assert(value.entriesCount >= 0);
   assert(value.entriesCount <= 2);
-  v = ((value.entriesCount) & 0x3);
+  v = value.entriesCount & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   for (var i0 = 0; i0 < value.entriesCount; i0++) {
     final e0 = value.entries[i0];
     assert(e0.preferred >= 0);
     assert(e0.preferred <= 15);
-    v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+    v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
     scratch |= v << scratchBits;
     scratchBits += 36;
     if (scratchBits >= 64) {
@@ -77,7 +71,7 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
   }
   assert(value.marker >= 0);
   assert(value.marker <= 7);
-  v = ((value.marker) & 0x7);
+  v = value.marker & 0x7;
   scratch |= v << scratchBits;
   scratchBits += 3;
   if (scratchBits >= 64) {
@@ -159,16 +153,6 @@ bool readDefaultArm(DefaultArm value, ByteData view, int numBits) {
   return true;
 }
 
-// measureDefaultArm is the exact wire bits writeDefaultArm would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureDefaultArm(DefaultArm value) {
-  var bits = 0;
-  bits += 2;
-  bits += value.entriesCount * 36;
-  bits += 3;
-  return bits;
-}
-
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 abstract final class DefaultChoiceType {
   static const int none = 0;
@@ -227,33 +211,21 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
   var v = 0;
   assert(value.type >= 0);
   assert(value.type <= 2);
-  v = ((value.type) & 0x3);
+  v = value.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   switch (value.type) {
-    case 1:
+    case DefaultChoiceType.first:
       assert(value.first.entriesCount >= 0);
       assert(value.first.entriesCount <= 2);
-      v = ((value.first.entriesCount) & 0x3);
+      v = value.first.entriesCount & 0x3;
       scratch |= v << scratchBits;
       scratchBits += 2;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (2 - scratchBits);
-      }
       for (var i0 = 0; i0 < value.first.entriesCount; i0++) {
         final e0 = value.first.entries[i0];
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
-        v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+        v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
         scratch |= v << scratchBits;
         scratchBits += 36;
         if (scratchBits >= 64) {
@@ -265,7 +237,7 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
       }
       assert(value.first.marker >= 0);
       assert(value.first.marker <= 7);
-      v = ((value.first.marker) & 0x7);
+      v = value.first.marker & 0x7;
       scratch |= v << scratchBits;
       scratchBits += 3;
       if (scratchBits >= 64) {
@@ -274,23 +246,17 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
         scratchBits -= 64;
         scratch = v >>> (3 - scratchBits);
       }
-    case 2:
+    case DefaultChoiceType.second:
       assert(value.second.entriesCount >= 0);
       assert(value.second.entriesCount <= 2);
-      v = ((value.second.entriesCount) & 0x3);
+      v = value.second.entriesCount & 0x3;
       scratch |= v << scratchBits;
       scratchBits += 2;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (2 - scratchBits);
-      }
       for (var i0 = 0; i0 < value.second.entriesCount; i0++) {
         final e0 = value.second.entries[i0];
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
-        v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+        v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
         scratch |= v << scratchBits;
         scratchBits += 36;
         if (scratchBits >= 64) {
@@ -302,7 +268,7 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
       }
       assert(value.second.marker >= 0);
       assert(value.second.marker <= 7);
-      v = ((value.second.marker) & 0x7);
+      v = value.second.marker & 0x7;
       scratch |= v << scratchBits;
       scratchBits += 3;
       if (scratchBits >= 64) {
@@ -355,14 +321,13 @@ bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
   }
   value.type = v;
   switch (value.type) {
-    case 1:
+    case DefaultChoiceType.first:
       for (var i0 = 0; i0 < 2; i0++) {
         final e0 = value.first.entries[i0];
         e0.retries = -1;
         e0.preferred = Weapon.railgun;
       }
       value.first.entriesCount = 0;
-      value.first.marker = 0;
       if (bitsRead + 2 > numBits) {
         return false;
       }
@@ -408,14 +373,13 @@ bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
       v = window & 0x7;
       bitsRead += 3;
       value.first.marker = v;
-    case 2:
+    case DefaultChoiceType.second:
       for (var i0 = 0; i0 < 2; i0++) {
         final e0 = value.second.entries[i0];
         e0.retries = -1;
         e0.preferred = Weapon.railgun;
       }
       value.second.entriesCount = 0;
-      value.second.marker = 0;
       if (bitsRead + 2 > numBits) {
         return false;
       }
@@ -465,24 +429,6 @@ bool readDefaultChoice(DefaultChoice value, ByteData view, int numBits) {
   return true;
 }
 
-// measureDefaultChoice is the exact wire bits writeDefaultChoice would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureDefaultChoice(DefaultChoice value) {
-  var bits = 0;
-  bits += 2;
-  switch (value.type) {
-    case 1:
-      bits += 2;
-      bits += value.first.entriesCount * 36;
-      bits += 3;
-    case 2:
-      bits += 2;
-      bits += value.second.entriesCount * 36;
-      bits += 3;
-  }
-  return bits;
-}
-
 // type DefaultChoicePacket
 final class DefaultChoicePacket {
   final DefaultChoice choice = DefaultChoice();
@@ -516,33 +462,21 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
   var v = 0;
   assert(value.choice.type >= 0);
   assert(value.choice.type <= 2);
-  v = ((value.choice.type) & 0x3);
+  v = value.choice.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   switch (value.choice.type) {
-    case 1:
+    case DefaultChoiceType.first:
       assert(value.choice.first.entriesCount >= 0);
       assert(value.choice.first.entriesCount <= 2);
-      v = ((value.choice.first.entriesCount) & 0x3);
+      v = value.choice.first.entriesCount & 0x3;
       scratch |= v << scratchBits;
       scratchBits += 2;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (2 - scratchBits);
-      }
       for (var i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
         final e0 = value.choice.first.entries[i0];
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
-        v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+        v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
         scratch |= v << scratchBits;
         scratchBits += 36;
         if (scratchBits >= 64) {
@@ -554,7 +488,7 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
       }
       assert(value.choice.first.marker >= 0);
       assert(value.choice.first.marker <= 7);
-      v = ((value.choice.first.marker) & 0x7);
+      v = value.choice.first.marker & 0x7;
       scratch |= v << scratchBits;
       scratchBits += 3;
       if (scratchBits >= 64) {
@@ -563,23 +497,17 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
         scratchBits -= 64;
         scratch = v >>> (3 - scratchBits);
       }
-    case 2:
+    case DefaultChoiceType.second:
       assert(value.choice.second.entriesCount >= 0);
       assert(value.choice.second.entriesCount <= 2);
-      v = ((value.choice.second.entriesCount) & 0x3);
+      v = value.choice.second.entriesCount & 0x3;
       scratch |= v << scratchBits;
       scratchBits += 2;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (2 - scratchBits);
-      }
       for (var i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
         final e0 = value.choice.second.entries[i0];
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
-        v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+        v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
         scratch |= v << scratchBits;
         scratchBits += 36;
         if (scratchBits >= 64) {
@@ -591,7 +519,7 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
       }
       assert(value.choice.second.marker >= 0);
       assert(value.choice.second.marker <= 7);
-      v = ((value.choice.second.marker) & 0x7);
+      v = value.choice.second.marker & 0x7;
       scratch |= v << scratchBits;
       scratchBits += 3;
       if (scratchBits >= 64) {
@@ -648,14 +576,13 @@ bool readDefaultChoicePacket(
   }
   value.choice.type = v;
   switch (value.choice.type) {
-    case 1:
+    case DefaultChoiceType.first:
       for (var i0 = 0; i0 < 2; i0++) {
         final e0 = value.choice.first.entries[i0];
         e0.retries = -1;
         e0.preferred = Weapon.railgun;
       }
       value.choice.first.entriesCount = 0;
-      value.choice.first.marker = 0;
       if (bitsRead + 2 > numBits) {
         return false;
       }
@@ -701,14 +628,13 @@ bool readDefaultChoicePacket(
       v = window & 0x7;
       bitsRead += 3;
       value.choice.first.marker = v;
-    case 2:
+    case DefaultChoiceType.second:
       for (var i0 = 0; i0 < 2; i0++) {
         final e0 = value.choice.second.entries[i0];
         e0.retries = -1;
         e0.preferred = Weapon.railgun;
       }
       value.choice.second.entriesCount = 0;
-      value.choice.second.marker = 0;
       if (bitsRead + 2 > numBits) {
         return false;
       }
@@ -758,24 +684,6 @@ bool readDefaultChoicePacket(
   return true;
 }
 
-// measureDefaultChoicePacket is the exact wire bits writeDefaultChoicePacket would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureDefaultChoicePacket(DefaultChoicePacket value) {
-  var bits = 0;
-  bits += 2;
-  switch (value.choice.type) {
-    case 1:
-      bits += 2;
-      bits += value.choice.first.entriesCount * 36;
-      bits += 3;
-    case 2:
-      bits += 2;
-      bits += value.choice.second.entriesCount * 36;
-      bits += 3;
-  }
-  return bits;
-}
-
 // type DefaultBulkArm
 final class DefaultBulkArm {
   final DefaultArm payload = DefaultArm();
@@ -816,20 +724,14 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
   var v = 0;
   assert(value.payload.entriesCount >= 0);
   assert(value.payload.entriesCount <= 2);
-  v = ((value.payload.entriesCount) & 0x3);
+  v = value.payload.entriesCount & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   for (var i0 = 0; i0 < value.payload.entriesCount; i0++) {
     final e0 = value.payload.entries[i0];
     assert(e0.preferred >= 0);
     assert(e0.preferred <= 15);
-    v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+    v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
     scratch |= v << scratchBits;
     scratchBits += 36;
     if (scratchBits >= 64) {
@@ -843,7 +745,7 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
   assert(value.payload.marker <= 7);
   assert(value.dataLength >= 0);
   assert(value.dataLength <= 2);
-  v = ((value.payload.marker) & 0x7) | (((value.dataLength) & 0x3) << 3);
+  v = (value.payload.marker & 0x7) | ((value.dataLength & 0x3) << 3);
   scratch |= v << scratchBits;
   scratchBits += 5;
   if (scratchBits >= 64) {
@@ -997,18 +899,6 @@ bool readDefaultBulkArm(DefaultBulkArm value, ByteData view, int numBits) {
   return true;
 }
 
-// measureDefaultBulkArm is the exact wire bits writeDefaultBulkArm would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureDefaultBulkArm(DefaultBulkArm value) {
-  var bits = 0;
-  bits += 2;
-  bits += value.payload.entriesCount * 36;
-  bits += 5;
-  bits += (8 - (bits & 7)) & 7;
-  bits += value.dataLength * 8;
-  return bits;
-}
-
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
 abstract final class DefaultBulkChoiceType {
   static const int none = 0;
@@ -1067,33 +957,21 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
   var v = 0;
   assert(value.type >= 0);
   assert(value.type <= 2);
-  v = ((value.type) & 0x3);
+  v = value.type & 0x3;
   scratch |= v << scratchBits;
   scratchBits += 2;
-  if (scratchBits >= 64) {
-    view.setUint64(wordIndex * 8, scratch, Endian.little);
-    wordIndex++;
-    scratchBits -= 64;
-    scratch = v >>> (2 - scratchBits);
-  }
   switch (value.type) {
-    case 1:
+    case DefaultBulkChoiceType.first:
       assert(value.first.payload.entriesCount >= 0);
       assert(value.first.payload.entriesCount <= 2);
-      v = ((value.first.payload.entriesCount) & 0x3);
+      v = value.first.payload.entriesCount & 0x3;
       scratch |= v << scratchBits;
       scratchBits += 2;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (2 - scratchBits);
-      }
       for (var i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
         final e0 = value.first.payload.entries[i0];
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
-        v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+        v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
         scratch |= v << scratchBits;
         scratchBits += 36;
         if (scratchBits >= 64) {
@@ -1108,8 +986,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
       assert(value.first.dataLength >= 0);
       assert(value.first.dataLength <= 2);
       v =
-          ((value.first.payload.marker) & 0x7) |
-          (((value.first.dataLength) & 0x3) << 3);
+          (value.first.payload.marker & 0x7) |
+          ((value.first.dataLength & 0x3) << 3);
       scratch |= v << scratchBits;
       scratchBits += 5;
       if (scratchBits >= 64) {
@@ -1159,23 +1037,17 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
           }
         }
       }
-    case 2:
+    case DefaultBulkChoiceType.second:
       assert(value.second.payload.entriesCount >= 0);
       assert(value.second.payload.entriesCount <= 2);
-      v = ((value.second.payload.entriesCount) & 0x3);
+      v = value.second.payload.entriesCount & 0x3;
       scratch |= v << scratchBits;
       scratchBits += 2;
-      if (scratchBits >= 64) {
-        view.setUint64(wordIndex * 8, scratch, Endian.little);
-        wordIndex++;
-        scratchBits -= 64;
-        scratch = v >>> (2 - scratchBits);
-      }
       for (var i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
         final e0 = value.second.payload.entries[i0];
         assert(e0.preferred >= 0);
         assert(e0.preferred <= 15);
-        v = ((e0.retries) & 0xffffffff) | (((e0.preferred) & 0xf) << 32);
+        v = (e0.retries & 0xffffffff) | ((e0.preferred & 0xf) << 32);
         scratch |= v << scratchBits;
         scratchBits += 36;
         if (scratchBits >= 64) {
@@ -1190,8 +1062,8 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
       assert(value.second.dataLength >= 0);
       assert(value.second.dataLength <= 2);
       v =
-          ((value.second.payload.marker) & 0x7) |
-          (((value.second.dataLength) & 0x3) << 3);
+          (value.second.payload.marker & 0x7) |
+          ((value.second.dataLength & 0x3) << 3);
       scratch |= v << scratchBits;
       scratchBits += 5;
       if (scratchBits >= 64) {
@@ -1289,7 +1161,7 @@ bool readDefaultBulkChoice(
   }
   value.type = v;
   switch (value.type) {
-    case 1:
+    case DefaultBulkChoiceType.first:
       for (var i0 = 0; i0 < 2; i0++) {
         final e0 = value.first.payload.entries[i0];
         e0.retries = -1;
@@ -1375,7 +1247,7 @@ bool readDefaultBulkChoice(
         }
       }
       bitsRead += value.first.dataLength * 8;
-    case 2:
+    case DefaultBulkChoiceType.second:
       for (var i0 = 0; i0 < 2; i0++) {
         final e0 = value.second.payload.entries[i0];
         e0.retries = -1;
@@ -1463,26 +1335,4 @@ bool readDefaultBulkChoice(
       bitsRead += value.second.dataLength * 8;
   }
   return true;
-}
-
-// measureDefaultBulkChoice is the exact wire bits writeDefaultBulkChoice would produce for value —
-// trusted like the writer; static runs fold to literals at generation time.
-int measureDefaultBulkChoice(DefaultBulkChoice value) {
-  var bits = 0;
-  bits += 2;
-  switch (value.type) {
-    case 1:
-      bits += 2;
-      bits += value.first.payload.entriesCount * 36;
-      bits += 5;
-      bits += (8 - (bits & 7)) & 7;
-      bits += value.first.dataLength * 8;
-    case 2:
-      bits += 2;
-      bits += value.second.payload.entriesCount * 36;
-      bits += 5;
-      bits += (8 - (bits & 7)) & 7;
-      bits += value.second.dataLength * 8;
-  }
-  return bits;
 }

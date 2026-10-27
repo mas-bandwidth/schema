@@ -1,9 +1,9 @@
-// Wire-function emission: write/read/measure/zero per type, the issue #155
+// Wire-function emission: write/read/zero per type, the issue #155
 // prescription — the family bitpacker inlined at every field with literal
 // constant widths and masks, nested types inlined into the caller's body
 // (one monomorphic function per top-level operation, zero dispatch), bounds
-// checks fused per maximal static run on the read side, and the measure
-// side's static runs folded to literals at generation time.
+// checks fused per maximal static run on the read side. There is no measure
+// function (SPEC §6.1): write returns the bytes it wrote.
 //
 // The wire math transliterates the flat JS tier (internal/codegen/js/flat.go
 // — the probe-proven kernels) into Dart's value domain: one 64-bit int
@@ -38,7 +38,13 @@ func (g *gen) emitSignature(ret, fname string, params []string) {
 }
 
 func (g *gen) pf(format string, args ...any) {
-	fmt.Fprintf(&g.fn, format, args...)
+	text := fmt.Sprintf(format, args...)
+	if strings.HasPrefix(strings.TrimLeft(text, " "), "for (") {
+		// a loop body is entered with whatever the last iteration left:
+		// the write position's static ceiling is lost (scratchHi)
+		g.scratchHi = 63
+	}
+	g.fn.WriteString(text)
 }
 
 // maskHex renders the (1<<bits)-1 mask for bits in [1,64].
@@ -53,10 +59,19 @@ func maskHex(bits int64) string {
 // serialize.dart BitWriter.writeBits inlined, constant width. bits in
 // [1,64]: the restore shift `bits - scratchBits` stays in [1,64], and a
 // Dart `>>>` by 64 is a defined zero, which is exactly the full-word case.
+//
+// scratchHi is the static ceiling on scratchBits at this point of the
+// emitted function: a merge that cannot reach 64 bits emits no spill test
+// at all (a 2-bit union tag first in a function is never a full word).
 func (g *gen) mergeW(bits int64, ind string) {
 	g.needV = true
 	g.pf("%sscratch |= v << scratchBits;\n", ind)
 	g.pf("%sscratchBits += %d;\n", ind, bits)
+	if g.scratchHi+bits < 64 {
+		g.scratchHi += bits
+		return
+	}
+	g.scratchHi = 63
 	g.pf("%sif (scratchBits >= 64) {\n", ind)
 	g.pf("%s  view.setUint64(wordIndex * 8, scratch, Endian.little);\n", ind)
 	g.pf("%s  wordIndex++;\n", ind)
@@ -96,15 +111,25 @@ func (g *gen) chunkFlush(ind string) {
 	if len(g.chunk) == 0 {
 		return
 	}
-	parts := make([]string, len(g.chunk))
+	parts := make([]string, 0, len(g.chunk))
 	shift := int64(0)
-	for i, p := range g.chunk {
-		if shift == 0 {
-			parts[i] = p.expr
-		} else {
-			parts[i] = fmt.Sprintf("(%s << %d)", p.expr, shift)
+	for _, p := range g.chunk {
+		switch {
+		case p.expr == "0":
+			// a zero piece (reserved bits, a zero constant) only advances
+			// the shift: OR-ing a zero adds nothing to the word
+		case shift == 0:
+			parts = append(parts, p.expr)
+		default:
+			parts = append(parts, fmt.Sprintf("(%s << %d)", p.expr, shift))
 		}
 		shift += p.bits
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "0")
+	}
+	if len(parts) == 1 && parts[0][0] == '(' && closingParen(parts[0]) == len(parts[0])-1 {
+		parts[0] = parts[0][1 : len(parts[0])-1] // `v = x & m;`, not `v = (x & m);`
 	}
 	one := fmt.Sprintf("%sv = %s;", ind, strings.Join(parts, " | "))
 	if len(one) <= 80 {
@@ -127,11 +152,63 @@ func (g *gen) chunkFlush(ind string) {
 
 // maskedPiece renders a chunk piece masked to bits; a full 64-bit piece
 // needs no mask (it stands alone at shift zero and the merge keeps 64 bits).
+//
+// A piece is parenthesized as a whole, so it can sit in a shift; the
+// expression inside is parenthesized again only when it is not already a
+// primary (a path like value.slab.width needs no second pair).
 func maskedPiece(expr string, bits int64) string {
-	if bits == 64 {
-		return fmt.Sprintf("(%s)", expr)
+	if !isPrimary(expr) {
+		expr = "(" + expr + ")"
 	}
-	return fmt.Sprintf("((%s) & %s)", expr, maskHex(bits))
+	if bits == 64 {
+		return expr
+	}
+	return fmt.Sprintf("(%s & %s)", expr, maskHex(bits))
+}
+
+// isPrimary reports an expression that binds tighter than any operator it
+// could be placed beside: an identifier path with member accesses and
+// index operations, a call, or a parenthesized whole.
+func isPrimary(expr string) bool {
+	if expr == "" {
+		return false
+	}
+	if expr[0] == '(' {
+		return closingParen(expr) == len(expr)-1
+	}
+	depth := 0
+	for i := 0; i < len(expr); i++ {
+		c := expr[i]
+		switch {
+		case c == '(' || c == '[':
+			depth++
+		case c == ')' || c == ']':
+			depth--
+		case depth > 0:
+		case c == '.' || c == '_' || c == '$' ||
+			c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9':
+		default:
+			return false
+		}
+	}
+	return depth == 0
+}
+
+// closingParen is the index of the parenthesis matching expr[0], or -1.
+func closingParen(expr string) int {
+	depth := 0
+	for i := 0; i < len(expr); i++ {
+		switch expr[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // emitWindowLoad pulls a fresh 64-bit extraction window at bitsRead, with
@@ -295,7 +372,6 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	g.emitInitFunction(st.Name, st.Fields)
 	g.emitWriteFunction(st.Name, low, st.Items)
 	g.emitReadFunction(st.Name, low, st.Items)
-	g.emitMeasureFunction(st.Name, st.Items)
 }
 
 // emitUnionFunctions emits the union's bounds and the same function surface
@@ -318,7 +394,6 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	item := unionItem(d)
 	g.emitWriteFunction(d.Name, low, []ir.Item{item})
 	g.emitReadFunction(d.Name, low, []ir.Item{item})
-	g.emitMeasureFunction(d.Name, []ir.Item{item})
 }
 
 // unionItem wraps a union as a self-typed field item so the standalone
@@ -337,6 +412,7 @@ func (g *gen) resetFn() {
 	g.chunk = g.chunk[:0]
 	g.chunkBits = 0
 	g.windowAvail, g.windowRel = 0, 0
+	g.scratchHi = 0 // a function's scratch starts empty
 }
 
 func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
@@ -465,14 +541,22 @@ func (g *gen) emitWriteItems(items []ir.Item, path, ind string) {
 				neg = "!"
 			}
 			g.chunkFlush(ind)
+			// each arm starts at the entry ceiling; the join takes the
+			// higher of the two exits (no else: the entry itself)
+			entry := g.scratchHi
 			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, dartName(item.Cond))
 			g.emitWriteItems(item.Then, path, ind+"  ")
 			g.chunkFlush(ind + "  ")
+			thenExit := g.scratchHi
+			exit := max(entry, thenExit)
 			if item.Else != nil {
+				g.scratchHi = entry
 				g.pf("%s} else {\n", ind)
 				g.emitWriteItems(item.Else, path, ind+"  ")
 				g.chunkFlush(ind + "  ")
+				exit = max(thenExit, g.scratchHi)
 			}
+			g.scratchHi = exit
 			g.pf("%s}\n", ind)
 		}
 	}
@@ -492,16 +576,22 @@ func (g *gen) emitWriteRaw(value *big.Int, bits int64, ind string) {
 // exactly as the merge would keep it).
 func (g *gen) emitWriteAlign(ind string) {
 	g.chunkFlush(ind)
+	// the padded position is a whole byte below 64, and it can reach 64
+	// only when the ceiling rounds up to it
+	padded := (g.scratchHi + 7) &^ 7
+	g.scratchHi = min(padded, 56)
 	g.pf("%s{\n", ind)
 	g.pf("%s  final pad = scratchBits & 7;\n", ind)
 	g.pf("%s  if (pad != 0) {\n", ind)
 	g.pf("%s    scratchBits += 8 - pad;\n", ind)
-	g.pf("%s    if (scratchBits >= 64) {\n", ind)
-	g.pf("%s      view.setUint64(wordIndex * 8, scratch, Endian.little);\n", ind)
-	g.pf("%s      wordIndex++;\n", ind)
-	g.pf("%s      scratchBits -= 64;\n", ind)
-	g.pf("%s      scratch = 0;\n", ind)
-	g.pf("%s    }\n", ind)
+	if padded >= 64 {
+		g.pf("%s    if (scratchBits >= 64) {\n", ind)
+		g.pf("%s      view.setUint64(wordIndex * 8, scratch, Endian.little);\n", ind)
+		g.pf("%s      wordIndex++;\n", ind)
+		g.pf("%s      scratchBits -= 64;\n", ind)
+		g.pf("%s      scratch = 0;\n", ind)
+		g.pf("%s    }\n", ind)
+	}
 	g.pf("%s  }\n", ind)
 	g.pf("%s}\n", ind)
 }
@@ -640,12 +730,12 @@ func (g *gen) assertRange(expr string, min, max *big.Int, signedDomain bool, ind
 	}
 	// unsigned 64-bit domain: bit-transparent compares through the helper
 	if min.Sign() > 0 {
-		g.needULess = true
-		g.pf("%sassert(!_unsignedLessThan(%s, %s));\n", ind, expr, dartIntLit(min))
+		g.useRuntime()
+		g.pf("%sassert(!Schema.unsignedLessThan(%s, %s));\n", ind, expr, dartIntLit(min))
 	}
 	if max.Cmp(maxUint64Big) < 0 {
-		g.needULess = true
-		g.pf("%sassert(!_unsignedLessThan(%s, %s));\n", ind, dartIntLit(max), expr)
+		g.useRuntime()
+		g.pf("%sassert(!Schema.unsignedLessThan(%s, %s));\n", ind, dartIntLit(max), expr)
 	}
 }
 
@@ -711,8 +801,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteFloat32Bits(name, ind)
 	case ir.TFloat64:
-		g.needScratch, g.needF64Conv = true, true
-		g.chunkAdd(fmt.Sprintf("_float64BitsFromDouble(%s)", name), 64, ind)
+		g.useRuntime()
+		g.chunkAdd(fmt.Sprintf("Schema.float64BitsFromDouble(%s)", name), 64, ind)
 	case ir.TWString:
 		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
@@ -743,17 +833,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 // statement-form merge: v is computed in a branch.
 func (g *gen) emitWriteFloat32Bits(name, ind string) {
 	g.chunkFlush(ind)
-	g.needScratch, g.needF32Conv, g.needV = true, true, true
+	g.useRuntime()
+	g.needV = true
 	g.pf("%sif (!%s.isNaN) {\n", ind, name)
-	g.pf("%s  _f32[0] = %s;\n", ind, name)
-	g.pf("%s  v = _u32[0];\n", ind)
+	g.pf("%s  Schema.f32[0] = %s;\n", ind, name)
+	g.pf("%s  v = Schema.u32[0];\n", ind)
 	g.pf("%s} else {\n", ind)
-	g.pf("%s  _f64[0] = %s;\n", ind, name)
-	g.pf("%s  v = (_u64[0] >>> 29) & 0x7fffff;\n", ind)
+	g.pf("%s  Schema.f64[0] = %s;\n", ind, name)
+	g.pf("%s  v = (Schema.u64[0] >>> 29) & 0x7fffff;\n", ind)
 	g.pf("%s  if (v == 0) {\n", ind)
 	g.pf("%s    v = 0x400000;\n", ind)
 	g.pf("%s  }\n", ind)
-	g.pf("%s  v |= ((_u64[0] >>> 63) << 31) | 0x7f800000;\n", ind)
+	g.pf("%s  v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;\n", ind)
 	g.pf("%s}\n", ind)
 	g.mergeW(32, ind)
 }
@@ -765,12 +856,12 @@ func (g *gen) emitWriteFloat32Bits(name, ind string) {
 // a NaN exactly when their magnitude exceeds infinity's 0x7f800000.
 func (g *gen) emitReadFloat32Bits(name, ind string) {
 	g.pf("%sif ((v & 0x7fffffff) <= 0x7f800000) {\n", ind)
-	g.pf("%s  _u32[0] = v;\n", ind)
-	g.pf("%s  %s = _f32[0];\n", ind, name)
+	g.pf("%s  Schema.u32[0] = v;\n", ind)
+	g.pf("%s  %s = Schema.f32[0];\n", ind, name)
 	g.pf("%s} else {\n", ind)
-	g.pf("%s  _u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);\n", ind)
-	g.pf("%s  _u64[0] |= 0x7ff0000000000000;\n", ind)
-	g.pf("%s  %s = _f64[0];\n", ind, name)
+	g.pf("%s  Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);\n", ind)
+	g.pf("%s  Schema.u64[0] |= 0x7ff0000000000000;\n", ind)
+	g.pf("%s  %s = Schema.f64[0];\n", ind, name)
 	g.pf("%s}\n", ind)
 }
 
@@ -785,21 +876,30 @@ func f32lit(v float64) string {
 // also grounds NaN), quantize — every step through _fround (SPEC §4.3).
 func (g *gen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	g.chunkFlush(ind) // statement-form merge: v is computed in a block
-	g.needScratch, g.needFround = true, true
+	g.useRuntime()
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
 	mivF := float32(maxInt)
 	g.pf("%s{\n", ind)
-	g.pf("%s  final x = _fround(%s);\n", ind, name)
+	g.pf("%s  final x = Schema.fround(%s);\n", ind, name)
 	g.pf("%s  assert(x.isFinite);\n", ind)
-	g.pf("%s  var n = _fround(_fround(x - %s) / %s);\n", ind, f32lit(float64(minF)), f32lit(float64(deltaF)))
+	// x - min, spelled exactly: subtracting a negative min is adding its
+	// magnitude, and x - 0.0 is x itself (already a float32, -0.0 included)
+	shifted := "x"
+	switch {
+	case minF < 0:
+		shifted = "Schema.fround(x + " + f32lit(float64(-minF)) + ")"
+	case minF > 0:
+		shifted = "Schema.fround(x - " + f32lit(float64(minF)) + ")"
+	}
+	g.emitCall(ind+"  ", "var n = ", "Schema.fround", shifted+" / "+f32lit(float64(deltaF)))
 	g.pf("%s  if (!(n >= 0.0)) {\n", ind)
 	g.pf("%s    n = 0.0;\n", ind)
 	g.pf("%s  } else if (!(n <= 1.0)) {\n", ind)
 	g.pf("%s    n = 1.0;\n", ind)
 	g.pf("%s  }\n", ind)
-	g.pf("%s  v = _fround(_fround(n * %s) + 0.5).floor();\n", ind, f32lit(float64(mivF)))
+	g.pf("%s  v = Schema.fround(Schema.fround(n * %s) + 0.5).floor();\n", ind, f32lit(float64(mivF)))
 	g.pf("%s  if (v > %d) v = %d;\n", ind, maxInt, maxInt)
 	g.pf("%s}\n", ind)
 	g.needV = true
@@ -1005,6 +1105,39 @@ func (g *gen) emitWriteByteRun(f *ir.Field, name, count string, staticCount int6
 	g.loopDepth--
 }
 
+// readAssigned is the set of fields a successful read of items always
+// stores in full: an unconditional (branch-free) item holding one scalar —
+// an int, float, bool, enum or flags value, or a union's tag. Arrays, byte
+// and text buffers (whose tails a read leaves) and nested types (whose
+// arrays may) are not in it.
+func readAssigned(items []ir.Item) map[*ir.Field]bool {
+	out := map[*ir.Field]bool{}
+	for _, it := range items {
+		fi, ok := it.(*ir.FieldItem)
+		if !ok || fi.F.Array != ir.ArrayNone {
+			continue
+		}
+		switch fi.F.Type.Kind {
+		case ir.TString, ir.TBytes, ir.TWString:
+			continue
+		case ir.TNamed:
+			if _, nested := fi.F.Type.Ref.(*ir.Struct); nested {
+				continue
+			}
+		}
+		out[fi.F] = true
+	}
+	return out
+}
+
+// armTag is the named tag constant a union switch cases on —
+// <Union>Type.<arm>, imported when the union lives in another library —
+// never the bare integer it stands for.
+func (g *gen) armTag(u *ir.Union, vr ir.UnionVariant) string {
+	g.addRef(u.Name, u.Name+"Type")
+	return u.Name + "Type." + dartName(ir.GoExportName(vr.Name))
+}
+
 // emitWriteUnion inlines a union (SPEC §4.8): the tag contract asserted
 // BEFORE it rides, the tag in minimal bits, then a switch inlines each
 // arm's items — the struct-inlining move, per arm.
@@ -1017,9 +1150,14 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
 	g.chunkAdd(maskedPiece(expr+".type", bits), bits, ind)
 	g.chunkFlush(ind) // the arms diverge: the tag merges before the switch
+	// every arm starts at the entry ceiling; the join takes the highest exit
+	// (an unmatched tag writes no arm, so the entry is one of them)
+	entry, exit := g.scratchHi, g.scratchHi
 	g.pf("%sswitch (%s.type) {\n", ind, expr)
-	for i, vr := range u.Variants {
-		g.pf("%s  case %d:\n", ind, i+1)
+	for _, vr := range u.Variants {
+		exit = max(exit, g.scratchHi)
+		g.scratchHi = entry
+		g.pf("%s  case %s:\n", ind, g.armTag(u, vr))
 		if vr.Void() {
 			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
 			continue
@@ -1031,6 +1169,7 @@ func (g *gen) emitWriteUnion(u *ir.Union, expr, ind string) {
 			g.pf("%s    break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
 		}
 	}
+	g.scratchHi = max(exit, g.scratchHi)
 	g.pf("%s}\n", ind)
 }
 
@@ -1332,12 +1471,12 @@ func (g *gen) emitReadBytesField(f *ir.Field, name, ind string) {
 	g.pf("%sbitsRead += %s * 8;\n", ind, length)
 	g.invalidateWindow() // bitsRead moved by a dynamic amount
 	if f.Type.Kind == ir.TString {
-		g.needUTF8 = true
-		guard := fmt.Sprintf("%sif (!_schemaUtf8Valid(%s, %s)) {", ind, name, length)
+		g.useRuntime()
+		guard := fmt.Sprintf("%sif (!Schema.utf8Valid(%s, %s)) {", ind, name, length)
 		if len(guard) <= 80 {
 			g.pf("%s\n", guard)
 		} else {
-			g.pf("%sif (!_schemaUtf8Valid(\n%s  %s,\n%s  %s,\n%s)) {\n", ind, ind, name, ind, length, ind)
+			g.pf("%sif (!Schema.utf8Valid(\n%s  %s,\n%s  %s,\n%s)) {\n", ind, ind, name, ind, length, ind)
 		}
 		g.pf("%s  return false;\n%s}\n", ind, ind)
 		g.emitByteReadLoop(ind, iv, length)
@@ -1434,13 +1573,13 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			g.emitReadCompressedFloat(f, name, ind)
 			return
 		}
-		g.needScratch, g.needF32Conv = true, true
+		g.useRuntime()
 		g.readR(32, ind)
 		g.emitReadFloat32Bits(name, ind)
 	case ir.TFloat64:
-		g.needScratch, g.needF64Conv = true, true
+		g.useRuntime()
 		g.emitReadWide64(64, ind)
-		g.pf("%s%s = _doubleFromFloat64Bits(lo);\n", ind, name)
+		g.pf("%s%s = Schema.doubleFromFloat64Bits(lo);\n", ind, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -1472,7 +1611,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 }
 
 func (g *gen) emitReadCompressedFloat(f *ir.Field, name, ind string) {
-	g.needScratch, g.needFround = true, true
+	g.useRuntime()
 	maxInt, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	minF := float32(f.FMin)
 	deltaF := float32(f.FMax) - minF
@@ -1481,10 +1620,32 @@ func (g *gen) emitReadCompressedFloat(f *ir.Field, name, ind string) {
 	if maxInt != (uint64(1)<<bits)-1 {
 		g.pf("%sif (v > %d) {\n%s  return false; // headroom above the quantum count is refused\n%s}\n", ind, maxInt, ind, ind)
 	}
-	g.pf("%s%s = _fround(\n", ind, name)
-	g.pf("%s  _fround(_fround(_fround(v.toDouble()) / %s) * %s) + %s,\n",
-		ind, f32lit(float64(mivF)), f32lit(float64(deltaF)), f32lit(float64(minF)))
-	g.pf("%s);\n", ind)
+	// two statements, each a pure float32 step: q = fround(fround(v) / miv),
+	// then fround(fround(q * delta) + min). Adding a negative min is spelled
+	// as subtracting its magnitude, and a zero min is dropped — fround(q *
+	// delta) is never -0.0 (q >= +0, delta > 0), so both are exact.
+	sum := "q * " + f32lit(float64(deltaF))
+	switch {
+	case minF < 0:
+		sum = "Schema.fround(" + sum + ") - " + f32lit(float64(-minF))
+	case minF > 0:
+		sum = "Schema.fround(" + sum + ") + " + f32lit(float64(minF))
+	}
+	g.pf("%s{\n", ind)
+	g.emitCall(ind+"  ", "final q = ", "Schema.fround", "Schema.fround(v.toDouble()) / "+f32lit(float64(mivF)))
+	g.emitCall(ind+"  ", name+" = ", "Schema.fround", sum)
+	g.pf("%s}\n", ind)
+}
+
+// emitCall writes `<lead><fn>(<arg>);` on one line when it fits in 80
+// columns and in dart format's tall split otherwise.
+func (g *gen) emitCall(ind, lead, fn, arg string) {
+	one := ind + lead + fn + "(" + arg + ");"
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s%s(\n%s  %s,\n%s);\n", ind, lead, fn, ind, arg, ind)
 }
 
 func (g *gen) emitReadFixed(f *ir.Field, name, ind string) {
@@ -1518,8 +1679,8 @@ func (g *gen) emitReadOffset(name string, min, max *big.Int, bits int64, ind str
 	}
 	if diff.Cmp(full) != 0 {
 		if bits == 64 {
-			g.needULess = true
-			g.pf("%sif (_unsignedLessThan(%s, %s)) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
+			g.useRuntime()
+			g.pf("%sif (Schema.unsignedLessThan(%s, %s)) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
 				ind, dartIntLit(diff), src, ind, ind)
 		} else {
 			g.pf("%sif (%s > %s) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
@@ -1607,8 +1768,8 @@ func (g *gen) emitRead128Ranged(signed bool, assign string, min, max *big.Int, b
 		}
 		if diff.Cmp(full) != 0 {
 			if bits == 64 {
-				g.needULess = true
-				g.pf("%sif (_unsignedLessThan(%s, %s)) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
+				g.useRuntime()
+				g.pf("%sif (Schema.unsignedLessThan(%s, %s)) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
 					ind, dartIntLit(new(big.Int).And(diff, maxUint64Big)), src, ind, ind)
 			} else {
 				g.pf("%sif (%s > %s) {\n%s  return false; // a smuggled offset is refused\n%s}\n",
@@ -1674,16 +1835,22 @@ func (g *gen) emitReadUnion(u *ir.Union, expr, ind string, bounded bool) {
 	}
 	g.pf("%s%s.type = v;\n", ind, expr)
 	g.pf("%sswitch (%s.type) {\n", ind, expr)
-	for i, vr := range u.Variants {
+	for _, vr := range u.Variants {
 		arm := expr + "." + dartName(vr.Name)
-		g.pf("%s  case %d:\n", ind, i+1)
+		g.pf("%s  case %s:\n", ind, g.armTag(u, vr))
 		if vr.Void() {
 			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
 			continue
 		}
-		// every selection starts from construction defaults
+		// every selection starts from construction defaults — except a field
+		// the arm's read assigns whatever the wire holds, where the initial
+		// store would only be overwritten
 		empty := true
+		assigned := readAssigned(vr.Ref.Items)
 		for _, nf := range vr.Ref.Fields {
+			if assigned[nf] {
+				continue
+			}
 			g.emitInitializeField(nf, arm, ind+"    ", false, true)
 			empty = false
 		}
@@ -1842,179 +2009,4 @@ func zeroScalar(t ir.FieldType, g *gen) string {
 		return "UInt128.zero"
 	}
 	return "0"
-}
-
-// ---- measure emission ----
-
-// emitMeasureFunction emits measure<Name>: exact wire bits for a value,
-// static runs folded to generation-time literals; a fully static type folds
-// to a single return.
-func (g *gen) emitMeasureFunction(name string, items []ir.Item) {
-	g.resetFn()
-	pending := int64(0)
-	g.emitMeasureItems(items, "value", "  ", &pending)
-	body := g.fn.String()
-
-	g.bpf("// measure%s is the exact wire bits write%s would produce for value —\n", name, name)
-	g.bpf("// trusted like the writer; static runs fold to literals at generation time.\n")
-	if body == "" {
-		// fully static: the whole wire folded to one constant
-		g.bpf("int measure%s(%s value) => %d;\n\n", name, name, pending)
-		return
-	}
-	g.bpf("int measure%s(%s value) {\n", name, name)
-	g.bpf("  var bits = 0;\n")
-	g.body.WriteString(body)
-	if pending != 0 {
-		g.bpf("  bits += %d;\n", pending)
-	}
-	g.bpf("  return bits;\n")
-	g.bpf("}\n\n")
-}
-
-// flushMeasure adds the pending folded bits before dynamic code that needs
-// the running position.
-func (g *gen) flushMeasure(pending *int64, ind string) {
-	if *pending != 0 {
-		g.pf("%sbits += %d;\n", ind, *pending)
-		*pending = 0
-	}
-}
-
-func (g *gen) emitMeasureItems(items []ir.Item, path, ind string, pending *int64) {
-	for _, item := range items {
-		if bits, ok := g.staticBitsItem(item); ok {
-			*pending += bits
-			continue
-		}
-		switch item := item.(type) {
-		case *ir.FieldItem:
-			g.emitMeasureField(item.F, path, ind, pending)
-		case *ir.AlignItem:
-			g.flushMeasure(pending, ind)
-			g.pf("%sbits += (8 - (bits & 7)) & 7;\n", ind)
-		case *ir.Branch:
-			g.flushMeasure(pending, ind)
-			neg := ""
-			if item.Neg {
-				neg = "!"
-			}
-			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, dartName(item.Cond))
-			thenPending := int64(0)
-			g.emitMeasureItems(item.Then, path, ind+"  ", &thenPending)
-			if thenPending != 0 {
-				g.pf("%s  bits += %d;\n", ind, thenPending)
-			}
-			if item.Else != nil {
-				g.pf("%s} else {\n", ind)
-				elsePending := int64(0)
-				g.emitMeasureItems(item.Else, path, ind+"  ", &elsePending)
-				if elsePending != 0 {
-					g.pf("%s  bits += %d;\n", ind, elsePending)
-				}
-			}
-			g.pf("%s}\n", ind)
-		}
-	}
-}
-
-func (g *gen) emitMeasureField(f *ir.Field, path, ind string, pending *int64) {
-	name := path + "." + dartName(f.Name)
-	if f.Name == "" {
-		name = path
-	}
-	switch {
-	case f.Type.Kind == ir.TWString:
-		*pending += ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-		g.flushMeasure(pending, ind)
-		g.pf("%sbits += %sLength * 32;\n", ind, name)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		lenBits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-		*pending += lenBits
-		g.flushMeasure(pending, ind)
-		g.pf("%sbits += (8 - (bits & 7)) & 7;\n", ind)
-		g.pf("%sbits += %sLength * 8;\n", ind, name)
-	case f.Array == ir.ArrayCounted:
-		countBits := ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound))
-		*pending += countBits
-		if elemBits, ok := g.staticBitsScalar(f); ok {
-			g.flushMeasure(pending, ind)
-			g.pf("%sbits += %sCount * %d;\n", ind, name, elemBits)
-			return
-		}
-		g.flushMeasure(pending, ind)
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (var %s = 0; %s < %sCount; %s++) {\n", ind, iv, iv, name, iv)
-		g.emitMeasureElem(f, name, iv, ind+"  ", pending)
-		g.pf("%s}\n", ind)
-		g.loopDepth--
-	case f.Array == ir.ArrayFixed:
-		// a fixed array of dynamically-sized elements
-		g.flushMeasure(pending, ind)
-		iv := fmt.Sprintf("i%d", g.loopDepth)
-		g.loopDepth++
-		g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
-		g.emitMeasureElem(f, name, iv, ind+"  ", pending)
-		g.pf("%s}\n", ind)
-		g.loopDepth--
-	default:
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			g.emitMeasureItems(ref.Items, name, ind, pending)
-		case *ir.Union:
-			g.flushMeasure(pending, ind)
-			g.emitMeasureUnion(ref, name, ind)
-		}
-	}
-}
-
-func (g *gen) emitMeasureElem(f *ir.Field, name, iv, ind string, pending *int64) {
-	if f.Type.Kind == ir.TNamed {
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, iv)
-			inner := int64(0)
-			g.emitMeasureItems(ref.Items, ev, ind, &inner)
-			if inner != 0 {
-				g.pf("%sbits += %d;\n", ind, inner)
-			}
-			return
-		case *ir.Union:
-			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sfinal %s = %s[%s];\n", ind, ev, name, iv)
-			g.emitMeasureUnion(ref, ev, ind)
-			return
-		}
-	}
-	// unreachable: every dynamically-sized element is a named type — the
-	// checker refuses arrays of string/bytes/bits (SPEC §4.6)
-}
-
-// emitMeasureUnion measures tag + selected arm through a switch.
-func (g *gen) emitMeasureUnion(u *ir.Union, expr, ind string) {
-	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(u.Max))
-	if u.Max == 0 {
-		return // zero wire bits — only None exists (SPEC §4.8)
-	}
-	g.pf("%sbits += %d;\n", ind, bits)
-	g.pf("%sswitch (%s.type) {\n", ind, expr)
-	for i, vr := range u.Variants {
-		arm := expr + "." + dartName(vr.Name)
-		g.pf("%s  case %d:\n", ind, i+1)
-		if vr.Void() {
-			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", ind)
-			continue
-		}
-		inner := int64(0)
-		before := g.fn.Len()
-		g.emitMeasureItems(vr.Ref.Items, arm, ind+"    ", &inner)
-		if inner != 0 {
-			g.pf("%s    bits += %d;\n", ind, inner)
-		} else if g.fn.Len() == before {
-			g.pf("%s    break; // empty arm — presence is the payload (SPEC §4.6)\n", ind)
-		}
-	}
-	g.pf("%s}\n", ind)
 }

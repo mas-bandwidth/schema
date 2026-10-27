@@ -77,7 +77,7 @@ func TestDartFloatBitsAreAtTheAssignment(t *testing.T) {
 		case strings.HasSuffix(name, "Fixed.dart"):
 			sawMessageF32 = sawMessageF32 || strings.Contains(text, "TableBitWriter._float32Words[0]")
 		default:
-			sawPacketF32 = sawPacketF32 || strings.Contains(text, "_f32[0] = value.")
+			sawPacketF32 = sawPacketF32 || strings.Contains(text, "Schema.f32[0] = value.")
 		}
 	}
 	// the inline spelling is really there (a probe that generated no float32

@@ -11,12 +11,26 @@ void check(bool ok, String message) {
 String hex(Uint8List bytes) =>
     bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
+// There is no measure function (SPEC §6.1): a wire's exact bit length is the
+// fewest bits its reader accepts, and that lies inside the last byte write
+// reported (count bytes). -1 when no length there reads.
+int exactBits<T>(
+  bool Function(T, ByteData, int) read,
+  T Function() fresh,
+  ByteData view,
+  int count,
+) {
+  for (var bits = count == 0 ? 0 : count * 8 - 7; bits <= count * 8; bits++) {
+    if (read(fresh(), view, bits)) return bits;
+  }
+  return -1;
+}
+
 void replay<T>(
   Uint8List wire,
   T value,
   bool Function(T, ByteData, int) read,
   int Function(T, ByteData) write,
-  int Function(T) measure,
   Uint16List Function(T) text,
   int Function(T) length,
 ) {
@@ -26,11 +40,11 @@ void replay<T>(
     stdout.writeln('REFUSE');
     return;
   }
-  final bits = measure(value);
-  check(read(value, view, bits), 'exact bit read');
   final encoded = Uint8List(256);
   final count = write(value, ByteData.sublistView(encoded));
-  check(count == (bits + 7) ~/ 8, 'writer byte count');
+  // the search reads into value itself and ends on the accepted read
+  final bits = exactBits(read, () => value, view, count);
+  check(bits >= 0, 'exact bit read inside the written byte count');
   final payload = text(value)
       .take(length(value))
       .map((u) => u.toRadixString(16).padLeft(4, '0'))
@@ -82,9 +96,11 @@ void contracts() {
     ..enabled = true
     ..textLength = 2;
   c.text.setAll(0, [0xd800, 0xdc00]);
-  p.writeConditional(c, wire);
+  final conditionalBytes = p.writeConditional(c, wire);
   check(
-    p.measureConditional(c) == 68 && wire.getUint8(0) & 15 == 5,
+    exactBits(p.readConditional, p.Conditional.new, wire, conditionalBytes) ==
+            68 &&
+        wire.getUint8(0) & 15 == 5,
     'unaligned groups',
   );
   final co = p.Conditional();
@@ -106,8 +122,12 @@ void contracts() {
   final choice = p.Choice()..type = p.ChoiceType.text;
   choice.text.valueLength = 1;
   choice.text.value[0] = 0xffff;
-  p.writeChoice(choice, wire);
-  var bits = p.measureChoice(choice);
+  var bits = exactBits(
+    p.readChoice,
+    p.Choice.new,
+    wire,
+    p.writeChoice(choice, wire),
+  );
   final out = p.Choice();
   for (var i = 0; i < 2; i++) {
     out.text.value[3] = 0x7f7f;
@@ -126,8 +146,7 @@ void contracts() {
   box.counted[0].valueLength = 1;
   box.counted[0].value[0] = 65;
   box.choice.type = p.ChoiceType.text;
-  p.writeBox(box, wire);
-  bits = p.measureBox(box);
+  bits = exactBits(p.readBox, p.Box.new, wire, p.writeBox(box, wire));
   final bo = p.Box();
   bo.counted[1].value[0] = 0x7f7f;
   check(
@@ -161,7 +180,6 @@ void main(List<String> args) {
         d.WideSeven(),
         d.readWideSeven,
         d.writeWideSeven,
-        d.measureWideSeven,
         (v) => v.text,
         (v) => v.textLength,
       );
@@ -171,7 +189,6 @@ void main(List<String> args) {
         d.WideFour(),
         d.readWideFour,
         d.writeWideFour,
-        d.measureWideFour,
         (v) => v.text,
         (v) => v.textLength,
       );

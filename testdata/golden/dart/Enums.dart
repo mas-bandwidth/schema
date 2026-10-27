@@ -4,12 +4,7 @@
 // AGPL-3.0, its output is not.
 // package example — protocol id 0xeb26c970fde3fd71
 
-// Hex of a uint64 bit pattern held in a signed int (toRadixString would
-// render the sign, not the pattern).
-String _hex64(int value) => value < 0
-    ? (value >>> 32).toRadixString(16) +
-          (value & 0xffffffff).toRadixString(16).padLeft(8, '0')
-    : value.toRadixString(16);
+import 'Schema.dart' show Schema;
 
 // Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2);
 // an int-constant namespace — the Dart translation of the family's integer-
@@ -208,7 +203,7 @@ String flagNamesShipFlags(int value) {
     names.add('Aiming');
   }
   if (value >>> 4 != 0) {
-    names.add('0x${_hex64((value >>> 4) << 4)}');
+    names.add('0x${Schema.hex64((value >>> 4) << 4)}');
   }
   return names.isEmpty ? '0' : names.join('|');
 }
