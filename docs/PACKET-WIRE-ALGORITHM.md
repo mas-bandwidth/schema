@@ -263,8 +263,8 @@ PUT_RANGED(w, value, min, max):
 | `uint128` (bare) | 128 raw bits, low 64-bit half first (`PUT_VALUE` of the low 64, then the high 64) |
 | `int128 \| min, max` | `PUT_RANGED` over the 128-bit range; where the range fits 64 bits or fewer the bytes are identical to `int64` over the same bounds. Bare `int128` and ranged `uint128` do not compile |
 | `fixed(I,F)` / `ufixed(I,F)` | storage is the raw scaled integer. Offset is `raw - (min << F)` in `bitlen(max - min) + F` bits, groups from the bottom. `min == max` costs **zero bits, not F**; `ASSERT raw == min << F` and emit nothing. Read rejects above the raw range, never clamps. Round trip is exact |
-| `float32` | the IEEE-754 bit pattern as 32 bits, **no canonicalisation**: a signalling NaN and a NaN payload ride through. Move the pattern by bit surgery, never through a float conversion that would set the quiet bit |
-| `float64` | the IEEE-754 bit pattern as 64 bits, low dword first, no canonicalisation |
+| `float32` | the IEEE-754 bit pattern of a **finite** value as 32 bits; `-0` and subnormals bit exact. `ASSERT` finite on write; on read, test the raw bits and refuse a NaN or an infinity as `non_finite_float` before the field is written (SPEC.md §4.3, serialize format 2.0) |
+| `float64` | the IEEE-754 bit pattern of a **finite** value as 64 bits, low dword first; the same finite rule as `float32` |
 | compressed `float32 \| min, max, resolution` | see §2.5 |
 | an enum `E` | `PUT_RANGED(w, ordinal, 0, E.Max)` — `None = 0`, variants dense from 1, `Max` may exceed the variant count (`\| max = K` headroom; non-variant values are wire-legal) |
 | a `flags` mask | `W` raw bits, `W` = variant count or the widened max. `ASSERT value < 2^W` when `W < 64` (a bit above the wire width is writer misuse, not silent truncation). Every pattern of `W` bits is legal |

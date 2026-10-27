@@ -1217,19 +1217,25 @@ it (§4.6).
 - **Length prefixes** (`string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T`,
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
-- **A BARE FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO
-  CANONICALISATION.** A `float32` is the 32 bits it holds and a `float64` the
-  64, whatever they spell: a negative zero, an infinity, a quiet NaN, a
-  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
-  reader repairs one, so the pattern that goes in is the pattern that comes
-  out, in every target. **A backend that holds a `float32` in a WIDER cell
-  carries the pattern BIT FOR BIT and never through a float conversion**: the
-  hardware conversion between the two widths sets the quiet bit on a
-  signalling NaN and drops a payload the narrower cell would have kept, and
-  byte identity across the targets fails on exactly those values. The
-  technique is a row in docs/PORTING.md, and the corpus pins the patterns a
-  conversion would move. A *quantized* `float32` is a different field: its
-  wire is the step index and not the pattern, per its row below.
+- **A BARE FLOAT IS FINITE, AND RIDES AS ITS IEEE-754 BIT PATTERN.** This is
+  serialize format 2.0's rule (Glenn, 2026-10-22: float and double carry
+  finite values only, in every language), and the packet wire inherits it
+  through the runtimes. A `float32` is the 32 bits it holds and a `float64`
+  the 64, for every finite value, NEGATIVE ZERO AND THE SUBNORMALS INCLUDED:
+  those stay bit exact, and no writer normalizes one. A NaN (any sign, any
+  payload, quiet or signalling) and both infinities are not values of the
+  type: a writer refuses one (the runtime asserts or fails, as an
+  out-of-range integer does) and a reader refuses one on its raw bits with
+  the reason `non_finite_float`, before the field is written. Every finite
+  `float32` widens to `float64` exactly, so a backend that holds a `float32`
+  in a wider cell may use the ordinary conversion. **Backend status:** C++,
+  C, Rust, Go, C# and JavaScript enforce the rule through their serialize
+  runtime, each from the release its pin moves to; until a target's pin
+  moves, that target still carries the 1.1 behaviour (every pattern rides).
+  Java, Dart and Elixir carry the 1.1 behaviour until their own landings. A
+  *quantized* `float32` is a different field: its wire is the step index and
+  not the pattern, per its row below. The table forms keep their own float
+  rule (SPEC-TABLES.md §3), which this paragraph does not change.
 
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.
@@ -1244,8 +1250,8 @@ classic twin, which is the wire oracle for the stated model.
 | `f fixed(I, F) | min = A, max = B` (range required; **signed**) | Q I.F, the sign bit counting toward I; storage is a signed integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the Q format and int64; wire = raw − (A << F) in bitlen(B − A) + F bits, 32-bit groups from the bottom — **except A == B, which costs ZERO bits (not F): the reader materializes raw = A << F from the range alone (§4.6)**; read rejects above the raw range; round trip is EXACT (no quantization step), and with F = 0 the operation IS a ranged integer | `serialize_fixed` |
 | `f ufixed(I, F) | min = A, max = B` (range required; **unsigned**) | UQ I.F: no sign bit, whole-unit domain [0, 2^I); storage is an UNSIGNED integer of exactly I+F bits (I+F ∈ 8/16/32/64/128, I ≥ 1, F ≥ 0); bounds are compile-time WHOLE UNITS fitting the unsigned domain and int64 (so I ≥ 63 clamps to int64's ceiling); the wire law is fixed's own — raw − (A << F) in bitlen(B − A) + F bits, A == B costs ZERO bits, read rejects above the raw range, round trip EXACT. The raw values of wide formats legitimately fill uint64's HIGH HALF (above 2^63): every route through a signed-typed runtime API is a bit-exact cast or zero-extension, never sign extension, and the corpus pins that byte-for-byte | `serialize_fixed` (unsigned storage — the codec is storage-generic) |
 | `f bool` | 1 bit | `serialize_bool` |
-| `f float32` | 32 raw IEEE-754 bits — the pattern, with no canonicalisation: a signalling NaN and a NaN payload ride through unchanged, and a backend holding the field in a wider cell moves the pattern by bit surgery | `serialize_float` |
-| `f float64` | 64 raw bits (low dword first) — the pattern, with no canonicalisation, exactly as `float32`'s row | `serialize_double` |
+| `f float32` | 32 raw IEEE-754 bits of a FINITE value — the pattern, `-0` and subnormals bit exact; a NaN or an infinity is refused on write and refused on read as `non_finite_float` | `serialize_float` |
+| `f float64` | 64 raw bits (low dword first) of a FINITE value, exactly as `float32`'s row | `serialize_double` |
 | `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max], max being the variant count; read rejects above max, so an unnamed value never reaches the object | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
@@ -1255,7 +1261,7 @@ classic twin, which is the wire oracle for the stated model.
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
 | `align` | zero-pad to the next byte boundary; read rejects nonzero padding | `serialize_align` |
 | `f string(N)` | length in [0, N], align, then the used bytes — N = max length; the bound sizes the length prefix's bits | `serialize_string` with buffer N + 1 |
-| `f wstring(N)` | length in [0, N], **no alignment**, then one 32-bit group per UTF-16 code unit. N is the max length in CODE UNITS, and the bound sizes the length prefix's bits (§4.12) | `serialize_wstring` with buffer N + 1 |
+| `f wstring(N)` | length in [0, N], **no alignment**, then one 32-bit group per UTF-16 code unit. N is the max length in CODE UNITS, and the bound sizes the length prefix's bits (§4.12) | format 1.1's `serialize_wstring` with buffer N + 1 (removed in format 2.0; the generated code composes the same bits from `serialize_int` and `serialize_bits`, §4.12) |
 | `f bytes(N)` | identical shape: length in [0, N], align, then the used bytes | `serialize_int` + `serialize_bytes` |
 | `f [N]T` | N elements, back to back | element per element |
 | `f [..N]T` / `f [Min..N]T` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
@@ -1270,8 +1276,9 @@ the door is held open by the reserved `column` token (§4.11, schema#554) and no
 byte moves today.
 
 **Wire fidelity.** For every legal write, the bits are identical to the named
-classic twins. **Classic `serialize_wstring` is the normative twin for
-`wstring(N)`**: serialize.modern's `wstring_` inserts an `align` between the
+classic twins. **Classic `serialize_wstring` (format 1.1) is the normative
+twin for `wstring(N)`**, a description of the bytes rather than a call
+(format 2.0 removed it; §4.12): serialize.modern's `wstring_` inserts an `align` between the
 length and the code units, and that alignment is the one thing schema does
 not do (§4.12). On the *read* side, schema's generated readers enforce the
 language's validation rules uniformly (e.g. the interior-null rule of §4.7
@@ -2103,6 +2110,13 @@ the one thing schema does not do. The classic twin for the row is
 `serialize_wstring` over a buffer of N + 1, whose length field is
 `serialize_int( length, 0, buffer_size - 1 )` and whose first group begins
 at the bit immediately after it.
+
+**No runtime call carries it.** serialize format 2.0 removed `wstring` and
+its wire form from every runtime. Schema's `wstring(N)` does not depend on
+it: in every target the generated code composes the field itself, the
+length as a ranged integer and each code unit as a 32-bit group, so the
+bytes above are unchanged by any runtime upgrade. The format 1.1
+`serialize_wstring` stays the description of those bytes, not a call.
 
 **Validation: what every generated reader enforces, uniformly.** The rules
 are stated once here and hold in all nine targets, in every build mode, in
