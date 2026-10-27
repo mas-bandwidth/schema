@@ -488,8 +488,8 @@ Probe.run()
 func assertElixirBoundsSource(t *testing.T, src, module string) {
 	t.Helper()
 	header := src
-	if i := strings.Index(src, "\npackage "); i >= 0 {
-		header = src[:i]
+	if before, _, ok := strings.Cut(src, "\npackage "); ok {
+		header = before
 	}
 	for _, bad := range []string{
 		"ANNOUNCEMENT SURFACE only",
