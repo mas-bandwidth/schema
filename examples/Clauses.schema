@@ -1,37 +1,38 @@
-// Adversarial arrangements for the Elixir grouped-append clauses (K/L).
-// Every element width here is chosen so the write clause (52-bit budget,
-// cap 4) and the read clause (49-bit window, cap 4) pick DIFFERENT k, and
-// so the clause boundary lands mid-byte -- the case examples/Degenerate.schema
-// cannot reach, because every type in that file is a whole number of bytes.
+// Clauses.schema — arrays and nested structs whose elements are not a whole
+// number of bytes wide.
+//
+// Elements of 1, 13, 17, 26, 50 and 52 bits pack back to back with no
+// padding, so most element boundaries fall mid-byte. Counted arrays carry
+// their count in the fewest bits for [0, N] (SPEC §4.3). The arrangements
+// behind each width are in internal/goldens/regressions_test.go.
 
 package example
 
-// w13: write k = min(52/13,4) = 4 -> 52 bits/clause; read k = min(49/13,4) = 3
-// -> 39 bits/clause. Both mid-byte, and the two sides disagree.
+// 13-bit elements.
 type W13
 {
     items [..12]uint16 | min = 0, max = 8191
 }
 
-// w17: write k = 3 (51 bits); read k = 2 (34 bits).
+// 17-bit elements.
 type W17
 {
     items [..9]uint32 | min = 0, max = 131071
 }
 
-// w26: write k = 2 (52 bits, exactly the budget); read k = 1.
+// 26-bit elements.
 type W26
 {
     items [..6]uint32 | min = 0, max = 67108863
 }
 
-// w1: write k = 4, read k = 4 -- the narrowest element.
+// 1-bit elements: the narrowest a ranged element can be.
 type W1
 {
     items [..20]uint8 | min = 0, max = 1
 }
 
-// exactly the budget as ONE element, and one bit over the read window.
+// 52-bit and 50-bit elements: wide values stored in uint64.
 type W52
 {
     items [..3]uint64 | min = 0, max = 4503599627370495
@@ -42,16 +43,15 @@ type W50
     items [..3]uint64 | min = 0, max = 1125899906842623
 }
 
-// a FIXED array of a mid-byte width: no count bits, clause boundaries only.
+// a FIXED array of 13-bit elements: no count bits, just seven elements.
 type F13
 {
     items [7]uint16 | min = 0, max = 8191
 }
 
-// ---- grouping ACROSS a nested struct boundary ---------------------------
+// ---- arrays of nested structs -------------------------------------------
 
-// a 3-bit struct: staticBitsScalar reports 3, so writeUnroll picks k = 4 and
-// the append group spans four whole structs.
+// a 3-bit struct, packed ten to an array with no padding between elements.
 type Tri3
 {
     a bits(1)
@@ -63,7 +63,7 @@ type ArrTri3
     items [..10]Tri3
 }
 
-// an 11-bit struct spanning a clause: write k = 4 (44), read k = 4 (44).
+// an 11-bit struct, in a fixed array of nine.
 type Eleven
 {
     a bits(3)
@@ -77,7 +77,7 @@ type ArrEleven
 
 // ---- the empty and the maximal ------------------------------------------
 
-// a union whose arms are EMPTY types -- a zero-bit arm behind a tag.
+// a union whose arms are EMPTY types: the tag is the whole payload.
 type EmptyA
 {
 }
@@ -99,8 +99,8 @@ type HoldsEmptyUnion
     tail bits(7)
 }
 
-// zero-length string and bytes, and the maximal ones, behind a mid-byte lead
-// so the align inside them is a real barrier at a non-zero offset.
+// a string and a bytes field after a 5-bit lead: each aligns to the next
+// byte before its payload (SPEC §4.7), so the padding here is real.
 type Strs
 {
     lead bits(5)
@@ -109,7 +109,7 @@ type Strs
     tail bits(3)
 }
 
-// a counted array of nested structs, exercised at count 0 and at bound.
+// a counted array of nested structs between two odd-width fields.
 type ArrNested
 {
     lead  bits(5)

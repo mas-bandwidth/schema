@@ -1,12 +1,15 @@
-// Adversarial arrangements for the Elixir STATIC-OFFSET state machine
-// (lever D) and its join/barrier handling: branches whose arms agree and
-// disagree, unions of unequal arms at mid-byte offsets, aligns that regain
-// staticness, and arrays that give it up.
+// Joins.schema — branches, unions and arrays whose paths differ in width.
+//
+// After an `if`, a union or a counted array, the bit offset of the next
+// field depends on which path the data took. These types put a field after
+// each such point, with paths of equal and unequal width, so every
+// arrangement of "same offset" and "different offset" is on the wire. The
+// code-generator details each one covers are in
+// internal/goldens/regressions_test.go.
 
 package example
 
-// arms that AGREE on width: the join should keep the offset static and drop
-// scratch_bits from the tuple entirely.
+// two arms of the SAME width: tail lands at the same offset on either path.
 type ArmsAgree
 {
     lead bits(5)
@@ -22,8 +25,7 @@ type ArmsAgree
     tail bits(7)
 }
 
-// arms that DISAGREE: the join must publish scratch_bits and the emitter
-// must go back to maintaining the variable.
+// two arms of DIFFERENT widths: tail's offset depends on the path.
 type ArmsDisagree
 {
     lead bits(5)
@@ -51,7 +53,7 @@ type ArmEmpty
     tail bits(7)
 }
 
-// nested branches, the inner one disagreeing inside the outer.
+// nested branches, the inner one with arms of different widths.
 type ArmsNested
 {
     lead  bits(3)
@@ -75,8 +77,7 @@ type ArmsNested
     tail bits(6)
 }
 
-// an ALIGN inside a branch arm: staticness is regained there, and the two
-// arms then reach the join in different states.
+// a string in one arm: it aligns to a byte boundary, the other arm does not.
 type ArmAlign
 {
     lead bits(5)
@@ -92,8 +93,8 @@ type ArmAlign
     tail bits(7)
 }
 
-// a counted array inside a branch arm: staticness is given up at the loop
-// call on one path only.
+// a counted array in one arm: its width depends on the count, the other
+// arm's does not.
 type ArmArray
 {
     lead bits(5)
@@ -135,7 +136,7 @@ type HoldsUneven
     tail bits(11)
 }
 
-// a counted array OF unions -- every arm width through the loop clause.
+// a counted array OF unions -- each element may take either arm.
 type ArrUneven
 {
     lead  bits(5)
@@ -143,8 +144,8 @@ type ArrUneven
     tail  bits(3)
 }
 
-// staticness given up at an array, then regained at an align, then a long
-// static run after it.
+// a counted array, then a string that aligns to the next byte, then a long
+// run of fixed-width fields.
 type RegainAfterAlign
 {
     lead  bits(5)
