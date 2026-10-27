@@ -6,8 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring>
+#include <stdint.h>
 
 #include "serialize.h"
 
@@ -54,6 +53,33 @@ namespace example {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
 {
@@ -186,55 +212,35 @@ SCHEMA_READ_INLINE bool ReadQuantizedRotation( serialize::ReadStream & stream, Q
 
 SCHEMA_WRITE_INLINE bool WriteRigidBody( serialize::WriteStream & stream, const RigidBody & value )
 {
-    if ( !WriteVec3( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !WriteQuat( stream, value.orientation ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteVec3, value.position );
+    schema_write_object( stream, WriteQuat, value.orientation );
     write_bool( stream, value.at_rest );
     if ( !value.at_rest )
     {
-        if ( !WriteVec3( stream, value.linear_velocity ) )
-        {
-            return false;
-        }
-        if ( !WriteVec3( stream, value.angular_velocity ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteVec3, value.linear_velocity );
+        schema_write_object( stream, WriteVec3, value.angular_velocity );
     }
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadRigidBody( serialize::ReadStream & stream, RigidBody & value )
 {
-    if ( !ReadVec3( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !ReadQuat( stream, value.orientation ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadVec3, value.position );
+    schema_read_object( stream, ReadQuat, value.orientation );
     read_bool( stream, value.at_rest );
     if ( !value.at_rest )
     {
-        if ( !ReadVec3( stream, value.linear_velocity ) )
-        {
-            return false;
-        }
-        if ( !ReadVec3( stream, value.angular_velocity ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadVec3, value.linear_velocity );
+        schema_read_object( stream, ReadVec3, value.angular_velocity );
     }
     else
     {
-        memset( (void*) &value.linear_velocity, 0, sizeof( value.linear_velocity ) );
-        memset( (void*) &value.angular_velocity, 0, sizeof( value.angular_velocity ) );
+        value.linear_velocity.x = 0.0;
+        value.linear_velocity.y = 0.0;
+        value.linear_velocity.z = 0.0;
+        value.angular_velocity.x = 0.0;
+        value.angular_velocity.y = 0.0;
+        value.angular_velocity.z = 0.0;
     }
     return true;
 }
@@ -284,10 +290,7 @@ SCHEMA_WRITE_INLINE bool WriteInputPacket( serialize::WriteStream & stream, cons
     write_bits( stream, uint32_t( value.inputs_count ), 5 );
     for ( int32_t i = 0; i < value.inputs_count; i++ )
     {
-        if ( !WriteInput( stream, value.inputs[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteInput, value.inputs[i] );
     }
     return true;
 }
@@ -304,43 +307,31 @@ SCHEMA_READ_INLINE bool ReadInputPacket( serialize::ReadStream & stream, InputPa
     read_int( stream, value.inputs_count, 0, MaxInputsPerPacket );
     for ( int32_t i = 0; i < value.inputs_count; i++ )
     {
-        if ( !ReadInput( stream, value.inputs[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadInput, value.inputs[i] );
     }
     return true;
 }
 
 SCHEMA_WRITE_INLINE bool WriteShipCreate( serialize::WriteStream & stream, const ShipCreate & value )
 {
-    serialize_assert( int32_t( value.ship_type ) >= int32_t( 0 ) && int32_t( value.ship_type ) <= int32_t( 5 ) );
+    serialize_assert( int32_t( value.ship_type ) <= int32_t( ShipType::Max ) );
     write_bits( stream, uint32_t( value.ship_type ), 3 );
-    if ( !WriteQuantizedPosition( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !WriteQuantizedRotation( stream, value.rotation ) )
-    {
-        return false;
-    }
-    if ( !WriteQuantizedVelocity( stream, value.linear_velocity ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteQuantizedPosition, value.position );
+    schema_write_object( stream, WriteQuantizedRotation, value.rotation );
+    schema_write_object( stream, WriteQuantizedVelocity, value.linear_velocity );
     write_bool( stream, value.has_flags );
     if ( value.has_flags )
     {
         serialize_assert( value.flags < ( 1ull << 4 ) );
         write_bits( stream, value.flags, 4 );
     }
-    serialize_assert( int32_t( value.team ) >= int32_t( 0 ) && int32_t( value.team ) <= int32_t( 2 ) );
+    serialize_assert( int32_t( value.team ) <= int32_t( Team::Max ) );
     write_bits( stream, uint32_t( value.team ), 2 );
     serialize_assert( int32_t( value.health ) >= int32_t( 0 ) && int32_t( value.health ) <= int32_t( MaxHealth ) );
     write_bits( stream, uint32_t( value.health ), 10 );
     serialize_assert( int32_t( value.thrust ) >= int32_t( 0 ) && int32_t( value.thrust ) <= int32_t( 100 ) );
     write_bits( stream, uint32_t( value.thrust ), 7 );
-    serialize_assert( int32_t( value.pending ) >= int32_t( 0 ) && int32_t( value.pending ) <= int32_t( 0 ) );
+    serialize_assert( int32_t( value.pending ) <= int32_t( Pending::Max ) );
     return true;
 }
 
@@ -348,21 +339,12 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
 {
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 5 );
+        read_int( stream, enum_value, 0, 5 ); // ShipType::Max
         value.ship_type = ShipType( enum_value );
     }
-    if ( !ReadQuantizedPosition( stream, value.position ) )
-    {
-        return false;
-    }
-    if ( !ReadQuantizedRotation( stream, value.rotation ) )
-    {
-        return false;
-    }
-    if ( !ReadQuantizedVelocity( stream, value.linear_velocity ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadQuantizedPosition, value.position );
+    schema_read_object( stream, ReadQuantizedRotation, value.rotation );
+    schema_read_object( stream, ReadQuantizedVelocity, value.linear_velocity );
     read_bool( stream, value.has_flags );
     if ( value.has_flags )
     {
@@ -374,7 +356,7 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 2 );
+        read_int( stream, enum_value, 0, 2 ); // Team::Max
         value.team = Team( enum_value );
     }
     {
@@ -389,7 +371,7 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
     }
     {
         int32_t enum_value = 0;
-        read_int( stream, enum_value, 0, 0 );
+        read_int( stream, enum_value, 0, 0 ); // Pending::Max
         value.pending = Pending( enum_value );
     }
     return true;
@@ -413,9 +395,9 @@ SCHEMA_READ_INLINE bool ReadExpressionProbe( serialize::ReadStream & stream, Exp
 
 SCHEMA_WRITE_INLINE bool WriteExtremeProbe( serialize::WriteStream & stream, const ExtremeProbe & value )
 {
-    serialize_assert( int64_t( value.floor_bound ) >= int64_t( ( -9223372036854775807ll - 1 ) ) && int64_t( value.floor_bound ) <= int64_t( 100 ) );
+    serialize_assert( int64_t( value.floor_bound ) <= int64_t( 100 ) );
     write_bits( stream, uint64_t( value.floor_bound ) - uint64_t( ( -9223372036854775807ll - 1 ) ), 64 );
-    serialize_assert( int64_t( value.doubled_floor ) >= int64_t( ( -9223372036854775807ll - 1 ) ) && int64_t( value.doubled_floor ) <= int64_t( 100 ) );
+    serialize_assert( int64_t( value.doubled_floor ) <= int64_t( 100 ) );
     write_bits( stream, uint64_t( value.doubled_floor ) - uint64_t( ( -9223372036854775807ll - 1 ) ), 64 );
     serialize_assert( value.ceiling_range >= 1 );
     write_bits( stream, uint64_t( value.ceiling_range ) - 1, 64 );
@@ -448,7 +430,7 @@ SCHEMA_READ_INLINE bool ReadExtremeProbe( serialize::ReadStream & stream, Extrem
 
 SCHEMA_WRITE_INLINE bool WriteExtremeRow( serialize::WriteStream & stream, const ExtremeRow & value )
 {
-    serialize_assert( int64_t( value.clamped_floor ) >= int64_t( ( -9223372036854775807ll - 1 ) ) && int64_t( value.clamped_floor ) <= int64_t( 100 ) );
+    serialize_assert( int64_t( value.clamped_floor ) <= int64_t( 100 ) );
     write_bits( stream, uint64_t( value.clamped_floor ) - uint64_t( ( -9223372036854775807ll - 1 ) ), 64 );
     serialize_assert( value.clamped_ceiling >= 1 && value.clamped_ceiling <= 18446744073709551614ull );
     write_bits( stream, uint64_t( value.clamped_ceiling ) - 1, 64 );

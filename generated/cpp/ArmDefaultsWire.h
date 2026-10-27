@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include <new>
 
 #include "serialize.h"
@@ -54,18 +54,42 @@ namespace example {
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
 
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
+
 SCHEMA_WRITE_INLINE bool WriteDefaultArm( serialize::WriteStream & stream, const DefaultArm & value )
 {
     serialize_assert( int32_t( value.entries_count ) >= int32_t( 0 ) && int32_t( value.entries_count ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.entries_count ), 2 );
     for ( int32_t i = 0; i < value.entries_count; i++ )
     {
-        if ( !WriteProbeConfig( stream, value.entries[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteProbeConfig, value.entries[i] );
     }
-    serialize_assert( int32_t( value.marker ) >= int32_t( 0 ) && int32_t( value.marker ) <= int32_t( 7 ) );
+    serialize_assert( int32_t( value.marker ) <= int32_t( 7 ) );
     write_bits( stream, uint32_t( value.marker ), 3 );
     return true;
 }
@@ -75,10 +99,7 @@ SCHEMA_READ_INLINE bool ReadDefaultArm( serialize::ReadStream & stream, DefaultA
     read_int( stream, value.entries_count, 0, 2 );
     for ( int32_t i = 0; i < value.entries_count; i++ )
     {
-        if ( !ReadProbeConfig( stream, value.entries[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadProbeConfig, value.entries[i] );
     }
     {
         int32_t range_value = 0;
@@ -111,7 +132,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultChoice( serialize::WriteStream & stream, co
 SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, DefaultChoice & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 2 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // DefaultChoiceType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = DefaultChoiceType( tag_value );
     switch ( value.type )
     {
@@ -129,28 +150,19 @@ SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, Defau
 
 SCHEMA_WRITE_INLINE bool WriteDefaultChoicePacket( serialize::WriteStream & stream, const DefaultChoicePacket & value )
 {
-    if ( !WriteDefaultChoice( stream, value.choice ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteDefaultChoice, value.choice );
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadDefaultChoicePacket( serialize::ReadStream & stream, DefaultChoicePacket & value )
 {
-    if ( !ReadDefaultChoice( stream, value.choice ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadDefaultChoice, value.choice );
     return true;
 }
 
 SCHEMA_WRITE_INLINE bool WriteDefaultBulkArm( serialize::WriteStream & stream, const DefaultBulkArm & value )
 {
-    if ( !WriteDefaultArm( stream, value.payload ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteDefaultArm, value.payload );
     serialize_assert( int32_t( value.data_length ) >= int32_t( 0 ) && int32_t( value.data_length ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.data_length ), 2 );
     write_bytes( stream, value.data, value.data_length );
@@ -159,10 +171,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultBulkArm( serialize::WriteStream & stream, c
 
 SCHEMA_READ_INLINE bool ReadDefaultBulkArm( serialize::ReadStream & stream, DefaultBulkArm & value )
 {
-    if ( !ReadDefaultArm( stream, value.payload ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadDefaultArm, value.payload );
     read_int( stream, value.data_length, 0, 2 );
     read_bytes( stream, value.data, value.data_length );
     return true;
@@ -191,7 +200,7 @@ SCHEMA_WRITE_INLINE bool WriteDefaultBulkChoice( serialize::WriteStream & stream
 SCHEMA_READ_INLINE bool ReadDefaultBulkChoice( serialize::ReadStream & stream, DefaultBulkChoice & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 2 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // DefaultBulkChoiceType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = DefaultBulkChoiceType( tag_value );
     switch ( value.type )
     {

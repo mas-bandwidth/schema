@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include <new>
 
 #include "serialize.h"
@@ -129,7 +129,7 @@ SCHEMA_WRITE_INLINE bool WriteTableEvent( serialize::WriteStream & stream, const
 SCHEMA_READ_INLINE bool ReadTableEvent( serialize::ReadStream & stream, TableEvent & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 3 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 3 ); // TableEventType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = TableEventType( tag_value );
     switch ( value.type )
     {

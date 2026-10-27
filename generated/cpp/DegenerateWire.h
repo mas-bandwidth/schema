@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "serialize.h"
 
@@ -52,6 +52,33 @@ namespace example {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteVec2( serialize::WriteStream & stream, const Vec2 & value )
 {
@@ -229,56 +256,38 @@ SCHEMA_READ_INLINE bool ReadTrio( serialize::ReadStream & stream, Trio & value )
 
 SCHEMA_WRITE_INLINE bool WriteTrioSole( serialize::WriteStream & stream, const TrioSole & value )
 {
-    if ( !WriteTrio( stream, value.inner ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteTrio, value.inner );
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadTrioSole( serialize::ReadStream & stream, TrioSole & value )
 {
-    if ( !ReadTrio( stream, value.inner ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadTrio, value.inner );
     return true;
 }
 
 SCHEMA_WRITE_INLINE bool WriteVec3Sole( serialize::WriteStream & stream, const Vec3Sole & value )
 {
-    if ( !WriteVec3( stream, value.v ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteVec3, value.v );
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadVec3Sole( serialize::ReadStream & stream, Vec3Sole & value )
 {
-    if ( !ReadVec3( stream, value.v ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadVec3, value.v );
     return true;
 }
 
 SCHEMA_WRITE_INLINE bool WriteTrioFirst( serialize::WriteStream & stream, const TrioFirst & value )
 {
-    if ( !WriteTrio( stream, value.inner ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteTrio, value.inner );
     write_bits( stream, value.trailer, 16 );
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadTrioFirst( serialize::ReadStream & stream, TrioFirst & value )
 {
-    if ( !ReadTrio( stream, value.inner ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadTrio, value.inner );
     read_bits( stream, value.trailer, 16 );
     return true;
 }
@@ -291,10 +300,7 @@ SCHEMA_WRITE_INLINE bool WriteTrioStraddle( serialize::WriteStream & stream, con
     write_bits( stream, value.pad3, 64 );
     write_bits( stream, value.pad4, 64 );
     write_bits( stream, value.pad5, 24 );
-    if ( !WriteTrio( stream, value.inner ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteTrio, value.inner );
     return true;
 }
 
@@ -306,10 +312,7 @@ SCHEMA_READ_INLINE bool ReadTrioStraddle( serialize::ReadStream & stream, TrioSt
     read_bits( stream, value.pad3, 64 );
     read_bits( stream, value.pad4, 64 );
     read_bits( stream, value.pad5, 24 );
-    if ( !ReadTrio( stream, value.inner ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadTrio, value.inner );
     return true;
 }
 

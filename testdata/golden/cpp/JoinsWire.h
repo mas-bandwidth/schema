@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring>
+#include <stdint.h>
+#include <string.h>
 #include <new>
 
 #include "serialize.h"
@@ -53,6 +53,33 @@ namespace example {
 #define SCHEMA_READ_INLINE inline
 #endif
 #endif // SCHEMA_READ_INLINE_DEFINED
+
+#ifndef SCHEMA_OBJECT_MACROS_DEFINED
+#define SCHEMA_OBJECT_MACROS_DEFINED
+// schema_write_object / schema_read_object — a nested type's Write/Read in
+// the serialize one-way macro idiom (read_bits, read_int, read_object): a
+// refusal returns false from the enclosing function, so every stream
+// operation in a generated body has the one spelling. serialize's own
+// read_object/write_object call a Serialize member; generated types carry
+// free Write/Read functions, so the function rides as an argument.
+#define schema_write_object( stream, function, value )                          \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+
+#define schema_read_object( stream, function, value )                           \
+    do                                                                          \
+    {                                                                           \
+        if ( !function( stream, value ) )                                       \
+        {                                                                       \
+            return false;                                                       \
+        }                                                                       \
+    } while (0)
+#endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 #ifndef SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
 #define SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
@@ -376,7 +403,7 @@ SCHEMA_WRITE_INLINE bool WriteArmArray( serialize::WriteStream & stream, const A
         write_bits( stream, uint32_t( value.items_count ), 2 );
         for ( int32_t i = 0; i < value.items_count; i++ )
         {
-            serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 8191 ) );
+            serialize_assert( int32_t( value.items[i] ) <= int32_t( 8191 ) );
             write_bits( stream, uint32_t( value.items[i] ), 13 );
         }
     }
@@ -408,7 +435,7 @@ SCHEMA_READ_INLINE bool ReadArmArray( serialize::ReadStream & stream, ArmArray &
     else
     {
         read_bits( stream, value.b, 9 );
-        memset( (void*) value.items, 0, sizeof( value.items ) );
+        memset( value.items, 0, sizeof( value.items ) );
         value.items_count = 0;
     }
     read_bits( stream, value.tail, 7 );
@@ -462,7 +489,7 @@ SCHEMA_WRITE_INLINE bool WriteUneven( serialize::WriteStream & stream, const Une
 SCHEMA_READ_INLINE bool ReadUneven( serialize::ReadStream & stream, Uneven & value )
 {
     int32_t tag_value = 0;
-    read_int( stream, tag_value, 0, 2 ); // rejects a tag above the count (SPEC §4.8)
+    read_int( stream, tag_value, 0, 2 ); // UnevenType::Max — rejects a tag above the count (SPEC §4.8)
     value.type = UnevenType( tag_value );
     switch ( value.type )
     {
@@ -481,10 +508,7 @@ SCHEMA_READ_INLINE bool ReadUneven( serialize::ReadStream & stream, Uneven & val
 SCHEMA_WRITE_INLINE bool WriteHoldsUneven( serialize::WriteStream & stream, const HoldsUneven & value )
 {
     write_bits( stream, value.lead, 5 );
-    if ( !WriteUneven( stream, value.u ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteUneven, value.u );
     write_bits( stream, value.tail, 11 );
     return true;
 }
@@ -492,10 +516,7 @@ SCHEMA_WRITE_INLINE bool WriteHoldsUneven( serialize::WriteStream & stream, cons
 SCHEMA_READ_INLINE bool ReadHoldsUneven( serialize::ReadStream & stream, HoldsUneven & value )
 {
     read_bits( stream, value.lead, 5 );
-    if ( !ReadUneven( stream, value.u ) )
-    {
-        return false;
-    }
+    schema_read_object( stream, ReadUneven, value.u );
     read_bits( stream, value.tail, 11 );
     return true;
 }
@@ -507,10 +528,7 @@ SCHEMA_WRITE_INLINE bool WriteArrUneven( serialize::WriteStream & stream, const 
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        if ( !WriteUneven( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_write_object( stream, WriteUneven, value.items[i] );
     }
     write_bits( stream, value.tail, 3 );
     return true;
@@ -522,10 +540,7 @@ SCHEMA_READ_INLINE bool ReadArrUneven( serialize::ReadStream & stream, ArrUneven
     read_int( stream, value.items_count, 0, 3 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        if ( !ReadUneven( stream, value.items[i] ) )
-        {
-            return false;
-        }
+        schema_read_object( stream, ReadUneven, value.items[i] );
     }
     read_bits( stream, value.tail, 3 );
     return true;
@@ -538,7 +553,7 @@ SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream,
     write_bits( stream, uint32_t( value.items_count ), 2 );
     for ( int32_t i = 0; i < value.items_count; i++ )
     {
-        serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 8191 ) );
+        serialize_assert( int32_t( value.items[i] ) <= int32_t( 8191 ) );
         write_bits( stream, uint32_t( value.items[i] ), 13 );
     }
     for ( int32_t i = 0; i < value.s_length; i++ )

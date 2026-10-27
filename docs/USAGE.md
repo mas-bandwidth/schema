@@ -810,10 +810,7 @@ Types nest freely. A composed field writes its parts inline — no pointers,
 no offsets, no indirection:
 
 ```cpp
-if ( !WriteVector3( stream, value.position ) )
-{
-    return false;
-}
+schema_write_object( stream, WriteVector3, value.position );
 ```
 
 ---
@@ -839,10 +836,7 @@ wire carries only the taken one:
 write_bool( stream, value.at_rest );
 if ( !value.at_rest )
 {
-    if ( !WriteVector3( stream, value.velocity ) )
-    {
-        return false;
-    }
+    schema_write_object( stream, WriteVector3, value.velocity );
 }
 ```
 

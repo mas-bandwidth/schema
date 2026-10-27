@@ -141,7 +141,7 @@ func TestCppNativeHeaderIsIncludedWhenAMappingIsLive(t *testing.T) {
 			t.Errorf("Degenerate.h does not declare Vec3Sole's storage as `::VecMath v;` (SPEC §4.2)")
 		}
 		degWire := string(files["DegenerateWire.h"])
-		for _, want := range []string{`#include "TypesWire.h"`, "WriteVec3(", "ReadVec3("} {
+		for _, want := range []string{`#include "TypesWire.h"`, "schema_write_object( stream, WriteVec3, ", "schema_read_object( stream, ReadVec3, "} {
 			if !strings.Contains(degWire, want) {
 				t.Errorf("DegenerateWire.h does not carry %q: Vec3Sole's wire reaches Vec3 through TypesWire.h", want)
 			}
