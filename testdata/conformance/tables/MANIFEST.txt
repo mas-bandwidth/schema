@@ -1059,3 +1059,8 @@ instance map_text mapdemo Text testdata/wire/tables/map_text.bin
 instance map_trails mapdemo Trails testdata/wire/tables/map_trails.bin
 instance map_runs mapdemo Runs testdata/wire/tables/map_runs.bin
 report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
+# the C collections differential's mutant 235: map_depth with its root's first
+# field header bumped to another kind. A known id under a changed kind is
+# SKIPPED and counted (§4), never refused: the tolerant read loads the root
+# with kind_mismatch 1 in every port.
+report map_depth_root_kind mapdemo Depth testdata/wire/tables/fuzz-vectors/map_depth_root_kind.bin
