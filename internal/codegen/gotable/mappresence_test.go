@@ -120,7 +120,7 @@ func build(t *testing.T, b *MBuilder, shape string) *M {
 		t.Fatal("init")
 	}
 	v := b.GetRoot()
-	v.Id = 1
+	v.ID = 1
 	switch shape {
 	case "empty":
 		v.TagsPresent = true
@@ -329,8 +329,8 @@ func TestPlainReader(t *testing.T) {
 		if got == nil || report != (TableReport{}) {
 			t.Fatalf("%s: plain load %+v", tc.name, report)
 		}
-		if got.Id != 1 || got.Tags.Count != tc.count {
-			t.Fatalf("%s: plain reader read id %d count %d", tc.name, got.Id, got.Tags.Count)
+		if got.ID != 1 || got.Tags.Count != tc.count {
+			t.Fatalf("%s: plain reader read id %d count %d", tc.name, got.ID, got.Tags.Count)
 		}
 		if tc.count == 1 {
 			if p := MTagsFind(nil, &got.Tags, "a"); p == nil || *p != 5 {
@@ -347,7 +347,7 @@ func TestPlainReader(t *testing.T) {
 		var b MBuilder
 		b.Init()
 		v := b.GetRoot()
-		v.Id = 1
+		v.ID = 1
 		if tc.entry {
 			*MTagsInsert(&b.Main, &v.Tags, "a") = 5
 		}

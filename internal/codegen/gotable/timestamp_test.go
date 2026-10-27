@@ -280,7 +280,7 @@ func TestVariableClass(t *testing.T) {
   if !source.Init() { t.Fatal("builder") }
   defer source.Shutdown()
   root := source.GetRoot()
-  root.Id = 7
+  root.ID = 7
   if err := root.SetOpenedAtTime(time.Unix(0, n)); err != nil { t.Fatal(err) }
   root.ClosedAt = -n / 2
   size, err := EventMeasureReason(root, &source.Arena)
@@ -294,7 +294,7 @@ func TestVariableClass(t *testing.T) {
   if !EventLoadBuilderTolerant(&loaded, wire, &report) || report != (TableReport{}) { t.Fatalf("load %+v", report) }
   if !loaded.Lock() { t.Fatal("lock") }
   got := loaded.AsConst()
-  if got.OpenedAt != n || got.ClosedAt != -n/2 || got.Id != 7 { t.Fatalf("%d: %+v", n, *got) }
+  if got.OpenedAt != n || got.ClosedAt != -n/2 || got.ID != 7 { t.Fatalf("%d: %+v", n, *got) }
   if got.OpenedAtTime().UnixNano() != n || got.OpenedAtTime().Location() != time.UTC { t.Fatalf("%d: %v", n, got.OpenedAtTime()) }
  }
 }
