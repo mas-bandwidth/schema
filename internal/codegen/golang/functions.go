@@ -475,26 +475,6 @@ func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool
 	g.pf("%s\tstream.SerializeBits(&offsetValue, %d)\n%s}\n", ind, bits, ind)
 }
 
-// emitWriteRangedFold64 is the int64 family twin (SerializeInt64's encoding:
-// where the count fits 32 bits a single dword, otherwise the low dword first
-// then the high remainder — SerializeBits64's own split, byte-identical).
-// expr must be an int64-typed expression.
-func (g *gen) emitWriteRangedFold64(expr, lo, hi string, bits int64, loZero bool, ind string) {
-	g.pf("%sif %s < %s || %s > %s {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n",
-		ind, expr, lo, expr, hi, ind, ind)
-	offset := "uint64(" + expr + ")"
-	if !loZero {
-		offset = "uint64(" + g.minusLow(expr, lo, 64) + ")"
-	}
-	if bits <= 32 {
-		g.pf("%s{\n%s\toffsetValue := uint32(%s)\n", ind, ind, offset)
-		g.pf("%s\tstream.SerializeBits(&offsetValue, %d)\n%s}\n", ind, bits, ind)
-		return
-	}
-	g.pf("%s{\n%s\toffsetValue := %s\n", ind, ind, offset)
-	g.pf("%s\tstream.SerializeBits64(&offsetValue, %d)\n%s}\n", ind, bits, ind)
-}
-
 // emitReadRangedFold32 reads an int in [lo,hi] as offset-from-lo at a
 // generation-time bit count — SerializeInt's encoding with the declaration
 // folded, the write fold's twin. The runtime derives the bit count from the

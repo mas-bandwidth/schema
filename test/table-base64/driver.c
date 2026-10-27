@@ -24,8 +24,13 @@ int main(void)
             if (sscanf(line + i * 2, "%2x", &c) != 1) { return 1; }
             text[i] = (char) c;
         }
+#ifdef __cplusplus
+        Blob value;
+        TableReport report;
+#else
         base64test_blob_t value;
         base64test_table_report_t report;
+#endif
 #ifndef __cplusplus
         memset(&report, 0, sizeof(report));
 #endif

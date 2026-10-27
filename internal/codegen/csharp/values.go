@@ -158,7 +158,7 @@ func (g *gen) emitBuffers() error {
 	for _, n := range lengths {
 		name := fmt.Sprintf("InlineBuffer%d", n)
 		if g.unit.Structs[name] != nil || g.unit.Unions[name] != nil || g.unit.Enums[name] != nil || g.unit.Flags[name] != nil || g.unit.Tables[name] != nil {
-			return fmt.Errorf("C#: declaration %s collides with the generated inline buffer type of that name; rename it", name)
+			return fmt.Errorf("declaration %s collides with the C# backend's generated inline buffer type of that name; rename it", name)
 		}
 	}
 	if len(lengths) == 0 {

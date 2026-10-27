@@ -4903,7 +4903,7 @@ test: tables-fixed-twin
 .PHONY: tables-fixed-twin-negative-control
 tables-fixed-twin-negative-control: generated/bench/paired/c/.stamp generated/bench/paired/cpp/.stamp
 	@mkdir -p build/fixed-twin-nc
-	@sed 's/kTableFixedCopy    = 0/kTableFixedCopy    = 99/' generated/bench/paired/c/FixedTableTable.h > build/fixed-twin-nc/FixedTableTable.h
+	@sed 's/BENCH_K_TABLE_FIXED_COPY    = 0/BENCH_K_TABLE_FIXED_COPY    = 99/' generated/bench/paired/c/FixedTableTable.h > build/fixed-twin-nc/FixedTableTable.h
 	@cmp -s generated/bench/paired/c/FixedTableTable.h build/fixed-twin-nc/FixedTableTable.h && { echo 'NEGATIVE CONTROL: the planted op patched nothing'; exit 1; } || true
 	@if go run ./tools/fixedtwin build/fixed-twin-nc/FixedTableTable.h generated/bench/paired/cpp/FixedTableTable.h; then \
 		echo 'NEGATIVE CONTROL FAILED: planted leftover line passed the twin gate'; \

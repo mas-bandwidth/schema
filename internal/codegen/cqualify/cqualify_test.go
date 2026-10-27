@@ -164,8 +164,11 @@ func TestRuntimeHeaderVersionTracksItsText(t *testing.T) {
 			t.Errorf("SchemaRuntime.h must carry %q", want)
 		}
 	}
-	line := h[strings.Index(h, "#define SCHEMA_RUNTIME_VERSION "):]
-	version := strings.Fields(line)[2]
+	_, line, ok := strings.Cut(h, "#define SCHEMA_RUNTIME_VERSION ")
+	if !ok {
+		t.Fatal("SchemaRuntime.h has no SCHEMA_RUNTIME_VERSION define")
+	}
+	version := strings.Fields(line)[0]
 	if !strings.Contains(inc, "#if SCHEMA_RUNTIME_VERSION != "+version) || !strings.Contains(inc, "#error") {
 		t.Errorf("the include must check the header's own version %s with a hard #error:\n%s", version, inc)
 	}

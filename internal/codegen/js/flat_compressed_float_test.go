@@ -139,8 +139,8 @@ const TOP = %s;
 const EXPECT = [%s];
 const buf = new ArrayBuffer(64);
 const view = new DataView(buf);
-const out = { F: TOP };
-const n = WriteProbeFlat(out, view);
+const out = { f: TOP };
+const n = WriteProbeFlat(view, out);
 if (n !== 3) { throw new Error('write returned ' + n + ' bytes, want 3'); }
 const bytes = new Uint8Array(buf, 0, 3);
 for (let i = 0; i < 3; i++) {
@@ -148,10 +148,10 @@ for (let i = 0; i < 3; i++) {
     throw new Error('byte ' + i + ' = ' + bytes[i] + ', want ' + EXPECT[i]);
   }
 }
-const back = { F: -1 };
-if (!ReadProbeFlat(back, view, 24)) { throw new Error('the reader refused the writer bytes'); }
-if (Math.fround(back.F) !== Math.fround(TOP)) {
-  throw new Error('roundtrip ' + back.F + ' != ' + TOP);
+const back = { f: -1 };
+if (!ReadProbeFlat(view, 24, back)) { throw new Error('the reader refused the writer bytes'); }
+if (Math.fround(back.f) !== Math.fround(TOP)) {
+  throw new Error('roundtrip ' + back.f + ' != ' + TOP);
 }
 console.log('OK ' + n);
 `, max, strings.Join(expect, ", "))

@@ -482,7 +482,7 @@ var (
 	blockMembers = map[string]bool{"bytes": true, "view": true, "base": true, "length": true,
 		"blockMaxBytes": true, "projectionSize": true}
 	// accessorSuffixes are every spelling a field's accessors derive from its
-	// name (emitInlineAccessors, emitCookMapAccessors)
+	// name (emitInlineAccessors, emitCookMapAccessors).
 	accessorSuffixes = []string{"", "Length", "Bytes", "Bound", "At", "Present", "Count"}
 )
 

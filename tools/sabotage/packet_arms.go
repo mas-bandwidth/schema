@@ -24,16 +24,16 @@ var packetArmSabotages = map[string][]edit{
 			g.pf("            memset( &value->as.%s, 0, sizeof( value->as.%s ) );\n", v.Name, v.Name)`,
 	}},
 	"packet-arm-zero-go": {{
-		old: `			g.pf("\t\tvalue.%s = New%s() // fresh payload on every selection (SPEC §4.8)\n", ir.GoExportName(v.Name), v.Type)`,
-		new: `			g.pf("\t\tvalue.%s = %s{} // SABOTAGED: zero instead of construction defaults\n", ir.GoExportName(v.Name), v.Type)`,
+		old: `			g.pf("\t\tvalue.%s = New%s() // fresh payload on every selection\n", goname.Member(v.Name), v.Type)`,
+		new: `			g.pf("\t\tvalue.%s = %s{} // SABOTAGED: zero instead of construction defaults\n", goname.Member(v.Name), v.Type)`,
 	}},
 	"packet-arm-zero-rust": {{
 		old: `			g.pf("            let mut arm = %s::new();\n", v.Type)`,
 		new: `			g.pf("            let mut arm = %s::default(); // SABOTAGED: zero instead of construction defaults\n", v.Type)`,
 	}},
 	"packet-arm-zero-cs": {{
-		old: `				g.sf("            Init%s(value.%s); // every selection starts from construction defaults\n", v.Type, ir.GoExportName(v.Name))`,
-		new: `				g.sf("            Zero%s(value.%s); // SABOTAGED: zero instead of construction defaults\n", v.Type, ir.GoExportName(v.Name))`,
+		old: `				g.sf("            %s%s(%svalue.%s); // every selection starts from construction defaults\n", initFor(v.Ref), v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))`,
+		new: `				g.sf("            Zero%s(%svalue.%s); // SABOTAGED: zero instead of construction defaults\n", v.Type, g.byRef(v.Type), ir.GoExportName(v.Name))`,
 	}},
 	"packet-arm-zero-java": {{
 		old: `			g.emitInitializeField(nf, arm, ind+"        ", false, true)`,

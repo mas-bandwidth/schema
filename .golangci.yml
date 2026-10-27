@@ -18,6 +18,13 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+      # the Go tidy pass's block flatten reads go/parser's object resolution
+      # (ast.Object), which is exact for the single-file generated Go it
+      # rewrites; SA1019 is its deprecation, not a defect here
+      - path: internal/codegen/golang/tidy\.go
+        linters:
+          - staticcheck
+        text: "SA1019: ast.Object"
 
 formatters:
   enable:

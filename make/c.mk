@@ -782,8 +782,8 @@ tables-c-variable: build/schema_test_c_variable build/schema_test_c_variable_asa
 tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/.stamp
 	@rm -rf build/c-fuzz-sabotage && mkdir -p build/c-fuzz-sabotage
 	@cp -r build/tables-generated-c/block build/c-fuzz-sabotage/
-	@sed -i.bak -e 's|if(rows>(uint64_t)bytes-offset) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_BAD_LAYOUT)!=NULL; }|/* SABOTAGED */|' \
-	            -e 's|if(padding>bytes-used) { return table_cook_refuse(reason,SCHEMA_TABLE_REFUSE_TRUNCATED)!=NULL; }|/* SABOTAGED */|' \
+	@sed -i.bak -e 's|if(rows>(uint64_t)bytes-offset) { return blockdemo_table_cook_refuse(reason,SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_LAYOUT)!=NULL; }|/* SABOTAGED */|' \
+	            -e 's|if(padding>bytes-used) { return blockdemo_table_cook_refuse(reason,SCHEMA_BLOCKDEMO_TABLE_REFUSE_TRUNCATED)!=NULL; }|/* SABOTAGED */|' \
 		build/c-fuzz-sabotage/block/RenderBlock.c
 	@grep -q SABOTAGED build/c-fuzz-sabotage/block/RenderBlock.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
@@ -1566,11 +1566,14 @@ test-c: cards-c-test cards-c-conformance cards-c-conformance-negative-control ca
 # carries its package (internal/codegen/cqualify) and the runtime they share is
 # SchemaRuntime.h, so two generations of one schema (tblw1 and tblw2, which
 # declare the same names) build into ONE translation unit under -Werror and
-# carry a value across, under the sanitizers.
+# carry a value across, under the sanitizers. Each unit's <Base>Table.c links
+# beside it: the reflection descriptors its header names are DEFINED there,
+# and GCC at -O0 keeps the header's static accessors that reference them.
 build/c-two-units/main: build/tables-generated-c/.stamp test/c-two-units/main.c
 	@mkdir -p build/c-two-units
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -I$(SERIALIZE_C) \
-		test/c-two-units/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+		test/c-two-units/main.c build/tables-generated-c/w1/W1Table.c build/tables-generated-c/w2/W2Table.c \
+		$(SERIALIZE_C)/serialize.c -o $@ -lm
 
 .PHONY: tables-c-two-units tables-c-two-units-negative-controls
 tables-c-two-units: build/c-two-units/main
