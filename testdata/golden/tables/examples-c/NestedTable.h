@@ -2824,7 +2824,7 @@ struct tabledemo_table_numbering_t
 {
     const tabledemo_table_ctx_t * ctx;
     uint8_t * pack_base;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
     TableSequenceOrder * orders;
 #endif
     tabledemo_table_allocator_t allocator;
@@ -2923,7 +2923,7 @@ static SCHEMA_UNUSED int tabledemo_table_number_edge( tabledemo_table_numbering_
 
 static SCHEMA_UNUSED void tabledemo_table_number_dispose( tabledemo_table_numbering_t * n )
 {
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
     table_sequence_orders_release(n->allocator,n->orders);
 #endif
     tabledemo_table_release(n->allocator,n->entries); tabledemo_table_release(n->allocator,n->slots); tabledemo_table_release(n->allocator,n->work);
@@ -3537,7 +3537,7 @@ static SCHEMA_UNUSED int tabledemo_table_message_quantization( float qmin, float
 #elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
 #define SCHEMA_TABLEDEMO_TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
 #else
-#define SCHEMA_TABLEDEMO_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_table_float_force_round_slot_ = ( x ); ( x ) = schema_table_float_force_round_slot_; } while ( 0 )
+#define SCHEMA_TABLEDEMO_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_tabledemo_table_float_force_round_slot_ = ( x ); ( x ) = schema_tabledemo_table_float_force_round_slot_; } while ( 0 )
 #endif
 
 // table_message_quantize is the writer's half: the index a value takes.

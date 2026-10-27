@@ -2816,7 +2816,7 @@ struct graphdemo_table_numbering_t
 {
     const graphdemo_table_ctx_t * ctx;
     uint8_t * pack_base;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
     TableSequenceOrder * orders;
 #endif
     graphdemo_table_allocator_t allocator;
@@ -2915,7 +2915,7 @@ static SCHEMA_UNUSED int graphdemo_table_number_edge( graphdemo_table_numbering_
 
 static SCHEMA_UNUSED void graphdemo_table_number_dispose( graphdemo_table_numbering_t * n )
 {
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
     table_sequence_orders_release(n->allocator,n->orders);
 #endif
     graphdemo_table_release(n->allocator,n->entries); graphdemo_table_release(n->allocator,n->slots); graphdemo_table_release(n->allocator,n->work);
@@ -3529,7 +3529,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_quantization( float qmin, float
 #elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
 #define SCHEMA_GRAPHDEMO_TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
 #else
-#define SCHEMA_GRAPHDEMO_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_table_float_force_round_slot_ = ( x ); ( x ) = schema_table_float_force_round_slot_; } while ( 0 )
+#define SCHEMA_GRAPHDEMO_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_graphdemo_table_float_force_round_slot_ = ( x ); ( x ) = schema_graphdemo_table_float_force_round_slot_; } while ( 0 )
 #endif
 
 // table_message_quantize is the writer's half: the index a value takes.

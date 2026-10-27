@@ -247,7 +247,9 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 	done
 	@echo "tables C zero-cost gate: value-only tables carry no pointer machinery"
 
-# THE GENERIC-WALK GATE, C side (docs/SPEC-TABLES.md §16). The text form is ONE
+# THE GENERIC-WALK GATE, C side (docs/SPEC-TABLES.md §16). Every name the walk
+# reaches carries its unit's package (SPEC §6.3), so the package is the one
+# thing normalised before the comparison: the walk is otherwise byte-identical. The text form is ONE
 # walk over the reflection descriptors, not a per-table codec — that is the
 # property which makes it schema's rather than a packer's. The walker's source
 # must therefore be the SAME BYTES in every generated .c of the corpus, whose
@@ -260,7 +262,10 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 	@rm -rf build/json-walk-c && mkdir -p build/json-walk-c
 	@for f in build/tables-generated-c/*/*Table.c; do \
 		out=build/json-walk-c/$$(echo $$f | tr / _); \
-		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+		pkg=$$(grep -o 'package [a-z0-9_]*' $$f | head -1 | cut -d' ' -f2); \
+		PKG=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z'); \
+		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f \
+			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out; \
 		if [ ! -s $$out ]; then \
 			if grep -q "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
 			echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; \

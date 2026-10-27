@@ -2659,7 +2659,7 @@ static SCHEMA_UNUSED int benchtable_table_message_quantization( float qmin, floa
 #elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
 #define SCHEMA_BENCHTABLE_TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
 #else
-#define SCHEMA_BENCHTABLE_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_table_float_force_round_slot_ = ( x ); ( x ) = schema_table_float_force_round_slot_; } while ( 0 )
+#define SCHEMA_BENCHTABLE_TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float schema_benchtable_table_float_force_round_slot_ = ( x ); ( x ) = schema_benchtable_table_float_force_round_slot_; } while ( 0 )
 #endif
 
 // table_message_quantize is the writer's half: the index a value takes.

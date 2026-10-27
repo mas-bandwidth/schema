@@ -719,13 +719,13 @@ static SCHEMA_UNUSED int benchtable_table_json_write_value( benchtable_table_jso
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
 static SCHEMA_UNUSED int benchtable_table_json_write_field( benchtable_table_json_out_t * out, const void * base, const benchtable_table_field_info_t * f, int32_t depth );
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_SEQUENCE_RUNTIME
 static SCHEMA_UNUSED int benchtable_table_json_write_list(benchtable_table_json_out_t * out,const void * storage,const benchtable_table_field_info_t * f,int32_t depth);
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int benchtable_table_json_write_map(benchtable_table_json_out_t * out,const void * storage,const benchtable_table_field_info_t * f,int32_t depth);
 #endif
 #endif
-#ifdef SCHEMA_TABLE_GRAPH_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int benchtable_table_json_write_pointer( benchtable_table_json_out_t * out, const void * slot, const benchtable_table_field_info_t * f, int32_t depth );
 #else
 static SCHEMA_UNUSED int benchtable_table_json_write_pointer( benchtable_table_json_out_t * out, const void * slot, const benchtable_table_field_info_t * f, int32_t depth )
@@ -846,9 +846,9 @@ static SCHEMA_UNUSED int benchtable_table_json_write_scalar( benchtable_table_js
 static SCHEMA_UNUSED int benchtable_table_json_write_field( benchtable_table_json_out_t * out, const void * base, const benchtable_table_field_info_t * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_SEQUENCE_RUNTIME
     if(f->sequence==1) { return benchtable_table_json_write_list(out,storage,f,depth); }
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_MAP_RUNTIME
     if(f->sequence==2) { return benchtable_table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
@@ -1466,7 +1466,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_json_token_integer( const char * t
     return (int64_t) magnitude;
 }
 
-#ifdef SCHEMA_TABLE_GRAPH_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int benchtable_table_json_read_pointer( benchtable_table_json_in_t * in, void * slot, const benchtable_table_field_info_t * f, int32_t depth );
 static SCHEMA_UNUSED int benchtable_table_json_skipped_ampersand( benchtable_table_json_in_t * in, const char * key );
 #else
@@ -1776,9 +1776,9 @@ static SCHEMA_UNUSED int benchtable_table_json_read_wide( benchtable_table_json_
 
 /* place one scalar at one storage address */
 static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json_in_t * in, void * base, const benchtable_table_field_info_t * f, int32_t depth );
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_SEQUENCE_RUNTIME
 static SCHEMA_UNUSED int benchtable_table_json_read_list(benchtable_table_json_in_t * in,void * storage,const benchtable_table_field_info_t * f,int32_t depth);
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int benchtable_table_json_read_map(benchtable_table_json_in_t * in,void * storage,const benchtable_table_field_info_t * f,int32_t depth);
 #endif
 #endif
@@ -2001,9 +2001,9 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
 static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json_in_t * in, void * base, const benchtable_table_field_info_t * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_SEQUENCE_RUNTIME
     if(f->sequence==1) { return benchtable_table_json_read_list(in,storage,f,depth); }
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_BENCHTABLE_TABLE_MAP_RUNTIME
     if(f->sequence==2) { return benchtable_table_json_read_map(in,storage,f,depth); }
 #endif
 #endif

@@ -12,11 +12,11 @@
    plan compiled from another writer's layout lands in it, and a layout whose
    plan does not fit is a refusal by name (§3.4: this codec never allocates). */
 #define PlanCapacity 8192
-static TableFixedEntry g_plan[PlanCapacity];
+static tblfx1_table_fixed_entry_t g_plan[PlanCapacity];
 
-static void fill( FxRoot * value )
+static void fill( tblfx1_fx_root_t * value )
 {
-    fx_root_reset( value );
+    tblfx1_fx_root_reset( value );
     value->keep = 4242u;
     value->narrow = 40000u;   /* a uint16 value FX2's widened read must reproduce */
     value->renamed = 321;
@@ -49,9 +49,9 @@ static void fill( FxRoot * value )
 void fixed_fx1_slack( void )
 {
     static uint8_t file[8192];
-    static TableFixedEntry plan[PlanCapacity];
-    FxRoot v, back;
-    TableReport r;
+    static tblfx1_table_fixed_entry_t plan[PlanCapacity];
+    tblfx1_fx_root_t v, back;
+    tblfx1_table_report_t r;
     const uint8_t * body;
     size_t body_bytes;
     uint8_t whole[sizeof( v.label )];
@@ -59,7 +59,7 @@ void fixed_fx1_slack( void )
     int k;
     int64_t need, n;
 
-    fx_root_reset( &v );
+    tblfx1_fx_root_reset( &v );
     v.keep = 11u;
     v.narrow = 22u;
     v.renamed = 33;
@@ -77,11 +77,11 @@ void fixed_fx1_slack( void )
     fixed_check( (uint8_t) v.label[2] == 0xAAu, "C CONTROL: the text slack really is stained in storage" );
     fixed_check( v.marks[1] == 0x5A5A5A5A, "C CONTROL: the array slack really is stained in storage" );
 
-    need = fx_root_fixed_measure( 1 );
+    need = tblfx1_fx_root_fixed_measure( 1 );
     fixed_check( need <= (int64_t) sizeof( file ), "C slack: the record fits the buffer" );
-    fixed_check( fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) ) == need, "C slack: the record saves" );
-    body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
-    body_bytes = (size_t) fx_root_fixed_body_bytes;
+    fixed_check( tblfx1_fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) ) == need, "C slack: the record saves" );
+    body = file + TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblfx1_fx_root_fixed_layout ) + 8;
+    body_bytes = (size_t) tblfx1_fx_root_fixed_body_bytes;
     fixed_check( memchr( body, 0xAA, body_bytes ) == NULL,
                  "C SLACK IS ZERO: not one stained TEXT byte reached the wire" );
     fixed_check( memchr( body, 0x5A, body_bytes ) == NULL,
@@ -95,7 +95,7 @@ void fixed_fx1_slack( void )
                  "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
 
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "C slack: the record reads" );
     fixed_check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
                  "C slack: the used length reads, and the buffer terminates at it" );
@@ -105,24 +105,24 @@ void fixed_fx1_slack( void )
     fixed_check( r.clamped == 0 && !r.malformed && !r.refused, "C slack: a clean read moves no counter" );
 }
 
-int64_t fixed_fx1_bytes( void ) { return fx_root_fixed_measure( 1 ); }
+int64_t fixed_fx1_bytes( void ) { return tblfx1_fx_root_fixed_measure( 1 ); }
 
 int64_t fixed_fx1_write( uint8_t * buffer, int64_t capacity )
 {
-    FxRoot one;
+    tblfx1_fx_root_t one;
     fill( &one );
-    return fx_root_fixed_save( &one, 1, buffer, capacity );
+    return tblfx1_fx_root_fixed_save( &one, 1, buffer, capacity );
 }
 
 /* CASE 1: THE SAME SCHEMA — the identity plan, a static constant this build
    laid down, and the loop that runs it is the loop every other case runs. */
 void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
 {
-    FxRoot back;
-    TableReport r;
+    tblfx1_fx_root_t back;
+    tblfx1_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "same schema: one record" );
     fixed_check( back.keep == 4242u && back.narrow == 40000u && back.renamed == 321 && back.gone == 654,
                  "same schema: the scalars" );
@@ -138,8 +138,8 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
 static void form_case( const char * name, const uint8_t * file, int64_t bytes,
                        int want_refused, int want_reason, int want_malformed )
 {
-    FxRoot before, after;
-    TableReport r;
+    tblfx1_fx_root_t before, after;
+    tblfx1_table_report_t r;
     char why[160];
     int64_t got;
 
@@ -147,7 +147,7 @@ static void form_case( const char * name, const uint8_t * file, int64_t bytes,
     memset( &after, 0xAB, sizeof( after ) );
     memset( &r, 0, sizeof( r ) );
 
-    got = fx_root_fixed_load( &after, 1, file, bytes, g_plan, PlanCapacity, NULL, &r );
+    got = tblfx1_fx_root_fixed_load( &after, 1, file, bytes, g_plan, PlanCapacity, NULL, &r );
 
     snprintf( why, sizeof( why ), "C FORM HEADER: %s returns a refusal, never a record", name );
     fixed_check( got < 0, why );
@@ -179,25 +179,25 @@ void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
     static uint8_t reserved[8192];
 
     /* ZERO BYTES IS THE RESIDUE: malformed, with no byte to earn a name. */
-    form_case( "zero bytes", none, 0, 0, SCHEMA_TABLE_NO_REFUSAL, 1 );
+    form_case( "zero bytes", none, 0, 0, SCHEMA_TBLFX1_TABLE_NO_REFUSAL, 1 );
 
     /* THE TEN- AND THREE-BYTE FILES of the two forms this reader NAMES: the
        form byte earns its name before the twenty-byte minimum is measured. */
-    form_case( "a ten-byte form-1 file", form1, 10, 1, SCHEMA_TABLE_PREVIOUS_FORM, 0 );
-    form_case( "a three-byte form-2 batch", form2, 3, 1, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE, 0 );
+    form_case( "a ten-byte form-1 file", form1, 10, 1, SCHEMA_TBLFX1_TABLE_PREVIOUS_FORM, 0 );
+    form_case( "a three-byte form-2 batch", form2, 3, 1, SCHEMA_TBLFX1_TABLE_MESSAGE_FORM_AS_FILE, 0 );
 
     /* FORM BYTE 0 IS NOT A FORM AND IS STILL NOT MALFORMED: the registry is
        ORDERED, so the otherwise valid fixture with its form byte zeroed is
        named by where its byte sits — newer_form. */
     memcpy( form0, data, (size_t) bytes );
     form0[0] = 0;
-    form_case( "form byte 0 on a valid tail", form0, bytes, 1, SCHEMA_TABLE_NEWER_FORM, 0 );
+    form_case( "form byte 0 on a valid tail", form0, bytes, 1, SCHEMA_TBLFX1_TABLE_NEWER_FORM, 0 );
 
     /* THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3 step 2):
        the valid form-3 fixture with reserved byte 3 set nonzero is malformed. */
     memcpy( reserved, data, (size_t) bytes );
     reserved[3] = 1;
-    form_case( "reserved byte 3 nonzero", reserved, bytes, 0, SCHEMA_TABLE_NO_REFUSAL, 1 );
+    form_case( "reserved byte 3 nonzero", reserved, bytes, 0, SCHEMA_TBLFX1_TABLE_NO_REFUSAL, 1 );
 }
 
 /* CASE 3: A NEWER WRITER — a field this reader cannot name, stepped over by
@@ -207,11 +207,11 @@ void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
    never reinterpreted. */
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
 {
-    FxRoot back;
-    TableReport r;
+    tblfx1_fx_root_t back;
+    tblfx1_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "newer writer: one record" );
     fixed_check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
     fixed_check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
@@ -236,24 +236,24 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
    what has to answer for it. */
 int64_t fixed_fx1_write_out_of_range( uint8_t * buffer, int64_t capacity )
 {
-    FxRoot v;
-    fx_root_reset( &v );
+    tblfx1_fx_root_t v;
+    tblfx1_fx_root_reset( &v );
     v.keep = 1u;
     v.renamed = 5000;  /* declared | min = 0, max = 1000 */
     v.gone = -7;       /* and the low end of the same declaration */
     v.nested.a = 111;
     v.nested.b = 222;
-    return fx_root_fixed_save( &v, 1, buffer, capacity );
+    return tblfx1_fx_root_fixed_save( &v, 1, buffer, capacity );
 }
 
 void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
 {
-    FxRoot back, loose;
-    TableReport r;
+    tblfx1_fx_root_t back, loose;
+    tblfx1_table_report_t r;
     const uint8_t * body;
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds: the record reads" );
     fixed_check( back.renamed == 1000, "C RANGE: a value past max lands at max" );
     fixed_check( back.gone == 0, "C RANGE: a value under min lands at min" );
@@ -264,11 +264,11 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
        after it. The same record, the same plan, and the out-of-range value
        survives — which is what says the bound is held by the pass and not by
        something else that would have caught it anyway. */
-    fx_root_reset( &loose );
+    tblfx1_fx_root_reset( &loose );
     memset( &r, 0, sizeof( r ) );
-    body = data + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
-    table_fixed_run( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
-                     body, (uint8_t *) &loose, &r, fx_root_fixed_guards );
+    body = data + TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblfx1_fx_root_fixed_layout ) + 8;
+    tblfx1_table_fixed_run( tblfx1_fx_root_fixed_plan, tblfx1_fx_root_fixed_plan_count, tblfx1_fx_root_fixed_plan_guarded,
+                     body, (uint8_t *) &loose, &r, tblfx1_fx_root_fixed_guards );
     fixed_check( loose.renamed == 5000 && loose.gone == -7,
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
     fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
@@ -279,33 +279,33 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
        standing, because NO PLAN OP CLAMPS. The pass after the loop is the
        clamp, and it is the same pass for either plan. */
     {
-        TableFixedLayoutView parsed;
-        static TableFixedEntry compiled[1024];
-        TableReport cr;
-        FxRoot held;
-        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
+        tblfx1_table_fixed_layout_view_t parsed;
+        static tblfx1_table_fixed_entry_t compiled[1024];
+        tblfx1_table_report_t cr;
+        tblfx1_fx_root_t held;
+        int why = SCHEMA_TBLFX1_TABLE_LAYOUT_MALFORMED;
         int32_t guarded = 0;
         int32_t made;
         int32_t i, past_the_set = 0;
 
-        fixed_check( table_fixed_parse_layout( fx_root_fixed_layout, (int64_t) sizeof( fx_root_fixed_layout ), &parsed, &why ) != 0,
+        fixed_check( tblfx1_table_fixed_parse_layout( tblfx1_fx_root_fixed_layout, (int64_t) sizeof( tblfx1_fx_root_fixed_layout ), &parsed, &why ) != 0,
                      "C bounds, compiled-own: this build's layout parses" );
         memset( &cr, 0, sizeof( cr ) );
         uint32_t fill_at = 0;
         int32_t fill_count = 0;
-        made = table_fixed_compile( &parsed, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
-                                    fx_root_fixed_dst, fx_root_fixed_cover, fx_root_fixed_cover_count,
+        made = tblfx1_table_fixed_compile( &parsed, tblfx1_fx_root_fixed_layout, (int32_t) sizeof( tblfx1_fx_root_fixed_layout ),
+                                    tblfx1_fx_root_fixed_dst, tblfx1_fx_root_fixed_cover, tblfx1_fx_root_fixed_cover_count,
                                     compiled, 1024, &guarded, &fill_at, &fill_count, &cr );
         fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) kTableFixedBool ) { past_the_set++; }
+            if ( compiled[i].op > (uint8_t) TBLFX1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them clamps" );
 
-        fx_root_reset( &held );
+        tblfx1_fx_root_reset( &held );
         memset( &r, 0, sizeof( r ) );
-        table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, NULL );
+        tblfx1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r, NULL );
         fixed_check( held.renamed == 5000 && held.gone == -7,
                      "C COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
         fixed_check( r.clamped == 0, "C COMPILED, NEGATIVE CONTROL: and counts nothing" );
@@ -344,23 +344,23 @@ void fixed_fx1_text_content( void )
 
     for ( k = 0; k < sizeof( cases ) / sizeof( cases[0] ); k++ )
     {
-        FxRoot v, back = { 0 };
-        TableReport r;
+        tblfx1_fx_root_t v, back = { 0 };
+        tblfx1_table_report_t r;
 
-        fx_root_reset( &v );
+        tblfx1_fx_root_reset( &v );
         v.keep = 1234u;
         v.nested.a = 7;
         memcpy( v.label, cases[k].bytes, (size_t) cases[k].length );
         v.label_length = cases[k].length;
 
-        n = fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
-        fixed_check( n == fx_root_fixed_measure( 1 ), "C text content: the record saves" );
+        n = tblfx1_fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+        fixed_check( n == tblfx1_fx_root_fixed_measure( 1 ), "C text content: the record saves" );
 
         memset( &r, 0, sizeof( r ) );
-        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
+        fixed_check( tblfx1_fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
                      "C text content: ill-formed content refuses the read" );
         fixed_check( r.refused && !r.malformed, cases[k].what );
-        fixed_check( r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED,
+        fixed_check( r.reason == SCHEMA_TBLFX1_TABLE_TEXT_ILL_FORMED,
                      "C TEXT CONTENT: the refusal carries the name text_ill_formed" );
         fixed_check( r.clamped == 0 && r.widened == 0,
                      "C TEXT CONTENT: a refusal moves no counter" );
@@ -369,14 +369,14 @@ void fixed_fx1_text_content( void )
         {
             /* THE NEGATIVE CONTROL: the read loop alone, with no content pass
                after it — the bytes that are not text stand with nothing said. */
-            FxRoot loose;
-            TableReport r2;
+            tblfx1_fx_root_t loose;
+            tblfx1_table_report_t r2;
             const uint8_t * body;
-            fx_root_reset( &loose );
+            tblfx1_fx_root_reset( &loose );
             memset( &r2, 0, sizeof( r2 ) );
-            body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
-            table_fixed_run( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
-                             body, (uint8_t *) &loose, &r2, fx_root_fixed_guards );
+            body = file + TBLFX1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblfx1_fx_root_fixed_layout ) + 8;
+            tblfx1_table_fixed_run( tblfx1_fx_root_fixed_plan, tblfx1_fx_root_fixed_plan_count, tblfx1_fx_root_fixed_plan_guarded,
+                             body, (uint8_t *) &loose, &r2, tblfx1_fx_root_fixed_guards );
             fixed_check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                          "C NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
             fixed_check( !r2.malformed, "C NEGATIVE CONTROL: and says nothing about it" );
@@ -386,14 +386,14 @@ void fixed_fx1_text_content( void )
     /* AND WELL-FORMED TEXT IS UNTOUCHED, which is what makes the cases above
        discriminating. */
     {
-        FxRoot v, back;
-        TableReport r;
-        fx_root_reset( &v );
+        tblfx1_fx_root_t v, back;
+        tblfx1_table_report_t r;
+        tblfx1_fx_root_reset( &v );
         memcpy( v.label, "\xC3\xA9t\xC3\xA9", 5 ); /* "ete" with acutes */
         v.label_length = 5;
-        n = fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+        n = tblfx1_fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
         memset( &r, 0, sizeof( r ) );
-        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
+        fixed_check( tblfx1_fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
                      "C text content: the well-formed record reads" );
         fixed_check( back.label_length == 5 && memcmp( back.label, "\xC3\xA9t\xC3\xA9", 5 ) == 0,
                      "C TEXT CONTENT: well-formed multi-byte UTF-8 rides whole" );
@@ -409,37 +409,37 @@ void fixed_guard_width( void )
 {
     uint8_t src[4];
     uint8_t dst[4];
-    TableFixedEntry plan[2];
-    TableReport r;
+    tblfx1_table_fixed_entry_t plan[2];
+    tblfx1_table_report_t r;
 
     src[0] = 0x01; src[1] = 0x01; src[2] = 0xAA; src[3] = 0x00;
 
-    plan[0] = table_fixed_entry_zero();
+    plan[0] = tblfx1_table_fixed_entry_zero();
     plan[0].src = 0; plan[0].dst = 0; plan[0].size = 2;
-    plan[0].op = kTableFixedCopy;
+    plan[0].op = TBLFX1_K_TABLE_FIXED_COPY;
 
-    plan[1] = table_fixed_entry_zero();
+    plan[1] = tblfx1_table_fixed_entry_zero();
     plan[1].src = 2; plan[1].dst = 2; plan[1].size = 1;
     plan[1].guard = 0;
-    plan[1].op = kTableFixedCopy;
+    plan[1].op = TBLFX1_K_TABLE_FIXED_COPY;
     plan[1].arg = 1;
     plan[1].argw = 2;
 
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
     fixed_check( dst[2] == 0, "C GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
     fixed_check( dst[2] == 0xAA, "C GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
     src[1] = 0x01;
     plan[1].argw = 1;
     memset( dst, 0, sizeof( dst ) );
     memset( &r, 0, sizeof( r ) );
-    table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
+    tblfx1_table_fixed_run( plan, 2, 1, src, dst, &r, NULL );
     fixed_check( dst[2] == 0xAA, "C NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 }

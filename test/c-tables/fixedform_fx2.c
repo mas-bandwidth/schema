@@ -7,14 +7,14 @@
 #include "fixedform.h"
 
 #define PlanCapacity 8192
-static TableFixedEntry g_plan[PlanCapacity];
+static tblfx2_table_fixed_entry_t g_plan[PlanCapacity];
 
-int64_t fixed_fx2_bytes( void ) { return fx_root_fixed_measure( 1 ); }
+int64_t fixed_fx2_bytes( void ) { return tblfx2_fx_root_fixed_measure( 1 ); }
 
 int64_t fixed_fx2_write( uint8_t * buffer, int64_t capacity )
 {
-    FxRoot two;
-    fx_root_reset( &two );
+    tblfx2_fx_root_t two;
+    tblfx2_fx_root_reset( &two );
     two.keep = 5150u;
     two.narrow = 70000u;      /* past uint16: FX1 must NOT narrow it, it must skip */
     two.renamed_to = 808;
@@ -23,7 +23,7 @@ int64_t fixed_fx2_write( uint8_t * buffer, int64_t capacity )
     two.nested.b = 44;
     two.extra.x = 5;
     two.extra.y = 6;
-    return fx_root_fixed_save( &two, 1, buffer, capacity );
+    return tblfx2_fx_root_fixed_save( &two, 1, buffer, capacity );
 }
 
 /* CASE 2: AN OLDER WRITER — a WIDENED field decoded exactly and counted, a
@@ -33,11 +33,11 @@ int64_t fixed_fx2_write( uint8_t * buffer, int64_t capacity )
    cannot name. */
 void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
 {
-    FxRoot back;
-    TableReport r;
+    tblfx2_fx_root_t back;
+    tblfx2_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "older writer: one record" );
     fixed_check( back.keep == 4242u, "older writer: an unmoved field" );
     fixed_check( back.narrow == 40000u, "WIDENED: uint16 into uint32, exactly" );
@@ -68,12 +68,12 @@ void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
    the value that comes back and not the sanitizer. */
 void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
 {
-    static TableFixedDst swapped[64];
-    static uint64_t storage[ ( sizeof( FxRoot ) / 8 ) + 16 ];
-    TableFixedLayoutView theirs;
+    static tblfx2_table_fixed_dst_t swapped[64];
+    static uint64_t storage[ ( sizeof( tblfx2_fx_root_t ) / 8 ) + 16 ];
+    tblfx2_table_fixed_layout_view_t theirs;
     int why = 0;
     const uint8_t * body;
-    size_t rows = sizeof( fx_root_fixed_dst ) / sizeof( fx_root_fixed_dst[0] );
+    size_t rows = sizeof( tblfx2_fx_root_fixed_dst ) / sizeof( tblfx2_fx_root_fixed_dst[0] );
     size_t i, found = rows;
     uint32_t d;
     int pass;
@@ -82,7 +82,7 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
     fixed_check( rows <= 64, "C bytes row: the rows fit the control's copy" );
     for ( i = 0; i < rows; i++ )
     {
-        swapped[i] = fx_root_fixed_dst[i];
+        swapped[i] = tblfx2_fx_root_fixed_dst[i];
         if ( found == rows && swapped[i].stride == 1u && swapped[i].counted != 0u ) { found = i; }
     }
     fixed_check( found != rows, "C bytes row: the `bytes(N)` row is the one with stride one and a live count" );
@@ -90,33 +90,33 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
     swapped[found].dst = swapped[found].aux; /* the TEXT convention, as it was */
     swapped[found].aux = d;
 
-    fixed_check( table_fixed_parse_layout( data + kTableFixedHeaderBytes + 4,
-                                           (int64_t) table_fixed_get32( data + kTableFixedHeaderBytes ),
+    fixed_check( tblfx2_table_fixed_parse_layout( data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4,
+                                           (int64_t) tblfx2_table_fixed_get32( data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES ),
                                            &theirs, &why ),
                  "C bytes row: the writer's layout parses" );
-    body = data + kTableFixedHeaderBytes + 4 + (int64_t) table_fixed_get32( data + kTableFixedHeaderBytes ) + 8;
+    body = data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) tblfx2_table_fixed_get32( data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES ) + 8;
 
     for ( pass = 0; pass < 2; pass++ )
     {
-        const TableFixedDst * rowset = pass == 0 ? fx_root_fixed_dst : swapped;
+        const tblfx2_table_fixed_dst_t * rowset = pass == 0 ? tblfx2_fx_root_fixed_dst : swapped;
         int32_t guarded = 0;
         int32_t made;
-        FxRoot * back;
-        TableReport r;
+        tblfx2_fx_root_t * back;
+        tblfx2_table_report_t r;
         int right;
 
         uint32_t fill_at = 0;
         int32_t fill_count = 0;
 
-        made = table_fixed_compile( &theirs, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
-                                    rowset, fx_root_fixed_cover, fx_root_fixed_cover_count,
+        made = tblfx2_table_fixed_compile( &theirs, tblfx2_fx_root_fixed_layout, (int32_t) sizeof( tblfx2_fx_root_fixed_layout ),
+                                    rowset, tblfx2_fx_root_fixed_cover, tblfx2_fx_root_fixed_cover_count,
                                     g_plan, PlanCapacity, &guarded, &fill_at, &fill_count, NULL );
         fixed_check( made > 0, "C bytes row: the plan compiles either way — the rows are not what refuses" );
         memset( storage, 0, sizeof( storage ) );
-        back = (FxRoot *) (void *) storage;
-        fx_root_reset( back );
+        back = (tblfx2_fx_root_t *) (void *) storage;
+        tblfx2_fx_root_reset( back );
         memset( &r, 0, sizeof( r ) );
-        table_fixed_run( g_plan, made, guarded, body, (uint8_t *) back, &r, NULL );
+        tblfx2_table_fixed_run( g_plan, made, guarded, body, (uint8_t *) back, &r, NULL );
         right = back->blob_length == 4 && back->blob[0] == 0xDE && back->blob[1] == 0xAD &&
                 back->blob[2] == 0xBE && back->blob[3] == 0xEF;
         if ( pass == 0 )
@@ -138,11 +138,11 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
    which is what the sanitized build of this file is here to say. */
 void fixed_fx2_probe( const uint8_t * data, int64_t bytes )
 {
-    FxRoot back;
-    TableReport r;
+    tblfx2_fx_root_t back;
+    tblfx2_table_report_t r;
     memset( &r, 0, sizeof( r ) );
-    fx_root_reset( &back );
-    (void) fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    tblfx2_fx_root_reset( &back );
+    (void) tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
 }
 
 /* THE SAME NUMBERS THROUGH A COMPILED PLAN: the pass runs over STORAGE, so one
@@ -150,10 +150,10 @@ void fixed_fx2_probe( const uint8_t * data, int64_t bytes )
    alike (docs/SPEC-TABLES.md §3.4). */
 void fixed_fx2_bounds( const uint8_t * data, int64_t bytes )
 {
-    FxRoot back;
-    TableReport r;
+    tblfx2_fx_root_t back;
+    tblfx2_table_report_t r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds, compiled: the record reads" );
     fixed_check( back.renamed_to == 1000, "C RANGE, compiled: the same clamp through a compiled plan" );
     fixed_check( r.clamped == 1, "C RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
@@ -163,55 +163,55 @@ void fixed_fx2_bounds( const uint8_t * data, int64_t bytes )
    the same foreign layout compile once; a third load with a different hash
    compiles once more; identity never increments the counter. */
 #define CacheStride 1024
-static TableFixedEntry g_cache_slab[kTableFixedPlanCacheCapacity * CacheStride];
+static tblfx2_table_fixed_entry_t g_cache_slab[TBLFX2_K_TABLE_FIXED_PLAN_CACHE_CAPACITY * CacheStride];
 
 void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
 {
     static uint8_t mutated[65536];
     static uint8_t own[65536];
-    TableFixedPlanCache cache;
-    TableFixedEntry plan[PlanCapacity];
-    FxRoot back;
-    TableReport r;
+    tblfx2_table_fixed_plan_cache_t cache;
+    tblfx2_table_fixed_entry_t plan[PlanCapacity];
+    tblfx2_fx_root_t back;
+    tblfx2_table_report_t r;
     uint32_t layout_bytes;
     uint64_t hashB;
     int64_t need;
-    FxRoot two;
+    tblfx2_fx_root_t two;
 
-    table_fixed_plan_cache_init( &cache, g_cache_slab, CacheStride );
+    tblfx2_table_fixed_plan_cache_init( &cache, g_cache_slab, CacheStride );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: first foreign load" );
     fixed_check( cache.compiles == 1, "cache: first foreign load compiled once" );
     fixed_check( cache.used == 1 && cache.slots[0].made == 1, "cache: the slot is marked made" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: second foreign load" );
     fixed_check( cache.compiles == 1, "cache: two loads of the same layout compiled once" );
 
     fixed_check( fx1_bytes <= (int64_t) sizeof( mutated ), "cache: the mutated file fits" );
     memcpy( mutated, fx1, (size_t) fx1_bytes );
-    layout_bytes = table_fixed_get32( mutated + kTableFixedHeaderBytes );
+    layout_bytes = tblfx2_table_fixed_get32( mutated + TBLFX2_K_TABLE_FIXED_HEADER_BYTES );
     /* the layout is a u32 count then the entries; flip a byte of entry 0's id */
-    mutated[kTableFixedHeaderBytes + 4 + 4] ^= (uint8_t) 0x01;
-    hashB = table_fixed_hash_of( mutated + kTableFixedHeaderBytes + 4, (int64_t) layout_bytes );
-    table_fixed_put64( mutated + kTableFixedHashAt, hashB );
-    table_fixed_put64( mutated + kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
+    mutated[TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4 + 4] ^= (uint8_t) 0x01;
+    hashB = tblfx2_table_fixed_hash_of( mutated + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4, (int64_t) layout_bytes );
+    tblfx2_table_fixed_put64( mutated + TBLFX2_K_TABLE_FIXED_HASH_AT, hashB );
+    tblfx2_table_fixed_put64( mutated + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes, hashB );
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, mutated, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, mutated, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: a different hash compiles once more" );
     fixed_check( cache.compiles == 2, "cache: the third load compiled once more" );
     fixed_check( cache.used == 2 && cache.slots[1].made == 1, "cache: the second slot is marked made" );
 
-    need = fx_root_fixed_measure( 1 );
+    need = tblfx2_fx_root_fixed_measure( 1 );
     fixed_check( need <= (int64_t) sizeof( own ), "cache: the identity file fits" );
-    fx_root_reset( &two );
+    tblfx2_fx_root_reset( &two );
     two.keep = 1;
-    fixed_check( fx_root_fixed_save( &two, 1, own, need ) == need, "cache: FX2 save" );
+    fixed_check( tblfx2_fx_root_fixed_save( &two, 1, own, need ) == need, "cache: FX2 save" );
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, own, need, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, own, need, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: identity load" );
     fixed_check( cache.compiles == 2, "cache: identity never increments the compile counter" );
 }

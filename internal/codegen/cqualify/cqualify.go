@@ -75,6 +75,20 @@ func Names(files map[string][]byte, pkg string) (map[string]string, error) {
 	for _, name := range names {
 		decls.merge(declared(string(files[name])))
 	}
+	// SCHEMA_ and schema_ are the generator's own (SPEC §6.3), so a name
+	// under them is the unit's even where the unit only TESTS it — an
+	// #ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME in a unit with no sequences must
+	// ask about its own package's runtime, never another unit's
+	for _, name := range names {
+		for _, t := range tokenize(string(files[name])) {
+			if t.kind != tIdent || !(strings.HasPrefix(t.text, "SCHEMA_") || strings.HasPrefix(t.text, "schema_")) {
+				continue
+			}
+			if _, ok := decls.kind[t.text]; !ok {
+				decls.add(t.text, kindValue)
+			}
+		}
+	}
 	rename := map[string]string{}
 	from := map[string]string{}
 	keys := make([]string, 0, len(decls.kind))

@@ -11,7 +11,7 @@
 #include "fixedform.h"
 
 #define PlanCapacity 8192
-static TableFixedEntry g_plan[PlanCapacity];
+static tblut2_table_fixed_entry_t g_plan[PlanCapacity];
 
 /* GCC -O2 can inline the fixed-copy unroll through this legacy-plan read into
    the caller's 32-byte UtRoot object and combine a static destination offset
@@ -22,34 +22,34 @@ static TableFixedEntry g_plan[PlanCapacity];
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
-static int64_t fixed_ut2_load( UtRoot * back, const uint8_t * data, int64_t bytes, TableReport * report )
+static int64_t fixed_ut2_load( tblut2_ut_root_t * back, const uint8_t * data, int64_t bytes, tblut2_table_report_t * report )
 {
-    return ut_root_fixed_load( back, 1, data, bytes, g_plan, PlanCapacity, NULL, report );
+    return tblut2_ut_root_fixed_load( back, 1, data, bytes, g_plan, PlanCapacity, NULL, report );
 }
 
-int64_t fixed_ut2_bytes( void ) { return ut_root_fixed_measure( 1 ); }
+int64_t fixed_ut2_bytes( void ) { return tblut2_ut_root_fixed_measure( 1 ); }
 
 int64_t fixed_ut2_write( uint8_t * buffer, int64_t capacity )
 {
-    UtRoot v;
-    ut_root_reset( &v );
+    tblut2_ut_root_t v;
+    tblut2_ut_root_reset( &v );
     v.head = 7;
     v.tail = 8;
-    v.pick.type = PICK_TYPE_B;
+    v.pick.type = TBLUT2_PICK_TYPE_B;
     memcpy( v.pick.as.b.label, "third", 6 );
     v.pick.as.b.label_length = 5;
     v.pick.as.b.m = 555;
-    return ut_root_fixed_save( &v, 1, buffer, capacity );
+    return tblut2_ut_root_fixed_save( &v, 1, buffer, capacity );
 }
 
 void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
 {
-    UtRoot back = { 0 };
-    TableReport r;
+    tblut2_ut_root_t back = { 0 };
+    tblut2_table_report_t r;
     memset( &r, 0, sizeof( r ) );
     fixed_check( fixed_ut2_load( &back, data, bytes, &r ) == 1,
                  "C two lanes, compiled: the record reads" );
-    fixed_check( back.pick.type == PICK_TYPE_B,
+    fixed_check( back.pick.type == TBLUT2_PICK_TYPE_B,
                  "C two lanes, compiled: the arm is remapped by NAME, not by ordinal" );
     fixed_check( back.pick.as.b.label_length == 7 && strcmp( back.pick.as.b.label, "seven77" ) == 0,
                  "C two lanes, compiled: the arm's string(8), whole" );

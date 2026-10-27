@@ -719,9 +719,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_value( graphdemo_table_json_
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
 static SCHEMA_UNUSED int graphdemo_table_json_write_field( graphdemo_table_json_out_t * out, const void * base, const graphdemo_table_field_info_t * f, int32_t depth );
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
 static SCHEMA_UNUSED int graphdemo_table_json_write_list(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int graphdemo_table_json_write_map(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
 #endif
 #endif
@@ -846,9 +846,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json
 static SCHEMA_UNUSED int graphdemo_table_json_write_field( graphdemo_table_json_out_t * out, const void * base, const graphdemo_table_field_info_t * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
     if(f->sequence==1) { return graphdemo_table_json_write_list(out,storage,f,depth); }
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
     if(f->sequence==2) { return graphdemo_table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
@@ -1776,9 +1776,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_wide( graphdemo_table_json_in
 
 /* place one scalar at one storage address */
 static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_in_t * in, void * base, const graphdemo_table_field_info_t * f, int32_t depth );
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
 static SCHEMA_UNUSED int graphdemo_table_json_read_list(graphdemo_table_json_in_t * in,void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int graphdemo_table_json_read_map(graphdemo_table_json_in_t * in,void * storage,const graphdemo_table_field_info_t * f,int32_t depth);
 #endif
 #endif
@@ -2001,9 +2001,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_scalar( graphdemo_table_json_
 static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_in_t * in, void * base, const graphdemo_table_field_info_t * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
     if(f->sequence==1) { return graphdemo_table_json_read_list(in,storage,f,depth); }
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
     if(f->sequence==2) { return graphdemo_table_json_read_map(in,storage,f,depth); }
 #endif
 #endif
@@ -2707,7 +2707,7 @@ static SCHEMA_UNUSED int64_t graphdemo_table_json_write_graph( const void * root
 }
 /* ---- json graph walk: end ---- */
 
-#ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_SEQUENCE_RUNTIME
 static SCHEMA_UNUSED int graphdemo_table_json_write_list(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth)
 {
     const TableSequence * list=(const TableSequence *)storage;
@@ -2745,7 +2745,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_list(graphdemo_table_json_in_
 }
 #endif
 
-#ifdef SCHEMA_TABLE_MAP_RUNTIME
+#ifdef SCHEMA_GRAPHDEMO_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED graphdemo_table_json_integer_t graphdemo_table_json_interpret_exact( const char * token, int32_t length )
 {
     graphdemo_table_json_integer_t out;

@@ -237,7 +237,9 @@ func compilePacketTextDriver(t *testing.T, dir string, leg packetTextLeg, defect
 	}
 	var source string
 	for _, data := range files {
-		if strings.Contains(string(data), leg.utf8) {
+		// the file that DEFINES the validator (C: SchemaRuntime.h), not one
+		// that only calls it
+		if strings.Contains(string(data), "int "+leg.utf8+"(") || strings.Contains(string(data), "bool "+leg.utf8+"(") {
 			source = string(data)
 			break
 		}

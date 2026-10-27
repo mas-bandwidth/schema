@@ -12,23 +12,23 @@
 #include "fixedform.h"
 
 #define PlanCapacity 8192
-static TableFixedEntry g_plan[PlanCapacity];
+static tblv2_table_fixed_entry_t g_plan[PlanCapacity];
 
 void fixed_v2_read_v1( const uint8_t * data, int64_t bytes )
 {
-    Cfg back = { 0 };
-    TableReport r;
+    tblv2_cfg_t back = { 0 };
+    tblv2_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = cfg_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblv2_cfg_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "V2 reads V1: one record" );
-    fixed_check( back.grade == GRADE_GOLD, "ENUM: a variant inserted in the middle is remapped by NAME" );
-    fixed_check( back.effect.type == EFFECT_TYPE_WARD, "UNION: an arm inserted in the middle is remapped by NAME" );
+    fixed_check( back.grade == TBLV2_GRADE_GOLD, "ENUM: a variant inserted in the middle is remapped by NAME" );
+    fixed_check( back.effect.type == TBLV2_EFFECT_TYPE_WARD, "UNION: an arm inserted in the middle is remapped by NAME" );
     fixed_check( back.effect.as.ward.charge == 0.75f, "UNION: the arm's payload lands" );
     fixed_check( strcmp( back.title, "hello" ) == 0 && back.title_length == 5, "RENAMED: title reads name's bytes" );
-    fixed_check( SCHEMA_TABLE_KEYED_AT( back.tokens, SLOT_ALPHA, SLOT_MAX ) == 21, "KEYED: a slot whose key did not move" );
-    fixed_check( SCHEMA_TABLE_KEYED_AT( back.tokens, SLOT_DELTA, SLOT_MAX ) == 24, "KEYED: a slot whose key SLID keeps its value" );
-    fixed_check( SCHEMA_TABLE_KEYED_AT( back.tokens, SLOT_SIGMA, SLOT_MAX ) == 0, "KEYED: a key the writer has no name for takes its default" );
+    fixed_check( SCHEMA_TBLV2_TABLE_KEYED_AT( back.tokens, TBLV2_SLOT_ALPHA, TBLV2_SLOT_MAX ) == 21, "KEYED: a slot whose key did not move" );
+    fixed_check( SCHEMA_TBLV2_TABLE_KEYED_AT( back.tokens, TBLV2_SLOT_DELTA, TBLV2_SLOT_MAX ) == 24, "KEYED: a slot whose key SLID keeps its value" );
+    fixed_check( SCHEMA_TBLV2_TABLE_KEYED_AT( back.tokens, TBLV2_SLOT_SIGMA, TBLV2_SLOT_MAX ) == 0, "KEYED: a key the writer has no name for takes its default" );
     fixed_check( back.tier_present && back.tier == 77, "OPTIONAL: the present flag and the payload" );
     fixed_check( back.c, "MISSING: V2's own `c` takes its declared default" );
     fixed_check( back.a == 5.0f, "KIND MOVED: int32 -> float32 leaves the declared default" );
