@@ -114,10 +114,17 @@ jobs:
       # dead: the comment arrives, no `if` matches, the job never starts, and
       # the contributor gets no run, no log and no error. It is also the only
       # way to clear a red check after a signature is recorded by hand.
+      # Dependabot (Glenn, 2026-10-27): its PRs skip the CAA. The test is the
+      # PR's author LOGIN, which GitHub verifies, never a commit author name
+      # (see `allowlist` below for why a name entry would be a bypass).
+      # Dependabot branches live in this repository, so only accounts with
+      # write access can push further commits onto them.
       - name: CAA check
         if: >-
-          github.event_name == 'pull_request_target' ||
+          (github.event_name == 'pull_request_target' &&
+          github.event.pull_request.user.login != 'dependabot[bot]') ||
           (github.event.issue.pull_request != null &&
+          github.event.issue.user.login != 'dependabot[bot]' &&
           (github.event.comment.body == 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.' ||
           github.event.comment.body == 'recheck'))
         # SHA-pinned here; the PAT and this archived action are #472's owner half.
