@@ -13880,7 +13880,8 @@ in build version (§20.5).
   tomorrow. `FixedPlanCount` and `FixedPlanGuarded` are the C backend's, which
   has no struct to hang a plan's two numbers on and spells them as two more
   file-scope constants; the whole row is one claim across the ports, spelled
-  `<name>_fixed_save` in C and Rust and `<Name>FixedSave` elsewhere.
+  `<name>_fixed_save` in Rust, `<package>_<name>_fixed_save` in C and
+  `<Name>FixedSave` elsewhere.
   `FixedClamp` and `FixedClampBody` are §3.4's READ-SIDE BOUNDS — the
   straight-line pass a read makes after the copy — and they are claimed for
   every closure member on the same rule and not only for the ones that declare
@@ -13941,9 +13942,10 @@ in build version (§20.5).
   ITS OWN LANGUAGE, and specifically in the convention that language's PACKET
   half already uses, because the two halves land in one project and a reader
   should not be able to tell which emitter wrote a line. C++, C# and Go write
-  `<X>Load`; Rust writes `<x>_load`; C writes `<x>_load` too — types PascalCase,
-  functions and file-scope constants snake_case, macros SCREAMING_SNAKE under
-  `SCHEMA_`, which is exactly what `generated/c/` carries for the packet wire.
+  `<X>Load`; Rust writes `<x>_load`; C writes `<x>_load` too, under the unit's
+  package as every C name is (SPEC §6.3): `<package>_<x>_load`, types
+  `<package>_<x>_t`, constants and macros `<PACKAGE>_<X>`, which is exactly
+  what `generated/c/` carries for the packet wire.
   The CLAIM is unaffected: a closure member `X` claims `X` followed by each
   suffix in the schema's own spelling, and the checker refuses the declaration,
   not the emitted identifier.

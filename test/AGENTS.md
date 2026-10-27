@@ -8,6 +8,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `c/` | C packet tests | `make test-c` | `make test-c` |
 | `c-ludicrous/` | C int128 tests | `make test-c` | `make test-c` |
 | `c-tables/` | C table tests | `make test-c` | `make test-c` |
+| `c-two-units/` | C two units in one TU | `make tables-c-two-units` | `make tables-c-two-units` |
 | `conformance/` | cross-language table matrix | `make conformance` | `make conformance` |
 | `cookgen/` | cook fixture generator | `make tables-cook-scale` | `go build -o build/cookgen ./test/cookgen` |
 | `cs/` | C# packet tests | `make test-cs` | `make test-cs` |

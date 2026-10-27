@@ -59,9 +59,9 @@ static void test_round_trip(void) {
     uint8_t *json = read_file("tables/cards/fuzz/card-populated.json", &json_len);
     uint8_t *input_copy;
     CardsRecord rec;
-    TableReport report;
+    cards_table_report_t report;
     char err[256];
-    const Card *root;
+    const cards_card_t *root;
     uint8_t *out = NULL;
     int64_t out_len = 0;
     err[0] = '\0';
@@ -78,10 +78,10 @@ static void test_round_trip(void) {
     root = rec.root;
     check(root != NULL, name, "root present");
     if (root != NULL) {
-        TableStringView body, done, source;
-        TableSequenceCursor cur;
-        const PathText *pe;
-        const CardID *ne;
+        cards_table_string_view_t body, done, source;
+        cards_table_sequence_cursor_t cur;
+        const cards_path_text_t *pe;
+        const cards_card_id_t *ne;
         int idx;
         static const char *const want_paths[2] = {"path/one", "path/two"};
         static const char *const want_needs[2] = {"need-one", "need-two"};
@@ -89,40 +89,40 @@ static void test_round_trip(void) {
         check(fixed_eq(root->sha, root->sha_length,
                        "0123456789012345678901234567890123456789"),
               name, "sha field");
-        check(root->tier == TIER_FLASH, name, "tier field");
+        check(root->tier == CARDS_TIER_FLASH, name, "tier field");
         check(fixed_eq(root->repo, root->repo_length, "repo"), name, "repo field");
         check(fixed_eq(root->_base, root->_base_length, "base"), name, "base field");
         check(fixed_eq(root->kind, root->kind_length, "kind"), name, "kind field");
-        check(root->priority == PRIORITY_CRITICAL, name, "priority field");
+        check(root->priority == CARDS_PRIORITY_CRITICAL, name, "priority field");
         check(fixed_eq(root->stream, root->stream_length, "stream"), name,
               "stream field");
         idx = 0;
-        cur = card_paths_each(NULL, &root->paths);
-        while ((pe = (const PathText *)table_sequence_next(&cur)) != NULL) {
+        cur = cards_card_paths_each(NULL, &root->paths);
+        while ((pe = (const cards_path_text_t *)cards_table_sequence_next(&cur)) != NULL) {
             check(idx < 2 && fixed_eq(pe->s, pe->s_length, want_paths[idx]), name,
                   "paths element");
             idx++;
         }
         check(idx == 2, name, "paths count");
         idx = 0;
-        cur = card_paths_each(NULL, &root->_new);
-        while ((pe = (const PathText *)table_sequence_next(&cur)) != NULL) {
+        cur = cards_card_paths_each(NULL, &root->_new);
+        while ((pe = (const cards_path_text_t *)cards_table_sequence_next(&cur)) != NULL) {
             check(idx < 1 && fixed_eq(pe->s, pe->s_length, "new/path"), name,
                   "new element");
             idx++;
         }
         check(idx == 1, name, "new count");
         idx = 0;
-        cur = card_paths_each(NULL, &root->shared);
-        while ((pe = (const PathText *)table_sequence_next(&cur)) != NULL) {
+        cur = cards_card_paths_each(NULL, &root->shared);
+        while ((pe = (const cards_path_text_t *)cards_table_sequence_next(&cur)) != NULL) {
             check(idx < 1 && fixed_eq(pe->s, pe->s_length, "shared/path"), name,
                   "shared element");
             idx++;
         }
         check(idx == 1, name, "shared count");
         idx = 0;
-        cur = card_needs_each(NULL, &root->needs);
-        while ((ne = (const CardID *)table_sequence_next(&cur)) != NULL) {
+        cur = cards_card_needs_each(NULL, &root->needs);
+        while ((ne = (const cards_card_id_t *)cards_table_sequence_next(&cur)) != NULL) {
             check(idx < 2 && fixed_eq(ne->s, ne->s_length, want_needs[idx]), name,
                   "needs element");
             idx++;
@@ -130,14 +130,14 @@ static void test_round_trip(void) {
         check(idx == 2, name, "needs count");
         check(fixed_eq(root->test, root->test_length, "fixture test"), name,
               "test field");
-        done = table_string_at(NULL, &root->done);
+        done = cards_table_string_at(NULL, &root->done);
         check(done.length == 9 && memcmp(done.data, "done when", 9) == 0, name,
               "done field");
         check(root->deadline_minutes == 45, name, "deadline field");
-        source = table_string_at(NULL, &root->source);
+        source = cards_table_string_at(NULL, &root->source);
         check(source.length > 0, name, "source field");
         check(root->epoch == 7, name, "epoch field");
-        check(root->column == COLUMN_REVIEW, name, "column field");
+        check(root->column == CARDS_COLUMN_REVIEW, name, "column field");
         check(fixed_eq(root->holder, root->holder_length, "holder"), name,
               "holder field");
         check(root->attempt == 1, name, "attempt field");
@@ -146,7 +146,7 @@ static void test_round_trip(void) {
               name, "head field");
         check(fixed_eq(root->branch, root->branch_length, "branch/name"), name,
               "branch field");
-        body = table_string_at(NULL, &root->body);
+        body = cards_table_string_at(NULL, &root->body);
         check(body.length > 0, name, "body present");
         /* The body is compared byte for byte with the JSON fixture's body by
            the ToJSON comparison below. */
@@ -308,7 +308,7 @@ static void test_parse_render(void) {
         int64_t wire_len = 0, want_len = 0;
         uint8_t *wire, *want;
         CardsRecord rec;
-        TableReport report;
+        cards_table_report_t report;
         char err[256];
         uint8_t *out = NULL;
         int64_t out_len = 0;
@@ -393,7 +393,7 @@ static int hex_eq(const uint8_t *hex, const uint8_t *want) {
    RefusalKeepsOriginal). */
 /* report_text is the conformance report spelling (FORMAT.md "The read
    report"), written here so the check does not trust a facade formatter. */
-static int report_text(const TableReport *r, char *buf, size_t cap) {
+static int report_text(const cards_table_report_t *r, char *buf, size_t cap) {
     return snprintf(buf, cap,
                     "Retained=%d\nRetainLost=%d\nWidened=%d\nUnknown=%d\n"
                     "KindMismatch=%d\nClamped=%d\nDuplicate=%d\nMalformed=%s\n",
@@ -415,7 +415,7 @@ static void test_upgrade(void) {
         int64_t wl = 0, rl = 0, gl = 0;
         uint8_t *wire, *want_rep, *got = NULL;
         int64_t got_len = 0;
-        TableReport report;
+        cards_table_report_t report;
         char err[256];
         err[0] = '\0';
         snprintf(path, sizeof(path), "tables/cards/conformance/cases/%s.wire",
@@ -452,7 +452,7 @@ static void test_upgrade(void) {
         {
             uint8_t *again = NULL;
             int64_t again_len = 0;
-            TableReport r2;
+            cards_table_report_t r2;
             char e2[256];
             e2[0] = '\0';
             check(cards_upgrade(got, got_len, &again, &again_len, &r2, e2,
@@ -474,7 +474,7 @@ static void test_upgrade(void) {
         uint8_t *copy;
         uint8_t *got = NULL;
         int64_t got_len = 0;
-        TableReport report;
+        cards_table_report_t report;
         char err[256];
         err[0] = '\0';
         snprintf(path, sizeof(path), "tables/cards/conformance/cases/%s.wire",
@@ -501,7 +501,7 @@ static void test_upgrade(void) {
         uint8_t *copy;
         uint8_t *got = NULL;
         int64_t got_len = 0;
-        TableReport report;
+        cards_table_report_t report;
         char err[256];
         err[0] = '\0';
         check(wire != NULL, name, "retention case file read");
@@ -581,13 +581,13 @@ static void test_task_hash(void) {
         static const char long_msg[] =
             "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
         cards_sha256(d, (const uint8_t *)"", 0);
-        for (j = 0; j < 32; j++) sprintf(hex + j * 2, "%02x", d[j]);
+        for (j = 0; j < 32; j++) snprintf(hex + j * 2, 3, "%02x", d[j]);
         check(memcmp(hex, empty_hex, 64) == 0, name, "SHA-256 empty vector");
         cards_sha256(d, (const uint8_t *)"abc", 3);
-        for (j = 0; j < 32; j++) sprintf(hex + j * 2, "%02x", d[j]);
+        for (j = 0; j < 32; j++) snprintf(hex + j * 2, 3, "%02x", d[j]);
         check(memcmp(hex, abc_hex, 64) == 0, name, "SHA-256 abc vector");
         cards_sha256(d, (const uint8_t *)long_msg, strlen(long_msg));
-        for (j = 0; j < 32; j++) sprintf(hex + j * 2, "%02x", d[j]);
+        for (j = 0; j < 32; j++) snprintf(hex + j * 2, 3, "%02x", d[j]);
         check(memcmp(hex, long_hex, 64) == 0, name, "SHA-256 448-bit vector");
     }
     /* expected .hex per corpus wire. */
@@ -596,7 +596,7 @@ static void test_task_hash(void) {
         int64_t wl = 0, hl = 0;
         uint8_t *wire = NULL, *want = NULL;
         CardsRecord rec;
-        TableReport report;
+        cards_table_report_t report;
         uint8_t hex[65];
         char err[256];
         err[0] = '\0';
@@ -654,7 +654,7 @@ static void test_task_hash(void) {
         tb_text(&f, ""); /* test */
         tb_text(&f, ""); /* done */
         cards_sha256(digest, f.data, (size_t)f.len);
-        for (j = 0; j < 32; j++) sprintf(want_hex + j * 2, "%02x", digest[j]);
+        for (j = 0; j < 32; j++) snprintf(want_hex + j * 2, 3, "%02x", digest[j]);
         check(memcmp(hex_a, want_hex, 64) == 0, name,
               "hash matches the independently written frame");
         free(f.data);
@@ -667,7 +667,7 @@ static void test_task_hash(void) {
         uint8_t *wire = read_file(
             "tables/cards/conformance/cases/future-note.wire", &wl);
         CardsRecord rec;
-        TableReport report;
+        cards_table_report_t report;
         uint8_t hex[65];
         char err[256];
         err[0] = '\0';
@@ -689,7 +689,7 @@ static void test_task_hash(void) {
 static int load_case(const char *file, CardsRecord *rec, char *err, size_t cap) {
     int64_t wl = 0;
     uint8_t *wire = read_file(file, &wl);
-    TableReport report;
+    cards_table_report_t report;
     int ok;
     if (wire == NULL) return 0;
     ok = cards_load(wire, wl, rec, &report, err, cap);
@@ -719,7 +719,7 @@ static void test_edits(void) {
     CardsRecord rec;
     char err[256];
     char h0[65];
-    TableStringView body0;
+    cards_table_string_view_t body0;
     uint8_t *body_copy;
     int64_t body_len;
     err[0] = '\0';
@@ -727,7 +727,7 @@ static void test_edits(void) {
           err[0] ? err : "load base");
     check(cards_task_hash(&rec, (uint8_t *)h0, err, sizeof(err)), name,
           "base hash");
-    body0 = table_string_at(NULL, &rec.root->body);
+    body0 = cards_table_string_at(NULL, &rec.root->body);
     body_len = body0.length;
     body_copy = (uint8_t *)malloc((size_t)(body_len > 0 ? body_len : 1));
     if (body_len > 0) memcpy(body_copy, body0.data, (size_t)body_len);
@@ -742,8 +742,8 @@ static void test_edits(void) {
         check(wire_equals_file(&rec,
                                "tables/cards/conformance/expected/needs.wire"),
               name, "needs edit wire matches expected");
-        check(table_string_at(NULL, &rec.root->body).length == body_len &&
-                  memcmp(table_string_at(NULL, &rec.root->body).data, body_copy,
+        check(cards_table_string_at(NULL, &rec.root->body).length == body_len &&
+                  memcmp(cards_table_string_at(NULL, &rec.root->body).data, body_copy,
                          (size_t)body_len) == 0,
               name, "needs edit leaves the body alone");
         {
@@ -762,7 +762,7 @@ static void test_edits(void) {
         char h1[65];
         cards_record_clear(&rec);
         check(load_case(base, &rec, err, sizeof(err)), name, "reload for tier");
-        check(cards_set_tier(&rec, TIER_HEAVY, err, sizeof(err)), name, "set tier");
+        check(cards_set_tier(&rec, CARDS_TIER_HEAVY, err, sizeof(err)), name, "set tier");
         check(cards_task_hash(&rec, (uint8_t *)h1, err, sizeof(err)), name,
               "hash after tier");
         check(memcmp(h0, h1, 64) == 0, name, "tier edit leaves the hash alone");
@@ -775,7 +775,7 @@ static void test_edits(void) {
         char h1[65];
         cards_record_clear(&rec);
         check(load_case(base, &rec, err, sizeof(err)), name, "reload for priority");
-        check(cards_set_priority(&rec, PRIORITY_BLOCKER, err, sizeof(err)), name,
+        check(cards_set_priority(&rec, CARDS_PRIORITY_BLOCKER, err, sizeof(err)), name,
               "set priority");
         check(cards_task_hash(&rec, (uint8_t *)h1, err, sizeof(err)), name,
               "hash after priority");
@@ -790,7 +790,7 @@ static void test_edits(void) {
         char h1[65];
         cards_record_clear(&rec);
         check(load_case(base, &rec, err, sizeof(err)), name, "reload for column");
-        check(cards_set_column(&rec, COLUMN_LANDED, err, sizeof(err)), name,
+        check(cards_set_column(&rec, CARDS_COLUMN_LANDED, err, sizeof(err)), name,
               "set column");
         check(cards_task_hash(&rec, (uint8_t *)h1, err, sizeof(err)), name,
               "hash after column");
@@ -934,8 +934,8 @@ static void test_view(void) {
     cards_free_buf(out);
     /* Walk a loaded and an edited record through the descriptors. */
     {
-        const UnitViewInfo *v = unit_view();
-        const TableTypeInfo *card = NULL;
+        const cards_unit_view_info_t *v = cards_unit_view();
+        const cards_table_type_info_t *card = NULL;
         int t, f;
         for (t = 0; t < v->num_tables; t++) {
             if (strcmp(v->tables[t].name, "Card") == 0)
@@ -944,7 +944,7 @@ static void test_view(void) {
         check(card != NULL, name, "Card descriptor present");
         if (card != NULL) {
             CardsRecord rec;
-            const TableFieldInfo *tier_f = NULL, *body_f = NULL, *paths_f = NULL;
+            const cards_table_field_info_t *tier_f = NULL, *body_f = NULL, *paths_f = NULL;
             err[0] = '\0';
             for (f = 0; f < card->num_fields; f++) {
                 if (strcmp(card->fields[f].name, "tier") == 0)
@@ -961,25 +961,25 @@ static void test_view(void) {
                   name, err[0] ? err : "load for view walk");
             if (tier_f != NULL) {
                 const uint8_t *p = (const uint8_t *)rec.root + tier_f->offset;
-                check(*p == TIER_FLASH, name, "scalar walked at its offset");
-                check(cards_set_tier(&rec, TIER_HEAVY, err, sizeof(err)), name,
+                check(*p == CARDS_TIER_FLASH, name, "scalar walked at its offset");
+                check(cards_set_tier(&rec, CARDS_TIER_HEAVY, err, sizeof(err)), name,
                       "edit for view walk");
                 p = (const uint8_t *)rec.root + tier_f->offset;
-                check(*p == TIER_HEAVY, name,
+                check(*p == CARDS_TIER_HEAVY, name,
                       "edited scalar walked at its offset");
             }
             if (body_f != NULL) {
-                const TableRef *ref = (const TableRef *)((const uint8_t *)rec.root +
+                const cards_table_ref_t *ref = (const cards_table_ref_t *)((const uint8_t *)rec.root +
                                                           body_f->offset);
-                TableBytesView bv = table_bytes_at(NULL, ref);
-                TableStringView sv = table_string_at(NULL, &rec.root->body);
+                cards_table_bytes_view_t bv = cards_table_bytes_at(NULL, ref);
+                cards_table_string_view_t sv = cards_table_string_at(NULL, &rec.root->body);
                 check(body_f->is_pointer && bv.length == sv.length &&
                           memcmp(bv.data, sv.data, (size_t)bv.length) == 0,
                       name, "body walked through the descriptor");
             }
             if (paths_f != NULL) {
-                const TableList *list =
-                    (const TableList *)((const uint8_t *)rec.root + paths_f->offset);
+                const cards_table_list_t *list =
+                    (const cards_table_list_t *)((const uint8_t *)rec.root + paths_f->offset);
                 check(paths_f->sequence == 1 && list->count == 2, name,
                       "list walked through the descriptor");
             }

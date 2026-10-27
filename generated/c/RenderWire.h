@@ -9,14 +9,6 @@
 
 #include "Render.h"
 #include "serialize.h"
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "EnumsWire.h"
 
 #ifdef __cplusplus
@@ -30,30 +22,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
 /* Writes RenderSprite. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_write_stream_t * stream, const RenderSprite * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_render_sprite( serialize_write_stream_t * stream, const example_render_sprite_t * value )
 {
     if ( !serialize_write_uint64( stream, (serialize_uint64_t) value->sort_key ) )
     {
@@ -71,7 +41,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_wr
     {
         return 0;
     }
-    serialize_assert( value->team <= TEAM_MAX );
+    serialize_assert( value->team <= EXAMPLE_TEAM_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->team, 2 ) )
     {
         return 0;
@@ -80,7 +50,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_sprite( serialize_wr
 }
 
 /* Reads RenderSprite. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_sprite( serialize_read_stream_t * stream, RenderSprite * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_sprite( serialize_read_stream_t * stream, example_render_sprite_t * value )
 {
     /* fixed 138-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 138 )
@@ -126,17 +96,17 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_sprite( serialize_read
         {
             return 0;
         }
-        if ( enum_value > TEAM_MAX )
+        if ( enum_value > EXAMPLE_TEAM_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal value */
         }
-        value->team = (Team) enum_value;
+        value->team = (example_team_t) enum_value;
     }
     return 1;
 }
 
 /* Writes RenderBlock. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_write_stream_t * stream, const RenderBlock * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_render_block( serialize_write_stream_t * stream, const example_render_block_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->worker_index, 32 ) )
     {
@@ -146,8 +116,8 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_wri
     {
         return 0;
     }
-    serialize_assert( value->sprites_count >= 0 && value->sprites_count <= RENDER_BLOCK_MAX_SPRITES );
-    if ( !serialize_write_int( stream, value->sprites_count, 0, RENDER_BLOCK_MAX_SPRITES ) )
+    serialize_assert( value->sprites_count >= 0 && value->sprites_count <= EXAMPLE_RENDER_BLOCK_MAX_SPRITES );
+    if ( !serialize_write_int( stream, value->sprites_count, 0, EXAMPLE_RENDER_BLOCK_MAX_SPRITES ) )
     {
         return 0;
     }
@@ -155,7 +125,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_wri
         int32_t i;
         for ( i = 0; i < value->sprites_count; i++ )
         {
-            if ( !write_render_sprite( stream, &value->sprites[i] ) )
+            if ( !example_write_render_sprite( stream, &value->sprites[i] ) )
             {
                 return 0;
             }
@@ -165,7 +135,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_render_block( serialize_wri
 }
 
 /* Reads RenderBlock. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_block( serialize_read_stream_t * stream, RenderBlock * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_block( serialize_read_stream_t * stream, example_render_block_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -183,7 +153,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_block( serialize_read_
         }
         value->sprite_count_hint = (uint32_t) raw;
     }
-    if ( !serialize_read_int( stream, &value->sprites_count, 0, RENDER_BLOCK_MAX_SPRITES ) )
+    if ( !serialize_read_int( stream, &value->sprites_count, 0, EXAMPLE_RENDER_BLOCK_MAX_SPRITES ) )
     {
         return 0;
     }
@@ -191,7 +161,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_render_block( serialize_read_
         int32_t i;
         for ( i = 0; i < value->sprites_count; i++ )
         {
-            if ( !read_render_sprite( stream, &value->sprites[i] ) )
+            if ( !example_read_render_sprite( stream, &value->sprites[i] ) )
             {
                 return 0;
             }

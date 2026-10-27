@@ -16,19 +16,19 @@ static void check( int ok, const char * what )
 
 int main( void )
 {
-    SceneBuilder builder;
-    Scene * root;
-    TableSink sink;
-    TableCtx arena_ctx;
+    graphdemo_scene_builder_t builder;
+    graphdemo_scene_t * root;
+    graphdemo_table_sink_t sink;
+    graphdemo_table_ctx_t arena_ctx;
     int64_t wire_bytes, wrote, region_bytes;
     uint8_t * wire;
     uint8_t * region;
-    const Scene * loaded;
-    TableReport report;
+    const graphdemo_scene_t * loaded;
+    graphdemo_table_report_t report;
     int i, walked;
 
-    check( scene_builder_init( &builder ), "builder init" );
-    root = scene_builder_root( &builder );
+    check( graphdemo_scene_builder_init( &builder ), "builder init" );
+    root = graphdemo_scene_builder_root( &builder );
     check( root != NULL, "the builder has a root" );
     if ( root == NULL ) { return 1; } /* everything below writes through it */
 
@@ -41,10 +41,10 @@ int main( void )
     sink.region = NULL;
     sink.worker = &builder.main;
     {
-        TableRef * slot = &root->head;
+        graphdemo_table_ref_t * slot = &root->head;
         for ( i = 0; i < 5; i++ )
         {
-            ListNode * node = list_node_emplace( &sink, slot );
+            graphdemo_list_node_t * node = graphdemo_list_node_emplace( &sink, slot );
             check( node != NULL, "emplace a list node" );
             if ( node == NULL ) { return 1; }
             node->value = i + 1;
@@ -55,47 +55,47 @@ int main( void )
     }
     /* a fixed table something points at, and a by-value nested variable table */
     {
-        Settings * settings = settings_emplace( &sink, &root->settings );
+        graphdemo_settings_t * settings = graphdemo_settings_emplace( &sink, &root->settings );
         check( settings != NULL, "emplace settings" );
         if ( settings != NULL ) { settings->quality = 3; }
     }
     root->ground.depth = 2;
     {
-        ListNode * head = list_node_emplace( &sink, &root->ground.head );
+        graphdemo_list_node_t * head = graphdemo_list_node_emplace( &sink, &root->ground.head );
         check( head != NULL, "emplace the ground layer's head" );
         if ( head != NULL ) { head->value = 42; }
     }
 
     /* the wire, straight out of the MUTABLE form: the ctx names the arena */
     arena_ctx.arena = &builder.arena;
-    wire_bytes = scene_measure( &arena_ctx, root );
+    wire_bytes = graphdemo_scene_measure( &arena_ctx, root );
     check( wire_bytes > 0, "measure the mutable form" );
     wire = (uint8_t *) malloc( (size_t) wire_bytes );
-    wrote = scene_save( &arena_ctx, root, wire, wire_bytes );
+    wrote = graphdemo_scene_save( &arena_ctx, root, wire, wire_bytes );
     check( wrote == wire_bytes, "save the mutable form at exactly Measure's answer" );
 
     /* LOCK: the segmented arena becomes one exact-packed region */
-    check( scene_builder_lock( &builder ), "lock" );
+    check( graphdemo_scene_builder_lock( &builder ), "lock" );
     check( builder.region != NULL && builder.region_bytes > 0, "lock produced a region" );
     {
         /* the CONST form saves the same bytes: one structure, two forms */
-        const Scene * packed = (const Scene *) (const void *) builder.region;
-        int64_t packed_bytes = scene_measure( NULL, packed );
+        const graphdemo_scene_t * packed = (const graphdemo_scene_t *) (const void *) builder.region;
+        int64_t packed_bytes = graphdemo_scene_measure( NULL, packed );
         uint8_t * twin;
         check( packed_bytes == wire_bytes, "the locked region measures what the arena did" );
         twin = (uint8_t *) malloc( (size_t) ( packed_bytes > 0 ? packed_bytes : 1 ) );
-        check( scene_save( NULL, packed, twin, packed_bytes ) == packed_bytes, "save the locked form" );
+        check( graphdemo_scene_save( NULL, packed, twin, packed_bytes ) == packed_bytes, "save the locked form" );
         check( memcmp( twin, wire, (size_t) wire_bytes ) == 0,
                "the locked region and the arena write the SAME BYTES" );
         free( twin );
     }
 
     /* LOAD: size the region from the wire's framing alone, then decode into it */
-    region_bytes = scene_load_measure( wire, wire_bytes );
-    check( region_bytes >= (int64_t) sizeof( Scene ), "load_measure sized a region" );
+    region_bytes = graphdemo_scene_load_measure( wire, wire_bytes );
+    check( region_bytes >= (int64_t) sizeof( graphdemo_scene_t ), "load_measure sized a region" );
     region = (uint8_t *) malloc( (size_t) region_bytes );
     memset( &report, 0, sizeof( report ) );
-    loaded = scene_load( region, region_bytes, wire, wire_bytes, &report );
+    loaded = graphdemo_scene_load( region, region_bytes, wire, wire_bytes, &report );
     check( loaded != NULL, "load into the caller's region" );
     check( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0,
            "the report is silent over bytes this build wrote" );
@@ -103,7 +103,7 @@ int main( void )
     /* walk the graph back out through the region's own self-relative derefs */
     if ( loaded != NULL )
     {
-        const ListNode * node = list_node_at( NULL, &loaded->head );
+        const graphdemo_list_node_t * node = graphdemo_list_node_at( NULL, &loaded->head );
         check( loaded->version == 7, "the root's scalar survived" );
         check( loaded->name_length == 5 && memcmp( loaded->name, "world", 5 ) == 0, "the root's string survived" );
         walked = 0;
@@ -111,12 +111,12 @@ int main( void )
         {
             walked++;
             check( node->value == walked, "the chain's values are in order" );
-            node = list_node_at( NULL, &node->next );
+            node = graphdemo_list_node_at( NULL, &node->next );
         }
         check( walked == 5, "the whole chain came back" );
         {
-            const Settings * settings = settings_at( NULL, &loaded->settings );
-            const ListNode * ground = list_node_at( NULL, &loaded->ground.head );
+            const graphdemo_settings_t * settings = graphdemo_settings_at( NULL, &loaded->settings );
+            const graphdemo_list_node_t * ground = graphdemo_list_node_at( NULL, &loaded->ground.head );
             check( settings != NULL && settings->quality == 3, "the pointed-at fixed table survived" );
             check( ground != NULL && ground->value == 42, "the by-value nested variable table's pointer survived" );
         }
@@ -124,23 +124,23 @@ int main( void )
 
     /* the TOOL's path: the same tolerant decode into a fresh builder */
     {
-        SceneBuilder again;
-        check( scene_builder_init( &again ), "second builder init" );
+        graphdemo_scene_builder_t again;
+        check( graphdemo_scene_builder_init( &again ), "second builder init" );
         memset( &report, 0, sizeof( report ) );
-        check( scene_load_builder( &again, wire, wire_bytes, &report ), "load into a builder" );
+        check( graphdemo_scene_load_builder( &again, wire, wire_bytes, &report ), "load into a builder" );
         check( !report.malformed, "the builder load is silent" );
         {
-            TableCtx ctx2;
+            graphdemo_table_ctx_t ctx2;
             ctx2.arena = &again.arena;
-            check( scene_measure( &ctx2, scene_builder_root( &again ) ) == wire_bytes,
+            check( graphdemo_scene_measure( &ctx2, graphdemo_scene_builder_root( &again ) ) == wire_bytes,
                    "the reloaded builder measures the same wire" );
         }
-        scene_builder_shutdown( &again );
+        graphdemo_scene_builder_shutdown( &again );
     }
 
     free( region );
     free( wire );
-    scene_builder_shutdown( &builder );
+    graphdemo_scene_builder_shutdown( &builder );
 
     if ( failures != 0 ) { printf( "%d failure(s)\n", failures ); return 1; }
     printf( "variable-length class: build -> lock -> wire -> region -> walk, all agree (%lld wire bytes, %lld region bytes)\n",

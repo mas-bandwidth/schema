@@ -9,14 +9,6 @@
 
 #include "ArmDefaults.h"
 #include "serialize.h"
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "WireWire.h"
 
 #ifdef __cplusplus
@@ -30,30 +22,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
 /* Writes DefaultArm. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_arm( serialize_write_stream_t * stream, const DefaultArm * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_arm( serialize_write_stream_t * stream, const example_default_arm_t * value )
 {
     serialize_assert( value->entries_count >= 0 && value->entries_count <= 2 );
     if ( !serialize_write_int( stream, value->entries_count, 0, 2 ) )
@@ -64,7 +34,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_arm( serialize_writ
         int32_t i;
         for ( i = 0; i < value->entries_count; i++ )
         {
-            if ( !write_probe_config( stream, &value->entries[i] ) )
+            if ( !example_write_probe_config( stream, &value->entries[i] ) )
             {
                 return 0;
             }
@@ -79,7 +49,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_arm( serialize_writ
 }
 
 /* Reads DefaultArm. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_arm( serialize_read_stream_t * stream, DefaultArm * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_arm( serialize_read_stream_t * stream, example_default_arm_t * value )
 {
     if ( !serialize_read_int( stream, &value->entries_count, 0, 2 ) )
     {
@@ -89,7 +59,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_arm( serialize_read_s
         int32_t i;
         for ( i = 0; i < value->entries_count; i++ )
         {
-            if ( !read_probe_config( stream, &value->entries[i] ) )
+            if ( !example_read_probe_config( stream, &value->entries[i] ) )
             {
                 return 0;
             }
@@ -109,9 +79,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_arm( serialize_read_s
 }
 
 /* Writes DefaultChoice. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_choice( serialize_write_stream_t * stream, const DefaultChoice * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_choice( serialize_write_stream_t * stream, const example_default_choice_t * value )
 {
-    serialize_assert( value->type <= DEFAULT_CHOICE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
+    serialize_assert( value->type <= EXAMPLE_DEFAULT_CHOICE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -119,16 +89,16 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_choice( serialize_w
     switch ( value->type )
     {
         case 1:
-            return write_default_arm( stream, &value->as.first );
+            return example_write_default_arm( stream, &value->as.first );
         case 2:
-            return write_default_arm( stream, &value->as.second );
+            return example_write_default_arm( stream, &value->as.second );
         default:
             return 1; /* None — the tag is the whole wire (SPEC §4.8) */
     }
 }
 
 /* Reads DefaultChoice. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_choice( serialize_read_stream_t * stream, DefaultChoice * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice( serialize_read_stream_t * stream, example_default_choice_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -136,29 +106,29 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_choice( serialize_rea
         {
             return 0;
         }
-        if ( tag_value > DEFAULT_CHOICE_TYPE_MAX )
+        if ( tag_value > EXAMPLE_DEFAULT_CHOICE_TYPE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
-        value->type = (DefaultChoiceType) tag_value;
+        value->type = (example_default_choice_type_t) tag_value;
     }
     switch ( value->type )
     {
         case 1:
-            value->as.first = new_default_arm();
-            return read_default_arm( stream, &value->as.first );
+            value->as.first = example_new_default_arm();
+            return example_read_default_arm( stream, &value->as.first );
         case 2:
-            value->as.second = new_default_arm();
-            return read_default_arm( stream, &value->as.second );
+            value->as.second = example_new_default_arm();
+            return example_read_default_arm( stream, &value->as.second );
         default:
             return 1; /* None */
     }
 }
 
 /* Writes DefaultChoicePacket. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_choice_packet( serialize_write_stream_t * stream, const DefaultChoicePacket * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_choice_packet( serialize_write_stream_t * stream, const example_default_choice_packet_t * value )
 {
-    if ( !write_default_choice( stream, &value->choice ) )
+    if ( !example_write_default_choice( stream, &value->choice ) )
     {
         return 0;
     }
@@ -166,9 +136,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_choice_packet( seri
 }
 
 /* Reads DefaultChoicePacket. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_choice_packet( serialize_read_stream_t * stream, DefaultChoicePacket * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_choice_packet( serialize_read_stream_t * stream, example_default_choice_packet_t * value )
 {
-    if ( !read_default_choice( stream, &value->choice ) )
+    if ( !example_read_default_choice( stream, &value->choice ) )
     {
         return 0;
     }
@@ -176,9 +146,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_choice_packet( serial
 }
 
 /* Writes DefaultBulkArm. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_bulk_arm( serialize_write_stream_t * stream, const DefaultBulkArm * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_bulk_arm( serialize_write_stream_t * stream, const example_default_bulk_arm_t * value )
 {
-    if ( !write_default_arm( stream, &value->payload ) )
+    if ( !example_write_default_arm( stream, &value->payload ) )
     {
         return 0;
     }
@@ -194,9 +164,9 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_bulk_arm( serialize
 }
 
 /* Reads DefaultBulkArm. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_bulk_arm( serialize_read_stream_t * stream, DefaultBulkArm * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_arm( serialize_read_stream_t * stream, example_default_bulk_arm_t * value )
 {
-    if ( !read_default_arm( stream, &value->payload ) )
+    if ( !example_read_default_arm( stream, &value->payload ) )
     {
         return 0;
     }
@@ -212,9 +182,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_bulk_arm( serialize_r
 }
 
 /* Writes DefaultBulkChoice. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_bulk_choice( serialize_write_stream_t * stream, const DefaultBulkChoice * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_default_bulk_choice( serialize_write_stream_t * stream, const example_default_bulk_choice_t * value )
 {
-    serialize_assert( value->type <= DEFAULT_BULK_CHOICE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
+    serialize_assert( value->type <= EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -222,16 +192,16 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_default_bulk_choice( serial
     switch ( value->type )
     {
         case 1:
-            return write_default_bulk_arm( stream, &value->as.first );
+            return example_write_default_bulk_arm( stream, &value->as.first );
         case 2:
-            return write_default_bulk_arm( stream, &value->as.second );
+            return example_write_default_bulk_arm( stream, &value->as.second );
         default:
             return 1; /* None — the tag is the whole wire (SPEC §4.8) */
     }
 }
 
 /* Reads DefaultBulkChoice. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_bulk_choice( serialize_read_stream_t * stream, DefaultBulkChoice * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_default_bulk_choice( serialize_read_stream_t * stream, example_default_bulk_choice_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -239,20 +209,20 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_default_bulk_choice( serializ
         {
             return 0;
         }
-        if ( tag_value > DEFAULT_BULK_CHOICE_TYPE_MAX )
+        if ( tag_value > EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
-        value->type = (DefaultBulkChoiceType) tag_value;
+        value->type = (example_default_bulk_choice_type_t) tag_value;
     }
     switch ( value->type )
     {
         case 1:
-            value->as.first = new_default_bulk_arm();
-            return read_default_bulk_arm( stream, &value->as.first );
+            value->as.first = example_new_default_bulk_arm();
+            return example_read_default_bulk_arm( stream, &value->as.first );
         case 2:
-            value->as.second = new_default_bulk_arm();
-            return read_default_bulk_arm( stream, &value->as.second );
+            value->as.second = example_new_default_bulk_arm();
+            return example_read_default_bulk_arm( stream, &value->as.second );
         default:
             return 1; /* None */
     }

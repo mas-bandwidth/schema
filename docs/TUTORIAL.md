@@ -416,7 +416,8 @@ inline const char * EnumName( ShipType value )
 
 Any value outside the set names as `"???"`, so a log line can never crash on a
 bad value. Every target gets this in its own spelling: `EnumNameShipType` in
-Go, C#, and JavaScript, `enum_name_ship_type` in C, Rust and Elixir,
+Go, C#, and JavaScript, `enum_name_ship_type` in Rust and Elixir,
+`starlight_enum_name_ship_type` in C (where every name carries the package),
 `enumNameShipType` in Dart and Java.
 
 A multi-line variant list is fine, because variants are comma-separated either

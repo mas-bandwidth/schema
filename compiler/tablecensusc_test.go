@@ -161,7 +161,7 @@ var (
 
 func deadCHeader(t *testing.T, src string) (string, map[string][]byte) {
 	t.Helper()
-	files, err := New().Generate(unitFromSource(t, src), "c", Options{})
+	files, err := generateCUnqualified(unitFromSource(t, src))
 	if err != nil {
 		t.Fatal(err)
 	}

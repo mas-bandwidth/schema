@@ -8,15 +8,11 @@
 #define SCHEMA_EXAMPLE_ARM_DEFAULTS_H
 
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include <string.h>   /* memset — the zero form (SPEC §4.2) */
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "Wire.h"
 
 #ifdef __cplusplus
@@ -25,27 +21,27 @@ extern "C" {
 
 
 /* type DefaultArm */
-typedef struct DefaultArm {
-    ProbeConfig entries[2];
+typedef struct example_default_arm_t {
+    example_probe_config_t entries[2];
     int32_t entries_count;
     uint8_t marker;
-} DefaultArm;
+} example_default_arm_t;
 
-#define DEFAULT_ARM_MAX_BITS 77   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEFAULT_ARM_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXAMPLE_DEFAULT_ARM_MAX_BITS 77   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_DEFAULT_ARM_MAX_BYTES 16  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 /* Returns a new DefaultArm with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED DefaultArm new_default_arm( void )
+static SCHEMA_UNUSED example_default_arm_t example_new_default_arm( void )
 {
-    DefaultArm value;
+    example_default_arm_t value;
     memset( &value, 0, sizeof( value ) );
     {
         int32_t i;
         for ( i = 0; i < 2; i++ )
         {
-            value.entries[i] = new_probe_config();
+            value.entries[i] = example_new_probe_config();
         }
     }
     return value;
@@ -54,131 +50,131 @@ static SCHEMA_UNUSED DefaultArm new_default_arm( void )
 
 /* union DefaultChoice — first-class one-of (SPEC §4.8): the tag says which arm is
    live; None = 0 is the empty union, and the tag range is [0, 2]. */
-typedef uint8_t DefaultChoiceType;
-#define DEFAULT_CHOICE_TYPE_NONE 0
-#define DEFAULT_CHOICE_TYPE_FIRST 1
-#define DEFAULT_CHOICE_TYPE_SECOND 2
-#define DEFAULT_CHOICE_TYPE_COUNT 2
-#define DEFAULT_CHOICE_TYPE_MAX 2
+typedef uint8_t example_default_choice_type_t;
+#define EXAMPLE_DEFAULT_CHOICE_TYPE_NONE 0
+#define EXAMPLE_DEFAULT_CHOICE_TYPE_FIRST 1
+#define EXAMPLE_DEFAULT_CHOICE_TYPE_SECOND 2
+#define EXAMPLE_DEFAULT_CHOICE_TYPE_COUNT 2
+#define EXAMPLE_DEFAULT_CHOICE_TYPE_MAX 2
 
 /* Debug/log name for any DefaultChoiceType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_default_choice_type( DefaultChoiceType value )
+static SCHEMA_UNUSED const char * example_enum_name_default_choice_type( example_default_choice_type_t value )
 {
     switch ( value )
     {
-        case DEFAULT_CHOICE_TYPE_NONE: return "None";
+        case EXAMPLE_DEFAULT_CHOICE_TYPE_NONE: return "None";
         case 1: return "First";
         case 2: return "Second";
         default: return "???";
     }
 }
 
-typedef struct DefaultChoice {
-    DefaultChoiceType type;
+typedef struct example_default_choice_t {
+    example_default_choice_type_t type;
     union {
-        DefaultArm first;
-        DefaultArm second;
+        example_default_arm_t first;
+        example_default_arm_t second;
     } as;
-} DefaultChoice;
+} example_default_choice_t;
 
-#define DEFAULT_CHOICE_MAX_BITS 79   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define DEFAULT_CHOICE_MAX_BYTES 16
+#define EXAMPLE_DEFAULT_CHOICE_MAX_BITS 79   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
+#define EXAMPLE_DEFAULT_CHOICE_MAX_BYTES 16
 
 /* Selectors for DefaultChoice: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
    the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
-static SCHEMA_UNUSED DefaultArm * default_choice_select_first( DefaultChoice * value )
+static SCHEMA_UNUSED example_default_arm_t * example_default_choice_select_first( example_default_choice_t * value )
 {
-    value->type = DEFAULT_CHOICE_TYPE_FIRST;
-    value->as.first = new_default_arm();
+    value->type = EXAMPLE_DEFAULT_CHOICE_TYPE_FIRST;
+    value->as.first = example_new_default_arm();
     return &value->as.first;
 }
 
-static SCHEMA_UNUSED DefaultArm * default_choice_select_second( DefaultChoice * value )
+static SCHEMA_UNUSED example_default_arm_t * example_default_choice_select_second( example_default_choice_t * value )
 {
-    value->type = DEFAULT_CHOICE_TYPE_SECOND;
-    value->as.second = new_default_arm();
+    value->type = EXAMPLE_DEFAULT_CHOICE_TYPE_SECOND;
+    value->as.second = example_new_default_arm();
     return &value->as.second;
 }
 
 
 /* type DefaultChoicePacket */
-typedef struct DefaultChoicePacket {
-    DefaultChoice choice;
-} DefaultChoicePacket;
+typedef struct example_default_choice_packet_t {
+    example_default_choice_t choice;
+} example_default_choice_packet_t;
 
-#define DEFAULT_CHOICE_PACKET_MAX_BITS 79   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEFAULT_CHOICE_PACKET_MAX_BYTES 16
+#define EXAMPLE_DEFAULT_CHOICE_PACKET_MAX_BITS 79   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_DEFAULT_CHOICE_PACKET_MAX_BYTES 16
 
 
 /* type DefaultBulkArm */
-typedef struct DefaultBulkArm {
-    DefaultArm payload;
+typedef struct example_default_bulk_arm_t {
+    example_default_arm_t payload;
     uint8_t data[2];
     int32_t data_length;
-} DefaultBulkArm;
+} example_default_bulk_arm_t;
 
-#define DEFAULT_BULK_ARM_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define DEFAULT_BULK_ARM_MAX_BYTES 16
+#define EXAMPLE_DEFAULT_BULK_ARM_MAX_BITS 102   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_DEFAULT_BULK_ARM_MAX_BYTES 16
 
 /* Returns a new DefaultBulkArm with its SPECIFIED defaults applied. A memset to zero is
    the schema's own default (SPEC §4.2: zero initialization unless a
    specified default overrides it), so only types carrying one get this. */
-static SCHEMA_UNUSED DefaultBulkArm new_default_bulk_arm( void )
+static SCHEMA_UNUSED example_default_bulk_arm_t example_new_default_bulk_arm( void )
 {
-    DefaultBulkArm value;
+    example_default_bulk_arm_t value;
     memset( &value, 0, sizeof( value ) );
-    value.payload = new_default_arm();
+    value.payload = example_new_default_arm();
     return value;
 }
 
 
 /* union DefaultBulkChoice — first-class one-of (SPEC §4.8): the tag says which arm is
    live; None = 0 is the empty union, and the tag range is [0, 2]. */
-typedef uint8_t DefaultBulkChoiceType;
-#define DEFAULT_BULK_CHOICE_TYPE_NONE 0
-#define DEFAULT_BULK_CHOICE_TYPE_FIRST 1
-#define DEFAULT_BULK_CHOICE_TYPE_SECOND 2
-#define DEFAULT_BULK_CHOICE_TYPE_COUNT 2
-#define DEFAULT_BULK_CHOICE_TYPE_MAX 2
+typedef uint8_t example_default_bulk_choice_type_t;
+#define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_NONE 0
+#define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_FIRST 1
+#define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_SECOND 2
+#define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_COUNT 2
+#define EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_MAX 2
 
 /* Debug/log name for any DefaultBulkChoiceType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_default_bulk_choice_type( DefaultBulkChoiceType value )
+static SCHEMA_UNUSED const char * example_enum_name_default_bulk_choice_type( example_default_bulk_choice_type_t value )
 {
     switch ( value )
     {
-        case DEFAULT_BULK_CHOICE_TYPE_NONE: return "None";
+        case EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_NONE: return "None";
         case 1: return "First";
         case 2: return "Second";
         default: return "???";
     }
 }
 
-typedef struct DefaultBulkChoice {
-    DefaultBulkChoiceType type;
+typedef struct example_default_bulk_choice_t {
+    example_default_bulk_choice_type_t type;
     union {
-        DefaultBulkArm first;
-        DefaultBulkArm second;
+        example_default_bulk_arm_t first;
+        example_default_bulk_arm_t second;
     } as;
-} DefaultBulkChoice;
+} example_default_bulk_choice_t;
 
-#define DEFAULT_BULK_CHOICE_MAX_BITS 104   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
-#define DEFAULT_BULK_CHOICE_MAX_BYTES 16
+#define EXAMPLE_DEFAULT_BULK_CHOICE_MAX_BITS 104   /* tag + the largest arm; None costs the tag only (SPEC §4.8) */
+#define EXAMPLE_DEFAULT_BULK_CHOICE_MAX_BYTES 16
 
 /* Selectors for DefaultBulkChoice: each sets the tag and initializes the arm together,
    the arm with its declared defaults as a read does (SPEC §4.8), and returns
    the fresh arm to populate; a payload-free arm's selector sets the tag alone. */
-static SCHEMA_UNUSED DefaultBulkArm * default_bulk_choice_select_first( DefaultBulkChoice * value )
+static SCHEMA_UNUSED example_default_bulk_arm_t * example_default_bulk_choice_select_first( example_default_bulk_choice_t * value )
 {
-    value->type = DEFAULT_BULK_CHOICE_TYPE_FIRST;
-    value->as.first = new_default_bulk_arm();
+    value->type = EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_FIRST;
+    value->as.first = example_new_default_bulk_arm();
     return &value->as.first;
 }
 
-static SCHEMA_UNUSED DefaultBulkArm * default_bulk_choice_select_second( DefaultBulkChoice * value )
+static SCHEMA_UNUSED example_default_bulk_arm_t * example_default_bulk_choice_select_second( example_default_bulk_choice_t * value )
 {
-    value->type = DEFAULT_BULK_CHOICE_TYPE_SECOND;
-    value->as.second = new_default_bulk_arm();
+    value->type = EXAMPLE_DEFAULT_BULK_CHOICE_TYPE_SECOND;
+    value->as.second = example_new_default_bulk_arm();
     return &value->as.second;
 }
 

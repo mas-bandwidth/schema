@@ -8,6 +8,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `ccommon/` | C/C++ shared emit bits | `go test ./internal/codegen/c` | `go test ./internal/codegen/c` |
 | `cpp/` | C++ packet emitter (reference) | `go test ./internal/codegen/cpp` | `go test ./internal/codegen/cpp` |
 | `cpptable/` | C++ table emitter (reference) | `go test ./internal/codegen/cpptable` | `go test ./internal/codegen/cpptable` |
+| `cqualify/` | C package qualification | `go test ./internal/codegen/cqualify` | `go test ./internal/codegen/cqualify` |
 | `csharp/` | C# packet emitter | `go test ./internal/codegen/csharp` | `go test ./internal/codegen/csharp` |
 | `cstable/` | C# table emitter | `go test ./internal/codegen/cstable` | `go test ./internal/codegen/cstable` |
 | `ctable/` | C table emitter | `go test ./internal/codegen/ctable` | `go test ./internal/codegen/ctable` |

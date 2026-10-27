@@ -2673,21 +2673,35 @@ or a file per declaration where the language demands one.
   variables, so the reflection descriptors and the text form's generic walk
   are DEFINED in the `.c` and only declared in the header, and a translation
   unit that includes the header for the wire codecs pays for neither.
-  **Every external the table backend emits carries the package** —
-  `schema_<package>_<type>_<what>_` — because C has no namespace and two
-  units whose type names collide have to LINK together, which is what the
-  conformance driver itself does. The name-first surface SPEC-TABLES.md §11
-  states is `static` in the header and forwards to them, and it is **spelled in
-  the convention this target's PACKET half already uses** — types PascalCase,
-  functions and file-scope constants snake_case, macros SCREAMING_SNAKE under
-  `SCHEMA_` — so §11's `<Name>Load` is `<name>_load` here, `<name>_from_json`,
-  `<name>_table_type`, `<name>_block_open`. §11 names the SUFFIX SET a
-  declaration may not collide with; each target spells that set in its own
-  language, exactly as Rust spells it `<name>_load` and Go, C# and C++ spell it
-  `<Name>Load`. A table half that spelled C++'s casing in C would be the only
-  place in this compiler where two halves of one target disagree. Two units
-  still cannot be included into ONE translation unit, which is the C target's
-  standing limit and unchanged by tables.
+  **EVERY NAME A C UNIT DECLARES CARRIES ITS PACKAGE**, because C has no
+  namespace: a type is `<package>_<snake>_t` (`Vec3` is `example_vec3_t`), a
+  function or file-scope object `<package>_<name>` (`example_write_vec3`,
+  `example_ship_config_load`), a macro, enumerator or other constant
+  `<PACKAGE>_<NAME>` (`EXAMPLE_MAX_OBJECTS`, `EXAMPLE_SHIP_TYPE_BOMBER`,
+  `EXAMPLE_PROTOCOL_ID`), and a name under the reserved prefix takes the
+  package after it (`SCHEMA_EXAMPLE_…`, `schema_example_…`). The table
+  runtime is spelled the same way — `example_table_report_t`,
+  `example_table_writer_t` — because its types are shaped by the unit (the
+  id vocabulary is sized by the unit's ids, a pointered unit's reader carries
+  members a value-only unit's does not), so two units hold two different
+  definitions of them. Comments, string literals and member names keep the
+  schema's spellings, so reflection and the text form are unchanged, and so is
+  every wire byte. The name-first surface SPEC-TABLES.md §11 states is
+  therefore `<package>_<name>_load`, `<package>_<name>_from_json`,
+  `<package>_<name>_table_type`, `<package>_<name>_block_open`. What is the SAME
+  TEXT in every unit — `SCHEMA_UNUSED`, the inlining and alignment macros, the
+  compile-time assert, the flag-name and UTF-8 helpers — lives in ONE shared
+  header, `SchemaRuntime.h`, emitted beside every unit byte-identically and
+  defined once per translation unit; it carries `SCHEMA_RUNTIME_VERSION`, a
+  hash of its own text, and every generated header checks it with a hard
+  `#error`, so two units from compilers whose shared runtimes differ refuse to
+  meet in one translation unit rather than one silently using the other's.
+  **Two units' headers may therefore share one translation unit** —
+  `test/c-two-units` builds two generations of one schema into one under
+  `-Werror` and carries a value across them — and their `.c` files link into
+  one program. The qualification is one pass over both emitters' output
+  (`internal/codegen/cqualify`), which refuses by name a unit whose names
+  would collide after it.
   **The C target reserves `SCHEMA_` and `schema_`**, and it is the one place a
   generated name and a declared name meet with no compiler between them:
   constants, enum variants and flag masks are all `#define`s here, so a

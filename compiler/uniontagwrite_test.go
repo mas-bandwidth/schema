@@ -49,7 +49,7 @@ type Volley
 // tagAssertsInDebug is the tag's DEBUG-ONLY form in each target that has one:
 // the exact text the writer emits, in that target's own assert idiom.
 var tagAssertsInDebug = map[string][]string{
-	"c":    {"serialize_assert( value->type <= SHOT_TYPE_MAX );"},
+	"c":    {"serialize_assert( value->type <= TAGUNIT_SHOT_TYPE_MAX );"},
 	"cpp":  {"serialize_assert( value.type <= ShotType::Max );"},
 	"cs":   {`Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]");`},
 	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
@@ -62,7 +62,7 @@ var tagAssertsInDebug = map[string][]string{
 // carry. An assert BESIDE a live refusal removes nothing, so none of it may
 // survive.
 var tagGoneFromRelease = map[string][]string{
-	"c":   {"if ( value->type > SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
+	"c":   {"if ( value->type > TAGUNIT_SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
 	"cpp": {"not a ShotType value; nothing was written"},
 	"cs":  {"if (tagValue > 2)"},
 }

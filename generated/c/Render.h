@@ -8,37 +8,41 @@
 #define SCHEMA_EXAMPLE_RENDER_H
 
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 #include "Enums.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define RENDER_BLOCK_MAX_SPRITES (64)
+#define EXAMPLE_RENDER_BLOCK_MAX_SPRITES (64)
 
 /* type RenderSprite */
-typedef struct RenderSprite {
+typedef struct example_render_sprite_t {
     uint64_t sort_key;
     uint32_t mesh_id;
     uint32_t material_id;
     uint8_t layer;
-    Team team;
-} RenderSprite;
+    example_team_t team;
+} example_render_sprite_t;
 
-#define RENDER_SPRITE_MAX_BITS 138   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RENDER_SPRITE_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
+#define EXAMPLE_RENDER_SPRITE_MAX_BITS 138   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_RENDER_SPRITE_MAX_BYTES 24  /* every MAX_BYTES in this file is rounded up to the 8-byte write-buffer granularity; a READ buffer's allocation must extend at least 8 bytes past the data — serialize.c loads 64-bit windows */
 
 
 /* type RenderBlock */
-typedef struct RenderBlock {
+typedef struct example_render_block_t {
     uint32_t worker_index;
     uint32_t sprite_count_hint;
-    RenderSprite sprites[RENDER_BLOCK_MAX_SPRITES];
+    example_render_sprite_t sprites[EXAMPLE_RENDER_BLOCK_MAX_SPRITES];
     int32_t sprites_count;
-} RenderBlock;
+} example_render_block_t;
 
-#define RENDER_BLOCK_MAX_BITS 8903   /* longest wire path; align pads at worst case (SPEC §6.1) */
-#define RENDER_BLOCK_MAX_BYTES 1120
+#define EXAMPLE_RENDER_BLOCK_MAX_BITS 8903   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define EXAMPLE_RENDER_BLOCK_MAX_BYTES 1120
 
 #ifdef __cplusplus
 }

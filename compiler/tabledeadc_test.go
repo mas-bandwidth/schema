@@ -70,7 +70,7 @@ func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 	if err != nil {
 		t.Skip("generated C execution requires cc")
 	}
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -106,7 +106,7 @@ func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 // and that the resulting codecs compile and execute cleanly.
 func TestCTableDeadCheckDefault_Unprobed(t *testing.T) {
 	u := unitFromSource(t, deadCUnprobedSrc)
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
@@ -203,7 +203,7 @@ int main(void) {
 // writer structs, and omitted from unprobeable structs (Outer).
 func TestCTableDeadCheckDefault_Probed(t *testing.T) {
 	u := unitFromSource(t, deadCProbedSrc)
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}

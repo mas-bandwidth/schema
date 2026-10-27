@@ -11,14 +11,6 @@
 #include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,141 +22,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
-#ifndef SCHEMA_UTF8_VALID_DEFINED
-#define SCHEMA_UTF8_VALID_DEFINED
-/* string(N) refuses malformed UTF-8 on read in every build mode (SPEC §4.7).
-   Rejects truncated sequences, bare continuations, overlongs,
-   surrogates and code points past U+10FFFF. */
-static SCHEMA_UNUSED int schema_utf8_valid_( const serialize_uint8_t * bytes, int32_t length )
-{
-    int32_t i = 0;
-    while ( i < length )
-    {
-        serialize_uint8_t lead = bytes[i];
-        int32_t continuations;
-        serialize_uint32_t code_point;
-        int32_t k;
-        if ( lead < 0x80 )
-        {
-            i++;
-            continue;
-        }
-        else if ( ( lead & 0xE0 ) == 0xC0 )
-        {
-            continuations = 1;
-            code_point = lead & 0x1F;
-        }
-        else if ( ( lead & 0xF0 ) == 0xE0 )
-        {
-            continuations = 2;
-            code_point = lead & 0x0F;
-        }
-        else if ( ( lead & 0xF8 ) == 0xF0 )
-        {
-            continuations = 3;
-            code_point = lead & 0x07;
-        }
-        else
-        {
-            return 0;
-        }
-        if ( continuations >= length - i )
-        {
-            return 0;
-        }
-        for ( k = 1; k <= continuations; k++ )
-        {
-            if ( ( bytes[i + k] & 0xC0 ) != 0x80 )
-            {
-                return 0;
-            }
-            code_point = ( code_point << 6 ) | (serialize_uint32_t) ( bytes[i + k] & 0x3F );
-        }
-        if ( continuations == 1 && code_point < 0x80 )
-        {
-            return 0;
-        }
-        if ( continuations == 2 && ( code_point < 0x800 || ( code_point >= 0xD800 && code_point <= 0xDFFF ) ) )
-        {
-            return 0;
-        }
-        if ( continuations == 3 && ( code_point < 0x10000 || code_point > 0x10FFFF ) )
-        {
-            return 0;
-        }
-        i += 1 + continuations;
-    }
-    return 1;
-}
-#endif /* SCHEMA_UTF8_VALID_DEFINED */
-
-#ifndef SCHEMA_INTERIOR_NULL_DEFINED
-#define SCHEMA_INTERIOR_NULL_DEFINED
-/* string(N) carries bytes excluding 0x00: an interior null is content every
-   generated reader refuses (SPEC §4.7) — generated-code validation; no
-   serialize primitive performs it. The scan is word-wise: eight bytes per
-   step under the zero-byte idiom, and a payload of eight bytes or more
-   re-tests its final eight bytes as one whole (overlapping) word, so every
-   load stays inside the payload the stream already delivered. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int schema_interior_null_( const serialize_uint8_t * bytes, int32_t length )
-{
-    serialize_uint64_t word;
-    int32_t i = 0;
-    if ( length >= 8 )
-    {
-        for ( ; i <= length - 8; i += 8 )
-        {
-            memcpy( &word, bytes + i, 8 );
-            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
-            {
-                return 1;
-            }
-        }
-        if ( i < length )
-        {
-            memcpy( &word, bytes + length - 8, 8 );
-            if ( ( ( word - 0x0101010101010101ULL ) & ~word & 0x8080808080808080ULL ) != 0 )
-            {
-                return 1;
-            }
-        }
-        return 0;
-    }
-    for ( ; i < length; i++ )
-    {
-        if ( bytes[i] == 0 )
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-#endif /* SCHEMA_INTERIOR_NULL_DEFINED */
-
 /* Writes ArmsAgree. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arms_agree( serialize_write_stream_t * stream, const ArmsAgree * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arms_agree( serialize_write_stream_t * stream, const example_arms_agree_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
@@ -196,7 +55,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arms_agree( serialize_write
 }
 
 /* Reads ArmsAgree. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_agree( serialize_read_stream_t * stream, ArmsAgree * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_agree( serialize_read_stream_t * stream, example_arms_agree_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -250,7 +109,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_agree( serialize_read_st
 }
 
 /* Writes ArmsDisagree. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arms_disagree( serialize_write_stream_t * stream, const ArmsDisagree * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arms_disagree( serialize_write_stream_t * stream, const example_arms_disagree_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
@@ -282,7 +141,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arms_disagree( serialize_wr
 }
 
 /* Reads ArmsDisagree. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_disagree( serialize_read_stream_t * stream, ArmsDisagree * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_disagree( serialize_read_stream_t * stream, example_arms_disagree_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -336,7 +195,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_disagree( serialize_read
 }
 
 /* Writes ArmEmpty. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_empty( serialize_write_stream_t * stream, const ArmEmpty * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_empty( serialize_write_stream_t * stream, const example_arm_empty_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
@@ -361,7 +220,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_empty( serialize_write_
 }
 
 /* Reads ArmEmpty. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_empty( serialize_read_stream_t * stream, ArmEmpty * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_empty( serialize_read_stream_t * stream, example_arm_empty_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -406,7 +265,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_empty( serialize_read_str
 }
 
 /* Writes ArmsNested. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arms_nested( serialize_write_stream_t * stream, const ArmsNested * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arms_nested( serialize_write_stream_t * stream, const example_arms_nested_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 3 ) )
     {
@@ -452,7 +311,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arms_nested( serialize_writ
 }
 
 /* Reads ArmsNested. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_nested( serialize_read_stream_t * stream, ArmsNested * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arms_nested( serialize_read_stream_t * stream, example_arms_nested_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -532,7 +391,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arms_nested( serialize_read_s
 }
 
 /* Writes ArmAlign. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_align( serialize_write_stream_t * stream, const ArmAlign * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_align( serialize_write_stream_t * stream, const example_arm_align_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
@@ -575,7 +434,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_align( serialize_write_
 }
 
 /* Reads ArmAlign. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_align( serialize_read_stream_t * stream, ArmAlign * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_align( serialize_read_stream_t * stream, example_arm_align_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -603,11 +462,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_align( serialize_read_str
         {
             return 0;
         }
-        if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->s, value->s_length ) )
+        if ( !schema_utf8_valid_( (const uint8_t *) value->s, value->s_length ) )
         {
             return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
         }
-        if ( schema_interior_null_( (const serialize_uint8_t *) value->s, value->s_length ) )
+        if ( schema_interior_null_( (const uint8_t *) value->s, value->s_length ) )
         {
             return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
         }
@@ -639,7 +498,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_align( serialize_read_str
 }
 
 /* Writes ArmArray. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_array( serialize_write_stream_t * stream, const ArmArray * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arm_array( serialize_write_stream_t * stream, const example_arm_array_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
@@ -683,7 +542,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_array( serialize_write_
 }
 
 /* Reads ArmArray. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_array( serialize_read_stream_t * stream, ArmArray * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arm_array( serialize_read_stream_t * stream, example_arm_array_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -750,7 +609,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arm_array( serialize_read_str
 }
 
 /* Writes Narrow. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_narrow( serialize_write_stream_t * stream, const Narrow * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_narrow( serialize_write_stream_t * stream, const example_narrow_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->n, 3 ) )
     {
@@ -760,7 +619,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_narrow( serialize_write_str
 }
 
 /* Reads Narrow. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow( serialize_read_stream_t * stream, Narrow * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_narrow( serialize_read_stream_t * stream, example_narrow_t * value )
 {
     /* fixed 3-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 3 )
@@ -780,7 +639,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_narrow( serialize_read_stream
 }
 
 /* Writes Wide. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide( serialize_write_stream_t * stream, const Wide * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_wide( serialize_write_stream_t * stream, const example_wide_t * value )
 {
     {
         serialize_uint64_t bits_value = (serialize_uint64_t) value->w;
@@ -797,7 +656,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide( serialize_write_strea
 }
 
 /* Reads Wide. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide( serialize_read_stream_t * stream, Wide * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_wide( serialize_read_stream_t * stream, example_wide_t * value )
 {
     /* fixed 37-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 37 )
@@ -822,9 +681,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide( serialize_read_stream_t
 }
 
 /* Writes Uneven. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_uneven( serialize_write_stream_t * stream, const Uneven * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_uneven( serialize_write_stream_t * stream, const example_uneven_t * value )
 {
-    serialize_assert( value->type <= UNEVEN_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
+    serialize_assert( value->type <= EXAMPLE_UNEVEN_TYPE_MAX ); /* an out-of-set tag is caller error (SPEC §4.8, §5) */
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->type, 2 ) )
     {
         return 0;
@@ -832,16 +691,16 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_uneven( serialize_write_str
     switch ( value->type )
     {
         case 1:
-            return write_narrow( stream, &value->as.narrow );
+            return example_write_narrow( stream, &value->as.narrow );
         case 2:
-            return write_wide( stream, &value->as.wide );
+            return example_write_wide( stream, &value->as.wide );
         default:
             return 1; /* None — the tag is the whole wire (SPEC §4.8) */
     }
 }
 
 /* Reads Uneven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_uneven( serialize_read_stream_t * stream, Uneven * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_uneven( serialize_read_stream_t * stream, example_uneven_t * value )
 {
     {
         serialize_uint32_t tag_value = 0;
@@ -849,33 +708,33 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_uneven( serialize_read_stream
         {
             return 0;
         }
-        if ( tag_value > UNEVEN_TYPE_MAX )
+        if ( tag_value > EXAMPLE_UNEVEN_TYPE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal tag */
         }
-        value->type = (UnevenType) tag_value;
+        value->type = (example_uneven_type_t) tag_value;
     }
     switch ( value->type )
     {
         case 1:
             memset( &value->as.narrow, 0, sizeof( value->as.narrow ) );
-            return read_narrow( stream, &value->as.narrow );
+            return example_read_narrow( stream, &value->as.narrow );
         case 2:
             memset( &value->as.wide, 0, sizeof( value->as.wide ) );
-            return read_wide( stream, &value->as.wide );
+            return example_read_wide( stream, &value->as.wide );
         default:
             return 1; /* None */
     }
 }
 
 /* Writes HoldsUneven. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_holds_uneven( serialize_write_stream_t * stream, const HoldsUneven * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_holds_uneven( serialize_write_stream_t * stream, const example_holds_uneven_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
         return 0;
     }
-    if ( !write_uneven( stream, &value->u ) )
+    if ( !example_write_uneven( stream, &value->u ) )
     {
         return 0;
     }
@@ -887,7 +746,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_holds_uneven( serialize_wri
 }
 
 /* Reads HoldsUneven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_holds_uneven( serialize_read_stream_t * stream, HoldsUneven * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_holds_uneven( serialize_read_stream_t * stream, example_holds_uneven_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -897,7 +756,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_holds_uneven( serialize_read_
         }
         value->lead = (uint32_t) raw;
     }
-    if ( !read_uneven( stream, &value->u ) )
+    if ( !example_read_uneven( stream, &value->u ) )
     {
         return 0;
     }
@@ -913,7 +772,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_holds_uneven( serialize_read_
 }
 
 /* Writes ArrUneven. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_uneven( serialize_write_stream_t * stream, const ArrUneven * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_arr_uneven( serialize_write_stream_t * stream, const example_arr_uneven_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
@@ -928,7 +787,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_uneven( serialize_write
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( !write_uneven( stream, &value->items[i] ) )
+            if ( !example_write_uneven( stream, &value->items[i] ) )
             {
                 return 0;
             }
@@ -942,7 +801,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arr_uneven( serialize_write
 }
 
 /* Reads ArrUneven. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arr_uneven( serialize_read_stream_t * stream, ArrUneven * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_arr_uneven( serialize_read_stream_t * stream, example_arr_uneven_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -960,7 +819,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arr_uneven( serialize_read_st
         int32_t i;
         for ( i = 0; i < value->items_count; i++ )
         {
-            if ( !read_uneven( stream, &value->items[i] ) )
+            if ( !example_read_uneven( stream, &value->items[i] ) )
             {
                 return 0;
             }
@@ -978,7 +837,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_arr_uneven( serialize_read_st
 }
 
 /* Writes RegainAfterAlign. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_regain_after_align( serialize_write_stream_t * stream, const RegainAfterAlign * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_regain_after_align( serialize_write_stream_t * stream, const example_regain_after_align_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->lead, 5 ) )
     {
@@ -1035,7 +894,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_regain_after_align( seriali
 }
 
 /* Reads RegainAfterAlign. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_regain_after_align( serialize_read_stream_t * stream, RegainAfterAlign * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_regain_after_align( serialize_read_stream_t * stream, example_regain_after_align_t * value )
 {
     {
         serialize_uint32_t raw = 0;
@@ -1073,11 +932,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_regain_after_align( serialize
     {
         return 0;
     }
-    if ( !schema_utf8_valid_( (const serialize_uint8_t *) value->s, value->s_length ) )
+    if ( !schema_utf8_valid_( (const uint8_t *) value->s, value->s_length ) )
     {
         return serialize_read_fail( stream ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */
     }
-    if ( schema_interior_null_( (const serialize_uint8_t *) value->s, value->s_length ) )
+    if ( schema_interior_null_( (const uint8_t *) value->s, value->s_length ) )
     {
         return serialize_read_fail( stream ); /* an interior null is content the read refuses (SPEC §4.7) */
     }

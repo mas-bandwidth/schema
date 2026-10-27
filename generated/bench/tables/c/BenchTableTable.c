@@ -29,21 +29,21 @@
    last-wins and counted; a key present with the wrong JSON type is skipped
    and counted, never coerced. */
 
-#define kTableJsonMaxDepth 128
+#define BENCHTABLE_K_TABLE_JSON_MAX_DEPTH 128
 
 /* A key longer than this cannot name a field, so it is skipped as unknown. */
-#define kTableJsonMaxKey 256
+#define BENCHTABLE_K_TABLE_JSON_MAX_KEY 256
 
 /* The longest numeric token the walk will convert. Anything longer is a
    value no field can hold and counts as a kind mismatch. */
-#define kTableJsonMaxNumber 512
+#define BENCHTABLE_K_TABLE_JSON_MAX_NUMBER 512
 
 /* The decimal point the C runtime is CURRENTLY using. Number conversion is
    the one locale-sensitive corner of the grammar — JSON's point is always
    '.', the runtime's is whatever the program set — so every number crosses
    this one character on the way out and on the way back in. Nothing else in
    the walk consults the locale. */
-static SCHEMA_UNUSED char table_json_decimal_point( void )
+static SCHEMA_UNUSED char benchtable_table_json_decimal_point( void )
 {
     const struct lconv * conv = localeconv();
     if ( conv != NULL && conv->decimal_point != NULL && conv->decimal_point[0] != 0 )
@@ -59,7 +59,7 @@ static SCHEMA_UNUSED char table_json_decimal_point( void )
 
 /* finite: not a NaN, not an infinity. Written without <math.h> — the walk's
    runtime surface stays the handful of functions it already names. */
-static SCHEMA_UNUSED int table_json_finite( double v )
+static SCHEMA_UNUSED int benchtable_table_json_finite( double v )
 {
     return v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
 }
@@ -72,19 +72,19 @@ static SCHEMA_UNUSED int table_json_finite( double v )
    "???" — and it is not a name: writing it would put a spelling in the text
    that the reader then counts as unknown, turning a refusal into a silent
    loss. */
-static SCHEMA_UNUSED const char * table_json_variant_name( const TableFieldInfo * f, uint64_t value )
+static SCHEMA_UNUSED const char * benchtable_table_json_variant_name( const benchtable_table_field_info_t * f, uint64_t value )
 {
     if ( f->variants == NULL || f->enum_max < 0 || value > (uint64_t) f->enum_max ) { return NULL; }
     return f->variants[value].name;
 }
 
-static SCHEMA_UNUSED const char * table_json_key_name( const TableFieldInfo * f, uint64_t key )
+static SCHEMA_UNUSED const char * benchtable_table_json_key_name( const benchtable_table_field_info_t * f, uint64_t key )
 {
     if ( f->keys == NULL || f->key_max < 0 || key > (uint64_t) f->key_max ) { return NULL; }
     return f->keys[key].name;
 }
 
-static SCHEMA_UNUSED uint64_t table_json_get_raw( const void * storage, uint32_t width )
+static SCHEMA_UNUSED uint64_t benchtable_table_json_get_raw( const void * storage, uint32_t width )
 {
     switch ( width )
     {
@@ -97,7 +97,7 @@ static SCHEMA_UNUSED uint64_t table_json_get_raw( const void * storage, uint32_t
     return 0;
 }
 
-static SCHEMA_UNUSED void table_json_set_raw( void * storage, uint32_t width, uint64_t value )
+static SCHEMA_UNUSED void benchtable_table_json_set_raw( void * storage, uint32_t width, uint64_t value )
 {
     switch ( width )
     {
@@ -109,9 +109,9 @@ static SCHEMA_UNUSED void table_json_set_raw( void * storage, uint32_t width, ui
     }
 }
 
-static SCHEMA_UNUSED int64_t table_json_get_signed( const void * storage, uint32_t width )
+static SCHEMA_UNUSED int64_t benchtable_table_json_get_signed( const void * storage, uint32_t width )
 {
-    uint64_t raw = table_json_get_raw( storage, width );
+    uint64_t raw = benchtable_table_json_get_raw( storage, width );
     if ( width < 8 )
     {
         uint64_t sign = (uint64_t) 1 << ( width * 8 - 1 );
@@ -123,30 +123,30 @@ static SCHEMA_UNUSED int64_t table_json_get_signed( const void * storage, uint32
     return (int64_t) raw;
 }
 
-typedef struct TableJsonWide
+typedef struct benchtable_table_json_wide_t
 {
     uint64_t lo;
     uint64_t hi;
-} TableJsonWide;
+} benchtable_table_json_wide_t;
 
-static SCHEMA_UNUSED int table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
-static SCHEMA_UNUSED int table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
-static SCHEMA_UNUSED int table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
+static SCHEMA_UNUSED int benchtable_table_json_kind_wide( uint8_t kind ) { return kind >= 18 && kind <= 29; }
+static SCHEMA_UNUSED int benchtable_table_json_kind_wide_signed( uint8_t kind ) { return kind == 18 || ( kind >= 20 && kind <= 24 ); }
+static SCHEMA_UNUSED int benchtable_table_json_kind_fixed( uint8_t kind ) { return kind >= 20 && kind <= 29; }
 
-static SCHEMA_UNUSED int table_json_wide_zero( TableJsonWide v ) { return v.lo == 0 && v.hi == 0; }
-static SCHEMA_UNUSED int table_json_wide_negative( TableJsonWide v ) { return ( v.hi >> 63 ) != 0; }
+static SCHEMA_UNUSED int benchtable_table_json_wide_zero( benchtable_table_json_wide_t v ) { return v.lo == 0 && v.hi == 0; }
+static SCHEMA_UNUSED int benchtable_table_json_wide_negative( benchtable_table_json_wide_t v ) { return ( v.hi >> 63 ) != 0; }
 
-static SCHEMA_UNUSED int table_json_wide_compare( TableJsonWide a, TableJsonWide b, int is_signed )
+static SCHEMA_UNUSED int benchtable_table_json_wide_compare( benchtable_table_json_wide_t a, benchtable_table_json_wide_t b, int is_signed )
 {
-    if ( is_signed && table_json_wide_negative( a ) != table_json_wide_negative( b ) ) { return table_json_wide_negative( a ) ? -1 : 1; }
+    if ( is_signed && benchtable_table_json_wide_negative( a ) != benchtable_table_json_wide_negative( b ) ) { return benchtable_table_json_wide_negative( a ) ? -1 : 1; }
     if ( a.hi != b.hi ) { return a.hi < b.hi ? -1 : 1; }
     if ( a.lo != b.lo ) { return a.lo < b.lo ? -1 : 1; }
     return 0;
 }
 
-static SCHEMA_UNUSED TableJsonWide table_json_wide_shl( TableJsonWide v, int n )
+static SCHEMA_UNUSED benchtable_table_json_wide_t benchtable_table_json_wide_shl( benchtable_table_json_wide_t v, int n )
 {
-    TableJsonWide r = { 0, 0 };
+    benchtable_table_json_wide_t r = { 0, 0 };
     if ( n <= 0 ) { return v; }
     if ( n >= 128 ) { return r; }
     if ( n >= 64 ) { r.hi = v.lo << ( n - 64 ); return r; }
@@ -155,9 +155,9 @@ static SCHEMA_UNUSED TableJsonWide table_json_wide_shl( TableJsonWide v, int n )
     return r;
 }
 
-static SCHEMA_UNUSED TableJsonWide table_json_wide_shr( TableJsonWide v, int n )
+static SCHEMA_UNUSED benchtable_table_json_wide_t benchtable_table_json_wide_shr( benchtable_table_json_wide_t v, int n )
 {
-    TableJsonWide r = { 0, 0 };
+    benchtable_table_json_wide_t r = { 0, 0 };
     if ( n <= 0 ) { return v; }
     if ( n >= 128 ) { return r; }
     if ( n >= 64 ) { r.lo = v.hi >> ( n - 64 ); return r; }
@@ -166,16 +166,16 @@ static SCHEMA_UNUSED TableJsonWide table_json_wide_shr( TableJsonWide v, int n )
     return r;
 }
 
-static SCHEMA_UNUSED TableJsonWide table_json_wide_neg( TableJsonWide v )
+static SCHEMA_UNUSED benchtable_table_json_wide_t benchtable_table_json_wide_neg( benchtable_table_json_wide_t v )
 {
-    TableJsonWide r;
+    benchtable_table_json_wide_t r;
     r.lo = ~v.lo + 1;
     r.hi = ~v.hi + ( r.lo == 0 ? 1 : 0 );
     return r;
 }
 
 // v = v * m + a; the return is the carry out of 128 bits
-static SCHEMA_UNUSED uint32_t table_json_wide_mul_add( TableJsonWide * v, uint32_t m, uint32_t a )
+static SCHEMA_UNUSED uint32_t benchtable_table_json_wide_mul_add( benchtable_table_json_wide_t * v, uint32_t m, uint32_t a )
 {
     uint64_t limb[4] = { v->lo & 0xffffffffull, v->lo >> 32, v->hi & 0xffffffffull, v->hi >> 32 };
     uint64_t carry = a;
@@ -191,7 +191,7 @@ static SCHEMA_UNUSED uint32_t table_json_wide_mul_add( TableJsonWide * v, uint32
 }
 
 // v = v / d; the return is the remainder
-static SCHEMA_UNUSED uint32_t table_json_wide_div( TableJsonWide * v, uint32_t d )
+static SCHEMA_UNUSED uint32_t benchtable_table_json_wide_div( benchtable_table_json_wide_t * v, uint32_t d )
 {
     uint64_t limb[4] = { v->lo & 0xffffffffull, v->lo >> 32, v->hi & 0xffffffffull, v->hi >> 32 };
     uint64_t rem = 0;
@@ -210,9 +210,9 @@ static SCHEMA_UNUSED uint32_t table_json_wide_div( TableJsonWide * v, uint32_t d
 // pair — native __int128 in the host's byte order, or the emulated struct with
 // its low lane first — so the lanes are read in the host's order; a narrower
 // storage is one lane, sign-extended for a signed kind.
-static SCHEMA_UNUSED TableJsonWide table_json_wide_load( const void * storage, uint32_t width, int is_signed )
+static SCHEMA_UNUSED benchtable_table_json_wide_t benchtable_table_json_wide_load( const void * storage, uint32_t width, int is_signed )
 {
-    TableJsonWide v = { 0, 0 };
+    benchtable_table_json_wide_t v = { 0, 0 };
     if ( width == 16 )
     {
         uint64_t half[2];
@@ -220,12 +220,12 @@ static SCHEMA_UNUSED TableJsonWide table_json_wide_load( const void * storage, u
         v.lo = half[0]; v.hi = half[1];
         return v;
     }
-    v.lo = is_signed ? (uint64_t) table_json_get_signed( storage, width ) : table_json_get_raw( storage, width );
+    v.lo = is_signed ? (uint64_t) benchtable_table_json_get_signed( storage, width ) : benchtable_table_json_get_raw( storage, width );
     v.hi = ( is_signed && ( v.lo >> 63 ) != 0 ) ? ~(uint64_t) ( 0 ) : 0;
     return v;
 }
 
-static SCHEMA_UNUSED void table_json_wide_store( void * storage, uint32_t width, TableJsonWide v )
+static SCHEMA_UNUSED void benchtable_table_json_wide_store( void * storage, uint32_t width, benchtable_table_json_wide_t v )
 {
     if ( width == 16 )
     {
@@ -234,14 +234,14 @@ static SCHEMA_UNUSED void table_json_wide_store( void * storage, uint32_t width,
         memcpy( storage, half, 16 );
         return;
     }
-    table_json_set_raw( storage, width, v.lo );
+    benchtable_table_json_set_raw( storage, width, v.lo );
 }
 
 
 /* a counted field's companion: a string's length, a bytes' length, a counted
    array's count. Bounded by the declared extent on the way out, so a storage
    invariant a caller broke cannot walk off the end of the array. */
-static SCHEMA_UNUSED int32_t table_json_count( const void * base, const TableFieldInfo * f )
+static SCHEMA_UNUSED int32_t benchtable_table_json_count( const void * base, const benchtable_table_field_info_t * f )
 {
     int32_t count = 0;
     if ( !f->counted )
@@ -254,7 +254,7 @@ static SCHEMA_UNUSED int32_t table_json_count( const void * base, const TableFie
     return count;
 }
 
-static SCHEMA_UNUSED void table_json_set_count( void * base, const TableFieldInfo * f, int32_t count )
+static SCHEMA_UNUSED void benchtable_table_json_set_count( void * base, const benchtable_table_field_info_t * f, int32_t count )
 {
     if ( f->counted )
     {
@@ -276,7 +276,7 @@ static SCHEMA_UNUSED void table_json_set_count( void * base, const TableFieldInf
    bytes(N) is the one kind whose element kind does not decide its form: it
    shares u8 with a plain array of u8, and rides as base64. The schema type
    name settles it, and "bytes" is a keyword no declaration can claim. */
-static SCHEMA_UNUSED int table_json_is_bytes( const TableFieldInfo * f )
+static SCHEMA_UNUSED int benchtable_table_json_is_bytes( const benchtable_table_field_info_t * f )
 {
     return f->is_array && f->kind == 6 && strcmp( f->type_name, "bytes" ) == 0;
 }
@@ -284,7 +284,7 @@ static SCHEMA_UNUSED int table_json_is_bytes( const TableFieldInfo * f )
 /* An ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): its JSON form is an OBJECT
    keyed by variant name, not a positional array, because that is what the
    storage is — one slot per variant, addressed by the variant. */
-static SCHEMA_UNUSED int table_json_is_keyed( const TableFieldInfo * f )
+static SCHEMA_UNUSED int benchtable_table_json_is_keyed( const benchtable_table_field_info_t * f )
 {
     return f->keys != NULL;
 }
@@ -292,7 +292,7 @@ static SCHEMA_UNUSED int table_json_is_keyed( const TableFieldInfo * f )
 /* THE KEY A STORAGE SLOT HOLDS (§2.4, §8): the storage shifts left, so slot i
    holds the key i + 1 and nothing is stored for None. This is the ONE place
    the walker spells the shift. */
-static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
+static SCHEMA_UNUSED uint64_t benchtable_table_json_keyed_slot_key( int64_t slot )
 {
     return (uint64_t) ( slot + 1 );
 }
@@ -301,45 +301,45 @@ static SCHEMA_UNUSED uint64_t table_json_keyed_slot_key( int64_t slot )
    [0, array_bound) does, unless the enum carries max-headroom variants outside
    a table closure. Such headroom has no declared name. A full identity may
    be zero, so identity alone cannot distinguish a valid key. */
-static SCHEMA_UNUSED int table_json_keyed_slot_valid( const TableFieldInfo * f, int64_t slot )
+static SCHEMA_UNUSED int benchtable_table_json_keyed_slot_valid( const benchtable_table_field_info_t * f, int64_t slot )
 {
-    return table_json_key_name( f, table_json_keyed_slot_key( slot ) ) != NULL;
+    return benchtable_table_json_key_name( f, benchtable_table_json_keyed_slot_key( slot ) ) != NULL;
 }
 
-static SCHEMA_UNUSED int table_json_is_flags( const TableFieldInfo * f )
+static SCHEMA_UNUSED int benchtable_table_json_is_flags( const benchtable_table_field_info_t * f )
 {
     return f->variants != NULL && !f->has_variant_ids;
 }
 
-static SCHEMA_UNUSED int table_json_is_enum( const TableFieldInfo * f )
+static SCHEMA_UNUSED int benchtable_table_json_is_enum( const benchtable_table_field_info_t * f )
 {
     return f->variants != NULL && f->has_variant_ids && f->arms == NULL;
 }
 
-static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
+static SCHEMA_UNUSED char benchtable_table_json_shape( const benchtable_table_field_info_t * f )
 {
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
-    if ( table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
-    if ( table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
+    if ( benchtable_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
+    if ( benchtable_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
     if ( f->sequence==2 ) { return 'o'; }
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
-    if ( table_json_is_enum( f ) ) { return 's'; }
-    if ( table_json_is_flags( f ) ) { return 'a'; }
+    if ( benchtable_table_json_is_enum( f ) ) { return 's'; }
+    if ( benchtable_table_json_is_flags( f ) ) { return 'a'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
 
 /* the ELEMENT shape of an array field — the same classifier one level down */
-static SCHEMA_UNUSED char table_json_element_shape( const TableFieldInfo * f )
+static SCHEMA_UNUSED char benchtable_table_json_element_shape( const benchtable_table_field_info_t * f )
 {
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
     if ( f->kind == 13 ) { return 'o'; }
-    if ( table_json_is_enum( f ) ) { return 's'; }
-    if ( table_json_is_flags( f ) ) { return 'a'; }
+    if ( benchtable_table_json_is_enum( f ) ) { return 's'; }
+    if ( benchtable_table_json_is_flags( f ) ) { return 'a'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -351,7 +351,7 @@ static SCHEMA_UNUSED char table_json_element_shape( const TableFieldInfo * f )
    "active && has_target"), so evaluating it is a walk of the same
    descriptor. Nothing is inferred in the other direction: reading places
    every key it can name, and the guard is a plain bool key (§16.2). */
-static SCHEMA_UNUSED int table_json_guard_holds( const void * base, const TableTypeInfo * info, const char * guard )
+static SCHEMA_UNUSED int benchtable_table_json_guard_holds( const void * base, const benchtable_table_type_info_t * info, const char * guard )
 {
     const char * p = guard;
     for ( ;; )
@@ -369,10 +369,10 @@ static SCHEMA_UNUSED int table_json_guard_holds( const void * base, const TableT
         length = (size_t) ( p - start );
         for ( i = 0; i < info->num_fields; i++ )
         {
-            const TableFieldInfo * f = &info->fields[i];
+            const benchtable_table_field_info_t * f = &info->fields[i];
             if ( strlen( f->name ) == length && strncmp( f->name, start, length ) == 0 )
             {
-                value = table_json_get_raw( (const uint8_t *) base + f->offset, f->elem_size ) != 0;
+                value = benchtable_table_json_get_raw( (const uint8_t *) base + f->offset, f->elem_size ) != 0;
                 break;
             }
         }
@@ -385,16 +385,16 @@ static SCHEMA_UNUSED int table_json_guard_holds( const void * base, const TableT
    The writer sink MEASURES when the buffer is NULL and WRITES when it is
    not, over one code path — so measure and write agree byte for byte, the
    wire's invariant (§9) carried across. */
-typedef struct TableJsonOut
+typedef struct benchtable_table_json_out_t
 {
     char * buffer;
     int64_t capacity;
     int64_t offset;
     int overflow;
     void * graph;
-} TableJsonOut;
+} benchtable_table_json_out_t;
 
-static SCHEMA_UNUSED void table_json_raw( TableJsonOut * out, const char * data, int64_t count )
+static SCHEMA_UNUSED void benchtable_table_json_raw( benchtable_table_json_out_t * out, const char * data, int64_t count )
 {
     if ( out->buffer != NULL )
     {
@@ -404,24 +404,24 @@ static SCHEMA_UNUSED void table_json_raw( TableJsonOut * out, const char * data,
     out->offset += count;
 }
 
-static SCHEMA_UNUSED void table_json_put( TableJsonOut * out, char c ) { table_json_raw( out, &c, 1 ); }
+static SCHEMA_UNUSED void benchtable_table_json_put( benchtable_table_json_out_t * out, char c ) { benchtable_table_json_raw( out, &c, 1 ); }
 
-static SCHEMA_UNUSED void table_json_text( TableJsonOut * out, const char * s ) { table_json_raw( out, s, (int64_t) strlen( s ) ); }
+static SCHEMA_UNUSED void benchtable_table_json_text( benchtable_table_json_out_t * out, const char * s ) { benchtable_table_json_raw( out, s, (int64_t) strlen( s ) ); }
 
-static SCHEMA_UNUSED void table_json_line( TableJsonOut * out, int32_t depth )
+static SCHEMA_UNUSED void benchtable_table_json_line( benchtable_table_json_out_t * out, int32_t depth )
 {
     int32_t i;
-    table_json_put( out, '\n' );
-    for ( i = 0; i < depth; i++ ) { table_json_raw( out, "  ", 2 ); }
+    benchtable_table_json_put( out, '\n' );
+    for ( i = 0; i < depth; i++ ) { benchtable_table_json_raw( out, "  ", 2 ); }
 }
 
-static SCHEMA_UNUSED const char * table_json_base64_alphabet( void )
+static SCHEMA_UNUSED const char * benchtable_table_json_base64_alphabet( void )
 {
     return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 }
 
 /* Byte-indexed sextets; -1 is invalid, including NUL and high bytes. */
-static SCHEMA_UNUSED int32_t table_json_base64_value( uint8_t c )
+static SCHEMA_UNUSED int32_t benchtable_table_json_base64_value( uint8_t c )
 {
     static const int8_t values[256] = {
         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -444,11 +444,11 @@ static SCHEMA_UNUSED int32_t table_json_base64_value( uint8_t c )
     return values[c];
 }
 
-static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uint8_t * data, int32_t length )
+static SCHEMA_UNUSED void benchtable_table_json_write_base64( benchtable_table_json_out_t * out, const uint8_t * data, int32_t length )
 {
-    const char * alphabet = table_json_base64_alphabet();
+    const char * alphabet = benchtable_table_json_base64_alphabet();
     int32_t i = 0;
-    table_json_put( out, '"' );
+    benchtable_table_json_put( out, '"' );
     for ( ; length - i >= 3; i += 3 )
     {
         uint32_t triple = ( (uint32_t) data[i] << 16 ) | ( (uint32_t) data[i+1] << 8 ) | (uint32_t) data[i+2];
@@ -457,7 +457,7 @@ static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uin
         quad[1] = alphabet[ ( triple >> 12 ) & 0x3f ];
         quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ];
         quad[3] = alphabet[ triple & 0x3f ];
-        table_json_raw( out, quad, 4 );
+        benchtable_table_json_raw( out, quad, 4 );
     }
     if ( i < length )
     {
@@ -470,15 +470,15 @@ static SCHEMA_UNUSED void table_json_write_base64( TableJsonOut * out, const uin
         quad[2] = '=';
         quad[3] = '=';
         if ( left == 2 ) { quad[2] = alphabet[ ( triple >> 6 ) & 0x3f ]; }
-        table_json_raw( out, quad, 4 );
+        benchtable_table_json_raw( out, quad, 4 );
     }
-    table_json_put( out, '"' );
+    benchtable_table_json_put( out, '"' );
 }
 
 /* One UTF-8 sequence at s, or -1 when the bytes there are not one. Rejects
    the lot: a stray continuation, an overlong form, a surrogate half, and
    anything past U+10FFFF. */
-static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining, int32_t * width )
+static SCHEMA_UNUSED int32_t benchtable_table_json_utf8( const char * s, int32_t remaining, int32_t * width )
 {
     unsigned char lead = (unsigned char) s[0];
     int32_t want = 0;
@@ -507,60 +507,60 @@ static SCHEMA_UNUSED int32_t table_json_utf8( const char * s, int32_t remaining,
 /* A JSON text must be valid UTF-8 (RFC 8259 section 8.1). Caller-filled storage can still contain
    invalid bytes; write each such byte as U+FFFD rather than emitting invalid
    JSON. The text reader also replaces ill-formed sequences before clamping. */
-static SCHEMA_UNUSED void table_json_write_string( TableJsonOut * out, const char * s, int32_t length )
+static SCHEMA_UNUSED void benchtable_table_json_write_string( benchtable_table_json_out_t * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
     int32_t i;
-    table_json_put( out, '"' );
+    benchtable_table_json_put( out, '"' );
     for ( i = 0; i < length; i++ )
     {
         unsigned char c = (unsigned char) s[i];
         switch ( c )
         {
-            case '"':  table_json_raw( out, "\\\"", 2 ); break;
-            case '\\': table_json_raw( out, "\\\\", 2 ); break;
-            case '\b': table_json_raw( out, "\\b", 2 ); break;
-            case '\f': table_json_raw( out, "\\f", 2 ); break;
-            case '\n': table_json_raw( out, "\\n", 2 ); break;
-            case '\r': table_json_raw( out, "\\r", 2 ); break;
-            case '\t': table_json_raw( out, "\\t", 2 ); break;
+            case '"':  benchtable_table_json_raw( out, "\\\"", 2 ); break;
+            case '\\': benchtable_table_json_raw( out, "\\\\", 2 ); break;
+            case '\b': benchtable_table_json_raw( out, "\\b", 2 ); break;
+            case '\f': benchtable_table_json_raw( out, "\\f", 2 ); break;
+            case '\n': benchtable_table_json_raw( out, "\\n", 2 ); break;
+            case '\r': benchtable_table_json_raw( out, "\\r", 2 ); break;
+            case '\t': benchtable_table_json_raw( out, "\\t", 2 ); break;
             default:
                 if ( c < 0x20 )
                 {
                     char escape[6];
                     escape[0] = '\\'; escape[1] = 'u'; escape[2] = '0'; escape[3] = '0';
                     escape[4] = hex[ c >> 4 ]; escape[5] = hex[ c & 0xf ];
-                    table_json_raw( out, escape, 6 );
+                    benchtable_table_json_raw( out, escape, 6 );
                 }
                 else if ( c < 0x80 )
                 {
-                    table_json_put( out, (char) c );
+                    benchtable_table_json_put( out, (char) c );
                 }
                 else
                 {
                     int32_t width = 0;
-                    if ( table_json_utf8( s + i, length - i, &width ) < 0 )
+                    if ( benchtable_table_json_utf8( s + i, length - i, &width ) < 0 )
                     {
-                        table_json_raw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
+                        benchtable_table_json_raw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
                     }
                     else
                     {
-                        table_json_raw( out, s + i, width );
+                        benchtable_table_json_raw( out, s + i, width );
                         i += width - 1;
                     }
                 }
                 break;
         }
     }
-    table_json_put( out, '"' );
+    benchtable_table_json_put( out, '"' );
 }
 
-static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit );
+static SCHEMA_UNUSED int32_t benchtable_table_json_encode_utf8( uint32_t code, char * unit );
 
-static SCHEMA_UNUSED void table_json_write_w_string( TableJsonOut * out, const uint16_t * s, int32_t length )
+static SCHEMA_UNUSED void benchtable_table_json_write_w_string( benchtable_table_json_out_t * out, const uint16_t * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
-    table_json_put( out, '"' );
+    benchtable_table_json_put( out, '"' );
     for ( int32_t i = 0; i < length; i++ )
     {
         uint32_t code = (uint32_t) (uint16_t) s[i];
@@ -576,30 +576,30 @@ static SCHEMA_UNUSED void table_json_write_w_string( TableJsonOut * out, const u
         if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; } // an unpaired surrogate
         switch ( code )
         {
-            case '"':  table_json_raw( out, "\\\"", 2 ); continue;
-            case '\\': table_json_raw( out, "\\\\", 2 ); continue;
-            case '\b': table_json_raw( out, "\\b", 2 ); continue;
-            case '\f': table_json_raw( out, "\\f", 2 ); continue;
-            case '\n': table_json_raw( out, "\\n", 2 ); continue;
-            case '\r': table_json_raw( out, "\\r", 2 ); continue;
-            case '\t': table_json_raw( out, "\\t", 2 ); continue;
+            case '"':  benchtable_table_json_raw( out, "\\\"", 2 ); continue;
+            case '\\': benchtable_table_json_raw( out, "\\\\", 2 ); continue;
+            case '\b': benchtable_table_json_raw( out, "\\b", 2 ); continue;
+            case '\f': benchtable_table_json_raw( out, "\\f", 2 ); continue;
+            case '\n': benchtable_table_json_raw( out, "\\n", 2 ); continue;
+            case '\r': benchtable_table_json_raw( out, "\\r", 2 ); continue;
+            case '\t': benchtable_table_json_raw( out, "\\t", 2 ); continue;
             default: break;
         }
         if ( code < 0x20 )
         {
             char escape[6] = { '\\', 'u', '0', '0', hex[ code >> 4 ], hex[ code & 0xf ] };
-            table_json_raw( out, escape, 6 );
+            benchtable_table_json_raw( out, escape, 6 );
             continue;
         }
         char encoded[4];
-        const int32_t encoded_length = table_json_encode_utf8( code, encoded );
-        table_json_raw( out, encoded, encoded_length );
+        const int32_t encoded_length = benchtable_table_json_encode_utf8( code, encoded );
+        benchtable_table_json_raw( out, encoded, encoded_length );
     }
-    table_json_put( out, '"' );
+    benchtable_table_json_put( out, '"' );
 }
 
 
-static SCHEMA_UNUSED void table_json_write_unsigned( TableJsonOut * out, uint64_t value )
+static SCHEMA_UNUSED void benchtable_table_json_write_unsigned( benchtable_table_json_out_t * out, uint64_t value )
 {
     char digits[24];
     char text[24];
@@ -611,18 +611,18 @@ static SCHEMA_UNUSED void table_json_write_unsigned( TableJsonOut * out, uint64_
         value /= 10;
     } while ( value != 0 );
     for ( i = 0; i < n; i++ ) { text[i] = digits[n - 1 - i]; }
-    table_json_raw( out, text, n );
+    benchtable_table_json_raw( out, text, n );
 }
 
-static SCHEMA_UNUSED void table_json_write_signed( TableJsonOut * out, int64_t value )
+static SCHEMA_UNUSED void benchtable_table_json_write_signed( benchtable_table_json_out_t * out, int64_t value )
 {
     if ( value < 0 )
     {
-        table_json_put( out, '-' );
-        table_json_write_unsigned( out, (uint64_t) 0 - (uint64_t) value );
+        benchtable_table_json_put( out, '-' );
+        benchtable_table_json_write_unsigned( out, (uint64_t) 0 - (uint64_t) value );
         return;
     }
-    table_json_write_unsigned( out, (uint64_t) value );
+    benchtable_table_json_write_unsigned( out, (uint64_t) value );
 }
 
 /* A float writes at the SHORTEST precision that reads back as the same value
@@ -630,53 +630,53 @@ static SCHEMA_UNUSED void table_json_write_signed( TableJsonOut * out, int64_t v
    readable. Non-finite values have no JSON spelling at all, and the writer
    REFUSES rather than losing one silently — the same rule measure and save
    already apply to an enum value no variant names (§5). */
-static SCHEMA_UNUSED void table_json_write_wide( TableJsonOut * out, const void * storage, const TableFieldInfo * f )
+static SCHEMA_UNUSED void benchtable_table_json_write_wide( benchtable_table_json_out_t * out, const void * storage, const benchtable_table_field_info_t * f )
 {
-    int is_signed = table_json_kind_wide_signed( f->kind );
-    TableJsonWide v = table_json_wide_load( storage, f->elem_size, is_signed );
-    if ( is_signed && table_json_wide_negative( v ) )
+    int is_signed = benchtable_table_json_kind_wide_signed( f->kind );
+    benchtable_table_json_wide_t v = benchtable_table_json_wide_load( storage, f->elem_size, is_signed );
+    if ( is_signed && benchtable_table_json_wide_negative( v ) )
     {
-        table_json_put( out, '-' );
-        v = table_json_wide_neg( v );
+        benchtable_table_json_put( out, '-' );
+        v = benchtable_table_json_wide_neg( v );
     }
     int frac = f->frac_bits;
-    TableJsonWide whole = table_json_wide_shr( v, frac );
+    benchtable_table_json_wide_t whole = benchtable_table_json_wide_shr( v, frac );
     char digits[40];
     int32_t n = 0;
     do
     {
-        digits[n++] = (char) ( '0' + (int) table_json_wide_div( &whole, 10 ) );
-    } while ( !table_json_wide_zero( whole ) );
+        digits[n++] = (char) ( '0' + (int) benchtable_table_json_wide_div( &whole, 10 ) );
+    } while ( !benchtable_table_json_wide_zero( whole ) );
     char text[40];
     for ( int32_t i = 0; i < n; i++ ) { text[i] = digits[n - 1 - i]; }
-    table_json_raw( out, text, n );
-    if ( !table_json_kind_fixed( f->kind ) ) { return; }
-    table_json_put( out, '.' );
+    benchtable_table_json_raw( out, text, n );
+    if ( !benchtable_table_json_kind_fixed( f->kind ) ) { return; }
+    benchtable_table_json_put( out, '.' );
     // the fraction bits alone: v with everything at and above bit F cleared
-    TableJsonWide fraction = v;
+    benchtable_table_json_wide_t fraction = v;
     if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
     else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     if ( frac == 0 ) { fraction.lo = 0; }
-    if ( table_json_wide_zero( fraction ) )
+    if ( benchtable_table_json_wide_zero( fraction ) )
     {
-        table_json_put( out, '0' );
+        benchtable_table_json_put( out, '0' );
         return;
     }
-    while ( !table_json_wide_zero( fraction ) )
+    while ( !benchtable_table_json_wide_zero( fraction ) )
     {
         // ×10: the digit is what lands at and above bit F, including the
         // carry out of 128 bits when F leaves no room for it below
-        uint32_t carry = table_json_wide_mul_add( &fraction, 10, 0 );
-        uint64_t digit = table_json_wide_shr( fraction, frac ).lo;
+        uint32_t carry = benchtable_table_json_wide_mul_add( &fraction, 10, 0 );
+        uint64_t digit = benchtable_table_json_wide_shr( fraction, frac ).lo;
         if ( frac > 64 ) { digit |= (uint64_t) ( carry ) << ( 128 - frac ); }
-        table_json_put( out, (char) ( '0' + (int) digit ) );
+        benchtable_table_json_put( out, (char) ( '0' + (int) digit ) );
         if ( frac < 64 ) { fraction.hi = 0; fraction.lo &= ( (uint64_t) ( 1 ) << frac ) - 1; }
         else { fraction.hi &= ( (uint64_t) ( 1 ) << ( frac - 64 ) ) - 1; }
     }
 }
 
 
-static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double value, int single )
+static SCHEMA_UNUSED int benchtable_table_json_write_float( benchtable_table_json_out_t * out, double value, int single )
 {
     char text[64];
     int low = single ? 6 : 15;
@@ -684,7 +684,7 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
     int length = 0;
     int digits;
     char point;
-    if ( !table_json_finite( value ) ) { return 0; }
+    if ( !benchtable_table_json_finite( value ) ) { return 0; }
     for ( digits = low; ; digits++ )
     {
         length = snprintf( text, sizeof( text ), "%.*g", digits, value );
@@ -701,7 +701,7 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
             if ( strtod( text, NULL ) == value ) { break; }
         }
     }
-    point = table_json_decimal_point();
+    point = benchtable_table_json_decimal_point();
     if ( point != '.' )
     {
         int i;
@@ -710,93 +710,93 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
             if ( text[i] == point ) { text[i] = '.'; }
         }
     }
-    table_json_raw( out, text, length );
+    benchtable_table_json_raw( out, text, length );
     return 1;
 }
 
-static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth );
+static SCHEMA_UNUSED int benchtable_table_json_write_value( benchtable_table_json_out_t * out, const void * base, const benchtable_table_type_info_t * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
    vocabulary, or a number */
-static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth );
+static SCHEMA_UNUSED int benchtable_table_json_write_field( benchtable_table_json_out_t * out, const void * base, const benchtable_table_field_info_t * f, int32_t depth );
 #ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-static SCHEMA_UNUSED int table_json_write_list(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+static SCHEMA_UNUSED int benchtable_table_json_write_list(benchtable_table_json_out_t * out,const void * storage,const benchtable_table_field_info_t * f,int32_t depth);
 #ifdef SCHEMA_TABLE_MAP_RUNTIME
-static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth);
+static SCHEMA_UNUSED int benchtable_table_json_write_map(benchtable_table_json_out_t * out,const void * storage,const benchtable_table_field_info_t * f,int32_t depth);
 #endif
 #endif
 #ifdef SCHEMA_TABLE_GRAPH_RUNTIME
-static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth );
+static SCHEMA_UNUSED int benchtable_table_json_write_pointer( benchtable_table_json_out_t * out, const void * slot, const benchtable_table_field_info_t * f, int32_t depth );
 #else
-static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_write_pointer( benchtable_table_json_out_t * out, const void * slot, const benchtable_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
-static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void * storage, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_write_scalar( benchtable_table_json_out_t * out, const void * storage, const benchtable_table_field_info_t * f, int32_t depth )
 {
-    if ( f->kind == 17 ) { return table_json_write_pointer(out,storage,f,depth); }
+    if ( f->kind == 17 ) { return benchtable_table_json_write_pointer(out,storage,f,depth); }
     if ( f->arms != NULL )
     {
         /* a union is an object with ONE key, the arm's name; None is {} */
-        const TableUnionInfo * arms = f->arms;
-        uint64_t tag = table_json_get_raw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
+        const benchtable_table_union_info_t * arms = f->arms;
+        uint64_t tag = benchtable_table_json_get_raw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
         const char * arm;
         if ( tag == 0 )
         {
-            table_json_raw( out, "{}", 2 );
+            benchtable_table_json_raw( out, "{}", 2 );
             return 1;
         }
         if ( (int64_t) tag > f->enum_max )
         {
             return 0; /* a tag no arm names, exactly as measure refuses it */
         }
-        arm = table_json_variant_name( f, tag );
+        arm = benchtable_table_json_variant_name( f, tag );
         /* and refuse on the NAME, not merely on the bound: §16.2 says a value
            no variant NAMES is refused, so the check is the name. */
         if ( arm == NULL ) { return 0; }
-        table_json_put( out, '{' );
-        table_json_line( out, depth + 1 );
-        table_json_write_string( out, arm, (int32_t) strlen( arm ) );
-        table_json_raw( out, ": ", 2 );
+        benchtable_table_json_put( out, '{' );
+        benchtable_table_json_line( out, depth + 1 );
+        benchtable_table_json_write_string( out, arm, (int32_t) strlen( arm ) );
+        benchtable_table_json_raw( out, ": ", 2 );
         if ( arms->arms[tag].field != NULL ) {
-            if ( !table_json_write_field( out, storage, arms->arms[tag].field, depth+1 ) ) { return 0; }
-        } else if ( arms->arms[tag].table == NULL ) { table_json_raw( out, "null", 4 ); }
-        else if ( !table_json_write_value( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
+            if ( !benchtable_table_json_write_field( out, storage, arms->arms[tag].field, depth+1 ) ) { return 0; }
+        } else if ( arms->arms[tag].table == NULL ) { benchtable_table_json_raw( out, "null", 4 ); }
+        else if ( !benchtable_table_json_write_value( out, (const uint8_t *) storage + arms->arms[tag].offset, arms->arms[tag].table, depth + 1 ) )
         {
             return 0;
         }
-        table_json_line( out, depth );
-        table_json_put( out, '}' );
+        benchtable_table_json_line( out, depth );
+        benchtable_table_json_put( out, '}' );
         return 1;
     }
     if ( f->kind == 13 )
     {
-        return table_json_write_value( out, storage, f->table, depth );
+        return benchtable_table_json_write_value( out, storage, f->table, depth );
     }
-    if ( table_json_is_enum( f ) )
+    if ( benchtable_table_json_is_enum( f ) )
     {
-        uint64_t value = table_json_get_raw( storage, f->elem_size );
+        uint64_t value = benchtable_table_json_get_raw( storage, f->elem_size );
         const char * name;
         /* a value no variant names has no text spelling, exactly as it has no
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
-        if ( value != 0 && table_json_variant_name( f, value ) == NULL ) { return 0; }
-        name = table_json_variant_name( f, value );
+        if ( value != 0 && benchtable_table_json_variant_name( f, value ) == NULL ) { return 0; }
+        name = benchtable_table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
-        table_json_write_string( out, name, (int32_t) strlen( name ) );
+        benchtable_table_json_write_string( out, name, (int32_t) strlen( name ) );
         return 1;
     }
-    if ( table_json_is_flags( f ) )
+    if ( benchtable_table_json_is_flags( f ) )
     {
-        uint64_t bits = table_json_get_raw( storage, f->elem_size );
+        uint64_t bits = benchtable_table_json_get_raw( storage, f->elem_size );
         int first = 1;
         int64_t bit;
         if ( bits == 0 )
         {
-            table_json_raw( out, "[]", 2 );
+            benchtable_table_json_raw( out, "[]", 2 );
             return 1;
         }
-        table_json_put( out, '[' );
+        benchtable_table_json_put( out, '[' );
         for ( bit = 0; bit < 64; bit++ )
         {
             const char * name;
@@ -805,171 +805,171 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
             {
                 return 0; /* a bit no variant names has no text spelling */
             }
-            name = table_json_variant_name( f, (uint64_t) bit );
+            name = benchtable_table_json_variant_name( f, (uint64_t) bit );
             if ( name == NULL ) { return 0; }
-            if ( !first ) { table_json_put( out, ',' ); }
+            if ( !first ) { benchtable_table_json_put( out, ',' ); }
             first = 0;
-            table_json_line( out, depth + 1 );
-            table_json_write_string( out, name, (int32_t) strlen( name ) );
+            benchtable_table_json_line( out, depth + 1 );
+            benchtable_table_json_write_string( out, name, (int32_t) strlen( name ) );
         }
-        table_json_line( out, depth );
-        table_json_put( out, ']' );
+        benchtable_table_json_line( out, depth );
+        benchtable_table_json_put( out, ']' );
         return 1;
     }
-    if ( table_json_kind_wide( f->kind ) ) { table_json_write_wide( out, storage, f ); return 1; }
+    if ( benchtable_table_json_kind_wide( f->kind ) ) { benchtable_table_json_write_wide( out, storage, f ); return 1; }
     switch ( f->kind )
     {
         case 1:
-            table_json_text( out, table_json_get_raw( storage, f->elem_size ) != 0 ? "true" : "false" );
+            benchtable_table_json_text( out, benchtable_table_json_get_raw( storage, f->elem_size ) != 0 ? "true" : "false" );
             return 1;
         case 10:
         {
             float v = 0.0f;
             memcpy( &v, storage, sizeof( v ) );
-            return table_json_write_float( out, (double) v, 1 );
+            return benchtable_table_json_write_float( out, (double) v, 1 );
         }
         case 11:
         {
             double v = 0.0;
             memcpy( &v, storage, sizeof( v ) );
-            return table_json_write_float( out, v, 0 );
+            return benchtable_table_json_write_float( out, v, 0 );
         }
         case 2: case 3: case 4: case 5:
-            table_json_write_signed( out, table_json_get_signed( storage, f->elem_size ) );
+            benchtable_table_json_write_signed( out, benchtable_table_json_get_signed( storage, f->elem_size ) );
             return 1;
         default:
-            table_json_write_unsigned( out, table_json_get_raw( storage, f->elem_size ) );
+            benchtable_table_json_write_unsigned( out, benchtable_table_json_get_raw( storage, f->elem_size ) );
             return 1;
     }
 }
 
-static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void * base, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_write_field( benchtable_table_json_out_t * out, const void * base, const benchtable_table_field_info_t * f, int32_t depth )
 {
     const uint8_t * storage = (const uint8_t *) base + f->offset;
 #ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-    if(f->sequence==1) { return table_json_write_list(out,storage,f,depth); }
+    if(f->sequence==1) { return benchtable_table_json_write_list(out,storage,f,depth); }
 #ifdef SCHEMA_TABLE_MAP_RUNTIME
-    if(f->sequence==2) { return table_json_write_map(out,storage,f,depth); }
+    if(f->sequence==2) { return benchtable_table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
     if ( f->kind == 33 ) {
-        table_json_write_w_string( out, (const uint16_t *)(const void *)storage, table_json_count( base, f ) ); return 1;
+        benchtable_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, benchtable_table_json_count( base, f ) ); return 1;
     }
     if ( f->kind == 12 )
     {
-        table_json_write_string( out, (const char *) storage, table_json_count( base, f ) );
+        benchtable_table_json_write_string( out, (const char *) storage, benchtable_table_json_count( base, f ) );
         return 1;
     }
-    if ( table_json_is_bytes( f ) )
+    if ( benchtable_table_json_is_bytes( f ) )
     {
-        table_json_write_base64( out, storage, table_json_count( base, f ) );
+        benchtable_table_json_write_base64( out, storage, benchtable_table_json_count( base, f ) );
         return 1;
     }
-    if ( table_json_is_keyed( f ) )
+    if ( benchtable_table_json_is_keyed( f ) )
     {
         /* one entry per SLOT, keyed by the variant that owns it, so inserting
            a variant next season moves nothing in the text either. Slot i holds
            the key i + 1: nothing is stored for None, so nothing is written for it. */
         int first = 1;
         int64_t slot;
-        table_json_put( out, '{' );
+        benchtable_table_json_put( out, '{' );
         for ( slot = 0; slot < f->array_bound; slot++ )
         {
             const char * key;
-            if ( !table_json_keyed_slot_valid( f, slot ) ) { continue; }
-            if ( !first ) { table_json_put( out, ',' ); }
+            if ( !benchtable_table_json_keyed_slot_valid( f, slot ) ) { continue; }
+            if ( !first ) { benchtable_table_json_put( out, ',' ); }
             first = 0;
-            table_json_line( out, depth + 1 );
-            key = table_json_key_name( f, table_json_keyed_slot_key( slot ) );
-            table_json_write_string( out, key, (int32_t) strlen( key ) );
-            table_json_raw( out, ": ", 2 );
-            if ( !table_json_write_scalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
+            benchtable_table_json_line( out, depth + 1 );
+            key = benchtable_table_json_key_name( f, benchtable_table_json_keyed_slot_key( slot ) );
+            benchtable_table_json_write_string( out, key, (int32_t) strlen( key ) );
+            benchtable_table_json_raw( out, ": ", 2 );
+            if ( !benchtable_table_json_write_scalar( out, storage + slot * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
         }
-        if ( first ) { table_json_raw( out, "}", 1 ); return 1; }
-        table_json_line( out, depth );
-        table_json_put( out, '}' );
+        if ( first ) { benchtable_table_json_raw( out, "}", 1 ); return 1; }
+        benchtable_table_json_line( out, depth );
+        benchtable_table_json_put( out, '}' );
         return 1;
     }
     if ( f->is_array )
     {
-        int32_t count = table_json_count( base, f );
+        int32_t count = benchtable_table_json_count( base, f );
         int32_t i;
         if ( count == 0 )
         {
-            table_json_raw( out, "[]", 2 );
+            benchtable_table_json_raw( out, "[]", 2 );
             return 1;
         }
-        table_json_put( out, '[' );
+        benchtable_table_json_put( out, '[' );
         for ( i = 0; i < count; i++ )
         {
-            if ( i > 0 ) { table_json_put( out, ',' ); }
-            table_json_line( out, depth + 1 );
-            if ( !table_json_write_scalar( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) )
+            if ( i > 0 ) { benchtable_table_json_put( out, ',' ); }
+            benchtable_table_json_line( out, depth + 1 );
+            if ( !benchtable_table_json_write_scalar( out, storage + (int64_t) i * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
         }
-        table_json_line( out, depth );
-        table_json_put( out, ']' );
+        benchtable_table_json_line( out, depth );
+        benchtable_table_json_put( out, ']' );
         return 1;
     }
-    return table_json_write_scalar( out, storage, f, depth );
+    return benchtable_table_json_write_scalar( out, storage, f, depth );
 }
 
 /* One instance, every field, in DECLARATION ORDER, defaults included — a
    text is for people and tools, and a text that elides is a text a reader
    has to know the schema to complete. */
-static SCHEMA_UNUSED int table_json_write_fields( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth, int * any )
+static SCHEMA_UNUSED int benchtable_table_json_write_fields( benchtable_table_json_out_t * out, const void * base, const benchtable_table_type_info_t * info, int32_t depth, int * any )
 {
-    if ( depth > kTableJsonMaxDepth ) { return 0; }
+    if ( depth > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
     int32_t i;
     for ( i = 0; i < info->num_fields; i++ )
     {
-        const TableFieldInfo * f = &info->fields[i];
-        if ( f->guard[0] != 0 && !table_json_guard_holds( base, info, f->guard ) ) { continue; }
+        const benchtable_table_field_info_t * f = &info->fields[i];
+        if ( f->guard[0] != 0 && !benchtable_table_json_guard_holds( base, info, f->guard ) ) { continue; }
         /* an ABSENT optional writes no key: presence of the key IS the
            presence (§16.2), so an absent field is an absent key and nothing
            else would read back as absent */
         if ( f->optional &&
-             table_json_get_raw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
+             benchtable_table_json_get_raw( (const uint8_t *) base + f->present_offset, 1 ) == 0 )
         {
             continue;
         }
-        if ( !*any ) { table_json_put( out, '{' ); }
-        else { table_json_put( out, ',' ); }
+        if ( !*any ) { benchtable_table_json_put( out, '{' ); }
+        else { benchtable_table_json_put( out, ',' ); }
         *any = 1;
-        table_json_line( out, depth + 1 );
-        table_json_write_string( out, f->json, (int32_t) strlen( f->json ) );
-        table_json_raw( out, ": ", 2 );
-        if ( !table_json_write_field( out, base, f, depth + 1 ) ) { return 0; }
+        benchtable_table_json_line( out, depth + 1 );
+        benchtable_table_json_write_string( out, f->json, (int32_t) strlen( f->json ) );
+        benchtable_table_json_raw( out, ": ", 2 );
+        if ( !benchtable_table_json_write_field( out, base, f, depth + 1 ) ) { return 0; }
     }
     return 1;
 }
 
-static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_write_value( benchtable_table_json_out_t * out, const void * base, const benchtable_table_type_info_t * info, int32_t depth )
 {
     int any = 0;
-    if ( !table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
-    if ( !any ) { table_json_raw(out,"{}",2); return 1; }
-    table_json_line(out,depth); table_json_put(out,'}'); return 1;
+    if ( !benchtable_table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
+    if ( !any ) { benchtable_table_json_raw(out,"{}",2); return 1; }
+    benchtable_table_json_line(out,depth); benchtable_table_json_put(out,'}'); return 1;
 }
 
 /* ---- reading ---- */
 
-typedef struct TableJsonIn
+typedef struct benchtable_table_json_in_t
 {
     const char * text;
     int64_t size;
     int64_t pos;
-    TableReport * report;
+    benchtable_table_report_t * report;
     int bad; /* the text is not JSON: the walk stops and keeps what it placed */
     void * graph;
-} TableJsonIn;
+} benchtable_table_json_in_t;
 
-static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
+static SCHEMA_UNUSED void benchtable_table_json_space( benchtable_table_json_in_t * in )
 {
     while ( in->pos < in->size )
     {
@@ -995,16 +995,16 @@ static SCHEMA_UNUSED void table_json_space( TableJsonIn * in )
     }
 }
 
-static SCHEMA_UNUSED char table_json_peek( TableJsonIn * in )
+static SCHEMA_UNUSED char benchtable_table_json_peek( benchtable_table_json_in_t * in )
 {
-    table_json_space( in );
+    benchtable_table_json_space( in );
     return in->pos < in->size ? in->text[in->pos] : 0;
 }
 
 /* the shape of the value sitting at the cursor, without consuming it */
-static SCHEMA_UNUSED char table_json_value_shape( TableJsonIn * in )
+static SCHEMA_UNUSED char benchtable_table_json_value_shape( benchtable_table_json_in_t * in )
 {
-    char c = table_json_peek( in );
+    char c = benchtable_table_json_peek( in );
     switch ( c )
     {
         case '{': return 'o';
@@ -1017,7 +1017,7 @@ static SCHEMA_UNUSED char table_json_value_shape( TableJsonIn * in )
     }
 }
 
-static SCHEMA_UNUSED int table_json_literal( TableJsonIn * in, const char * word )
+static SCHEMA_UNUSED int benchtable_table_json_literal( benchtable_table_json_in_t * in, const char * word )
 {
     int64_t length = (int64_t) strlen( word );
     if ( in->pos + length > in->size || memcmp( in->text + in->pos, word, (size_t) length ) != 0 )
@@ -1030,7 +1030,7 @@ static SCHEMA_UNUSED int table_json_literal( TableJsonIn * in, const char * word
 }
 
 /* one \uXXXX escape body; -1 when the four hex digits are not there */
-static SCHEMA_UNUSED int table_json_hex4( TableJsonIn * in )
+static SCHEMA_UNUSED int benchtable_table_json_hex4( benchtable_table_json_in_t * in )
 {
     int value = 0;
     int i;
@@ -1056,7 +1056,7 @@ static SCHEMA_UNUSED int table_json_hex4( TableJsonIn * in )
    §16.3). 0 when it begins valid JSON that is never a base64 symbol, an
    escape or a UTF-8 sequence, consumed whole so an escaped quote cannot end
    the body. 1 when the byte stands alone for the base64 grammar to judge. */
-static SCHEMA_UNUSED int table_json_base64_step( TableJsonIn * in, char c )
+static SCHEMA_UNUSED int benchtable_table_json_base64_step( benchtable_table_json_in_t * in, char c )
 {
     if ( (unsigned char) c < 0x20 ) { in->bad = 1; return -1; }
     if ( c == '\\' )
@@ -1067,7 +1067,7 @@ static SCHEMA_UNUSED int table_json_base64_step( TableJsonIn * in, char c )
         switch ( escape )
         {
             case '"': case '\\': case '/': case 'b': case 'f': case 'n': case 'r': case 't': return 0;
-            case 'u': if ( table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
+            case 'u': if ( benchtable_table_json_hex4( in ) < 0 ) { in->bad = 1; return -1; } return 0;
             default: in->bad = 1; return -1;
         }
     }
@@ -1075,14 +1075,14 @@ static SCHEMA_UNUSED int table_json_base64_step( TableJsonIn * in, char c )
     {
         int32_t width = 0;
         int64_t left = in->size - ( in->pos - 1 );
-        if ( table_json_utf8( in->text + in->pos - 1, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { in->bad = 1; return -1; }
+        if ( benchtable_table_json_utf8( in->text + in->pos - 1, left > 4 ? 4 : (int32_t) left, &width ) < 0 ) { in->bad = 1; return -1; }
         in->pos += width - 1;
         return 0;
     }
     return 1;
 }
 
-static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit )
+static SCHEMA_UNUSED int32_t benchtable_table_json_encode_utf8( uint32_t code, char * unit )
 {
     if ( code < 0x80 ) { unit[0] = (char) code; return 1; }
     if ( code < 0x800 )
@@ -1111,7 +1111,7 @@ static SCHEMA_UNUSED int32_t table_json_encode_utf8( uint32_t code, char * unit 
    never cut through a multi-byte character. Clamping is counted, never
    fatal, exactly as it is on the wire (§4). A NULL destination scans past a
    string without keeping it. */
-static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, int32_t * unit_length_out )
+static SCHEMA_UNUSED int benchtable_table_json_scan_unit( benchtable_table_json_in_t * in, char * unit, int32_t * unit_length_out )
 {
     int32_t unit_length = 0;
     *unit_length_out = 0;
@@ -1136,7 +1136,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                 case 't':  unit[0] = '\t'; unit_length = 1; break;
                 case 'u':
                 {
-                    int high = table_json_hex4( in );
+                    int high = benchtable_table_json_hex4( in );
                     if ( high < 0 ) { in->bad = 1; return 0; }
                     uint32_t code = (uint32_t) high;
                     if ( high >= 0xd800 && high <= 0xdbff && in->pos + 2 <= in->size &&
@@ -1144,7 +1144,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                     {
                         int64_t mark = in->pos;
                         in->pos += 2;
-                        int low = table_json_hex4( in );
+                        int low = benchtable_table_json_hex4( in );
                         if ( low >= 0xdc00 && low <= 0xdfff )
                         {
                             code = 0x10000 + ( ( (uint32_t) high - 0xd800 ) << 10 ) + ( (uint32_t) low - 0xdc00 );
@@ -1159,7 +1159,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
                     // CESU-8 — invalid UTF-8 — out of input that was valid
                     // JSON, so it reads as the replacement character
                     if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; }
-                    unit_length = table_json_encode_utf8( code, unit );
+                    unit_length = benchtable_table_json_encode_utf8( code, unit );
                     break;
                 }
                 default: in->bad = 1; return 0;
@@ -1197,7 +1197,7 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
             // value. The scan reads on past a clamp, so a byte at or past the
             // bound is judged too (row str-illformed-at-bound).
             int32_t checked_width = 0;
-            if ( table_json_utf8( unit, unit_length, &checked_width ) < 0 )
+            if ( benchtable_table_json_utf8( unit, unit_length, &checked_width ) < 0 )
             {
                 in->bad = 1;
                 return 0;
@@ -1213,17 +1213,17 @@ static SCHEMA_UNUSED int table_json_scan_unit( TableJsonIn * in, char * unit, in
    UTF-8 refusal next, then the caller's capacity. Report the used UTF-8
    length; text says the string is bound for text storage, where a zero
    refuses. */
-static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out, int32_t capacity, int32_t * length, int text )
+static SCHEMA_UNUSED int benchtable_table_json_scan_string_as( benchtable_table_json_in_t * in, char * out, int32_t capacity, int32_t * length, int text )
 {
     int32_t placed = 0;
     int clamped = 0;
-    if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    if ( benchtable_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     for ( ;; )
     {
         char unit[4];
         int32_t unit_length = 0;
-        if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( !benchtable_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
         if ( out == NULL ) { placed += unit_length; }
@@ -1247,21 +1247,21 @@ static SCHEMA_UNUSED int table_json_scan_string_as( TableJsonIn * in, char * out
 
 /* A string the read only names or skips: an object key, an enum or flags
    name, an arm key, a skipped value. A zero in one stores nothing. */
-static SCHEMA_UNUSED int table_json_scan_string( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+static SCHEMA_UNUSED int benchtable_table_json_scan_string( benchtable_table_json_in_t * in, char * out, int32_t capacity, int32_t * length )
 {
-    return table_json_scan_string_as( in, out, capacity, length, 0 );
+    return benchtable_table_json_scan_string_as( in, out, capacity, length, 0 );
 }
 
 /* A string the read PLACES IN TEXT STORAGE: a string(N) or *string value, a
    text-list element, a map key. NO READ STORES A ZERO (docs/SPEC-TABLES.md
    §16.3, text_holds_zero): a \u0000 there refuses the read. */
-static SCHEMA_UNUSED int table_json_scan_text( TableJsonIn * in, char * out, int32_t capacity, int32_t * length )
+static SCHEMA_UNUSED int benchtable_table_json_scan_text( benchtable_table_json_in_t * in, char * out, int32_t capacity, int32_t * length )
 {
-    return table_json_scan_string_as( in, out, capacity, length, 1 );
+    return benchtable_table_json_scan_string_as( in, out, capacity, length, 1 );
 }
 
 
-static SCHEMA_UNUSED uint32_t table_json_decode_utf8( const char * unit, int32_t unit_length )
+static SCHEMA_UNUSED uint32_t benchtable_table_json_decode_utf8( const char * unit, int32_t unit_length )
 {
     const unsigned char lead = (unsigned char) unit[0];
     if ( unit_length == 1 ) { return lead; }
@@ -1281,9 +1281,9 @@ static SCHEMA_UNUSED uint32_t table_json_decode_utf8( const char * unit, int32_t
 // the field is therefore clamped at N code units with a pair never split, and
 // a high surrogate left without its low half is dropped with it, which is the
 // same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
-static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * out, int32_t capacity, int32_t * length )
+static SCHEMA_UNUSED int benchtable_table_json_scan_w_string( benchtable_table_json_in_t * in, uint16_t * out, int32_t capacity, int32_t * length )
 {
-    if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    if ( benchtable_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
     in->pos++;
     int32_t placed = 0;
     int clamped = 0;
@@ -1291,9 +1291,9 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
     {
         char unit[4];
         int32_t unit_length = 0;
-        if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( !benchtable_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
-        const uint32_t code = table_json_decode_utf8( unit, unit_length );
+        const uint32_t code = benchtable_table_json_decode_utf8( unit, unit_length );
         if ( code == 0 ) { in->bad = 1; return 0; } /* a wstring value is text storage: text_holds_zero (§16.3) */
         uint16_t units[2];
         int32_t units_length = 1;
@@ -1347,10 +1347,10 @@ static SCHEMA_UNUSED int table_json_scan_w_string( TableJsonIn * in, uint16_t * 
    already promises. A permissive scan would hand "1-2" to a digit loop and
    report a clamp, and a config pipeline would never hear about it. Leading
    "+", leading zeros, ".5" and "3." are not JSON either. */
-static SCHEMA_UNUSED int table_json_walk_number( TableJsonIn * in, int * integral )
+static SCHEMA_UNUSED int benchtable_table_json_walk_number( benchtable_table_json_in_t * in, int * integral )
 {
     int whole = 1;
-    table_json_space( in );
+    benchtable_table_json_space( in );
     if ( in->pos < in->size && in->text[in->pos] == '-' ) { in->pos++; }
     /* int: a lone zero, or a non-zero digit and any digits after it */
     if ( in->pos >= in->size ) { return 0; }
@@ -1388,13 +1388,13 @@ static SCHEMA_UNUSED int table_json_walk_number( TableJsonIn * in, int * integra
 }
 
 /* the same production, with the token kept for conversion */
-static SCHEMA_UNUSED int table_json_scan_number( TableJsonIn * in, char * token, int32_t capacity, int32_t * length, int * integral )
+static SCHEMA_UNUSED int benchtable_table_json_scan_number( benchtable_table_json_in_t * in, char * token, int32_t capacity, int32_t * length, int * integral )
 {
     int64_t start;
     int64_t count;
-    table_json_space( in );
+    benchtable_table_json_space( in );
     start = in->pos;
-    if ( !table_json_walk_number( in, integral ) ) { return 0; }
+    if ( !benchtable_table_json_walk_number( in, integral ) ) { return 0; }
     count = in->pos - start;
     if ( count <= 0 || count >= capacity ) { return 0; }
     memcpy( token, in->text + start, (size_t) count );
@@ -1406,13 +1406,13 @@ static SCHEMA_UNUSED int table_json_scan_number( TableJsonIn * in, char * token,
 /* the token's exact double, through the runtime's own converter — which
    speaks the LOCALE's decimal point, so the token crosses back over that
    character on its way in */
-static SCHEMA_UNUSED double table_json_token_double( const char * token, int32_t length, int single )
+static SCHEMA_UNUSED double benchtable_table_json_token_double( const char * token, int32_t length, int single )
 {
-    char work[kTableJsonMaxNumber];
+    char work[BENCHTABLE_K_TABLE_JSON_MAX_NUMBER];
     char point;
     memcpy( work, token, (size_t) length );
     work[length] = 0;
-    point = table_json_decimal_point();
+    point = benchtable_table_json_decimal_point();
     if ( point != '.' )
     {
         int32_t i;
@@ -1428,7 +1428,7 @@ static SCHEMA_UNUSED double table_json_token_double( const char * token, int32_t
 /* the token's exact integer, parsed digit by digit so no width and no
    locale can move it. Saturation is reported as a clamp, the wire's rule for
    a value outside what the reader can hold (§4). */
-static SCHEMA_UNUSED int64_t table_json_token_integer( const char * token, int32_t length, int is_signed, int * saturated )
+static SCHEMA_UNUSED int64_t benchtable_table_json_token_integer( const char * token, int32_t length, int is_signed, int * saturated )
 {
     int32_t i = 0;
     int negative = 0;
@@ -1467,41 +1467,41 @@ static SCHEMA_UNUSED int64_t table_json_token_integer( const char * token, int32
 }
 
 #ifdef SCHEMA_TABLE_GRAPH_RUNTIME
-static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot, const TableFieldInfo * f, int32_t depth );
-static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key );
+static SCHEMA_UNUSED int benchtable_table_json_read_pointer( benchtable_table_json_in_t * in, void * slot, const benchtable_table_field_info_t * f, int32_t depth );
+static SCHEMA_UNUSED int benchtable_table_json_skipped_ampersand( benchtable_table_json_in_t * in, const char * key );
 #else
-static SCHEMA_UNUSED int table_json_read_pointer( TableJsonIn * in, void * slot, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_read_pointer( benchtable_table_json_in_t * in, void * slot, const benchtable_table_field_info_t * f, int32_t depth )
 { (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
-static SCHEMA_UNUSED int table_json_skipped_ampersand( TableJsonIn * in, const char * key )
+static SCHEMA_UNUSED int benchtable_table_json_skipped_ampersand( benchtable_table_json_in_t * in, const char * key )
 { (void)key; in->bad = 1; return 0; }
 #endif
 
-static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth );
+static SCHEMA_UNUSED int benchtable_table_json_skip_value( benchtable_table_json_in_t * in, int32_t depth );
 
-static SCHEMA_UNUSED int table_json_skip_container( TableJsonIn * in, char close, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_skip_container( benchtable_table_json_in_t * in, char close, int32_t depth )
 {
-    if ( depth > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
+    if ( depth > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
     int first = 1;
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
-        char c = table_json_peek( in );
+        char c = benchtable_table_json_peek( in );
         if ( c == close ) { in->pos++; return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
         int consumed = 0;
         if ( close == '}' )
         {
-            char key[kTableJsonMaxKey];
+            char key[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
             int32_t length = 0;
-            if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&length) ) { return 0; }
+            if ( !benchtable_table_json_scan_string(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
             key[length] = 0;
-            if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+            if ( benchtable_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
-            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
+            if ( key[0] == '&' && in->graph != NULL ) { if ( !first ) { in->bad = 1; return 0; } if ( !benchtable_table_json_skipped_ampersand(in,key) ) { return 0; } consumed = 1; }
         }
         first = 0;
-        if ( !consumed && !table_json_skip_value( in, depth + 1 ) ) { return 0; }
-        c = table_json_peek( in );
+        if ( !consumed && !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        c = benchtable_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
         if ( c == close ) { in->pos++; return 1; }
         in->bad = 1;
@@ -1509,17 +1509,17 @@ static SCHEMA_UNUSED int table_json_skip_container( TableJsonIn * in, char close
     }
 }
 
-static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_skip_value( benchtable_table_json_in_t * in, int32_t depth )
 {
-    char c = table_json_peek( in );
+    char c = benchtable_table_json_peek( in );
     switch ( c )
     {
-        case '{': return table_json_skip_container( in, '}', depth );
-        case '[': return table_json_skip_container( in, ']', depth );
-        case '"': return table_json_scan_string( in, NULL, 0, NULL );
-        case 't': return table_json_literal( in, "true" );
-        case 'f': return table_json_literal( in, "false" );
-        case 'n': return table_json_literal( in, "null" );
+        case '{': return benchtable_table_json_skip_container( in, '}', depth );
+        case '[': return benchtable_table_json_skip_container( in, ']', depth );
+        case '"': return benchtable_table_json_scan_string( in, NULL, 0, NULL );
+        case 't': return benchtable_table_json_literal( in, "true" );
+        case 'f': return benchtable_table_json_literal( in, "false" );
+        case 'n': return benchtable_table_json_literal( in, "null" );
         case 0:   in->bad = 1; return 0;
         default:
         {
@@ -1528,30 +1528,30 @@ static SCHEMA_UNUSED int table_json_skip_value( TableJsonIn * in, int32_t depth 
                the SAME production the value path scans, so an unknown key
                cannot smuggle past a number a named key would refuse. */
             int integral = 0;
-            if ( !table_json_walk_number( in, &integral ) ) { in->bad = 1; return 0; }
+            if ( !benchtable_table_json_walk_number( in, &integral ) ) { in->bad = 1; return 0; }
             return 1;
         }
     }
 }
 
-static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth );
-static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
+static SCHEMA_UNUSED int benchtable_table_json_read_table( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth );
+static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth, const char * first_key );
 
-typedef struct TableJsonInteger
+typedef struct benchtable_table_json_integer_t
 {
     uint64_t magnitude; // |value|, exact for every integral token 64 bits hold
     int negative;
     int fractional;    // a genuinely fractional VALUE: the wrong shape for an integer
     int saturated;     // a magnitude past what 64 bits hold, held at that edge
     int finite;        // 0: no integer target holds it at all
-} TableJsonInteger;
+} benchtable_table_json_integer_t;
 
 // THE FIELD'S INTERPRETATION: the token, parsed digit by digit so no width and
 // no locale can move it, and through the runtime's converter only where the
 // spelling carries a fraction or an exponent
-static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, int32_t length, int integral )
+static SCHEMA_UNUSED benchtable_table_json_integer_t benchtable_table_json_interpret( const char * token, int32_t length, int integral )
 {
-    TableJsonInteger out;
+    benchtable_table_json_integer_t out;
     out.magnitude = 0;
     out.negative = 0;
     out.fractional = 0;
@@ -1579,8 +1579,8 @@ static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, 
         if ( out.magnitude == 0 ) { out.negative = 0; } // -0 IS zero
         return out;
     }
-    const double d = table_json_token_double( token, length, 0 );
-    if ( !table_json_finite( d ) ) { out.finite = 0; return out; }
+    const double d = benchtable_table_json_token_double( token, length, 0 );
+    if ( !benchtable_table_json_finite( d ) ) { out.finite = 0; return out; }
     out.negative = d < 0;
     const double whole = out.negative ? -d : d;
     // THE DOMAIN IS ESTABLISHED BEFORE THE CAST: a magnitude past what sixty-four
@@ -1599,9 +1599,9 @@ static SCHEMA_UNUSED TableJsonInteger table_json_interpret( const char * token, 
     return out;
 }
 
-static SCHEMA_UNUSED TableJsonInteger table_json_integer_of( double bound )
+static SCHEMA_UNUSED benchtable_table_json_integer_t benchtable_table_json_integer_of( double bound )
 {
-    TableJsonInteger out;
+    benchtable_table_json_integer_t out;
     out.magnitude = 0;
     out.negative = bound < 0;
     out.fractional = 0;
@@ -1617,7 +1617,7 @@ static SCHEMA_UNUSED TableJsonInteger table_json_integer_of( double bound )
 // storage, signed or not. Answers what the target holds and whether the domain
 // MOVED it. An unsigned magnitude above INT64_MAX rides out as its bit pattern,
 // which is the storage's own image of it and not a negative number.
-static SCHEMA_UNUSED int64_t table_json_integer_in_domain( TableJsonInteger number, int is_signed, int32_t bytes, int * moved )
+static SCHEMA_UNUSED int64_t benchtable_table_json_integer_in_domain( benchtable_table_json_integer_t number, int is_signed, int32_t bytes, int * moved )
 {
     *moved = 0;
     uint64_t magnitude = number.magnitude;
@@ -1642,9 +1642,9 @@ static SCHEMA_UNUSED int64_t table_json_integer_in_domain( TableJsonInteger numb
 }
 
 
-static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * token, int32_t length, void * storage, const TableFieldInfo * f )
+static SCHEMA_UNUSED int benchtable_table_json_read_wide( benchtable_table_json_in_t * in, const char * token, int32_t length, void * storage, const benchtable_table_field_info_t * f )
 {
-    int is_signed = table_json_kind_wide_signed( f->kind );
+    int is_signed = benchtable_table_json_kind_wide_signed( f->kind );
     int frac = f->frac_bits;
     int32_t i = 0;
     int negative = 0;
@@ -1680,11 +1680,11 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
     while ( start < end && ( start < int_len ? int_digits[start] : frac_digits[start - int_len] ) == '0' ) { start++; point--; }
     while ( end > start && ( end - 1 < int_len ? int_digits[end - 1] : frac_digits[end - 1 - int_len] ) == '0' ) { end--; }
 
-    TableJsonWide raw = { 0, 0 };
+    benchtable_table_json_wide_t raw = { 0, 0 };
     int saturated = 0;
-    TableJsonWide signed_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) >> 1 };
-    TableJsonWide signed_min = { 0, (uint64_t) ( 1 ) << 63 };
-    TableJsonWide unsigned_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) };
+    benchtable_table_json_wide_t signed_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) >> 1 };
+    benchtable_table_json_wide_t signed_min = { 0, (uint64_t) ( 1 ) << 63 };
+    benchtable_table_json_wide_t unsigned_max = { ~(uint64_t) ( 0 ), ~(uint64_t) ( 0 ) };
     if ( start == end )
     {
         // zero, and -0 IS zero
@@ -1706,14 +1706,14 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
         // its magnitude: its digits, with the zeros a negative point puts in
         // front, doubled F times; each doubling's carry is the next bit, and
         // the value is exact iff nothing is left after the last one
-        char fd[kTableJsonMaxNumber + 48];
+        char fd[BENCHTABLE_K_TABLE_JSON_MAX_NUMBER + 48];
         int32_t fn = 0;
         for ( int64_t z = point; z < 0; z++ ) { fd[fn++] = 0; }
         for ( int32_t k = (int32_t) ( point > 0 ? point : 0 ) + start; k < end; k++ )
         {
             fd[fn++] = (char) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' );
         }
-        TableJsonWide fraction = { 0, 0 };
+        benchtable_table_json_wide_t fraction = { 0, 0 };
         for ( int b = 0; b < frac; b++ )
         {
             int carry = 0;
@@ -1723,7 +1723,7 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
                 fd[k] = (char) ( d % 10 );
                 carry = d / 10;
             }
-            fraction = table_json_wide_shl( fraction, 1 );
+            fraction = benchtable_table_json_wide_shl( fraction, 1 );
             fraction.lo |= (uint64_t) carry;
         }
         for ( int32_t k = 0; k < fn; k++ )
@@ -1735,112 +1735,112 @@ static SCHEMA_UNUSED int table_json_read_wide( TableJsonIn * in, const char * to
             }
         }
         // then the whole part, saturating past 128 bits
-        TableJsonWide whole = { 0, 0 };
+        benchtable_table_json_wide_t whole = { 0, 0 };
         for ( int64_t k = start; k < start + point && !saturated; k++ )
         {
             uint32_t digit = k < end ? (uint32_t) ( ( k < int_len ? int_digits[k] : frac_digits[k - int_len] ) - '0' ) : 0;
-            if ( table_json_wide_mul_add( &whole, 10, digit ) != 0 ) { saturated = 1; }
+            if ( benchtable_table_json_wide_mul_add( &whole, 10, digit ) != 0 ) { saturated = 1; }
         }
-        if ( !saturated && frac > 0 && !table_json_wide_zero( table_json_wide_shr( whole, 128 - frac ) ) ) { saturated = 1; }
+        if ( !saturated && frac > 0 && !benchtable_table_json_wide_zero( benchtable_table_json_wide_shr( whole, 128 - frac ) ) ) { saturated = 1; }
         if ( !saturated )
         {
-            raw = table_json_wide_shl( whole, frac );
+            raw = benchtable_table_json_wide_shl( whole, frac );
             raw.lo |= fraction.lo;
             raw.hi |= fraction.hi;
         }
         if ( is_signed )
         {
-            if ( !saturated && !negative && table_json_wide_negative( raw ) ) { saturated = 1; }
-            if ( !saturated && negative && table_json_wide_compare( raw, signed_min, 0 ) > 0 ) { saturated = 1; }
+            if ( !saturated && !negative && benchtable_table_json_wide_negative( raw ) ) { saturated = 1; }
+            if ( !saturated && negative && benchtable_table_json_wide_compare( raw, signed_min, 0 ) > 0 ) { saturated = 1; }
             if ( saturated ) { raw = negative ? signed_min : signed_max; }
-            else if ( negative ) { raw = table_json_wide_neg( raw ); }
+            else if ( negative ) { raw = benchtable_table_json_wide_neg( raw ); }
         }
         else
         {
             if ( saturated ) { raw = unsigned_max; }
-            if ( negative && !table_json_wide_zero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = 1; }
+            if ( negative && !benchtable_table_json_wide_zero( raw ) ) { raw.lo = 0; raw.hi = 0; saturated = 1; }
         }
     }
     if ( saturated ) { in->report->clamped++; }
     if ( f->wide != NULL )
     {
-        TableJsonWide lo = { f->wide->lo[0], f->wide->lo[1] };
-        TableJsonWide hi = { f->wide->hi[0], f->wide->hi[1] };
-        if ( table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->clamped++; }
-        else if ( table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->clamped++; }
+        benchtable_table_json_wide_t lo = { f->wide->lo[0], f->wide->lo[1] };
+        benchtable_table_json_wide_t hi = { f->wide->hi[0], f->wide->hi[1] };
+        if ( benchtable_table_json_wide_compare( raw, lo, is_signed ) < 0 ) { raw = lo; in->report->clamped++; }
+        else if ( benchtable_table_json_wide_compare( raw, hi, is_signed ) > 0 ) { raw = hi; in->report->clamped++; }
     }
-    table_json_wide_store( storage, f->elem_size, raw );
+    benchtable_table_json_wide_store( storage, f->elem_size, raw );
     return 1;
 }
 
 
 /* place one scalar at one storage address */
-static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth );
+static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json_in_t * in, void * base, const benchtable_table_field_info_t * f, int32_t depth );
 #ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+static SCHEMA_UNUSED int benchtable_table_json_read_list(benchtable_table_json_in_t * in,void * storage,const benchtable_table_field_info_t * f,int32_t depth);
 #ifdef SCHEMA_TABLE_MAP_RUNTIME
-static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+static SCHEMA_UNUSED int benchtable_table_json_read_map(benchtable_table_json_in_t * in,void * storage,const benchtable_table_field_info_t * f,int32_t depth);
 #endif
 #endif
-static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_json_in_t * in, void * storage, const benchtable_table_field_info_t * f, int32_t depth )
 {
-    char token[kTableJsonMaxNumber];
+    char token[BENCHTABLE_K_TABLE_JSON_MAX_NUMBER];
     int32_t length = 0;
     int integral = 0;
     if ( f->kind == 17 )
     {
-        if ( table_json_value_shape(in) == 'z' ) { table_json_set_raw(storage,f->elem_size,0); return table_json_literal(in,"null"); }
-        return table_json_read_pointer(in,storage,f,depth);
+        if ( benchtable_table_json_value_shape(in) == 'z' ) { benchtable_table_json_set_raw(storage,f->elem_size,0); return benchtable_table_json_literal(in,"null"); }
+        return benchtable_table_json_read_pointer(in,storage,f,depth);
     }
     if ( f->arms != NULL )
     {
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
-        const TableUnionInfo * arms = f->arms;
-        char key[kTableJsonMaxKey];
+        const benchtable_table_union_info_t * arms = f->arms;
+        char key[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
         int32_t key_length = 0;
         int64_t tag = 0;
         int64_t t;
         char c;
-        if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( benchtable_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
-        table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
-        if ( table_json_peek( in ) == '}' ) { in->pos++; return 1; }
-        if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+        benchtable_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
+        if ( benchtable_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
+        if ( !benchtable_table_json_scan_string( in, key, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
         key[key_length] = 0;
-        if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+        if ( benchtable_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( t = 1; t <= f->enum_max; t++ )
         {
-            const char * name = table_json_variant_name( f, (uint64_t) t );
+            const char * name = benchtable_table_json_variant_name( f, (uint64_t) t );
             if ( name != NULL && strcmp( name, key ) == 0 ) { tag = t; break; }
         }
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         }
         else
         {
             void * payload = (uint8_t *) storage + arms->arms[tag].offset;
-            const TableFieldInfo * arm = arms->arms[tag].field;
-            char want = arm != NULL ? table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
-            if ( table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && table_json_value_shape(in) == 'z') ) {
+            const benchtable_table_field_info_t * arm = arms->arms[tag].field;
+            char want = arm != NULL ? benchtable_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
+            if ( benchtable_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && benchtable_table_json_value_shape(in) == 'z') ) {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth+1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth+1 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
                     memset( payload, 0, arms->arms[tag].size );
-                    if ( !table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
+                    if ( !benchtable_table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
                 } else if ( arms->arms[tag].table != NULL ) {
                     arms->arms[tag].table->reset( payload );
-                    if ( !table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
-                } else if ( !table_json_literal( in, "null" ) ) { return 0; }
-                table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
+                    if ( !benchtable_table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
+                } else if ( !benchtable_table_json_literal( in, "null" ) ) { return 0; }
+                benchtable_table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
             }
         }
-        c = table_json_peek( in );
-        if ( c == ',' ) { in->pos++; c = table_json_peek( in ); }
+        c = benchtable_table_json_peek( in );
+        if ( c == ',' ) { in->pos++; c = benchtable_table_json_peek( in ); }
         if ( c == '}' ) { in->pos++; return 1; }
         in->bad = 1; /* a second key: a one-of with two arms is not a value */
         return 0;
@@ -1848,56 +1848,56 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     if ( f->kind == 13 )
     {
         f->table->reset( storage );
-        return table_json_read_table( in, storage, f->table, depth + 1 );
+        return benchtable_table_json_read_table( in, storage, f->table, depth + 1 );
     }
-    if ( table_json_is_enum( f ) )
+    if ( benchtable_table_json_is_enum( f ) )
     {
-        char name[kTableJsonMaxKey];
+        char name[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
         int32_t name_length = 0;
         int64_t v;
-        if ( !table_json_scan_string( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
+        if ( !benchtable_table_json_scan_string( in, name, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &name_length ) ) { return 0; }
         name[name_length] = 0;
         for ( v = 0; v <= f->enum_max; v++ )
         {
-            const char * variant = table_json_variant_name( f, (uint64_t) v );
+            const char * variant = benchtable_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && strcmp( variant, name ) == 0 )
             {
-                table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                benchtable_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
                 return 1;
             }
         }
         /* a name this build cannot name reads as None and counts as unknown,
            exactly as an unknown variant id does on the wire (§4) */
-        table_json_set_raw( storage, f->elem_size, 0 );
+        benchtable_table_json_set_raw( storage, f->elem_size, 0 );
         in->report->unknown++;
         return 1;
     }
-    if ( table_json_is_flags( f ) )
+    if ( benchtable_table_json_is_flags( f ) )
     {
         uint64_t bits = 0;
-        if ( table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( benchtable_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( ;; )
         {
-            char c = table_json_peek( in );
+            char c = benchtable_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( c != '"' )
             {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
             else
             {
-                char name[kTableJsonMaxKey];
+                char name[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
                 int32_t name_length = 0;
                 int found = 0;
                 int64_t bit;
-                if ( !table_json_scan_string( in, name, kTableJsonMaxKey - 1, &name_length ) ) { return 0; }
+                if ( !benchtable_table_json_scan_string( in, name, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &name_length ) ) { return 0; }
                 name[name_length] = 0;
                 for ( bit = 0; bit <= f->enum_max; bit++ )
                 {
-                    const char * variant = table_json_variant_name( f, (uint64_t) bit );
+                    const char * variant = benchtable_table_json_variant_name( f, (uint64_t) bit );
                     if ( variant != NULL && strcmp( variant, name ) == 0 )
                     {
                         bits |= (uint64_t) 1 << bit;
@@ -1907,33 +1907,33 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
                 }
                 if ( !found ) { in->report->unknown++; }
             }
-            c = table_json_peek( in );
+            c = benchtable_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
             if ( c == ']' ) { in->pos++; break; }
             in->bad = 1;
             return 0;
         }
-        table_json_set_raw( storage, f->elem_size, bits );
+        benchtable_table_json_set_raw( storage, f->elem_size, bits );
         return 1;
     }
     if ( f->kind == 1 )
     {
-        char c = table_json_peek( in );
-        if ( c == 't' ) { if ( !table_json_literal( in, "true" ) ) { return 0; } table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
-        if ( !table_json_literal( in, "false" ) ) { return 0; }
-        table_json_set_raw( storage, f->elem_size, 0 );
+        char c = benchtable_table_json_peek( in );
+        if ( c == 't' ) { if ( !benchtable_table_json_literal( in, "true" ) ) { return 0; } benchtable_table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
+        if ( !benchtable_table_json_literal( in, "false" ) ) { return 0; }
+        benchtable_table_json_set_raw( storage, f->elem_size, 0 );
         return 1;
     }
-    if ( !table_json_scan_number( in, token, kTableJsonMaxNumber, &length, &integral ) )
+    if ( !benchtable_table_json_scan_number( in, token, BENCHTABLE_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
     {
         in->bad = 1;
         return 0;
     }
-    if ( table_json_kind_wide( f->kind ) ) { return table_json_read_wide( in, token, length, storage, f ); }
+    if ( benchtable_table_json_kind_wide( f->kind ) ) { return benchtable_table_json_read_wide( in, token, length, storage, f ); }
     if ( f->kind == 10 || f->kind == 11 )
     {
         int single = f->kind == 10;
-        double fvalue = table_json_token_double( token, length, single );
+        double fvalue = benchtable_table_json_token_double( token, length, single );
         /* A magnitude the field's format cannot hold is the WRONG SHAPE for
            the kind, and it never reaches storage: 1e400 is not a float64 and
            1e300 is not a float32. Storing the infinity the conversion
@@ -1941,7 +1941,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
            ToJsonMeasure then refuses forever (a non-finite float has no JSON
            spelling), and §16.1's one invariant is that a text which reads
            clean writes back. */
-        if ( !table_json_finite( fvalue ) )
+        if ( !benchtable_table_json_finite( fvalue ) )
         {
             in->report->kind_mismatch++;
             return 1;
@@ -1954,7 +1954,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         if ( single )
         {
             float narrow = (float) fvalue;
-            if ( !table_json_finite( (double) narrow ) )
+            if ( !benchtable_table_json_finite( (double) narrow ) )
             {
                 in->report->kind_mismatch++;
                 return 1;
@@ -1973,7 +1973,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     // emits them that way, and this walker's own float writer emits 1e+21. Only
     // a genuinely fractional value is the wrong shape for the kind.
     const int is_signed = f->kind >= 2 && f->kind <= 5;
-    const TableJsonInteger number = table_json_interpret( token, length, integral );
+    const benchtable_table_json_integer_t number = benchtable_table_json_interpret( token, length, integral );
     if ( !number.finite || number.fractional )
     {
         in->report->kind_mismatch++;
@@ -1984,44 +1984,44 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
     // so a text and a wire loaded from the same data land the same instance.
     // The comparison is on the value's OWN scale, correctly signed past
     // INT64_MAX, where the storage's bit pattern is not a number to compare.
-    TableJsonInteger bounded = number;
+    benchtable_table_json_integer_t bounded = number;
     if ( f->has_range )
     {
         const double scale = number.negative ? -(double) number.magnitude : (double) number.magnitude;
-        if ( scale < f->range_min ) { bounded = table_json_integer_of( f->range_min ); in->report->clamped++; }
-        else if ( scale > f->range_max ) { bounded = table_json_integer_of( f->range_max ); in->report->clamped++; }
+        if ( scale < f->range_min ) { bounded = benchtable_table_json_integer_of( f->range_min ); in->report->clamped++; }
+        else if ( scale > f->range_max ) { bounded = benchtable_table_json_integer_of( f->range_max ); in->report->clamped++; }
     }
     int moved = 0;
-    const int64_t value = table_json_integer_in_domain( bounded, is_signed, (int32_t) f->elem_size, &moved );
+    const int64_t value = benchtable_table_json_integer_in_domain( bounded, is_signed, (int32_t) f->elem_size, &moved );
     if ( moved ) { in->report->clamped++; }
-    table_json_set_raw( storage, f->elem_size, (uint64_t) value );
+    benchtable_table_json_set_raw( storage, f->elem_size, (uint64_t) value );
     return 1;
 }
 
-static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json_in_t * in, void * base, const benchtable_table_field_info_t * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
 #ifdef SCHEMA_TABLE_SEQUENCE_RUNTIME
-    if(f->sequence==1) { return table_json_read_list(in,storage,f,depth); }
+    if(f->sequence==1) { return benchtable_table_json_read_list(in,storage,f,depth); }
 #ifdef SCHEMA_TABLE_MAP_RUNTIME
-    if(f->sequence==2) { return table_json_read_map(in,storage,f,depth); }
+    if(f->sequence==2) { return benchtable_table_json_read_map(in,storage,f,depth); }
 #endif
 #endif
     if ( f->kind == 33 ) {
         int32_t length = 0;
-        if ( !table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
+        if ( !benchtable_table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
         ((uint16_t *)(void *)storage)[length] = 0;
-        table_json_set_count( base, f, length ); return 1;
+        benchtable_table_json_set_count( base, f, length ); return 1;
     }
     if ( f->kind == 12 )
     {
         int32_t length = 0;
-        if ( !table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
+        if ( !benchtable_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
-        table_json_set_count( base, f, length );
+        benchtable_table_json_set_count( base, f, length );
         return 1;
     }
-    if ( table_json_is_bytes( f ) )
+    if ( benchtable_table_json_is_bytes( f ) )
     {
         /* The JSON layer decides first (table_json_base64_step): a body that
            is not a JSON string is malformed, and one that is JSON but carries
@@ -2037,7 +2037,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         uint32_t accumulator = 0;
         int32_t held = 0;
         int clamped = 0;
-        if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+        if ( benchtable_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
         in->pos++;
         mark = in->pos;
         for ( ;; )
@@ -2048,13 +2048,13 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( in->pos >= in->size ) { in->bad = 1; return 0; }
             c = in->text[in->pos++];
             if ( c == '"' ) { break; }
-            step = table_json_base64_step( in, c );
+            step = benchtable_table_json_base64_step( in, c );
             if ( step < 0 ) { return 0; }
             if ( step == 0 ) { malformed = 1; continue; }
             if ( malformed ) { continue; }
             if ( c == '=' ) { pad++; continue; }
             if ( pad > 0 ) { malformed = 1; continue; }
-            val = table_json_base64_value( (uint8_t) c );
+            val = benchtable_table_json_base64_value( (uint8_t) c );
             if ( val < 0 ) { malformed = 1; continue; }
             symbols++;
         }
@@ -2077,13 +2077,13 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             return 1;
         }
         memset( storage, 0, (size_t) f->array_bound );
-        table_json_set_count( base, f, 0 );
+        benchtable_table_json_set_count( base, f, 0 );
         for ( at = mark; ; at++ )
         {
             char c = in->text[at];
             int32_t symbol;
             if ( c == '"' || c == '=' ) { break; }
-            symbol = table_json_base64_value( (uint8_t) c );
+            symbol = benchtable_table_json_base64_value( (uint8_t) c );
             accumulator = ( accumulator << 6 ) | (uint32_t) symbol;
             held += 6;
             if ( held >= 8 )
@@ -2100,10 +2100,10 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             }
         }
         if ( clamped ) { in->report->clamped++; }
-        table_json_set_count( base, f, placed );
+        benchtable_table_json_set_count( base, f, placed );
         return 1;
     }
-    if ( table_json_is_keyed( f ) )
+    if ( benchtable_table_json_is_keyed( f ) )
     {
         /* every slot back to its declared defaults first, so a key the text
            omits keeps them and a repeated field key cannot leave an earlier
@@ -2111,7 +2111,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         int32_t i;
         char shape;
         uint64_t seen[8];
-        if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        if ( benchtable_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
         for ( i = 0; i < f->array_bound; i++ )
         {
@@ -2119,7 +2119,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( f->kind == 13 ) { f->table->reset( slot ); }
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
-        shape = table_json_element_shape( f );
+        shape = benchtable_table_json_element_shape( f );
         /* A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
            key like any other, last-wins and counted (§16.2). Tracked the way
            a table's own field keys are — a bounded, allocation-free bitmask;
@@ -2128,24 +2128,24 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         memset( seen, 0, sizeof( seen ) );
         for ( ;; )
         {
-            char c = table_json_peek( in );
-            char key[kTableJsonMaxKey];
+            char c = benchtable_table_json_peek( in );
+            char key[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
             int32_t key_length = 0;
             int64_t slot = -1;
             int64_t v;
             if ( c == '}' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !table_json_scan_string( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return 0; }
+            if ( !benchtable_table_json_scan_string( in, key, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
             key[key_length] = 0;
-            if ( table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
+            if ( benchtable_table_json_peek( in ) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
             for ( v = 0; v < f->array_bound; v++ )
             {
                 /* nothing is stored for None, so "None" finds no slot and is
                    an unknown key like any other name this reader cannot place */
                 const char * name;
-                if ( !table_json_keyed_slot_valid( f, v ) ) { continue; }
-                name = table_json_key_name( f, table_json_keyed_slot_key( v ) );
+                if ( !benchtable_table_json_keyed_slot_valid( f, v ) ) { continue; }
+                name = benchtable_table_json_key_name( f, benchtable_table_json_keyed_slot_key( v ) );
                 if ( name != NULL && strcmp( name, key ) == 0 ) { slot = v; break; }
             }
             if ( slot >= 0 && slot < 512 )
@@ -2157,18 +2157,18 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             if ( slot < 0 )
             {
                 in->report->unknown++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( table_json_value_shape( in ) != shape && !(f->kind == 17 && table_json_value_shape(in) == 'z') )
+            else if ( benchtable_table_json_value_shape( in ) != shape && !(f->kind == 17 && benchtable_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( !table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
+            else if ( !benchtable_table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
             {
                 return 0;
             }
-            c = table_json_peek( in );
+            c = benchtable_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
             if ( c == '}' ) { in->pos++; break; }
             in->bad = 1;
@@ -2186,7 +2186,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
            table and a union arm already get. */
         int32_t placed = 0;
         char shape;
-        if ( table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
+        if ( benchtable_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         if ( f->kind == 13 )
         {
@@ -2200,11 +2200,11 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         {
             memset( storage, 0, (size_t) f->array_bound * (size_t) f->elem_size );
         }
-        table_json_set_count( base, f, 0 );
-        shape = table_json_element_shape( f );
+        benchtable_table_json_set_count( base, f, 0 );
+        shape = benchtable_table_json_element_shape( f );
         for ( ;; )
         {
-            char c = table_json_peek( in );
+            char c = benchtable_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( placed >= f->array_bound )
@@ -2212,20 +2212,20 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( table_json_value_shape( in ) != shape && !(f->kind == 17 && table_json_value_shape(in) == 'z') )
+            else if ( benchtable_table_json_value_shape( in ) != shape && !(f->kind == 17 && benchtable_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 placed++;
             }
             else
             {
-                if ( !table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
                 placed++;
             }
-            c = table_json_peek( in );
+            c = benchtable_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
             if ( c == ']' ) { in->pos++; break; }
             in->bad = 1;
@@ -2233,17 +2233,17 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
-        table_json_set_count( base, f, placed );
+        benchtable_table_json_set_count( base, f, placed );
         return 1;
     }
-    return table_json_read_scalar( in, storage, f, depth );
+    return benchtable_table_json_read_scalar( in, storage, f, depth );
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
-static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
+static SCHEMA_UNUSED int benchtable_table_json_read_table_keys( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth, const char * first_key )
 {
     /* duplicate tracking, bounded and allocation-free: a table with more
        fields than this still reads, its repeats simply stop being counted */
@@ -2252,19 +2252,19 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
     for ( ;; )
     {
         char c = 0;
-        char key[kTableJsonMaxKey];
+        char key[BENCHTABLE_K_TABLE_JSON_MAX_KEY];
         int32_t key_length = 0;
         int32_t index = -1;
         int32_t i;
         if ( first_key != NULL ) { memcpy(key,first_key,strlen(first_key)+1); first_key = NULL; }
         else
         {
-            c = table_json_peek(in);
+            c = benchtable_table_json_peek(in);
             if ( c == '}' ) { in->pos++; return 1; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&key_length) ) { return 0; }
+            if ( !benchtable_table_json_scan_string(in,key,BENCHTABLE_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
-            if ( table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
+            if ( benchtable_table_json_peek(in) != ':' ) { in->bad = 1; return 0; }
             in->pos++;
         }
         for ( i = 0; i < info->num_fields; i++ )
@@ -2283,11 +2283,11 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
         if ( index < 0 )
         {
             in->report->unknown++;
-            if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         }
         else
         {
-            const TableFieldInfo * f = &info->fields[index];
+            const benchtable_table_field_info_t * f = &info->fields[index];
             char got;
             if ( index < 512 )
             {
@@ -2299,35 +2299,35 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
                is the key being present, so an optional is set present
                whatever its value — with one exception the page names: a JSON
                null, which reads as ABSENT rather than as a value. */
-            got = table_json_value_shape( in );
+            got = benchtable_table_json_value_shape( in );
             if ( f->optional && got == 'z' )
             {
-                if ( !table_json_literal( in, "null" ) ) { return 0; }
+                if ( !benchtable_table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
                    occurrence is null must not leave an earlier value standing */
                 if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
-                table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
+                benchtable_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
             else
             {
-                if ( got != table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
+                if ( got != benchtable_table_json_shape( f ) && !(f->kind == 17 && !f->is_array && got == 'z') )
                 {
                     /* the wrong JSON type for the kind: skipped, never coerced */
                     in->report->kind_mismatch++;
-                    if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                    if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
                 }
-                else if ( !table_json_read_field( in, base, f, depth ) )
+                else if ( !benchtable_table_json_read_field( in, base, f, depth ) )
                 {
                     return 0;
                 }
                 if ( f->optional )
                 {
-                    table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 1 );
+                    benchtable_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 1 );
                 }
             }
         }
-        c = table_json_peek( in );
+        c = benchtable_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
         if ( c == '}' ) { in->pos++; return 1; }
         in->bad = 1;
@@ -2337,17 +2337,17 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
 
 /* ---- the two entry points the per-table wrappers name ---- */
 
-static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth )
+static SCHEMA_UNUSED int benchtable_table_json_read_table( benchtable_table_json_in_t * in, void * base, const benchtable_table_type_info_t * info, int32_t depth )
 {
-    if ( depth > kTableJsonMaxDepth || table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( depth > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH || benchtable_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
-    return table_json_read_table_keys(in,base,info,depth,NULL);
+    return benchtable_table_json_read_table_keys(in,base,info,depth,NULL);
 }
 
-static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * info, const char * text, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int benchtable_table_json_read( void * value, const benchtable_table_type_info_t * info, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
-    TableReport ignored;
-    TableJsonIn in;
+    benchtable_table_report_t ignored;
+    benchtable_table_json_in_t in;
     int ok;
     memset( &ignored, 0, sizeof( ignored ) );
     in.text = text;
@@ -2362,10 +2362,10 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
         in.report->malformed = 1;
         return 0;
     }
-    ok = table_json_read_table( &in, value, info, 0 );
+    ok = benchtable_table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
-        table_json_space( &in );
+        benchtable_table_json_space( &in );
         if ( in.pos != in.size ) { in.bad = 1; } /* trailing rubbish is not one text */
     }
     if ( in.bad || !ok )
@@ -2376,15 +2376,15 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
     return 1;
 }
 
-static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTypeInfo * info, char * buffer, int64_t capacity )
+static SCHEMA_UNUSED int64_t benchtable_table_json_write( const void * value, const benchtable_table_type_info_t * info, char * buffer, int64_t capacity )
 {
-    TableJsonOut out;
+    benchtable_table_json_out_t out;
     out.buffer = buffer;
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = 0;
     out.graph = NULL;
-    if ( !table_json_write_value( &out, value, info, 0 ) ) { return -1; }
+    if ( !benchtable_table_json_write_value( &out, value, info, 0 ) ) { return -1; }
     /* THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
        §16.1). Every writer emits it — this walk, the reference's and
        "schema unpack" — and every reader accepts a text with or without one,
@@ -2393,14 +2393,14 @@ static SCHEMA_UNUSED int64_t table_json_write( const void * value, const TableTy
        convention: a text that is written to a file, pasted into a diff and
        handed back through a pipe has to be one text in all three places, and a
        buffer whose last byte is a closing brace is the one shape that is not. */
-    table_json_put( &out, '\n' );
+    benchtable_table_json_put( &out, '\n' );
     if ( out.overflow ) { return -1; }
     return out.offset;
 }
 
 /* ---- json walk: end ---- */
 
-static const TableVariantInfo schema_benchtable_table_entity_weapon_variants_[] = {
+static const benchtable_table_variant_info_t schema_benchtable_table_entity_weapon_variants_[] = {
     { "None", 0x0000000000000000ull },
     { "Fists", 0xa790eee12766cf0cull },
     { "Pistol", 0x9fbfefa835da8476ull },
@@ -2418,7 +2418,7 @@ static const TableVariantInfo schema_benchtable_table_entity_weapon_variants_[] 
     { "Drone", 0x2cc8282fb0de8831ull },
     { "Repair", 0x20bada21bc8cb334ull },
 };
-static const TableVariantInfo schema_benchtable_table_entity_damage_variants_[] = {
+static const benchtable_table_variant_info_t schema_benchtable_table_entity_damage_variants_[] = {
     { "Bleeding", 0 },
     { "Burning", 0 },
     { "Stunned", 0 },
@@ -2428,158 +2428,158 @@ static const TableVariantInfo schema_benchtable_table_entity_damage_variants_[] 
     { "Airborne", 0 },
     { "Downed", 0 },
 };
-static const TableFieldInfo schema_benchtable_table_entity_fields_[] = {
-    { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, entity_id ), (uint32_t) sizeof( ( (TableEntity *) 0 )->entity_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_x ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_y ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pos_z ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pos_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, yaw ), (uint32_t) sizeof( ( (TableEntity *) 0 )->yaw ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, pitch ), (uint32_t) sizeof( ( (TableEntity *) 0 )->pitch ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_x ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_y ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, vel_z ), (uint32_t) sizeof( ( (TableEntity *) 0 )->vel_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, health ), (uint32_t) sizeof( ( (TableEntity *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "weapon", "weapon", "TableWeapon", 0xa0b610205f2c6e01ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, weapon ), (uint32_t) sizeof( ( (TableEntity *) 0 )->weapon ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 15, schema_benchtable_table_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "damage", "damage", "TableDamage", 0x7f6308be8ab37fc0ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, damage ), (uint32_t) sizeof( ( (TableEntity *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 7, schema_benchtable_table_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, moving ), (uint32_t) sizeof( ( (TableEntity *) 0 )->moving ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableEntity, firing ), (uint32_t) sizeof( ( (TableEntity *) 0 )->firing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const benchtable_table_field_info_t schema_benchtable_table_entity_fields_[] = {
+    { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, entity_id ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->entity_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pos_x ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pos_y ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pos_z ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, yaw ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->yaw ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pitch ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pitch ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, vel_x ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, vel_y ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, vel_z ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, health ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "weapon", "weapon", "TableWeapon", 0xa0b610205f2c6e01ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, weapon ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->weapon ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 15, schema_benchtable_table_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "damage", "damage", "TableDamage", 0x7f6308be8ab37fc0ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, damage ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 7, schema_benchtable_table_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, moving ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->moving ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, firing ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->firing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_benchtable_table_entity_info_ = { "TableEntity", (uint32_t) sizeof( TableEntity ), 14, schema_benchtable_table_entity_fields_, schema_benchtable_table_entity_reset_raw_, TableDocNone, 0, NULL };
+const benchtable_table_type_info_t schema_benchtable_table_entity_info_ = { "TableEntity", (uint32_t) sizeof( benchtable_table_entity_t ), 14, schema_benchtable_table_entity_fields_, schema_benchtable_table_entity_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL };
 
-static const TableFieldInfo schema_benchtable_table_stat_fields_[] = {
-    { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( TableStat, stat_id ), (uint32_t) sizeof( ( (TableStat *) 0 )->stat_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableStat, delta ), (uint32_t) sizeof( ( (TableStat *) 0 )->delta ), 0xffffffffu, 0xffffffffu, NULL, 1, -512.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const benchtable_table_field_info_t schema_benchtable_table_stat_fields_[] = {
+    { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_stat_t, stat_id ), (uint32_t) sizeof( ( (benchtable_table_stat_t *) 0 )->stat_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_stat_t, delta ), (uint32_t) sizeof( ( (benchtable_table_stat_t *) 0 )->delta ), 0xffffffffu, 0xffffffffu, NULL, 1, -512.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_benchtable_table_stat_info_ = { "TableStat", (uint32_t) sizeof( TableStat ), 2, schema_benchtable_table_stat_fields_, schema_benchtable_table_stat_reset_raw_, TableDocNone, 0, NULL };
+const benchtable_table_type_info_t schema_benchtable_table_stat_info_ = { "TableStat", (uint32_t) sizeof( benchtable_table_stat_t ), 2, schema_benchtable_table_stat_fields_, schema_benchtable_table_stat_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL };
 
-static const TableVariantInfo schema_benchtable_table_mixed_game_event_variants_[] = {
+static const benchtable_table_variant_info_t schema_benchtable_table_mixed_game_event_variants_[] = {
     { "None", 0 },
     { "hit", 0x33732819300680aaull },
     { "chat", 0xf2a38d910b5b348bull },
     { "pickup", 0x9fa3a41c86ecb765ull },
 };
-static const TableUnionArmInfo schema_benchtable_table_mixed_game_event_arms_[] = {
+static const benchtable_table_union_arm_info_t schema_benchtable_table_mixed_game_event_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( TableEvent, as.hit ), &schema_benchtable_table_hit_event_info_, NULL, (uint32_t)sizeof( ((TableEvent *)0)->as.hit ) },
-    { (uint32_t)offsetof( TableEvent, as.chat ), &schema_benchtable_table_chat_event_info_, NULL, (uint32_t)sizeof( ((TableEvent *)0)->as.chat ) },
-    { (uint32_t)offsetof( TableEvent, as.pickup ), &schema_benchtable_table_pickup_event_info_, NULL, (uint32_t)sizeof( ((TableEvent *)0)->as.pickup ) },
+    { (uint32_t)offsetof( benchtable_table_event_t, as.hit ), &schema_benchtable_table_hit_event_info_, NULL, (uint32_t)sizeof( ((benchtable_table_event_t *)0)->as.hit ) },
+    { (uint32_t)offsetof( benchtable_table_event_t, as.chat ), &schema_benchtable_table_chat_event_info_, NULL, (uint32_t)sizeof( ((benchtable_table_event_t *)0)->as.chat ) },
+    { (uint32_t)offsetof( benchtable_table_event_t, as.pickup ), &schema_benchtable_table_pickup_event_info_, NULL, (uint32_t)sizeof( ((benchtable_table_event_t *)0)->as.pickup ) },
 };
-static const TableUnionInfo schema_benchtable_table_mixed_game_event_union_ = { (uint32_t) offsetof( TableEvent, type ), (uint32_t) sizeof( ( (TableEvent *) 0 )->type ), schema_benchtable_table_mixed_game_event_arms_ };
-static const TableFieldInfo schema_benchtable_table_mixed_fields_[] = {
-    { "protocol_magic", "protocol_magic", "uint16", 0x6a5a70d91aa115fdull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, protocol_magic ), (uint32_t) sizeof( ( (TableMixed *) 0 )->protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, sequence ), (uint32_t) sizeof( ( (TableMixed *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ack_sequence ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ack_bits ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, session_id ), (uint32_t) sizeof( ( (TableMixed *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, client_id ), (uint32_t) sizeof( ( (TableMixed *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, nonce ), (uint32_t) sizeof( ( (TableMixed *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, world_time ), (uint32_t) sizeof( ( (TableMixed *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, frame_tick ), (uint32_t) sizeof( ( (TableMixed *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, server_time ), (uint32_t) sizeof( ( (TableMixed *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 8, (uint32_t) offsetof( TableMixed, entities ), (uint32_t) sizeof( ( (TableMixed *) 0 )->entities[0] ), (uint32_t) offsetof( TableMixed, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 80, (uint32_t) offsetof( TableMixed, stats ), (uint32_t) sizeof( ( (TableMixed *) 0 )->stats[0] ), (uint32_t) offsetof( TableMixed, stats_count ), 0xffffffffu, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "game_event", "game_event", "TableEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, game_event ), (uint32_t) sizeof( ( (TableMixed *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_benchtable_table_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_benchtable_table_mixed_game_event_union_, "", TableDocNone, 0, NULL, 0, NULL },
-    { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 4, (uint32_t) offsetof( TableMixed, loadout ), (uint32_t) sizeof( ( (TableMixed *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, 0, 1, 0, 15, (uint32_t) offsetof( TableMixed, player_name ), (uint32_t) sizeof( ( (TableMixed *) 0 )->player_name ), (uint32_t) offsetof( TableMixed, player_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 1, 0, 16, (uint32_t) offsetof( TableMixed, payload ), (uint32_t) sizeof( ( (TableMixed *) 0 )->payload[0] ), (uint32_t) offsetof( TableMixed, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_x ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_y ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, aim_z ), (uint32_t) sizeof( ( (TableMixed *) 0 )->aim_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, recoil ), (uint32_t) sizeof( ( (TableMixed *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, drift ), (uint32_t) sizeof( ( (TableMixed *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "wide_key", "wide_key", "uint64", 0xa3348580461faf16ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, wide_key ), (uint32_t) sizeof( ( (TableMixed *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, flux ), (uint32_t) sizeof( ( (TableMixed *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+18, 1e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, ping ), (uint32_t) sizeof( ( (TableMixed *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, crc_hint ), (uint32_t) sizeof( ( (TableMixed *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, has_extra ), (uint32_t) sizeof( ( (TableMixed *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, extra ), (uint32_t) sizeof( ( (TableMixed *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableMixed, idle_ticks ), (uint32_t) sizeof( ( (TableMixed *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-};
-
-const TableTypeInfo schema_benchtable_table_mixed_info_ = { "TableMixed", (uint32_t) sizeof( TableMixed ), 28, schema_benchtable_table_mixed_fields_, schema_benchtable_table_mixed_reset_raw_, TableDocNone, 0, NULL };
-
-static const TableFieldInfo schema_benchtable_table_hit_event_fields_[] = {
-    { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, target_id ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, damage ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, hit_kind ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->hit_kind ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, 0, 0, 0, 0, (uint32_t) offsetof( TableHitEvent, crit ), (uint32_t) sizeof( ( (TableHitEvent *) 0 )->crit ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const benchtable_table_union_info_t schema_benchtable_table_mixed_game_event_union_ = { (uint32_t) offsetof( benchtable_table_event_t, type ), (uint32_t) sizeof( ( (benchtable_table_event_t *) 0 )->type ), schema_benchtable_table_mixed_game_event_arms_ };
+static const benchtable_table_field_info_t schema_benchtable_table_mixed_fields_[] = {
+    { "protocol_magic", "protocol_magic", "uint16", 0x6a5a70d91aa115fdull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, protocol_magic ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, sequence ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ack_sequence ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ack_bits ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, session_id ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, client_id ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, nonce ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, world_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, frame_tick ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, server_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 8, (uint32_t) offsetof( benchtable_table_mixed_t, entities ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 80, (uint32_t) offsetof( benchtable_table_mixed_t, stats ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->stats[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, stats_count ), 0xffffffffu, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "game_event", "game_event", "TableEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, game_event ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_benchtable_table_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_benchtable_table_mixed_game_event_union_, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 4, (uint32_t) offsetof( benchtable_table_mixed_t, loadout ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, 0, 1, 0, 15, (uint32_t) offsetof( benchtable_table_mixed_t, player_name ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->player_name ), (uint32_t) offsetof( benchtable_table_mixed_t, player_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 1, 0, 16, (uint32_t) offsetof( benchtable_table_mixed_t, payload ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->payload[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, aim_x ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, aim_y ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, aim_z ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, recoil ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, drift ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "wide_key", "wide_key", "uint64", 0xa3348580461faf16ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, wide_key ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, flux ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+18, 1e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ping ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, crc_hint ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, has_extra ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, extra ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, idle_ticks ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_benchtable_table_hit_event_info_ = { "TableHitEvent", (uint32_t) sizeof( TableHitEvent ), 4, schema_benchtable_table_hit_event_fields_, schema_benchtable_table_hit_event_reset_raw_, TableDocNone, 0, NULL };
+const benchtable_table_type_info_t schema_benchtable_table_mixed_info_ = { "TableMixed", (uint32_t) sizeof( benchtable_table_mixed_t ), 28, schema_benchtable_table_mixed_fields_, schema_benchtable_table_mixed_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL };
 
-static const TableFieldInfo schema_benchtable_table_chat_event_fields_[] = {
-    { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TableChatEvent, channel ), (uint32_t) sizeof( ( (TableChatEvent *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 3.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TableChatEvent, speaker ), (uint32_t) sizeof( ( (TableChatEvent *) 0 )->speaker ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const benchtable_table_field_info_t schema_benchtable_table_hit_event_fields_[] = {
+    { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, target_id ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, damage ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, hit_kind ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->hit_kind ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, crit ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->crit ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_benchtable_table_chat_event_info_ = { "TableChatEvent", (uint32_t) sizeof( TableChatEvent ), 2, schema_benchtable_table_chat_event_fields_, schema_benchtable_table_chat_event_reset_raw_, TableDocNone, 0, NULL };
+const benchtable_table_type_info_t schema_benchtable_table_hit_event_info_ = { "TableHitEvent", (uint32_t) sizeof( benchtable_table_hit_event_t ), 4, schema_benchtable_table_hit_event_fields_, schema_benchtable_table_hit_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL };
 
-static const TableFieldInfo schema_benchtable_table_pickup_event_fields_[] = {
-    { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( TablePickupEvent, item_id ), (uint32_t) sizeof( ( (TablePickupEvent *) 0 )->item_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1023.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( TablePickupEvent, amount ), (uint32_t) sizeof( ( (TablePickupEvent *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+static const benchtable_table_field_info_t schema_benchtable_table_chat_event_fields_[] = {
+    { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_chat_event_t, channel ), (uint32_t) sizeof( ( (benchtable_table_chat_event_t *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 3.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_chat_event_t, speaker ), (uint32_t) sizeof( ( (benchtable_table_chat_event_t *) 0 )->speaker ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_benchtable_table_pickup_event_info_ = { "TablePickupEvent", (uint32_t) sizeof( TablePickupEvent ), 2, schema_benchtable_table_pickup_event_fields_, schema_benchtable_table_pickup_event_reset_raw_, TableDocNone, 0, NULL };
+const benchtable_table_type_info_t schema_benchtable_table_chat_event_info_ = { "TableChatEvent", (uint32_t) sizeof( benchtable_table_chat_event_t ), 2, schema_benchtable_table_chat_event_fields_, schema_benchtable_table_chat_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL };
 
-int schema_benchtable_table_entity_from_json_( TableEntity * value, const char * text, int64_t bytes, TableReport * report )
+static const benchtable_table_field_info_t schema_benchtable_table_pickup_event_fields_[] = {
+    { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_pickup_event_t, item_id ), (uint32_t) sizeof( ( (benchtable_table_pickup_event_t *) 0 )->item_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1023.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_pickup_event_t, amount ), (uint32_t) sizeof( ( (benchtable_table_pickup_event_t *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+};
+
+const benchtable_table_type_info_t schema_benchtable_table_pickup_event_info_ = { "TablePickupEvent", (uint32_t) sizeof( benchtable_table_pickup_event_t ), 2, schema_benchtable_table_pickup_event_fields_, schema_benchtable_table_pickup_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL };
+
+int schema_benchtable_table_entity_from_json_( benchtable_table_entity_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
-    return table_json_read( value, &schema_benchtable_table_entity_info_, text, bytes, report );
+    return benchtable_table_json_read( value, &schema_benchtable_table_entity_info_, text, bytes, report );
 }
 
-int64_t schema_benchtable_table_entity_to_json_( const TableEntity * value, char * buffer, int64_t capacity )
+int64_t schema_benchtable_table_entity_to_json_( const benchtable_table_entity_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_benchtable_table_entity_info_, buffer, capacity );
+    return benchtable_table_json_write( value, &schema_benchtable_table_entity_info_, buffer, capacity );
 }
 
-int schema_benchtable_table_stat_from_json_( TableStat * value, const char * text, int64_t bytes, TableReport * report )
+int schema_benchtable_table_stat_from_json_( benchtable_table_stat_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
-    return table_json_read( value, &schema_benchtable_table_stat_info_, text, bytes, report );
+    return benchtable_table_json_read( value, &schema_benchtable_table_stat_info_, text, bytes, report );
 }
 
-int64_t schema_benchtable_table_stat_to_json_( const TableStat * value, char * buffer, int64_t capacity )
+int64_t schema_benchtable_table_stat_to_json_( const benchtable_table_stat_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_benchtable_table_stat_info_, buffer, capacity );
+    return benchtable_table_json_write( value, &schema_benchtable_table_stat_info_, buffer, capacity );
 }
 
-int schema_benchtable_table_mixed_from_json_( TableMixed * value, const char * text, int64_t bytes, TableReport * report )
+int schema_benchtable_table_mixed_from_json_( benchtable_table_mixed_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
-    return table_json_read( value, &schema_benchtable_table_mixed_info_, text, bytes, report );
+    return benchtable_table_json_read( value, &schema_benchtable_table_mixed_info_, text, bytes, report );
 }
 
-int64_t schema_benchtable_table_mixed_to_json_( const TableMixed * value, char * buffer, int64_t capacity )
+int64_t schema_benchtable_table_mixed_to_json_( const benchtable_table_mixed_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_benchtable_table_mixed_info_, buffer, capacity );
+    return benchtable_table_json_write( value, &schema_benchtable_table_mixed_info_, buffer, capacity );
 }
 
-int schema_benchtable_table_hit_event_from_json_( TableHitEvent * value, const char * text, int64_t bytes, TableReport * report )
+int schema_benchtable_table_hit_event_from_json_( benchtable_table_hit_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
-    return table_json_read( value, &schema_benchtable_table_hit_event_info_, text, bytes, report );
+    return benchtable_table_json_read( value, &schema_benchtable_table_hit_event_info_, text, bytes, report );
 }
 
-int64_t schema_benchtable_table_hit_event_to_json_( const TableHitEvent * value, char * buffer, int64_t capacity )
+int64_t schema_benchtable_table_hit_event_to_json_( const benchtable_table_hit_event_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_benchtable_table_hit_event_info_, buffer, capacity );
+    return benchtable_table_json_write( value, &schema_benchtable_table_hit_event_info_, buffer, capacity );
 }
 
-int schema_benchtable_table_chat_event_from_json_( TableChatEvent * value, const char * text, int64_t bytes, TableReport * report )
+int schema_benchtable_table_chat_event_from_json_( benchtable_table_chat_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
-    return table_json_read( value, &schema_benchtable_table_chat_event_info_, text, bytes, report );
+    return benchtable_table_json_read( value, &schema_benchtable_table_chat_event_info_, text, bytes, report );
 }
 
-int64_t schema_benchtable_table_chat_event_to_json_( const TableChatEvent * value, char * buffer, int64_t capacity )
+int64_t schema_benchtable_table_chat_event_to_json_( const benchtable_table_chat_event_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_benchtable_table_chat_event_info_, buffer, capacity );
+    return benchtable_table_json_write( value, &schema_benchtable_table_chat_event_info_, buffer, capacity );
 }
 
-int schema_benchtable_table_pickup_event_from_json_( TablePickupEvent * value, const char * text, int64_t bytes, TableReport * report )
+int schema_benchtable_table_pickup_event_from_json_( benchtable_table_pickup_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
-    return table_json_read( value, &schema_benchtable_table_pickup_event_info_, text, bytes, report );
+    return benchtable_table_json_read( value, &schema_benchtable_table_pickup_event_info_, text, bytes, report );
 }
 
-int64_t schema_benchtable_table_pickup_event_to_json_( const TablePickupEvent * value, char * buffer, int64_t capacity )
+int64_t schema_benchtable_table_pickup_event_to_json_( const benchtable_table_pickup_event_t * value, char * buffer, int64_t capacity )
 {
-    return table_json_write( value, &schema_benchtable_table_pickup_event_info_, buffer, capacity );
+    return benchtable_table_json_write( value, &schema_benchtable_table_pickup_event_info_, buffer, capacity );
 }
 

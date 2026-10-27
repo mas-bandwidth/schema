@@ -24,8 +24,8 @@ int main(void)
             if (sscanf(line + i * 2, "%2x", &c) != 1) { return 1; }
             text[i] = (char) c;
         }
-        Blob value;
-        TableReport report;
+        base64test_blob_t value;
+        base64test_table_report_t report;
 #ifndef __cplusplus
         memset(&report, 0, sizeof(report));
 #endif
@@ -34,13 +34,13 @@ int main(void)
         // named one: the plain BlobFromJson is strict (SPEC-TABLES §16.11).
         BlobFromJsonTolerant(value, text, (int64_t) n, &report);
 #else
-        blob_from_json(&value, text, (int64_t) n, &report);
+        base64test_blob_from_json(&value, text, (int64_t) n, &report);
 #endif
         if (report.malformed) { puts("1 0 0 - -"); continue; }
 #ifdef __cplusplus
         int64_t size = BlobToJson(value, written, sizeof(written));
 #else
-        int64_t size = blob_to_json(&value, written, sizeof(written));
+        int64_t size = base64test_blob_to_json(&value, written, sizeof(written));
 #endif
         if (size < 0) { return 1; }
         printf("0 %d %d ", report.clamped, report.kind_mismatch);

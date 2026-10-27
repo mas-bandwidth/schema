@@ -23,10 +23,9 @@
  *     separately as a SLOT, with its own message, because its position is what
  *     a self-relative delta is relative to.
  *
- * The same source is compiled twice, once per unit (the C leg compiles a
- * driver per directory; two units cannot be included into one translation
- * unit because they redefine the shared runtime), under the two -D flags the
- * make target passes.
+ * The same source is compiled twice, once per unit, under the two -D flags
+ * the make target passes; ACC_Q spells the runtime's names in the build's
+ * package (SPEC §6.3).
  */
 
 #include <stdio.h>
@@ -41,6 +40,20 @@
 #include "GraphTable.h"
 #endif
 
+/* The two builds read two units (blockdemo and graphdemo); the runtime names
+   both carry are spelled through the build's package (SPEC §6.3). */
+#if defined( ACCESSOR_DESCRIPTOR_BLOCK )
+#define ACC_Q( n ) blockdemo_##n
+#define ACC_QU( n ) BLOCKDEMO_##n
+#define ACC_QS( n ) SCHEMA_BLOCKDEMO_##n
+#define ACC_QL( n ) schema_blockdemo_##n
+#else
+#define ACC_Q( n ) graphdemo_##n
+#define ACC_QU( n ) GRAPHDEMO_##n
+#define ACC_QS( n ) SCHEMA_GRAPHDEMO_##n
+#define ACC_QL( n ) schema_graphdemo_##n
+#endif
+
 static int checked_total = 0;
 
 #define FAIL(...) do { fprintf( stderr, __VA_ARGS__ ); return 1; } while ( 0 )
@@ -53,7 +66,7 @@ static void fill_pattern( uint8_t * p, size_t n )
     for ( i = 0; i < n; i++ ) { p[i] = (uint8_t) ( i * 37u + 11u ); }
 }
 
-static const TableBlockFieldInfo * bfield( const TableBlockInfo * info, const char * name )
+static const ACC_Q( table_block_field_info_t ) * bfield( const ACC_Q( table_block_info_t ) * info, const char * name )
 {
     int32_t i;
     for ( i = 0; i < info->num_fields; i++ )
@@ -83,14 +96,14 @@ static const TableBlockFieldInfo * bfield( const TableBlockInfo * info, const ch
 
 static int check_projection( void )
 {
-    const TableBlockInfo * proj = render_frame_block_type();
-    RenderFrameBlockProjection p;
+    const ACC_Q( table_block_info_t ) * proj = blockdemo_render_frame_block_type();
+    blockdemo_render_frame_block_projection_t p;
     int32_t i;
     if ( proj == NULL ) { FAIL( "block: RenderFrame projection descriptor missing\n" ); }
     fill_pattern( (uint8_t *) &p, sizeof p );
     for ( i = 0; i < proj->num_fields; i++ )
     {
-        const TableBlockFieldInfo * f = &proj->fields[i];
+        const ACC_Q( table_block_field_info_t ) * f = &proj->fields[i];
         if ( strcmp( f->name, "version" ) == 0 ) { CHECK_BLOCK( "block", &p, version, f ); }
         else if ( strcmp( f->name, "cameras" ) == 0 ) { CHECK_BLOCK( "block", &p, cameras, f ); }
         else if ( strcmp( f->name, "ships" ) == 0 ) { CHECK_BLOCK( "block", &p, ships, f ); }
@@ -107,7 +120,7 @@ static int check_projection( void )
     return 0;
 }
 
-static int check_row( const char * what, const TableBlockInfo * info, void * base )
+static int check_row( const char * what, const ACC_Q( table_block_info_t ) * info, void * base )
 {
     const char * name = info != NULL ? info->name : "(null)";
     int32_t i;
@@ -115,10 +128,10 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
     fill_pattern( (uint8_t *) base, info->size );
     for ( i = 0; i < info->num_fields; i++ )
     {
-        const TableBlockFieldInfo * f = &info->fields[i];
+        const ACC_Q( table_block_field_info_t ) * f = &info->fields[i];
         if ( strcmp( name, "RenderCamera" ) == 0 )
         {
-            RenderCamera * s = (RenderCamera *) base;
+            blockdemo_render_camera_t * s = (blockdemo_render_camera_t *) base;
             if ( strcmp( f->name, "position" ) == 0 ) { CHECK_BLOCK( "block", s, position, f ); }
             else if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "camera_id" ) == 0 ) { CHECK_BLOCK( "block", s, camera_id, f ); }
@@ -129,7 +142,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderCosmeticProp" ) == 0 )
         {
-            RenderCosmeticProp * s = (RenderCosmeticProp *) base;
+            blockdemo_render_cosmetic_prop_t * s = (blockdemo_render_cosmetic_prop_t *) base;
             if ( strcmp( f->name, "position" ) == 0 ) { CHECK_BLOCK( "block", s, position, f ); }
             else if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "scale" ) == 0 ) { CHECK_BLOCK( "block", s, scale, f ); }
@@ -142,7 +155,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderDynamicProp" ) == 0 )
         {
-            RenderDynamicProp * s = (RenderDynamicProp *) base;
+            blockdemo_render_dynamic_prop_t * s = (blockdemo_render_dynamic_prop_t *) base;
             if ( strcmp( f->name, "position" ) == 0 ) { CHECK_BLOCK( "block", s, position, f ); }
             else if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "flags" ) == 0 ) { CHECK_BLOCK( "block", s, flags, f ); }
@@ -154,7 +167,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderExplosion" ) == 0 )
         {
-            RenderExplosion * s = (RenderExplosion *) base;
+            blockdemo_render_explosion_t * s = (blockdemo_render_explosion_t *) base;
             if ( strcmp( f->name, "position" ) == 0 ) { CHECK_BLOCK( "block", s, position, f ); }
             else if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "t" ) == 0 ) { CHECK_BLOCK( "block", s, t, f ); }
@@ -166,7 +179,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderLaser" ) == 0 )
         {
-            RenderLaser * s = (RenderLaser *) base;
+            blockdemo_render_laser_t * s = (blockdemo_render_laser_t *) base;
             if ( strcmp( f->name, "start" ) == 0 ) { CHECK_BLOCK( "block", s, start, f ); }
             else if ( strcmp( f->name, "finish" ) == 0 ) { CHECK_BLOCK( "block", s, finish, f ); }
             else if ( strcmp( f->name, "t" ) == 0 ) { CHECK_BLOCK( "block", s, t, f ); }
@@ -177,7 +190,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderMissile" ) == 0 )
         {
-            RenderMissile * s = (RenderMissile *) base;
+            blockdemo_render_missile_t * s = (blockdemo_render_missile_t *) base;
             if ( strcmp( f->name, "position" ) == 0 ) { CHECK_BLOCK( "block", s, position, f ); }
             else if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "flags" ) == 0 ) { CHECK_BLOCK( "block", s, flags, f ); }
@@ -189,7 +202,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderQuaternion" ) == 0 )
         {
-            RenderQuaternion * s = (RenderQuaternion *) base;
+            blockdemo_render_quaternion_t * s = (blockdemo_render_quaternion_t *) base;
             if ( strcmp( f->name, "x" ) == 0 ) { CHECK_BLOCK( "block", s, x, f ); }
             else if ( strcmp( f->name, "y" ) == 0 ) { CHECK_BLOCK( "block", s, y, f ); }
             else if ( strcmp( f->name, "z" ) == 0 ) { CHECK_BLOCK( "block", s, z, f ); }
@@ -198,7 +211,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderShip" ) == 0 )
         {
-            RenderShip * s = (RenderShip *) base;
+            blockdemo_render_ship_t * s = (blockdemo_render_ship_t *) base;
             if ( strcmp( f->name, "position" ) == 0 ) { CHECK_BLOCK( "block", s, position, f ); }
             else if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "flags" ) == 0 ) { CHECK_BLOCK( "block", s, flags, f ); }
@@ -214,7 +227,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderStaticProp" ) == 0 )
         {
-            RenderStaticProp * s = (RenderStaticProp *) base;
+            blockdemo_render_static_prop_t * s = (blockdemo_render_static_prop_t *) base;
             if ( strcmp( f->name, "position" ) == 0 ) { CHECK_BLOCK( "block", s, position, f ); }
             else if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "scale" ) == 0 ) { CHECK_BLOCK( "block", s, scale, f ); }
@@ -226,7 +239,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderTurret" ) == 0 )
         {
-            RenderTurret * s = (RenderTurret *) base;
+            blockdemo_render_turret_t * s = (blockdemo_render_turret_t *) base;
             if ( strcmp( f->name, "rotation" ) == 0 ) { CHECK_BLOCK( "block", s, rotation, f ); }
             else if ( strcmp( f->name, "flags" ) == 0 ) { CHECK_BLOCK( "block", s, flags, f ); }
             else if ( strcmp( f->name, "object_id" ) == 0 ) { CHECK_BLOCK( "block", s, object_id, f ); }
@@ -240,7 +253,7 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
         }
         else if ( strcmp( name, "RenderVector3" ) == 0 )
         {
-            RenderVector3 * s = (RenderVector3 *) base;
+            blockdemo_render_vector3_t * s = (blockdemo_render_vector3_t *) base;
             if ( strcmp( f->name, "x" ) == 0 ) { CHECK_BLOCK( "block", s, x, f ); }
             else if ( strcmp( f->name, "y" ) == 0 ) { CHECK_BLOCK( "block", s, y, f ); }
             else if ( strcmp( f->name, "z" ) == 0 ) { CHECK_BLOCK( "block", s, z, f ); }
@@ -254,24 +267,24 @@ static int check_row( const char * what, const TableBlockInfo * info, void * bas
 
 static int check_block( void )
 {
-    const TableBlockInfo * proj = render_frame_block_type();
-    const TableBlockInfo * camera, * ship, * turret, * missile, * dyn, * stat, * cosm, * laser, * explo, * vec3, * quat;
+    const ACC_Q( table_block_info_t ) * proj = blockdemo_render_frame_block_type();
+    const ACC_Q( table_block_info_t ) * camera, * ship, * turret, * missile, * dyn, * stat, * cosm, * laser, * explo, * vec3, * quat;
 
     /* assert the block reads back cleanly FIRST: begin one with zero counts and
      * open the extent it produced, so a broken fixture cannot pass this row. */
     {
-        RenderFrameBlockStorage storage;
-        RenderFrameBlock block, reopened;
-        RenderFrameCounts counts;
-        TableBlockAllocator alloc = table_block_default_allocator();
+        blockdemo_render_frame_block_storage_t storage;
+        blockdemo_render_frame_block_t block, reopened;
+        blockdemo_render_frame_counts_t counts;
+        ACC_Q( table_block_allocator_t ) alloc = ACC_Q( table_block_default_allocator )();
         memset( &counts, 0, sizeof counts );
         memset( &storage, 0, sizeof storage );
         memset( &block, 0, sizeof block );
-        if ( !render_frame_block_storage_create( &storage, &alloc ) ) { FAIL( "block: storage create failed\n" ); }
-        if ( !render_frame_block_begin( &block, &storage, &counts, NULL ) ) { FAIL( "block: begin failed\n" ); }
-        if ( !render_frame_block_open( &reopened, block.base, render_frame_block_bytes( &block ) ) )
+        if ( !blockdemo_render_frame_block_storage_create( &storage, &alloc ) ) { FAIL( "block: storage create failed\n" ); }
+        if ( !blockdemo_render_frame_block_begin( &block, &storage, &counts, NULL ) ) { FAIL( "block: begin failed\n" ); }
+        if ( !blockdemo_render_frame_block_open( &reopened, block.base, blockdemo_render_frame_block_bytes( &block ) ) )
         { FAIL( "block: the just-written block did not open cleanly\n" ); }
-        render_frame_block_storage_destroy( &storage );
+        blockdemo_render_frame_block_storage_destroy( &storage );
     }
 
     if ( check_projection() != 0 ) { return 1; }
@@ -300,17 +313,17 @@ static int check_block( void )
     quat    = bfield( camera, "rotation" )->element;
 
     {
-        RenderCamera s; if ( check_row( "RenderCamera", camera, &s ) != 0 ) { return 1; }
-        RenderCosmeticProp c; if ( check_row( "RenderCosmeticProp", cosm, &c ) != 0 ) { return 1; }
-        RenderDynamicProp d; if ( check_row( "RenderDynamicProp", dyn, &d ) != 0 ) { return 1; }
-        RenderExplosion e; if ( check_row( "RenderExplosion", explo, &e ) != 0 ) { return 1; }
-        RenderLaser l; if ( check_row( "RenderLaser", laser, &l ) != 0 ) { return 1; }
-        RenderMissile m; if ( check_row( "RenderMissile", missile, &m ) != 0 ) { return 1; }
-        RenderQuaternion q; if ( check_row( "RenderQuaternion", quat, &q ) != 0 ) { return 1; }
-        RenderShip sh; if ( check_row( "RenderShip", ship, &sh ) != 0 ) { return 1; }
-        RenderStaticProp sp; if ( check_row( "RenderStaticProp", stat, &sp ) != 0 ) { return 1; }
-        RenderTurret tu; if ( check_row( "RenderTurret", turret, &tu ) != 0 ) { return 1; }
-        RenderVector3 v; if ( check_row( "RenderVector3", vec3, &v ) != 0 ) { return 1; }
+        blockdemo_render_camera_t s; if ( check_row( "RenderCamera", camera, &s ) != 0 ) { return 1; }
+        blockdemo_render_cosmetic_prop_t c; if ( check_row( "RenderCosmeticProp", cosm, &c ) != 0 ) { return 1; }
+        blockdemo_render_dynamic_prop_t d; if ( check_row( "RenderDynamicProp", dyn, &d ) != 0 ) { return 1; }
+        blockdemo_render_explosion_t e; if ( check_row( "RenderExplosion", explo, &e ) != 0 ) { return 1; }
+        blockdemo_render_laser_t l; if ( check_row( "RenderLaser", laser, &l ) != 0 ) { return 1; }
+        blockdemo_render_missile_t m; if ( check_row( "RenderMissile", missile, &m ) != 0 ) { return 1; }
+        blockdemo_render_quaternion_t q; if ( check_row( "RenderQuaternion", quat, &q ) != 0 ) { return 1; }
+        blockdemo_render_ship_t sh; if ( check_row( "RenderShip", ship, &sh ) != 0 ) { return 1; }
+        blockdemo_render_static_prop_t sp; if ( check_row( "RenderStaticProp", stat, &sp ) != 0 ) { return 1; }
+        blockdemo_render_turret_t tu; if ( check_row( "RenderTurret", turret, &tu ) != 0 ) { return 1; }
+        blockdemo_render_vector3_t v; if ( check_row( "RenderVector3", vec3, &v ) != 0 ) { return 1; }
     }
 
     printf( "block total: %d fields checked\n", checked_total );
@@ -334,11 +347,11 @@ static int check_block( void )
 
 static int check_cook( void )
 {
-    const TableTypeInfo * info = list_node_table_type();
-    ListNode node;
+    const ACC_Q( table_type_info_t ) * info = graphdemo_list_node_table_type();
+    graphdemo_list_node_t node;
     int32_t i;
     if ( info == NULL || info->num_fields != 3 ) { FAIL( "cook: ListNode descriptor missing or wrong\n" ); }
-    list_node_reset( &node );
+    graphdemo_list_node_reset( &node );
     node.value = 7;
     memcpy( node.name, "hello", 6 );
     node.name_length = 5;
@@ -346,7 +359,7 @@ static int check_cook( void )
 
     for ( i = 0; i < info->num_fields; i++ )
     {
-        const TableFieldInfo * f = &info->fields[i];
+        const ACC_Q( table_field_info_t ) * f = &info->fields[i];
         if ( strcmp( f->name, "value" ) == 0 )
         {
             CHECK_COOK_VALUE( "cook", &node, node.value, f );
@@ -359,9 +372,9 @@ static int check_cook( void )
         {
             /* a pointer's storage IS the reference slot: its position is what a
              * self-relative delta is relative to, so it is held separately. */
-            if ( (uint32_t) offsetof( ListNode, next ) != f->offset )
+            if ( (uint32_t) offsetof( graphdemo_list_node_t, next ) != f->offset )
                 FAIL( "cook.next: the slot accessor's offset is not the descriptor's\n" );
-            if ( f->elem_size != (uint32_t) sizeof( TableRef ) )
+            if ( f->elem_size != (uint32_t) sizeof( graphdemo_table_ref_t ) )
                 FAIL( "cook.next: the slot accessor's elem_size is not sizeof( TableRef )\n" );
             CHECK_COOK_VALUE( "cook", &node, node.next, f );
         }

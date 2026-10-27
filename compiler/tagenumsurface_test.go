@@ -64,9 +64,11 @@ type tagEnumClaim struct {
 
 var tagEnumSurface = map[string]tagEnumClaim{
 	"c": {
-		count:    "#define WEAPON_FIRE_TYPE_COUNT 2",
-		max:      "#define WEAPON_FIRE_TYPE_MAX 2",
-		nameFunc: "const char * enum_name_weapon_fire_type( WeaponFireType value )",
+		// the package leads every C name (SPEC §6.3), and these claims are
+		// checked against units of more than one package
+		count:    "_WEAPON_FIRE_TYPE_COUNT 2",
+		max:      "_WEAPON_FIRE_TYPE_MAX 2",
+		nameFunc: "_enum_name_weapon_fire_type( ",
 	},
 	"cpp": {
 		count:    "    Count = 2, // the declared variant count (SPEC §4.2)",

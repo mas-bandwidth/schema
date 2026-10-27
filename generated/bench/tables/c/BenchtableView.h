@@ -11,7 +11,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef struct ViewConstant
+typedef struct benchtable_view_constant_t
 {
     const char * name;
     const char * file;       // the declaring schema file's basename
@@ -23,9 +23,9 @@ typedef struct ViewConstant
                              // "" when there is none, never NULL (§8.1)
     int32_t num_tags;             // the declaration's tags (SPEC §4.2), in
     const char * const * tags;    // DECLARED order; 0 and NULL when there are none
-} ViewConstant;
+} benchtable_view_constant_t;
 
-typedef struct ViewVariant          // one enum variant, one flags bit, one union arm
+typedef struct benchtable_view_variant_t          // one enum variant, one flags bit, one union arm
 {
     uint64_t value;         // an enum's value, a flags BIT INDEX, a union's tag
     const char * name;
@@ -36,11 +36,11 @@ typedef struct ViewVariant          // one enum variant, one flags bit, one unio
                                     // name, or a general arm's spelling
                                     // ("int32", "string(64)", "*Chunk"); NULL on
                                     // a payload-free arm and on every other row
-    const TableTypeInfo * payload;  // that payload's descriptor — never NULL for
+    const benchtable_table_type_info_t * payload;  // that payload's descriptor — never NULL for
                                     // an arm naming a `type` or a `table` (§8.2);
                                     // NULL on a general arm, on a payload-free
                                     // arm, on tag 0, and on an enum or flags row
-    const TableFieldInfo * field;   // a general arm's FIELD descriptor: its kind,
+    const benchtable_table_field_info_t * field;   // a general arm's FIELD descriptor: its kind,
                                     // width, bounds, capacity, companions and the
                                     // offsets §8.1 takes within the union's
                                     // storage. NULL on an arm naming a `type` or
@@ -52,51 +52,51 @@ typedef struct ViewVariant          // one enum variant, one flags bit, one unio
     const char * const * tags;      // 0 and NULL when there are none. On a general
                                     // arm the `field` descriptor above carries the
                                     // same two values (§8.1)
-} ViewVariant;
+} benchtable_view_variant_t;
 
-typedef struct ViewVocabulary       // an enum, a flags or a union declaration
+typedef struct benchtable_view_vocabulary_t       // an enum, a flags or a union declaration
 {
     const char * name;
     const char * file;
     int64_t max;            // highest value / highest bit index / highest tag
     int32_t storage_bits;
     int32_t num_variants;
-    const ViewVariant * variants;
+    const benchtable_view_variant_t * variants;
     const char * doc;             // the declaration's own `///` block; "" when none
     int32_t num_tags;             // the declaration's own tags, in DECLARED order;
     const char * const * tags;    // 0 and NULL when there are none
-} ViewVocabulary;
+} benchtable_view_vocabulary_t;
 
-typedef struct ViewType             // one declaration: a type, or a table
+typedef struct benchtable_view_type_t             // one declaration: a type, or a table
 {
     const char * name;
     const char * file;
     int table;                     // declared `table`
-    const TableTypeInfo * type;     // §8.1's descriptor: the properties, and this
+    const benchtable_table_type_info_t * type;     // §8.1's descriptor: the properties, and this
                                     // declaration's own doc and tags beside them
     const char * doc;               // the `///` block above it; "" when none. The
                                     // same text `type->doc` carries (§8.1)
     int32_t num_tags;               // the declaration's tags (SPEC §4.2), in
     const char * const * tags;      // DECLARED order; the same list `type` carries
-} ViewType;
+} benchtable_view_type_t;
 
-typedef struct UnitViewInfo
+typedef struct benchtable_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const ViewType * types;
-    int32_t num_tables;     const ViewType * tables;
-    int32_t num_enums;      const ViewVocabulary * enums;
-    int32_t num_flags;      const ViewVocabulary * flags;
-    int32_t num_unions;     const ViewVocabulary * unions;
-    int32_t num_constants;  const ViewConstant * constants;
-} UnitViewInfo;
+    int32_t num_types;      const benchtable_view_type_t * types;
+    int32_t num_tables;     const benchtable_view_type_t * tables;
+    int32_t num_enums;      const benchtable_view_vocabulary_t * enums;
+    int32_t num_flags;      const benchtable_view_vocabulary_t * flags;
+    int32_t num_unions;     const benchtable_view_vocabulary_t * unions;
+    int32_t num_constants;  const benchtable_view_constant_t * constants;
+} benchtable_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
 
 
-const UnitViewInfo * schema_benchtable_unit_view_(void);
-static SCHEMA_UNUSED const UnitViewInfo * unit_view(void) { return schema_benchtable_unit_view_(); }
+const benchtable_unit_view_info_t * schema_benchtable_unit_view_(void);
+static SCHEMA_UNUSED const benchtable_unit_view_info_t * benchtable_unit_view(void) { return schema_benchtable_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

@@ -1,4 +1,6 @@
 #include "K1Table.h"
+#define SCHEMA_CONFORMANCE_PACKAGE tblk1
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER TBLK1
 #include "unit.h"
 SCHEMA_CONFORMANCE_CODEC( Root, root )
 static const ConformanceCodec codecs[] = {

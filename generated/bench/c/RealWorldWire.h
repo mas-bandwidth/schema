@@ -10,14 +10,6 @@
 #include "RealWorld.h"
 #include "serialize.h"
 
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,30 +21,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
 /* Writes RealPacket. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_write_stream_t * stream, const RealPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( serialize_write_stream_t * stream, const realworld_real_packet_t * value )
 {
     serialize_assert( (serialize_int64_t) value->f001_int >= -805495 && (serialize_int64_t) value->f001_int <= 805495 );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f001_int - (serialize_uint32_t) ( -805495 ), 21 ) )
@@ -218,7 +188,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    serialize_assert( value->f036_enum <= PACKET_MODE_MAX );
+    serialize_assert( value->f036_enum <= REALWORLD_PACKET_MODE_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f036_enum, 3 ) )
     {
         return 0;
@@ -439,7 +409,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
     {
         return 0;
     }
-    serialize_assert( value->f083_enum <= PACKET_MODE_MAX );
+    serialize_assert( value->f083_enum <= REALWORLD_PACKET_MODE_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->f083_enum, 3 ) )
     {
         return 0;
@@ -528,7 +498,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_real_packet( serialize_writ
 }
 
 /* Reads RealPacket. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_stream_t * stream, RealPacket * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serialize_read_stream_t * stream, realworld_real_packet_t * value )
 {
     {
         serialize_uint64_t offset_value = 0;
@@ -857,11 +827,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        if ( enum_value > PACKET_MODE_MAX )
+        if ( enum_value > REALWORLD_PACKET_MODE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal value */
         }
-        value->f036_enum = (PacketMode) enum_value;
+        value->f036_enum = (realworld_packet_mode_t) enum_value;
     }
     {
         int bool_value = 0;
@@ -1309,11 +1279,11 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        if ( enum_value > PACKET_MODE_MAX )
+        if ( enum_value > REALWORLD_PACKET_MODE_MAX )
         {
             return serialize_read_fail( stream ); /* not a wire-legal value */
         }
-        value->f083_enum = (PacketMode) enum_value;
+        value->f083_enum = (realworld_packet_mode_t) enum_value;
     }
     {
         serialize_int64_t fixed_value = 0;
@@ -1396,7 +1366,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_real_packet( serialize_read_s
         {
             return 0;
         }
-        value->f091_flags = (PacketFlags) flags_value;
+        value->f091_flags = (realworld_packet_flags_t) flags_value;
     }
     {
         int bool_value = 0;

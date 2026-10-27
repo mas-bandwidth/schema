@@ -1,4 +1,6 @@
 #include "R2Table.h"
+#define SCHEMA_CONFORMANCE_PACKAGE tblr2
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER TBLR2
 #include "unit.h"
 SCHEMA_CONFORMANCE_CODEC( Cfg, cfg )
 static const ConformanceCodec codecs[] = {

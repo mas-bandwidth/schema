@@ -1,15 +1,11 @@
 /* THE C CONFORMANCE DRIVER's shared surface (test/conformance/README.md).
  *
- * C HAS NO NAMESPACES, so the seven units this driver reads cannot meet in one
- * translation unit: tblv1's Cfg and tblv2's Cfg declare the same struct name,
- * and every unit's <Base>Table.h defines the same TableReport, TableWriter and
- * TableReader. Each unit therefore gets a translation unit of its own, which
+ * Each unit this driver reads gets a translation unit of its own, which
  * includes only its own headers and hands the surfaces back through the ERASED
- * shapes below. main.c includes no generated header at all.
- *
- * That is what a real C consumer of two schema units does, and the generated
- * externals are spelled schema_<package>_<type>_<what>_ precisely so those
- * translation units link together. */
+ * shapes below; main.c includes no generated header at all. That keeps the
+ * matrix one row per unit. It is no longer forced: every name a C unit
+ * declares carries its package (SPEC §6.3), so units link together and their
+ * headers may share a translation unit too (test/c-two-units). */
 
 #ifndef SCHEMA_CONFORMANCE_DRIVER_H
 #define SCHEMA_CONFORMANCE_DRIVER_H
@@ -27,9 +23,9 @@
 #define SCHEMA_CONFORMANCE_UNUSED
 #endif
 
-/* Each unit declares its OWN TableReport — the generated surface is not
- * namespaced (§6.1) — so the driver carries one report shape of its own and
- * each row copies into it. Five counters is the whole of §4's report. */
+/* Each unit declares its OWN report type (<package>_table_report_t), so the
+ * driver carries one report shape of its own and each row copies into it.
+ * Five counters is the whole of §4's report. */
 typedef struct ConformanceReport
 {
     int unknown, kind_mismatch, clamped, duplicate;

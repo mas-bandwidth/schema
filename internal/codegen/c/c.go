@@ -16,14 +16,19 @@
 //     and works in every context C has — array bounds, case labels, other
 //     #defines — which a const int does not.
 //
-//   - Type names keep their schema spelling (Vec3), matching the C++ target.
-//     C has no namespaces, so a unit's names live in the global namespace; the
-//     package name is not prefixed because that would double the length of
-//     every identifier for a collision that a caller can avoid by not mixing
-//     two schema units in one translation unit.
+//   - This emitter writes the schema's own spellings (Vec3, write_vec3,
+//     MAX_OBJECTS), and the target then gives every name the unit declares
+//     its package in one pass over both emitters' files
+//     (internal/codegen/cqualify): example_vec3_t, example_write_vec3,
+//     EXAMPLE_MAX_OBJECTS. C has no namespace; the package is the namespace,
+//     and two units' headers share a translation unit (SPEC §6.3).
 //
 //   - Functions are snake_case (write_vec3), matching the serialize.c runtime
 //     they call into rather than the type names they carry.
+//
+//   - What every unit shares is the same text in every unit and lives in one
+//     header, SchemaRuntime.h (ccommon.RuntimeHeader), versioned by a hash of
+//     its own text that every generated header checks.
 //
 //   - Enums are a fixed-width typedef plus #define constants, NOT a C enum. A C
 //     enum's underlying type is implementation-defined, which would break the
@@ -51,13 +56,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	for _, f := range u.Files {
 		bases[f.Base] = true
 	}
+	if bases[strings.TrimSuffix(ccommon.RuntimeHeaderName, ".h")] {
+		return nil, fmt.Errorf("a schema file named %s collides with the C emitter's shared runtime header %s; rename it", strings.TrimSuffix(ccommon.RuntimeHeaderName, ".h")+".schema", ccommon.RuntimeHeaderName)
+	}
 	for _, f := range u.Files {
 		if bases[f.Base+"Wire"] {
 			return nil, fmt.Errorf("schema files %s and %sWire collide — the C emitter writes %sWire.h as %s's wire header; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 	}
 
-	out := map[string][]byte{}
+	out := map[string][]byte{ccommon.RuntimeHeaderName: ccommon.RuntimeHeader()}
 	home := ir.ProtocolIdHome(u)
 	deps := ir.FileDeps(u)
 
@@ -96,11 +104,10 @@ type gen struct {
 	needs128  bool // a 128-bit or Q112.16 storage member needs serialize.h in the DATA header
 	needsBool bool // a bool storage member needs <stdbool.h> in the DATA header
 
-	saidReadSlack  bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
-	saidFlagAppend bool // the flag_names_* append helpers are emitted once per file
-	file           *ir.File
-	deps           []string
-	body           strings.Builder
+	saidReadSlack bool // the read-slack buffer contract is stated once per file, on its first MAX_BYTES
+	file          *ir.File
+	deps          []string
+	body          strings.Builder
 
 	// fixed [N]uint8 arrays of the struct being emitted whose element bytes
 	// are statically byte-aligned (ir.AlignedFixedByteArrays) — the same map
@@ -149,6 +156,7 @@ func (g *gen) assembleHeader() []byte {
 		h.WriteString("#include <stdbool.h>\n")
 	}
 	h.WriteString("#include <stdint.h>\n")
+	h.WriteString(ccommon.RuntimeInclude())
 	if strings.Contains(body, "memset") {
 		h.WriteString("#include <string.h>   /* memset — the zero form (SPEC §4.2) */\n")
 	}
@@ -156,15 +164,12 @@ func (g *gen) assembleHeader() []byte {
 		h.WriteString("#include <math.h>     /* floor — the quantize pair */\n")
 	}
 	if strings.Contains(body, "SCHEMA_C_ALIGN16") {
-		h.WriteString(ccommon.Align16)
+		h.WriteString(ccommon.Align16Check)
 	}
 	if g.needs128 {
 		// serialize_int128_t / serialize_uint128_t are STORAGE here, so the
 		// runtime header has to reach the data header and not only the wire one
 		h.WriteString("#include \"serialize.h\"   /* serialize_int128_t: C has no 128-bit builtin */\n")
-	}
-	if strings.Contains(body, "SCHEMA_UNUSED") {
-		h.WriteString(unusedMacro)
 	}
 	for _, d := range g.deps {
 		fmt.Fprintf(&h, "#include \"%s.h\"\n", d)
@@ -187,9 +192,6 @@ func (g *gen) assembleWireHeader() []byte {
 		h.WriteString("#include <string.h>   /* memset, strlen */\n")
 	}
 	h.WriteString("#include \"serialize.h\"\n")
-	if strings.Contains(body, "SCHEMA_UNUSED") {
-		h.WriteString(unusedMacro)
-	}
 	for _, d := range g.deps {
 		fmt.Fprintf(&h, "#include \"%sWire.h\"\n", d)
 	}
@@ -199,20 +201,6 @@ func (g *gen) assembleWireHeader() []byte {
 	fmt.Fprintf(&h, "#endif /* %s */\n", guard)
 	return []byte(h.String())
 }
-
-// unusedMacro guards the header-static functions. A translation unit that
-// includes a header but calls only some of its functions would otherwise warn
-// on every one it did not use -- and this target is compiled with -Wall
-// -Wextra -Werror in CI, so a warning is a build failure for the CONSUMER.
-const unusedMacro = `
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
-`
 
 func (g *gen) header(h *strings.Builder, base string) {
 	fmt.Fprintf(h, "/* Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", base)
@@ -229,7 +217,7 @@ func (g *gen) emitDataHeader(carriesProtocolId bool) {
 	if carriesProtocolId {
 		g.pf("/* The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two\n")
 		g.pf("   sides at the same id speak identical bits; there is no other versioning. */\n")
-		g.pf("#define %s_PROTOCOL_ID 0x%016xULL\n\n", screaming(g.unit.Package), g.unit.ProtocolId)
+		g.pf("#define PROTOCOL_ID 0x%016xULL\n\n", g.unit.ProtocolId)
 	}
 
 	// emission order, not declaration order: C needs every same-file named
@@ -351,7 +339,6 @@ func (g *gen) emitFlags(d *ir.Flags) {
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 
-	g.emitFlagAppendHelpers()
 	g.pf("/* Renders the set bits of value into buffer as \"A|B\" — \"0\" for the empty\n")
 	g.pf("   set, bits past the declared variants as hex — NUL-terminates and returns\n")
 	g.pf("   buffer; %s_NAMES_MAX bytes always suffice. */\n", screaming(d.Name))
@@ -377,28 +364,6 @@ func flagNamesMax(d *ir.Flags) int {
 		n += len(v) + 1
 	}
 	return n + len("|0x") + 16 + 1
-}
-
-// emitFlagAppendHelpers emits the bounded append pair the flag_names_*
-// renderers share, once per file — guarded like the SCHEMA_UNUSED macro
-// because two data headers can land in one translation unit.
-func (g *gen) emitFlagAppendHelpers() {
-	if g.saidFlagAppend {
-		return
-	}
-	g.saidFlagAppend = true
-	g.pf("#ifndef SCHEMA_FLAG_APPEND_DEFINED\n#define SCHEMA_FLAG_APPEND_DEFINED\n")
-	g.pf("static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )\n{\n")
-	g.pf("    if ( position > 0 && position < buffer_size - 1 )\n    {\n        buffer[position++] = '|';\n    }\n")
-	g.pf("    while ( *name && position < buffer_size - 1 )\n    {\n        buffer[position++] = *name++;\n    }\n")
-	g.pf("    return position;\n}\n\n")
-	g.pf("static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )\n{\n")
-	g.pf("    int shift = 60;\n")
-	g.pf("    position = schema_flag_append_( buffer, buffer_size, position, \"0x\" );\n")
-	g.pf("    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )\n    {\n        shift -= 4;\n    }\n")
-	g.pf("    for ( ; shift >= 0; shift -= 4 )\n    {\n")
-	g.pf("        if ( position < buffer_size - 1 )\n        {\n            buffer[position++] = \"0123456789abcdef\"[( bits >> shift ) & 0xf];\n        }\n    }\n")
-	g.pf("    return position;\n}\n#endif /* SCHEMA_FLAG_APPEND_DEFINED */\n\n")
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
@@ -673,11 +638,6 @@ func (g *gen) emitWireHeader() {
 		g.pf("   WRITE is asserted before it rides — caller error, gone under NDEBUG — and\n")
 		g.pf("   every read reconstructs the selected arm with its declared initial values\n")
 		g.pf("   before decoding it (SPEC §4.8, §5). */\n\n")
-		g.emitSpineInlineMacros()
-	}
-	if fileHasStrings(g.file) {
-		g.emitUtf8Validator()
-		g.emitInteriorNullScan()
 	}
 	// emission order for the same reason as the data header: write_a calls
 	// write_b, and C99 has no implicit declarations

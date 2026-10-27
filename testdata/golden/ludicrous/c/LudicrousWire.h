@@ -11,14 +11,6 @@
 #include <string.h>   /* memset, strlen */
 #include "serialize.h"
 
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,30 +22,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
 /* Writes FixedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_write_stream_t * stream, const FixedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_fixed_probe( serialize_write_stream_t * stream, const ludicrous_fixed_probe_t * value )
 {
     {
         serialize_int32_t fixed_value = value->angle;
@@ -64,7 +34,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_writ
     }
     {
         serialize_int64_t fixed_value = value->position;
-        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 48, 16, -LUDICROUS_MAX_WORLD_UNITS, LUDICROUS_MAX_WORLD_UNITS ) )
         {
             return 0;
         }
@@ -100,7 +70,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_probe( serialize_writ
 }
 
 /* Reads FixedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_stream_t * stream, FixedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_probe( serialize_read_stream_t * stream, ludicrous_fixed_probe_t * value )
 {
     /* fixed 156-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 156 )
@@ -120,7 +90,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
     {
         serialize_int64_t fixed_value;
         fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -MAX_WORLD_UNITS, MAX_WORLD_UNITS ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 48, 16, -LUDICROUS_MAX_WORLD_UNITS, LUDICROUS_MAX_WORLD_UNITS ) )
         {
             return 0;
         }
@@ -163,7 +133,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_probe( serialize_read_s
 }
 
 /* Writes UnsignedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_write_stream_t * stream, const UnsignedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_unsigned_probe( serialize_write_stream_t * stream, const ludicrous_unsigned_probe_t * value )
 {
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->angle;
@@ -215,7 +185,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_unsigned_probe( serialize_w
 }
 
 /* Reads UnsignedProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_read_stream_t * stream, UnsignedProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( serialize_read_stream_t * stream, ludicrous_unsigned_probe_t * value )
 {
     /* fixed 196-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 196 )
@@ -282,7 +252,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_unsigned_probe( serialize_rea
 }
 
 /* Writes WideProbe. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write_stream_t * stream, const WideProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_wide_probe( serialize_write_stream_t * stream, const ludicrous_wide_probe_t * value )
 {
     if ( !serialize_write_uint128( stream, value->entity_id ) )
     {
@@ -308,7 +278,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_wide_probe( serialize_write
 }
 
 /* Reads WideProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_stream_t * stream, WideProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_wide_probe( serialize_read_stream_t * stream, ludicrous_wide_probe_t * value )
 {
     /* fixed 403-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 403 )
@@ -340,18 +310,18 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_wide_probe( serialize_read_st
 }
 
 /* Writes LudicrousState. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_write_stream_t * stream, const LudicrousState * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_ludicrous_state( serialize_write_stream_t * stream, const ludicrous_ludicrous_state_t * value )
 {
-    serialize_assert( value->mode <= DRIVE_MODE_MAX );
+    serialize_assert( value->mode <= LUDICROUS_DRIVE_MODE_MAX );
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->mode, 2 ) )
     {
         return 0;
     }
-    if ( !write_fixed_probe( stream, &value->probe ) )
+    if ( !ludicrous_write_fixed_probe( stream, &value->probe ) )
     {
         return 0;
     }
-    if ( !write_wide_probe( stream, &value->wide ) )
+    if ( !ludicrous_write_wide_probe( stream, &value->wide ) )
     {
         return 0;
     }
@@ -385,7 +355,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_ludicrous_state( serialize_
 }
 
 /* Reads LudicrousState. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_read_stream_t * stream, LudicrousState * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_ludicrous_state( serialize_read_stream_t * stream, ludicrous_ludicrous_state_t * value )
 {
     {
         serialize_uint32_t enum_value = 0;
@@ -393,13 +363,13 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_re
         {
             return 0;
         }
-        value->mode = (DriveMode) enum_value;
+        value->mode = (ludicrous_drive_mode_t) enum_value;
     }
-    if ( !read_fixed_probe( stream, &value->probe ) )
+    if ( !ludicrous_read_fixed_probe( stream, &value->probe ) )
     {
         return 0;
     }
-    if ( !read_wide_probe( stream, &value->wide ) )
+    if ( !ludicrous_read_wide_probe( stream, &value->wide ) )
     {
         return 0;
     }
@@ -440,7 +410,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_ludicrous_state( serialize_re
 }
 
 /* Writes DegenerateProbe. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize_write_stream_t * stream, const DegenerateProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_degenerate_probe( serialize_write_stream_t * stream, const ludicrous_degenerate_probe_t * value )
 {
     serialize_assert( (serialize_int64_t) value->locked_fixed == -196608LL );
     serialize_assert( (serialize_int64_t) value->locked_int >= 7 && (serialize_int64_t) value->locked_int <= 7 );
@@ -453,7 +423,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_degenerate_probe( serialize
 }
 
 /* Reads DegenerateProbe. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_degenerate_probe( serialize_read_stream_t * stream, DegenerateProbe * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_degenerate_probe( serialize_read_stream_t * stream, ludicrous_degenerate_probe_t * value )
 {
     /* fixed 8-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 8 )
@@ -476,7 +446,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_degenerate_probe( serialize_r
 }
 
 /* Writes FixedVec. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_vec( serialize_write_stream_t * stream, const FixedVec * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_fixed_vec( serialize_write_stream_t * stream, const ludicrous_fixed_vec_t * value )
 {
     {
         serialize_int64_t fixed_value = value->x;
@@ -503,7 +473,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_vec( serialize_write_
 }
 
 /* Reads FixedVec. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_stream_t * stream, FixedVec * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_vec( serialize_read_stream_t * stream, ludicrous_fixed_vec_t * value )
 {
     /* fixed 102-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 102 )
@@ -542,7 +512,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_vec( serialize_read_str
 }
 
 /* Writes FixedQuat. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_quat( serialize_write_stream_t * stream, const FixedQuat * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_fixed_quat( serialize_write_stream_t * stream, const ludicrous_fixed_quat_t * value )
 {
     {
         serialize_int32_t fixed_value = value->x;
@@ -576,7 +546,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_fixed_quat( serialize_write
 }
 
 /* Reads FixedQuat. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_fixed_quat( serialize_read_stream_t * stream, FixedQuat * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_fixed_quat( serialize_read_stream_t * stream, ludicrous_fixed_quat_t * value )
 {
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )

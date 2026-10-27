@@ -102,6 +102,7 @@ var catalog = []Entry{
 	// internal/codegen/
 	e("internal/codegen/c", "C packet emitter", "go test ./internal/codegen/c", "go test ./internal/codegen/c"),
 	e("internal/codegen/ccommon", "C/C++ shared emit bits", "go test ./internal/codegen/c", "go test ./internal/codegen/c"),
+	e("internal/codegen/cqualify", "C package qualification", "go test ./internal/codegen/cqualify", "go test ./internal/codegen/cqualify"),
 	e("internal/codegen/cpp", "C++ packet emitter (reference)", "go test ./internal/codegen/cpp", "go test ./internal/codegen/cpp"),
 	e("internal/codegen/cpptable", "C++ table emitter (reference)", "go test ./internal/codegen/cpptable", "go test ./internal/codegen/cpptable"),
 	e("internal/codegen/csharp", "C# packet emitter", "go test ./internal/codegen/csharp", "go test ./internal/codegen/csharp"),
@@ -163,6 +164,7 @@ var catalog = []Entry{
 	e("test/c", "C packet tests", "make test-c", "make test-c"),
 	e("test/c-ludicrous", "C int128 tests", "make test-c", "make test-c"),
 	e("test/c-tables", "C table tests", "make test-c", "make test-c"),
+	e("test/c-two-units", "C two units in one TU", "make tables-c-two-units", "make tables-c-two-units"),
 	e("test/conformance", "cross-language table matrix", "make conformance", "make conformance"),
 	e("test/cookgen", "cook fixture generator", "make tables-cook-scale", "go build -o build/cookgen ./test/cookgen"),
 	e("test/cs", "C# packet tests", "make test-cs", "make test-cs"),

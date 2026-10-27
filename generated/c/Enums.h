@@ -8,13 +8,9 @@
 #define SCHEMA_EXAMPLE_ENUMS_H
 
 #include <stdint.h>
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
 
 #ifdef __cplusplus
@@ -26,21 +22,21 @@ extern "C" {
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t Team;
-#define TEAM_NONE 0
-#define TEAM_RED 1
-#define TEAM_BLUE 2
-#define TEAM_COUNT 2
-#define TEAM_MAX 2
+typedef uint8_t example_team_t;
+#define EXAMPLE_TEAM_NONE 0
+#define EXAMPLE_TEAM_RED 1
+#define EXAMPLE_TEAM_BLUE 2
+#define EXAMPLE_TEAM_COUNT 2
+#define EXAMPLE_TEAM_MAX 2
 
 /* Debug/log name for any Team value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_team( Team value )
+static SCHEMA_UNUSED const char * example_enum_name_team( example_team_t value )
 {
     switch ( value )
     {
-        case TEAM_NONE: return "None";
-        case TEAM_RED: return "Red";
-        case TEAM_BLUE: return "Blue";
+        case EXAMPLE_TEAM_NONE: return "None";
+        case EXAMPLE_TEAM_RED: return "Red";
+        case EXAMPLE_TEAM_BLUE: return "Blue";
         default: return "???";
     }
 }
@@ -50,27 +46,27 @@ static SCHEMA_UNUSED const char * enum_name_team( Team value )
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t ShipType;
-#define SHIP_TYPE_NONE 0
-#define SHIP_TYPE_FIGHTER 1
-#define SHIP_TYPE_CORVETTE 2
-#define SHIP_TYPE_BOMBER 3
-#define SHIP_TYPE_DESTROYER 4
-#define SHIP_TYPE_CARRIER 5
-#define SHIP_TYPE_COUNT 5
-#define SHIP_TYPE_MAX 5
+typedef uint8_t example_ship_type_t;
+#define EXAMPLE_SHIP_TYPE_NONE 0
+#define EXAMPLE_SHIP_TYPE_FIGHTER 1
+#define EXAMPLE_SHIP_TYPE_CORVETTE 2
+#define EXAMPLE_SHIP_TYPE_BOMBER 3
+#define EXAMPLE_SHIP_TYPE_DESTROYER 4
+#define EXAMPLE_SHIP_TYPE_CARRIER 5
+#define EXAMPLE_SHIP_TYPE_COUNT 5
+#define EXAMPLE_SHIP_TYPE_MAX 5
 
 /* Debug/log name for any ShipType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_ship_type( ShipType value )
+static SCHEMA_UNUSED const char * example_enum_name_ship_type( example_ship_type_t value )
 {
     switch ( value )
     {
-        case SHIP_TYPE_NONE: return "None";
-        case SHIP_TYPE_FIGHTER: return "Fighter";
-        case SHIP_TYPE_CORVETTE: return "Corvette";
-        case SHIP_TYPE_BOMBER: return "Bomber";
-        case SHIP_TYPE_DESTROYER: return "Destroyer";
-        case SHIP_TYPE_CARRIER: return "Carrier";
+        case EXAMPLE_SHIP_TYPE_NONE: return "None";
+        case EXAMPLE_SHIP_TYPE_FIGHTER: return "Fighter";
+        case EXAMPLE_SHIP_TYPE_CORVETTE: return "Corvette";
+        case EXAMPLE_SHIP_TYPE_BOMBER: return "Bomber";
+        case EXAMPLE_SHIP_TYPE_DESTROYER: return "Destroyer";
+        case EXAMPLE_SHIP_TYPE_CARRIER: return "Carrier";
         default: return "???";
     }
 }
@@ -80,23 +76,23 @@ static SCHEMA_UNUSED const char * enum_name_ship_type( ShipType value )
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t MissileType;
-#define MISSILE_TYPE_NONE 0
-#define MISSILE_TYPE_HEATSEEKER 1
-#define MISSILE_TYPE_TORPEDO 2
-#define MISSILE_TYPE_NUKE 3
-#define MISSILE_TYPE_COUNT 3
-#define MISSILE_TYPE_MAX 3
+typedef uint8_t example_missile_type_t;
+#define EXAMPLE_MISSILE_TYPE_NONE 0
+#define EXAMPLE_MISSILE_TYPE_HEATSEEKER 1
+#define EXAMPLE_MISSILE_TYPE_TORPEDO 2
+#define EXAMPLE_MISSILE_TYPE_NUKE 3
+#define EXAMPLE_MISSILE_TYPE_COUNT 3
+#define EXAMPLE_MISSILE_TYPE_MAX 3
 
 /* Debug/log name for any MissileType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_missile_type( MissileType value )
+static SCHEMA_UNUSED const char * example_enum_name_missile_type( example_missile_type_t value )
 {
     switch ( value )
     {
-        case MISSILE_TYPE_NONE: return "None";
-        case MISSILE_TYPE_HEATSEEKER: return "Heatseeker";
-        case MISSILE_TYPE_TORPEDO: return "Torpedo";
-        case MISSILE_TYPE_NUKE: return "Nuke";
+        case EXAMPLE_MISSILE_TYPE_NONE: return "None";
+        case EXAMPLE_MISSILE_TYPE_HEATSEEKER: return "Heatseeker";
+        case EXAMPLE_MISSILE_TYPE_TORPEDO: return "Torpedo";
+        case EXAMPLE_MISSILE_TYPE_NUKE: return "Nuke";
         default: return "???";
     }
 }
@@ -106,29 +102,29 @@ static SCHEMA_UNUSED const char * enum_name_missile_type( MissileType value )
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t PropType;
-#define PROP_TYPE_NONE 0
-#define PROP_TYPE_ASTEROID 1
-#define PROP_TYPE_CHUNK 2
-#define PROP_TYPE_FRAGMENT 3
-#define PROP_TYPE_SPHERE 4
-#define PROP_TYPE_BLACK_HOLE 5
-#define PROP_TYPE_DYSON_PANEL 6
-#define PROP_TYPE_COUNT 6
-#define PROP_TYPE_MAX 6
+typedef uint8_t example_prop_type_t;
+#define EXAMPLE_PROP_TYPE_NONE 0
+#define EXAMPLE_PROP_TYPE_ASTEROID 1
+#define EXAMPLE_PROP_TYPE_CHUNK 2
+#define EXAMPLE_PROP_TYPE_FRAGMENT 3
+#define EXAMPLE_PROP_TYPE_SPHERE 4
+#define EXAMPLE_PROP_TYPE_BLACK_HOLE 5
+#define EXAMPLE_PROP_TYPE_DYSON_PANEL 6
+#define EXAMPLE_PROP_TYPE_COUNT 6
+#define EXAMPLE_PROP_TYPE_MAX 6
 
 /* Debug/log name for any PropType value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_prop_type( PropType value )
+static SCHEMA_UNUSED const char * example_enum_name_prop_type( example_prop_type_t value )
 {
     switch ( value )
     {
-        case PROP_TYPE_NONE: return "None";
-        case PROP_TYPE_ASTEROID: return "Asteroid";
-        case PROP_TYPE_CHUNK: return "Chunk";
-        case PROP_TYPE_FRAGMENT: return "Fragment";
-        case PROP_TYPE_SPHERE: return "Sphere";
-        case PROP_TYPE_BLACK_HOLE: return "BlackHole";
-        case PROP_TYPE_DYSON_PANEL: return "DysonPanel";
+        case EXAMPLE_PROP_TYPE_NONE: return "None";
+        case EXAMPLE_PROP_TYPE_ASTEROID: return "Asteroid";
+        case EXAMPLE_PROP_TYPE_CHUNK: return "Chunk";
+        case EXAMPLE_PROP_TYPE_FRAGMENT: return "Fragment";
+        case EXAMPLE_PROP_TYPE_SPHERE: return "Sphere";
+        case EXAMPLE_PROP_TYPE_BLACK_HOLE: return "BlackHole";
+        case EXAMPLE_PROP_TYPE_DYSON_PANEL: return "DysonPanel";
         default: return "???";
     }
 }
@@ -138,17 +134,17 @@ static SCHEMA_UNUSED const char * enum_name_prop_type( PropType value )
    (SPEC §4.2). A fixed-width typedef rather than a C enum: an enum's underlying
    type is implementation-defined, and | max = K headroom makes non-variant
    values wire-legal, which a C enum cannot hold honestly. */
-typedef uint8_t Pending;
-#define PENDING_NONE 0
-#define PENDING_COUNT 0
-#define PENDING_MAX 0
+typedef uint8_t example_pending_t;
+#define EXAMPLE_PENDING_NONE 0
+#define EXAMPLE_PENDING_COUNT 0
+#define EXAMPLE_PENDING_MAX 0
 
 /* Debug/log name for any Pending value, out-of-set included. */
-static SCHEMA_UNUSED const char * enum_name_pending( Pending value )
+static SCHEMA_UNUSED const char * example_enum_name_pending( example_pending_t value )
 {
     switch ( value )
     {
-        case PENDING_NONE: return "None";
+        case EXAMPLE_PENDING_NONE: return "None";
         default: return "???";
     }
 }
@@ -156,15 +152,15 @@ static SCHEMA_UNUSED const char * enum_name_pending( Pending value )
 
 /* flags ShipFlags — one bit per variant, consumed as masks; storage uint64 in every
    target, wire 4 bits (SPEC §4.2) */
-typedef uint64_t ShipFlags;
-#define SHIP_FLAGS_FIRING_LASER (1ULL << 0)
-#define SHIP_FLAGS_BOOSTING (1ULL << 1)
-#define SHIP_FLAGS_BRAKING (1ULL << 2)
-#define SHIP_FLAGS_AIMING (1ULL << 3)
-#define SHIP_FLAGS_COUNT 4 /* the declared variant count (SPEC §4.2) */
+typedef uint64_t example_ship_flags_t;
+#define EXAMPLE_SHIP_FLAGS_FIRING_LASER (1ULL << 0)
+#define EXAMPLE_SHIP_FLAGS_BOOSTING (1ULL << 1)
+#define EXAMPLE_SHIP_FLAGS_BRAKING (1ULL << 2)
+#define EXAMPLE_SHIP_FLAGS_AIMING (1ULL << 3)
+#define EXAMPLE_SHIP_FLAGS_COUNT 4 /* the declared variant count (SPEC §4.2) */
 
 /* Debug/log name for bit i of ShipFlags — out-of-range bits name as "???". */
-static SCHEMA_UNUSED const char * flag_name_ship_flags( int bit )
+static SCHEMA_UNUSED const char * example_flag_name_ship_flags( int bit )
 {
     switch ( bit )
     {
@@ -176,62 +172,28 @@ static SCHEMA_UNUSED const char * flag_name_ship_flags( int bit )
     }
 }
 
-#ifndef SCHEMA_FLAG_APPEND_DEFINED
-#define SCHEMA_FLAG_APPEND_DEFINED
-static SCHEMA_UNUSED int schema_flag_append_( char * buffer, int buffer_size, int position, const char * name )
-{
-    if ( position > 0 && position < buffer_size - 1 )
-    {
-        buffer[position++] = '|';
-    }
-    while ( *name && position < buffer_size - 1 )
-    {
-        buffer[position++] = *name++;
-    }
-    return position;
-}
-
-static SCHEMA_UNUSED int schema_flag_append_hex_( char * buffer, int buffer_size, int position, uint64_t bits )
-{
-    int shift = 60;
-    position = schema_flag_append_( buffer, buffer_size, position, "0x" );
-    while ( shift > 0 && ( ( bits >> shift ) & 0xf ) == 0 )
-    {
-        shift -= 4;
-    }
-    for ( ; shift >= 0; shift -= 4 )
-    {
-        if ( position < buffer_size - 1 )
-        {
-            buffer[position++] = "0123456789abcdef"[( bits >> shift ) & 0xf];
-        }
-    }
-    return position;
-}
-#endif /* SCHEMA_FLAG_APPEND_DEFINED */
-
 /* Renders the set bits of value into buffer as "A|B" — "0" for the empty
    set, bits past the declared variants as hex — NUL-terminates and returns
    buffer; SHIP_FLAGS_NAMES_MAX bytes always suffice. */
-#define SHIP_FLAGS_NAMES_MAX 56
-static SCHEMA_UNUSED const char * flag_names_ship_flags( uint64_t value, char * buffer, int buffer_size )
+#define EXAMPLE_SHIP_FLAGS_NAMES_MAX 56
+static SCHEMA_UNUSED const char * example_flag_names_ship_flags( uint64_t value, char * buffer, int buffer_size )
 {
     int position = 0;
     if ( value & ( 1ULL << 0 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 0 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, example_flag_name_ship_flags( 0 ) );
     }
     if ( value & ( 1ULL << 1 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 1 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, example_flag_name_ship_flags( 1 ) );
     }
     if ( value & ( 1ULL << 2 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 2 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, example_flag_name_ship_flags( 2 ) );
     }
     if ( value & ( 1ULL << 3 ) )
     {
-        position = schema_flag_append_( buffer, buffer_size, position, flag_name_ship_flags( 3 ) );
+        position = schema_flag_append_( buffer, buffer_size, position, example_flag_name_ship_flags( 3 ) );
     }
     if ( value >> 4 )
     {

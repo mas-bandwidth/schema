@@ -172,7 +172,7 @@ func TestCTableRetainRefusedByName(t *testing.T) {
 		t.Skip("requires C compiler")
 	}
 	u := unitFromSource(t, "package probe\nfixed table Fixed { x uint32 }\ntable Variable { next *Variable }\n")
-	files, err := New().Generate(u, "c", Options{})
+	files, err := generateCUnqualified(u)
 	if err != nil {
 		t.Fatal(err)
 	}

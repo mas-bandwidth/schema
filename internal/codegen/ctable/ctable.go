@@ -366,11 +366,9 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime st
    reason is the LINKER rather than the preprocessor: two units of the same
    schema family link into one program — two generations of one schema is the
    case the conformance driver itself is — so nothing this backend emits may
-   be spelled the same way by two packages. They do NOT share a translation
-   unit and cannot: C has no namespace, so two units' headers in one TU
-   redefine TableReport, TableWriter and every other runtime name, which is the
-   packet emitter's standing limit (SPEC §6.1) and not something tables
-   changed. A per-package macro is what keeps the LINK legal. */
+   be spelled the same way by two packages. The target's qualification pass
+   gives every other runtime name the package too (SPEC §6.3), so two units'
+   headers share a translation unit as well as a link. */
 #ifndef ` + forceInline + `
 #if defined( _MSC_VER )
 #define ` + forceInline + ` __forceinline
@@ -378,39 +376,6 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime st
 #define ` + forceInline + ` inline __attribute__(( always_inline ))
 #else
 #define ` + forceInline + ` inline
-#endif
-#endif
-
-/* A COMPILE-TIME assertion under -std=c99, which has none of its own. C11's
-   _Static_assert carries the message into the build log verbatim and is used
-   wherever the compiler has it; everywhere else the negative array bound is
-   the same refusal with a tag a reader can find. The tag is unique per record
-   and field, and each record is asserted by the ONE header that declares it,
-   so no two of these ever meet. */
-#ifndef SCHEMA_TABLE_STATIC_ASSERT
-#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) _Static_assert( cond, message )
-#elif defined( __cplusplus ) && __cplusplus >= 201103L
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) static_assert( cond, message )
-#else
-#define SCHEMA_TABLE_STATIC_ASSERT( tag, cond, message ) typedef char schema_table_assert_##tag[ ( cond ) ? 1 : -1 ]
-#endif
-#endif
-
-/* A record's ALIGNMENT, which the cook's layout contract asserts and which the
-   cook's Open compares the header's alignment word against (§7.1, §20.3).
-   C99 has no alignof either; C11's _Alignof, the two GNU spellings and MSVC's
-   cover every compiler this repo builds under, and the last form is the
-   portable definition of the same number. */
-#ifndef SCHEMA_TABLE_ALIGNOF
-#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 201112L
-#define SCHEMA_TABLE_ALIGNOF( T ) _Alignof( T )
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_TABLE_ALIGNOF( T ) __alignof__( T )
-#elif defined( _MSC_VER )
-#define SCHEMA_TABLE_ALIGNOF( T ) __alignof( T )
-#else
-#define SCHEMA_TABLE_ALIGNOF( T ) ( (size_t) offsetof( struct { char schema_pad_; T schema_member_; }, schema_member_ ) )
 #endif
 #endif
 
@@ -796,6 +761,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("   the lane types from serialize.h. */\n\n")
 	fmt.Fprintf(&h, "#ifndef %s\n#define %s\n\n", guard, guard)
 	h.WriteString("#include <stdbool.h>\n#include <stdint.h>\n#include <stddef.h> /* offsetof, for the reflection descriptors */\n#include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */\n")
+	h.WriteString(ccommon.RuntimeInclude())
 	if g.anyKeyed {
 		// ENUM-KEYED arrays only: indexing one by None is a program error in
 		// EVERY configuration, and the accessor is where a runtime key can
@@ -812,7 +778,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 	if unitHasWideStorage(u) {
-		h.WriteString(ccommon.Align16)
+		h.WriteString(ccommon.Align16Check)
 		h.WriteString("#include \"serialize.h\" /* 128-bit storage, shared with the packet header */\n")
 	}
 	names := make([]string, 0, len(g.includes))
@@ -823,12 +789,6 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	for _, n := range names {
 		fmt.Fprintf(&h, "#include \"%sTable.h\"\n", n)
 	}
-	// SCHEMA_UNUSED with the packet emitter's own guard: every function in
-	// this header is `static`, so a translation unit that uses one and not
-	// another must not be warned about the rest. The definition is the packet
-	// header's, guarded identically, so whichever header a TU sees first
-	// defines it and the other agrees.
-	h.WriteString("\n#ifndef SCHEMA_UNUSED\n#if defined(__GNUC__) || defined(__clang__)\n#define SCHEMA_UNUSED __attribute__((unused))\n#else\n#define SCHEMA_UNUSED\n#endif\n#endif\n")
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 	h.WriteString(g.wirePrimitives())
 	h.WriteString(tableRefuseRuntime)
@@ -928,7 +888,7 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 // build log verbatim — and the negative-array-size form stands in everywhere
 // else, which is what keeps this header compilable under -std=c99.
 func (g *tableGen) emitStaticAssert(tag, cond, message string) {
-	g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s, %s, \"%s\" );\n", tag, cond, message)
+	g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_%s, %s, \"%s\" );\n", g.unit.Package, tag, cond, message)
 }
 
 // orderTables returns a file's tables with every same-file table preceding
@@ -1020,17 +980,16 @@ func (g *tableGen) api(name, verb string) string {
 // <name>_block_open — is emitted as `static` in the header and forwards to
 // these, so a call site reads as C while the LINKER sees one symbol per
 // (package, type).
-// Two units still cannot meet in ONE TRANSLATION UNIT, which is the packet
-// emitter's stated limit and unchanged by any of this.
+// The forwarders themselves take the package in the target's qualification
+// pass (internal/codegen/cqualify), as every declared name does (SPEC §6.3).
 func (g *tableGen) sym(name, what string) string {
 	return "schema_" + g.unit.Package + "_" + ir.RustSnake(name) + "_" + what + "_"
 }
 
 // tableInlineMacro names the unit's force-inline macro. It carries the package
 // for the reason every other emitted name does, and the reason is the LINKER:
-// two units of one schema family link into one program. Two units' headers
-// cannot share a translation unit at all — C has no namespace, so that is
-// dozens of redefinitions and the packet emitter's standing limit (SPEC §6.1).
+// two units of one schema family link into one program, and their headers
+// share a translation unit (SPEC §6.3).
 //
 // IT LEADS WITH SCHEMA_, and so does every other macro this backend defines.
 // C's preprocessor namespace is the one place a generated name and a DECLARED

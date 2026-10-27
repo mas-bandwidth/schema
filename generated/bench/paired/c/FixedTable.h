@@ -8,6 +8,10 @@
 #define SCHEMA_BENCH_FIXED_TABLE_H
 
 #include <stdint.h>
+#include "SchemaRuntime.h"
+#if SCHEMA_RUNTIME_VERSION != 0x49d315a2ec8afd2cULL
+#error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
+#endif
 
 #ifdef __cplusplus
 extern "C" {

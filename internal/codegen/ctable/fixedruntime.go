@@ -95,24 +95,6 @@ enum
 #define SCHEMA_TABLE_FIXED_NO_GUARD 0xFFFFFFFFu
 #endif
 
-/* THE PLAN'S SOURCE AND DESTINATION NEVER ALIAS: one is a record in a read
-   buffer and the other is the caller's own storage. Saying so is worth real
-   time in the read loop, and the spelling is the compiler's — except in C,
-   where C99 has the keyword itself and the feature test is what picks it. The
-   __cplusplus arm matters because a generated header is includable from C++
-   through its extern "C" block, and C++ has no restrict. */
-#ifndef SCHEMA_TABLE_RESTRICT
-#if defined( __STDC_VERSION__ ) && __STDC_VERSION__ >= 199901L && !defined( __cplusplus )
-#define SCHEMA_TABLE_RESTRICT restrict
-#elif defined( _MSC_VER )
-#define SCHEMA_TABLE_RESTRICT __restrict
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_TABLE_RESTRICT __restrict__
-#else
-#define SCHEMA_TABLE_RESTRICT
-#endif
-#endif
-
 /* WHY A FIXED READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §3.4). The
    message form's four reasons come with them under their own guard, because a
    fixed load refuses a batch larger than the caller's room by the same name the

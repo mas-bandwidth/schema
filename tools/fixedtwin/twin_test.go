@@ -179,7 +179,11 @@ func TestPairedHeadersAgree(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	left, err := compareHeaders(string(cSrc), string(cppSrc))
+	cPlain, err := dequalifyC(string(cSrc), filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, err := compareHeaders(cPlain, string(cppSrc))
 	if err != nil {
 		t.Fatal(err)
 	}

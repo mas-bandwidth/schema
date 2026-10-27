@@ -12,9 +12,9 @@
 
    THIS IS THE FX1 READER ON A FILE BUILT AROUND FX2'S LAYOUT, which is what
    the reference does too (its `good` is written by tblfx2 and read by tblfx1).
-   C has no namespace, so the two generations cannot share a translation unit
-   (fixedform.h says why): the FX2 bytes arrive as a parameter, exactly as they
-   do for fixed_fx1_read_fx2.
+   The FX2 bytes arrive as a parameter, exactly as they do for
+   fixed_fx1_read_fx2, one translation unit per generation as fixedform.h
+   lays the leg out.
 
    The file is the HEADER (docs/SPEC-TABLES.md §3: the form byte, seven
    reserved zero bytes, the layout hash at 8, the body at 16), then `u32 layout

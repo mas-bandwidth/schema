@@ -4,6 +4,8 @@
 #include "NestedTable.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
+#define SCHEMA_CONFORMANCE_PACKAGE tabledemo
+#define SCHEMA_CONFORMANCE_PACKAGE_UPPER TABLEDEMO
 #include "unit.h"
 
 SCHEMA_CONFORMANCE_CODEC( RootConfig, root_config )

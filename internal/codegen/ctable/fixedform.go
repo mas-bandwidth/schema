@@ -191,12 +191,12 @@ func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[stri
 	for _, st := range order {
 		for _, m := range ir.TableFixedMembers(g.unit, st) {
 			if m.Member == "" {
-				g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
-					ir.RustSnake(m.Owner), m.Owner, m.Value, m.Owner)
+				g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
+					g.unit.Package, ir.RustSnake(m.Owner), m.Owner, m.Value, m.Owner)
 				continue
 			}
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_%s, offsetof( %s, %s ) == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
-				ir.RustSnake(m.Owner), ir.RustSnake(m.Member), m.Owner, m.Member, m.Value, m.Owner, m.Member)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_%s, offsetof( %s, %s ) == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
+				g.unit.Package, ir.RustSnake(m.Owner), ir.RustSnake(m.Member), m.Owner, m.Member, m.Value, m.Owner, m.Member)
 		}
 	}
 	unions := map[string]bool{}
@@ -208,12 +208,12 @@ func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[stri
 			}
 			unions[f.Type.Name] = true
 			size, _, _, arms := ir.UnionLayout(g.unit, un)
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
-				ir.RustSnake(f.Type.Name), f.Type.Name, size, f.Type.Name)
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_type, offsetof( %s, type ) == 0, \"%s: the tag leads the union storage\" );\n",
-				ir.RustSnake(f.Type.Name), f.Type.Name, f.Type.Name)
-			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_as, offsetof( %s, as ) == %d, \"%s: every arm is overlaid here\" );\n",
-				ir.RustSnake(f.Type.Name), f.Type.Name, arms, f.Type.Name)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
+				g.unit.Package, ir.RustSnake(f.Type.Name), f.Type.Name, size, f.Type.Name)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_type, offsetof( %s, type ) == 0, \"%s: the tag leads the union storage\" );\n",
+				g.unit.Package, ir.RustSnake(f.Type.Name), f.Type.Name, f.Type.Name)
+			g.pf("SCHEMA_TABLE_STATIC_ASSERT( %s_fixed_%s_as, offsetof( %s, as ) == %d, \"%s: every arm is overlaid here\" );\n",
+				g.unit.Package, ir.RustSnake(f.Type.Name), f.Type.Name, arms, f.Type.Name)
 		}
 	}
 	g.pf("\n")

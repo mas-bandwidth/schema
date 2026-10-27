@@ -9,14 +9,6 @@
 
 #include "Degenerate.h"
 #include "serialize.h"
-
-#ifndef SCHEMA_UNUSED
-#if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_UNUSED __attribute__((unused))
-#else
-#define SCHEMA_UNUSED
-#endif
-#endif
 #include "TypesWire.h"
 
 #ifdef __cplusplus
@@ -30,30 +22,8 @@ extern "C" {
    every read reconstructs the selected arm with its declared initial values
    before decoding it (SPEC §4.8, §5). */
 
-#ifndef SCHEMA_C_SPINE_INLINE_DEFINED
-#define SCHEMA_C_SPINE_INLINE_DEFINED
-/* SCHEMA_C_READ_INLINE / SCHEMA_C_WRITE_INLINE — how every generated wire
-   function is spelled, beside `static SCHEMA_UNUSED`: an inlining DEMAND
-   (always_inline / __forceinline), the serialize family's remedy for LLVM
-   refusing the header-static per-message entries into small-message call
-   sites at marginal cost over the hot-callsite inline threshold. Measured
-   and shipped; compilers with neither spelling get plain `static`.
-   Branch-weight hints are NOT the fix here — measured in this family to
-   invite the machine outliner into the hot bodies. Do not add them. */
-#if defined( _MSC_VER )
-#define SCHEMA_C_READ_INLINE __forceinline
-#define SCHEMA_C_WRITE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_C_READ_INLINE inline __attribute__(( always_inline ))
-#define SCHEMA_C_WRITE_INLINE inline __attribute__(( always_inline ))
-#else
-#define SCHEMA_C_READ_INLINE
-#define SCHEMA_C_WRITE_INLINE
-#endif
-#endif /* SCHEMA_C_SPINE_INLINE_DEFINED */
-
 /* Writes Vec2. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec2( serialize_write_stream_t * stream, const Vec2 * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_vec2( serialize_write_stream_t * stream, const example_vec2_t * value )
 {
     if ( !serialize_write_double( stream, value->x ) )
     {
@@ -67,7 +37,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec2( serialize_write_strea
 }
 
 /* Reads Vec2. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec2( serialize_read_stream_t * stream, Vec2 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_vec2( serialize_read_stream_t * stream, example_vec2_t * value )
 {
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
@@ -87,7 +57,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec2( serialize_read_stream_t
 }
 
 /* Writes SpanF64. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_f64( serialize_write_stream_t * stream, const SpanF64 * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_span_f64( serialize_write_stream_t * stream, const example_span_f64_t * value )
 {
     {
         int32_t i;
@@ -103,7 +73,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_f64( serialize_write_s
 }
 
 /* Reads SpanF64. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_f64( serialize_read_stream_t * stream, SpanF64 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_f64( serialize_read_stream_t * stream, example_span_f64_t * value )
 {
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
@@ -125,7 +95,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_f64( serialize_read_stre
 }
 
 /* Writes SpanU64. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_u64( serialize_write_stream_t * stream, const SpanU64 * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_span_u64( serialize_write_stream_t * stream, const example_span_u64_t * value )
 {
     {
         int32_t i;
@@ -141,7 +111,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_u64( serialize_write_s
 }
 
 /* Reads SpanU64. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_u64( serialize_read_stream_t * stream, SpanU64 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_u64( serialize_read_stream_t * stream, example_span_u64_t * value )
 {
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
@@ -167,7 +137,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_u64( serialize_read_stre
 }
 
 /* Writes SpanI64. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_i64( serialize_write_stream_t * stream, const SpanI64 * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_span_i64( serialize_write_stream_t * stream, const example_span_i64_t * value )
 {
     {
         int32_t i;
@@ -183,7 +153,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_i64( serialize_write_s
 }
 
 /* Reads SpanI64. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_i64( serialize_read_stream_t * stream, SpanI64 * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_i64( serialize_read_stream_t * stream, example_span_i64_t * value )
 {
     /* fixed 128-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 128 )
@@ -209,7 +179,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_i64( serialize_read_stre
 }
 
 /* Writes SpanOne. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_one( serialize_write_stream_t * stream, const SpanOne * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_span_one( serialize_write_stream_t * stream, const example_span_one_t * value )
 {
     {
         int32_t i;
@@ -225,7 +195,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_one( serialize_write_s
 }
 
 /* Reads SpanOne. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_one( serialize_read_stream_t * stream, SpanOne * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_one( serialize_read_stream_t * stream, example_span_one_t * value )
 {
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
@@ -251,7 +221,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_one( serialize_read_stre
 }
 
 /* Writes SpanChunk. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_chunk( serialize_write_stream_t * stream, const SpanChunk * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_span_chunk( serialize_write_stream_t * stream, const example_span_chunk_t * value )
 {
     {
         int32_t i;
@@ -267,7 +237,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_chunk( serialize_write
 }
 
 /* Reads SpanChunk. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_chunk( serialize_read_stream_t * stream, SpanChunk * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_chunk( serialize_read_stream_t * stream, example_span_chunk_t * value )
 {
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
@@ -293,7 +263,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_chunk( serialize_read_st
 }
 
 /* Writes SpanTail. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_tail( serialize_write_stream_t * stream, const SpanTail * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_span_tail( serialize_write_stream_t * stream, const example_span_tail_t * value )
 {
     {
         int32_t i;
@@ -313,7 +283,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_tail( serialize_write_
 }
 
 /* Reads SpanTail. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_tail( serialize_read_stream_t * stream, SpanTail * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_tail( serialize_read_stream_t * stream, example_span_tail_t * value )
 {
     /* fixed 160-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 160 )
@@ -343,7 +313,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_tail( serialize_read_str
 }
 
 /* Writes SpanTwice. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_twice( serialize_write_stream_t * stream, const SpanTwice * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_span_twice( serialize_write_stream_t * stream, const example_span_twice_t * value )
 {
     {
         int32_t i;
@@ -369,7 +339,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_span_twice( serialize_write
 }
 
 /* Reads SpanTwice. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_twice( serialize_read_stream_t * stream, SpanTwice * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_span_twice( serialize_read_stream_t * stream, example_span_twice_t * value )
 {
     /* fixed 256-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 256 )
@@ -401,7 +371,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_span_twice( serialize_read_st
 }
 
 /* Writes Trio. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio( serialize_write_stream_t * stream, const Trio * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_trio( serialize_write_stream_t * stream, const example_trio_t * value )
 {
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->a, 20 ) )
     {
@@ -419,7 +389,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio( serialize_write_strea
 }
 
 /* Reads Trio. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio( serialize_read_stream_t * stream, Trio * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio( serialize_read_stream_t * stream, example_trio_t * value )
 {
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
@@ -455,9 +425,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio( serialize_read_stream_t
 }
 
 /* Writes TrioSole. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_sole( serialize_write_stream_t * stream, const TrioSole * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_trio_sole( serialize_write_stream_t * stream, const example_trio_sole_t * value )
 {
-    if ( !write_trio( stream, &value->inner ) )
+    if ( !example_write_trio( stream, &value->inner ) )
     {
         return 0;
     }
@@ -465,7 +435,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_sole( serialize_write_
 }
 
 /* Reads TrioSole. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_sole( serialize_read_stream_t * stream, TrioSole * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio_sole( serialize_read_stream_t * stream, example_trio_sole_t * value )
 {
     /* fixed 64-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 64 )
@@ -473,7 +443,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_sole( serialize_read_str
         return serialize_read_fail( stream );
     }
 
-    if ( !read_trio( stream, &value->inner ) )
+    if ( !example_read_trio( stream, &value->inner ) )
     {
         return 0;
     }
@@ -481,9 +451,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_sole( serialize_read_str
 }
 
 /* Writes Vec3Sole. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec3_sole( serialize_write_stream_t * stream, const Vec3Sole * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_vec3_sole( serialize_write_stream_t * stream, const example_vec3_sole_t * value )
 {
-    if ( !write_vec3( stream, &value->v ) )
+    if ( !example_write_vec3( stream, &value->v ) )
     {
         return 0;
     }
@@ -491,7 +461,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_vec3_sole( serialize_write_
 }
 
 /* Reads Vec3Sole. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec3_sole( serialize_read_stream_t * stream, Vec3Sole * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_vec3_sole( serialize_read_stream_t * stream, example_vec3_sole_t * value )
 {
     /* fixed 192-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 192 )
@@ -499,7 +469,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec3_sole( serialize_read_str
         return serialize_read_fail( stream );
     }
 
-    if ( !read_vec3( stream, &value->v ) )
+    if ( !example_read_vec3( stream, &value->v ) )
     {
         return 0;
     }
@@ -507,9 +477,9 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_vec3_sole( serialize_read_str
 }
 
 /* Writes TrioFirst. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_first( serialize_write_stream_t * stream, const TrioFirst * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_trio_first( serialize_write_stream_t * stream, const example_trio_first_t * value )
 {
-    if ( !write_trio( stream, &value->inner ) )
+    if ( !example_write_trio( stream, &value->inner ) )
     {
         return 0;
     }
@@ -521,7 +491,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_first( serialize_write
 }
 
 /* Reads TrioFirst. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_first( serialize_read_stream_t * stream, TrioFirst * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio_first( serialize_read_stream_t * stream, example_trio_first_t * value )
 {
     /* fixed 80-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 80 )
@@ -529,7 +499,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_first( serialize_read_st
         return serialize_read_fail( stream );
     }
 
-    if ( !read_trio( stream, &value->inner ) )
+    if ( !example_read_trio( stream, &value->inner ) )
     {
         return 0;
     }
@@ -545,7 +515,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_first( serialize_read_st
 }
 
 /* Writes TrioStraddle. */
-static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_straddle( serialize_write_stream_t * stream, const TrioStraddle * value )
+static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int example_write_trio_straddle( serialize_write_stream_t * stream, const example_trio_straddle_t * value )
 {
     {
         serialize_uint64_t bits_value = (serialize_uint64_t) value->pad0;
@@ -606,7 +576,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_straddle( serialize_wr
     {
         return 0;
     }
-    if ( !write_trio( stream, &value->inner ) )
+    if ( !example_write_trio( stream, &value->inner ) )
     {
         return 0;
     }
@@ -614,7 +584,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_trio_straddle( serialize_wr
 }
 
 /* Reads TrioStraddle. */
-static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_straddle( serialize_read_stream_t * stream, TrioStraddle * value )
+static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_trio_straddle( serialize_read_stream_t * stream, example_trio_straddle_t * value )
 {
     /* fixed 408-bit wire: one guard, and every per-field past-end test below folds into it */
     if ( serialize_read_bits_remaining( stream ) < 408 )
@@ -695,7 +665,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_trio_straddle( serialize_read
         }
         value->pad5 = (uint32_t) raw;
     }
-    if ( !read_trio( stream, &value->inner ) )
+    if ( !example_read_trio( stream, &value->inner ) )
     {
         return 0;
     }

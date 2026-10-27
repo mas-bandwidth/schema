@@ -401,7 +401,7 @@ func t02W14(t *testing.T) {
 	text, _, st := t02NewerWithOlder(t)
 	snake := ir.RustSnake(st.Name)
 	// THE STATIC ASSERTS THE PLAN RESTS ON.
-	offRe := regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\( fixed_\w+_\w+, offsetof\( \w+, \w+ \) == (-?\d+)`)
+	offRe := regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\( \w+_fixed_\w+_\w+, offsetof\( \w+, \w+ \) == (-?\d+)`)
 	offVals := map[int64]bool{}
 	for _, m := range offRe.FindAllStringSubmatch(text, -1) {
 		v, err := strconv.ParseInt(m[1], 10, 64)
@@ -413,7 +413,7 @@ func t02W14(t *testing.T) {
 	if len(offVals) == 0 {
 		t.Fatalf("W14: the emitted unit carries no offsetof static assert — the plan dst is not tied to the ABI")
 	}
-	if !regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\( fixed_\w+_size, sizeof\( \w+ \) == \d+`).MatchString(text) {
+	if !regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\( \w+_fixed_\w+_size, sizeof\( \w+ \) == \d+`).MatchString(text) {
 		t.Errorf("W14: the emitted unit carries no sizeof static assert for the plan's type")
 	}
 	// EVERY PLAN dst IS ONE OF THOSE offsetof VALUES.
