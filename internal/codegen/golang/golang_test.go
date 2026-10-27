@@ -337,7 +337,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 	addTarget("C", cFiles, cErr,
 		expectation{"typedef uint8_t ShapeType;", 1},
 		expectation{"#define SHAPE_TYPE_MAX 2", 1},
-		expectation{"typedef struct Shape {", 1},
+		expectation{"typedef struct Shape\n{", 1},
 		expectation{"int write_shape( serialize_write_stream_t * stream, const Shape * value )", 1},
 		expectation{"int read_shape( serialize_read_stream_t * stream, Shape * value )", 1},
 		expectation{"#define SHAPE_MAX_BITS 18", 1})
