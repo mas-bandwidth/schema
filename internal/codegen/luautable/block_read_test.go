@@ -159,7 +159,7 @@ end
 		t.Fatal(err)
 	}
 	var damageMain strings.Builder
-	damageMain.WriteString("--!strict\nlocal B = require(\"./blockread\")\nlocal D = require(\"./descriptor\")\nlocal I = require(\"./inputs\")\n")
+	damageMain.WriteString("--!strict\nlocal B = require(\"./schema_blockread\")\nlocal D = require(\"./descriptor\")\nlocal I = require(\"./inputs\")\n")
 	for _, c := range cases {
 		fmt.Fprintf(&damageMain, "do\n local buf = I[%q]\n local blk, reason = B.BlockOpen(D.root, buf, %d, buffer.len(buf) - %d)\n print(%q .. \" \" .. (reason or \"ok\"))\nend\n", c.name, c.base, c.base, c.name)
 	}

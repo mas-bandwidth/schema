@@ -61,7 +61,7 @@ var luauCorpusFiles = [][]string{
 //
 // tables/maps is not here: Text.schema's unit is a table, so its module is
 // TextTable.luau, not Text.luau, and it does not collide with the runtime's
-// text.luau (docs/SPEC-TABLES.md §11); the unit generates and is analyzed
+// schema_text.luau (docs/SPEC-TABLES.md §11); the unit generates and is analyzed
 // whole.
 var luauKnownRefusals = map[string]string{}
 

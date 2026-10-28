@@ -101,7 +101,7 @@ func TestLuauFixedFormAgreesWithTheByteOracle(t *testing.T) {
 				t.Fatalf("the oracle file %s is absent: build it with make tables-fixedform-corpus: %v", v.file, err)
 			}
 			dir, mod, _ := build(t, v.schema)
-			main := "--!strict\nlocal T = require(\"./%s\")\nlocal F = require(\"./fixed\")\nlocal inputs = require(\"./inputs\")\n" +
+			main := "--!strict\nlocal T = require(\"./%s\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\n" +
 				fixedVars(v.root) + "\nlocal values = F.load(T.%sDescriptor, fixed, inputs.oracle)\nlocal out = F.save(T.%sDescriptor, fixed, values)\nprint(hex(out))\n"
 			main = fmt.Sprintf(main, mod, v.root, v.root)
 			main = hexProbe + main

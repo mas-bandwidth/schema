@@ -19,7 +19,7 @@ import (
 // one hex line, then the measure (docs/PORT-LUAU.md, THE HARNESS).
 func saveProbe(g *generatedUnit, rootName string) string {
 	var b strings.Builder
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./load\")\nlocal save = require(\"./save\")\nlocal St = require(\"./schema_tables\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./schema_load\")\nlocal save = require(\"./schema_save\")\nlocal St = require(\"./schema_tables\")\n")
 	var mods []string
 	for name := range g.files {
 		if strings.HasSuffix(name, "Table.luau") {

@@ -105,7 +105,7 @@ func buildMessageUnit(t *testing.T, paths []string) (string, []string, map[strin
 
 func messageProbe(mods []string, rootName string) string {
 	var b strings.Builder
-	b.WriteString("local M = require(\"./message\")\nlocal inputs = require(\"./inputs\")\n")
+	b.WriteString("local M = require(\"./schema_message\")\nlocal inputs = require(\"./inputs\")\n")
 	for _, m := range mods {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}

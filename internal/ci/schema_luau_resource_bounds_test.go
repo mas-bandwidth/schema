@@ -85,8 +85,8 @@ func luauResourceBoundsMain() []byte {
 	var b strings.Builder
 	b.WriteString("require(\"./HTable\")\n")
 	b.WriteString("local SCHEMA_JSON_FLAGS = {}\n")
-	b.WriteString("local json = require(\"./json\")\njson.SetFlags(SCHEMA_JSON_FLAGS)\n")
-	b.WriteString("local textform = require(\"./textform\")\ntextform.SetFlags(SCHEMA_JSON_FLAGS)\n")
+	b.WriteString("local json = require(\"./schema_json\")\njson.SetFlags(SCHEMA_JSON_FLAGS)\n")
+	b.WriteString("local textform = require(\"./schema_textform\")\ntextform.SetFlags(SCHEMA_JSON_FLAGS)\n")
 	b.WriteString("local root = \"H\"\n")
 	b.WriteString("local docs = {\n")
 	for _, name := range []string{"deep", "hugecount", "giantstring", "unknownfields"} {
@@ -247,7 +247,7 @@ const luauDepthGuard = "depth + 1 > self.limits.depth"
 // unit so the depth guard of §16.9.4 no longer fires.
 func plantLuauDepthGuard(t *testing.T, dir string) {
 	t.Helper()
-	target := filepath.Join(dir, "textform.luau")
+	target := filepath.Join(dir, "schema_textform.luau")
 	data, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatal(err)
