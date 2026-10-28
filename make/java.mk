@@ -52,6 +52,43 @@ packet-defaults-java-negative-control: packet-defaults-java
 
 test-java: packet-defaults-java packet-defaults-java-negative-control
 
+# THE FINITE-FLOAT LEG (SPEC §4.3, serialize format 2.0): a packet float32 or
+# float64 is finite. test/java/FiniteMain.java holds the write refusals (the
+# checkWrite contract, -ea), the read refusals from crafted bytes
+# (non_finite_float on the raw bits), and -0 and the subnormals bit exact, over
+# test/java/Finite.schema; both modes run. The control drops the read check at
+# both widths and must red exactly the twenty-four read vectors.
+build/java-finite/.stamp: bin/schema test/java/Finite.schema make/java.mk
+	@rm -rf build/java-finite/gen
+	./bin/schema generate --lang java --out build/java-finite/gen test/java/Finite.schema
+	@touch $@
+
+.PHONY: packet-finite-java packet-finite-java-negative-control
+packet-finite-java: build/java-finite/.stamp
+	@mkdir -p build/java-finite/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-finite/classes build/java-finite/gen/*.java test/java/FiniteMain.java
+	$(JAVA) -ea -cp build/java-finite/classes FiniteMain
+	$(JAVA) -cp build/java-finite/classes FiniteMain
+
+packet-finite-java-negative-control: bin/schema
+	@rm -rf build/java-finite-negative
+	@mkdir -p build/java-finite-negative/classes
+	go run ./tools/sabotage -name packet-finite-java-read-check \
+		-out build/java-finite-negative/functions.gotext internal/codegen/java/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/java/functions.go":"%s/build/java-finite-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/java-finite-negative/overlay.json
+	go build -overlay=build/java-finite-negative/overlay.json -o build/java-finite-negative/schema ./cmd/schema
+	./build/java-finite-negative/schema generate --lang java --out build/java-finite-negative/gen test/java/Finite.schema
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-finite-negative/classes build/java-finite-negative/gen/*.java test/java/FiniteMain.java
+	@if $(JAVA) -ea -cp build/java-finite-negative/classes FiniteMain > build/java-finite-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a non-finite float read passed in Java'; exit 1; fi
+	@test "$$(grep -c '^FAILED: non_finite_float read: ' build/java-finite-negative/log)" = 24 && \
+		test "$$(grep -c '^FAILED: ' build/java-finite-negative/log)" = 24 || \
+		{ echo 'NEGATIVE CONTROL FAILED: Java did not red exactly the 24 read vectors'; cat build/java-finite-negative/log; exit 1; }
+	@echo 'packet finite Java negative control: a dropped read check reds the 24 non_finite_float read vectors'
+
+test-java: packet-finite-java packet-finite-java-negative-control
+
 # the Java target: generated classes only, no wiring file at all — generated
 # Java is self-contained (the bitpacker is inlined per issue #156), so there
 # is no runtime checkout and no build file; the test legs compile the

@@ -1231,9 +1231,10 @@ it (§4.6).
   in a wider cell may use the ordinary conversion. **Backend status:** C++
   (serialize v2.1.0), C (serialize.c v2.0.2), Rust (serialize.rs v3.1.0),
   JavaScript (serialize.js v2.0.1), Go (serialize.go v2.0.1) and C#
-  (serialize.cs v2.0.1) enforce the rule through their serialize runtime.
-  Java, Dart and Elixir carry their own float codecs; those three still carry
-  the 1.1 behaviour, where every pattern rides, until their own landings. A
+  (serialize.cs v2.0.1) enforce the rule through their serialize runtime,
+  and Java in its own generated float codec. Dart and Elixir carry their own
+  float codecs; those two still carry the 1.1 behaviour, where every pattern
+  rides, until their own landings. A
   *quantized* `float32` is a different field: its wire is the step index and
   not the pattern, per its row below. The table forms keep their own float
   rule (SPEC-TABLES.md §3), which this paragraph does not change.
