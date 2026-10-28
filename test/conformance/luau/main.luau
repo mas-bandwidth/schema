@@ -119,11 +119,11 @@ local function unit(name: string): any?
 		return {
 			S = T,
 			modules = modules,
-			load = require(base .. "load"),
-			save = require(base .. "save"),
-			json = require(base .. "json"),
-			retain = require(base .. "retain"),
-			cook = require(base .. "cook"),
+			load = require(base .. "schema_load"),
+			save = require(base .. "schema_save"),
+			json = require(base .. "schema_json"),
+			retain = require(base .. "schema_retain"),
+			cook = require(base .. "schema_cook"),
 		}
 	end)
 	if not ok then
