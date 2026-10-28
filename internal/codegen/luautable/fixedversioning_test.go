@@ -319,13 +319,15 @@ func TestLuauFixedCompiledPlanTagPastArmSet(t *testing.T) {
 	forged := append(append([]byte(nil), data...), record...)
 	forged[len(data)+8] = 9
 	luauVersionProbe(t, "VNEW_union_append", []string{"VOLD_union_append"}, 0, map[string][]byte{"file": forged}, `local report: any = {}
-local values = LOAD("file", report)
+local values = LOADT("file", report)
 check(values ~= nil and #values == 2, "the two-record file did not read: " .. why(report))
 if values == nil then return end
 check(report.reason == nil and not report.malformed, "a forged TAG is not a refusal and not malformed: " .. why(report))
 check(values[1].Pick.Type == 1 and num(values[1].Pick.Alpha.M) == 7, "record 1 lost the arm the writer named")
 check(values[2].Pick.Type == 0, "a tag past the arm set reported an arm: " .. tostring(values[2].Pick.Type))
 check(report.clamped == 1, "a tag past the writer's arm set is counted exactly once: " .. why(report))
+local strict: any = {}
+check(LOAD("file", strict) == nil and strict.reason == "clamped", "the plain read is STRICT and refuses the clamp by name (§6.5): " .. why(strict))
 `)
 }
 
@@ -426,10 +428,14 @@ local function f64bits(x: number): (number, number)
 end
 local fixed = { hash = T.%[2]sFixedHash, recordBytes = T.%[2]sFixedRecordBytes, layout = T.%[2]sFixedLayout,
 	lineage = T.%[2]sFixedLineage, floor = T.%[2]sFixedFloor }
+-- LOAD is the plain read, STRICT; LOADT the tolerant one by its name (§6.5)
 local function LOAD(name: string, report: any): { any }?
 	return F.read(T.%[2]sDescriptor, fixed, inputs[name], report)
 end
-local _ = num; local _ = f32bits; local _ = f64bits
+local function LOADT(name: string, report: any): { any }?
+	return F.loadTolerant(T.%[2]sDescriptor, fixed, inputs[name], report)
+end
+local _ = num; local _ = f32bits; local _ = f64bits; local _ = LOADT
 local function body()
 %[3]s
 end

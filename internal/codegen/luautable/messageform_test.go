@@ -103,7 +103,7 @@ func buildMessageUnit(t *testing.T, paths []string) (string, []string, map[strin
 	return dir, mods, out
 }
 
-func messageProbe(mods []string, rootName string) string {
+func messageProbe(mods []string, rootName, load string) string {
 	var b strings.Builder
 	b.WriteString("local M = require(\"./schema_message\")\nlocal inputs = require(\"./inputs\")\n")
 	for _, m := range mods {
@@ -112,19 +112,26 @@ func messageProbe(mods []string, rootName string) string {
 	fmt.Fprintf(&b, `local v = M.NewVocabulary()
 local report = { malformed = false, verdict = 0, reason = "", unknown = 0 }
 if not M.AnnounceRead(v, inputs.ann, report) then print("announce_fail") return end
-local count, bodies = M.LoadMessages(v, %q, inputs.batch, 256, report)
+local count, bodies = M.%s(v, %q, inputs.batch, 256, report)
 print("count " .. tostring(count) .. " malformed " .. tostring(report.malformed))
 if count < 0 then return end
 local out, n = M.SaveMessages(v, %q, bodies, report)
 if out == nil then print("save_fail") return end
 print(hex(out))
-`, rootName, rootName)
+`, load, rootName, rootName)
 	return hexProbe + b.String()
 }
 
 func messageMain(t *testing.T, dir string, mods []string, rootName string, ann, batch []byte) string {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(messageProbe(mods, rootName)), 0o644); err != nil {
+	return messageMainWith(t, dir, mods, rootName, "LoadMessages", ann, batch)
+}
+
+// messageMainWith runs the probe through one named batch read: the plain
+// LoadMessages (strict) or LoadMessagesTolerant (docs/SPEC-TABLES.md §6.5).
+func messageMainWith(t *testing.T, dir string, mods []string, rootName, load string, ann, batch []byte) string {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(messageProbe(mods, rootName, load)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"ann": ann, "batch": batch})
@@ -228,9 +235,10 @@ func TestLuauMessageFormNegativeControl(t *testing.T) {
 }
 
 // TestLuauMessageFormDamageStopsAtTheSecondBody holds §3.3's terminal rule:
-// damage inside body 2 delivers body 1, counts one malformed, and reads
-// nothing after it. The fixture flips 63 (thirty past E) into the second
-// body's first reference.
+// damage inside body 2 delivers body 1 on the TOLERANT read, counts one
+// malformed, and reads nothing after it; the plain read is STRICT and hands
+// back no body, refusing the batch (docs/SPEC-TABLES.md §6.5). The fixture
+// flips 63 (thirty past E) into the second body's first reference.
 func TestLuauMessageFormDamageStopsAtTheSecondBody(t *testing.T) {
 	t.Parallel()
 	units, conns, _ := messageManifest(t)
@@ -244,8 +252,12 @@ func TestLuauMessageFormDamageStopsAtTheSecondBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir, mods, _ := buildMessageUnit(t, units[conn.unit])
-	out := messageMain(t, dir, mods, "LoginRequest", ann, batch)
+	out := messageMainWith(t, dir, mods, "LoginRequest", "LoadMessagesTolerant", ann, batch)
 	if !strings.HasPrefix(out, "count 1 malformed true") {
 		t.Fatalf("damage in body 2 did not stop at body 1: %q", out)
+	}
+	out = messageMainWith(t, dir, mods, "LoginRequest", "LoadMessages", ann, batch)
+	if !strings.HasPrefix(out, "count -1 malformed true") {
+		t.Fatalf("the plain batch read handed back a body of a damaged batch: %q", out)
 	}
 }

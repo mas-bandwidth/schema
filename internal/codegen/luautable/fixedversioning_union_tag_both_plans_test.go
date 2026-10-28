@@ -24,9 +24,11 @@ func TestLuauFixedVersioningUnionTagBothPlans(t *testing.T) {
 	forged := append([]byte(nil), data...)
 	forged[at] = 9
 	body := `local report: any = {}
-local values = LOAD("file", report)
+local values = LOADT("file", report)
 check(values ~= nil and #values == 1, "the forged file carries one record: " .. why(report))
 if values == nil then return end
+local strict: any = {}
+check(LOAD("file", strict) == nil and strict.reason == "clamped", "the plain read is STRICT and refuses the clamp by name (§6.5): " .. why(strict))
 check(report.reason == nil and not report.malformed, "a forged tag is not a refusal and not malformed: " .. why(report))
 check(values[1].Pick.Type == 0, "a tag past the arm set lands None (0): " .. tostring(values[1].Pick.Type))
 check(num(values[1].Seq) == 15, "the tag that ran past its arm set moved its neighbour: " .. tostring(values[1].Seq))

@@ -34,8 +34,10 @@ func TestLuauFixedVersioningCfloatRangeWiden(t *testing.T) {
 			if c.oracle != "" {
 				checks = luauManifestChecks(t, corpus, c.oracle, root)
 			}
+			// the tolerant read by its name: the past file's clamp is the
+			// strict read's refusal (§6.5)
 			body := `local report: any = {}
-local values = LOAD("file", report)
+local values = LOADT("file", report)
 check(values ~= nil and #values == 1, "the file carries one record: " .. why(report))
 if values == nil then return end
 local v = values[1]

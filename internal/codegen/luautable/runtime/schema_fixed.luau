@@ -952,9 +952,10 @@ local function sameBytes(file: buffer, at: number, length: number, k: Known): bo
 	return true
 end
 
--- read is LOAD(R, file) (docs/FIXED-FORM-ALGORITHM.md §5.3), the one reader:
--- every record of the file as a fresh value, or nil with report.reason the
--- refusal's name. The steps are §5.3's, in its order: the form byte before the
+-- loadTolerant is LOAD(R, file) (docs/FIXED-FORM-ALGORITHM.md §5.3), the one
+-- reader, under its TOLERANT name (docs/SPEC-TABLES.md §6.5): every record of
+-- the file as a fresh value with the counters on the report, or nil with
+-- report.reason the refusal's name. The steps are §5.3's, in its order: the form byte before the
 -- file's length, the twenty-byte header and its seven reserved bytes, the
 -- layout length, the HEADER'S HASH TAKEN AS GIVEN and looked up in the lineage
 -- (none is `layout_unknown` — `layout_newer` is reserved, §21.3 — and below the
@@ -970,7 +971,7 @@ end
 -- (§5.3, §5.9 #6). `batch_too_large` has no Luau surface: read takes no
 -- capacity, so no batch can outgrow it; `plan_too_large` is the lineage
 -- entry's own lane (a layout past PLAN_MAX entries).
-function F.read(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
+function F.loadTolerant(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	local rep: any = report or {}
 	rep.reason = nil
 	rep.malformed = false
@@ -1050,8 +1051,24 @@ function F.read(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
 	return out
 end
 
--- load is read for a caller that wants the refusal raised: the values, or an
--- error { name, malformed, layoutHash } carrying the same name read reports.
+-- read is the PLAIN fixed-form read, and it is STRICT (docs/SPEC-TABLES.md
+-- §6.5, Go's <T>FixedLoad over <T>FixedLoadTolerant): nil for every refusal
+-- of loadTolerant and for a read whose report the strict read refuses —
+-- clamped, then kind_mismatch, TableReport.Err()'s order — with report.reason
+-- that name and nothing handed back. unknown and widened alone never refuse.
+-- A fixed refusal keeps its own §3.4 name (Strict error identity).
+function F.read(d: any, fixed: Fixed, file: buffer, report: any?): { any }?
+	local rep: any = report or {}
+	local out = F.loadTolerant(d, fixed, file, rep)
+	if out == nil then return nil end
+	if rep.clamped > 0 then rep.reason = "clamped"; return nil end
+	if rep.kindMismatch > 0 then rep.reason = "kind_mismatch"; return nil end
+	return out
+end
+
+-- load is the plain strict read for a caller that wants the refusal raised:
+-- the values, or an error { name, malformed, layoutHash } carrying the name
+-- read reports.
 function F.load(d: any, fixed: Fixed, file: buffer, report: any?): { any }
 	local rep: any = report or {}
 	local out = F.read(d, fixed, file, rep)

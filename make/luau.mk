@@ -79,7 +79,7 @@ update-goldens-luau: ;
 .PHONY: tables-luau-fixed-form tables-luau-versioning
 tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
 	SCHEMA_REQUIRE_CORPUS=1 SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
-		go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal)$$'
+		go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal|TestLuauFixedPlainReadIsStrict)$$'
 	@echo 'tables Luau fixed form: every corpus root on the C++ reference bytes, every refusal by name'
 
 tables-luau-versioning: toolchain-luau tables-fixedform-corpus
