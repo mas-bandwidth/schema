@@ -197,7 +197,10 @@ func assemble(m *Module) []byte {
 		}
 	}
 	h.WriteString(m.body.String())
-	return []byte(h.String())
+	// ONE NEWLINE ENDS THE FILE (make/schema-squirrel-generated-lint-gate.mk,
+	// the canonical-text rules): every declaration is written with a blank
+	// line after it, so the last one's is trimmed here.
+	return []byte(strings.TrimRight(h.String(), "\n") + "\n")
 }
 
 // THE MODULE-SCOPE HELPERS, each declared only where the body names it, in

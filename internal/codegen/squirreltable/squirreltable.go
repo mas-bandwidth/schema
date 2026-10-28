@@ -171,7 +171,10 @@ func assemble(m *Module, name string) []byte {
 	}
 	h.WriteString("\n")
 	h.WriteString(m.body.String())
-	return []byte(h.String())
+	// ONE NEWLINE ENDS THE FILE (make/schema-squirrel-generated-lint-gate.mk,
+	// the canonical-text rules): every declaration is written with a blank
+	// line after it, so the last one's is trimmed here.
+	return []byte(strings.TrimRight(h.String(), "\n") + "\n")
 }
 
 // closure is the table closure (ir.TableClosure) in emission order, and the

@@ -349,13 +349,19 @@ jobs:
         if: matrix.group == 'unit-rest'
         run: go vet ./...
 
-      # THE SQUIRREL PIN for the test steps below: internal/codegen/squirrel,
-      # internal/codegen/squirreltable and compiler's testgen gate run generated
-      # Squirrel under the pinned interpreter and fail, never skip, without it.
-      # make/squirrel.mk's dist-squirrel builds it at the sha256 it names, into
+      # THE SQUIRREL PIN, on the four rows that run generated Squirrel and on
+      # no other. Under SCHEMA_SLOW=1 internal/codegen/squirrel and
+      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-2;
+      # no Squirrel test matches the first half's pattern) and internal/ci's
+      # hostile-corpus runner (unit-rest) fail, never skip, without it. The
+      # plain transcript of slow-gate-rest needs it too: three compiler tests
+      # (ensurePinnedSquirrel) run sq ungated and would otherwise build the pin
+      # themselves mid-test. slow-gate-codegen's plain run skips every Squirrel
+      # test at the gate before the interpreter is resolved, so it pays nothing.
+      # make/squirrel.mk's dist-squirrel builds sq at the sha256 it names, into
       # the dist/ path the leg's default names.
       - name: install the Squirrel pin
-        if: matrix.group != 'unit-elixir' && matrix.group != 'versioning'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-rest'
         run: make dist-squirrel
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
@@ -753,8 +759,13 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # update-goldens ends in `go test ./...`, which runs the Squirrel
-      # packages under the pinned interpreter (make/squirrel.mk's dist-squirrel)
+      # update-goldens ends in a plain `go test ./...`: the Squirrel packages
+      # skip at their slow gate there, but three compiler tests
+      # (ensurePinnedSquirrel) run sq ungated and would build the pin
+      # themselves mid-test, so it is built here as its own step
+      # (make/squirrel.mk's dist-squirrel). GOLDENS_LEGS' update-goldens-squirrel
+      # is empty: the port commits no table goldens, and its committed packet
+      # trees are the `generated` job's.
       - name: install the Squirrel pin
         run: make dist-squirrel
       - name: rewrite every pin under testdata/ from the reference
@@ -1880,12 +1891,14 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
-      # THE Squirrel PIN for the squirrel row: its conformance control runs the
-      # leg's toolchain gate (make/squirrel.mk's toolchain-squirrel), which
-      # refuses by name when SQ does not resolve. dist-squirrel installs the
-      # interpreter at the sha256 it names, into the dist/ path SQ defaults to.
+      # THE SQUIRREL PIN, keyed on the row's field like every toolchain above:
+      # a group naming `squirrel` runs controls that execute generated Squirrel
+      # or pass the leg's toolchain gate (make/squirrel.mk's
+      # toolchain-squirrel), which refuses by name when SQ does not resolve.
+      # dist-squirrel builds the interpreter at the sha256 it names, into the
+      # dist/ path SQ defaults to.
       - name: install the Squirrel pin
-        if: matrix.name == 'squirrel'
+        if: matrix.squirrel != ''
         run: make dist-squirrel
 
       # The compiler and the generated tree ONCE, in parallel, before any

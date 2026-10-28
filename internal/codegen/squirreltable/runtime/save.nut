@@ -522,7 +522,6 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
   return n;
 };
 
-
 // AN ARRAY FIELD RIDES (docs/SPEC-TABLES.md §3): a list or counted array when
 // it holds any element, a fixed array when any element is not its default.
 local arrayRides = function(fd, val) {
