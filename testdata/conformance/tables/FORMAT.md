@@ -301,7 +301,9 @@ row <index> @<byte offset>
   dump's: dotted paths through by-value nesting, `[n]` through inline array
   slots, `<path>#present` for a `?T`, quoted USED bytes with ` len=<n>` for a
   string or a `bytes`.
-- **A FLOAT is its IEEE-754 BIT PATTERN**, `0x` and eight or sixteen hex digits.
+- **A FLOAT is its IEEE-754 BIT PATTERN**, `0x` and eight or sixteen hex digits,
+  and the pattern is a FINITE value's (docs/SPEC-TABLES.md §3.3): `-0` and the
+  subnormals are spelled as their bits, and no read admits a NaN or an infinity.
   A block row is a byte-identical projection, so its bits are the fact; a
   decimal spelling would be a rounding rule two languages have to agree on for
   no gain. The cook's dump refuses a float rather than inventing a spelling, and

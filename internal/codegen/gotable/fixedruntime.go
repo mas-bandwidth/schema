@@ -545,20 +545,10 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			report.Widened++
 		case tableFixedWidenF:
-			bits := tableFixedGet32(src[p.Src:])
-			var widened uint64
-			if bits&0x7f800000 == 0x7f800000 {
-				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (docs/SPEC-TABLES.md
-				// §3.4, §21.2; the variable form's own float rung): the hardware
-				// f32->f64 conversion QUIETS a signalling NaN and can drop a
-				// payload bit, so the sign, the all-ones exponent and the 23-bit
-				// mantissa shifted left by 29 are carried exactly and the quiet
-				// bit stays as the writer wrote it.
-				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29
-			} else {
-				widened = math.Float64bits(float64(math.Float32frombits(bits)))
-			}
-			tableFixedPut64(dst[p.Dst:], widened)
+			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md §3.3,
+			// §21.2): exact for a finite float32; a NaN or an infinity stays one,
+			// and the finite pass after the run refuses it.
+			tableFixedPut64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(tableFixedGet32(src[p.Src:])))))
 			report.Widened++
 		case tableFixedConst:
 			aux := p.Aux

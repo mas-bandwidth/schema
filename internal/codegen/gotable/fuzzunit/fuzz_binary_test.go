@@ -201,8 +201,8 @@ func reSaveReadsBack(t *testing.T, target target, value any, reread func([]byte)
 		}
 		return
 	}
-	// A wire-legal value may hold a float JSON cannot spell (NaN, an
-	// infinity) or string bytes that are not UTF-8; ToJSON refuses those.
+	// A wire-legal value may hold string bytes that are not UTF-8, which
+	// ToJSON refuses (never a NaN or an infinity: every read refuses one, §3.3).
 	// The re-save equality is still checked, on the writer image itself.
 	againImage := make([]byte, size)
 	if n := target.save(again, againImage); n != size || !bytes.Equal(wire, againImage) {

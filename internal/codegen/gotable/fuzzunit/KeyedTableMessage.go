@@ -122,7 +122,7 @@ func TeamConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *TeamCon
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "TeamConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -350,7 +350,13 @@ func TeamConfigLoadMessagesTolerant(values []TeamConfig, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !TeamConfigLoadMessageBody(&r, &values[i]) {
+		if !TeamConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					TeamConfigReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -401,11 +407,13 @@ func GunnerConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gunne
 						return false
 					}
 					{
-						v := math.Float32frombits(payload1.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "GunnerConfig.reaction")
+						b := payload1.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerConfig.reaction")
+						} else {
+							v := math.Float32frombits(b)
+							value.Reaction = v
 						}
-						value.Reaction = v
 					}
 				}
 				if widened {
@@ -455,7 +463,7 @@ func GunnerConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gunne
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "GunnerConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -466,6 +474,9 @@ func GunnerConfigSaveMessageBody(w *TableMessageWriter, value *GunnerConfig) boo
 	{
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			w.Put(11, TableMessageRefBitsHere)
+			if value.Reaction-value.Reaction != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0))
 		}
 	}
@@ -572,11 +583,13 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 						return false
 					}
 					{
-						v := math.Float32frombits(payload2.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "GunnerConfig.reaction")
+						b := payload2.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerConfig.reaction")
+						} else {
+							v := math.Float32frombits(b)
+							value.Reaction = v
 						}
-						value.Reaction = v
 					}
 				}
 				if widened {
@@ -672,7 +685,13 @@ func GunnerConfigLoadMessagesTolerant(values []GunnerConfig, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !GunnerConfigLoadMessageBody(&r, &values[i]) {
+		if !GunnerConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					GunnerConfigReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -723,11 +742,13 @@ func TurretConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Turre
 						return false
 					}
 					{
-						v := math.Float32frombits(payload3.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "TurretConfig.damage")
+						b := payload3.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.damage")
+						} else {
+							v := math.Float32frombits(b)
+							value.Damage = v
 						}
-						value.Damage = v
 					}
 				}
 				if widened {
@@ -761,11 +782,13 @@ func TurretConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Turre
 						return false
 					}
 					{
-						v := math.Float32frombits(payload4.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "TurretConfig.cooldown")
+						b := payload4.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.cooldown")
+						} else {
+							v := math.Float32frombits(b)
+							value.Cooldown = v
 						}
-						value.Cooldown = v
 					}
 				}
 				if widened {
@@ -802,7 +825,7 @@ func TurretConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Turre
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "TurretConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -813,12 +836,18 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 	{
 		if math.Float32bits(value.Damage) != math.Float32bits(10.0) {
 			w.Put(100, TableMessageRefBitsHere)
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Damage)), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
 			w.Put(101, TableMessageRefBitsHere)
+			if value.Cooldown-value.Cooldown != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Cooldown)), uint64(0))
 		}
 	}
@@ -925,11 +954,13 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 						return false
 					}
 					{
-						v := math.Float32frombits(payload4.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "TurretConfig.damage")
+						b := payload4.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.damage")
+						} else {
+							v := math.Float32frombits(b)
+							value.Damage = v
 						}
-						value.Damage = v
 					}
 				}
 				if widened {
@@ -963,11 +994,13 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 						return false
 					}
 					{
-						v := math.Float32frombits(payload5.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "TurretConfig.cooldown")
+						b := payload5.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.cooldown")
+						} else {
+							v := math.Float32frombits(b)
+							value.Cooldown = v
 						}
-						value.Cooldown = v
 					}
 				}
 				if widened {
@@ -1045,7 +1078,13 @@ func TurretConfigLoadMessagesTolerant(values []TurretConfig, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !TurretConfigLoadMessageBody(&r, &values[i]) {
+		if !TurretConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					TurretConfigReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -1096,11 +1135,13 @@ func HullConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *HullCon
 						return false
 					}
 					{
-						v := math.Float32frombits(payload15.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "HullConfig.health")
+						b := payload15.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.health")
+						} else {
+							v := math.Float32frombits(b)
+							value.Health = v
 						}
-						value.Health = v
 					}
 				}
 				if widened {
@@ -1134,11 +1175,13 @@ func HullConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *HullCon
 						return false
 					}
 					{
-						v := math.Float32frombits(payload16.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "HullConfig.mass")
+						b := payload16.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.mass")
+						} else {
+							v := math.Float32frombits(b)
+							value.Mass = v
 						}
-						value.Mass = v
 					}
 				}
 				if widened {
@@ -1211,7 +1254,7 @@ func HullConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *HullCon
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "HullConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1222,12 +1265,18 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 	{
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
 			w.Put(14, TableMessageRefBitsHere)
+			if value.Health-value.Health != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			w.Put(15, TableMessageRefBitsHere)
+			if value.Mass-value.Mass != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Mass)), uint64(0))
 		}
 	}
@@ -1377,11 +1426,13 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload12.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "HullConfig.health")
+						b := payload12.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.health")
+						} else {
+							v := math.Float32frombits(b)
+							value.Health = v
 						}
-						value.Health = v
 					}
 				}
 				if widened {
@@ -1415,11 +1466,13 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload13.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "HullConfig.mass")
+						b := payload13.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.mass")
+						} else {
+							v := math.Float32frombits(b)
+							value.Mass = v
 						}
-						value.Mass = v
 					}
 				}
 				if widened {
@@ -1527,7 +1580,13 @@ func HullConfigLoadMessagesTolerant(values []HullConfig, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !HullConfigLoadMessageBody(&r, &values[i]) {
+		if !HullConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					HullConfigReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -1708,7 +1767,7 @@ func KeyedConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *KeyedC
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "KeyedConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -2078,7 +2137,13 @@ func KeyedConfigLoadMessagesTolerant(values []KeyedConfig, vocabulary *TableVoca
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !KeyedConfigLoadMessageBody(&r, &values[i]) {
+		if !KeyedConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					KeyedConfigReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -2185,7 +2250,7 @@ func ScoreBoardLoadMessageBodyRetain(r *TableRetainMessageReader, value *ScoreBo
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "ScoreBoard") {
 				r.Report.Malformed = true
 				return false
 			}

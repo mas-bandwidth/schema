@@ -203,7 +203,7 @@ func tableMessageReadScalar(r *TableBitReader,s TableMessageShape,out *[16]byte)
 func tableMessageWriteScalar(w *TableBitWriter,clamped *int32,s TableMessageShape,lo,hi uint64) {
  if s.Packing==1 {borrow:=uint64(0);if lo<s.Base[0]{borrow=1};lo-=s.Base[0];hi-=s.Base[1]+borrow};if s.Packing==2 {value:=math.Float32frombits(uint32(lo));ratio:=float32((value-s.QMin)/s.QDelta);if !(ratio>=0){ratio=0;*clamped++}else if !(ratio<=1){ratio=1;*clamped++};scaled:=float32(ratio*float32(s.QCount));lo=uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))),s.QCount))};w.Put(lo,min(s.Bits,64));if s.Bits>64{w.Put(hi,s.Bits-64)}
 }
-func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}();if len(data)==0{r.Report.Malformed=true;return r,-1};if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1};if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1};if len(data)<2{r.Report.Malformed=true;return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
+func tableMessageBatchOpen(v *TableVocabulary,data []byte,report *TableReport)(TableMessageReader,int64) {r:=TableMessageReader{Vocabulary:v,Report:*report};r.Report.NonFiniteFloat="";defer func(){*report=r.Report}();if len(data)==0{r.Report.Malformed=true;return r,-1};if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1};if v==nil||!v.Announced {tableMessageRefuse(&r.Report,"no_vocabulary");return r,-1};if len(data)<2{r.Report.Malformed=true;return r,-1};r.Bits.Buffer=data[2:];return r,int64(data[1])+1}
 func tableMessageBatchClose(r *TableMessageReader)bool {if !r.Bits.Align()||r.Bits.Offset!=int64(len(r.Bits.Buffer))*8 {r.Report.Malformed=true;return false};return true}
 `
 
@@ -228,7 +228,7 @@ func tableMessageIntegritySum(data []byte) uint32 {
 // is handed to tableMessageBatchOpen unchanged.
 func tableMessageBatchOpenSealed(v *TableVocabulary,data []byte,report *TableReport,sealed bool)(TableMessageReader,int64) {
  if !sealed { return tableMessageBatchOpen(v,data,report) }
- r:=TableMessageReader{Vocabulary:v,Report:*report};defer func(){*report=r.Report}()
+ r:=TableMessageReader{Vocabulary:v,Report:*report};r.Report.NonFiniteFloat="";defer func(){*report=r.Report}()
  if len(data)==0{r.Report.Malformed=true;return r,-1}
  if data[0]!=2{tableMessageRefuse(&r.Report,"newer_form");return r,-1}
  if n:=len(data)-4; n<2 || binary.LittleEndian.Uint32(data[n:])!=tableMessageIntegritySum(data[:n]) {r.Report.Verdict=TableOpenDamaged;r.Report.Malformed=true;r.Report.Reason="integrity_mismatch";return r,-1}

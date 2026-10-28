@@ -1960,7 +1960,7 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::base64_damaged: return "base64_damaged";
         case graphdemo::base64_not_canonical: return "base64_not_canonical";
         case graphdemo::integrity_mismatch: return "integrity_mismatch";
-        case graphdemo::non_finite: return "non_finite";
+        case graphdemo::non_finite_float: return "non_finite_float";
         case graphdemo::blob_shared: return "blob_shared";
         case graphdemo::previous_form: return "previous_form";
         case graphdemo::newer_form: return "newer_form";

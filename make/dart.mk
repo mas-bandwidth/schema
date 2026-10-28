@@ -1213,7 +1213,7 @@ cards-dart-generate: bin/schema
 # make/go.mk's cards-wire-fuzz does.
 .PHONY: cards-dart-wire-fuzz
 cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-dart-wire-fuzz.log 2>&1; \
@@ -1235,7 +1235,7 @@ test-dart: cards-dart-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 .PHONY: cards-dart-retain-fuzz
 cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-dart-retain-fuzz.log 2>&1; \

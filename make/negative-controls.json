@@ -817,7 +817,8 @@
         "tables-go-builders-negative-control",
         "tables-go-measure-negative-controls",
         "tables-go-fixed-form-negative-control",
-        "tables-go-text-differential-negative-control"
+        "tables-go-text-differential-negative-control",
+        "tables-go-finite-float-negative-control"
       ]
     },
     {

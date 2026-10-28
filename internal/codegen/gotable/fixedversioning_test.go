@@ -154,6 +154,7 @@ var versionRows = []versionRow{
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
+	nonFinite := fixedOracleManifestNonFinite(t, filepath.Join(corpus, "manifest.txt"))
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -169,6 +170,33 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			counters := "if r.Widened != 0 { t.Fatalf(\"widened %d, and an append is not an event\", r.Widened) }"
 			if r.widens {
 				counters = "if r.Widened == 0 { t.Fatalf(\"a widening row moved no widened counter\") }"
+			}
+			if leaf := nonFinite["old_"+r.row+".bin"]; leaf != "" {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 the newer reader
+				// refuses it by name before the bounds pass (docs/SPEC-TABLES.md
+				// §3.3): a must-refuse vector until the finite-tables plan's C++
+				// card regenerates the corpus, and an ordinary row after.
+				src := fmt.Sprintf(`package probe
+
+import ("os"; "strings"; "testing")
+
+func TestNewReadsOld(t *testing.T) {
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := make([]%s, 8)
+	var r TableReport
+	if n := %sFixedLoadTolerant(back, data, make([]TableFixedEntry, 4096), &r); n != -1 || r.Err() != TableRefuseNonFiniteFloat || !strings.HasSuffix(r.NonFiniteFloat, %q) {
+		t.Fatalf("the non-finite float the older writer wrote was not refused by name: n=%%d %%+v", n, r)
+	}
+}
+`, filepath.Join(corpus, "old_"+r.row+".bin"), table, table, "."+leaf)
+				if out, err := runVersionProbe(t, newer, []string{older}, src); err != nil {
+					t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+				}
+				return
 			}
 			src := fmt.Sprintf(`package probe
 

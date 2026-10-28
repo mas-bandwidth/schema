@@ -106,7 +106,7 @@ func ArchiveConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *Arch
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "ArchiveConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -314,7 +314,13 @@ func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *Table
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !ArchiveConfigLoadMessageBody(&r, &values[i]) {
+		if !ArchiveConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					ArchiveConfigReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}

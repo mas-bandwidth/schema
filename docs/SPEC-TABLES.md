@@ -620,12 +620,13 @@ Four spellings are Dart's own and the reason is at each site.
   budget runs out depends on the loop around the codec. So no generated Dart
   body calls a float32 conversion (issue 404, PORTING M3): the packet, block
   and message emitters spell it at each assignment through the typed-data
-  views, NaN payloads narrowed and widened in software as before, and `make tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
+  views, and `make tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
   on the pinned SDK 3.13.2 — measured at 76 per 2,000,000 passes of five
   float32 and three float64 fields with the helpers, from one caller or two,
-  and 0 hand-inlined. Two further costs are the JIT's and never AOT's: a
-  `float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
+  and 0 hand-inlined. A further cost is the JIT's and never AOT's: a 64-bit
   integer field holding a value outside ±2⁶² costs one boxed integer per read.
+  (The NaN-payload bit surgery this note used to cite is retired with the NaN,
+  §3.3; the Dart leg's finite-tables card removes the last of it.)
 - **THE VERBS ARE MEMBERS OF THE VALUE** — `config.measure()`,
   `config.save(out)`, `config.load(bytes, report)`, `loadBody`, `saveBody`,
   `reset`, `fromJson`, `toJson`, `toJsonMeasure` — methods on a table's own
@@ -4877,32 +4878,26 @@ one document rather than two.
   read (§6.5) therefore refuses it as `malformed`. The FIXED form keeps its own
   rule (§3.4), unchanged.
 
-  **A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN, WITH NO CANONICALISATION**
-  (SPEC.md §4.3). Kind `10` is the four bytes the field holds and kind `11`
-  the eight, whatever they spell: a negative zero, an infinity, a quiet NaN, a
-  SIGNALLING NaN, a NaN with any payload. No writer normalizes one and no
-  reader repairs one, so the pattern that goes in is the pattern that comes
-  out. **A BACKEND THAT HOLDS A `float32` IN A WIDER CELL CARRIES THE PATTERN
-  BIT FOR BIT AND NEVER THROUGH A FLOAT CONVERSION** — the hardware conversion
-  between the two widths sets the quiet bit on a signalling NaN and drops a
-  payload the narrower cell would have kept, and the byte identity nine
-  languages hold over one corpus fails on exactly those values. It is a
-  cross-port contract and not one engine's quirk: JavaScript holds every
-  number as a float64, Elixir's floats are doubles, and the Go oracle and the
-  tool's cook both model a float32 in a float64 cell. The technique is a row
-  in docs/PORTING.md; `testdata/wire/tables/floats_nan.bin` pins the patterns
-  a conversion would move, at both widths and as array elements, and
-  `make tables-float-nan-negative-control` puts the conversion back and
-  watches the pin go red. The rule crosses §4's FLOAT RUNG, `10` into `11`,
-  where the 23 payload bits ride in the top of the double's 52.
+  **A FLOAT IS FINITE, AND RIDES AS ITS IEEE-754 BIT PATTERN** (SPEC.md
+  §4.3; Glenn, 2026-10-27: "tables go finite-only too, same rule as
+  packets"). Kind `10` is the four bytes the field holds and kind `11` the
+  eight, for every finite value, NEGATIVE ZERO AND THE SUBNORMALS INCLUDED,
+  and no writer normalizes one. A NaN (any sign, any payload, quiet or
+  signalling) and both infinities are not values of the type: every writer
+  refuses one, and every read refuses one on its raw bits as
+  `non_finite_float` (§3.3, a plain float's special values). Every finite
+  `float32` widens to `float64` exactly, so a backend that holds a `float32`
+  in a wider cell, and §4's FLOAT RUNG, `10` into `11`, use the ordinary
+  conversion; the NaN bit surgery this paragraph used to require is retired
+  with the NaN. `testdata/wire/tables/floats_nan.bin` and
+  `make tables-float-nan-negative-control` change from pins of patterns that
+  ride into pins of patterns that are refused.
   **A COMPRESSED float is the one float whose READ moves a pattern**, and it
   is not a normalization: its declared range is a read-side clamp (§4), so a
-  NaN under it clamps to `min` and counts and a `-0` lands as `+0`, by §3.3's
-  special-values rule. The bits on the wire are still the writer's own.
-  A PLAIN float's pattern is never moved by any read, and §3.3's plain-float
-  rule says what each form does with a `-0` (elision compares bits, so it
-  rides) and with a NaN or an infinity (it rides, and the strict read refuses
-  it by name).
+  `-0` lands as `+0`, by §3.3's special-values rule. The bits on the wire are
+  still the writer's own. A PLAIN float's pattern is never moved by any read,
+  and §3.3's plain-float rule says what each form does with a `-0` (elision
+  compares bits, so it rides) and with a NaN or an infinity (refused).
 
   **The scalars the type wire brought ride as their STORAGE and nothing
   else.** A `fixed(I, F)` value is the integer its storage holds, units ×
@@ -6699,8 +6694,8 @@ wire contract exactly as §3 and §4 state it. The counters keep their meanings 
 their sources, `retained` and `retain_lost` keep theirs (§6.6), and this form
 adds no counter and moves none. **The only report-side addition is a REASON on
 the refusal verdict**, which the form byte already introduced, and the
-`non_finite: <Table>.<field>` name §3.3 has every read record for a plain
-float's NaN or infinity, on a read that otherwise succeeds.
+`non_finite_float: <Table>.<field>` name §3.3 has every read refuse with for a
+plain float's NaN or infinity.
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
@@ -6850,32 +6845,35 @@ carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
 
 **A COMPRESSED FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A
-compressed float is defined for the values in `[min, max]`, and a NaN, the
-infinities and a negative zero are each stated here, because every comparison
-against a NaN is false and a bounds test of `< min` and `> max` alone hands a
-NaN through whole: a value outside the declared range, uncounted, given to a
-caller the declaration promises a number inside it. The rule, the same in the
+compressed float is defined for the FINITE values, clamped into `[min, max]`.
+A NaN and the infinities are stated here because every comparison against a
+NaN is false, so a bounds test of `< min` and `> max` alone would hand one
+through whole. The rule follows the plain float's and the packet wire's
+(Glenn, 2026-10-27, "same rule as packets"; SPEC.md §4.3), the same in the
 message, fixed, variable and text forms:
 
-- **A VALUE WRITTEN AS NaN NEVER LANDS AS NaN.** It clamps to `min` and COUNTS,
-  exactly as `-Inf` and a finite value below `min` do, or, in the one form
-  with no spelling for it, it is REFUSED BY NAME. A quiet NaN, a signalling
-  NaN, a NaN with any payload and either sign are one case.
-- **`+Inf` CLAMPS TO `max` AND `-Inf` TO `min`, AND EACH COUNTS**, as a finite
-  value past that end does, or is refused by name where a NaN is.
+- **A NaN OR AN INFINITY IS REFUSED ON WRITE, AND NEVER CLAMPED.** Every
+  writer refuses one (measure and write return `-1`, naming the field). A
+  quiet NaN, a signalling NaN, a NaN with any payload, either sign and either
+  infinity are one case. Where a form carries the float whole (FIXED,
+  VARIABLE), a READ that meets one refuses it on its raw bits as
+  `non_finite_float`, naming the field, before the field is written; that
+  test runs FIRST, before the bounds pass.
+- **A FINITE VALUE PAST AN END CLAMPS TO THAT END, AND COUNTS**, as before.
 - **`-0` IS `+0`.** It lands as exactly what `+0` lands as in that form: the
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the
   rule chooses for `0`. No sign bit is kept and nothing is counted, because the
   value is inside the range and only its spelling differs.
 
-Where the clamp runs, and what counts it, is each form's own:
+Where the refusal and the clamp run, and what counts the clamp, is each
+form's own:
 
-| form | where a NaN, an infinity and a `-0` are held |
+| form | where a NaN, an infinity, a finite value past an end and a `-0` are held |
 | --- | --- |
-| MESSAGE (§3.3) | the WRITER's quantizer (above): `!(ratio >= 0)` is true for a NaN, so it takes the `0` end, and the writer COUNTS every value its quantizer clamps — a NaN, an infinity, a finite value past either end — into `clamped` on the report handed to `SaveMessages`. The reader sees only an index in `[0, count]`, so it decodes a value inside `[min, max]` and counts nothing |
-| FIXED (§3.4) | the READ's bounds pass, which tests for the NaN FIRST and then each end; `clamped` on the load's report. The record carries the float whole, so the writer moves nothing |
-| VARIABLE (§3) | the READ's clamp to the declared range (§4), the same test in the same order; `clamped` on the load's report |
+| MESSAGE (§3.3) | the WRITER: a NaN or an infinity is refused (`-1`) before the quantizer runs; the quantizer clamps a finite value past either end and COUNTS it into `clamped` on the report handed to `SaveMessages`. The reader sees only an index in `[0, count]`, so it decodes a value inside `[min, max]` and counts nothing |
+| FIXED (§3.4) | the WRITER refuses a NaN or an infinity (`-1`); the READ tests the raw bits for a non-finite value FIRST (`non_finite_float`, refused) and then each end (`clamped` on the load's report) |
+| VARIABLE (§3) | the same: the WRITER refuses, and the READ refuses a non-finite value and then clamps a finite one to the declared range (§4), `clamped` on the load's report |
 | TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
 
 The quantizer, read off the Go oracle (`ir.TableMessageQuantize` and
@@ -6884,34 +6882,34 @@ cannot tell "the index of 0" from "index 0":
 
 | input | `[0, 1]` at `0.01` (`count` 100): index → decoded | `[-1, 1]` at `0.01` (`count` 200): index → decoded |
 | --- | --- | --- |
-| a NaN | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
+| a NaN, `+Inf`, `-Inf` | refused on write; no index | refused on write; no index |
 | `-0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
 | `+0` | `0` → `+0`, the index of `0` | `100` → `+0`, the index of `0` |
-| `+Inf` | `100` → `1`, which is `max` | `200` → `1`, which is `max` |
-| `-Inf` | `0` → `0`, which is `min` | `0` → `-1`, which is `min` |
 | below `min` | `0` → `min` | `0` → `min` |
 | above `max` | `count` → `max` | `count` → `max` |
 
 In general `-0` and `+0` take the index of the grid point the rule chooses for
 `0`, and decode to that point; it is index `0` only when `min` is `0`. The index
 never leaves `[0, count]` and a decoded value never leaves `[min, max]`, so in
-every form a compressed float lands inside its declared range and a NaN never
-lands at all. The rule is held on the Go leg and in the Go oracle by
-`internal/codegen/gotable/cfloat_special_values_test.go`, which pins NaN,
-`-0`, `+0`, `+Inf` and `-Inf` in all four forms on both shapes above, and by
-`internal/codegen/gotable/fixedcfloat_test.go`'s NaN and negative-zero rows. A
-leg that lands a NaN, keeps a `-0`'s sign bit, or clamps without counting here
-is out of conformance with this paragraph.
+every form a compressed float lands inside its declared range and a NaN or an
+infinity never lands at all. The rule is held on the Go leg and in the Go
+oracle by `internal/codegen/gotable/cfloat_special_values_test.go` (every
+form, both shapes: the refusals, `-0`, `+0` and a finite value past each end)
+and `internal/codegen/gotable/fixedcfloat_test.go`
+(`TestFixedCFloatNonFiniteIsRefused`), and by
+`internal/tablewire/cfloat_special_oracle_test.go`. A leg that lands a NaN,
+clamps one instead of refusing it, keeps a `-0`'s sign bit, or clamps a finite
+value without counting is out of conformance with this paragraph.
 
 **A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A `float32`
-or `float64` with no declared range is defined for every IEEE-754 pattern,
-and §3's FLOAT RIDES AS ITS BIT PATTERN holds for it unchanged: no writer
-normalizes one and no reader repairs one. The rule settles the two places
+or `float64` with no declared range is defined for every FINITE IEEE-754
+pattern, and §3's rule holds for it: a finite value rides as its bits, no
+writer normalizes one and no reader repairs one. The rule settles the places
 that pattern can still fail to agree with itself across the forms — a
-default elision that compares with `==`, under which `-0 == +0`, and a text
-form that has no spelling for a NaN or an infinity — and it is chosen so that
-§16.2's last sentence holds for the binary reads too: **no value a strict
-read calls clean is one any writer refuses.**
+default elision that compares with `==`, under which `-0 == +0`, and the NaN
+and the infinities, which are refused (2026-10-27) — and it is chosen so that
+§16.2's last sentence holds for every read: **no value any read accepts is
+one any writer refuses.**
 
 - **`-0` IS A VALUE, AND IT RIDES.** A plain float's default ELISION COMPARES
   BIT PATTERNS, not values: a field is left off the wire only when its 32 or
@@ -6926,22 +6924,33 @@ read calls clean is one any writer refuses.**
   whose `-0` lands as `+0` by the rule above, because a plain float declares
   no range for `-0` to be inside. `-0` in, `-0` out, in every form, and
   nothing counts it.
-- **A NaN, `+Inf` AND `-Inf` RIDE THE BINARY FORMS AND ARE REFUSED BY THE
-  STRICT READ, BY NAME.** The variable, message and fixed forms carry the
-  pattern bit for bit — a quiet NaN, a signalling NaN, a NaN with any payload,
-  either sign, either infinity — and a TOLERANT read lands it exactly as
-  written and counts nothing, since nothing moved. The variable and message
-  forms' reads NAME the field in the report's `Reason` as
-  `non_finite: <Table>.<field>` (the first name a read records wins, as for
-  `clamped`), and **THE STRICT READ (§6.5) REFUSES IT**,
-  with `TableRefuseReason` `non_finite` (`TableReport.Err()` answers the same
-  reason); in Go so do the plain read names of those two forms, which are
-  strict (§6.5), and only their `*Tolerant` twins land the pattern. The text form has no spelling for one, so its WRITER REFUSES it
-  (§16.3: measure and write return `-1`) and its READ cannot produce one: a
-  token is a finite number or it is `kind_mismatch` (§16.2). The pair is what
-  keeps the guarantee: a value the strict read accepts is finite in every
-  plain float, so `Save`, `ToJson` and `SaveText` all write it, and a
-  binary-to-text relay that read strictly cannot fail at the write.
+- **A NaN, `+Inf` AND `-Inf` ARE REFUSED ON WRITE AND ON READ, IN EVERY
+  FORM** (Glenn, 2026-10-27, overturning the 2026-10-18/19 rule under which
+  they rode the binary forms and only the strict read refused them). The
+  rule is serialize format 2.0's, the packet wire's (SPEC.md §4.3): a quiet
+  NaN, a signalling NaN, a NaN with any payload, either sign and either
+  infinity are one case. EVERY WRITER REFUSES one: measure and write return
+  `-1`, as for any other value the writer cannot emit, so no binary form
+  ever carries one. EVERY READ REFUSES one, tolerant and strict alike,
+  testing the raw bits before the field is written: the read stops with
+  `TableRefuseReason` `non_finite_float` (the ordinal the retired spelling
+  `non_finite` held, renamed and never renumbered, §6.5) and the report's
+  `Reason` names the field, `non_finite_float: <Table>.<field>`. A tolerant
+  read does not land, count or step over one: a non-finite float is not a
+  value a reader can repair, so there is nothing for tolerance to keep. The
+  text form already has no spelling for one: its WRITER REFUSES it (§16.3)
+  and its READ cannot produce one (a token is a finite number or it is
+  `kind_mismatch`, §16.2). The guarantee is now unconditional: every plain
+  float any read accepts is finite, so `Save`, `ToJson` and `SaveText` all
+  write it. Two reads that do not walk every field keep the rule
+  too. A NO-WALK block or cook open (§7, §13.4, §13.6): its STRICT VALIDATOR refuses
+  a non-finite float at load as `non_finite_float`, naming the field, and an
+  accessor that decodes a float field refuses a non-finite one with
+  `non_finite_float` (latched on the view, the field named) and never returns
+  the value. A RETAINED UNKNOWN entry (§6.6) whose wire kind is a float kind
+  (`10` or `11`) is tested on read like a known field, and a non-finite one is
+  refused as `non_finite_float`: uniformity wins over carrying bytes the
+  reader cannot name.
 - **EVERY OTHER PATTERN IS AN ORDINARY VALUE**, a subnormal included: the
   largest subnormal rides every binary form as its bits, writes as the
   shortest text that reads back as the same value at the field's width, and
@@ -6949,9 +6958,9 @@ read calls clean is one any writer refuses.**
 
 | form | `-0` | a NaN, `+Inf`, `-Inf` |
 | --- | --- | --- |
-| VARIABLE (§3) | rides (elision compares bits); read lands `-0` | rides; tolerant read (`LoadTolerant`, `LoadBuilderTolerant`) lands the pattern, counts nothing, names the field in `Reason`; STRICT read refuses `non_finite`, and in Go so do the plain `Load` and `LoadBuilder` (§6.5) |
-| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | rides; `LoadMessagesTolerant` lands the pattern, counts nothing, names the field in `Reason`; in Go the plain `LoadMessages` is strict (§6.5) and refuses it through `report.Err()`, `non_finite` |
-| FIXED (§3.4) | carried whole; read lands `-0` | carried whole; read lands the pattern, counts nothing and names nothing, so the plain `FixedLoad`, strict in Go (§6.5), accepts it as `FixedLoadTolerant` does |
+| VARIABLE (§3) | rides (elision compares bits); read lands `-0` | writer refuses (`-1`); every read, tolerant and strict, refuses `non_finite_float` and names the field |
+| MESSAGE (§3.3) | rides (the same elision); read lands `-0` | writer refuses (`-1`); every read, tolerant and strict, refuses `non_finite_float` and names the field |
+| FIXED (§3.4) | carried whole; read lands `-0` | writer refuses (`-1`); every read, tolerant and strict, refuses `non_finite_float` and names the field |
 | TEXT / JSON (§16) | written `-0`; read lands `-0`, uncounted | writer refuses (`-1`); a read cannot produce one |
 
 **What it costs, Go first** (the owner's ruling of 2026-10-15: the standard
@@ -6961,12 +6970,20 @@ GAINS that field — its header and four or eight bytes — where a leg still
 comparing with `==` elides it, so until each leg adopts the bit compare the
 legs agree byte for byte on every value except that one. Each other leg owes
 three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
-included, which today gives `-0` C's `==`), the `non_finite` name on its
-variable- and message-form reads, and the refusal on its strict read with the enum value
-appended. The Go gate's corpus vectors are unchanged under the rule, and the NaN pins (`testdata/wire/tables/floats_nan.bin`) are
-read tolerantly, which still lands them bit for bit. The rule is held on the
-Go leg by `internal/codegen/gotable/floatspecial_test.go`
-(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`).
+included, which today gives `-0` C's `==`), and the finite rule of
+2026-10-27: the writer's refusal and every read's `non_finite_float`
+refusal, in all three binary forms. The Go leg and the tool's engines
+(`internal/tablewire`, `internal/tablecook`) keep the rule, held by
+`internal/codegen/gotable/floatspecial_test.go`
+(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) and
+`internal/tablewire/floatnan_test.go`, which reads the reference's NaN pin
+(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. Until a leg
+lands the rule it keeps the 2026-10-18/19 behaviour (a NaN or an infinity
+rides, and only a strict read, where the leg has one, refuses it as
+`non_finite`); each leg's work is its card in docs/roadmap.sexp
+(`tables-finite/<leg>`), and the cross-language gates that meet a non-finite
+float on a leg not yet converted name that card (the wire fuzzer's
+`--finite-owed`, the Elixir hostile-corpus FIX-CARD).
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** A reader handed a
 form-`2` wire where a file was expected refuses by name: a batch stored on its
@@ -8326,7 +8343,7 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | `text` | read the length; a value past the plan's cap refuses `length_over_bound`; then the units, then terminate at the used length; the content rules of §3 apply and a violation refuses `text_ill_formed` |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux`; the pool's `u16` length word bounds a writer's enum variant count in a compiled remap table to `0xFFFF` (`tableFixedRemapMax`) <!-- limit name=fixed_remap_max value=0xFFFF --> |
   | `widen` | decode a narrower integer source at its own width into a wider destination, `widened` counts |
-  | `widenF` | widen an `f32` source to `f64`, carrying a NaN's payload bit for bit, `widened` counts |
+  | `widenF` | widen an `f32` source to `f64` by the ordinary conversion (every finite `f32` is exact in an `f64`; a non-finite source is refused as `non_finite_float`, §3.3), `widened` counts |
   | `const` | write the constant at `aux` into the destination, for an absent arm or a default the reader's storage needs |
   | `bool` | normalise a source byte to `0` or `1`: a byte that is not zero is true |
   | `tag` | read a union tag and land it in the destination; a value past the reader's own arm count lands `None` and counts `unknown`, and arms are guarded entries the loop runs below, not here |
@@ -8757,9 +8774,9 @@ tolerance is the versioning model:
   `8`, `9`, `19`, and each kind accepts every kind below it on its own ladder.
   `10` into `11` is the float rung and the only one. The value is exact by
   construction: sign extension for the signed ladder, zero extension for the
-  unsigned one, and every `f32` value is exactly representable in an `f64`,
-  infinities and NaN payloads included, so there is nothing to round and
-  nothing to lose. **EVERY OTHER PAIR STAYS
+  unsigned one, and every finite `f32` value is exactly representable in an
+  `f64` (a NaN or an infinity never reaches the rung: the read refuses it as
+  `non_finite_float`, §3.3), so there is nothing to round and nothing to lose. **EVERY OTHER PAIR STAYS
   `kind_mismatch`**, and the list is worth stating because each is a value the
   wider kind would have accepted and the schema does not mean. The reverse
   direction is a NARROWING and loses what does not fit. Across the ladders,
@@ -8889,8 +8906,8 @@ tolerance is the versioning model:
 Every event lands in the **read report**. The wire-tolerance counters are
 `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
 `malformed` flag; the report also carries `missing_required` (§2.3) and
-`blob_shared` (§2.5), and its `Reason` names the strict read's typed refusal,
-`non_finite` included (§6.5).
+`blob_shared` (§2.5), and its `Reason` names the strict read's typed refusal (§6.5), and every
+read's `non_finite_float` refusal (§3.3).
 `unknown` counts every id this reader cannot name: a field id, an enum
 variant id, a union arm id, a keyed slot's key. Silence (all zero) means
 the data matched this reader's schema exactly. Tools surface the report;
@@ -10020,7 +10037,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `base64_damaged` | base64 text with a byte outside the alphabet, or the wrong padding (§16.8) |
   | `base64_not_canonical` | base64 text that decodes but is not the canonical spelling of its bytes (§16.8) |
   | `integrity_mismatch` | the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19) |
-  | `non_finite` | a plain float the read landed as a NaN or an infinity (§3.3). The report's reason is `non_finite: <field>` |
+  | `non_finite_float` | a plain float whose bits are a NaN or an infinity: every read refuses it, tolerant and strict, and every writer refuses to emit one (§3.3). The report's reason is `non_finite_float: <field>`. Same ordinal as the retired spelling `non_finite` |
   | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
   | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
   | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
@@ -10073,7 +10090,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   table above even when its own implementation can never answer it, so the
   names, their order and their spelling agree in all nine ports and a caller
   may compare against any of them. The rows whose reason carries a
-  `": <Table>.<field>"` suffix (`missing_required`, `non_finite`,
+  `": <Table>.<field>"` suffix (`missing_required`, `non_finite_float`,
   `json_root_not_array`, `text_holds_zero`, `timestamp_not_rfc3339`) are
   spelled the same way in the first column: the enum member is the name before
   the colon and the suffix is the report's field.
@@ -10133,7 +10150,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   the root or refuses. It refuses, with ONE typed reason, a read that is
   malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
   build-version-mismatched, missing a required field (§2.3), holding a
-  non-finite plain float (`non_finite`, §3.3, a plain float's special values) or
+  non-finite plain float (`non_finite_float`, §3.3, a plain float's special values; the tolerant read refuses it too) or
   naming one blob from two slots (`blob_shared`, §2.5). The clamped refusal
   NAMES the clamped field, `<Table>.<field>`, as the other refusals name
   theirs: a strict read of a past-bound wire answers the clamped refusal with
@@ -10146,7 +10163,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
   in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
-  (and `non_finite`, then `blob_shared`) are appended to that enum and never renumbered. `TableReport.Err()`
+  (and `non_finite_float`, spelled `non_finite` until 2026-10-27 and renamed in place, then `blob_shared`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
   `retained`. The call owns its builder: the caller does not measure, does
@@ -13807,7 +13824,8 @@ in build version (§20.5).
   not match), a clamped value (out of its declared bounds), a kind mismatch,
   framing damage, an unknown form, a build-version mismatch, a missing
   required field (no defined value), a blob shared by two slots
-  (`blob_shared`), and a non-finite plain float (`non_finite`). A caller who
+  (`blob_shared`), and a non-finite plain float (`non_finite_float`, which the
+  tolerant twin refuses too: there is no value to recover). A caller who
   needs the recovered value
   past one of those boundaries asks for it by name, through the `...Tolerant`
   twin, which keeps the value and counts the report. **Writers are strict and
@@ -13855,7 +13873,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact
+  FixedClamp  FixedClampBody  FixedCheckBody  FixedCheckBodyExact  FixedFiniteBody
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
@@ -13912,6 +13930,9 @@ in build version (§20.5).
   every closure member on the same rule and not only for the ones that declare
   a bound today: a field gains a `min` or a `max`, or a union or an enum, as an
   ordinary edit, and the name has to already be taken when it does.
+  `FixedFiniteBody` is the read's FINITE PASS (§3.3), which refuses a NaN or an
+  infinity before the bounds pass runs; it is claimed on the same rule, because
+  a type gains a float as an ordinary edit.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
@@ -16114,10 +16135,9 @@ written as something else.
 - **A non-finite float.** The read path cannot produce one (above), so an
   instance that came from a text is always writable; one built in code with
   an infinity in it is refused, and says so.
-  One that came from a BINARY wire can hold one — the binary forms carry the
-  pattern (§3) — and the STRICT read is what refuses it, as `non_finite`
-  (§3.3, a plain float's special values), so an instance a strict read
-  accepted is always writable too.
+  One that came from a BINARY wire cannot hold one either: every binary read
+  refuses it as `non_finite_float` (§3.3, a plain float's special values), so
+  an instance any read accepted is always writable.
 
 `-1` therefore has two meanings on `ToJson` — a buffer too small, and a
 value that cannot be written — and a caller that distinguishes them calls

@@ -64,7 +64,7 @@ func init() {
 		Name{Name: "base64_damaged", What: "base64 text with a byte outside the alphabet or the wrong padding (§16.8)"},
 		Name{Name: "base64_not_canonical", What: "base64 text that decodes but is not the canonical spelling of its bytes (§16.8)"},
 		Name{Name: "integrity_mismatch", What: "the integrity trailer does not match the bytes before it (§2.14, §3, §19)"},
-		Name{Name: "non_finite", What: "a plain float the read landed as a NaN or an infinity (§3.3)"},
+		Name{Name: "non_finite_float", What: "a float whose bits are a NaN or an infinity; every read and every writer refuses it (§3.3)"},
 		Name{Name: "blob_shared", What: "one blob record named from two slots; every writer refuses to emit it (§2.5)"},
 		Name{Name: "Announce", What: "the unit's announcement, written into the caller's buffer (§3.3)"},
 		Name{Name: "AnnounceMeasure", What: "the announcement's byte count, a constant of the unit"},

@@ -222,8 +222,12 @@ int main(void)
 	runCTableWireProbe(t, u, source)
 }
 
-// Clamps must happen after promoting the source-width integer. NaN widening
-// must preserve its sign and payload without quieting a signaling NaN.
+// Clamps must happen after promoting the source-width integer, and the float
+// rung widens a finite float32 exactly. The rung's payload is FINITE since the
+// finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3): the Go oracle this row
+// takes its expected bytes from refuses a NaN as non_finite_float, and the C
+// leg's own refusal of one is owed by docs/roadmap.sexp tables-finite/c, which
+// puts this row's NaN back in as a must-refuse case.
 func TestCTableWireWidening(t *testing.T) {
 	u := unitFromSource(t, `package probe
     fixed table Root {
@@ -235,7 +239,7 @@ func TestCTableWireWidening(t *testing.T) {
     }
     `)
 	wire := []byte{1, 1, 2, 255, 2, 2, 0, 3, 6, 255, 4, 10}
-	wire = binary.LittleEndian.AppendUint32(wire, 0xffa5a5a5)
+	wire = binary.LittleEndian.AppendUint32(wire, 0xc0490fdb) // -3.14159274, finite with a full mantissa
 	wire = append(wire, 5, 14, 6, 7, 2, 0, 0, 255, 255, 0)
 	for _, f := range u.Tables["Root"].Fields {
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(f))

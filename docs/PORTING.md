@@ -928,11 +928,11 @@ contracts are documented in [C# tables](CS-TABLES.md).
 
 ### M21 — A float crosses two widths by bit surgery, never by conversion
 
-**Method.** A TABLE float rides as its IEEE-754 BIT PATTERN with no
-canonicalisation (docs/SPEC-TABLES.md §3). The packet wire is finite only
-since serialize format 2.0 (SPEC.md §4.3), so there a NaN never reaches a
-cell; this method is for the table forms, and for a packet target still on
-a format 1.1 runtime. A backend that holds a `float32` in
+**Retiring (2026-10-27).** Floats are finite only on both wires (SPEC.md
+§4.3, docs/SPEC-TABLES.md §3.3), so a NaN never reaches a cell and the
+ordinary conversion is exact for every finite value. This method stays only
+until each target lands the finite rule. **Method.** A float rode as its
+IEEE-754 BIT PATTERN with no canonicalisation, so a backend that holds a `float32` in
 a WIDER cell moves the pattern BIT FOR BIT and never through a float
 conversion. The hardware conversion sets the QUIET BIT on a signalling NaN and
 drops a payload the narrower cell would have kept, so a port that models a
@@ -951,20 +951,14 @@ mismatch (§16.2), so a NaN payload never rides through a text cell.
 
 **Reference.** `internal/codegen/cpptable/widen.go` (`TableWidenF32`, emitted
 into every unit's header) and its use at
-`internal/codegen/cpptable/messageload.go`. The compiler's own engines carry
-the same pair, EXPORTED so nothing mints a second copy:
-`internal/tablewire/encode.go`'s `WidenF32` and `NarrowF32`, read by
-`internal/tablecook/region.go` and `internal/tablecook/uncook.go`; the wire
-decoders' kind-`10` arms (`decode.go`, `messagedecode.go`) test the NaN
-predicate inline and share the same widening helper, so the surgery itself
-lives in one place.
+`internal/codegen/cpptable/messageload.go`, until the C++ leg lands the finite
+rule. The compiler's own engines no longer carry the pair: `internal/tablewire`
+and `internal/tablecook` refuse a non-finite float on its raw bits and widen a
+finite one by the ordinary conversion (2026-10-27), and so does the Go leg.
 
-**Proven in.** C++ (#480), and the TOOL: the Go oracle and the tool's cook both
-model a float32 in a float64 cell, and both read and write the pinned patterns
-unchanged. The eight ports are a row on #366 — JavaScript holds every number as
-a float64 and Elixir's floats are doubles, so those two owe the technique for
-the field itself; the rest owe it at §4's float rung, where the widened value
-lands in a double however the field is stored.
+**Proven in.** C++ (#480). The eight ports were a row on #366; under the finite
+rule a port retires the method instead of carrying it, as the Go leg and the
+tool have.
 
 **Measured effect.** Nothing on the ordinary path: the branch is one mask and
 one compare against an exponent word already loaded, and every finite value
@@ -981,7 +975,7 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ✅ `internal/codegen/gotable/wire.go` (`tableWidenFloat`), `TestWireSignalingNaNWideningAndLEBOverflow`; hardware-conversion and tenth-byte-guard overlays both fail the regression | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 |
+| ✅ `tables-float-nan` `tables-float-nan-negative-control` (the C++ leg's finite-tables card retires it) | ✅ `tables-c-wire-fuzz` | ❌ #366 | — retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingNaNWideningAndLEBOverflow`, `TestGoPlainFloatSpecialValuesAgreeAcrossForms`) | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 |
 
 ### M22 — Typed table serialization fast path
 

@@ -12,12 +12,13 @@ import (
 
 // A COMPRESSED FLOAT'S SPECIAL VALUES IN THE GO ORACLE (docs/SPEC-TABLES.md
 // §3.3, A COMPRESSED FLOAT'S SPECIAL VALUES). The oracle is the wire fuzzer's
-// divergence check, so it must take the rule the generated Go takes: on the
-// VARIABLE read a NaN clamps to `min` and counts, the infinities clamp to
-// their end and count, and a -0 lands as +0, uncounted; on the TEXT read a -0
-// lands as +0, uncounted. Two ranges, so "the index of 0" and "index 0" part.
-// The plain float beside them is the control: §3's no-canonicalisation rule
-// still carries its NaN and its -0 bit for bit.
+// divergence check, so it must take the rule the generated Go takes: a NaN or
+// an infinity is REFUSED — by the writer, and by the VARIABLE read on its raw
+// bits as non_finite_float, before the bounds pass — and never clamped; a
+// finite value past an end clamps to that end and counts; a -0 lands as +0,
+// uncounted, on the variable read and on the TEXT read. Two ranges, so "the
+// index of 0" and "index 0" part. The plain float beside them is the control:
+// a finite value, -0 included, rides bit for bit.
 
 const oracleCFloat = `package cforacle
 
@@ -55,6 +56,12 @@ func oracleField(t *testing.T, inst *tabletext.Instance, name string) *tabletext
 	return nil
 }
 
+// f32of is a cell's value as the float32 it rides as.
+func f32of(t *testing.T, inst *tabletext.Instance, name string) uint32 {
+	t.Helper()
+	return math.Float32bits(float32(oracleField(t, inst, name).Cell.F))
+}
+
 func TestOracleCompressedFloatSpecialValuesVariable(t *testing.T) {
 	m := oracleCFloatModel(t)
 	for _, c := range []struct {
@@ -63,17 +70,18 @@ func TestOracleCompressedFloatSpecialValuesVariable(t *testing.T) {
 		a, b    uint32
 		clamped int
 	}{
-		{"nan", 0x7FC00000, 0x00000000, 0xBF800000, 2},
 		{"minus_zero", 0x80000000, 0x00000000, 0x00000000, 0},
 		{"plus_zero", 0x00000000, 0x00000000, 0x00000000, 0},
-		{"plus_inf", 0x7F800000, 0x3F800000, 0x3F800000, 2},
-		{"minus_inf", 0xFF800000, 0x00000000, 0xBF800000, 2},
+		{"above_max", 0x40000000, 0x3F800000, 0x3F800000, 2},
+		{"below_min", 0xC0000000, 0x00000000, 0xBF800000, 2},
 	} {
 		inst := m.New(m.Lookup("Reading"))
 		v := float64(math.Float32frombits(c.in))
 		oracleField(t, inst, "a").Cell.F = v
 		oracleField(t, inst, "b").Cell.F = v
 		oracleField(t, inst, "plain").Cell.F = v
+		// the encoder writes the field whole; a value past an end is the
+		// READ's to clamp (§4), which is what this row exercises
 		wire, err := tablewire.Encode(m, inst)
 		if err != nil {
 			t.Fatalf("%s: encode: %v", c.name, err)
@@ -83,19 +91,42 @@ func TestOracleCompressedFloatSpecialValuesVariable(t *testing.T) {
 		if _, err := tablewire.Decode(m, back, wire, &report); err != nil {
 			t.Fatalf("%s: decode: %v", c.name, err)
 		}
-		if got := widened32(math.Float64bits(oracleField(t, back, "a").Cell.F)); got != c.a {
+		if got := f32of(t, back, "a"); got != c.a {
 			t.Errorf("%s: A [0, 1] landed %#08x, want %#08x", c.name, got, c.a)
 		}
-		if got := widened32(math.Float64bits(oracleField(t, back, "b").Cell.F)); got != c.b {
+		if got := f32of(t, back, "b"); got != c.b {
 			t.Errorf("%s: B [-1, 1] landed %#08x, want %#08x", c.name, got, c.b)
 		}
 		if report.Clamped != c.clamped {
 			t.Errorf("%s: clamped %d, want %d", c.name, report.Clamped, c.clamped)
 		}
-		// THE CONTROL: a plain float carries its pattern whole (§3).
-		if got := widened32(math.Float64bits(oracleField(t, back, "plain").Cell.F)); got != c.in && c.name != "minus_zero" {
+		// THE CONTROL: a plain float carries its finite pattern whole (§3).
+		if got := f32of(t, back, "plain"); got != c.in {
 			t.Errorf("%s: the plain float came back %#08x, want its own %#08x", c.name, got, c.in)
 		}
+	}
+	// A NaN OR AN INFINITY IS REFUSED, NEVER CLAMPED: the writer refuses it,
+	// and a wire that carries one anyway is refused on its raw bits, before
+	// the bounds pass, naming the field (§3.3, ruling 1 of 2026-10-27).
+	marker := float32(0.5)
+	for _, bits := range []uint32{0x7FC00000, 0x7F800001, 0xFFA5A5A5, 0x7F800000, 0xFF800000} {
+		inst := m.New(m.Lookup("Reading"))
+		oracleField(t, inst, "a").Cell.F = float64(math.Float32frombits(bits))
+		if _, err := tablewire.Encode(m, inst); err == nil || err.Error() != "non_finite_float: Reading.a" {
+			t.Errorf("%#08x: the encoder answered %v, want the non_finite_float refusal of Reading.a", bits, err)
+		}
+		oracleField(t, inst, "a").Cell.F = float64(marker)
+		wire, err := tablewire.Encode(m, inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bad := replaced(t, wire, le32(math.Float32bits(marker)), le32(bits))
+		var report tabletext.Report
+		ok, err := tablewire.Decode(m, m.New(m.Lookup("Reading")), bad, &report)
+		if ok || report.Clamped != 0 {
+			t.Errorf("%#08x: the read landed or clamped it: %v %+v", bits, ok, report)
+		}
+		refusedAs(t, "compressed", err, report, "Reading.a")
 	}
 }
 

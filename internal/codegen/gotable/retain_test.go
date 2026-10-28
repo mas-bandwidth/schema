@@ -83,16 +83,16 @@ func TestCaptureBounds(t *testing.T){
  for _,depth:=range []int{64,65}{
   bits:=make([]byte,32);w:=TableBitWriter{Buffer:bits};for i:=1;i<depth;i++{w.Put(1,1)};for i:=0;i<depth;i++{w.Put(0,1)}
   store.Used=0;store.Count=0;r:=TableRetainMessageReader{tableMessagePlainReader:TableMessageReader{Bits:TableBitReader{Buffer:bits},Vocabulary:&v},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
-  if !r.capture(entry)||r.Report.Malformed||r.Bits.Offset!=w.Bits{t.Fatalf("depth %d changed ordinary framing %+v",depth,r.Report)}
+  if !r.capture(entry,"T")||r.Report.Malformed||r.Bits.Offset!=w.Bits{t.Fatalf("depth %d changed ordinary framing %+v",depth,r.Report)}
   if depth==64&&(r.Report.Retained!=1||r.Report.RetainLost!=0)||depth==65&&(r.Report.Retained!=0||r.Report.RetainLost!=1){t.Fatalf("depth %d %+v",depth,r.Report)}
  }
  store.Used=0;store.Count=0;store.Bytes=store.Bytes[:64]
  huge:=TableMessageEntry{ID:124,Shape:TableMessageShape{Kind:14,Min:1<<31,Max:1<<31,Bits:-1},Element:TableMessageShape{Kind:4,Packing:1,Bits:0}}
  r:=TableRetainMessageReader{tableMessagePlainReader:TableMessageReader{Vocabulary:&v},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
- if !r.capture(huge)||r.Report.RetainLost!=1||r.Report.Retained!=0||r.Report.Malformed||store.Used!=0{t.Fatalf("zero-bit count %+v",r.Report)}
+ if !r.capture(huge,"T")||r.Report.RetainLost!=1||r.Report.Retained!=0||r.Report.Malformed||store.Used!=0{t.Fatalf("zero-bit count %+v",r.Report)}
  quantized:=TableMessageEntry{ID:125,Shape:TableMessageShape{Kind:10,Packing:2,Bits:2,QCount:2,QMin:0,QDelta:1}}
  r.Report=TableReport{};r.Bits=TableBitReader{Buffer:[]byte{3}}
- if !r.capture(quantized)||r.Report.RetainLost!=1||r.Report.Malformed{t.Fatalf("invalid quantized index %+v",r.Report)}
+ if !r.capture(quantized,"T")||r.Report.RetainLost!=1||r.Report.Malformed{t.Fatalf("invalid quantized index %+v",r.Report)}
 }
 `)
 }
@@ -152,7 +152,35 @@ func TestRetainFileCapacityBeforeExpansion(t *testing.T) {
   if probe.content(14,int64(len(body)),0)||probe.r.Offset!=2{t.Fatalf("count expanded past available resolved capacity at %d",probe.r.Offset)}
   var root Root;store:=TableRetain{Bytes:make([]byte,42),Ids:make([]TableRetainID,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeID:RootTableType().ID}})
   wire:=append([]byte{byte(len(body))},body...);var report TableReport;r:=TableRetainReader{tableRetainPlainReader:TableReader{Buffer:wire,Report:&report},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
-  if !r.capture(123,14)||report.Malformed||report.RetainLost!=1||report.Retained!=0||store.Used!=0{t.Fatalf("whole-record capacity %+v",report)}
+  if !r.capture(123,14,"T")||report.Malformed||report.RetainLost!=1||report.Retained!=0||store.Used!=0{t.Fatalf("whole-record capacity %+v",report)}
+ }
+ `)
+}
+
+// TestRetainedFloatIsTestedLikeAKnownOne is ruling 3 of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3, §6.6): a retaining read meets an unknown entry of
+// a float kind and tests its raw bits like a known field's. A NaN or an
+// infinity refuses the read as non_finite_float, named <Table>.0x<id>, and is
+// not retained; a finite one is retained as before.
+func TestRetainedFloatIsTestedLikeAKnownOne(t *testing.T) {
+	runGenerated(t, `package probe
+ fixed table Child { n int32 }
+ table Root { child *Child }
+ `, `package probe
+ import("encoding/binary";"testing";"unsafe")
+ func TestRetainedFloat(t *testing.T){
+  for _,c:=range []struct{kind uint8;payload []byte;finite bool}{
+   {10,binary.LittleEndian.AppendUint32(nil,0x3fc00000),true},
+   {10,binary.LittleEndian.AppendUint32(nil,0x7f800001),false},
+   {11,binary.LittleEndian.AppendUint64(nil,0x8000000000000000),true},
+   {11,binary.LittleEndian.AppendUint64(nil,0xfff0000000000000),false},
+  }{
+   var root Root;store:=TableRetain{Bytes:make([]byte,256),Ids:make([]TableRetainID,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeID:RootTableType().ID}})
+   var report TableReport;r:=TableRetainReader{tableRetainPlainReader:TableReader{Buffer:c.payload,Report:&report},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
+   if !r.capture(0x123,c.kind,"Root")||report.Malformed{t.Fatalf("kind %d: the capture failed framing %+v",c.kind,report)}
+   if c.finite&&(report.NonFiniteFloat!=""||report.Retained!=1){t.Errorf("kind %d finite: %+v",c.kind,report)}
+   if !c.finite&&(report.NonFiniteFloat!="Root.0x0000000000000123"||report.Retained!=0||store.Used!=0){t.Errorf("kind %d non-finite: %+v",c.kind,report)}
+  }
  }
  `)
 }

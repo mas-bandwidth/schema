@@ -28,7 +28,9 @@ TableRefuseKindMismatch
 TableRefuseBase64Damaged
 TableRefuseBase64NotCanonical
 TableRefuseIntegrityMismatch
-TableRefuseNonFinite
+// TableRefuseNonFiniteFloat: a NaN or infinity float, refused by every read and
+// writer (docs/SPEC-TABLES.md §3.3); the retired non_finite's ordinal (§6.5).
+TableRefuseNonFiniteFloat
 // TableRefuseBlobShared: one blob record named from two slots (docs/SPEC-TABLES.md
 // §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 TableRefuseBlobShared
@@ -86,7 +88,7 @@ case TableRefuseKindMismatch:return "kind_mismatch"
 case TableRefuseBase64Damaged:return "base64_damaged"
 case TableRefuseBase64NotCanonical:return "base64_not_canonical"
 case TableRefuseIntegrityMismatch:return "integrity_mismatch"
-case TableRefuseNonFinite:return "non_finite"
+case TableRefuseNonFiniteFloat:return "non_finite_float"
 case TableRefuseBlobShared:return "blob_shared"
 case TableRefusePreviousForm:return "previous_form"
 case TableRefuseNewerForm:return "newer_form"
@@ -134,11 +136,13 @@ func(m TableMissingRequired) Error() string {return "missing_required: "+m.Field
 // Err is the report's typed error (docs/SPEC-TABLES.md §6.5, docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field), a non-finite plain float (§3.3, a plain float's
-// special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// (§2.3, naming the field), a non-finite float (§3.3, refused by every read:
+// non_finite_float, named in NonFiniteFloat and Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func(r *TableReport) Err() error {
 if r==nil {return nil}
 if r.Reason=="build_version_mismatch" {return TableBuildVersionMismatch{Remote:r.BuildVersionRemote,Own:r.BuildVersionOwn}}
+// A NON-FINITE FLOAT outranks every later verdict: no read keeps one (§3.3).
+if r.NonFiniteFloat!="" {return TableRefuseNonFiniteFloat}
 // The fixed form's named refusals (docs/SPEC-TABLES.md §6.5, §21.3) answer as
 // their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
 // holds for a fixed load that refused. The form-byte refusals (previous_form,
@@ -186,22 +190,20 @@ if r.Malformed {return TableRefuseMalformed}
 if r.BlobShared>0 {return TableRefuseBlobShared}
 if r.Clamped>0 {if r.ClampedField!=""{return TableClampedField{Field:r.ClampedField}};return TableRefuseClamped}
 if r.KindMismatch>0 {return TableRefuseKindMismatch}
-{const p="non_finite: ";if len(r.Reason)>=len(p)&&r.Reason[:len(p)]==p {return TableRefuseNonFinite}}
 return nil}
-// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
-// infinity (docs/SPEC-TABLES.md §3.3, a plain float's special values): the
-// pattern lands as written and counts nothing, and the name is what the
-// strict read refuses as non_finite. The first name a read records wins. It
-// takes the report's Reason, not a method on TableReport, so the shared runtime
-// (§8.4) can export it: generated code outside the shared set reaches no
-// unexported member, and the file reader's *TableReport and the message
-// reader's TableReport value both pass &r.Report.Reason.
-func tableNonFinite(reason *string,field string){if *reason==""{*reason="non_finite: "+field}}
+// tableNonFiniteFloat names a float whose raw bits a read found to be a NaN or
+// an infinity (docs/SPEC-TABLES.md §3.3): the field is not written and the load,
+// tolerant too, refuses as non_finite_float. The first name wins. It takes the
+// report's slot, not a method, so the shared runtime (§8.4) can export it; the
+// file and message readers both pass &r.Report.NonFiniteFloat.
+func tableNonFiniteFloat(slot *string,field string){if *slot==""{*slot=field}}
+// tableNonFiniteRefused names a load's non-finite float in Reason; the caller
+// refuses and lands nothing (docs/SPEC-TABLES.md §3.3).
+func tableNonFiniteRefused(report *TableReport)bool{if report.NonFiniteFloat==""{return false};report.Reason="non_finite_float: "+report.NonFiniteFloat;return true}
 // tableTextClamped names the field whose value a read clamped (docs/SPEC-TABLES.md
 // §6.5), so a strict read can say which field. The first name a read records
-// wins, as for non_finite. It lands in the report's own ClampedField slot,
-// apart from Reason: Reason may already carry a non_finite name, and the
-// clamped refusal must not lose its field to it. The slot is named by pointer
+// wins, as for non_finite_float. It lands in the report's own ClampedField slot,
+// apart from Reason, so the clamped refusal keeps its field whatever Reason holds. The slot is named by pointer
 // so the same emitted call compiles in every reader context (the table read's
 // *TableReader, the message read's TableMessageReader).
 func tableTextClamped(clampedField *string,field string){if clampedField!=nil&&*clampedField==""{*clampedField=field}}

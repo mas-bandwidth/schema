@@ -405,7 +405,11 @@ func TeamConfigLoadTolerant(value *TeamConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TeamConfigLoadBody(&r, value) {
+	if !TeamConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TeamConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -660,7 +664,7 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 			value.BannerLength = int32(keep)
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "TeamConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -677,6 +681,9 @@ func GunnerConfigReset(value *GunnerConfig) {
 
 func GunnerConfigMeasureBody(value *GunnerConfig, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (math.Float32bits(value.Reaction) != math.Float32bits(0.2)) && (value.Reaction-value.Reaction != 0) {
+		return -1
+	}
 	if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 		bytes += tableLebBytes(ids.refAtHit(101, 0xb75aa3662201646a)) + 1 + 4
 	} // reaction
@@ -717,6 +724,9 @@ func GunnerConfigSaveBodyFields(w *TableWriter, value *GunnerConfig) bool {
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			if ref := w.Ids.refAtHit(101, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Reaction-value.Reaction != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Reaction))
 		}
@@ -789,11 +799,13 @@ func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "GunnerConfig.reaction")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerConfig.reaction")
+				} else {
+					v := math.Float32frombits(b)
+					value.Reaction = v
 				}
-				value.Reaction = v
 			}
 		case 0xa6bf719a4602b0bc: // tracking
 			if kind != 1 {
@@ -870,7 +882,11 @@ func GunnerConfigLoadTolerant(value *GunnerConfig, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !GunnerConfigLoadBody(&r, value) {
+	if !GunnerConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			GunnerConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -960,6 +976,9 @@ func GunnerConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerConfig)
 			if ref := w.Ids.refAtHit(101, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Reaction-value.Reaction != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Reaction))
 		}
 	}
@@ -1021,11 +1040,13 @@ func GunnerConfigLoadBodyRetain(r *TableRetainReader, value *GunnerConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "GunnerConfig.reaction")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerConfig.reaction")
+				} else {
+					v := math.Float32frombits(b)
+					value.Reaction = v
 				}
-				value.Reaction = v
 			}
 		case 0xa6bf719a4602b0bc: // tracking
 			if kind != 1 {
@@ -1052,7 +1073,7 @@ func GunnerConfigLoadBodyRetain(r *TableRetainReader, value *GunnerConfig) bool 
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "GunnerConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1111,6 +1132,9 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1118,6 +1142,9 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
 			if ref := w.Ids.refAtHit(133, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Cooldown-value.Cooldown != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Cooldown))
 		}
@@ -1207,11 +1234,13 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0xdc2cbe6953343d48: // cooldown
 			if kind != 10 {
@@ -1227,11 +1256,13 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.cooldown")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.cooldown")
+				} else {
+					v := math.Float32frombits(b)
+					value.Cooldown = v
 				}
-				value.Cooldown = v
 			}
 		case 0x40dbb648c0cd44aa: // gunner
 			if kind != 13 {
@@ -1305,7 +1336,11 @@ func TurretConfigLoadTolerant(value *TurretConfig, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TurretConfigLoadBody(&r, value) {
+	if !TurretConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TurretConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -1395,6 +1430,9 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1402,6 +1440,9 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
 			if ref := w.Ids.refAtHit(133, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Cooldown-value.Cooldown != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Cooldown))
 		}
@@ -1521,11 +1562,13 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0xdc2cbe6953343d48: // cooldown
 			if kind != 10 {
@@ -1541,11 +1584,13 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TurretConfig.cooldown")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.cooldown")
+				} else {
+					v := math.Float32frombits(b)
+					value.Cooldown = v
 				}
-				value.Cooldown = v
 			}
 		case 0x40dbb648c0cd44aa: // gunner
 			if kind != 13 {
@@ -1570,7 +1615,7 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 			value.GunnerPresent = true
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "TurretConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1630,6 +1675,9 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 			if ref := w.Ids.refAtHit(67, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Health-value.Health != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Health))
 		}
 	}
@@ -1637,6 +1685,9 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(20, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Mass-value.Mass != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Mass))
 		}
@@ -1906,11 +1957,13 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.health")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.health")
+				} else {
+					v := math.Float32frombits(b)
+					value.Health = v
 				}
-				value.Health = v
 			}
 		case 0x1f3757a2ce7b0ab1: // mass
 			if kind != 10 {
@@ -1926,11 +1979,13 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.mass")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.mass")
+				} else {
+					v := math.Float32frombits(b)
+					value.Mass = v
 				}
-				value.Mass = v
 			}
 		case 0x84f8260bc283608c: // turrets
 			if kind != 16 {
@@ -2040,7 +2095,11 @@ func HullConfigLoadTolerant(value *HullConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !HullConfigLoadBody(&r, value) {
+	if !HullConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			HullConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -2130,6 +2189,9 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 			if ref := w.Ids.refAtHit(67, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Health-value.Health != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Health))
 		}
 	}
@@ -2137,6 +2199,9 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(20, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Mass-value.Mass != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Mass))
 		}
@@ -2436,11 +2501,13 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.health")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.health")
+				} else {
+					v := math.Float32frombits(b)
+					value.Health = v
 				}
-				value.Health = v
 			}
 		case 0x1f3757a2ce7b0ab1: // mass
 			if kind != 10 {
@@ -2456,11 +2523,13 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "HullConfig.mass")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.mass")
+				} else {
+					v := math.Float32frombits(b)
+					value.Mass = v
 				}
-				value.Mass = v
 			}
 		case 0x84f8260bc283608c: // turrets
 			if kind != 16 {
@@ -2524,7 +2593,7 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "HullConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -3251,7 +3320,11 @@ func KeyedConfigLoadTolerant(value *KeyedConfig, data []byte, report *TableRepor
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !KeyedConfigLoadBody(&r, value) {
+	if !KeyedConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			KeyedConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -4075,7 +4148,7 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "KeyedConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -4505,7 +4578,11 @@ func ScoreBoardLoadTolerant(value *ScoreBoardRow, data []byte, report *TableRepo
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !ScoreBoardLoadBody(&r, value) {
+	if !ScoreBoardLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			ScoreBoardReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -4910,7 +4987,7 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "ScoreBoard") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -5122,6 +5199,56 @@ func KeyedConfigFixedClampBody(value *KeyedConfig, clamped *int32) {
 	ScoreBoardFixedClampBody(&value.Scores, clamped)
 }
 
+// GunnerConfigFixedFiniteBody is GunnerConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func GunnerConfigFixedFiniteBody(value *GunnerConfig) string {
+	if value.Reaction-value.Reaction != 0 {
+		return "GunnerConfig.reaction"
+	}
+	return ""
+}
+
+// TurretConfigFixedFiniteBody is TurretConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func TurretConfigFixedFiniteBody(value *TurretConfig) string {
+	if value.Damage-value.Damage != 0 {
+		return "TurretConfig.damage"
+	}
+	if value.Cooldown-value.Cooldown != 0 {
+		return "TurretConfig.cooldown"
+	}
+	if value.GunnerPresent {
+		if why := GunnerConfigFixedFiniteBody(&value.Gunner); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// HullConfigFixedFiniteBody is HullConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func HullConfigFixedFiniteBody(value *HullConfig) string {
+	if value.Health-value.Health != 0 {
+		return "HullConfig.health"
+	}
+	if value.Mass-value.Mass != 0 {
+		return "HullConfig.mass"
+	}
+	for i := range 3 {
+		if why := TurretConfigFixedFiniteBody(&value.Turrets[i]); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
+// KeyedConfigFixedFiniteBody is KeyedConfig's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func KeyedConfigFixedFiniteBody(value *KeyedConfig) string {
+	for i := range 3 {
+		if why := HullConfigFixedFiniteBody(&value.Hulls[i]); why != "" {
+			return why
+		}
+	}
+	return ""
+}
+
 // TeamConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func TeamConfigFixedCheckBody(value *TeamConfig) bool {
 	var z, hi uint64
@@ -5178,6 +5305,49 @@ func TeamConfigFixedCheckBodyExact(value *TeamConfig) bool {
 	return true
 }
 
+// GunnerConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func GunnerConfigFixedCheckBody(value *GunnerConfig) bool {
+	_ = value
+	if value.Reaction-value.Reaction != 0 {
+		return false
+	}
+	return true
+}
+
+// TurretConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func TurretConfigFixedCheckBody(value *TurretConfig) bool {
+	_ = value
+	if value.Damage-value.Damage != 0 {
+		return false
+	}
+	if value.Cooldown-value.Cooldown != 0 {
+		return false
+	}
+	if value.GunnerPresent {
+		if !GunnerConfigFixedCheckBody(&value.Gunner) {
+			return false
+		}
+	}
+	return true
+}
+
+// HullConfig's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func HullConfigFixedCheckBody(value *HullConfig) bool {
+	_ = value
+	if value.Health-value.Health != 0 {
+		return false
+	}
+	if value.Mass-value.Mass != 0 {
+		return false
+	}
+	for i := range 3 {
+		if !TurretConfigFixedCheckBody(&value.Turrets[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // ScoreBoard's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
 func ScoreBoardFixedCheckBody(value *ScoreBoardRow) bool {
 	_ = value
@@ -5194,6 +5364,11 @@ func KeyedConfigFixedCheckBody(value *KeyedConfig) bool {
 	_ = value
 	for i := range 3 {
 		if !TeamConfigFixedCheckBody(&value.Teams[i]) {
+			return false
+		}
+	}
+	for i := range 3 {
+		if !HullConfigFixedCheckBody(&value.Hulls[i]) {
 			return false
 		}
 	}
@@ -5565,6 +5740,11 @@ func GunnerConfigFixedSave(values []GunnerConfig, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	for k := range values {
+		if !GunnerConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
+	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
 	tableFixedPut64(buffer[TableFixedHashAt:], GunnerConfigFixedHash)
@@ -5719,6 +5899,14 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
+		if why := GunnerConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				GunnerConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
+		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		at = at[recordBytes:]
 	}
@@ -5827,6 +6015,11 @@ func TurretConfigFixedSave(values []TurretConfig, buffer []byte) int64 {
 	need := TurretConfigFixedMeasure(int64(len(values)))
 	if int64(len(buffer)) < need {
 		return -1
+	}
+	for k := range values {
+		if !TurretConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
 	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
@@ -5982,6 +6175,14 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
 		}
+		if why := TurretConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				TurretConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
+		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		at = at[recordBytes:]
 	}
@@ -6116,6 +6317,11 @@ func HullConfigFixedSave(values []HullConfig, buffer []byte) int64 {
 	need := HullConfigFixedMeasure(int64(len(values)))
 	if int64(len(buffer)) < need {
 		return -1
+	}
+	for k := range values {
+		if !HullConfigFixedCheckBody(&values[k]) {
+			return -1
+		}
 	}
 	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
@@ -6270,6 +6476,14 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		if why := HullConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				HullConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
 		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		at = at[recordBytes:]
@@ -6643,6 +6857,14 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		if why := KeyedConfigFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				KeyedConfigReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
 		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the

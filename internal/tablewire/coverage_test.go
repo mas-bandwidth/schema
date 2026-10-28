@@ -2,7 +2,6 @@ package tablewire
 
 import (
 	"errors"
-	"math"
 	"math/big"
 	"os"
 	"testing"
@@ -38,39 +37,6 @@ func TestBitBigRoundTrip(t *testing.T) {
 	r := newBitReader([]byte{0xFF})
 	if _, ok := r.getBig(16); ok {
 		t.Fatal("getBig reading past the stream must fail")
-	}
-}
-
-func TestWidenNarrowF32(t *testing.T) {
-	t.Parallel()
-	finites := []float64{0, 1, -1, 0.5, -3.25, math.MaxFloat32, math.SmallestNonzeroFloat32}
-	for _, f := range finites {
-		bits := math.Float32bits(float32(f))
-		if got := WidenF32(bits); got != f {
-			t.Fatalf("WidenF32(%x) = %v, want %v", bits, got, f)
-		}
-		if got := NarrowF32(f); got != bits {
-			t.Fatalf("NarrowF32(%v) = %x, want %x", f, got, bits)
-		}
-	}
-	nan := math.Float32frombits(0x7FC00000)
-	b := math.Float32bits(nan)
-	w := WidenF32(b)
-	if !math.IsNaN(w) {
-		t.Fatal("WidenF32 of a NaN must be a NaN")
-	}
-	if got := NarrowF32(w); got != b {
-		t.Fatalf("NarrowF32 round trip = %x, want %x", got, b)
-	}
-	nan2 := math.Float32frombits(0xFF800123)
-	b2 := math.Float32bits(nan2)
-	w2 := WidenF32(b2)
-	if got := NarrowF32(w2); got != b2 {
-		t.Fatalf("NarrowF32 signed NaN round trip = %x, want %x", got, b2)
-	}
-	canonical := math.Float32bits(float32(math.Inf(1)))
-	if got := NarrowF32(math.Inf(1)); got != canonical {
-		t.Fatalf("NarrowF32(Inf) = %x, want %x", got, canonical)
 	}
 }
 
@@ -1031,7 +997,6 @@ func TestDamagedWiresDoNotPanic(t *testing.T) {
 func TestUncoveredPaths(t *testing.T) {
 	t.Parallel()
 	t.Run("bit big", TestBitBigRoundTrip)
-	t.Run("widen narrow f32", TestWidenNarrowF32)
 	t.Run("text helpers", TestTextHelpers)
 	t.Run("reasons", TestMessageReasonString)
 	t.Run("refusals", TestMessageRefusalError)

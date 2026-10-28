@@ -4598,6 +4598,10 @@ var tableGeneratedVerbs = []string{
 	// per-value pass and its exact twin, each a package-level function Go emits
 	// for every fixed table, claimed on this list's own rule.
 	"FixedCheckBody", "FixedCheckBodyExact",
+	// and the read's FINITE PASS (docs/SPEC-TABLES.md §3.3), run before the
+	// bounds pass: emitted for every fixed type that holds a float, and a
+	// field gains a float as an ordinary edit, so it is claimed on the same rule.
+	"FixedFiniteBody",
 	// Go emits these package-level fixed-form image and hole data and the
 	// maximum plan capacity for each root table (docs/SPEC-TABLES.md §3.4).
 	// The bound probe is also an exported package-level helper emitted for

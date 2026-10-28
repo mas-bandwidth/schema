@@ -3,7 +3,6 @@ package gotable
 import (
 	"fmt"
 	"math/bits"
-	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -20,9 +19,6 @@ func tableWireRuntime(u *ir.Unit) string {
 		source = tableSourceReplace(source, "type TableReader struct {", "type TableReader struct {\nNodes TableNodeMap", 1)
 		source = tableSourceReplace(source, "Ids:r.Ids, Nested:true", "Ids:r.Ids, Nested:true, Nodes:r.Nodes", 1)
 	}
-	if unitDeclaresTableKind(u, ir.TableKindF64) {
-		source = tableSourceReplace(source, "func tableUTF8Valid", tableWidenFloatSource+"func tableUTF8Valid", 1)
-	}
 	res := fmt.Sprintf(`
 const tableIDCapacity = %d
 const tableIDBuckets = %d
@@ -31,52 +27,6 @@ const tableIDBuckets = %d
 		res += tableWStringSource + tableWStringWriteSource
 	}
 	return res
-}
-
-// unitDeclaresTableKind is the declared-kind census tableWidenFloat is gated
-// on: a kind anywhere in the table closure — a field, an arm, an element or a
-// generated map-entry slot. It is a safe superset over the call sites. A
-// subset would omit a helper a codec still names.
-func unitDeclaresTableKind(u *ir.Unit, kind int) bool {
-	seen := map[*ir.Union]bool{}
-	var note func(f *ir.Field) bool
-	var walkUnion func(un *ir.Union) bool
-	note = func(f *ir.Field) bool {
-		if f == nil {
-			return false
-		}
-		if ir.TableWireScalarKind(f) == kind || ir.TableWireElemKind(f) == kind {
-			return true
-		}
-		if f.Type.Kind == ir.TNamed {
-			if un, ok := f.Type.Ref.(*ir.Union); ok {
-				return walkUnion(un)
-			}
-		}
-		return false
-	}
-	walkUnion = func(un *ir.Union) bool {
-		if un == nil || seen[un] {
-			return false
-		}
-		seen[un] = true
-		for _, v := range un.Variants {
-			if note(v.F) {
-				return true
-			}
-		}
-		return false
-	}
-	for name := range ir.TableClosure(u) {
-		st := ir.ClosureMember(u, name)
-		if st == nil {
-			continue
-		}
-		if slices.ContainsFunc(st.Fields, note) {
-			return true
-		}
-	}
-	return false
 }
 
 const tableWireSource = `
@@ -441,6 +391,7 @@ func (r TableReader) EndsEarly() bool {
 
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report:report}
+	if report != nil { report.NonFiniteFloat = "" } // this read's own refusal (docs/SPEC-TABLES.md §3.3)
 	if len(data) == 0 { return r, TableOpenDamaged }
 	if data[0] != 1 { return r, TableOpenRefused }
 	if len(data) < 9 { return r, TableOpenDamaged }
@@ -540,15 +491,6 @@ func tableUTF8Clamp(data []byte, n int64) int64 {
 	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 { n-- }
 	return n
 }
-`
-
-// tableWidenFloatSource is the float rung, kind 10 into kind 11. It is spliced
-// into tableWireSource only where the unit declares kind 11.
-const tableWidenFloatSource = `func tableWidenFloat(b uint32) uint64 {
- if b & 0x7f800000 == 0x7f800000 { return uint64(b >> 31) << 63 | 0x7ff0000000000000 | uint64(b & 0x7fffff) << 29 }
- return math.Float64bits(float64(math.Float32frombits(b)))
-}
-
 `
 
 // tableWStringWriteSource is the writer's text rule for wstring(N), the twin

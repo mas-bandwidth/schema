@@ -465,6 +465,7 @@ func tableMessageEntryRead(r *TableReader) (e TableMessageEntry, ok bool) {
 
 func tableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
 	r := TableMessageReader{Vocabulary: v, Report: *report}
+	r.Report.NonFiniteFloat = ""
 	defer func() { *report = r.Report }()
 	if len(data) == 0 {
 		r.Report.Malformed = true
@@ -805,7 +806,9 @@ func tableMessageFieldHasExtent(f *TableFieldInfo) bool {
 
 // Capture starts only after the ordinary skip succeeds. Capacity bounds the
 // resolved output before an announced count can expand a zero-bit element.
-func (r *TableRetainMessageReader) capture(e TableMessageEntry) bool {
+// A retained unknown float is tested on its raw bits like a known one
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.6): a NaN or an infinity refuses the batch.
+func (r *TableRetainMessageReader) capture(e TableMessageEntry, owner string) bool {
 	start := r.Bits.Offset
 	if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, e, 0) {
 		return false
@@ -816,6 +819,23 @@ func (r *TableRetainMessageReader) capture(e TableMessageEntry) bool {
 	t, p := r.Retain, r.Path
 	header := int64(26 + p.depth*8)
 	limit := int64(len(t.Bytes)) - t.Used - header
+	if e.Shape.Packing == 0 && (e.Shape.Kind == 10 || e.Shape.Kind == 11) {
+		probe := r.Bits
+		probe.Offset = start
+		if e.Shape.Kind == 10 {
+			b, _ := probe.Get(32)
+			if b&0x7f800000 == 0x7f800000 {
+				tableNonFiniteFloat(&r.Report.NonFiniteFloat, tableRetainedFloatName(owner, e.ID))
+				return true
+			}
+		} else {
+			b, _ := probe.Get(64)
+			if b&0x7ff0000000000000 == 0x7ff0000000000000 {
+				tableNonFiniteFloat(&r.Report.NonFiniteFloat, tableRetainedFloatName(owner, e.ID))
+				return true
+			}
+		}
+	}
 	if p.depth > len(p.steps) || limit < 0 {
 		r.Report.RetainLost++
 		return true

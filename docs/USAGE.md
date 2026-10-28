@@ -615,11 +615,13 @@ One bit.
 
 `float32` and `float64`, written whole (32 and 64 bits).
 
-On the table wire a plain float rides as its bit pattern: `-0` is kept apart
-from `+0` (the default elision compares bits, so `-0` rides), and a NaN or an
-infinity rides too, but `<Name>ReadStrict` refuses one as `non_finite`,
-because the JSON text has no spelling for it (docs/SPEC-TABLES.md §3.3, a
-plain float's special values).
+A float is finite, on the packet wire and the table wire alike: a write of a
+NaN or an infinity is refused, and every read, tolerant or strict, refuses
+one as `non_finite_float` (SPEC.md §4.3; docs/SPEC-TABLES.md §3.3, a plain
+float's special values). `-0` and the subnormals ride as their exact bits:
+`-0` is kept apart from `+0` (the default elision compares bits, so `-0`
+rides). A target that has not landed the 2026-10-27 rule yet still carries
+the older behaviour; docs/SPEC-TABLES.md §3.3 says which.
 
 ### Compressed floats
 
@@ -4547,7 +4549,7 @@ wire malformed (clamped, `kind_mismatch`, widened, duplicate keys, unknown ids)
 do not fail the measure, and `LoadMeasure` (the tolerant sizing) is unchanged. `<Name>ReadStrict(wire)` is the one-call
 strict read (docs/SPEC-TABLES.md §6.5): it builds its own builder and returns
 `(*<Name>, error)`. The error is a `TableRefuseReason` (`clamped`,
-`kind_mismatch`, `malformed`, `non_finite`, `unknown_form`, `wire_damaged`), a
+`kind_mismatch`, `malformed`, `non_finite_float`, `unknown_form`, `wire_damaged`), a
 `TableBuildVersionMismatch`, or a `TableMissingRequired` whose `Fields` names
 the `| required` field the record lacks, at whatever depth (`missing_required: x`), so `errors.Is` or `errors.As` matches it. `unknown`, `widened`
 and `retained` alone do not refuse. `TableReport.Err()` answers the same

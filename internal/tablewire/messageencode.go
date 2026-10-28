@@ -361,16 +361,24 @@ func encodeBitValue(e *bitEncoder, w *bitWriter, f *ir.Field, kind uint8, shape 
 		}
 		return nil
 	case ir.TableKindF64:
+		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
+			return err
+		}
 		w.put(math.Float64bits(cell.F), 64)
 		return nil
 	case ir.TableKindF32:
+		// a NaN or an infinity is refused before the quantizer runs, never
+		// clamped (docs/SPEC-TABLES.md §3.3, a compressed float's special values)
+		if err := RefuseNonFinite(e.m, f, cell.F); err != nil {
+			return err
+		}
 		if shape.Packing == ir.TableMessageQuantized {
 			// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the
 			// index a message carries is the index a packet carries
 			w.put(uint64(ir.TableMessageQuantize(shape, float32(cell.F))), int(shape.Bits))
 			return nil
 		}
-		w.put(uint64(narrowF32(cell.F)), 32)
+		w.put(uint64(math.Float32bits(float32(cell.F))), 32)
 		return nil
 	}
 	if ir.TableKindWide(int(kind)) && f.Type.Width > 64 && shape.Packing != ir.TableMessageRanged {

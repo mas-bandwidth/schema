@@ -1264,7 +1264,7 @@ build/elixir-cards-ebin/.stamp: cards-elixir-generate test/conformance/elixir/dr
 # seed/mutant claim explicitly.
 cards-elixir-wire-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz \
+		./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-elixir-wire-fuzz.log 2>&1; \
@@ -1283,7 +1283,7 @@ test-elixir: cards-elixir-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 cards-elixir-retain-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz \
+		./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-elixir-retain-fuzz.log 2>&1; \
@@ -1314,7 +1314,7 @@ ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG)
 	@ELIXIR_WIRE_FUZZ_ABSENT=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_ABSENT_LOG) \
-		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-elixir-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
 		if [ ! -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) ]; then \

@@ -36,8 +36,11 @@ type TableReport struct {
 	Clamped              int32            // out-of-range values clamped to declared bounds
 	// ClampedField names the field or path whose value a read clamped
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
-	// refusal carries it, apart from Reason, which non_finite may already own.
+	// refusal carries it, apart from Reason.
 	ClampedField string
+	// NonFiniteFloat names the first NaN or infinity float a read met,
+	// <Table>.<field>: every read refuses it (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+	NonFiniteFloat string
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -144,7 +147,9 @@ const (
 	TableRefuseBase64Damaged
 	TableRefuseBase64NotCanonical
 	TableRefuseIntegrityMismatch
-	TableRefuseNonFinite
+	// TableRefuseNonFiniteFloat: a NaN or infinity float, refused by every read and
+	// writer (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3); the retired non_finite's ordinal (§6.5).
+	TableRefuseNonFiniteFloat
 	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
@@ -227,8 +232,8 @@ func (r TableRefuseReason) Error() string {
 		return "base64_not_canonical"
 	case TableRefuseIntegrityMismatch:
 		return "integrity_mismatch"
-	case TableRefuseNonFinite:
-		return "non_finite"
+	case TableRefuseNonFiniteFloat:
+		return "non_finite_float"
 	case TableRefuseBlobShared:
 		return "blob_shared"
 	case TableRefusePreviousForm:
@@ -328,14 +333,18 @@ func (m TableMissingRequired) Error() string { return "missing_required: " + m.F
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field), a non-finite plain float (§3.3, a plain float's
-// special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// (§2.3, naming the field), a non-finite float (§3.3, refused by every read:
+// non_finite_float, named in NonFiniteFloat and Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
 	}
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Remote: r.BuildVersionRemote, Own: r.BuildVersionOwn}
+	}
+	// A NON-FINITE FLOAT outranks every later verdict: no read keeps one (§3.3).
+	if r.NonFiniteFloat != "" {
+		return TableRefuseNonFiniteFloat
 	}
 	// The fixed form's named refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3) answer as
 	// their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
@@ -434,34 +443,34 @@ func (r *TableReport) Err() error {
 	if r.KindMismatch > 0 {
 		return TableRefuseKindMismatch
 	}
-	{
-		const p = "non_finite: "
-		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
-			return TableRefuseNonFinite
-		}
-	}
 	return nil
 }
 
-// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
-// infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, a plain float's special values): the
-// pattern lands as written and counts nothing, and the name is what the
-// strict read refuses as non_finite. The first name a read records wins. It
-// takes the report's Reason, not a method on TableReport, so the shared runtime
-// (§8.4) can export it: generated code outside the shared set reaches no
-// unexported member, and the file reader's *TableReport and the message
-// reader's TableReport value both pass &r.Report.Reason.
-func TableNonFinite(reason *string, field string) {
-	if *reason == "" {
-		*reason = "non_finite: " + field
+// tableNonFiniteFloat names a float whose raw bits a read found to be a NaN or
+// an infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the field is not written and the load,
+// tolerant too, refuses as non_finite_float. The first name wins. It takes the
+// report's slot, not a method, so the shared runtime (§8.4) can export it; the
+// file and message readers both pass &r.Report.NonFiniteFloat.
+func TableNonFiniteFloat(slot *string, field string) {
+	if *slot == "" {
+		*slot = field
 	}
+}
+
+// tableNonFiniteRefused names a load's non-finite float in Reason; the caller
+// refuses and lands nothing (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func TableNonFiniteRefused(report *TableReport) bool {
+	if report.NonFiniteFloat == "" {
+		return false
+	}
+	report.Reason = "non_finite_float: " + report.NonFiniteFloat
+	return true
 }
 
 // tableTextClamped names the field whose value a read clamped (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §6.5), so a strict read can say which field. The first name a read records
-// wins, as for non_finite. It lands in the report's own ClampedField slot,
-// apart from Reason: Reason may already carry a non_finite name, and the
-// clamped refusal must not lose its field to it. The slot is named by pointer
+// wins, as for non_finite_float. It lands in the report's own ClampedField slot,
+// apart from Reason, so the clamped refusal keeps its field whatever Reason holds. The slot is named by pointer
 // so the same emitted call compiles in every reader context (the table read's
 // *TableReader, the message read's TableMessageReader).
 func TableTextClamped(clampedField *string, field string) {
@@ -1118,20 +1127,10 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			report.Widened++
 		case TableFixedWidenF:
-			bits := TableFixedGet32(src[p.Src:])
-			var widened uint64
-			if bits&0x7f800000 == 0x7f800000 {
-				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (mas-bandwidth/schema docs/SPEC-TABLES.md
-				// §3.4, §21.2; the variable form's own float rung): the hardware
-				// f32->f64 conversion QUIETS a signalling NaN and can drop a
-				// payload bit, so the sign, the all-ones exponent and the 23-bit
-				// mantissa shifted left by 29 are carried exactly and the quiet
-				// bit stays as the writer wrote it.
-				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29
-			} else {
-				widened = math.Float64bits(float64(math.Float32frombits(bits)))
-			}
-			TableFixedPut64(dst[p.Dst:], widened)
+			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,
+			// §21.2): exact for a finite float32; a NaN or an infinity stays one,
+			// and the finite pass after the run refuses it.
+			TableFixedPut64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(TableFixedGet32(src[p.Src:])))))
 			report.Widened++
 		case TableFixedConst:
 			aux := p.Aux
@@ -2167,4 +2166,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xab8a81ea17f43b33
+const Version uint64 = 0x91fcccabacf566d0

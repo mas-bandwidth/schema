@@ -99,7 +99,7 @@ test-go: tables-go-shared-runtime
 .PHONY: conformance-go-rows conformance-go-rows-negative-control
 conformance-go-rows: build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
 	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
 		./rows/ -count=1 -timeout 600s
 test-go: conformance-go-rows
 
@@ -114,7 +114,7 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 	@printf 'package main\n\nimport "testing"\n\nfunc TestRowZZPlanted(t *testing.T) { t.Parallel(); t.Fatal("planted failing row") }\n' > build/rows-planted/_ZZ_planted_test.go
 	@printf '{"Replace":{"%s/test/conformance/go/rows/ZZ_planted_test.go":"%s/build/rows-planted/_ZZ_planted_test.go"}}\n' "$(CURDIR)" "$(CURDIR)" > build/rows-planted/overlay.json
 	@if cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-negative-control \
-		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
+		'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' \
 		./rows/ -count=1 -timeout 600s -overlay=$(CURDIR)/build/rows-planted/overlay.json > $(CURDIR)/build/rows-planted/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the planted failing row left the gate green"; \
 		cat $(CURDIR)/build/rows-planted/log; exit 1; fi
@@ -1049,6 +1049,19 @@ tables-go-text-differential:
 tables-go-text-differential-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential
+
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# finite-only too, same rule as packets"): every read refuses a NaN or an
+# infinity on its raw bits as non_finite_float and every writer refuses one.
+# The gate is TestGoPlainFloatSpecialValuesAgreeAcrossForms; its reversed
+# witness sabotages the read's bit test, the fixed form's finite pass and the
+# writer's clause in turn, and each must turn the probe red on its own half.
+.PHONY: tables-go-finite-float tables-go-finite-float-negative-control
+tables-go-finite-float:
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestGoPlainFloatSpecialValuesAgreeAcrossForms$$' -count=1
+tables-go-finite-float-negative-control:
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestGoFiniteFloatNegativeControl$$' -count=1
+test-go: tables-go-finite-float
 
 # The random-schema table differential (card
 # schema-go-fuzz-random-table-differential): seeds 0..SCHEMA_TABLE_DIFF_TO of

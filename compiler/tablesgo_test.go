@@ -298,10 +298,13 @@ func TestGoRuntimeNameScanGoesRed(t *testing.T) {
 	}
 }
 
-// tableWidenFloat is reached only from a declared kind 11. The nearest
-// neighbour respells that one field float32, so the helper has no call site
-// and must not be emitted. tableKindWidens stays: a kind comparison is every
-// unit's.
+// THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md §3.3, §4;
+// 2026-10-27): every finite float32 is exact in a float64 and a NaN or an
+// infinity is refused on its raw bits before it widens, so no unit carries the
+// retired tableWidenFloat bit surgery. A declared kind 11 reads the rung's
+// source width at run time and tests it; the nearest neighbour, that one field
+// respelled float32, has no rung. tableKindWidens stays: a kind comparison is
+// every unit's.
 const goWidenF64Src = `package probe
 
 fixed table Note
@@ -337,18 +340,18 @@ func goTableFile(t *testing.T, src string) string {
 	return out
 }
 
-func TestGoTableWidenFloatFollowsDeclaredKind11(t *testing.T) {
+func TestGoTableFloatRungIsTheOrdinaryConversion(t *testing.T) {
 	with := goTableFile(t, goWidenF64Src)
-	if !strings.Contains(with, "func tableWidenFloat(b uint32) uint64") {
-		t.Error("a unit that declares kind 11 must define tableWidenFloat")
+	if strings.Contains(with, "tableWidenFloat") {
+		t.Error("a unit that declares kind 11 carries the retired tableWidenFloat")
 	}
-	if !strings.Contains(with, "math.Float64frombits(tableWidenFloat(") {
-		t.Error("tableWidenFloat must be called by the unit that carries it")
+	if !strings.Contains(with, "finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))") {
+		t.Error("the float rung must test the float32's raw bits and widen by the ordinary conversion")
 	}
 
 	without := goTableFile(t, goWidenF32Src)
-	if strings.Contains(without, "tableWidenFloat") {
-		t.Error("the nearest neighbour declares no kind 11 and must carry none of tableWidenFloat")
+	if strings.Contains(without, "tableWidenFloat") || strings.Contains(without, "float64(math.Float32frombits(b))") {
+		t.Error("the nearest neighbour declares no kind 11 and has no float rung")
 	}
 	if !strings.Contains(without, "func tableKindWidens") {
 		t.Error("tableKindWidens is every unit's and left one")

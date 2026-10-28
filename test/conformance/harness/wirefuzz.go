@@ -63,6 +63,13 @@ type wireFuzzOptions struct {
 	builder bool // mutable file reads have no region preflight
 	failed  string
 	vectors string
+	// finiteOwed names the docs/roadmap.sexp card that owes this leg the
+	// finite float rule (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27): until
+	// that card lands, a mutant the oracle refuses as non_finite_float is
+	// counted under the card's name and not compared, because the leg still
+	// carries the pattern. Empty is a leg that keeps the rule, and there the
+	// leg must refuse the same mutant.
+	finiteOwed string
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to
@@ -238,6 +245,10 @@ type oracleAnswer struct {
 	// the same two counters from the engine
 	retained   int
 	retainLost int
+	// nonFinite is the oracle's REFUSAL of a float whose bits are a NaN or an
+	// infinity (docs/SPEC-TABLES.md §3.3): every read refuses it, tolerant
+	// and strict, so the whole of what a leg owes is the refusal itself.
+	nonFinite bool
 }
 
 func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
@@ -302,6 +313,10 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		encode = func() ([]byte, error) { return tablewire.EncodeMessage(r.model, inst) }
 	}
 	ok, derr := decode()
+	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](derr); refused {
+		ans.nonFinite = true
+		return ans, nil
+	}
 	if r.builder {
 		ans.builderStopped = !ok
 		if _, ok := errors.AsType[*tablewire.CountRefusal](derr); ok {
@@ -554,6 +569,16 @@ func (l *wireLeg) kill() {
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
 func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
+	if ans.nonFinite {
+		// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
+		// §3.3), and the refusal is the answer: a leg says so with the
+		// refusal verdict, and nothing it decoded or counted on the way is
+		// compared, because nothing of it lands.
+		if !reply.report.Refused {
+			return "the oracle refuses a non-finite float (non_finite_float); the leg did not refuse the wire"
+		}
+		return ""
+	}
 	if root.builder {
 		if reply.loaded == ans.builderStopped {
 			return "builder completion differs from the oracle"
@@ -866,6 +891,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	start := time.Now()
 	total := 0
 	enumeratedCount := 0
+	owed := 0
 	for mut := range sent {
 		root := roots[seedRoot[mut.seed]]
 		reply, err := leg.receiveWithDeadline(realClock{})
@@ -877,6 +903,16 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if err != nil {
 			leg.kill()
 			return wireFailure(opts, mut, total, err.Error(), "")
+		}
+		if ans.nonFinite && opts.finiteOwed != "" {
+			// the leg still carries the pattern: owed by its finite-tables
+			// card, counted, and not compared (docs/SPEC-TABLES.md §3.3)
+			owed++
+			total++
+			if mut.pass != "random" {
+				enumeratedCount++
+			}
+			continue
 		}
 		if verdict := wireVerdict(root, reply, ans, len(mut.data)); verdict != "" {
 			leg.kill()
@@ -933,6 +969,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		// the seeds this ARM has nothing to say about: a fixed-class root gets
 		// no retention and a form-2 SaveRetain refuses by name (§6.6, §3.3)
 		absence += fmt.Sprintf(", %d seeds outside the arm", skipped)
+	}
+	if opts.finiteOwed != "" {
+		absence += fmt.Sprintf(", %d non-finite mutants not compared (the finite float rule is owed by %s)", owed, opts.finiteOwed)
 	}
 	arm := "wire-fuzz"
 	if opts.builder {

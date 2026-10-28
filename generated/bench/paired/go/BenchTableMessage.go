@@ -705,6 +705,7 @@ func tableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 func tableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
 	r := TableMessageReader{Vocabulary: v, Report: *report}
+	r.Report.NonFiniteFloat = ""
 	defer func() { *report = r.Report }()
 	if len(data) == 0 {
 		r.Report.Malformed = true
@@ -2224,30 +2225,45 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	{
 		if value.AimX != 0.0 {
 			w.Put(16, TableMessageRefBitsHere)
+			if value.AimX-value.AimX != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, uint64(math.Float32bits(value.AimX)), uint64(0))
 		}
 	}
 	{
 		if value.AimY != 0.0 {
 			w.Put(17, TableMessageRefBitsHere)
+			if value.AimY-value.AimY != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, uint64(math.Float32bits(value.AimY)), uint64(0))
 		}
 	}
 	{
 		if value.AimZ != 0.0 {
 			w.Put(18, TableMessageRefBitsHere)
+			if value.AimZ-value.AimZ != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 2, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0xbf800000), QDelta: math.Float32frombits(0x40000000), QCount: 200}, uint64(math.Float32bits(value.AimZ)), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Recoil) != math.Float32bits(0.0) {
 			w.Put(19, TableMessageRefBitsHere)
+			if value.Recoil-value.Recoil != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Recoil)), uint64(0))
 		}
 	}
 	{
 		if math.Float64bits(value.Drift) != math.Float64bits(0.0) {
 			w.Put(20, TableMessageRefBitsHere)
+			if value.Drift-value.Drift != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Drift), uint64(0))
 		}
 	}
@@ -3102,23 +3118,24 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload51.Get32())
-						if v != v {
-							v = -1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_x")
-						} else if v < -1.0 {
-							v = -1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_x")
-						} else if v > 1.0 {
-							v = 1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_x")
-						} else if v == 0 {
-							v = 0
+						b := payload51.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.aim_x")
+						} else {
+							v := math.Float32frombits(b)
+							if v < -1.0 {
+								v = -1.0
+								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_x")
+							} else if v > 1.0 {
+								v = 1.0
+								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_x")
+							} else if v == 0 {
+								v = 0
+							}
+							value.AimX = v
 						}
-						value.AimX = v
 					}
 				}
 				if widened {
@@ -3152,23 +3169,24 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload52.Get32())
-						if v != v {
-							v = -1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_y")
-						} else if v < -1.0 {
-							v = -1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_y")
-						} else if v > 1.0 {
-							v = 1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_y")
-						} else if v == 0 {
-							v = 0
+						b := payload52.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.aim_y")
+						} else {
+							v := math.Float32frombits(b)
+							if v < -1.0 {
+								v = -1.0
+								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_y")
+							} else if v > 1.0 {
+								v = 1.0
+								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_y")
+							} else if v == 0 {
+								v = 0
+							}
+							value.AimY = v
 						}
-						value.AimY = v
 					}
 				}
 				if widened {
@@ -3202,23 +3220,24 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload53.Get32())
-						if v != v {
-							v = -1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_z")
-						} else if v < -1.0 {
-							v = -1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_z")
-						} else if v > 1.0 {
-							v = 1.0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_z")
-						} else if v == 0 {
-							v = 0
+						b := payload53.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.aim_z")
+						} else {
+							v := math.Float32frombits(b)
+							if v < -1.0 {
+								v = -1.0
+								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_z")
+							} else if v > 1.0 {
+								v = 1.0
+								r.Report.Clamped++
+								tableTextClamped(&r.Report.ClampedField, "BenchMixed.aim_z")
+							} else if v == 0 {
+								v = 0
+							}
+							value.AimZ = v
 						}
-						value.AimZ = v
 					}
 				}
 				if widened {
@@ -3252,11 +3271,13 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload54.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "BenchMixed.recoil")
+						b := payload54.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.recoil")
+						} else {
+							v := math.Float32frombits(b)
+							value.Recoil = v
 						}
-						value.Recoil = v
 					}
 				}
 				if widened {
@@ -3290,16 +3311,19 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 						return false
 					}
 					{
-						var v float64
+						finite, v := true, float64(0)
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload55.Get32()))
+							b := payload55.Get32()
+							finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))
 						} else {
-							v = math.Float64frombits(payload55.Get64())
+							b := payload55.Get64()
+							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "BenchMixed.drift")
+						if !finite {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "BenchMixed.drift")
+						} else {
+							value.Drift = v
 						}
-						value.Drift = v
 					}
 				}
 				if widened {

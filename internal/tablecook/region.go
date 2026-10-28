@@ -371,13 +371,18 @@ func (w *regionWriter) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		w.putBool(at, cell.B)
 		return nil
 	case ir.TFloat32:
-		// A FLOAT RIDES AS ITS BIT PATTERN, WITH NO CANONICALISATION
-		// (docs/SPEC-TABLES.md §3, SPEC.md §4.3): the cell is a float64, so
-		// the narrowing is BIT SURGERY — the hardware conversion would set the
-		// quiet bit on a signalling NaN and lose its payload (schema#480).
-		w.putU32(at, tablewire.NarrowF32(cell.F))
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3, §3.3): a NaN or an
+		// infinity is refused, and a finite float32 narrows from its float64
+		// cell exactly through the ordinary conversion
+		if err := tablewire.RefuseNonFinite(w.m, f, cell.F); err != nil {
+			return err
+		}
+		w.putU32(at, math.Float32bits(float32(cell.F)))
 		return nil
 	case ir.TFloat64:
+		if err := tablewire.RefuseNonFinite(w.m, f, cell.F); err != nil {
+			return err
+		}
 		w.putU64(at, math.Float64bits(cell.F))
 		return nil
 	case ir.TInt, ir.TFixed:
