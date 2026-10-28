@@ -193,7 +193,8 @@ local function number_nodes(T, desc, root)
         if nodes.index[e.val] == nil then
           local tid = e.shape == "string_blob" and T.StringBlobTypeId or T.BytesBlobTypeId
           local body = type(e.val) == "table" and e.val.value or e.val
-          nodes.list[#nodes.list + 1] = { typeId = tid, body = body, string = e.shape == "string_blob", val = e.val }
+          nodes.list[#nodes.list + 1] = { typeId = tid, body = body, string = e.shape == "string_blob",
+              val = e.val }
           nodes.index[e.val] = #nodes.list + 1
         end
       else
@@ -387,7 +388,7 @@ end
 -- write_ref writes one self-relative reference slot (§7.2, §6.3): zero is
 -- null, anything else is target - slot, and a target the numbering does not
 -- carry refuses (§7.6).
-write_ref = function(T, f, x, at, w, index)
+write_ref = function(_T, _f, x, at, w, index)
   if x == nil or x == false then
     put_uint(w, at, 0, 8)
     return true
@@ -540,7 +541,8 @@ carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
     for i = 1, n do
       local e = x[i]
       if e == nil then e = zero_elem(T, f.elem) end
-      if not carve_element(T, f.elem, e, at + (i - 1) * (f.elem_step or 0), extentBase, cursor, w) then return false end
+      if not carve_element(T, f.elem, e, at + (i - 1) * (f.elem_step or 0), extentBase, cursor,
+          w) then return false end
     end
     return true
   end
@@ -558,7 +560,8 @@ carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
     if tag == 0 then return true end
     local arm = u.arms[tag]
     if arm == nil or arm.field == nil then return true end
-    return carve_field(T, arm.field, type(x) == "table" and x[arm.name] or nil, at + u.arm_offset, extentBase, cursor, w)
+    return carve_field(T, arm.field, type(x) == "table" and x[arm.name] or nil, at + u.arm_offset, extentBase,
+        cursor, w)
   end
   return true
 end
@@ -578,7 +581,8 @@ carve_element = function(T, e, x, at, extentBase, cursor, w)
     if tag == 0 then return true end
     local arm = u.arms[tag]
     if arm == nil or arm.field == nil then return true end
-    return carve_field(T, arm.field, type(x) == "table" and x[arm.name] or nil, at + u.arm_offset, extentBase, cursor, w)
+    return carve_field(T, arm.field, type(x) == "table" and x[arm.name] or nil, at + u.arm_offset, extentBase,
+        cursor, w)
   end
   return true
 end
@@ -670,7 +674,9 @@ local function cook(T, name, v, capacity, order)
       if not write_record(T, e.desc, e.v, base, w, l.index) then return nil, D.refuse_non_finite(T, name, v) end
       if e.extent > 0 then
         local cursor = { at = 0, index = l.index }
-        if not carve_extent(T, e.desc, e.v, base, base + e.record, cursor, w) then return nil, D.refuse_non_finite(T, name, v) end
+        if not carve_extent(T, e.desc, e.v, base, base + e.record, cursor, w) then
+          return nil, D.refuse_non_finite(T, name, v)
+        end
         if cursor.at ~= e.extent then return nil end
       end
     else

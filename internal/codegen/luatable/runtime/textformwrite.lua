@@ -347,7 +347,7 @@ mark_field = function(T, d, node, path, paths)
   end
 end
 
-local function mark_document(T, name, text, root)
+local function mark_document(T, name, _text, root)
   local paths = {}
   paths[""] = root
   mark_record(T, T.Tables[name], root, "", 1, paths, false)

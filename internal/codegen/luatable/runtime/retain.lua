@@ -499,7 +499,8 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
         local emark = #ids.list
         local keyref = id_ref(ids, fd.keyed[i][2])
         local eb = W()
-        local ok, rides = write_keyed_one(T, ids, nodes, fd.elem, x[i], eb, path_step(path, fd.ordinal - 1, i - 1), fd.ordinal - 1, retain, report)
+        local ok, rides = write_keyed_one(T, ids, nodes, fd.elem, x[i], eb, path_step(path, fd.ordinal - 1, i - 1),
+            fd.ordinal - 1, retain, report)
         if not ok then return false end
         if rides then
           count = count + 1
@@ -519,7 +520,8 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
       local body = W()
       w_u8(body, fd.elem_kind); w_leb(body, n)
       for i = 1, n do
-        if not write_element(T, ids, nodes, fd.elem, x[i], body, path_step(path, fd.ordinal - 1, i - 1), fd.ordinal - 1, retain, report) then return false end
+        if not write_element(T, ids, nodes, fd.elem, x[i], body, path_step(path, fd.ordinal - 1, i - 1),
+            fd.ordinal - 1, retain, report) then return false end
       end
       w_leb(w, body.n); w_raw(w, table.concat(body.parts))
     end
@@ -555,7 +557,11 @@ write_element = function(T, ids, nodes, e, val, body, path, ord, retain, report)
   elseif s == "float" then if not w_float(body, e.f32, val or 0.0) then return false end
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(e.variants) do
+        if var[1] == val then vref = id_ref(ids, var[2]); break end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
   elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
@@ -928,7 +934,8 @@ write_union = function(T, ids, nodes, u, val, w, path, ord, retain, report)
   end
   w_leb(w, id_ref(ids, arm.id)); w_u8(w, f.kind)
   local body = W()
-  if not write_union_at(T, ids, nodes, f, val[arm.name], body, path_step(path, ord, tag), ord, retain, report) then return false end
+  if not write_union_at(T, ids, nodes, f, val[arm.name], body, path_step(path, ord, tag), ord, retain,
+      report) then return false end
   w_leb(w, body.n); w_raw(w, table.concat(body.parts))
   return true
 end
@@ -947,7 +954,11 @@ write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report
     w_u8(body, 6); w_leb(body, #val); w_raw(body, val)
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(f.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(f.variants) do
+        if var[1] == val then vref = id_ref(ids, var[2]); break end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
   elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
@@ -960,7 +971,8 @@ write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report
   elseif s == "array" then
     local n = count_of(f, val)
     w_u8(body, f.elem_kind); w_leb(body, n)
-    for i = 1, n do if not write_element(T, ids, nodes, f.elem, val[i], body, path_step(path, ord, i - 1), ord, retain, report) then return false end end
+    for i = 1, n do if not write_element(T, ids, nodes, f.elem, val[i], body, path_step(path, ord, i - 1), ord,
+        retain, report) then return false end end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- AN ARM'S BLOB IS THE SAME NODE (§2.6): its index is the box's identity,
     -- as the slot's is (§3.1, §6.3).
@@ -1138,7 +1150,8 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
         local keyid = atable[keyref]
         for k, v in ipairs(f.keyed) do if v[2] == keyid then slot = k end end
         if slot ~= nil then
-          capture_value(T, atable, b, body.at, body.at + elen, e, path_step(path, ord, slot - 1), ord, report, retain)
+          capture_value(T, atable, b, body.at, body.at + elen, e, path_step(path, ord, slot - 1), ord, report,
+              retain)
         else
           -- AN UNKNOWN KEYED-ARRAY SLOT IS AN EXCLUDED CLASS (§6.6): a slot is
           -- not a field and the reader rewrites the array body whole.
@@ -1198,7 +1211,8 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
             if retain ~= nil then
               retain.list = retain.list or {}
               retain.used = (retain.used or 0) + cost
-              retain.list[#retain.list + 1] = { key = path_key(path), id = id, kind = kind, payload = payload, placed = false }
+              retain.list[#retain.list + 1] = { key = path_key(path), id = id, kind = kind, payload = payload,
+                  placed = false }
             end
             report.retained = report.retained + 1
           end
@@ -1277,7 +1291,8 @@ local function save_retain(T, name, v, retain, report)
         w_leb(sub, #n.body); w_raw(sub, n.body)
       else
         local body = W()
-        if not write_body(T, ids, nodes, n.codec, n.v, body, { node = k + 1, steps = {} }, retain, report) then return nil end
+        if not write_body(T, ids, nodes, n.codec, n.v, body, { node = k + 1, steps = {} }, retain,
+            report) then return nil end
         w_leb(sub, body.n); w_raw(sub, table.concat(body.parts))
       end
     end
@@ -1303,7 +1318,8 @@ function S.LoadRetain(T, name, bytes, retain, report)
   if desc == nil then return nil end
   if not desc.variable then fixed_refusal(name) end
   if retain ~= nil then retain.list = {}; retain.used = 0 end
-  local rep = report or { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
+  local rep = report or { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0,
+      duplicate = 0, retained = 0, retainLost = 0 }
   rep.retained = rep.retained or 0
   rep.retainLost = rep.retainLost or 0
   local v = load.Load(T, name, bytes, rep)

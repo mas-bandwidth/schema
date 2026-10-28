@@ -153,7 +153,7 @@ function D.pointer_reachable(T, root)
   if start == nil then return nodes, false, false end
   local visited = {}
   local visit_struct, visit_field, visit_elem
-  visit_elem = function(e, parent_f)
+  visit_elem = function(e, _parent_f)
     if e == nil then return end
     local s = e.shape
     if s == "pointer" then

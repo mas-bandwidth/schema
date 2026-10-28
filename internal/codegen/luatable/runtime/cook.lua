@@ -84,7 +84,8 @@ local function open_header(T, name, bytes)
   if root == nil then
     return refuse("bad_layout")
   end
-  if alignment < 8 or alignment > MAX_ALIGN or (alignment & (alignment - 1)) ~= 0 or alignment % root.align ~= 0 then
+  if alignment < 8 or alignment > MAX_ALIGN or (alignment & (alignment - 1)) ~= 0
+      or alignment % root.align ~= 0 then
     return refuse("bad_alignment")
   end
   local data_offset = align_up(HEADER_BYTES, alignment)
@@ -176,7 +177,8 @@ end
 -- element-array and map-slot clauses; arrays remembers what is already placed
 -- in that node so no two overlap. All reset per node.
 local function new_scan(h, dir)
-  return { h = h, data = string.sub(h.bytes, h.data_offset + 1, h.data_offset + h.data_length), dir = dir, by_offset = nil }
+  return { h = h, data = string.sub(h.bytes, h.data_offset + 1, h.data_offset + h.data_length), dir = dir,
+      by_offset = nil }
 end
 
 local function index_offsets(s)
@@ -393,7 +395,7 @@ end
 
 -- key_order compares two stored map keys: a bounded string by its used bytes,
 -- an integer at its own signedness.
-local function used_bytes(s, key, entry, at)
+local function used_bytes(s, key, _entry, at)
   at = at + key.at
   local n = i32(s.data, at + key.companion)
   if n < 0 then n = 0 end

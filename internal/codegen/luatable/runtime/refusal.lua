@@ -26,7 +26,7 @@ local counters = {
   { key = "kindMismatch", name = "kind_mismatch" },
 }
 
-local function refuse(name, field)
+local function refuse(name, _field)
   error(name, 0)
 end
 
@@ -69,7 +69,7 @@ local function instrument(T, report, first)
   seen.malformed = true
   local wrapped = setmetatable({}, {
     __index = report,
-    __newindex = function(t, k, v)
+    __newindex = function(_t, k, v)
       local before = report[k]
       if seen[k] and v ~= before and first[k] == nil then first[k] = current end
       report[k] = v

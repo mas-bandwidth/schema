@@ -53,7 +53,7 @@ func writeFn(m *Module, name string) string {
 // (ir.Struct.Items; SPEC §4.3, §4.5).
 func emitWriteStruct(m *Module, b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "-- type %s (SPEC §6.1: the wire order is the declared order)\n", st.Name)
-	fmt.Fprintf(b, "function _M.Write%s(stream, v)\n", st.Name)
+	fmt.Fprintf(b, "function _M.Write%s(%s, %s)\n", st.Name, unusedIf(len(st.Items) == 0, "stream"), unusedIf(!itemsTouchValue(st.Items), "v"))
 	emitWriteItems(m, b, st.Items, "  ")
 	b.WriteString("  return true\nend\n\n")
 }
@@ -252,7 +252,7 @@ func callBits(v *big.Int, bits int64) string {
 // [0, Max], validated BEFORE it rides, then the selected arm only (SPEC §4.8).
 func emitWriteUnion(m *Module, b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "-- union %s (SPEC §4.8: None = 0, then each declared arm)\n", un.Name)
-	fmt.Fprintf(b, "function _M.Write%s(stream, v)\n", un.Name)
+	fmt.Fprintf(b, "function _M.Write%s(%s, v)\n", un.Name, unusedIf(un.Max == 0, "stream"))
 	fmt.Fprintf(b, "  if math.type(v.Type) ~= \"integer\" or v.Type < 0 or v.Type > %d then return false end\n", un.Max)
 	if un.Max > 0 {
 		bits := ir.BitsRequired(big.NewInt(0), big.NewInt(un.Max))

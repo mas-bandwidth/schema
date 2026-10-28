@@ -11,11 +11,16 @@ name: schema Lua generated luacheck gate
 # push and pull request. The schedule is kept for the nightly sweep even though
 # today the whole lens is fast: a later heavy addition (a differential against
 # the interpreter, say) belongs on the schedule, never on the push.
+#
+# ZERO WARNINGS, NO ALLOWANCE: the config is luacheck's default set (the make
+# file says why, line by line), so a finding is fixed in the generator.
+# Like the Go golangci-lint and Dart strict-analyze lenses, it runs on every
+# push and on every pull request into main, on the fleet runner that carries
+# the pinned checker.
 on:
   push:
-    branches: [ 'sprint/schema-lua**' ]
   pull_request:
-    branches: [ 'sprint/schema-lua**' ]
+    branches: [ main ]
   workflow_dispatch:
   schedule:
     # nightly, 03:17 UTC — not on the hour, so the fleet's jobs do not collide

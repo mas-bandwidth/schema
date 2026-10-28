@@ -285,9 +285,13 @@ local function node_scan(bytes, o, report, variable)
   local raw = {}
   while rec.at < rec.lim do
     local tref = r_leb(rec)
-    if rec.bad or tref == 0 or above(tref, #o.table) then report.malformed = true; report.wireDamaged = true; return nil end
+    if rec.bad or tref == 0 or above(tref, #o.table) then
+      report.malformed = true; report.wireDamaged = true; return nil
+    end
     local n = r_leb(rec)
-    if rec.bad or n < 0 or rec.at + n > rec.lim then report.malformed = true; report.wireDamaged = true; return nil end
+    if rec.bad or n < 0 or rec.at + n > rec.lim then
+      report.malformed = true; report.wireDamaged = true; return nil
+    end
     raw[#raw + 1] = { tid = o.table[tref], body = string.sub(payload, rec.at + 1, rec.at + n) }
     rec.at = rec.at + n
   end
@@ -724,7 +728,7 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
     local keep = count
     if fd.bound ~= nil and above(count, fd.bound) then keep = fd.bound; report.clamped = report.clamped + 1 end
     local out = {}
-    for i = 1, keep do
+    for _ = 1, keep do
       if sub.at >= sub.lim then report.malformed = true; break end
       out[#out + 1] = string.char(r_u8(sub))
     end
@@ -942,7 +946,8 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
       local d = T.Tables[fd.elem.target]
       local vf = d and d.fields[1]
       local add = 0
-      if vf ~= nil and vf.shape == "string" and (vf.optional == nil or vf.optional == false or (el ~= nil and el[vf.name .. "_present"] == true)) then
+      if vf ~= nil and vf.shape == "string"
+          and (vf.optional == nil or vf.optional == false or (el ~= nil and el[vf.name .. "_present"] == true)) then
         add = #((el and el[vf.name]) or "")
       end
       if spent + add > total then
@@ -1312,12 +1317,20 @@ local function resolve(ctx, root, rootdesc)
           if d.shape == "string_blob" then
             if node.kind == "s" then
               value = node.box
-              if seen_blob[p.index] then report.blobShared = (report.blobShared or 0) + 1 else seen_blob[p.index] = true end
+              if seen_blob[p.index] then
+                report.blobShared = (report.blobShared or 0) + 1
+              else
+                seen_blob[p.index] = true
+              end
             else report.kindMismatch = report.kindMismatch + 1 end
           elseif d.shape == "bytes_blob" then
             if node.kind == "b" then
               value = node.box
-              if seen_blob[p.index] then report.blobShared = (report.blobShared or 0) + 1 else seen_blob[p.index] = true end
+              if seen_blob[p.index] then
+                report.blobShared = (report.blobShared or 0) + 1
+              else
+                seen_blob[p.index] = true
+              end
             else report.kindMismatch = report.kindMismatch + 1 end
           elseif node.kind == "t" and node.codec.name == d.target then
             value = node.value

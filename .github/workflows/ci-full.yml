@@ -1888,10 +1888,11 @@ jobs:
       # control runs. Every control in the group hangs off these two, and
       # building them here keeps the build cost out of the first control's
       # timing and out of its log.
-      # conformance-negative-control-lua drives the Lua driver, which runs
-      # under the pinned interpreter (make/lua.mk's dist-lua)
+      # A row naming `lua` (make/negative-controls.json) runs the Lua port's
+      # controls under the pinned PUC-Rio interpreter, which make/lua.mk's
+      # dist-lua builds from source at the sha256 it names into the LUA default.
       - name: install the Lua pin
-        if: matrix.name == 'base-conformance-2'
+        if: matrix.lua != ''
         run: make dist-lua
 
       - name: build bin/schema and the generated tree once
