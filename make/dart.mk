@@ -608,6 +608,52 @@ build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate t
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
+# THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
+# the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
+# scalars (the WIDE KINDS as array elements) are carried by two pieces of
+# cookwrite_form1.go / cookwrite.go. Each leg removes one from a COPY of the
+# emitter, regenerates that unit beside the tree, compiles a copy of the driver
+# against it, and requires the harness to go red on that unit's cook-write
+# rows and on nothing else. No tracked file is written to.
+DART_COOKWRITE_NC := build/dart-cookwrite-nc
+# $(1) leg, $(2) emitter file, $(3) sed sabotage, $(4) unit dir in the tree,
+# $(5) schema source, $(6) the failing rows' name prefix
+define dart-cookwrite-nc-leg
+	@rm -rf $(DART_COOKWRITE_NC)/$(1) && mkdir -p $(DART_COOKWRITE_NC)/$(1)
+	@sed $(3) internal/codegen/darttable/$(2) > $(DART_COOKWRITE_NC)/$(1)/$(2).txt
+	@grep -q SABOTAGED $(DART_COOKWRITE_NC)/$(1)/$(2).txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage matched nothing - the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/$(2)":"%s/$(DART_COOKWRITE_NC)/$(1)/$(2).txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/overlay.json
+	go build -overlay $(DART_COOKWRITE_NC)/$(1)/overlay.json -o $(DART_COOKWRITE_NC)/$(1)/schema ./cmd/schema
+	$(DART_COOKWRITE_NC)/$(1)/schema generate --lang dart --out $(DART_COOKWRITE_NC)/$(1)/generated $(5)
+	@sed -e "s|../../../build/$(4)/|$(CURDIR)/$(DART_COOKWRITE_NC)/$(1)/generated/|g" \
+	     -e "s|../../../build/|$(CURDIR)/build/|g" \
+		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
+	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@printf 'dart %s/$(DART_COOKWRITE_NC)/$(1)/driver-bin\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/drivers.txt \
+			--work $(DART_COOKWRITE_NC)/$(1)/work > $(DART_COOKWRITE_NC)/$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left the harness green"; \
+		tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; \
+	fi
+	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
+		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
+	@if awk '/^FAILURES/ { f = 1; next } f && /^  /' $(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)"; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; exit 1; \
+	fi
+	@grep -m1 "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log
+endef
+
+.PHONY: tables-dart-cookwrite-negative-control
+tables-dart-cookwrite-negative-control: build/conformance-dart build/conformance-harness
+	$(call dart-cookwrite-nc-leg,unions,cookwrite_form1.go,'s|g.emitCookForm1Union(elem, un, 0, "value", "    ")|// SABOTAGED: no union element is written|',tables-generated-dart/messages,tables/messages,message_)
+	$(call dart-cookwrite-nc-leg,wide,cookwrite.go,'s|g.emitCookVariableWide(f, expr, addr, addr+" + 8", stride, ind)|_ = addr // SABOTAGED: no wide element is written|',tables-generated-dart-scalars/scalars,tables/scalars,scalars_)
+	@echo "negative control: the form-1 cook writer's union elements and wide elements each turn exactly their own cook-write rows RED"
+
+test-dart: tables-dart-cookwrite-negative-control
+
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 # ---------------------------------------------------------------------------
