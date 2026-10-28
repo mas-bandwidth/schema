@@ -26,6 +26,8 @@ namespace schema_rt
 // blob_shared counter (§2.5), the reason a named rule gives and the verdict.
 // refused is the verdict, not an event (§3): a form byte this reader does not
 // carry, or a collection count past the storage cap on a variable root.
+// stopped is whether the read stopped short of the root body's terminator:
+// Go's Decode answering false (a mutable reader discards that value, §4.2).
 class LoadReport:
     unknown:int = 0
     kind_mismatch:int = 0
@@ -43,6 +45,7 @@ class LoadReport:
     non_finite_float:string = ""
     refused:bool = false
     reason:string = ""
+    stopped:bool = false
 
 class Record
 class Slot
@@ -932,13 +935,24 @@ let wide_shape = register_shape(WideShape { key: "wstr" })
 // nested_body decodes a by-value body framed by its own L into rec (§3): a
 // body whose terminator is not the last byte of its L is framing damage and
 // falls back on its declared defaults, staying the body it was.
-def nested_body(r:Reader, rec:Record) -> bool:
+def nested_body(r:Reader, sl:Slot, i:int) -> bool:
     let rep = r.st.report
     let missing_before = rep.missing_required
     let n, ok = leb(r)
     if not ok or not has(r, n):
         rep.malformed = true
         return false
+    // the body is RESET only once its L frames (Go's field and element): a
+    // payload whose L the wire cannot cover leaves the value standing
+    let held = if i < 0: sl.cell.tab else: sl.elems[i].tab
+    var rec = new_record(table_of(if i < 0: sl.fd.t else: elem_of(sl.fd).t))
+    if held:
+        refill(held)
+        rec = held
+    if i < 0:
+        sl.cell.tab = rec
+    else:
+        sl.elems[i].tab = rec
     let sr = sub(r, n)
     body_at(sr, rec, true, false)
     if r.st.count_refused:
@@ -956,21 +970,9 @@ def nested_body(r:Reader, rec:Record) -> bool:
 
 class TableShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
-        let held = sl.cell.tab
-        var rec = new_record(table_of(sl.fd.t))
-        if held:
-            refill(held)
-            rec = held
-        sl.cell.tab = rec
-        return nested_body(r, rec)
+        return nested_body(r, sl, -1)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
-        let held = sl.elems[i].tab
-        var rec = new_record(table_of(elem_of(sl.fd).t))
-        if held:
-            refill(held)
-            rec = held
-        sl.elems[i].tab = rec
-        return nested_body(r, rec)
+        return nested_body(r, sl, i)
 
 let table_shape = register_shape(TableShape { key: "tab" })
 
@@ -1740,7 +1742,7 @@ def decode_variable(st:LoadState, root:Record, hi:int):
         if node.kind == 1 and nr and not st.count_refused:
             body_at(reader(st, rec.lo, rec.hi), nr, true, false)
     if not st.count_refused:
-        body_at(reader(st, 1, hi), root, false, false)
+        st.report.stopped = not body_at(reader(st, 1, hi), root, false, false)
 
 // load_tolerant is THE TOLERANT READ, by its own name (docs/SPEC-TABLES.md
 // §6.5): it reads a form-1 wire at the root table named root into a fresh
@@ -1794,30 +1796,35 @@ def load(root:string, data:string, report:LoadReport) -> Record?:
 def load_walk(root:string, data:string, report:LoadReport) -> Record?:
     if length(data) < 1:
         report.malformed = true
+        report.stopped = true
         return nil
     let form = data[0]
     if form != 1:
         report.refused = true
+        report.stopped = true
         report.reason = if form == 2: "message_form_as_file" else: "form"
         return nil
     let rec = new_record(table_of(root))
     let ids, first, ok = trailer(data)
     if not ok:
         report.malformed = true
+        report.stopped = true
         return rec
     let st = LoadState { data: data, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
     let end, terminated = body_extent(st, first)
     if terminated and end != first:
         report.malformed = true
+        report.stopped = true
         return rec
     if not rec.d.variable:
-        body_at(reader(st, 1, first), rec, false, false)
+        report.stopped = not body_at(reader(st, 1, first), rec, false, false)
         if report.missing_required > 0:
             return nil
         return rec
     decode_variable(st, rec, first)
     if st.count_refused:
         report.refused = true
+        report.stopped = true
         return nil
     if report.missing_required > 0:
         return nil

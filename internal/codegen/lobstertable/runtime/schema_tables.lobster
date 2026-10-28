@@ -38,6 +38,7 @@ class FieldDescriptor:
     present:string = ""
     required:bool = false
     deprecated:bool = false
+    when:[string] = []
     t:string = ""
     ek:int = 0
     e:FieldDescriptor? = nil

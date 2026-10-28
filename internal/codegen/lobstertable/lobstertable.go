@@ -276,12 +276,13 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	g.Pf("    place_str: %v,\n", stringEdge)
 	g.Pf("    place_bytes: %v,\n", bytesEdge)
 	g.Pf("    fields: [\n")
+	guards := fieldGuards(t)
 	for i, f := range t.Fields {
 		sep := ","
 		if i == len(t.Fields)-1 {
 			sep = ""
 		}
-		g.Pf("        %s%s\n", fieldDesc(g, f, i, 0), sep)
+		g.Pf("        %s%s\n", guarded(fieldDesc(g, f, i, 0), guards[f.Name]), sep)
 	}
 	g.Pf("    ]::%s.FieldDescriptor\n", rt)
 	g.Pf("})\n\n")
@@ -384,6 +385,57 @@ func fieldDesc(g *lobster.Gen, f *ir.Field, ordinal, tag int) string {
 		parts = append(parts, valueDesc(g, f, true)...)
 	}
 	return rt + ".FieldDescriptor { " + strings.Join(parts, ", ") + " }"
+}
+
+// guardTerm is one `if` condition a field sits under: the bool field's name
+// and the value the branch wants (false for an else branch, or under `!`).
+type guardTerm struct {
+	field string
+	want  bool
+}
+
+// fieldGuards maps each guarded field to its conditions, composed outward in
+// — the walk of the reference engine's tabletext.Guards, spelled here because
+// a backend never imports the engine it is held to.
+func fieldGuards(st *ir.Struct) map[string][]guardTerm {
+	out := map[string][]guardTerm{}
+	var walk func(items []ir.Item, cond []guardTerm)
+	walk = func(items []ir.Item, cond []guardTerm) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					out[item.F.Name] = append([]guardTerm(nil), cond...)
+				}
+			case *ir.Branch:
+				walk(item.Then, append(cond[:len(cond):len(cond)], guardTerm{item.Cond, !item.Neg}))
+				walk(item.Else, append(cond[:len(cond):len(cond)], guardTerm{item.Cond, item.Neg}))
+			}
+		}
+	}
+	walk(st.Items, nil)
+	return out
+}
+
+// guarded adds a field's GUARD to its descriptor (docs/SPEC-TABLES.md §4,
+// SPEC §4.4) as the member `when`: each term the bool field's name, or `!`
+// and the name for a branch that wants false. A writer writes the field, and
+// descends it for edges, only while every term holds (the engine's
+// Instance.GuardHolds), so a field under a false guard is not on the wire and
+// its pointer is not an edge (§3.1).
+func guarded(desc string, terms []guardTerm) string {
+	if len(terms) == 0 {
+		return desc
+	}
+	lits := make([]string, len(terms))
+	for i, t := range terms {
+		name := t.field
+		if !t.want {
+			name = "!" + name
+		}
+		lits[i] = lobster.StringLit([]byte(name))
+	}
+	return strings.TrimSuffix(desc, " }") + ", when: [" + strings.Join(lits, ", ") + "] }"
 }
 
 // elemDesc is an array's element descriptor: the same facts a field of the
