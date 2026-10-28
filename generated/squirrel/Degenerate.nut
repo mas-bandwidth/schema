@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example, protocol_id 0xeb26c970fde3fd71
+// package example — protocol id 0xeb26c970fde3fd71
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Degenerate = dofile(dir + "/schema_module.nut", true).require("Degenerate");
 
 local _M = vargv[0];
 local _require = vargv[1];
-local _Types = _require("Types");
+local _Types_ = _require("Types");
+
+local _h = { value = 0 };
 
 // type Vec2
 _M.Vec2 <- class {
@@ -21,21 +23,26 @@ _M.Vec2 <- class {
   }
 };
 
-// ReadVec2 decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// Vec2MaxBits is the longest wire path, align padding at its worst case;
+// Vec2MaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.Vec2MaxBits <- 128;
+_M.Vec2MaxBytes <- 16;
+
+// ReadVec2 reads into value's storage in place; false on a refused read.
 _M.ReadVec2 <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeDouble(_rs)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeDouble(_rs)) return false;
-  value.Y = _rs.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.X = _h.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.Y = _h.value;
   return true;
 };
 
-// type Vec2 (SPEC §6.1: the wire order is the declared order)
-_M.WriteVec2 <- function(stream, v) {
-  if (!stream.serializeDouble({ value = v.X })) return false;
-  if (!stream.serializeDouble({ value = v.Y })) return false;
+// WriteVec2 writes value in declared order; false on a refused value.
+_M.WriteVec2 <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeDouble(_h)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeDouble(_h)) return false;
   return true;
 };
 
@@ -47,21 +54,25 @@ _M.SpanF64 <- class {
   }
 };
 
-// ReadSpanF64 decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// SpanF64MaxBits is the longest wire path, align padding at its worst case;
+// SpanF64MaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.SpanF64MaxBits <- 128;
+_M.SpanF64MaxBytes <- 16;
+
+// ReadSpanF64 reads into value's storage in place; false on a refused read.
 _M.ReadSpanF64 <- function(stream, value) {
-  local _rs = { value = 0 };
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeDouble(_rs)) return false;
-    value.Values[i] = _rs.value;
+    if (!stream.serializeDouble(_h)) return false;
+    value.Values[i] = _h.value;
   }
   return true;
 };
 
-// type SpanF64 (SPEC §6.1: the wire order is the declared order)
-_M.WriteSpanF64 <- function(stream, v) {
+// WriteSpanF64 writes value in declared order; false on a refused value.
+_M.WriteSpanF64 <- function(stream, value) {
   for (local _i = 0; _i < 2; _i++) {
-    if (!stream.serializeDouble({ value = v.Values[_i] })) return false;
+    _h.value = value.Values[_i];
+    if (!stream.serializeDouble(_h)) return false;
   }
   return true;
 };
@@ -74,22 +85,26 @@ _M.SpanU64 <- class {
   }
 };
 
-// ReadSpanU64 decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// SpanU64MaxBits is the longest wire path, align padding at its worst case;
+// SpanU64MaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.SpanU64MaxBits <- 128;
+_M.SpanU64MaxBytes <- 16;
+
+// ReadSpanU64 reads into value's storage in place; false on a refused read.
 _M.ReadSpanU64 <- function(stream, value) {
-  local _rs = { value = 0 };
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeBits64(_rs, 64)) return false;
-    value.Values[i] = _rs.value;
+    if (!stream.serializeBits64(_h, 64)) return false;
+    value.Values[i] = _h.value;
   }
   return true;
 };
 
-// type SpanU64 (SPEC §6.1: the wire order is the declared order)
-_M.WriteSpanU64 <- function(stream, v) {
+// WriteSpanU64 writes value in declared order; false on a refused value.
+_M.WriteSpanU64 <- function(stream, value) {
   for (local _i = 0; _i < 2; _i++) {
-    if (typeof v.Values[_i] != "integer") return false;
-    if (!stream.serializeBits64({ value = v.Values[_i] }, 64)) return false; // the storage width
+    if (typeof value.Values[_i] != "integer") return false;
+    _h.value = value.Values[_i];
+    if (!stream.serializeBits64(_h, 64)) return false;
   }
   return true;
 };
@@ -102,22 +117,26 @@ _M.SpanI64 <- class {
   }
 };
 
-// ReadSpanI64 decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// SpanI64MaxBits is the longest wire path, align padding at its worst case;
+// SpanI64MaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.SpanI64MaxBits <- 128;
+_M.SpanI64MaxBytes <- 16;
+
+// ReadSpanI64 reads into value's storage in place; false on a refused read.
 _M.ReadSpanI64 <- function(stream, value) {
-  local _rs = { value = 0 };
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeBits64(_rs, 64)) return false;
-    value.Values[i] = _rs.value;
+    if (!stream.serializeBits64(_h, 64)) return false;
+    value.Values[i] = _h.value;
   }
   return true;
 };
 
-// type SpanI64 (SPEC §6.1: the wire order is the declared order)
-_M.WriteSpanI64 <- function(stream, v) {
+// WriteSpanI64 writes value in declared order; false on a refused value.
+_M.WriteSpanI64 <- function(stream, value) {
   for (local _i = 0; _i < 2; _i++) {
-    if (typeof v.Values[_i] != "integer") return false;
-    if (!stream.serializeBits64({ value = v.Values[_i] }, 64)) return false; // the storage width
+    if (typeof value.Values[_i] != "integer") return false;
+    _h.value = value.Values[_i];
+    if (!stream.serializeBits64(_h, 64)) return false;
   }
   return true;
 };
@@ -130,22 +149,26 @@ _M.SpanOne <- class {
   }
 };
 
-// ReadSpanOne decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// SpanOneMaxBits is the longest wire path, align padding at its worst case;
+// SpanOneMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.SpanOneMaxBits <- 64;
+_M.SpanOneMaxBytes <- 8;
+
+// ReadSpanOne reads into value's storage in place; false on a refused read.
 _M.ReadSpanOne <- function(stream, value) {
-  local _rs = { value = 0 };
   for (local i = 0; i < 1; i++) {
-    if (!stream.serializeBits64(_rs, 64)) return false;
-    value.Values[i] = _rs.value;
+    if (!stream.serializeBits64(_h, 64)) return false;
+    value.Values[i] = _h.value;
   }
   return true;
 };
 
-// type SpanOne (SPEC §6.1: the wire order is the declared order)
-_M.WriteSpanOne <- function(stream, v) {
+// WriteSpanOne writes value in declared order; false on a refused value.
+_M.WriteSpanOne <- function(stream, value) {
   for (local _i = 0; _i < 1; _i++) {
-    if (typeof v.Values[_i] != "integer") return false;
-    if (!stream.serializeBits64({ value = v.Values[_i] }, 64)) return false; // the storage width
+    if (typeof value.Values[_i] != "integer") return false;
+    _h.value = value.Values[_i];
+    if (!stream.serializeBits64(_h, 64)) return false;
   }
   return true;
 };
@@ -158,22 +181,26 @@ _M.SpanChunk <- class {
   }
 };
 
-// ReadSpanChunk decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// SpanChunkMaxBits is the longest wire path, align padding at its worst case;
+// SpanChunkMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.SpanChunkMaxBits <- 64;
+_M.SpanChunkMaxBytes <- 8;
+
+// ReadSpanChunk reads into value's storage in place; false on a refused read.
 _M.ReadSpanChunk <- function(stream, value) {
-  local _rs = { value = 0 };
   for (local i = 0; i < 4; i++) {
-    if (!stream.serializeBits(_rs, 16)) return false;
-    value.Values[i] = _rs.value;
+    if (!stream.serializeBits(_h, 16)) return false;
+    value.Values[i] = _h.value;
   }
   return true;
 };
 
-// type SpanChunk (SPEC §6.1: the wire order is the declared order)
-_M.WriteSpanChunk <- function(stream, v) {
+// WriteSpanChunk writes value in declared order; false on a refused value.
+_M.WriteSpanChunk <- function(stream, value) {
   for (local _i = 0; _i < 4; _i++) {
-    if (typeof v.Values[_i] != "integer") return false;
-    if (!stream.serializeBits({ value = v.Values[_i] }, 16)) return false; // the storage width
+    if (typeof value.Values[_i] != "integer") return false;
+    _h.value = value.Values[_i];
+    if (!stream.serializeBits(_h, 16)) return false;
   }
   return true;
 };
@@ -188,26 +215,31 @@ _M.SpanTail <- class {
   }
 };
 
-// ReadSpanTail decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// SpanTailMaxBits is the longest wire path, align padding at its worst case;
+// SpanTailMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.SpanTailMaxBits <- 160;
+_M.SpanTailMaxBytes <- 24;
+
+// ReadSpanTail reads into value's storage in place; false on a refused read.
 _M.ReadSpanTail <- function(stream, value) {
-  local _rs = { value = 0 };
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeDouble(_rs)) return false;
-    value.Values[i] = _rs.value;
+    if (!stream.serializeDouble(_h)) return false;
+    value.Values[i] = _h.value;
   }
-  if (!stream.serializeBits(_rs, 32)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 32)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type SpanTail (SPEC §6.1: the wire order is the declared order)
-_M.WriteSpanTail <- function(stream, v) {
+// WriteSpanTail writes value in declared order; false on a refused value.
+_M.WriteSpanTail <- function(stream, value) {
   for (local _i = 0; _i < 2; _i++) {
-    if (!stream.serializeDouble({ value = v.Values[_i] })) return false;
+    _h.value = value.Values[_i];
+    if (!stream.serializeDouble(_h)) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 32)) return false; // the storage width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 32)) return false;
   return true;
 };
 
@@ -221,28 +253,33 @@ _M.SpanTwice <- class {
   }
 };
 
-// ReadSpanTwice decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// SpanTwiceMaxBits is the longest wire path, align padding at its worst case;
+// SpanTwiceMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.SpanTwiceMaxBits <- 256;
+_M.SpanTwiceMaxBytes <- 32;
+
+// ReadSpanTwice reads into value's storage in place; false on a refused read.
 _M.ReadSpanTwice <- function(stream, value) {
-  local _rs = { value = 0 };
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeDouble(_rs)) return false;
-    value.A[i] = _rs.value;
+    if (!stream.serializeDouble(_h)) return false;
+    value.A[i] = _h.value;
   }
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeDouble(_rs)) return false;
-    value.B[i] = _rs.value;
+    if (!stream.serializeDouble(_h)) return false;
+    value.B[i] = _h.value;
   }
   return true;
 };
 
-// type SpanTwice (SPEC §6.1: the wire order is the declared order)
-_M.WriteSpanTwice <- function(stream, v) {
+// WriteSpanTwice writes value in declared order; false on a refused value.
+_M.WriteSpanTwice <- function(stream, value) {
   for (local _i = 0; _i < 2; _i++) {
-    if (!stream.serializeDouble({ value = v.A[_i] })) return false;
+    _h.value = value.A[_i];
+    if (!stream.serializeDouble(_h)) return false;
   }
   for (local _i = 0; _i < 2; _i++) {
-    if (!stream.serializeDouble({ value = v.B[_i] })) return false;
+    _h.value = value.B[_i];
+    if (!stream.serializeDouble(_h)) return false;
   }
   return true;
 };
@@ -259,27 +296,33 @@ _M.Trio <- class {
   }
 };
 
-// ReadTrio decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// TrioMaxBits is the longest wire path, align padding at its worst case;
+// TrioMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.TrioMaxBits <- 64;
+_M.TrioMaxBytes <- 8;
+
+// ReadTrio reads into value's storage in place; false on a refused read.
 _M.ReadTrio <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 20)) return false;
-  value.A = _rs.value;
-  if (!stream.serializeBits(_rs, 20)) return false;
-  value.B = _rs.value;
-  if (!stream.serializeBits(_rs, 24)) return false;
-  value.C = _rs.value;
+  if (!stream.serializeBits(_h, 20)) return false;
+  value.A = _h.value;
+  if (!stream.serializeBits(_h, 20)) return false;
+  value.B = _h.value;
+  if (!stream.serializeBits(_h, 24)) return false;
+  value.C = _h.value;
   return true;
 };
 
-// type Trio (SPEC §6.1: the wire order is the declared order)
-_M.WriteTrio <- function(stream, v) {
-  if (typeof v.A != "integer") return false;
-  if (!stream.serializeBits({ value = v.A }, 20)) return false; // the declared bit width
-  if (typeof v.B != "integer") return false;
-  if (!stream.serializeBits({ value = v.B }, 20)) return false; // the declared bit width
-  if (typeof v.C != "integer") return false;
-  if (!stream.serializeBits({ value = v.C }, 24)) return false; // the declared bit width
+// WriteTrio writes value in declared order; false on a refused value.
+_M.WriteTrio <- function(stream, value) {
+  if (typeof value.A != "integer") return false;
+  _h.value = value.A;
+  if (!stream.serializeBits(_h, 20)) return false;
+  if (typeof value.B != "integer") return false;
+  _h.value = value.B;
+  if (!stream.serializeBits(_h, 20)) return false;
+  if (typeof value.C != "integer") return false;
+  _h.value = value.C;
+  if (!stream.serializeBits(_h, 24)) return false;
   return true;
 };
 
@@ -291,17 +334,20 @@ _M.TrioSole <- class {
   }
 };
 
-// ReadTrioSole decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// TrioSoleMaxBits is the longest wire path, align padding at its worst case;
+// TrioSoleMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.TrioSoleMaxBits <- 64;
+_M.TrioSoleMaxBytes <- 8;
+
+// ReadTrioSole reads into value's storage in place; false on a refused read.
 _M.ReadTrioSole <- function(stream, value) {
-  local _rs = { value = 0 };
   if (!_M.ReadTrio(stream, value.Inner)) return false;
   return true;
 };
 
-// type TrioSole (SPEC §6.1: the wire order is the declared order)
-_M.WriteTrioSole <- function(stream, v) {
-  if (!_M.WriteTrio(stream, v.Inner)) return false;
+// WriteTrioSole writes value in declared order; false on a refused value.
+_M.WriteTrioSole <- function(stream, value) {
+  if (!_M.WriteTrio(stream, value.Inner)) return false;
   return true;
 };
 
@@ -309,21 +355,24 @@ _M.WriteTrioSole <- function(stream, v) {
 _M.Vec3Sole <- class {
   V = null;
   constructor() {
-    this.V = _Types.Vec3();
+    this.V = _Types_.Vec3();
   }
 };
 
-// ReadVec3Sole decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// Vec3SoleMaxBits is the longest wire path, align padding at its worst case;
+// Vec3SoleMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.Vec3SoleMaxBits <- 192;
+_M.Vec3SoleMaxBytes <- 24;
+
+// ReadVec3Sole reads into value's storage in place; false on a refused read.
 _M.ReadVec3Sole <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!_Types.ReadVec3(stream, value.V)) return false;
+  if (!_Types_.ReadVec3(stream, value.V)) return false;
   return true;
 };
 
-// type Vec3Sole (SPEC §6.1: the wire order is the declared order)
-_M.WriteVec3Sole <- function(stream, v) {
-  if (!_Types.WriteVec3(stream, v.V)) return false;
+// WriteVec3Sole writes value in declared order; false on a refused value.
+_M.WriteVec3Sole <- function(stream, value) {
+  if (!_Types_.WriteVec3(stream, value.V)) return false;
   return true;
 };
 
@@ -337,21 +386,25 @@ _M.TrioFirst <- class {
   }
 };
 
-// ReadTrioFirst decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// TrioFirstMaxBits is the longest wire path, align padding at its worst case;
+// TrioFirstMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.TrioFirstMaxBits <- 80;
+_M.TrioFirstMaxBytes <- 16;
+
+// ReadTrioFirst reads into value's storage in place; false on a refused read.
 _M.ReadTrioFirst <- function(stream, value) {
-  local _rs = { value = 0 };
   if (!_M.ReadTrio(stream, value.Inner)) return false;
-  if (!stream.serializeBits(_rs, 16)) return false;
-  value.Trailer = _rs.value;
+  if (!stream.serializeBits(_h, 16)) return false;
+  value.Trailer = _h.value;
   return true;
 };
 
-// type TrioFirst (SPEC §6.1: the wire order is the declared order)
-_M.WriteTrioFirst <- function(stream, v) {
-  if (!_M.WriteTrio(stream, v.Inner)) return false;
-  if (typeof v.Trailer != "integer") return false;
-  if (!stream.serializeBits({ value = v.Trailer }, 16)) return false; // the declared bit width
+// WriteTrioFirst writes value in declared order; false on a refused value.
+_M.WriteTrioFirst <- function(stream, value) {
+  if (!_M.WriteTrio(stream, value.Inner)) return false;
+  if (typeof value.Trailer != "integer") return false;
+  _h.value = value.Trailer;
+  if (!stream.serializeBits(_h, 16)) return false;
   return true;
 };
 
@@ -375,40 +428,49 @@ _M.TrioStraddle <- class {
   }
 };
 
-// ReadTrioStraddle decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// TrioStraddleMaxBits is the longest wire path, align padding at its worst case;
+// TrioStraddleMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.TrioStraddleMaxBits <- 408;
+_M.TrioStraddleMaxBytes <- 56;
+
+// ReadTrioStraddle reads into value's storage in place; false on a refused read.
 _M.ReadTrioStraddle <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.Pad0 = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.Pad1 = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.Pad2 = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.Pad3 = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.Pad4 = _rs.value;
-  if (!stream.serializeBits(_rs, 24)) return false;
-  value.Pad5 = _rs.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.Pad0 = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.Pad1 = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.Pad2 = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.Pad3 = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.Pad4 = _h.value;
+  if (!stream.serializeBits(_h, 24)) return false;
+  value.Pad5 = _h.value;
   if (!_M.ReadTrio(stream, value.Inner)) return false;
   return true;
 };
 
-// type TrioStraddle (SPEC §6.1: the wire order is the declared order)
-_M.WriteTrioStraddle <- function(stream, v) {
-  if (typeof v.Pad0 != "integer") return false;
-  if (!stream.serializeBits64({ value = v.Pad0 }, 64)) return false; // the declared bit width
-  if (typeof v.Pad1 != "integer") return false;
-  if (!stream.serializeBits64({ value = v.Pad1 }, 64)) return false; // the declared bit width
-  if (typeof v.Pad2 != "integer") return false;
-  if (!stream.serializeBits64({ value = v.Pad2 }, 64)) return false; // the declared bit width
-  if (typeof v.Pad3 != "integer") return false;
-  if (!stream.serializeBits64({ value = v.Pad3 }, 64)) return false; // the declared bit width
-  if (typeof v.Pad4 != "integer") return false;
-  if (!stream.serializeBits64({ value = v.Pad4 }, 64)) return false; // the declared bit width
-  if (typeof v.Pad5 != "integer") return false;
-  if (!stream.serializeBits({ value = v.Pad5 }, 24)) return false; // the declared bit width
-  if (!_M.WriteTrio(stream, v.Inner)) return false;
+// WriteTrioStraddle writes value in declared order; false on a refused value.
+_M.WriteTrioStraddle <- function(stream, value) {
+  if (typeof value.Pad0 != "integer") return false;
+  _h.value = value.Pad0;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Pad1 != "integer") return false;
+  _h.value = value.Pad1;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Pad2 != "integer") return false;
+  _h.value = value.Pad2;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Pad3 != "integer") return false;
+  _h.value = value.Pad3;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Pad4 != "integer") return false;
+  _h.value = value.Pad4;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Pad5 != "integer") return false;
+  _h.value = value.Pad5;
+  if (!stream.serializeBits(_h, 24)) return false;
+  if (!_M.WriteTrio(stream, value.Inner)) return false;
   return true;
 };

@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example, protocol_id 0xeb26c970fde3fd71
+// package example — protocol id 0xeb26c970fde3fd71
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Render = dofile(dir + "/schema_module.nut", true).require("Render");
 
 local _M = vargv[0];
 local _require = vargv[1];
+
+local _h = { value = 0 };
 
 _M.RenderBlockMaxSprites <- 64;
 
@@ -28,35 +30,43 @@ _M.RenderSprite <- class {
   }
 };
 
-// ReadRenderSprite decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// RenderSpriteMaxBits is the longest wire path, align padding at its worst case;
+// RenderSpriteMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.RenderSpriteMaxBits <- 138;
+_M.RenderSpriteMaxBytes <- 24;
+
+// ReadRenderSprite reads into value's storage in place; false on a refused read.
 _M.ReadRenderSprite <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.SortKey = _rs.value;
-  if (!stream.serializeBits(_rs, 32)) return false;
-  value.MeshId = _rs.value;
-  if (!stream.serializeBits(_rs, 32)) return false;
-  value.MaterialId = _rs.value;
-  if (!stream.serializeBits(_rs, 8)) return false;
-  value.Layer = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 2)) return false;
-  value.Team = _rs.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.SortKey = _h.value;
+  if (!stream.serializeBits(_h, 32)) return false;
+  value.MeshId = _h.value;
+  if (!stream.serializeBits(_h, 32)) return false;
+  value.MaterialId = _h.value;
+  if (!stream.serializeBits(_h, 8)) return false;
+  value.Layer = _h.value;
+  if (!stream.serializeInt(_h, 0, 2)) return false;
+  value.Team = _h.value;
   return true;
 };
 
-// type RenderSprite (SPEC §6.1: the wire order is the declared order)
-_M.WriteRenderSprite <- function(stream, v) {
-  if (typeof v.SortKey != "integer") return false;
-  if (!stream.serializeBits64({ value = v.SortKey }, 64)) return false; // the storage width
-  if (typeof v.MeshId != "integer") return false;
-  if (!stream.serializeBits({ value = v.MeshId }, 32)) return false; // the storage width
-  if (typeof v.MaterialId != "integer") return false;
-  if (!stream.serializeBits({ value = v.MaterialId }, 32)) return false; // the storage width
-  if (typeof v.Layer != "integer") return false;
-  if (!stream.serializeBits({ value = v.Layer }, 8)) return false; // the storage width
-  if (typeof v.Team != "integer" || v.Team < 0 || v.Team > 2) return false;
-  if (!stream.serializeBits({ value = v.Team }, 2)) return false; // the enum value
+// WriteRenderSprite writes value in declared order; false on a refused value.
+_M.WriteRenderSprite <- function(stream, value) {
+  if (typeof value.SortKey != "integer") return false;
+  _h.value = value.SortKey;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.MeshId != "integer") return false;
+  _h.value = value.MeshId;
+  if (!stream.serializeBits(_h, 32)) return false;
+  if (typeof value.MaterialId != "integer") return false;
+  _h.value = value.MaterialId;
+  if (!stream.serializeBits(_h, 32)) return false;
+  if (typeof value.Layer != "integer") return false;
+  _h.value = value.Layer;
+  if (!stream.serializeBits(_h, 8)) return false;
+  if (typeof value.Team != "integer" || value.Team < 0 || value.Team > 2) return false;
+  _h.value = value.Team;
+  if (!stream.serializeBits(_h, 2)) return false;
   return true;
 };
 
@@ -75,32 +85,38 @@ _M.RenderBlock <- class {
   }
 };
 
-// ReadRenderBlock decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// RenderBlockMaxBits is the longest wire path, align padding at its worst case;
+// RenderBlockMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.RenderBlockMaxBits <- 8903;
+_M.RenderBlockMaxBytes <- 1120;
+
+// ReadRenderBlock reads into value's storage in place; false on a refused read.
 _M.ReadRenderBlock <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 32)) return false;
-  value.WorkerIndex = _rs.value;
-  if (!stream.serializeBits(_rs, 32)) return false;
-  value.SpriteCountHint = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 64)) return false; // the count guards the loop (§6.3)
-  value.SpritesCount = _rs.value;
+  if (!stream.serializeBits(_h, 32)) return false;
+  value.WorkerIndex = _h.value;
+  if (!stream.serializeBits(_h, 32)) return false;
+  value.SpriteCountHint = _h.value;
+  if (!stream.serializeInt(_h, 0, 64)) return false;
+  value.SpritesCount = _h.value;
   for (local i = 0; i < value.SpritesCount; i++) {
     if (!_M.ReadRenderSprite(stream, value.Sprites[i])) return false;
   }
   return true;
 };
 
-// type RenderBlock (SPEC §6.1: the wire order is the declared order)
-_M.WriteRenderBlock <- function(stream, v) {
-  if (typeof v.WorkerIndex != "integer") return false;
-  if (!stream.serializeBits({ value = v.WorkerIndex }, 32)) return false; // the storage width
-  if (typeof v.SpriteCountHint != "integer") return false;
-  if (!stream.serializeBits({ value = v.SpriteCountHint }, 32)) return false; // the storage width
-  if (typeof v.SpritesCount != "integer" || v.SpritesCount < 0 || v.SpritesCount > 64) return false; // the count guards the loop (SPEC §6.3)
-  if (!stream.serializeBits({ value = v.SpritesCount }, 7)) return false; // the count
-  for (local _i = 0; _i < v.SpritesCount; _i++) {
-    if (!_M.WriteRenderSprite(stream, v.Sprites[_i])) return false;
+// WriteRenderBlock writes value in declared order; false on a refused value.
+_M.WriteRenderBlock <- function(stream, value) {
+  if (typeof value.WorkerIndex != "integer") return false;
+  _h.value = value.WorkerIndex;
+  if (!stream.serializeBits(_h, 32)) return false;
+  if (typeof value.SpriteCountHint != "integer") return false;
+  _h.value = value.SpriteCountHint;
+  if (!stream.serializeBits(_h, 32)) return false;
+  if (typeof value.SpritesCount != "integer" || value.SpritesCount < 0 || value.SpritesCount > 64) return false;
+  _h.value = value.SpritesCount;
+  if (!stream.serializeBits(_h, 7)) return false;
+  for (local _i = 0; _i < value.SpritesCount; _i++) {
+    if (!_M.WriteRenderSprite(stream, value.Sprites[_i])) return false;
   }
   return true;
 };

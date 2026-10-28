@@ -2,13 +2,48 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example, protocol_id 0xeb26c970fde3fd71
+// package example — protocol id 0xeb26c970fde3fd71
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Joins = dofile(dir + "/schema_module.nut", true).require("Joins");
 
 local _M = vargv[0];
 local _require = vargv[1];
+
+local _h = { value = 0 };
+
+local _noBytes = blob(0);
+local _usedBytes = function(b, n) {
+  if (n == b.len()) return b;
+  if (n == 0) return _noBytes;
+  b.seek(0);
+  return b.readblob(n);
+};
+
+local _validText = function(b, n) {
+  for (local i = 0; i < n; ) {
+    local c = b[i]; i++;
+    if (c < 0x80) {
+      if (c == 0) return false;
+      continue;
+    }
+    local rem, point;
+    if ((c & 0xE0) == 0xC0) { rem = 1; point = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { rem = 2; point = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { rem = 3; point = c & 0x07; }
+    else return false;
+    if (rem > n - i) return false;
+    for (local j = 0; j < rem; j++) {
+      local d = b[i]; i++;
+      if ((d & 0xC0) != 0x80) return false;
+      point = (point << 6) | (d & 0x3F);
+    }
+    if (rem == 1 && point < 0x80) return false;
+    if (rem == 2 && (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) return false;
+    if (rem == 3 && (point < 0x10000 || point > 0x10FFFF)) return false;
+  }
+  return true;
+};
 
 // type ArmsAgree
 _M.ArmsAgree <- class {
@@ -30,42 +65,50 @@ _M.ArmsAgree <- class {
   }
 };
 
-// ReadArmsAgree decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ArmsAgreeMaxBits is the longest wire path, align padding at its worst case;
+// ArmsAgreeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ArmsAgreeMaxBits <- 24;
+_M.ArmsAgreeMaxBytes <- 8;
+
+// ReadArmsAgree reads into value's storage in place; false on a refused read.
 _M.ReadArmsAgree <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Flag = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Flag = _h.value;
   if (value.Flag) {
-    if (!stream.serializeBits(_rs, 11)) return false;
-    value.A = _rs.value;
+    if (!stream.serializeBits(_h, 11)) return false;
+    value.A = _h.value;
     value.B = 0;
   } else {
-    if (!stream.serializeBits(_rs, 11)) return false;
-    value.B = _rs.value;
+    if (!stream.serializeBits(_h, 11)) return false;
+    value.B = _h.value;
     value.A = 0;
   }
-  if (!stream.serializeBits(_rs, 7)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 7)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type ArmsAgree (SPEC §6.1: the wire order is the declared order)
-_M.WriteArmsAgree <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (!stream.serializeBool({ value = v.Flag })) return false; // SPEC §4.3
-  if (v.Flag) {
-    if (typeof v.A != "integer") return false;
-    if (!stream.serializeBits({ value = v.A }, 11)) return false; // the declared bit width
+// WriteArmsAgree writes value in declared order; false on a refused value.
+_M.WriteArmsAgree <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  _h.value = value.Flag;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.Flag) {
+    if (typeof value.A != "integer") return false;
+    _h.value = value.A;
+    if (!stream.serializeBits(_h, 11)) return false;
   } else {
-    if (typeof v.B != "integer") return false;
-    if (!stream.serializeBits({ value = v.B }, 11)) return false; // the declared bit width
+    if (typeof value.B != "integer") return false;
+    _h.value = value.B;
+    if (!stream.serializeBits(_h, 11)) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 7)) return false; // the declared bit width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 7)) return false;
   return true;
 };
 
@@ -89,42 +132,50 @@ _M.ArmsDisagree <- class {
   }
 };
 
-// ReadArmsDisagree decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ArmsDisagreeMaxBits is the longest wire path, align padding at its worst case;
+// ArmsDisagreeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ArmsDisagreeMaxBits <- 24;
+_M.ArmsDisagreeMaxBytes <- 8;
+
+// ReadArmsDisagree reads into value's storage in place; false on a refused read.
 _M.ReadArmsDisagree <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Flag = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Flag = _h.value;
   if (value.Flag) {
-    if (!stream.serializeBits(_rs, 11)) return false;
-    value.A = _rs.value;
+    if (!stream.serializeBits(_h, 11)) return false;
+    value.A = _h.value;
     value.B = 0;
   } else {
-    if (!stream.serializeBits(_rs, 3)) return false;
-    value.B = _rs.value;
+    if (!stream.serializeBits(_h, 3)) return false;
+    value.B = _h.value;
     value.A = 0;
   }
-  if (!stream.serializeBits(_rs, 7)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 7)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type ArmsDisagree (SPEC §6.1: the wire order is the declared order)
-_M.WriteArmsDisagree <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (!stream.serializeBool({ value = v.Flag })) return false; // SPEC §4.3
-  if (v.Flag) {
-    if (typeof v.A != "integer") return false;
-    if (!stream.serializeBits({ value = v.A }, 11)) return false; // the declared bit width
+// WriteArmsDisagree writes value in declared order; false on a refused value.
+_M.WriteArmsDisagree <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  _h.value = value.Flag;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.Flag) {
+    if (typeof value.A != "integer") return false;
+    _h.value = value.A;
+    if (!stream.serializeBits(_h, 11)) return false;
   } else {
-    if (typeof v.B != "integer") return false;
-    if (!stream.serializeBits({ value = v.B }, 3)) return false; // the declared bit width
+    if (typeof value.B != "integer") return false;
+    _h.value = value.B;
+    if (!stream.serializeBits(_h, 3)) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 7)) return false; // the declared bit width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 7)) return false;
   return true;
 };
 
@@ -144,36 +195,43 @@ _M.ArmEmpty <- class {
   }
 };
 
-// ReadArmEmpty decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ArmEmptyMaxBits is the longest wire path, align padding at its worst case;
+// ArmEmptyMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ArmEmptyMaxBits <- 32;
+_M.ArmEmptyMaxBytes <- 8;
+
+// ReadArmEmpty reads into value's storage in place; false on a refused read.
 _M.ReadArmEmpty <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Flag = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Flag = _h.value;
   if (value.Flag) {
-    if (!stream.serializeBits(_rs, 19)) return false;
-    value.A = _rs.value;
+    if (!stream.serializeBits(_h, 19)) return false;
+    value.A = _h.value;
   } else {
     value.A = 0;
   }
-  if (!stream.serializeBits(_rs, 7)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 7)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type ArmEmpty (SPEC §6.1: the wire order is the declared order)
-_M.WriteArmEmpty <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (!stream.serializeBool({ value = v.Flag })) return false; // SPEC §4.3
-  if (v.Flag) {
-    if (typeof v.A != "integer") return false;
-    if (!stream.serializeBits({ value = v.A }, 19)) return false; // the declared bit width
+// WriteArmEmpty writes value in declared order; false on a refused value.
+_M.WriteArmEmpty <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  _h.value = value.Flag;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.Flag) {
+    if (typeof value.A != "integer") return false;
+    _h.value = value.A;
+    if (!stream.serializeBits(_h, 19)) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 7)) return false; // the declared bit width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 7)) return false;
   return true;
 };
 
@@ -205,59 +263,69 @@ _M.ArmsNested <- class {
   }
 };
 
-// ReadArmsNested decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ArmsNestedMaxBits is the longest wire path, align padding at its worst case;
+// ArmsNestedMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ArmsNestedMaxBits <- 40;
+_M.ArmsNestedMaxBytes <- 8;
+
+// ReadArmsNested reads into value's storage in place; false on a refused read.
 _M.ReadArmsNested <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 3)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Outer = _rs.value;
+  if (!stream.serializeBits(_h, 3)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Outer = _h.value;
   if (value.Outer) {
-    if (!stream.serializeBool(_rs)) return false;
-    value.Inner = _rs.value;
+    if (!stream.serializeBool(_h)) return false;
+    value.Inner = _h.value;
     if (value.Inner) {
-      if (!stream.serializeBits(_rs, 29)) return false;
-      value.X = _rs.value;
+      if (!stream.serializeBits(_h, 29)) return false;
+      value.X = _h.value;
       value.Y = 0;
     } else {
-      if (!stream.serializeBits(_rs, 5)) return false;
-      value.Y = _rs.value;
+      if (!stream.serializeBits(_h, 5)) return false;
+      value.Y = _h.value;
       value.X = 0;
     }
     value.Z = 0;
   } else {
-    if (!stream.serializeBits(_rs, 13)) return false;
-    value.Z = _rs.value;
+    if (!stream.serializeBits(_h, 13)) return false;
+    value.Z = _h.value;
     value.Inner = false;
     value.X = 0;
     value.Y = 0;
   }
-  if (!stream.serializeBits(_rs, 6)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 6)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type ArmsNested (SPEC §6.1: the wire order is the declared order)
-_M.WriteArmsNested <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 3)) return false; // the declared bit width
-  if (!stream.serializeBool({ value = v.Outer })) return false; // SPEC §4.3
-  if (v.Outer) {
-    if (!stream.serializeBool({ value = v.Inner })) return false; // SPEC §4.3
-    if (v.Inner) {
-      if (typeof v.X != "integer") return false;
-      if (!stream.serializeBits({ value = v.X }, 29)) return false; // the declared bit width
+// WriteArmsNested writes value in declared order; false on a refused value.
+_M.WriteArmsNested <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 3)) return false;
+  _h.value = value.Outer;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.Outer) {
+    _h.value = value.Inner;
+    if (!stream.serializeBool(_h)) return false;
+    if (value.Inner) {
+      if (typeof value.X != "integer") return false;
+      _h.value = value.X;
+      if (!stream.serializeBits(_h, 29)) return false;
     } else {
-      if (typeof v.Y != "integer") return false;
-      if (!stream.serializeBits({ value = v.Y }, 5)) return false; // the declared bit width
+      if (typeof value.Y != "integer") return false;
+      _h.value = value.Y;
+      if (!stream.serializeBits(_h, 5)) return false;
     }
   } else {
-    if (typeof v.Z != "integer") return false;
-    if (!stream.serializeBits({ value = v.Z }, 13)) return false; // the declared bit width
+    if (typeof value.Z != "integer") return false;
+    _h.value = value.Z;
+    if (!stream.serializeBits(_h, 13)) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 6)) return false; // the declared bit width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 6)) return false;
   return true;
 };
 
@@ -283,71 +351,59 @@ _M.ArmAlign <- class {
   }
 };
 
-// ReadArmAlign decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ArmAlignMaxBits is the longest wire path, align padding at its worst case;
+// ArmAlignMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ArmAlignMaxBits <- 55;
+_M.ArmAlignMaxBytes <- 8;
+
+// ReadArmAlign reads into value's storage in place; false on a refused read.
 _M.ReadArmAlign <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Flag = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Flag = _h.value;
   if (value.Flag) {
-    if (!stream.serializeInt(_rs, 0, 4)) return false; // the length guards the copy (§6.3)
-    value.SLength = _rs.value;
-    local _n = _rs.value;
-    local _tmp = blob(_n);
-    if (!stream.serializeBytes(_tmp)) return false;
-    for (local i = 0; i < _n; i++) value.S[i] = _tmp[i];
-    for (local i = 0; i < _n; i++) { if (value.S[i] == 0) return false; } // interior NUL (SPEC §4.7)
-    for (local i = 0; i < _n; ) {
-      local c = value.S[i]; i++;
-      if (c < 0x80) continue;
-      local rem, point;
-      if ((c & 0xE0) == 0xC0) { rem = 1; point = c & 0x1F; }
-      else if ((c & 0xF0) == 0xE0) { rem = 2; point = c & 0x0F; }
-      else if ((c & 0xF8) == 0xF0) { rem = 3; point = c & 0x07; }
-      else return false; // malformed UTF-8 lead (SPEC §4.7)
-      if (rem > _n - i) return false;
-      for (local j = 0; j < rem; j++) {
-        local b = value.S[i]; i++;
-        if ((b & 0xC0) != 0x80) return false;
-        point = (point << 6) | (b & 0x3F);
-      }
-      if (rem == 1 && point < 0x80) return false;
-      if (rem == 2 && (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) return false;
-      if (rem == 3 && (point < 0x10000 || point > 0x10FFFF)) return false;
+    if (!stream.serializeInt(_h, 0, 4)) return false;
+    value.SLength = _h.value;
+    {
+      local _tmp = blob(_h.value);
+      if (!stream.serializeBytes(_tmp)) return false;
+      if (!_validText(_tmp, _tmp.len())) return false;
+      value.S.seek(0);
+      value.S.writeblob(_tmp);
     }
     value.B = 0;
   } else {
-    if (!stream.serializeBits(_rs, 10)) return false;
-    value.B = _rs.value;
+    if (!stream.serializeBits(_h, 10)) return false;
+    value.B = _h.value;
     for (local i = 0; i < 4; i++) value.S[i] = 0;
     value.SLength = 0;
   }
-  if (!stream.serializeBits(_rs, 7)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 7)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type ArmAlign (SPEC §6.1: the wire order is the declared order)
-_M.WriteArmAlign <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (!stream.serializeBool({ value = v.Flag })) return false; // SPEC §4.3
-  if (v.Flag) {
-    if (typeof v.S != "blob" || v.SLength > 4) return false;
-    if (!stream.serializeBits({ value = v.SLength }, 3)) return false; // the length
-    {
-      local _b = blob(v.SLength);
-      for (local _j = 0; _j < v.SLength; _j++) _b[_j] = v.S[_j];
-      if (!stream.serializeBytes(_b)) return false; // align, then the used bytes (SPEC §4.7)
-    }
+// WriteArmAlign writes value in declared order; false on a refused value.
+_M.WriteArmAlign <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  _h.value = value.Flag;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.Flag) {
+    if (typeof value.S != "blob" || typeof value.SLength != "integer" || value.SLength < 0 || value.SLength > 4 || value.SLength > value.S.len()) return false;
+    _h.value = value.SLength;
+    if (!stream.serializeBits(_h, 3)) return false;
+    if (!stream.serializeBytes(_usedBytes(value.S, value.SLength))) return false;
   } else {
-    if (typeof v.B != "integer") return false;
-    if (!stream.serializeBits({ value = v.B }, 10)) return false; // the declared bit width
+    if (typeof value.B != "integer") return false;
+    _h.value = value.B;
+    if (!stream.serializeBits(_h, 10)) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 7)) return false; // the declared bit width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 7)) return false;
   return true;
 };
 
@@ -373,50 +429,59 @@ _M.ArmArray <- class {
   }
 };
 
-// ReadArmArray decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ArmArrayMaxBits is the longest wire path, align padding at its worst case;
+// ArmArrayMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ArmArrayMaxBits <- 54;
+_M.ArmArrayMaxBytes <- 8;
+
+// ReadArmArray reads into value's storage in place; false on a refused read.
 _M.ReadArmArray <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Flag = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Flag = _h.value;
   if (value.Flag) {
-    if (!stream.serializeInt(_rs, 0, 3)) return false; // the count guards the loop (§6.3)
-    value.ItemsCount = _rs.value;
+    if (!stream.serializeInt(_h, 0, 3)) return false;
+    value.ItemsCount = _h.value;
     for (local i = 0; i < value.ItemsCount; i++) {
-      if (!stream.serializeInt(_rs, 0, 8191)) return false;
-      value.Items[i] = _rs.value;
+      if (!stream.serializeInt(_h, 0, 8191)) return false;
+      value.Items[i] = _h.value;
     }
     value.B = 0;
   } else {
-    if (!stream.serializeBits(_rs, 9)) return false;
-    value.B = _rs.value;
+    if (!stream.serializeBits(_h, 9)) return false;
+    value.B = _h.value;
     for (local i = 0; i < 3; i++) value.Items[i] = 0;
     value.ItemsCount = 0;
   }
-  if (!stream.serializeBits(_rs, 7)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 7)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type ArmArray (SPEC §6.1: the wire order is the declared order)
-_M.WriteArmArray <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (!stream.serializeBool({ value = v.Flag })) return false; // SPEC §4.3
-  if (v.Flag) {
-    if (typeof v.ItemsCount != "integer" || v.ItemsCount < 0 || v.ItemsCount > 3) return false; // the count guards the loop (SPEC §6.3)
-    if (!stream.serializeBits({ value = v.ItemsCount }, 2)) return false; // the count
-    for (local _i = 0; _i < v.ItemsCount; _i++) {
-      if (!stream.serializeInt({ value = v.Items[_i] }, 0, 8191)) return false; // the offset from min (SPEC §4.3)
+// WriteArmArray writes value in declared order; false on a refused value.
+_M.WriteArmArray <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  _h.value = value.Flag;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.Flag) {
+    if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+    _h.value = value.ItemsCount;
+    if (!stream.serializeBits(_h, 2)) return false;
+    for (local _i = 0; _i < value.ItemsCount; _i++) {
+      _h.value = value.Items[_i];
+      if (!stream.serializeInt(_h, 0, 8191)) return false;
     }
   } else {
-    if (typeof v.B != "integer") return false;
-    if (!stream.serializeBits({ value = v.B }, 9)) return false; // the declared bit width
+    if (typeof value.B != "integer") return false;
+    _h.value = value.B;
+    if (!stream.serializeBits(_h, 9)) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 7)) return false; // the declared bit width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 7)) return false;
   return true;
 };
 
@@ -428,19 +493,23 @@ _M.Narrow <- class {
   }
 };
 
-// ReadNarrow decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// NarrowMaxBits is the longest wire path, align padding at its worst case;
+// NarrowMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.NarrowMaxBits <- 3;
+_M.NarrowMaxBytes <- 8;
+
+// ReadNarrow reads into value's storage in place; false on a refused read.
 _M.ReadNarrow <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 3)) return false;
-  value.N = _rs.value;
+  if (!stream.serializeBits(_h, 3)) return false;
+  value.N = _h.value;
   return true;
 };
 
-// type Narrow (SPEC §6.1: the wire order is the declared order)
-_M.WriteNarrow <- function(stream, v) {
-  if (typeof v.N != "integer") return false;
-  if (!stream.serializeBits({ value = v.N }, 3)) return false; // the declared bit width
+// WriteNarrow writes value in declared order; false on a refused value.
+_M.WriteNarrow <- function(stream, value) {
+  if (typeof value.N != "integer") return false;
+  _h.value = value.N;
+  if (!stream.serializeBits(_h, 3)) return false;
   return true;
 };
 
@@ -452,19 +521,23 @@ _M.Wide <- class {
   }
 };
 
-// ReadWide decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// WideMaxBits is the longest wire path, align padding at its worst case;
+// WideMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.WideMaxBits <- 37;
+_M.WideMaxBytes <- 8;
+
+// ReadWide reads into value's storage in place; false on a refused read.
 _M.ReadWide <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits64(_rs, 37)) return false;
-  value.W = _rs.value;
+  if (!stream.serializeBits64(_h, 37)) return false;
+  value.W = _h.value;
   return true;
 };
 
-// type Wide (SPEC §6.1: the wire order is the declared order)
-_M.WriteWide <- function(stream, v) {
-  if (typeof v.W != "integer") return false;
-  if (!stream.serializeBits64({ value = v.W }, 37)) return false; // the declared bit width
+// WriteWide writes value in declared order; false on a refused value.
+_M.WriteWide <- function(stream, value) {
+  if (typeof value.W != "integer") return false;
+  _h.value = value.W;
+  if (!stream.serializeBits64(_h, 37)) return false;
   return true;
 };
 
@@ -499,32 +572,38 @@ _M.Uneven <- class {
   }
 };
 
+// UnevenMaxBits is the tag plus the largest arm, None the tag alone;
+// UnevenMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.UnevenMaxBits <- 39;
+_M.UnevenMaxBytes <- 8;
+
+// ReadUneven reads the tag, then the selected arm in place; false on a refused read.
 _M.ReadUneven <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 2)) return false; // rejects a tag above the arms (SPEC §4.8)
-  value.Type = _rs.value;
+  if (!stream.serializeInt(_h, 0, 2)) return false;
+  value.Type = _h.value;
   switch (value.Type) {
-    case 1: {
+    case 1: // Narrow
       if (!_M.ReadNarrow(stream, value.Narrow)) return false;
-      return true;
-    }
-    case 2: {
+      break;
+    case 2: // Wide
       if (!_M.ReadWide(stream, value.Wide)) return false;
-      return true;
-    }
-    default: return true; // None
+      break;
   }
+  return true;
 };
 
-// union Uneven (SPEC §4.8: None = 0, then each declared arm)
-_M.WriteUneven <- function(stream, v) {
-  if (typeof v.Type != "integer" || v.Type < 0 || v.Type > 2) return false;
-  if (!stream.serializeBits({ value = v.Type }, 2)) return false; // the union tag
-  if (v.Type == 1) {
-    if (!_M.WriteNarrow(stream, v.Narrow)) return false;
-  }
-  if (v.Type == 2) {
-    if (!_M.WriteWide(stream, v.Wide)) return false;
+// WriteUneven writes the tag, then the selected arm; false on a refused value.
+_M.WriteUneven <- function(stream, value) {
+  if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
+  _h.value = value.Type;
+  if (!stream.serializeBits(_h, 2)) return false;
+  switch (value.Type) {
+    case 1: // Narrow
+      if (!_M.WriteNarrow(stream, value.Narrow)) return false;
+      break;
+    case 2: // Wide
+      if (!_M.WriteWide(stream, value.Wide)) return false;
+      break;
   }
   return true;
 };
@@ -541,25 +620,30 @@ _M.HoldsUneven <- class {
   }
 };
 
-// ReadHoldsUneven decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// HoldsUnevenMaxBits is the longest wire path, align padding at its worst case;
+// HoldsUnevenMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.HoldsUnevenMaxBits <- 55;
+_M.HoldsUnevenMaxBytes <- 8;
+
+// ReadHoldsUneven reads into value's storage in place; false on a refused read.
 _M.ReadHoldsUneven <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
   if (!_M.ReadUneven(stream, value.U)) return false;
-  if (!stream.serializeBits(_rs, 11)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 11)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type HoldsUneven (SPEC §6.1: the wire order is the declared order)
-_M.WriteHoldsUneven <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (!_M.WriteUneven(stream, v.U)) return false;
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 11)) return false; // the declared bit width
+// WriteHoldsUneven writes value in declared order; false on a refused value.
+_M.WriteHoldsUneven <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  if (!_M.WriteUneven(stream, value.U)) return false;
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 11)) return false;
   return true;
 };
 
@@ -578,33 +662,39 @@ _M.ArrUneven <- class {
   }
 };
 
-// ReadArrUneven decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ArrUnevenMaxBits is the longest wire path, align padding at its worst case;
+// ArrUnevenMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ArrUnevenMaxBits <- 127;
+_M.ArrUnevenMaxBytes <- 16;
+
+// ReadArrUneven reads into value's storage in place; false on a refused read.
 _M.ReadArrUneven <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 3)) return false; // the count guards the loop (§6.3)
-  value.ItemsCount = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeInt(_h, 0, 3)) return false;
+  value.ItemsCount = _h.value;
   for (local i = 0; i < value.ItemsCount; i++) {
     if (!_M.ReadUneven(stream, value.Items[i])) return false;
   }
-  if (!stream.serializeBits(_rs, 3)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 3)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type ArrUneven (SPEC §6.1: the wire order is the declared order)
-_M.WriteArrUneven <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (typeof v.ItemsCount != "integer" || v.ItemsCount < 0 || v.ItemsCount > 3) return false; // the count guards the loop (SPEC §6.3)
-  if (!stream.serializeBits({ value = v.ItemsCount }, 2)) return false; // the count
-  for (local _i = 0; _i < v.ItemsCount; _i++) {
-    if (!_M.WriteUneven(stream, v.Items[_i])) return false;
+// WriteArrUneven writes value in declared order; false on a refused value.
+_M.WriteArrUneven <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+  _h.value = value.ItemsCount;
+  if (!stream.serializeBits(_h, 2)) return false;
+  for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (!_M.WriteUneven(stream, value.Items[_i])) return false;
   }
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 3)) return false; // the declared bit width
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 3)) return false;
   return true;
 };
 
@@ -632,77 +722,68 @@ _M.RegainAfterAlign <- class {
   }
 };
 
-// ReadRegainAfterAlign decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// RegainAfterAlignMaxBits is the longest wire path, align padding at its worst case;
+// RegainAfterAlignMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.RegainAfterAlignMaxBits <- 172;
+_M.RegainAfterAlignMaxBytes <- 24;
+
+// ReadRegainAfterAlign reads into value's storage in place; false on a refused read.
 _M.ReadRegainAfterAlign <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 5)) return false;
-  value.Lead = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 3)) return false; // the count guards the loop (§6.3)
-  value.ItemsCount = _rs.value;
+  if (!stream.serializeBits(_h, 5)) return false;
+  value.Lead = _h.value;
+  if (!stream.serializeInt(_h, 0, 3)) return false;
+  value.ItemsCount = _h.value;
   for (local i = 0; i < value.ItemsCount; i++) {
-    if (!stream.serializeInt(_rs, 0, 8191)) return false;
-    value.Items[i] = _rs.value;
+    if (!stream.serializeInt(_h, 0, 8191)) return false;
+    value.Items[i] = _h.value;
   }
-  if (!stream.serializeInt(_rs, 0, 4)) return false; // the length guards the copy (§6.3)
-  value.SLength = _rs.value;
-  local _n = _rs.value;
-  local _tmp = blob(_n);
-  if (!stream.serializeBytes(_tmp)) return false;
-  for (local i = 0; i < _n; i++) value.S[i] = _tmp[i];
-  for (local i = 0; i < _n; i++) { if (value.S[i] == 0) return false; } // interior NUL (SPEC §4.7)
-  for (local i = 0; i < _n; ) {
-    local c = value.S[i]; i++;
-    if (c < 0x80) continue;
-    local rem, point;
-    if ((c & 0xE0) == 0xC0) { rem = 1; point = c & 0x1F; }
-    else if ((c & 0xF0) == 0xE0) { rem = 2; point = c & 0x0F; }
-    else if ((c & 0xF8) == 0xF0) { rem = 3; point = c & 0x07; }
-    else return false; // malformed UTF-8 lead (SPEC §4.7)
-    if (rem > _n - i) return false;
-    for (local j = 0; j < rem; j++) {
-      local b = value.S[i]; i++;
-      if ((b & 0xC0) != 0x80) return false;
-      point = (point << 6) | (b & 0x3F);
-    }
-    if (rem == 1 && point < 0x80) return false;
-    if (rem == 2 && (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) return false;
-    if (rem == 3 && (point < 0x10000 || point > 0x10FFFF)) return false;
+  if (!stream.serializeInt(_h, 0, 4)) return false;
+  value.SLength = _h.value;
+  {
+    local _tmp = blob(_h.value);
+    if (!stream.serializeBytes(_tmp)) return false;
+    if (!_validText(_tmp, _tmp.len())) return false;
+    value.S.seek(0);
+    value.S.writeblob(_tmp);
   }
-  if (!stream.serializeBits(_rs, 32)) return false;
-  value.P = _rs.value;
-  if (!stream.serializeBits(_rs, 29)) return false;
-  value.Q = _rs.value;
-  if (!stream.serializeBits(_rs, 19)) return false;
-  value.R = _rs.value;
-  if (!stream.serializeBits(_rs, 4)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 32)) return false;
+  value.P = _h.value;
+  if (!stream.serializeBits(_h, 29)) return false;
+  value.Q = _h.value;
+  if (!stream.serializeBits(_h, 19)) return false;
+  value.R = _h.value;
+  if (!stream.serializeBits(_h, 4)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type RegainAfterAlign (SPEC §6.1: the wire order is the declared order)
-_M.WriteRegainAfterAlign <- function(stream, v) {
-  if (typeof v.Lead != "integer") return false;
-  if (!stream.serializeBits({ value = v.Lead }, 5)) return false; // the declared bit width
-  if (typeof v.ItemsCount != "integer" || v.ItemsCount < 0 || v.ItemsCount > 3) return false; // the count guards the loop (SPEC §6.3)
-  if (!stream.serializeBits({ value = v.ItemsCount }, 2)) return false; // the count
-  for (local _i = 0; _i < v.ItemsCount; _i++) {
-    if (!stream.serializeInt({ value = v.Items[_i] }, 0, 8191)) return false; // the offset from min (SPEC §4.3)
+// WriteRegainAfterAlign writes value in declared order; false on a refused value.
+_M.WriteRegainAfterAlign <- function(stream, value) {
+  if (typeof value.Lead != "integer") return false;
+  _h.value = value.Lead;
+  if (!stream.serializeBits(_h, 5)) return false;
+  if (typeof value.ItemsCount != "integer" || value.ItemsCount < 0 || value.ItemsCount > 3) return false;
+  _h.value = value.ItemsCount;
+  if (!stream.serializeBits(_h, 2)) return false;
+  for (local _i = 0; _i < value.ItemsCount; _i++) {
+    _h.value = value.Items[_i];
+    if (!stream.serializeInt(_h, 0, 8191)) return false;
   }
-  if (typeof v.S != "blob" || v.SLength > 4) return false;
-  if (!stream.serializeBits({ value = v.SLength }, 3)) return false; // the length
-  {
-    local _b = blob(v.SLength);
-    for (local _j = 0; _j < v.SLength; _j++) _b[_j] = v.S[_j];
-    if (!stream.serializeBytes(_b)) return false; // align, then the used bytes (SPEC §4.7)
-  }
-  if (typeof v.P != "integer") return false;
-  if (!stream.serializeBits({ value = v.P }, 32)) return false; // the declared bit width
-  if (typeof v.Q != "integer") return false;
-  if (!stream.serializeBits({ value = v.Q }, 29)) return false; // the declared bit width
-  if (typeof v.R != "integer") return false;
-  if (!stream.serializeBits({ value = v.R }, 19)) return false; // the declared bit width
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 4)) return false; // the declared bit width
+  if (typeof value.S != "blob" || typeof value.SLength != "integer" || value.SLength < 0 || value.SLength > 4 || value.SLength > value.S.len()) return false;
+  _h.value = value.SLength;
+  if (!stream.serializeBits(_h, 3)) return false;
+  if (!stream.serializeBytes(_usedBytes(value.S, value.SLength))) return false;
+  if (typeof value.P != "integer") return false;
+  _h.value = value.P;
+  if (!stream.serializeBits(_h, 32)) return false;
+  if (typeof value.Q != "integer") return false;
+  _h.value = value.Q;
+  if (!stream.serializeBits(_h, 29)) return false;
+  if (typeof value.R != "integer") return false;
+  _h.value = value.R;
+  if (!stream.serializeBits(_h, 19)) return false;
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 4)) return false;
   return true;
 };

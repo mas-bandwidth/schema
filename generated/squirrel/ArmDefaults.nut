@@ -2,14 +2,24 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example, protocol_id 0xeb26c970fde3fd71
+// package example — protocol id 0xeb26c970fde3fd71
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local ArmDefaults = dofile(dir + "/schema_module.nut", true).require("ArmDefaults");
 
 local _M = vargv[0];
 local _require = vargv[1];
-local _Wire = _require("Wire");
+local _Wire_ = _require("Wire");
+
+local _h = { value = 0 };
+
+local _noBytes = blob(0);
+local _usedBytes = function(b, n) {
+  if (n == b.len()) return b;
+  if (n == 0) return _noBytes;
+  b.seek(0);
+  return b.readblob(n);
+};
 
 // type DefaultArm
 _M.DefaultArm <- class {
@@ -18,34 +28,39 @@ _M.DefaultArm <- class {
   Marker = null;
   constructor() {
     this.Entries = array(2);
-    for (local i = 0; i < 2; i++) this.Entries[i] = _Wire.ProbeConfig();
+    for (local i = 0; i < 2; i++) this.Entries[i] = _Wire_.ProbeConfig();
     this.EntriesCount = 0;
     this.Marker = 0;
   }
 };
 
-// ReadDefaultArm decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// DefaultArmMaxBits is the longest wire path, align padding at its worst case;
+// DefaultArmMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.DefaultArmMaxBits <- 77;
+_M.DefaultArmMaxBytes <- 16;
+
+// ReadDefaultArm reads into value's storage in place; false on a refused read.
 _M.ReadDefaultArm <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 2)) return false; // the count guards the loop (§6.3)
-  value.EntriesCount = _rs.value;
+  if (!stream.serializeInt(_h, 0, 2)) return false;
+  value.EntriesCount = _h.value;
   for (local i = 0; i < value.EntriesCount; i++) {
-    if (!_Wire.ReadProbeConfig(stream, value.Entries[i])) return false;
+    if (!_Wire_.ReadProbeConfig(stream, value.Entries[i])) return false;
   }
-  if (!stream.serializeInt(_rs, 0, 7)) return false;
-  value.Marker = _rs.value;
+  if (!stream.serializeInt(_h, 0, 7)) return false;
+  value.Marker = _h.value;
   return true;
 };
 
-// type DefaultArm (SPEC §6.1: the wire order is the declared order)
-_M.WriteDefaultArm <- function(stream, v) {
-  if (typeof v.EntriesCount != "integer" || v.EntriesCount < 0 || v.EntriesCount > 2) return false; // the count guards the loop (SPEC §6.3)
-  if (!stream.serializeBits({ value = v.EntriesCount }, 2)) return false; // the count
-  for (local _i = 0; _i < v.EntriesCount; _i++) {
-    if (!_Wire.WriteProbeConfig(stream, v.Entries[_i])) return false;
+// WriteDefaultArm writes value in declared order; false on a refused value.
+_M.WriteDefaultArm <- function(stream, value) {
+  if (typeof value.EntriesCount != "integer" || value.EntriesCount < 0 || value.EntriesCount > 2) return false;
+  _h.value = value.EntriesCount;
+  if (!stream.serializeBits(_h, 2)) return false;
+  for (local _i = 0; _i < value.EntriesCount; _i++) {
+    if (!_Wire_.WriteProbeConfig(stream, value.Entries[_i])) return false;
   }
-  if (!stream.serializeInt({ value = v.Marker }, 0, 7)) return false; // the offset from min (SPEC §4.3)
+  _h.value = value.Marker;
+  if (!stream.serializeInt(_h, 0, 7)) return false;
   return true;
 };
 
@@ -80,32 +95,38 @@ _M.DefaultChoice <- class {
   }
 };
 
+// DefaultChoiceMaxBits is the tag plus the largest arm, None the tag alone;
+// DefaultChoiceMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.DefaultChoiceMaxBits <- 79;
+_M.DefaultChoiceMaxBytes <- 16;
+
+// ReadDefaultChoice reads the tag, then the selected arm in place; false on a refused read.
 _M.ReadDefaultChoice <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 2)) return false; // rejects a tag above the arms (SPEC §4.8)
-  value.Type = _rs.value;
+  if (!stream.serializeInt(_h, 0, 2)) return false;
+  value.Type = _h.value;
   switch (value.Type) {
-    case 1: {
+    case 1: // First
       if (!_M.ReadDefaultArm(stream, value.First)) return false;
-      return true;
-    }
-    case 2: {
+      break;
+    case 2: // Second
       if (!_M.ReadDefaultArm(stream, value.Second)) return false;
-      return true;
-    }
-    default: return true; // None
+      break;
   }
+  return true;
 };
 
-// union DefaultChoice (SPEC §4.8: None = 0, then each declared arm)
-_M.WriteDefaultChoice <- function(stream, v) {
-  if (typeof v.Type != "integer" || v.Type < 0 || v.Type > 2) return false;
-  if (!stream.serializeBits({ value = v.Type }, 2)) return false; // the union tag
-  if (v.Type == 1) {
-    if (!_M.WriteDefaultArm(stream, v.First)) return false;
-  }
-  if (v.Type == 2) {
-    if (!_M.WriteDefaultArm(stream, v.Second)) return false;
+// WriteDefaultChoice writes the tag, then the selected arm; false on a refused value.
+_M.WriteDefaultChoice <- function(stream, value) {
+  if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
+  _h.value = value.Type;
+  if (!stream.serializeBits(_h, 2)) return false;
+  switch (value.Type) {
+    case 1: // First
+      if (!_M.WriteDefaultArm(stream, value.First)) return false;
+      break;
+    case 2: // Second
+      if (!_M.WriteDefaultArm(stream, value.Second)) return false;
+      break;
   }
   return true;
 };
@@ -118,17 +139,20 @@ _M.DefaultChoicePacket <- class {
   }
 };
 
-// ReadDefaultChoicePacket decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// DefaultChoicePacketMaxBits is the longest wire path, align padding at its worst case;
+// DefaultChoicePacketMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.DefaultChoicePacketMaxBits <- 79;
+_M.DefaultChoicePacketMaxBytes <- 16;
+
+// ReadDefaultChoicePacket reads into value's storage in place; false on a refused read.
 _M.ReadDefaultChoicePacket <- function(stream, value) {
-  local _rs = { value = 0 };
   if (!_M.ReadDefaultChoice(stream, value.Choice)) return false;
   return true;
 };
 
-// type DefaultChoicePacket (SPEC §6.1: the wire order is the declared order)
-_M.WriteDefaultChoicePacket <- function(stream, v) {
-  if (!_M.WriteDefaultChoice(stream, v.Choice)) return false;
+// WriteDefaultChoicePacket writes value in declared order; false on a refused value.
+_M.WriteDefaultChoicePacket <- function(stream, value) {
+  if (!_M.WriteDefaultChoice(stream, value.Choice)) return false;
   return true;
 };
 
@@ -144,30 +168,32 @@ _M.DefaultBulkArm <- class {
   }
 };
 
-// ReadDefaultBulkArm decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// DefaultBulkArmMaxBits is the longest wire path, align padding at its worst case;
+// DefaultBulkArmMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.DefaultBulkArmMaxBits <- 102;
+_M.DefaultBulkArmMaxBytes <- 16;
+
+// ReadDefaultBulkArm reads into value's storage in place; false on a refused read.
 _M.ReadDefaultBulkArm <- function(stream, value) {
-  local _rs = { value = 0 };
   if (!_M.ReadDefaultArm(stream, value.Payload)) return false;
-  if (!stream.serializeInt(_rs, 0, 2)) return false; // the length guards the copy (§6.3)
-  value.DataLength = _rs.value;
-  local _n = _rs.value;
-  local _tmp = blob(_n);
-  if (!stream.serializeBytes(_tmp)) return false;
-  for (local i = 0; i < _n; i++) value.Data[i] = _tmp[i];
+  if (!stream.serializeInt(_h, 0, 2)) return false;
+  value.DataLength = _h.value;
+  {
+    local _tmp = blob(_h.value);
+    if (!stream.serializeBytes(_tmp)) return false;
+    value.Data.seek(0);
+    value.Data.writeblob(_tmp);
+  }
   return true;
 };
 
-// type DefaultBulkArm (SPEC §6.1: the wire order is the declared order)
-_M.WriteDefaultBulkArm <- function(stream, v) {
-  if (!_M.WriteDefaultArm(stream, v.Payload)) return false;
-  if (typeof v.Data != "blob" || v.DataLength > 2) return false;
-  if (!stream.serializeBits({ value = v.DataLength }, 2)) return false; // the length
-  {
-    local _b = blob(v.DataLength);
-    for (local _j = 0; _j < v.DataLength; _j++) _b[_j] = v.Data[_j];
-    if (!stream.serializeBytes(_b)) return false; // align, then the used bytes (SPEC §4.7)
-  }
+// WriteDefaultBulkArm writes value in declared order; false on a refused value.
+_M.WriteDefaultBulkArm <- function(stream, value) {
+  if (!_M.WriteDefaultArm(stream, value.Payload)) return false;
+  if (typeof value.Data != "blob" || typeof value.DataLength != "integer" || value.DataLength < 0 || value.DataLength > 2 || value.DataLength > value.Data.len()) return false;
+  _h.value = value.DataLength;
+  if (!stream.serializeBits(_h, 2)) return false;
+  if (!stream.serializeBytes(_usedBytes(value.Data, value.DataLength))) return false;
   return true;
 };
 
@@ -202,32 +228,38 @@ _M.DefaultBulkChoice <- class {
   }
 };
 
+// DefaultBulkChoiceMaxBits is the tag plus the largest arm, None the tag alone;
+// DefaultBulkChoiceMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.DefaultBulkChoiceMaxBits <- 104;
+_M.DefaultBulkChoiceMaxBytes <- 16;
+
+// ReadDefaultBulkChoice reads the tag, then the selected arm in place; false on a refused read.
 _M.ReadDefaultBulkChoice <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 2)) return false; // rejects a tag above the arms (SPEC §4.8)
-  value.Type = _rs.value;
+  if (!stream.serializeInt(_h, 0, 2)) return false;
+  value.Type = _h.value;
   switch (value.Type) {
-    case 1: {
+    case 1: // First
       if (!_M.ReadDefaultBulkArm(stream, value.First)) return false;
-      return true;
-    }
-    case 2: {
+      break;
+    case 2: // Second
       if (!_M.ReadDefaultBulkArm(stream, value.Second)) return false;
-      return true;
-    }
-    default: return true; // None
+      break;
   }
+  return true;
 };
 
-// union DefaultBulkChoice (SPEC §4.8: None = 0, then each declared arm)
-_M.WriteDefaultBulkChoice <- function(stream, v) {
-  if (typeof v.Type != "integer" || v.Type < 0 || v.Type > 2) return false;
-  if (!stream.serializeBits({ value = v.Type }, 2)) return false; // the union tag
-  if (v.Type == 1) {
-    if (!_M.WriteDefaultBulkArm(stream, v.First)) return false;
-  }
-  if (v.Type == 2) {
-    if (!_M.WriteDefaultBulkArm(stream, v.Second)) return false;
+// WriteDefaultBulkChoice writes the tag, then the selected arm; false on a refused value.
+_M.WriteDefaultBulkChoice <- function(stream, value) {
+  if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
+  _h.value = value.Type;
+  if (!stream.serializeBits(_h, 2)) return false;
+  switch (value.Type) {
+    case 1: // First
+      if (!_M.WriteDefaultBulkArm(stream, value.First)) return false;
+      break;
+    case 2: // Second
+      if (!_M.WriteDefaultBulkArm(stream, value.Second)) return false;
+      break;
   }
   return true;
 };

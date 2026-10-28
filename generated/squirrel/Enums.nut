@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example, protocol_id 0xeb26c970fde3fd71
+// package example — protocol id 0xeb26c970fde3fd71
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Enums = dofile(dir + "/schema_module.nut", true).require("Enums");

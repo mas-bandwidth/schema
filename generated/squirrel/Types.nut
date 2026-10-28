@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example, protocol_id 0xeb26c970fde3fd71
+// package example — protocol id 0xeb26c970fde3fd71
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Types = dofile(dir + "/schema_module.nut", true).require("Types");
 
 local _M = vargv[0];
 local _require = vargv[1];
+
+local _h = { value = 0 };
 
 // type Vec3
 _M.Vec3 <- class {
@@ -22,24 +24,30 @@ _M.Vec3 <- class {
   }
 };
 
-// ReadVec3 decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// Vec3MaxBits is the longest wire path, align padding at its worst case;
+// Vec3MaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.Vec3MaxBits <- 192;
+_M.Vec3MaxBytes <- 24;
+
+// ReadVec3 reads into value's storage in place; false on a refused read.
 _M.ReadVec3 <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeDouble(_rs)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeDouble(_rs)) return false;
-  value.Y = _rs.value;
-  if (!stream.serializeDouble(_rs)) return false;
-  value.Z = _rs.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.X = _h.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.Y = _h.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.Z = _h.value;
   return true;
 };
 
-// type Vec3 (SPEC §6.1: the wire order is the declared order)
-_M.WriteVec3 <- function(stream, v) {
-  if (!stream.serializeDouble({ value = v.X })) return false;
-  if (!stream.serializeDouble({ value = v.Y })) return false;
-  if (!stream.serializeDouble({ value = v.Z })) return false;
+// WriteVec3 writes value in declared order; false on a refused value.
+_M.WriteVec3 <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeDouble(_h)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeDouble(_h)) return false;
+  _h.value = value.Z;
+  if (!stream.serializeDouble(_h)) return false;
   return true;
 };
 
@@ -57,27 +65,34 @@ _M.Quat <- class {
   }
 };
 
-// ReadQuat decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// QuatMaxBits is the longest wire path, align padding at its worst case;
+// QuatMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.QuatMaxBits <- 256;
+_M.QuatMaxBytes <- 32;
+
+// ReadQuat reads into value's storage in place; false on a refused read.
 _M.ReadQuat <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeDouble(_rs)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeDouble(_rs)) return false;
-  value.Y = _rs.value;
-  if (!stream.serializeDouble(_rs)) return false;
-  value.Z = _rs.value;
-  if (!stream.serializeDouble(_rs)) return false;
-  value.W = _rs.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.X = _h.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.Y = _h.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.Z = _h.value;
+  if (!stream.serializeDouble(_h)) return false;
+  value.W = _h.value;
   return true;
 };
 
-// type Quat (SPEC §6.1: the wire order is the declared order)
-_M.WriteQuat <- function(stream, v) {
-  if (!stream.serializeDouble({ value = v.X })) return false;
-  if (!stream.serializeDouble({ value = v.Y })) return false;
-  if (!stream.serializeDouble({ value = v.Z })) return false;
-  if (!stream.serializeDouble({ value = v.W })) return false;
+// WriteQuat writes value in declared order; false on a refused value.
+_M.WriteQuat <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeDouble(_h)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeDouble(_h)) return false;
+  _h.value = value.Z;
+  if (!stream.serializeDouble(_h)) return false;
+  _h.value = value.W;
+  if (!stream.serializeDouble(_h)) return false;
   return true;
 };
 
@@ -91,22 +106,27 @@ _M.Handle <- class {
   }
 };
 
-// ReadHandle decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// HandleMaxBits is the longest wire path, align padding at its worst case;
+// HandleMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.HandleMaxBits <- 22;
+_M.HandleMaxBytes <- 8;
+
+// ReadHandle reads into value's storage in place; false on a refused read.
 _M.ReadHandle <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 9999)) return false;
-  value.ObjectId = _rs.value;
-  if (!stream.serializeBits(_rs, 8)) return false;
-  value.ObjectSequence = _rs.value;
+  if (!stream.serializeInt(_h, 0, 9999)) return false;
+  value.ObjectId = _h.value;
+  if (!stream.serializeBits(_h, 8)) return false;
+  value.ObjectSequence = _h.value;
   return true;
 };
 
-// type Handle (SPEC §6.1: the wire order is the declared order)
-_M.WriteHandle <- function(stream, v) {
-  if (!stream.serializeInt({ value = v.ObjectId }, 0, 9999)) return false; // the offset from min (SPEC §4.3)
-  if (typeof v.ObjectSequence != "integer") return false;
-  if (!stream.serializeBits({ value = v.ObjectSequence }, 8)) return false; // the storage width
+// WriteHandle writes value in declared order; false on a refused value.
+_M.WriteHandle <- function(stream, value) {
+  _h.value = value.ObjectId;
+  if (!stream.serializeInt(_h, 0, 9999)) return false;
+  if (typeof value.ObjectSequence != "integer") return false;
+  _h.value = value.ObjectSequence;
+  if (!stream.serializeBits(_h, 8)) return false;
   return true;
 };
 
@@ -122,24 +142,30 @@ _M.QuantizedPosition <- class {
   }
 };
 
-// ReadQuantizedPosition decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// QuantizedPositionMaxBits is the longest wire path, align padding at its worst case;
+// QuantizedPositionMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.QuantizedPositionMaxBits <- 75;
+_M.QuantizedPositionMaxBytes <- 16;
+
+// ReadQuantizedPosition reads into value's storage in place; false on a refused read.
 _M.ReadQuantizedPosition <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, -8388608, 8388608)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeInt(_rs, -8388608, 8388608)) return false;
-  value.Y = _rs.value;
-  if (!stream.serializeInt(_rs, -8388608, 8388608)) return false;
-  value.Z = _rs.value;
+  if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
+  value.X = _h.value;
+  if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
+  value.Y = _h.value;
+  if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
+  value.Z = _h.value;
   return true;
 };
 
-// type QuantizedPosition (SPEC §6.1: the wire order is the declared order)
-_M.WriteQuantizedPosition <- function(stream, v) {
-  if (!stream.serializeInt({ value = v.X }, -8388608, 8388608)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.Y }, -8388608, 8388608)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.Z }, -8388608, 8388608)) return false; // the offset from min (SPEC §4.3)
+// WriteQuantizedPosition writes value in declared order; false on a refused value.
+_M.WriteQuantizedPosition <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
+  _h.value = value.Z;
+  if (!stream.serializeInt(_h, -8388608, 8388608)) return false;
   return true;
 };
 
@@ -155,24 +181,30 @@ _M.QuantizedVelocity <- class {
   }
 };
 
-// ReadQuantizedVelocity decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// QuantizedVelocityMaxBits is the longest wire path, align padding at its worst case;
+// QuantizedVelocityMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.QuantizedVelocityMaxBits <- 69;
+_M.QuantizedVelocityMaxBytes <- 16;
+
+// ReadQuantizedVelocity reads into value's storage in place; false on a refused read.
 _M.ReadQuantizedVelocity <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, -2097152, 2097152)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeInt(_rs, -2097152, 2097152)) return false;
-  value.Y = _rs.value;
-  if (!stream.serializeInt(_rs, -2097152, 2097152)) return false;
-  value.Z = _rs.value;
+  if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
+  value.X = _h.value;
+  if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
+  value.Y = _h.value;
+  if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
+  value.Z = _h.value;
   return true;
 };
 
-// type QuantizedVelocity (SPEC §6.1: the wire order is the declared order)
-_M.WriteQuantizedVelocity <- function(stream, v) {
-  if (!stream.serializeInt({ value = v.X }, -2097152, 2097152)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.Y }, -2097152, 2097152)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.Z }, -2097152, 2097152)) return false; // the offset from min (SPEC §4.3)
+// WriteQuantizedVelocity writes value in declared order; false on a refused value.
+_M.WriteQuantizedVelocity <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
+  _h.value = value.Z;
+  if (!stream.serializeInt(_h, -2097152, 2097152)) return false;
   return true;
 };
 
@@ -190,27 +222,34 @@ _M.QuantizedRotation <- class {
   }
 };
 
-// ReadQuantizedRotation decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// QuantizedRotationMaxBits is the longest wire path, align padding at its worst case;
+// QuantizedRotationMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.QuantizedRotationMaxBits <- 48;
+_M.QuantizedRotationMaxBytes <- 8;
+
+// ReadQuantizedRotation reads into value's storage in place; false on a refused read.
 _M.ReadQuantizedRotation <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, -1024, 1024)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeInt(_rs, -1024, 1024)) return false;
-  value.Y = _rs.value;
-  if (!stream.serializeInt(_rs, -1024, 1024)) return false;
-  value.Z = _rs.value;
-  if (!stream.serializeInt(_rs, -1024, 1024)) return false;
-  value.W = _rs.value;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  value.X = _h.value;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  value.Y = _h.value;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  value.Z = _h.value;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  value.W = _h.value;
   return true;
 };
 
-// type QuantizedRotation (SPEC §6.1: the wire order is the declared order)
-_M.WriteQuantizedRotation <- function(stream, v) {
-  if (!stream.serializeInt({ value = v.X }, -1024, 1024)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.Y }, -1024, 1024)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.Z }, -1024, 1024)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.W }, -1024, 1024)) return false; // the offset from min (SPEC §4.3)
+// WriteQuantizedRotation writes value in declared order; false on a refused value.
+_M.WriteQuantizedRotation <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  _h.value = value.Z;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  _h.value = value.W;
+  if (!stream.serializeInt(_h, -1024, 1024)) return false;
   return true;
 };
 
@@ -232,14 +271,17 @@ _M.RigidBody <- class {
   }
 };
 
-// ReadRigidBody decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// RigidBodyMaxBits is the longest wire path, align padding at its worst case;
+// RigidBodyMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.RigidBodyMaxBits <- 833;
+_M.RigidBodyMaxBytes <- 112;
+
+// ReadRigidBody reads into value's storage in place; false on a refused read.
 _M.ReadRigidBody <- function(stream, value) {
-  local _rs = { value = 0 };
   if (!_M.ReadVec3(stream, value.Position)) return false;
   if (!_M.ReadQuat(stream, value.Orientation)) return false;
-  if (!stream.serializeBool(_rs)) return false;
-  value.AtRest = _rs.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.AtRest = _h.value;
   if (!value.AtRest) {
     if (!_M.ReadVec3(stream, value.LinearVelocity)) return false;
     if (!_M.ReadVec3(stream, value.AngularVelocity)) return false;
@@ -254,14 +296,15 @@ _M.ReadRigidBody <- function(stream, value) {
   return true;
 };
 
-// type RigidBody (SPEC §6.1: the wire order is the declared order)
-_M.WriteRigidBody <- function(stream, v) {
-  if (!_M.WriteVec3(stream, v.Position)) return false;
-  if (!_M.WriteQuat(stream, v.Orientation)) return false;
-  if (!stream.serializeBool({ value = v.AtRest })) return false; // SPEC §4.3
-  if (!v.AtRest) {
-    if (!_M.WriteVec3(stream, v.LinearVelocity)) return false;
-    if (!_M.WriteVec3(stream, v.AngularVelocity)) return false;
+// WriteRigidBody writes value in declared order; false on a refused value.
+_M.WriteRigidBody <- function(stream, value) {
+  if (!_M.WriteVec3(stream, value.Position)) return false;
+  if (!_M.WriteQuat(stream, value.Orientation)) return false;
+  _h.value = value.AtRest;
+  if (!stream.serializeBool(_h)) return false;
+  if (!value.AtRest) {
+    if (!_M.WriteVec3(stream, value.LinearVelocity)) return false;
+    if (!_M.WriteVec3(stream, value.AngularVelocity)) return false;
   }
   return true;
 };
@@ -298,54 +341,70 @@ _M.Input <- class {
   }
 };
 
-// ReadInput decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// InputMaxBits is the longest wire path, align padding at its worst case;
+// InputMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.InputMaxBits <- 168;
+_M.InputMaxBytes <- 24;
+
+// ReadInput reads into value's storage in place; false on a refused read.
 _M.ReadInput <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeFloat(_rs)) return false;
-  value.StickX = _rs.value;
-  if (!stream.serializeFloat(_rs)) return false;
-  value.StickY = _rs.value;
-  if (!stream.serializeFloat(_rs)) return false;
-  value.Throttle = _rs.value;
-  if (!stream.serializeFloat(_rs)) return false;
-  value.Yaw = _rs.value;
-  if (!stream.serializeFloat(_rs)) return false;
-  value.Pitch = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Fire = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.AltFire = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Boost = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Brake = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Aim = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.LockOn = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Zoom = _rs.value;
-  if (!stream.serializeBool(_rs)) return false;
-  value.Ping = _rs.value;
+  if (!stream.serializeFloat(_h)) return false;
+  value.StickX = _h.value;
+  if (!stream.serializeFloat(_h)) return false;
+  value.StickY = _h.value;
+  if (!stream.serializeFloat(_h)) return false;
+  value.Throttle = _h.value;
+  if (!stream.serializeFloat(_h)) return false;
+  value.Yaw = _h.value;
+  if (!stream.serializeFloat(_h)) return false;
+  value.Pitch = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Fire = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.AltFire = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Boost = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Brake = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Aim = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.LockOn = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Zoom = _h.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.Ping = _h.value;
   return true;
 };
 
-// type Input (SPEC §6.1: the wire order is the declared order)
-_M.WriteInput <- function(stream, v) {
-  if (!stream.serializeFloat({ value = v.StickX })) return false;
-  if (!stream.serializeFloat({ value = v.StickY })) return false;
-  if (!stream.serializeFloat({ value = v.Throttle })) return false;
-  if (!stream.serializeFloat({ value = v.Yaw })) return false;
-  if (!stream.serializeFloat({ value = v.Pitch })) return false;
-  if (!stream.serializeBool({ value = v.Fire })) return false; // SPEC §4.3
-  if (!stream.serializeBool({ value = v.AltFire })) return false; // SPEC §4.3
-  if (!stream.serializeBool({ value = v.Boost })) return false; // SPEC §4.3
-  if (!stream.serializeBool({ value = v.Brake })) return false; // SPEC §4.3
-  if (!stream.serializeBool({ value = v.Aim })) return false; // SPEC §4.3
-  if (!stream.serializeBool({ value = v.LockOn })) return false; // SPEC §4.3
-  if (!stream.serializeBool({ value = v.Zoom })) return false; // SPEC §4.3
-  if (!stream.serializeBool({ value = v.Ping })) return false; // SPEC §4.3
+// WriteInput writes value in declared order; false on a refused value.
+_M.WriteInput <- function(stream, value) {
+  _h.value = value.StickX;
+  if (!stream.serializeFloat(_h)) return false;
+  _h.value = value.StickY;
+  if (!stream.serializeFloat(_h)) return false;
+  _h.value = value.Throttle;
+  if (!stream.serializeFloat(_h)) return false;
+  _h.value = value.Yaw;
+  if (!stream.serializeFloat(_h)) return false;
+  _h.value = value.Pitch;
+  if (!stream.serializeFloat(_h)) return false;
+  _h.value = value.Fire;
+  if (!stream.serializeBool(_h)) return false;
+  _h.value = value.AltFire;
+  if (!stream.serializeBool(_h)) return false;
+  _h.value = value.Boost;
+  if (!stream.serializeBool(_h)) return false;
+  _h.value = value.Brake;
+  if (!stream.serializeBool(_h)) return false;
+  _h.value = value.Aim;
+  if (!stream.serializeBool(_h)) return false;
+  _h.value = value.LockOn;
+  if (!stream.serializeBool(_h)) return false;
+  _h.value = value.Zoom;
+  if (!stream.serializeBool(_h)) return false;
+  _h.value = value.Ping;
+  if (!stream.serializeBool(_h)) return false;
   return true;
 };
 
@@ -366,36 +425,43 @@ _M.InputPacket <- class {
   }
 };
 
-// ReadInputPacket decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// InputPacketMaxBits is the longest wire path, align padding at its worst case;
+// InputPacketMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.InputPacketMaxBits <- 2837;
+_M.InputPacketMaxBytes <- 360;
+
+// ReadInputPacket reads into value's storage in place; false on a refused read.
 _M.ReadInputPacket <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeBits(_rs, 16)) return false;
-  value.SynchronizeSequence = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.CurrentFrame = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.StartFrame = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 16)) return false; // the count guards the loop (§6.3)
-  value.InputsCount = _rs.value;
+  if (!stream.serializeBits(_h, 16)) return false;
+  value.SynchronizeSequence = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.CurrentFrame = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.StartFrame = _h.value;
+  if (!stream.serializeInt(_h, 0, 16)) return false;
+  value.InputsCount = _h.value;
   for (local i = 0; i < value.InputsCount; i++) {
     if (!_M.ReadInput(stream, value.Inputs[i])) return false;
   }
   return true;
 };
 
-// type InputPacket (SPEC §6.1: the wire order is the declared order)
-_M.WriteInputPacket <- function(stream, v) {
-  if (typeof v.SynchronizeSequence != "integer") return false;
-  if (!stream.serializeBits({ value = v.SynchronizeSequence }, 16)) return false; // the storage width
-  if (typeof v.CurrentFrame != "integer") return false;
-  if (!stream.serializeBits64({ value = v.CurrentFrame }, 64)) return false; // the storage width
-  if (typeof v.StartFrame != "integer") return false;
-  if (!stream.serializeBits64({ value = v.StartFrame }, 64)) return false; // the storage width
-  if (typeof v.InputsCount != "integer" || v.InputsCount < 0 || v.InputsCount > 16) return false; // the count guards the loop (SPEC §6.3)
-  if (!stream.serializeBits({ value = v.InputsCount }, 5)) return false; // the count
-  for (local _i = 0; _i < v.InputsCount; _i++) {
-    if (!_M.WriteInput(stream, v.Inputs[_i])) return false;
+// WriteInputPacket writes value in declared order; false on a refused value.
+_M.WriteInputPacket <- function(stream, value) {
+  if (typeof value.SynchronizeSequence != "integer") return false;
+  _h.value = value.SynchronizeSequence;
+  if (!stream.serializeBits(_h, 16)) return false;
+  if (typeof value.CurrentFrame != "integer") return false;
+  _h.value = value.CurrentFrame;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.StartFrame != "integer") return false;
+  _h.value = value.StartFrame;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.InputsCount != "integer" || value.InputsCount < 0 || value.InputsCount > 16) return false;
+  _h.value = value.InputsCount;
+  if (!stream.serializeBits(_h, 5)) return false;
+  for (local _i = 0; _i < value.InputsCount; _i++) {
+    if (!_M.WriteInput(stream, value.Inputs[_i])) return false;
   }
   return true;
 };
@@ -428,51 +494,60 @@ _M.ShipCreate <- class {
   }
 };
 
-// ReadShipCreate decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ShipCreateMaxBits is the longest wire path, align padding at its worst case;
+// ShipCreateMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ShipCreateMaxBits <- 219;
+_M.ShipCreateMaxBytes <- 32;
+
+// ReadShipCreate reads into value's storage in place; false on a refused read.
 _M.ReadShipCreate <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 5)) return false;
-  value.ShipType = _rs.value;
+  if (!stream.serializeInt(_h, 0, 5)) return false;
+  value.ShipType = _h.value;
   if (!_M.ReadQuantizedPosition(stream, value.Position)) return false;
   if (!_M.ReadQuantizedRotation(stream, value.Rotation)) return false;
   if (!_M.ReadQuantizedVelocity(stream, value.LinearVelocity)) return false;
-  if (!stream.serializeBool(_rs)) return false;
-  value.HasFlags = _rs.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.HasFlags = _h.value;
   if (value.HasFlags) {
-    if (!stream.serializeBits(_rs, 4)) return false;
-    value.Flags = _rs.value;
+    if (!stream.serializeBits(_h, 4)) return false;
+    value.Flags = _h.value;
   } else {
     value.Flags = 0;
   }
-  if (!stream.serializeInt(_rs, 0, 2)) return false;
-  value.Team = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 1000)) return false;
-  value.Health = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 100)) return false;
-  value.Thrust = _rs.value;
-  if (!stream.serializeInt(_rs, 0, 0)) return false;
-  value.Pending = _rs.value;
+  if (!stream.serializeInt(_h, 0, 2)) return false;
+  value.Team = _h.value;
+  if (!stream.serializeInt(_h, 0, 1000)) return false;
+  value.Health = _h.value;
+  if (!stream.serializeInt(_h, 0, 100)) return false;
+  value.Thrust = _h.value;
+  if (!stream.serializeInt(_h, 0, 0)) return false;
+  value.Pending = _h.value;
   return true;
 };
 
-// type ShipCreate (SPEC §6.1: the wire order is the declared order)
-_M.WriteShipCreate <- function(stream, v) {
-  if (typeof v.ShipType != "integer" || v.ShipType < 0 || v.ShipType > 5) return false;
-  if (!stream.serializeBits({ value = v.ShipType }, 3)) return false; // the enum value
-  if (!_M.WriteQuantizedPosition(stream, v.Position)) return false;
-  if (!_M.WriteQuantizedRotation(stream, v.Rotation)) return false;
-  if (!_M.WriteQuantizedVelocity(stream, v.LinearVelocity)) return false;
-  if (!stream.serializeBool({ value = v.HasFlags })) return false; // SPEC §4.3
-  if (v.HasFlags) {
-    if (typeof v.Flags != "integer" || v.Flags < 0 || v.Flags >= 16) return false;
-    if (!stream.serializeBits({ value = v.Flags }, 4)) return false; // the flags wire width
+// WriteShipCreate writes value in declared order; false on a refused value.
+_M.WriteShipCreate <- function(stream, value) {
+  if (typeof value.ShipType != "integer" || value.ShipType < 0 || value.ShipType > 5) return false;
+  _h.value = value.ShipType;
+  if (!stream.serializeBits(_h, 3)) return false;
+  if (!_M.WriteQuantizedPosition(stream, value.Position)) return false;
+  if (!_M.WriteQuantizedRotation(stream, value.Rotation)) return false;
+  if (!_M.WriteQuantizedVelocity(stream, value.LinearVelocity)) return false;
+  _h.value = value.HasFlags;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.HasFlags) {
+    if (typeof value.Flags != "integer" || value.Flags < 0 || value.Flags >= 16) return false;
+    _h.value = value.Flags;
+    if (!stream.serializeBits(_h, 4)) return false;
   }
-  if (typeof v.Team != "integer" || v.Team < 0 || v.Team > 2) return false;
-  if (!stream.serializeBits({ value = v.Team }, 2)) return false; // the enum value
-  if (!stream.serializeInt({ value = v.Health }, 0, 1000)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.Thrust }, 0, 100)) return false; // the offset from min (SPEC §4.3)
-  if (typeof v.Pending != "integer" || v.Pending < 0 || v.Pending > 0) return false;
+  if (typeof value.Team != "integer" || value.Team < 0 || value.Team > 2) return false;
+  _h.value = value.Team;
+  if (!stream.serializeBits(_h, 2)) return false;
+  _h.value = value.Health;
+  if (!stream.serializeInt(_h, 0, 1000)) return false;
+  _h.value = value.Thrust;
+  if (!stream.serializeInt(_h, 0, 100)) return false;
+  if (typeof value.Pending != "integer" || value.Pending < 0 || value.Pending > 0) return false;
   return true;
 };
 
@@ -486,21 +561,26 @@ _M.ExpressionProbe <- class {
   }
 };
 
-// ReadExpressionProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ExpressionProbeMaxBits is the longest wire path, align padding at its worst case;
+// ExpressionProbeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ExpressionProbeMaxBits <- 16;
+_M.ExpressionProbeMaxBytes <- 8;
+
+// ReadExpressionProbe reads into value's storage in place; false on a refused read.
 _M.ReadExpressionProbe <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 31)) return false;
-  value.HardpointIndex = _rs.value;
-  if (!stream.serializeInt(_rs, 1024, 2048)) return false;
-  value.SpinRate = _rs.value;
+  if (!stream.serializeInt(_h, 0, 31)) return false;
+  value.HardpointIndex = _h.value;
+  if (!stream.serializeInt(_h, 1024, 2048)) return false;
+  value.SpinRate = _h.value;
   return true;
 };
 
-// type ExpressionProbe (SPEC §6.1: the wire order is the declared order)
-_M.WriteExpressionProbe <- function(stream, v) {
-  if (!stream.serializeInt({ value = v.HardpointIndex }, 0, 31)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.SpinRate }, 1024, 2048)) return false; // the offset from min (SPEC §4.3)
+// WriteExpressionProbe writes value in declared order; false on a refused value.
+_M.WriteExpressionProbe <- function(stream, value) {
+  _h.value = value.HardpointIndex;
+  if (!stream.serializeInt(_h, 0, 31)) return false;
+  _h.value = value.SpinRate;
+  if (!stream.serializeInt(_h, 1024, 2048)) return false;
   return true;
 };
 
@@ -524,36 +604,42 @@ _M.ExtremeProbe <- class {
   }
 };
 
-// ReadExtremeProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ExtremeProbeMaxBits is the longest wire path, align padding at its worst case;
+// ExtremeProbeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ExtremeProbeMaxBits <- 320;
+_M.ExtremeProbeMaxBytes <- 40;
+
+// ReadExtremeProbe reads into value's storage in place; false on a refused read.
 _M.ReadExtremeProbe <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt64(_rs, 0x8000000000000000, 100)) return false;
-  value.FloorBound = _rs.value;
-  if (!stream.serializeInt64(_rs, 0x8000000000000000, 100)) return false;
-  value.DoubledFloor = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  if (_rs.value > 0xfffffffffffffffe) { // a read rejects out-of-range (SPEC §5) — not latched
-    return false;
-  }
-  value.CeilingRange = _rs.value + 1;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.FloorDefault = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.CeilingDefault = _rs.value;
+  if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
+  value.FloorBound = _h.value;
+  if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
+  value.DoubledFloor = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if ((_h.value ^ 0x8000000000000000) > 9223372036854775806) return false; // past the range: refused, not latched
+  value.CeilingRange = _h.value + 1;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.FloorDefault = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.CeilingDefault = _h.value;
   return true;
 };
 
-// type ExtremeProbe (SPEC §6.1: the wire order is the declared order)
-_M.WriteExtremeProbe <- function(stream, v) {
-  if (!stream.serializeInt64({ value = v.FloorBound }, 0x8000000000000000, 100)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt64({ value = v.DoubledFloor }, 0x8000000000000000, 100)) return false; // the offset from min (SPEC §4.3)
-  if (typeof v.CeilingRange != "integer" || (v.CeilingRange ^ 0x8000000000000000) < (1 ^ 0x8000000000000000) || (0xffffffffffffffff ^ 0x8000000000000000) < (v.CeilingRange ^ 0x8000000000000000)) return false;
-  if (!stream.serializeBits64({ value = (v.CeilingRange - 1) }, 64)) return false; // the offset from min
-  if (typeof v.FloorDefault != "integer") return false;
-  if (!stream.serializeBits64({ value = v.FloorDefault }, 64)) return false; // the storage width
-  if (typeof v.CeilingDefault != "integer") return false;
-  if (!stream.serializeBits64({ value = v.CeilingDefault }, 64)) return false; // the storage width
+// WriteExtremeProbe writes value in declared order; false on a refused value.
+_M.WriteExtremeProbe <- function(stream, value) {
+  _h.value = value.FloorBound;
+  if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
+  _h.value = value.DoubledFloor;
+  if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
+  if (typeof value.CeilingRange != "integer" || (value.CeilingRange ^ 0x8000000000000000) < -9223372036854775807) return false;
+  _h.value = value.CeilingRange - 1;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.FloorDefault != "integer") return false;
+  _h.value = value.FloorDefault;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.CeilingDefault != "integer") return false;
+  _h.value = value.CeilingDefault;
+  if (!stream.serializeBits64(_h, 64)) return false;
   return true;
 };
 
@@ -571,32 +657,37 @@ _M.ExtremeRow <- class {
   }
 };
 
-// ReadExtremeRow decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// ExtremeRowMaxBits is the longest wire path, align padding at its worst case;
+// ExtremeRowMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.ExtremeRowMaxBits <- 256;
+_M.ExtremeRowMaxBytes <- 32;
+
+// ReadExtremeRow reads into value's storage in place; false on a refused read.
 _M.ReadExtremeRow <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt64(_rs, 0x8000000000000000, 100)) return false;
-  value.ClampedFloor = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  if (_rs.value > 0xfffffffffffffffd) { // a read rejects out-of-range (SPEC §5) — not latched
-    return false;
-  }
-  value.ClampedCeiling = _rs.value + 1;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.FloorDef = _rs.value;
-  if (!stream.serializeBits64(_rs, 64)) return false;
-  value.CeilingDef = _rs.value;
+  if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
+  value.ClampedFloor = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if ((_h.value ^ 0x8000000000000000) > 9223372036854775805) return false; // past the range: refused, not latched
+  value.ClampedCeiling = _h.value + 1;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.FloorDef = _h.value;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  value.CeilingDef = _h.value;
   return true;
 };
 
-// type ExtremeRow (SPEC §6.1: the wire order is the declared order)
-_M.WriteExtremeRow <- function(stream, v) {
-  if (!stream.serializeInt64({ value = v.ClampedFloor }, 0x8000000000000000, 100)) return false; // the offset from min (SPEC §4.3)
-  if (typeof v.ClampedCeiling != "integer" || (v.ClampedCeiling ^ 0x8000000000000000) < (1 ^ 0x8000000000000000) || (0xfffffffffffffffe ^ 0x8000000000000000) < (v.ClampedCeiling ^ 0x8000000000000000)) return false;
-  if (!stream.serializeBits64({ value = (v.ClampedCeiling - 1) }, 64)) return false; // the offset from min
-  if (typeof v.FloorDef != "integer") return false;
-  if (!stream.serializeBits64({ value = v.FloorDef }, 64)) return false; // the storage width
-  if (typeof v.CeilingDef != "integer") return false;
-  if (!stream.serializeBits64({ value = v.CeilingDef }, 64)) return false; // the storage width
+// WriteExtremeRow writes value in declared order; false on a refused value.
+_M.WriteExtremeRow <- function(stream, value) {
+  _h.value = value.ClampedFloor;
+  if (!stream.serializeInt64(_h, 0x8000000000000000, 100)) return false;
+  if (typeof value.ClampedCeiling != "integer" || (value.ClampedCeiling ^ 0x8000000000000000) < -9223372036854775807 || (value.ClampedCeiling ^ 0x8000000000000000) > 9223372036854775806) return false;
+  _h.value = value.ClampedCeiling - 1;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.FloorDef != "integer") return false;
+  _h.value = value.FloorDef;
+  if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.CeilingDef != "integer") return false;
+  _h.value = value.CeilingDef;
+  if (!stream.serializeBits64(_h, 64)) return false;
   return true;
 };

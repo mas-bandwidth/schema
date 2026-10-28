@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package ludicrous, protocol_id 0xf4a226f4166d919b
+// package ludicrous — protocol id 0xf4a226f4166d919b
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Ludicrous = dofile(dir + "/schema_module.nut", true).require("Ludicrous");
 
 local _M = vargv[0];
 local _require = vargv[1];
+
+local _h = { value = 0 };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1), the
 // 64 bits of a uint64 in Squirrel's 64-bit integer.
@@ -51,33 +53,41 @@ _M.FixedProbe <- class {
   }
 };
 
-// ReadFixedProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// FixedProbeMaxBits is the longest wire path, align padding at its worst case;
+// FixedProbeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.FixedProbeMaxBits <- 156;
+_M.FixedProbeMaxBytes <- 24;
+
+// ReadFixedProbe reads into value's storage in place; false on a refused read.
 _M.ReadFixedProbe <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeFixed64(_rs, 16, 16, -180, 180)) return false;
-  value.Angle = _rs.value;
-  if (!stream.serializeFixed64(_rs, 48, 16, -30000, 30000)) return false;
-  value.Position = _rs.value;
-  if (!stream.serializeFixed128(_rs, 112, 16, -1000000, 1000000)) return false;
-  value.Reach = _rs.value;
-  if (!stream.serializeFixed64(_rs, 32, 0, 0, 1000000)) return false;
-  value.Ticks = _rs.value;
+  if (!stream.serializeFixed64(_h, 16, 16, -180, 180)) return false;
+  value.Angle = _h.value;
+  if (!stream.serializeFixed64(_h, 48, 16, -30000, 30000)) return false;
+  value.Position = _h.value;
+  if (!stream.serializeFixed128(_h, 112, 16, -1000000, 1000000)) return false;
+  value.Reach = _h.value;
+  if (!stream.serializeFixed64(_h, 32, 0, 0, 1000000)) return false;
+  value.Ticks = _h.value;
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeFixed64(_rs, 16, 16, -8, 8)) return false;
-    value.Samples[i] = _rs.value;
+    if (!stream.serializeFixed64(_h, 16, 16, -8, 8)) return false;
+    value.Samples[i] = _h.value;
   }
   return true;
 };
 
-// type FixedProbe (SPEC §6.1: the wire order is the declared order)
-_M.WriteFixedProbe <- function(stream, v) {
-  if (!stream.serializeFixed64({ value = v.Angle }, 16, 16, -180, 180)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Position }, 48, 16, -30000, 30000)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed128({ value = v.Reach }, 112, 16, -1000000, 1000000)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Ticks }, 32, 0, 0, 1000000)) return false; // the Q format's raw offset (SPEC §4.3)
+// WriteFixedProbe writes value in declared order; false on a refused value.
+_M.WriteFixedProbe <- function(stream, value) {
+  _h.value = value.Angle;
+  if (!stream.serializeFixed64(_h, 16, 16, -180, 180)) return false;
+  _h.value = value.Position;
+  if (!stream.serializeFixed64(_h, 48, 16, -30000, 30000)) return false;
+  _h.value = value.Reach;
+  if (!stream.serializeFixed128(_h, 112, 16, -1000000, 1000000)) return false;
+  _h.value = value.Ticks;
+  if (!stream.serializeFixed64(_h, 32, 0, 0, 1000000)) return false;
   for (local _i = 0; _i < 2; _i++) {
-    if (!stream.serializeFixed64({ value = v.Samples[_i] }, 16, 16, -8, 8)) return false; // the Q format's raw offset (SPEC §4.3)
+    _h.value = value.Samples[_i];
+    if (!stream.serializeFixed64(_h, 16, 16, -8, 8)) return false;
   }
   return true;
 };
@@ -102,40 +112,50 @@ _M.UnsignedProbe <- class {
   }
 };
 
-// ReadUnsignedProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// UnsignedProbeMaxBits is the longest wire path, align padding at its worst case;
+// UnsignedProbeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.UnsignedProbeMaxBits <- 196;
+_M.UnsignedProbeMaxBytes <- 32;
+
+// ReadUnsignedProbe reads into value's storage in place; false on a refused read.
 _M.ReadUnsignedProbe <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeFixed64(_rs, 16, 16, 0, 360)) return false;
-  value.Angle = _rs.value;
-  if (!stream.serializeFixed64(_rs, 48, 16, 0, 281474976710655)) return false;
-  value.Span = _rs.value;
-  if (!stream.serializeFixed128(_rs, 112, 16, 0, 2000000)) return false;
-  value.Reach = _rs.value;
-  if (!stream.serializeFixed64(_rs, 32, 0, 0, 1000000)) return false;
-  value.Ticks = _rs.value;
+  if (!stream.serializeFixed64(_h, 16, 16, 0, 360)) return false;
+  value.Angle = _h.value;
+  if (!stream.serializeFixed64(_h, 48, 16, 0, 281474976710655)) return false;
+  value.Span = _h.value;
+  if (!stream.serializeFixed128(_h, 112, 16, 0, 2000000)) return false;
+  value.Reach = _h.value;
+  if (!stream.serializeFixed64(_h, 32, 0, 0, 1000000)) return false;
+  value.Ticks = _h.value;
   for (local i = 0; i < 2; i++) {
-    if (!stream.serializeFixed64(_rs, 16, 16, 0, 16)) return false;
-    value.Samples[i] = _rs.value;
+    if (!stream.serializeFixed64(_h, 16, 16, 0, 16)) return false;
+    value.Samples[i] = _h.value;
   }
   value.Locked = 196608;
-  if (!stream.serializeBits(_rs, 8)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 8)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type UnsignedProbe (SPEC §6.1: the wire order is the declared order)
-_M.WriteUnsignedProbe <- function(stream, v) {
-  if (!stream.serializeFixed64({ value = v.Angle }, 16, 16, 0, 360)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Span }, 48, 16, 0, 281474976710655)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed128({ value = v.Reach }, 112, 16, 0, 2000000)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Ticks }, 32, 0, 0, 1000000)) return false; // the Q format's raw offset (SPEC §4.3)
+// WriteUnsignedProbe writes value in declared order; false on a refused value.
+_M.WriteUnsignedProbe <- function(stream, value) {
+  _h.value = value.Angle;
+  if (!stream.serializeFixed64(_h, 16, 16, 0, 360)) return false;
+  _h.value = value.Span;
+  if (!stream.serializeFixed64(_h, 48, 16, 0, 281474976710655)) return false;
+  _h.value = value.Reach;
+  if (!stream.serializeFixed128(_h, 112, 16, 0, 2000000)) return false;
+  _h.value = value.Ticks;
+  if (!stream.serializeFixed64(_h, 32, 0, 0, 1000000)) return false;
   for (local _i = 0; _i < 2; _i++) {
-    if (!stream.serializeFixed64({ value = v.Samples[_i] }, 16, 16, 0, 16)) return false; // the Q format's raw offset (SPEC §4.3)
+    _h.value = value.Samples[_i];
+    if (!stream.serializeFixed64(_h, 16, 16, 0, 16)) return false;
   }
-  if (!stream.serializeFixed64({ value = v.Locked }, 16, 16, 3, 3)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 8)) return false; // the storage width
+  _h.value = value.Locked;
+  if (!stream.serializeFixed64(_h, 16, 16, 3, 3)) return false;
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 8)) return false;
   return true;
 };
 
@@ -155,30 +175,38 @@ _M.WideProbe <- class {
   }
 };
 
-// ReadWideProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// WideProbeMaxBits is the longest wire path, align padding at its worst case;
+// WideProbeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.WideProbeMaxBits <- 403;
+_M.WideProbeMaxBytes <- 56;
+
+// ReadWideProbe reads into value's storage in place; false on a refused read.
 _M.ReadWideProbe <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeUint128(_rs)) return false;
-  value.EntityId = _rs.value;
-  if (!stream.serializeInt128(_rs, [0xfffffffed5fa0e00, 0xffffffffffffffff], [5000000000, 0])) return false;
-  value.Energy = _rs.value;
-  if (!stream.serializeInt128(_rs, [0, 0xfffffff000000000], [0, 68719476736])) return false;
-  value.Flux = _rs.value;
-  if (!stream.serializeInt128(_rs, [0xfffffffffffffc18, 0xffffffffffffffff], [1000, 0])) return false;
-  value.Bias = _rs.value;
-  if (!stream.serializeUint128(_rs)) return false;
-  value.Seed = _rs.value;
+  if (!stream.serializeUint128(_h)) return false;
+  value.EntityId = _h.value;
+  if (!stream.serializeInt128(_h, [0xfffffffed5fa0e00, 0xffffffffffffffff], [5000000000, 0])) return false;
+  value.Energy = _h.value;
+  if (!stream.serializeInt128(_h, [0, 0xfffffff000000000], [0, 68719476736])) return false;
+  value.Flux = _h.value;
+  if (!stream.serializeInt128(_h, [0xfffffffffffffc18, 0xffffffffffffffff], [1000, 0])) return false;
+  value.Bias = _h.value;
+  if (!stream.serializeUint128(_h)) return false;
+  value.Seed = _h.value;
   return true;
 };
 
-// type WideProbe (SPEC §6.1: the wire order is the declared order)
-_M.WriteWideProbe <- function(stream, v) {
-  if (!stream.serializeUint128({ value = v.EntityId })) return false; // uint128 raw (SPEC §4.3)
-  if (!stream.serializeInt128({ value = v.Energy }, [0xfffffffed5fa0e00, 0xffffffffffffffff], [5000000000, 0])) return false; // int128, offset from min (SPEC §4.3)
-  if (!stream.serializeInt128({ value = v.Flux }, [0, 0xfffffff000000000], [0, 68719476736])) return false; // int128, offset from min (SPEC §4.3)
-  if (!stream.serializeInt128({ value = v.Bias }, [0xfffffffffffffc18, 0xffffffffffffffff], [1000, 0])) return false; // int128, offset from min (SPEC §4.3)
-  if (!stream.serializeUint128({ value = v.Seed })) return false; // uint128 raw (SPEC §4.3)
+// WriteWideProbe writes value in declared order; false on a refused value.
+_M.WriteWideProbe <- function(stream, value) {
+  _h.value = value.EntityId;
+  if (!stream.serializeUint128(_h)) return false;
+  _h.value = value.Energy;
+  if (!stream.serializeInt128(_h, [0xfffffffed5fa0e00, 0xffffffffffffffff], [5000000000, 0])) return false;
+  _h.value = value.Flux;
+  if (!stream.serializeInt128(_h, [0, 0xfffffff000000000], [0, 68719476736])) return false;
+  _h.value = value.Bias;
+  if (!stream.serializeInt128(_h, [0xfffffffffffffc18, 0xffffffffffffffff], [1000, 0])) return false;
+  _h.value = value.Seed;
+  if (!stream.serializeUint128(_h)) return false;
   return true;
 };
 
@@ -204,45 +232,53 @@ _M.LudicrousState <- class {
   }
 };
 
-// ReadLudicrousState decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// LudicrousStateMaxBits is the longest wire path, align padding at its worst case;
+// LudicrousStateMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.LudicrousStateMaxBits <- 1205;
+_M.LudicrousStateMaxBytes <- 152;
+
+// ReadLudicrousState reads into value's storage in place; false on a refused read.
 _M.ReadLudicrousState <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeInt(_rs, 0, 3)) return false;
-  value.Mode = _rs.value;
+  if (!stream.serializeInt(_h, 0, 3)) return false;
+  value.Mode = _h.value;
   if (!_M.ReadFixedProbe(stream, value.Probe)) return false;
   if (!_M.ReadWideProbe(stream, value.Wide)) return false;
-  if (!stream.serializeInt(_rs, 0, 4)) return false; // the count guards the loop (§6.3)
-  value.KeysCount = _rs.value;
+  if (!stream.serializeInt(_h, 0, 4)) return false;
+  value.KeysCount = _h.value;
   for (local i = 0; i < value.KeysCount; i++) {
-    if (!stream.serializeUint128(_rs)) return false;
-    value.Keys[i] = _rs.value;
+    if (!stream.serializeUint128(_h)) return false;
+    value.Keys[i] = _h.value;
   }
-  if (!stream.serializeBool(_rs)) return false;
-  value.HasTarget = _rs.value;
+  if (!stream.serializeBool(_h)) return false;
+  value.HasTarget = _h.value;
   if (value.HasTarget) {
-    if (!stream.serializeUint128(_rs)) return false;
-    value.TargetId = _rs.value;
+    if (!stream.serializeUint128(_h)) return false;
+    value.TargetId = _h.value;
   } else {
     value.TargetId = [0, 0];
   }
   return true;
 };
 
-// type LudicrousState (SPEC §6.1: the wire order is the declared order)
-_M.WriteLudicrousState <- function(stream, v) {
-  if (typeof v.Mode != "integer" || v.Mode < 0 || v.Mode > 3) return false;
-  if (!stream.serializeBits({ value = v.Mode }, 2)) return false; // the enum value
-  if (!_M.WriteFixedProbe(stream, v.Probe)) return false;
-  if (!_M.WriteWideProbe(stream, v.Wide)) return false;
-  if (typeof v.KeysCount != "integer" || v.KeysCount < 0 || v.KeysCount > 4) return false; // the count guards the loop (SPEC §6.3)
-  if (!stream.serializeBits({ value = v.KeysCount }, 3)) return false; // the count
-  for (local _i = 0; _i < v.KeysCount; _i++) {
-    if (!stream.serializeUint128({ value = v.Keys[_i] })) return false; // uint128 raw (SPEC §4.3)
+// WriteLudicrousState writes value in declared order; false on a refused value.
+_M.WriteLudicrousState <- function(stream, value) {
+  if (typeof value.Mode != "integer" || value.Mode < 0 || value.Mode > 3) return false;
+  _h.value = value.Mode;
+  if (!stream.serializeBits(_h, 2)) return false;
+  if (!_M.WriteFixedProbe(stream, value.Probe)) return false;
+  if (!_M.WriteWideProbe(stream, value.Wide)) return false;
+  if (typeof value.KeysCount != "integer" || value.KeysCount < 0 || value.KeysCount > 4) return false;
+  _h.value = value.KeysCount;
+  if (!stream.serializeBits(_h, 3)) return false;
+  for (local _i = 0; _i < value.KeysCount; _i++) {
+    _h.value = value.Keys[_i];
+    if (!stream.serializeUint128(_h)) return false;
   }
-  if (!stream.serializeBool({ value = v.HasTarget })) return false; // SPEC §4.3
-  if (v.HasTarget) {
-    if (!stream.serializeUint128({ value = v.TargetId })) return false; // uint128 raw (SPEC §4.3)
+  _h.value = value.HasTarget;
+  if (!stream.serializeBool(_h)) return false;
+  if (value.HasTarget) {
+    _h.value = value.TargetId;
+    if (!stream.serializeUint128(_h)) return false;
   }
   return true;
 };
@@ -261,25 +297,32 @@ _M.DegenerateProbe <- class {
   }
 };
 
-// ReadDegenerateProbe decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// DegenerateProbeMaxBits is the longest wire path, align padding at its worst case;
+// DegenerateProbeMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.DegenerateProbeMaxBits <- 8;
+_M.DegenerateProbeMaxBytes <- 8;
+
+// ReadDegenerateProbe reads into value's storage in place; false on a refused read.
 _M.ReadDegenerateProbe <- function(stream, value) {
-  local _rs = { value = 0 };
   value.LockedFixed = -196608;
   value.LockedInt = 7;
   value.LockedWide = [0xfffff4c58c31d00e, 0xffffffffffffffff];
-  if (!stream.serializeBits(_rs, 8)) return false;
-  value.Tail = _rs.value;
+  if (!stream.serializeBits(_h, 8)) return false;
+  value.Tail = _h.value;
   return true;
 };
 
-// type DegenerateProbe (SPEC §6.1: the wire order is the declared order)
-_M.WriteDegenerateProbe <- function(stream, v) {
-  if (!stream.serializeFixed64({ value = v.LockedFixed }, 16, 16, -3, -3)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeInt({ value = v.LockedInt }, 7, 7)) return false; // the offset from min (SPEC §4.3)
-  if (!stream.serializeInt128({ value = v.LockedWide }, [0xfffff4c58c31d00e, 0xffffffffffffffff], [0xfffff4c58c31d00e, 0xffffffffffffffff])) return false; // int128, offset from min (SPEC §4.3)
-  if (typeof v.Tail != "integer") return false;
-  if (!stream.serializeBits({ value = v.Tail }, 8)) return false; // the storage width
+// WriteDegenerateProbe writes value in declared order; false on a refused value.
+_M.WriteDegenerateProbe <- function(stream, value) {
+  _h.value = value.LockedFixed;
+  if (!stream.serializeFixed64(_h, 16, 16, -3, -3)) return false;
+  _h.value = value.LockedInt;
+  if (!stream.serializeInt(_h, 7, 7)) return false;
+  _h.value = value.LockedWide;
+  if (!stream.serializeInt128(_h, [0xfffff4c58c31d00e, 0xffffffffffffffff], [0xfffff4c58c31d00e, 0xffffffffffffffff])) return false;
+  if (typeof value.Tail != "integer") return false;
+  _h.value = value.Tail;
+  if (!stream.serializeBits(_h, 8)) return false;
   return true;
 };
 
@@ -295,24 +338,30 @@ _M.FixedVec <- class {
   }
 };
 
-// ReadFixedVec decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// FixedVecMaxBits is the longest wire path, align padding at its worst case;
+// FixedVecMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.FixedVecMaxBits <- 102;
+_M.FixedVecMaxBytes <- 16;
+
+// ReadFixedVec reads into value's storage in place; false on a refused read.
 _M.ReadFixedVec <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeFixed64(_rs, 48, 16, -100000, 100000)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeFixed64(_rs, 48, 16, -100000, 100000)) return false;
-  value.Y = _rs.value;
-  if (!stream.serializeFixed64(_rs, 48, 16, -100000, 100000)) return false;
-  value.Z = _rs.value;
+  if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
+  value.X = _h.value;
+  if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
+  value.Y = _h.value;
+  if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
+  value.Z = _h.value;
   return true;
 };
 
-// type FixedVec (SPEC §6.1: the wire order is the declared order)
-_M.WriteFixedVec <- function(stream, v) {
-  if (!stream.serializeFixed64({ value = v.X }, 48, 16, -100000, 100000)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Y }, 48, 16, -100000, 100000)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Z }, 48, 16, -100000, 100000)) return false; // the Q format's raw offset (SPEC §4.3)
+// WriteFixedVec writes value in declared order; false on a refused value.
+_M.WriteFixedVec <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
+  _h.value = value.Z;
+  if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
   return true;
 };
 
@@ -330,26 +379,33 @@ _M.FixedQuat <- class {
   }
 };
 
-// ReadFixedQuat decodes the wire into value, filling its pre-allocated storage
-// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).
+// FixedQuatMaxBits is the longest wire path, align padding at its worst case;
+// FixedQuatMaxBytes is that, rounded up to the 8-byte write-buffer granularity.
+_M.FixedQuatMaxBits <- 128;
+_M.FixedQuatMaxBytes <- 16;
+
+// ReadFixedQuat reads into value's storage in place; false on a refused read.
 _M.ReadFixedQuat <- function(stream, value) {
-  local _rs = { value = 0 };
-  if (!stream.serializeFixed64(_rs, 2, 30, -1, 1)) return false;
-  value.X = _rs.value;
-  if (!stream.serializeFixed64(_rs, 2, 30, -1, 1)) return false;
-  value.Y = _rs.value;
-  if (!stream.serializeFixed64(_rs, 2, 30, -1, 1)) return false;
-  value.Z = _rs.value;
-  if (!stream.serializeFixed64(_rs, 2, 30, -1, 1)) return false;
-  value.W = _rs.value;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  value.X = _h.value;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  value.Y = _h.value;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  value.Z = _h.value;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  value.W = _h.value;
   return true;
 };
 
-// type FixedQuat (SPEC §6.1: the wire order is the declared order)
-_M.WriteFixedQuat <- function(stream, v) {
-  if (!stream.serializeFixed64({ value = v.X }, 2, 30, -1, 1)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Y }, 2, 30, -1, 1)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.Z }, 2, 30, -1, 1)) return false; // the Q format's raw offset (SPEC §4.3)
-  if (!stream.serializeFixed64({ value = v.W }, 2, 30, -1, 1)) return false; // the Q format's raw offset (SPEC §4.3)
+// WriteFixedQuat writes value in declared order; false on a refused value.
+_M.WriteFixedQuat <- function(stream, value) {
+  _h.value = value.X;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  _h.value = value.Y;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  _h.value = value.Z;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  _h.value = value.W;
+  if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
   return true;
 };
