@@ -343,11 +343,11 @@ func TestMooTableDescriptorsNegativeControl(t *testing.T) {
 	g := generateFiles(t, map[string]string{"Box.schema": "package boxes\ntable Box\n{\n    a uint8 = 7\n}\n"})
 	path := filepath.Join(g.dir, "BoxTable.moo")
 	src := string(g.files["BoxTable.moo"])
-	const anchor = "cls = \"n\", def = 7 }"
+	const anchor = "cls = \"n\", fw = 1, def = 7 }"
 	if strings.Count(src, anchor) != 1 {
 		t.Fatalf("the default anchor is not in BoxTable.moo exactly once:\n%s", src)
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "cls = \"n\", def = 8 }", 1)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "cls = \"n\", fw = 1, def = 8 }", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	main := "--!strict\nlocal St = require(\"./schema_tables\")\nlocal tables = 0\nlocal descriptors: { [string]: any } = {}\n" +

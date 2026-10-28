@@ -97,10 +97,22 @@ func runtimeGate(u *ir.Unit) func(name string) bool {
 // runtime. A table-free unit gets nothing here, so its output is the packet
 // surface's alone (docs/PORTING.md I10).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the lock's fixed-form lineage handed in as
+// data (docs/FIXED-FORM-ALGORITHM.md §5.2, COMPILE(lock, T); §5.9 #1): per
+// fixed table, its locked layouts OLDEST FIRST. nil is a unit with no lock,
+// whose every fixed table reads its own layout alone. A handed entry that is a
+// lock bug fails the build here (§5.9 #8, #26).
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	if err := Refuse(u); err != nil {
+		return nil, err
+	}
+	if err := refuseFixedLineage(u, lineage); err != nil {
 		return nil, err
 	}
 	out := map[string][]byte{}
@@ -113,6 +125,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			continue
 		}
 		g := newGen(u, f)
+		g.Lineage = lineage
 		emitFile(g, reach)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {

@@ -23,6 +23,10 @@ type Gen struct {
 	Suffix string
 	// Kind names the module family in its header.
 	Kind string
+	// Lineage is the lock's fixed-form lineage, per table, oldest first, as
+	// the build handed it to GenerateLineage (docs/FIXED-FORM-ALGORITHM.md
+	// §5.2); nil for a unit with no lock.
+	Lineage map[string][]FixedLineageEntry
 
 	body     strings.Builder
 	requires map[string]bool
