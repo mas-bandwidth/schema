@@ -46,7 +46,7 @@ func TestSquirrelMapsInJson(t *testing.T) {
 	inputs := map[string][]byte{}
 	var names []string
 	for _, in := range readInstanceRows(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")) {
-		if in.unit != "mapdemo" || in.root == "Text" {
+		if in.unit != "mapdemo" {
 			continue
 		}
 		text, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", in.name+".json"))

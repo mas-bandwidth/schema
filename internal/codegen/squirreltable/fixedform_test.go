@@ -74,6 +74,9 @@ var fixedVectors = []fixedVector{
 	{"fx2", "test/tables/FX2.schema", "Tblfx2Tables", "FxRoot", "fx2.bin"},
 	{"p1", "test/tables/P1.schema", "Tblp1Tables", "Chain", "p1.bin"},
 	{"p3", "test/tables/P3.schema", "Tblp3Tables", "Chain", "p3.bin"},
+	// the corpus's one WIDE file: a wstring(N) at the body's head and at a
+	// nested offset, beside a narrow string (SPEC §4.12, docs/SPEC-TABLES.md §3.4)
+	{"fxw", "test/tables/FXW.schema", "TblfxwTables", "FxWide", "fxw.bin"},
 }
 
 func fixedLoadUnit(t *testing.T, root, rel string) *ir.Unit {

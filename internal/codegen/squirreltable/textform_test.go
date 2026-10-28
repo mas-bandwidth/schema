@@ -23,12 +23,9 @@ import (
 
 // textFormDocumentSchema is the Document contract of test/conformance/textform
 // (contract.json) as Go's oracle declares it (internal/codegen/gotable
-// textform_test.go textFormDocumentBody), on the constructs the Squirrel
-// descriptors carry: the contract's `wide wstring(4)` is left out, because
-// the Squirrel table surface refuses wide text by name
-// (squirreltable.go unmapped, docs/PORT-SQUIRREL.md THE REGISTER), so the
-// kinds vector runs with its one :wide pair removed and bound-wide does not
-// run. Four keys meet the compiler through the json attribute, as Go's do.
+// textform_test.go textFormDocumentBody), field for field, `wide wstring(4)`
+// included. Four keys meet the compiler through the json attribute, as Go's
+// do.
 const textFormDocumentSchema = `
 package probe
 enum State { unknown, done }
@@ -56,6 +53,7 @@ fixed table Document {
  nodes [..3]Node
  pairs [2]int32
  optional ?[..4]int32
+ wide wstring(4)
  blob bytes(4) | json = "bytes"
  low int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727, json = "signed"
  high uint128 | json = "unsigned"
@@ -67,10 +65,6 @@ fixed table Document {
  choice Choice
 }
 `
-
-// kindsWide is the kinds vector's one pair the Squirrel descriptors cannot
-// hold (wide text, see textFormDocumentSchema).
-const kindsWide = ":wide \"\U0001F600\u00e9\" "
 
 // documentPrelude is the probe's vocabulary. Every line it prints is a case
 // name, a verb and its operands, bytes as lowercase hex.
@@ -297,15 +291,13 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	p.WriteString(documentPrelude)
 	lit := func(s string) string { return squirrel.StringLit([]byte(s)) }
 
-	// TestDocumentVectors: the positives, kinds without its wide pair
+	// TestDocumentVectors: the positives, the kinds vector's astral wide
+	// pair included
 	kinds := vector("kinds.input.sexp")
-	if !bytes.Contains(kinds, []byte(kindsWide)) {
-		t.Fatalf("kinds.input.sexp no longer spells %q", kindsWide)
-	}
 	positives := map[string][]byte{
 		"roadmap": vector("roadmap.input.sexp"),
 		"layout":  vector("layout.input.sexp"),
-		"kinds":   bytes.Replace(kinds, []byte(kindsWide), nil, 1),
+		"kinds":   kinds,
 		"empty":   []byte("()"),
 	}
 	for _, stem := range []string{"roadmap", "layout", "kinds", "empty"} {
@@ -371,7 +363,7 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	fmt.Fprintf(&p, "load(\"limit-alloc\", inputs.alloc, { allocation = 3 });\nload(\"limit-default\", inputs.limits, null);\n")
 
 	// TestDocumentRefusals: every Document vector (duplicate-map and
-	// forward-reference are Graph's, bound-wide needs wide text)
+	// forward-reference are Graph's)
 	names, err := filepath.Glob(filepath.Join(vectors, "refusals", "*.sexp"))
 	if err != nil || len(names) == 0 {
 		t.Fatalf("no refusal vectors: %v", err)
@@ -379,7 +371,7 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	reasons := map[string]string{}
 	for _, name := range names {
 		stem := strings.TrimSuffix(filepath.Base(name), ".sexp")
-		if stem == "duplicate-map" || stem == "forward-reference" || stem == "bound-wide" {
+		if stem == "duplicate-map" || stem == "forward-reference" {
 			continue
 		}
 		reasons["r-"+stem] = strings.TrimSpace(string(vector("refusals/" + stem + ".reason")))
@@ -444,9 +436,6 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 		maps.Copy(want, defaults)
 		o := decodeJSON(t, vector(stem+".value.json"))
 		for k, e := range o["explicit_fields"].(map[string]any) {
-			if stem == "kinds" && k == "wide" {
-				continue
-			}
 			if e == nil {
 				delete(want, k)
 				continue

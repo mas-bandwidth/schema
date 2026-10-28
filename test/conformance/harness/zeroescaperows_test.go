@@ -11,10 +11,9 @@ import (
 // battery to docs/SPEC-TABLES.md §16.3's zero rule: a string the read would
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
-// held first in Go and carried by C, so the two refusals state the standard's
-// answer with `carried-by=go,c` (`go,c,squirrel` on the value row: Squirrel
-// carries the plain value row too) and every other port keeps its BASE
-// counters; the skipped value is the clean §4 report with the unknown key
+// held first in Go and carried by C and Squirrel, so the two refusals state
+// the standard's answer with `carried-by=go,c,squirrel` and every other port
+// keeps its BASE counters; the skipped value is the clean §4 report with the unknown key
 // counted.
 //
 // A Go answer of the clean counters on the value row must score red, because
@@ -38,12 +37,9 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		// the map-key row rides in a unit Squirrel refuses (wide text), so only
-		// the plain value row is carried by that leg too
-		wantCarried := "go,c"
-		if caseName == "str-zero-escape-value" {
-			wantCarried = "go,c,squirrel"
-		}
+		// both rows are carried by Squirrel too: the map-key row's unit,
+		// tables/maps, declares wide text, which its descriptors now carry
+		wantCarried := "go,c,squirrel"
 		if strings.Join(row.CarriedBy, ",") != wantCarried {
 			t.Fatalf("%s: carried-by=%v; want %s: Go held the rule first, C and Squirrel carry it, and every other port keeps its behaviour", caseName, row.CarriedBy, wantCarried)
 		}
@@ -56,10 +52,8 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if got := row.VerdictFor("c"); got != "refused" {
 			t.Fatalf("%s: C owes %q, got %q", caseName, "refused", got)
 		}
-		if caseName == "str-zero-escape-value" {
-			if got := row.VerdictFor("squirrel"); got != "refused" {
-				t.Fatalf("%s: Squirrel owes %q, got %q", caseName, "refused", got)
-			}
+		if got := row.VerdictFor("squirrel"); got != "refused" {
+			t.Fatalf("%s: Squirrel owes %q, got %q", caseName, "refused", got)
 		}
 		if got := row.VerdictFor("cpp"); got != baseCounters {
 			t.Fatalf("%s: cpp owes %q, got %q", caseName, baseCounters, got)

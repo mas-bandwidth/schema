@@ -18,10 +18,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// mapdemoCarried loads the mapdemo corpus without Text.schema, whose wide-text
-// value the Squirrel descriptors still refuse by name (docs/SPEC-TABLES.md
-// §2.8: "a map whose key or value is a construct Squirrel still refuses stays
-// refused by that construct's name"). Every other map value kind is carried.
+// mapdemoCarried loads the whole mapdemo corpus, Text.schema's wide-text value
+// included: every map value kind is carried (docs/SPEC-TABLES.md §2.8; kind 33,
+// SPEC §4.12).
 func mapdemoCarried(t *testing.T, root string) (*ir.Unit, []string) {
 	t.Helper()
 	dir := filepath.Join(root, "tables", "maps")
@@ -31,7 +30,7 @@ func mapdemoCarried(t *testing.T, root string) (*ir.Unit, []string) {
 	}
 	var paths []string
 	for _, e := range ents {
-		if filepath.Ext(e.Name()) != ".schema" || e.Name() == "Text.schema" {
+		if filepath.Ext(e.Name()) != ".schema" {
 			continue
 		}
 		paths = append(paths, filepath.Join(dir, e.Name()))
@@ -164,7 +163,7 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 	var names []string
 	wants := map[string][]byte{}
 	for _, in := range readInstanceRows(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")) {
-		if in.unit != "mapdemo" || in.root == "Text" {
+		if in.unit != "mapdemo" {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(in.wire)))

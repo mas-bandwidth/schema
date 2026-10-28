@@ -214,6 +214,17 @@ local writeValue = function(b, f, at, idx, value) {
     writeRaw(b, at - f.offset + f.countOffset, len, 4);
     return true;
   }
+  if (f.counted && f.storage == "WString") {
+    // WIDE TEXT: the code units two bytes each, the used length in units
+    // beside them (§19.3, §7.2); a slot that is not a code unit refuses
+    if (typeof value != "array" || value.len() > f.bound) return false;
+    foreach (i, u in value) {
+      if (typeof u != "integer" || u < 0 || u > 0xFFFF) return false;
+      writeRaw(b, at + 2 * i, u, 2);
+    }
+    writeRaw(b, at - f.offset + f.countOffset, value.len(), 4);
+    return true;
+  }
   if (f.isArray) {
     if (idx != null) return writeScalar(b, at, f, value);
     if (typeof value != "array") return false;

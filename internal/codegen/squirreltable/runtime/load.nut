@@ -353,6 +353,42 @@ local utf8Decode = function(b, at, len) {
   return { s = s, ok = true, used = len };
 };
 
+// WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3, §4; SPEC.md §4.12): L BYTES
+// holding L / 2 UTF-16 code units, two bytes each little-endian. Storage is the
+// code units, an array of integers. wideDecode answers the units, or null when
+// the payload is not wide text: SURROGATES PAIRED and no zero unit among them,
+// checked as the payload ARRIVES and before the reader's bound, the rule kind
+// 12 takes for UTF-8 (wideValid in internal/tablewire/text.go). The caller has
+// refused an odd L as framing damage first.
+local wideDecode = function(b, at, len) {
+  local n = len / 2;
+  local units = array(n);
+  for (local i = 0; i < n; i++) units[i] = (b[at + 2 * i] & 0xff) | ((b[at + 2 * i + 1] & 0xff) << 8);
+  for (local i = 0; i < n; i++) {
+    local u = units[i];
+    if (u == 0) return null;
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      // a high surrogate whose low half is not the next unit, or is absent
+      if (i + 1 >= n) return null;
+      local lo = units[i + 1];
+      if (lo < 0xDC00 || lo > 0xDFFF) return null;
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) {
+      return null; // a low surrogate first
+    }
+  }
+  return units;
+};
+
+// A WIDE CLAMP NEVER SPLITS A PAIR (docs/SPEC-TABLES.md §3): the first `bound`
+// units, less a final high surrogate whose low half did not fit
+// (wideBoundary in internal/tablewire/text.go).
+local wideClamp = function(units, bound) {
+  local cut = bound;
+  if (cut > 0 && units[cut - 1] >= 0xD800 && units[cut - 1] <= 0xDBFF) cut--;
+  return units.slice(0, cut);
+};
+
 local blobOfRange = function(b, at, len) {
   local out = blob(0);
   for (local i = 0; i < len; i++) out.writen(b[at + i] & 0xff, 'b');
@@ -541,6 +577,30 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
   }
+  if (shape == "wstr") {
+    // WIDE TEXT (docs/SPEC-TABLES.md §3, §4; kind 33): an ODD L is framing
+    // damage on the body that carries it, and ill-formed content is damage
+    // too: either way the field reads its declared default (empty), one
+    // malformed counts, and the parent reads on past L. A payload past the
+    // bound clamps at a unit boundary that never splits a pair. The field
+    // rode, so an optional is present whatever its content.
+    local L = leb(r);
+    if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
+    local units = (L & 1) != 0 ? null : wideDecode(r.b, r.at, L);
+    if (units == null) {
+      report.malformed = true;
+      v[fd.member] = [];
+    } else {
+      if (units.len() > fd.bound) {
+        report.clamped = report.clamped + 1;
+        units = wideClamp(units, fd.bound);
+      }
+      v[fd.member] = units;
+    }
+    r.at += L;
+    if (fd.optional) v[fd.member + "Present"] = true;
+    return true;
+  }
   if (shape == "enum") {
     local ref = leb(r);
     if (r.bad) { report.malformed = true; return false; }
@@ -668,6 +728,15 @@ local mapKeyScan = function(es, table, kd) {
         else bad = true;
       } else {
         bad = false;
+        if (kd.shape == "str") {
+          // A KEY A STRING VALUE WOULD REFUSE AS MALFORMED MAKES THE MAP
+          // MALFORMED (§2.8; scalarOrString in tablewire): ill-formed UTF-8 or
+          // a zero byte is not a key at any length, so the scan fails here
+          local at = scan.at;
+          local L = leb(scan);
+          if (scan.bad || scan.at + L > scan.end || !utf8Decode(scan.b, scan.at, L).ok) return [bad, widened, false];
+          scan.at = at;
+        }
       }
     }
     if (!skipField(scan, kind)) return [bad, widened, false];
@@ -1061,6 +1130,22 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     } else {
       inst[p.member] = dec.s;
     }
+    sub.at = sub.end;
+    return true;
+  }
+  if (shape == "wstr") {
+    // WIDE TEXT at an arm (docs/SPEC-TABLES.md §3): the arm's L is the BYTE
+    // length; an odd L or ill-formed content is that arm's own damage, the
+    // union reads None and the parent reads on past L.
+    local L = sub.end - sub.at;
+    local units = (L & 1) != 0 ? null : wideDecode(sub.b, sub.at, L);
+    if (units == null) { report.malformed = true; inst.Type = 0; return true; }
+    if (units.len() > p.bound) {
+      report.clamped = report.clamped + 1;
+      units = wideClamp(units, p.bound);
+    }
+    inst[p.member] = units;
+    if (p.optional) inst[p.member + "Present"] = true;
     sub.at = sub.end;
     return true;
   }

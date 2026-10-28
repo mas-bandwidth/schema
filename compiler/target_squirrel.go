@@ -26,7 +26,9 @@ func (t squirrelTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, e
 	// Wide table kinds (fixed(I, F), ufixed(I, F), int128, uint128) are carried
 	// on the Squirrel variable wire, JSON text form, and fixed form
 	// (docs/SPEC-TABLES.md §3, §15, §16.2; ir.WideTableKindScope in
-	// ir/tablekind.go scopes §15's refusal to the form-1 accelerators).
+	// ir/tablekind.go scopes §15's refusal to the form-1 accelerators). Wide
+	// TEXT is carried too (registerWideTextCarrier below), so this call refuses
+	// nothing for squirrel and stays as the chain every target runs.
 	if err := refuseWideText(u, "squirrel"); err != nil {
 		return nil, err
 	}
@@ -56,7 +58,9 @@ func (t squirrelTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *Fixed
 	// Wide table kinds (fixed(I, F), ufixed(I, F), int128, uint128) are carried
 	// on the Squirrel variable wire, JSON text form, and fixed form
 	// (docs/SPEC-TABLES.md §3, §15, §16.2; ir.WideTableKindScope in
-	// ir/tablekind.go scopes §15's refusal to the form-1 accelerators).
+	// ir/tablekind.go scopes §15's refusal to the form-1 accelerators). Wide
+	// TEXT is carried too (registerWideTextCarrier below), so this call refuses
+	// nothing for squirrel and stays as the chain every target runs.
 	if err := refuseWideText(u, "squirrel"); err != nil {
 		return nil, err
 	}
@@ -123,4 +127,8 @@ func squirrelTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]squirr
 
 func init() {
 	registerBuiltin(squirrelTarget{}, false, false, false, false)
+	// wstring(N) on the packet wire and as table kind 33 in every Squirrel
+	// form (internal/codegen/squirrel read.go/write.go, SPEC §4.12;
+	// internal/codegen/squirreltable, docs/SPEC-TABLES.md §3, §3.3, §3.4, §16.2)
+	registerWideTextCarrier("squirrel")
 }
