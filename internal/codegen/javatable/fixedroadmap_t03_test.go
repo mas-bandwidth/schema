@@ -812,7 +812,7 @@ func t03R21(t *testing.T) {
 	if got.n != 1 || got.refused || got.malformed {
 		t.Fatalf("R21: the old file must read: %+v", got)
 	}
-	src := uint32(parseDumpedFloatBits(t, oracle.value["v"]))
+	src := parseDumpedFloatBits(t, oracle.value["v"])
 	want := math.Float64bits(float64(math.Float32frombits(src)))
 	v, ok := got.value["v"]
 	if !ok {
