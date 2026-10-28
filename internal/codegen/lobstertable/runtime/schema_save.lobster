@@ -273,6 +273,24 @@ class SaveEncoder:
     ids:SaveIds
     g:SaveGraph
 
+// RETAIN-UNKNOWN's save-side hook (docs/SPEC-TABLES.md §6.6): a retaining save
+// registers one, and `tail` writes the fields the matching retaining load kept
+// at the END of the body they belong to, before its terminator (and, in the
+// root, before the node table).
+class RetainTail:
+    def tail(e:SaveEncoder, w:SaveOut, rec:Record) -> void:
+        return
+
+let retain_tails:[RetainTail] = []
+
+def register_retain_tail(h:RetainTail):
+    push(retain_tails, h)
+
+def active_retain_tail() -> RetainTail?:
+    if length(retain_tails) == 0:
+        return nil
+    return retain_tails[length(retain_tails) - 1]
+
 // save_widen32 is Go's NarrowF32 (docs/SPEC-TABLES.md §3.3, PORT-LOBSTER
 // FLOAT32): a NaN's payload rides by bit surgery, never a hardware cast.
 def save_narrow32(x:float) -> int:
@@ -703,6 +721,9 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
 def encode_body_fields(e:SaveEncoder, w:SaveOut, rec:Record) -> void:
     for(rec.fields) sl:
         encode_field(e, w, sl)
+    let tail = active_retain_tail()
+    if tail:
+        tail.tail(e, w, rec)
 
 def encode_body(e:SaveEncoder, rec:Record) -> string:
     let w = SaveOut {}

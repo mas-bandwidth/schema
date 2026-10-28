@@ -34,6 +34,10 @@ class LoadReport:
     duplicate:int = 0
     malformed:bool = false
     blob_shared:int = 0
+    // RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the fields whose bytes a
+    // retaining load kept, and every unknown the load could not keep.
+    retained:int = 0
+    retain_lost:int = 0
     refused:bool = false
     reason:string = ""
 
@@ -87,9 +91,20 @@ class Slot:
     entries:[Value]
 
 // A Record is one table or packet type value, its slots in descriptor order.
+// RetainedField is ONE unknown field a retaining load kept, with every
+// reference replaced by the id it names (docs/SPEC-TABLES.md §6.6, RETENTION
+// FORM). It belongs to the body occurrence that carried it and dies with it.
+class RetainedField:
+    id:int
+    kind:int
+    payload:string
+    cost:int
+    placed:bool = false
+
 class Record:
     d:TableDescriptor
     fields:[Slot]
+    retained:[RetainedField] = []
 
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
@@ -130,6 +145,26 @@ class Reader:
     off:int
     hi:int
     st:LoadState
+
+// RETAIN-UNKNOWN's per-kind hook (docs/SPEC-TABLES.md §6.6). A retaining load
+// registers one; `capture` sees one unknown field id with its payload already
+// delimited by the plain skip, and `lost` counts one excluded class the plain
+// walk met where the reader could name the field it
+class RetainCapture:
+    def capture(rec:Record, id:int, kind:int, payload:string, ids:[int]) -> void:
+        return
+    def lost() -> void:
+        return
+
+let retain_captures:[RetainCapture] = []
+
+def register_retain_capture(h:RetainCapture):
+    push(retain_captures, h)
+
+def active_retain_capture() -> RetainCapture?:
+    if length(retain_captures) == 0:
+        return nil
+    return retain_captures[length(retain_captures) - 1]
 
 def reader(st:LoadState, lo:int, hi:int) -> Reader:
     return Reader { b: st.data, lo: lo, off: lo, hi: hi, st: st }
@@ -521,7 +556,7 @@ def new_record(d:TableDescriptor) -> Record:
     let fields:[Slot] = []
     for(d.fields) f:
         push(fields, new_slot(f))
-    return Record { d: d, fields: fields }
+    return Record { d: d, fields: fields, retained: [] }
 
 def new_slot(f:FieldDescriptor) -> Slot:
     let sl = Slot { fd: f, present: false, count: 0, cell: Value {}, elems: [], entries: [] }
@@ -581,6 +616,7 @@ def field_default(f:FieldDescriptor) -> Value:
 // record it holds (Go's Model.Refill): a by-value body is a member of its
 // parent, reset rather than replaced.
 def refill(rec:Record) -> void:
+    rec.retained = []
     for(rec.fields) sl:
         let held = sl.cell.tab
         let elems:[Record?] = []
@@ -705,6 +741,9 @@ def enum_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
     if v < 0:
         cell.i = 0
         rep.unknown++
+        let retain = active_retain_capture()
+        if retain:
+            retain.lost()
         return true
     cell.i = v
     return true
@@ -1115,6 +1154,9 @@ class KeyedShape : Shape
             let v = enum_value(keys, key_id)
             if v < 1 or v > f.bound:
                 rep.unknown++
+                let retain = active_retain_capture()
+                if retain:
+                    retain.lost()
                 sr.off += elem_len
                 continue
             let slot = v - 1
@@ -1223,6 +1265,9 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
     if tag == 0:
         reset_union(cell)
         rep.unknown++
+        let retain = active_retain_capture()
+        if retain:
+            retain.lost()
     else:
         let a = un.arms[tag - 1]
         let want = arm_wire_kind(a)
@@ -1479,9 +1524,13 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
         let found = slot_by_id(rec, id)
         if not found:
             rep.unknown++
+            let at0 = r.off
             if not skip(r, kind):
                 rep.malformed = true
                 return false
+            let retain = active_retain_capture()
+            if retain:
+                retain.capture(rec, id, kind, substring(r.b, at0, r.off - at0), r.st.ids)
             continue
         let sl = found
         let f = sl.fd
@@ -1651,6 +1700,9 @@ def decode_variable(st:LoadState, root:Record, hi:int):
                 node = Node { kind: 1, rec: new_record(d), blob: nil }
             else:
                 rep.unknown++
+                let retain = active_retain_capture()
+                if retain:
+                    retain.lost()
         push(st.nodes, node)
     for(records) rec, i:
         let node = st.nodes[i]
