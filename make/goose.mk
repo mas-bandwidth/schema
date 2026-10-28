@@ -67,6 +67,16 @@ tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestGooseFixedFormNegativeControl$$' ./internal/codegen/goosetable/
 
+# THE TABLE WIRE'S NEGATIVE CONTROL (make/negative-controls.json, group
+# goose): TestGooseTableWireNegativeControl breaks the load's widened count,
+# the save's elided-id rollback and the retained tail, one at a time, and
+# requires each to turn red only the conformance rows it owns, and at least
+# one (internal/codegen/goosetable/tablewire_test.go).
+.PHONY: tables-goose-tablewire-negative-control
+tables-goose-tablewire-negative-control:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
+
 # build/conformance-goose is the manifest's units generated for goose, one
 # directory per unit. The schema_leg_goose tag is the target's until the port
 # joins the builtins (compiler/target_goose.go). A unit the target refuses is

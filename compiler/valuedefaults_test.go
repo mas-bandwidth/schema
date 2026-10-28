@@ -39,6 +39,10 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "goose" {
+			gooseCarriesTableWire(t, out, err)
+			continue
+		}
 		if target == "dart" {
 			if err != nil {
 				t.Fatalf("dart refused table defaults: %v", err)
