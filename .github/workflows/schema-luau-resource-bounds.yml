@@ -9,8 +9,10 @@ name: schema-luau resource bounds
 # planted-pattern control proves the depth guard has a blade.
 #
 # The parts are fast: one unit's generation and a handful of small hostile
-# reads cost a second or two on the bench, so push and pull_request run them
-# directly, and the nightly schedule repeats the same gate. The job runs on
+# reads cost a second or two on the bench, so every push and pull request to
+# the merge branches runs them directly (no path filter: a change anywhere
+# that reaches the reader is a change this lens answers for), and the nightly
+# schedule repeats the same gate. The job runs on
 # the fleet (self-hosted, schema set), never a GitHub-hosted runner, and it
 # carries the fork guard: a fork's pull request gets no CI run here.
 #
@@ -20,23 +22,9 @@ name: schema-luau resource bounds
 
 on:
   push:
-    paths:
-      - 'make/schema-luau-resource-bounds.mk'
-      - 'make/luau.mk'
-      - '.github/workflows/schema-luau-resource-bounds.yml'
-      - 'internal/ci/schema_luau_resource_bounds_test.go'
-      - 'internal/codegen/luau/**'
-      - 'internal/codegen/luautable/**'
-      - 'compiler/target_luau.go'
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
   pull_request:
-    paths:
-      - 'make/schema-luau-resource-bounds.mk'
-      - 'make/luau.mk'
-      - '.github/workflows/schema-luau-resource-bounds.yml'
-      - 'internal/ci/schema_luau_resource_bounds_test.go'
-      - 'internal/codegen/luau/**'
-      - 'internal/codegen/luautable/**'
-      - 'compiler/target_luau.go'
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
   schedule:
     # nightly, after the other language lenses
     - cron: '0 4 * * *'
@@ -60,19 +48,10 @@ jobs:
             echo "TOOL-MISSING go $want ${got:-absent} on $RUNNER_NAME"
             exit 1
           fi
-      - name: presence check pinned luau 0.741
-        run: |
-          want='0.741'
-          if ! command -v luau >/dev/null 2>&1; then
-            echo "TOOL-MISSING luau $want absent on $RUNNER_NAME"
-            exit 1
-          fi
-          got=$(readlink -f "$(command -v luau)")
-          case "$got" in
-            *"/luau-$want/"*) ;;
-            *) echo "TOOL-MISSING luau $want ${got:-absent} on $RUNNER_NAME"; exit 1 ;;
-          esac
-          echo "LUAU=$(command -v luau)" >> "$GITHUB_ENV"
+      # THE LUAU PIN, as make/luau.mk's dist-luau installs it: the release
+      # archive's sha256 is refused before anything is unpacked.
+      - name: Luau 0.741 (pinned release)
+        run: make dist-luau
       - name: planted-pattern control (the depth guard fires)
         run: make schema-luau-resource-bounds-negative-control
       - name: hostile shape resource bounds
