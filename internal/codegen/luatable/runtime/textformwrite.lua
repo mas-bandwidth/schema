@@ -57,8 +57,12 @@ local function utf8_encode(code)
   elseif code < 0x10000 then
     return string.char(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
   end
-  return string.char(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f),
-    0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
+  return string.char(
+    0xf0 | (code >> 18),
+    0x80 | ((code >> 12) & 0x3f),
+    0x80 | ((code >> 6) & 0x3f),
+    0x80 | (code & 0x3f)
+  )
 end
 
 local function utf8_seq(s, i)
@@ -66,15 +70,25 @@ local function utf8_seq(s, i)
   if c == nil then return -1 end
   if c < 0x80 then return 1 end
   local n, lo, hi
-  if c >= 0xc2 and c <= 0xdf then n, lo, hi = 2, 0x80, 0xbf
-  elseif c == 0xe0 then n, lo, hi = 3, 0xa0, 0xbf
-  elseif c >= 0xe1 and c <= 0xec then n, lo, hi = 3, 0x80, 0xbf
-  elseif c == 0xed then n, lo, hi = 3, 0x80, 0x9f
-  elseif c >= 0xee and c <= 0xef then n, lo, hi = 3, 0x80, 0xbf
-  elseif c == 0xf0 then n, lo, hi = 4, 0x90, 0xbf
-  elseif c >= 0xf1 and c <= 0xf3 then n, lo, hi = 4, 0x80, 0xbf
-  elseif c == 0xf4 then n, lo, hi = 4, 0x80, 0x8f
-  else return -1 end
+  if c >= 0xc2 and c <= 0xdf then
+    n, lo, hi = 2, 0x80, 0xbf
+  elseif c == 0xe0 then
+    n, lo, hi = 3, 0xa0, 0xbf
+  elseif c >= 0xe1 and c <= 0xec then
+    n, lo, hi = 3, 0x80, 0xbf
+  elseif c == 0xed then
+    n, lo, hi = 3, 0x80, 0x9f
+  elseif c >= 0xee and c <= 0xef then
+    n, lo, hi = 3, 0x80, 0xbf
+  elseif c == 0xf0 then
+    n, lo, hi = 4, 0x90, 0xbf
+  elseif c >= 0xf1 and c <= 0xf3 then
+    n, lo, hi = 4, 0x80, 0xbf
+  elseif c == 0xf4 then
+    n, lo, hi = 4, 0x80, 0x8f
+  else
+    return -1
+  end
   if i + n - 1 > #s then return -1 end
   local b = s:byte(i + 1)
   if b < lo or b > hi then return -1 end
@@ -108,15 +122,23 @@ local function scan_string(st)
       if st.p > #t then fail("text_unterminated", start) end
       local e = t:sub(st.p, st.p)
       st.p = st.p + 1
-      if e == '"' then out[#out + 1] = '"'
-      elseif e == '\\' then out[#out + 1] = '\\'
-      elseif e == '/' then out[#out + 1] = '/'
-      elseif e == 'b' then out[#out + 1] = '\b'
-      elseif e == 'f' then out[#out + 1] = '\f'
-      elseif e == 'n' then out[#out + 1] = '\n'
-      elseif e == 'r' then out[#out + 1] = '\r'
-      elseif e == 't' then out[#out + 1] = '\t'
-      elseif e == 'u' then
+      if e == '"' then
+        out[#out + 1] = '"'
+      elseif e == "\\" then
+        out[#out + 1] = "\\"
+      elseif e == "/" then
+        out[#out + 1] = "/"
+      elseif e == "b" then
+        out[#out + 1] = "\b"
+      elseif e == "f" then
+        out[#out + 1] = "\f"
+      elseif e == "n" then
+        out[#out + 1] = "\n"
+      elseif e == "r" then
+        out[#out + 1] = "\r"
+      elseif e == "t" then
+        out[#out + 1] = "\t"
+      elseif e == "u" then
         local high = hex4(st)
         local code = high
         if high >= 0xd800 and high <= 0xdbff then
@@ -173,8 +195,7 @@ local function scan_atom(st)
   local start = st.p
   while st.p <= #t do
     local c = t:byte(st.p)
-    if c == 40 or c == 41 or c == 34 or c == 59
-      or c == 32 or c == 9 or c == 10 or c == 13 then break end
+    if c == 40 or c == 41 or c == 34 or c == 59 or c == 32 or c == 9 or c == 10 or c == 13 then break end
     st.p = st.p + 1
   end
   local tok = t:sub(start, st.p - 1)
@@ -266,9 +287,7 @@ local function mark_record(T, desc, node, path, first, paths, allow_label)
     local key, value = items[i], items[i + 1]
     if is_key(key) then
       local fd = find_field(desc, key.v)
-      if fd ~= nil then
-        mark_field(T, fd, value, join(path, fd.key), paths)
-      end
+      if fd ~= nil then mark_field(T, fd, value, join(path, fd.key), paths) end
     end
     i = i + 2
   end
@@ -317,7 +336,10 @@ local function mark_union(T, d, node, path, paths)
   if #items < 2 or not is_key(items[1]) then return end
   local arm
   for _, a in ipairs(u.arms) do
-    if a.name == items[1].v then arm = a; break end
+    if a.name == items[1].v then
+      arm = a
+      break
+    end
   end
   if arm == nil then return end
   local ap = join(path, items[1].v)
@@ -363,9 +385,7 @@ end
 local function parse_edit_text(text)
   local st = { t = text, p = 1 }
   local node = parse_value(st)
-  if st.p - 1 ~= #text or node.k == "list" then
-    return nil
-  end
+  if st.p - 1 ~= #text or node.k == "list" then return nil end
   return node
 end
 
@@ -374,9 +394,7 @@ end
 local function same_value(a, b)
   if type(a) ~= type(b) then return false end
   if type(a) ~= "table" then
-    if type(a) == "number" and a == 0 and b == 0 then
-      return (1 / a) == (1 / b)
-    end
+    if type(a) == "number" and a == 0 and b == 0 then return (1 / a) == (1 / b) end
     return a == b
   end
   for k, v in pairs(a) do
@@ -418,9 +436,7 @@ W.LoadTextForm = W.Load
 -- W.Save / W.SaveTextForm writes the retained bytes (§16.9.3: a read then
 -- write with no edit reproduces the input byte for byte).
 function W.Save(doc)
-  if type(doc) ~= "table" or type(doc.text) ~= "string" then
-    fail("text_edit_conflict", 1)
-  end
+  if type(doc) ~= "table" or type(doc.text) ~= "string" then fail("text_edit_conflict", 1) end
   return doc.text
 end
 
@@ -439,30 +455,22 @@ end
 -- the edited document is read back under the same schema before it returns.
 -- edits is a sequence of { path = "...", text = "<one token>" }.
 function W.Edit(doc, edits)
-  if type(doc) ~= "table" or type(doc.T) ~= "table" then
-    fail("text_edit_conflict", 1)
-  end
+  if type(doc) ~= "table" or type(doc.T) ~= "table" then fail("text_edit_conflict", 1) end
   local old = TF.Load(doc.T, doc.name, doc.text, doc.limits)
   local splices = {}
   for _, e in ipairs(edits or {}) do
     local node = doc.paths[e.path]
-    if node == nil or node.k == "list" then
-      fail("text_edit_conflict", node and node.s or 1, e.path)
-    end
-    if type(e.text) ~= "string" then
-      fail("text_edit_conflict", node.s, e.path)
-    end
+    if node == nil or node.k == "list" then fail("text_edit_conflict", node and node.s or 1, e.path) end
+    if type(e.text) ~= "string" then fail("text_edit_conflict", node.s, e.path) end
     local value = parse_edit_text(e.text)
-    if value == nil then
-      fail("text_edit_conflict", node.s, e.path)
-    end
+    if value == nil then fail("text_edit_conflict", node.s, e.path) end
     splices[#splices + 1] = { s = node.s, e = node.e, text = e.text, path = e.path }
   end
-  table.sort(splices, function(a, b) return a.s < b.s end)
+  table.sort(splices, function(a, b)
+    return a.s < b.s
+  end)
   for i = 2, #splices do
-    if splices[i].s <= splices[i - 1].e then
-      fail("text_edit_conflict", splices[i].s, splices[i].path)
-    end
+    if splices[i].s <= splices[i - 1].e then fail("text_edit_conflict", splices[i].s, splices[i].path) end
   end
   -- a semantic no-op retains the old spelling: each splice is judged alone
   -- against the original document, so a real edit beside it is never lost
@@ -475,8 +483,13 @@ function W.Edit(doc, edits)
   local text = apply(doc.text, kept)
   local v = TF.Load(doc.T, doc.name, text, doc.limits)
   local root = parse_document(text)
-  local out = { T = doc.T, name = doc.name, text = text, limits = doc.limits,
-    paths = mark_document(doc.T, doc.name, text, root) }
+  local out = {
+    T = doc.T,
+    name = doc.name,
+    text = text,
+    limits = doc.limits,
+    paths = mark_document(doc.T, doc.name, text, root),
+  }
   return out, v
 end
 

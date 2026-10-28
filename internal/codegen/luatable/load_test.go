@@ -252,9 +252,9 @@ func TestLuaTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = `      if fd == nil then
         report.unknown = report.unknown + 1
-        if not skip(r, kind) then report.malformed = true; return false end`
+        if not skip(r, kind) then`
 	const sabotaged = `      if fd == nil then
-        if not skip(r, kind) then report.malformed = true; return false end`
+        if not skip(r, kind) then`
 	var patched int
 	patch := func(src []byte) []byte {
 		if n := strings.Count(string(src), anchor); n != 1 {

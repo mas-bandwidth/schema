@@ -50,8 +50,8 @@ const (
 
 	// luaHostilePlantFrom is the wire reader's form gate; the planted reader
 	// bug lets the byte past the carried forms (0xff) into the body walk.
-	luaHostilePlantFrom = "  if bytes:byte(1) ~= 1 then report.refused = 1; return nil end"
-	luaHostilePlantTo   = "  if bytes:byte(1) ~= 1 and bytes:byte(1) ~= 0xff then report.refused = 1; return nil end"
+	luaHostilePlantFrom = "  if bytes:byte(1) ~= 1 then\n    report.refused = 1\n"
+	luaHostilePlantTo   = "  if bytes:byte(1) ~= 1 and bytes:byte(1) ~= 0xff then\n    report.refused = 1\n"
 )
 
 // luaHostileCase is one manifest row.

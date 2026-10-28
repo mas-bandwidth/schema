@@ -66,3 +66,11 @@ jobs:
       # copy of the emitted runtime and requires luacheck to name it.
       - name: the lens fires on a planted finding
         run: make tables-lua-luacheck-negative-control
+
+      # THE FORMAT HALF: the pinned StyLua (make dist-stylua, sha256-pinned)
+      # holds the same corpus to make/lua-stylua.toml as a no-diff check.
+      - name: the generated Lua is StyLua-canonical
+        run: make tables-lua-format
+
+      - name: the format gate fires on a planted block
+        run: make tables-lua-format-negative-control

@@ -131,9 +131,7 @@ local function decode(s)
     return nil, "base64_not_canonical"
   end
   local stripped = (s:gsub("[\r\n]", ""))
-  if stripped ~= s and decode_body(stripped) ~= nil then
-    return nil, "base64_not_canonical"
-  end
+  if stripped ~= s and decode_body(stripped) ~= nil then return nil, "base64_not_canonical" end
   return nil, "base64_damaged"
 end
 

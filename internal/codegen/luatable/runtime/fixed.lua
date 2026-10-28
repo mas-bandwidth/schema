@@ -99,9 +99,7 @@ local encode_table, encode_value, decode_table, decode_value
 local function encode_array(T, d, v, size, elemSize)
   v = v or {}
   local parts = {}
-  if d.list then
-    error("fixed: an unbounded array (docs/SPEC-TABLES.md §2.9) is not fixed")
-  end
+  if d.list then error("fixed: an unbounded array (docs/SPEC-TABLES.md §2.9) is not fixed") end
   if d.fixed then
     for i = 1, d.bound do
       local ev = v[i]
@@ -126,9 +124,7 @@ local function encode_array(T, d, v, size, elemSize)
     return table.concat(parts)
   end
   local n = #v
-  if n > d.bound then
-    error("count_over_bound")
-  end
+  if n > d.bound then error("count_over_bound") end
   parts[#parts + 1] = string.pack("<i4", n)
   for i = 1, n do
     parts[#parts + 1] = encode_value(T, d.elem, v[i], elemSize)
@@ -178,7 +174,9 @@ encode_value = function(T, d, v, size, elemSize)
     local cap = math.floor((size - 4) / 2)
     if n > cap then error("length_over_bound") end
     local parts = { string.pack("<i4", n) }
-    for i = 1, n do parts[#parts + 1] = string.pack("<I2", v[i] or 0) end
+    for i = 1, n do
+      parts[#parts + 1] = string.pack("<I2", v[i] or 0)
+    end
     parts[#parts + 1] = zeros((size - 4) - 2 * n)
     return table.concat(parts)
   elseif s == "enum" then
@@ -186,7 +184,10 @@ encode_value = function(T, d, v, size, elemSize)
     local ord = 0
     if v ~= nil then
       for i, var in ipairs(d.variants) do
-        if var[1] == v then ord = i break end
+        if var[1] == v then
+          ord = i
+          break
+        end
       end
     end
     return pack_uint(ord, w)
@@ -248,7 +249,9 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local cap = math.floor((size - 4) / 2)
     if n < 0 or n > cap then error("length_over_bound") end
     local t = {}
-    for i = 1, n do t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2) end
+    for i = 1, n do
+      t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2)
+    end
     return t, pos + size
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
@@ -257,7 +260,11 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     -- a retired variant reads the declared default (docs/SPEC-TABLES.md §2.15)
     local var = raw ~= 0 and d.variants[raw] or nil
     if var ~= nil then
-      if var.deprecated then v = d.default else v = var[1] end
+      if var.deprecated then
+        v = d.default
+      else
+        v = var[1]
+      end
     end
     return v, pos + w
   elseif s == "flags" then
@@ -310,9 +317,7 @@ decode_table = function(T, name, buf, pos, writerSize)
       if f.optional then
         local present = buf:byte(cursor) ~= 0
         v[f.name .. "_present"] = present
-        if present then
-          v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, sizes[i].elem)
-        end
+        if present then v[f.name] = decode_value(T, f, buf, cursor + 1, fs - 1, sizes[i].elem) end
         cursor = cursor + fs
       else
         v[f.name], cursor = decode_value(T, f, buf, cursor, fs, sizes[i].elem)
@@ -342,7 +347,9 @@ local function layout_tree(layout)
       children = {},
     }
     local kids = string.unpack("<I4", layout, at + 14)
-    for k = 1, kids do node.children[k] = parse() end
+    for k = 1, kids do
+      node.children[k] = parse()
+    end
     return node
   end
   local root = parse()
@@ -411,7 +418,9 @@ decode_old_value = function(T, d, node, buf, pos)
     local cap = math.floor((node.size - 4) / 2)
     if n < 0 or n > cap then error("length_over_bound") end
     local t = {}
-    for i = 1, n do t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2) end
+    for i = 1, n do
+      t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2)
+    end
     return t
   elseif s == "enum" then
     local raw = unpack_int(buf, pos, node.size, false)
@@ -443,17 +452,25 @@ decode_old_value = function(T, d, node, buf, pos)
   elseif s == "array" then
     local t = {}
     local elem
-    if node.kind == 16 then elem = node.children[2] else elem = node.children[1] end
+    if node.kind == 16 then
+      elem = node.children[2]
+    else
+      elem = node.children[1]
+    end
     local es = elem and elem.size or 0
     if node.kind == 16 or d.fixed then
       local n = es > 0 and math.floor(node.size / es) or 0
-      for i = 1, n do t[i] = decode_old_value(T, d.elem, elem, buf, pos + (i - 1) * es) end
+      for i = 1, n do
+        t[i] = decode_old_value(T, d.elem, elem, buf, pos + (i - 1) * es)
+      end
       return t
     end
     local n = string.unpack("<i4", buf, pos)
     local cap = es > 0 and math.floor((node.size - 4) / es) or 0
     if n < 0 or n > cap then error("count_over_bound") end
-    for i = 1, n do t[i] = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es) end
+    for i = 1, n do
+      t[i] = decode_old_value(T, d.elem, elem, buf, pos + 4 + (i - 1) * es)
+    end
     return t
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     return nil
@@ -473,7 +490,9 @@ local function strict_value(T, d, v)
   elseif s == "table" then
     local desc = T.Tables[d.target]
     if desc == nil then return end
-    for _, f in ipairs(desc.fields) do strict_value(T, f, v[f.name]) end
+    for _, f in ipairs(desc.fields) do
+      strict_value(T, f, v[f.name])
+    end
   elseif s == "union" then
     local tag = v.tag or 0
     local un = T.Unions[d.target]
@@ -482,7 +501,9 @@ local function strict_value(T, d, v)
       if arm ~= nil and arm.field ~= nil then strict_value(T, arm.field, v[arm.name]) end
     end
   elseif s == "array" then
-    for i = 1, #v do strict_value(T, d.elem, v[i]) end
+    for i = 1, #v do
+      strict_value(T, d.elem, v[i])
+    end
   end
 end
 
@@ -512,7 +533,10 @@ function F.read(T, name, buf, strict)
   local known, entry, pick = fixed.known, nil, nil
   if known ~= nil then
     for i, k in ipairs(known) do
-      if k.hash == hash then pick, entry = i, k break end
+      if k.hash == hash then
+        pick, entry = i, k
+        break
+      end
     end
     if entry == nil then error("no_layout") end
     if fixed.floor and pick <= fixed.floor then error("layout_unsupported") end
@@ -538,7 +562,11 @@ function F.read(T, name, buf, strict)
   if rootKind ~= 13 then error("layout_malformed") end
   if rootSize > maxRecordBytes then error("layout_record_too_large") end
   local recSize
-  if entry ~= nil then recSize = entry.record else recSize = 8 + rootSize end
+  if entry ~= nil then
+    recSize = entry.record
+  else
+    recSize = 8 + rootSize
+  end
   local rest = #buf - 20 - layoutLen
   if recSize <= 8 or rest <= 0 or rest % recSize ~= 0 then error("malformed") end
   if rest / recSize > maxRecords then error("plan_too_large") end

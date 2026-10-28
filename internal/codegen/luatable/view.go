@@ -208,5 +208,5 @@ func viewTags(tags []string) string {
 	for i, tag := range tags {
 		parts[i] = lua.ByteString([]byte(tag))
 	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	return lua.TableOf(parts)
 }

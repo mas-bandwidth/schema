@@ -28,6 +28,9 @@ func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 		"tables-lua-luacheck-negative-control:",
 		"$(LUACHECK) --config",
 		"lua_luacheck_plant",
+		"tables-lua-format:",
+		"tables-lua-format-negative-control:",
+		"STYLUA_SHA256_linux-x86_64",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("makefile missing %q", want)
@@ -47,6 +50,8 @@ func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 	for _, want := range []string{
 		"run: make tables-lua-luacheck",
 		"run: make tables-lua-luacheck-negative-control",
+		"run: make tables-lua-format",
+		"run: make tables-lua-format-negative-control",
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Errorf("workflow missing %q", want)

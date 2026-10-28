@@ -65,10 +65,15 @@ const readUTF8 = `local function utf8valid(s)
     i = i + 1
     if b >= 0x80 then
       local rem, point
-      if b >= 0xC0 and b <= 0xDF then rem, point = 1, b & 0x1F
-      elseif b >= 0xE0 and b <= 0xEF then rem, point = 2, b & 0x0F
-      elseif b >= 0xF0 and b <= 0xF7 then rem, point = 3, b & 0x07
-      else return false end
+      if b >= 0xC0 and b <= 0xDF then
+        rem, point = 1, b & 0x1F
+      elseif b >= 0xE0 and b <= 0xEF then
+        rem, point = 2, b & 0x0F
+      elseif b >= 0xF0 and b <= 0xF7 then
+        rem, point = 3, b & 0x07
+      else
+        return false
+      end
       if rem > n - i + 1 then return false end
       for _ = 1, rem do
         local c = string.byte(s, i)
@@ -101,8 +106,14 @@ func lastDot(s string) int {
 	return 0
 }
 
-// call emits the C++-style early-out around one serialize call.
+// call emits the C++-style early-out around one serialize call: on one line
+// as StyLua keeps a simple conditional (Format expands it when it does not
+// fit), and as a block when it carries a comment, which StyLua never collapses.
 func (m *Module) call(ind, expr, comment string) {
+	if comment == "" {
+		m.Printf("%sif not %s then return false end\n", ind, expr)
+		return
+	}
 	m.Printf("%sif not %s then%s\n%s  return false\n%send\n", ind, expr, comment, ind, ind)
 }
 
@@ -434,16 +445,16 @@ func emitZeroField(m *Module, f *ir.Field, path, ind string) {
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed {
 			if _, ok := f.Type.Ref.(*ir.Struct); ok {
-				m.Printf("%sfor i = 1, %s do %s(%s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
-					funcName(m, "Zero", f.Type.Name), name)
+				m.Printf("%sfor i = 1, %s do\n%s  %s(%s[i])\n%send\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
+					ind, funcName(m, "Zero", f.Type.Name), name, ind)
 			} else if _, ok := f.Type.Ref.(*ir.Union); ok {
-				m.Printf("%sfor i = 1, %s do %s(%s[i]) end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
-					funcName(m, "Zero", f.Type.Name), name)
+				m.Printf("%sfor i = 1, %s do\n%s  %s(%s[i])\n%send\n", ind, IntLiteral(big.NewInt(f.ArrayBound)),
+					ind, funcName(m, "Zero", f.Type.Name), name, ind)
 			} else {
-				m.Printf("%sfor i = 1, %s do %s[i] = %s end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)), name, ZeroValue(m, f.Type))
+				m.Printf("%sfor i = 1, %s do\n%s  %s[i] = %s\n%send\n", ind, IntLiteral(big.NewInt(f.ArrayBound)), ind, name, ZeroValue(m, f.Type), ind)
 			}
 		} else {
-			m.Printf("%sfor i = 1, %s do %s[i] = %s end\n", ind, IntLiteral(big.NewInt(f.ArrayBound)), name, ZeroValue(m, f.Type))
+			m.Printf("%sfor i = 1, %s do\n%s  %s[i] = %s\n%send\n", ind, IntLiteral(big.NewInt(f.ArrayBound)), ind, name, ZeroValue(m, f.Type), ind)
 		}
 		if f.Array == ir.ArrayCounted {
 			m.Printf("%s%sCount = 0\n", ind, name)
