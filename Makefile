@@ -6211,6 +6211,8 @@ include make/checks/packet-finite.mk
 include make/checks/packet-text.mk
 include make/checks/table-base64.mk
 include make/checks/generated-tree.mk
+include make/checks/lua-conformance.mk
+include make/checks/lua-fuzz.mk
 include make/checks/schema-engine-is-the-oracle.mk
 include make/checks/schema-shared-hostile-corpus.mk
 
