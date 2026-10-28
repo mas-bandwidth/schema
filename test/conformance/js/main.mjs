@@ -635,11 +635,10 @@ async function surfaceMessage(lines, outDir) {
 // the wide-text corpus's Caption and Stamp (widedemo) and the message corpus's
 // ToolMessage (messagedemo), each through its unit's
 // <Package>Variable.js, and the stream, list, backend, vocabulary and
-// evolution-pair units below. Every other case is answered `<case>.absent`
-// beside where the answer would go — a root whose unit this leg does not
-// generate (tblg1, an optional over a variable closure, §2.3) — which the
-// matrix counts as the row of work that is left, never as a pass. The table is
-// the manifest's instance and report pairs less that named set, and
+// evolution-pair units below. A case whose pair is not here is answered
+// `<case>.absent` beside where the answer would go, which the matrix counts as
+// the row of work that is left, never as a pass. The table is the manifest's
+// instance and report pairs less a named uncarried set (empty today), and
 // TestWireRowsConformanceJavaScript (internal/codegen/jstable) holds it there.
 const wireRows = [
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
@@ -714,14 +713,15 @@ const wireRows = [
   ["tblk1", "Root", "k1/Tblk1Variable.js"],
   ["tblk2", "Root", "k2/Tblk2Variable.js"],
   ["tblp2", "Chain", "p2/Tblp2Variable.js"],
+  // a pointer under a false guard and inside an absent optional over a
+  // variable closure is no edge (§2.3, §3.1)
+  ["tblg1", "Guarded", "g1/Tblg1Variable.js"],
 ];
 
-// fuzzUnits binds the roster units no wire row or text surface names
-// (tbla2, tblk1, tblk2, tblp2): the wire-fuzz arm alone reads it, so the text
-// and wire-read arms, which need ToJson and FromJson, stay as they are. tblg1
-// is not bound: G1 declares an optional over a variable closure, which this
-// target refuses until its turn (docs/SPEC-TABLES.md §2.3), so its roots
-// answer absent and make/js.mk's pinned absent count names them.
+// fuzzUnits binds the roster units no text surface names (tbla2, tblk1,
+// tblk2, tblp2) for the wire-fuzz arm. They are wire rows too, which
+// wireFuzzCodec reads first, so this table is the arm's own statement of them;
+// tblg1 is bound through wireRows alone.
 const fuzzUnits = {
   tbla2: "a2/Tbla2Variable.js",
   tblk1: "k1/Tblk1Variable.js", tblk2: "k2/Tblk2Variable.js",
