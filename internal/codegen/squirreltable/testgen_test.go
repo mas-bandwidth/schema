@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestSquirrelTestgenRoundTripAndDamage is the gate of `schema testgen
@@ -25,6 +26,7 @@ import (
 // table whose forms leave out wire or json is refused by name.
 func TestSquirrelTestgenRoundTripAndDamage(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

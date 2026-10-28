@@ -99,7 +99,7 @@ func TestSquirrelCarriesOptionalArrays(t *testing.T) {
 	stdout := sqrun.Run(t, dir, "main.nut", nil)
 
 	got := map[string][]byte{}
-	for _, line := range strings.Split(strings.TrimRight(string(stdout), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 3 || fields[0] != "OK" {
 			t.Fatalf("probe line %q is not OK, a case and saved bytes", line)

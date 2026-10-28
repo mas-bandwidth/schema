@@ -25,6 +25,7 @@ import (
 // FixedReason must equal Go's for every file.
 func TestSquirrelFixedLoadNamesEveryRefusal(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

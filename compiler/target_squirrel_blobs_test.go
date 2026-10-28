@@ -108,7 +108,7 @@ func TestSquirrelCarriesByteAndStringBuffers(t *testing.T) {
 
 			out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"value": want}))
 			rows := map[string]string{}
-			for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+			for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 				name, rest, ok := strings.Cut(line, " ")
 				if !ok {
 					t.Fatalf("the probe line %q is not a name and a value", line)

@@ -24,7 +24,7 @@ conformance-negative-control-squirrel: build/conformance-harness build/conforman
 	fi; \
 	root=$$(pwd); \
 	printf '{"Replace":{"%s/%s":"%s/%s/load.nut"}}\n' "$$root" "$$source" "$$root" "$$out" > "$$out/overlay.json"; \
-	"$${GO:-go}" build -overlay "$$root/$$out/overlay.json" -tags schema_leg_squirrel -o "$$out/schema" ./cmd/schema; \
+	"$${GO:-go}" build -overlay "$$root/$$out/overlay.json" -o "$$out/schema" ./cmd/schema; \
 	rm -rf "$$out/conformance-squirrel" && mkdir -p "$$out/conformance-squirrel"; \
 	: > "$$out/conformance-squirrel/REFUSED.txt"; \
 	grep '^unit ' testdata/conformance/tables/MANIFEST.txt | while read -r _ key paths; do \

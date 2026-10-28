@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // knownSurfaces is every surface test/conformance/README.md names. A driver
@@ -28,6 +29,7 @@ var knownSurfaces = map[string]bool{
 // listed surface to be one test/conformance/README.md names.
 func TestSquirrelDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

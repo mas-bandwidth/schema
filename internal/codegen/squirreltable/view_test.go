@@ -128,6 +128,7 @@ type viewUnit struct {
 // t.TempDir().
 func TestSquirrelViewMatchesTheGoView(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter and the Go toolchain")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
