@@ -1618,7 +1618,7 @@ func (g *wireGen) emitSaveBody(st *ir.Struct) {
 	for i, f := range st.Fields {
 		g.emitSaveField(f, "\t", i)
 	}
-	g.pf("\t_retainTail(w);\n")
+	g.pf("\t_retainTail(w, v);\n")
 	g.pf("}\n\n")
 	g.pf("void %sWireSaveBody(TableWireWriter w, %s v) {\n", dartName(n), n)
 	g.pf("\t%s(w, v);\n", fields)
@@ -1936,7 +1936,7 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t\t\t\t\tif (resolved == null || sub.pos != sub.limit) {\n")
 	g.pf("\t\t\t\t\t\t\tr.report.retainLost++;\n")
 	g.pf("\t\t\t\t\t\t} else {\n")
-	g.pf("\t\t\t\t\t\t\tfinal rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);\n")
+	g.pf("\t\t\t\t\t\t\tfinal rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);\n")
 	g.pf("\t\t\t\t\t\t\tif (r.retain!.used + rec.cost() > r.retain!.capacity) {\n")
 	g.pf("\t\t\t\t\t\t\t\tr.report.retainLost++;\n")
 	g.pf("\t\t\t\t\t\t\t} else {\n")

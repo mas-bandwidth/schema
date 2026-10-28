@@ -54,12 +54,19 @@ final class TableRetain {
   }
 }
 
+// A record names the BODY it came from by that body's storage object, the
+// value its load filled: a nested table by value, an array element, a union
+// arm, a map value and a pointer's node are each their own object, so the
+// save re-emits a record at the end of exactly the body it was read from,
+// wherever that body sits in the tree. path is the field walk that reached it,
+// kept for the record's cost.
 final class _RetainRecord {
+  final Object owner;
   final List<int> path;
   final int id;
   final int kind;
   final List<int> resolved;
-  _RetainRecord(this.path, this.id, this.kind, this.resolved);
+  _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
 
@@ -431,23 +438,16 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
   return o;
 }
 
-// _retainTail re-emits the retained records whose path names the body being
-// written, in the order retained, at the end of that body (§6.6). A record
-// whose id cannot be interned (the caller's list is full) or whose walk is
-// damaged is dropped and counted one retainLost.
-void _retainTail(TableWireWriter w) {
+// _retainTail re-emits the retained records read from the body being written
+// — the ones whose owner is that body's storage object — in the order
+// retained, at the end of that body (§6.6). A record whose id cannot be
+// interned (the caller's list is full) or whose walk is damaged is dropped and
+// counted one retainLost.
+void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
   for (final rec in t.records) {
-    if (rec.path.length != w.path.length) continue;
-    var same = true;
-    for (var i = 0; i < w.path.length; i++) {
-      if (rec.path[i] != w.path[i]) {
-        same = false;
-        break;
-      }
-    }
-    if (!same) continue;
+    if (!identical(rec.owner, owner)) continue;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
