@@ -39,7 +39,8 @@
 -- read whole is the LoadMeasure refusal the harness accepts on the same terms
 -- (test/conformance/README.md, "The wire-fuzz driver"; §6.5).
 
-type Unit = { S: any, load: any, save: any, align: number, measure: boolean? }
+type Unit = { S: any, load: any, save: any, retain: any?, align: number, measure: boolean? }
+type Entry = { u: Unit, root: string, retain: boolean }
 
 
 -- ---- LOADMEASURE (docs/SPEC-TABLES.md §6.5; internal/tablewire/extent.go) --
@@ -86,11 +87,9 @@ end
 local lookup_S: any = nil
 local record_layouts: { [any]: any } = {}
 local union_layouts: { [any]: any } = {}
-local value_piece: (e: any) -> any = function(_e: any): any return nil end
-local field_pieces: (fd: any) -> { any } = function(_fd: any): { any } return {} end
-local record_layout: (d: any) -> any = function(_d: any): any return nil end
-local union_layout: (u: any) -> any = function(_u: any): any return nil end
-local arm_layout: (arm: any) -> any = function(_arm: any): any return nil end
+-- the five layout walks call each other, so they live on one table and each
+-- is defined below as a field of it
+local layout = {}
 
 local function storage_width(n: number): number
 	if n <= 0xff then return 1 end
@@ -99,7 +98,7 @@ local function storage_width(n: number): number
 	return 8
 end
 
-value_piece = function(e: any): any
+function layout.value_piece(e: any): any
 	local s = e.s
 	if s == "ptr" or s == "sblob" or s == "bblob" then return { size = 8, align = 8 } end
 	if s == "bool" then return { size = 1, align = 1 } end
@@ -107,15 +106,15 @@ value_piece = function(e: any): any
 	if s == "int" then local w = e.kw or 4; return { size = w, align = w } end
 	if s == "enum" then local w = storage_width(#(e.vs or {})); return { size = w, align = w } end
 	if s == "tab" then
-		local l = record_layout(lookup_S.lookup(e.t))
+		local l = layout.record_layout(lookup_S.lookup(e.t))
 		return { size = l.size, align = l.align }
 	end
 	if s == "union" then
-		local u = union_layout(lookup_S.lookup(e.t))
+		local u = layout.union_layout(lookup_S.lookup(e.t))
 		return { size = u.size, align = u.align }
 	end
 	if s == "str" or s == "bytes" or s == "text" or s == "arr" or s == "map" then
-		local pieces = field_pieces(e)
+		local pieces = layout.field_pieces(e)
 		local at, a = 0, 1
 		for _, p in pieces do
 			if p.align > a then a = p.align end
@@ -126,7 +125,7 @@ value_piece = function(e: any): any
 	return { size = 1, align = 1 }
 end
 
-field_pieces = function(fd: any): { any }
+function layout.field_pieces(fd: any): { any }
 	local out: { any } = {}
 	local s = fd.s
 	if s == "map" then
@@ -144,28 +143,28 @@ field_pieces = function(fd: any): { any }
 		out[1] = { size = fd.bound or 0, align = 1 }
 		out[2] = { size = 4, align = 4 }
 	elseif fd.array == "keyed" then
-		local e = value_piece(fd.e)
+		local e = layout.value_piece(fd.e)
 		out[1] = { size = e.size * (fd.bound or #(fd.keyvs or {})), align = e.align }
 	elseif fd.array == "fixed" or fd.array == "counted" then
-		local e = value_piece(fd.e)
+		local e = layout.value_piece(fd.e)
 		out[1] = { size = e.size * (fd.bound or 0), align = e.align }
 		if fd.array == "counted" then out[2] = { size = 4, align = 4 } end
 	elseif fd.array == "list" then
 		out[1] = { size = 16, align = 8 }
 	else
-		out[1] = value_piece(fd)
+		out[1] = layout.value_piece(fd)
 	end
 	if fd.present ~= nil then out[#out + 1] = { size = 1, align = 1 } end
 	return out
 end
 
-record_layout = function(d: any): any
+function layout.record_layout(d: any): any
 	local got = record_layouts[d]
 	if got ~= nil then return got end
 	local offset, maxAlign = 0, 1
 	local fields: { any } = {}
 	for _, fd in d.fields do
-		local pieces = field_pieces(fd)
+		local pieces = layout.field_pieces(fd)
 		local start, falign = -1, 1
 		for _, p in pieces do
 			if p.align > maxAlign then maxAlign = p.align end
@@ -183,24 +182,24 @@ record_layout = function(d: any): any
 	return l
 end
 
-arm_layout = function(arm: any): any
+function layout.arm_layout(arm: any): any
 	if arm.s == "void" then return { size = 0, align = 1 } end
 	local offset, maxAlign = 0, 1
-	for _, p in field_pieces(arm) do
+	for _, p in layout.field_pieces(arm) do
 		if p.align > maxAlign then maxAlign = p.align end
 		offset = align_up(offset, p.align) + p.size
 	end
 	return { size = align_up(offset, maxAlign), align = maxAlign }
 end
 
-union_layout = function(u: any): any
+function layout.union_layout(u: any): any
 	local got = union_layouts[u]
 	if got ~= nil then return got end
 	local tag = storage_width(#u.arms)
 	local align = tag
 	local armAlign, armSize = 1, 0
 	for _, arm in u.arms do
-		local a = arm_layout(arm)
+		local a = layout.arm_layout(arm)
 		if a.align > armAlign then armAlign = a.align end
 		if a.size > armSize then armSize = a.size end
 	end
@@ -364,10 +363,10 @@ extent_field = function(S: any, ids: { integer }, f: any, r: any): boolean
 		if f.s == "map" or f.array == "list" then
 			local size, align
 			if f.s == "map" then
-				local l = record_layout(S.lookup(f.t))
+				local l = layout.record_layout(S.lookup(f.t))
 				size, align = l.size, l.align
 			else
-				local p = value_piece(f.e)
+				local p = layout.value_piece(f.e)
 				size, align = p.size, p.align
 			end
 			if count > 0x7fffffff then return false end
@@ -408,25 +407,28 @@ extent_field = function(S: any, ids: { integer }, f: any, r: any): boolean
 	return true
 end
 
+-- node_table is internal/tablewire/nodetable.go's nodeTableBytes: the root
+-- body's fields are walked to the end and the LAST node-table field is the
+-- one that frames, exactly as there; a node field
+-- of another kind, or one whose length runs past the body, is unframed.
 local function node_table(body: any, ids: { integer }): (any?, boolean)
-	local present = false
 	local r = new_reader(body.b, body.at, body.e)
+	local payload: any? = nil
 	while true do
 		local ref = r_leb(r)
-		if ref == nil or ref == 0 then return nil, true end
+		if ref == nil or ref == 0 then return payload, true end
 		local id = id_at(ids, ref)
-		if id == nil or not r_has(r, 1) then return nil, true end
+		if id == nil or not r_has(r, 1) then return payload, true end
 		local kind = r_u8(r) :: number
 		if id == NODE_FIELD_ID then
-			present = true
 			if kind ~= KIND_STRING then return nil, false end
 			local n = r_leb(r)
 			if n == nil or not r_has(r, n) then return nil, false end
-			local payload = new_reader(r.b, r.at, r.at + n)
+			payload = new_reader(r.b, r.at, r.at + n)
 			r.at = r.at + n
+		elseif not r_skip(r, kind) then
 			return payload, true
 		end
-		if not r_skip(r, kind) then return nil, true end
 	end
 end
 
@@ -473,7 +475,7 @@ local function region_measure(S: any, desc: any, data: buffer, align: number): n
 	local function size_of(st: any, at: number, e: number): (number?, boolean)
 		current_scan = { at = 0 }
 		if not extent_record(S, st, ids, new_reader(data, at, e)) then return nil, false end
-		return round(round(record_layout(st).size) + current_scan.at), true
+		return round(round(layout.record_layout(st).size) + current_scan.at), true
 	end
 	local total, ok = size_of(desc, body.at, body.e)
 	if not ok or total == nil then return nil end
@@ -513,7 +515,11 @@ end
 
 -- answer reads one mutant through the unit's tolerant load and writes back what
 -- it decoded (test/conformance/README.md, "The wire-fuzz driver"; §4.2).
-local function answer(u: Unit, root: string, wire: buffer): buffer
+-- the retention arm's two stores, the harness's own
+local RETAIN_CAPACITY = 1048576
+local RETAIN_ID_CAPACITY = RETAIN_CAPACITY // 8
+
+local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): buffer
 	local S, load, save = u.S, u.load, u.save
 	-- docs/SPEC-TABLES.md §4: the six counters and the verdict
 	local report = {
@@ -541,8 +547,23 @@ local function answer(u: Unit, root: string, wire: buffer): buffer
 	-- wire-fuzz driver"): it recovers the value and counts the report, and the
 	-- plain name (the STRICT read, §6.5) is the caller's and not this pipe's.
 	local v = nil
+	-- THE RETENTION ARM (--retain; docs/SPEC-TABLES.md §6.6) reads and writes
+	-- the same mutant through the retaining pair, LoadRetain then SaveRetain,
+	-- with the harness's two stores (test/conformance/harness/wirefuzz.go,
+	-- retainFuzzCapacity and retainFuzzIdCapacity), and one report across the
+	-- pair: retain_lost at the end is what the load could not keep plus what
+	-- the save could not place.
+	local kept: any = nil
+	if retain then
+		(report :: any).retained = 0;
+		(report :: any).retainLost = 0
+	end
 	if not measureRefused then
-		v = load.loadTolerant(root, wire, report)
+		if retain then
+			v, kept = (u.retain :: any).LoadRetain(root, wire, report, RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
+		else
+			v = load.loadTolerant(root, wire, report)
+		end
 	end
 	-- A FIXED root always loads (test/conformance/README.md, "The wire-fuzz
 	-- driver"): its Load fills a value and reports, so a refused or damaged
@@ -552,7 +573,11 @@ local function answer(u: Unit, root: string, wire: buffer): buffer
 	end
 	local saved = nil
 	if v ~= nil then
-		saved = save.save(desc, v)
+		if retain then
+			saved = (u.retain :: any).SaveRetain(root, v, kept, report)
+		else
+			saved = save.save(desc, v)
+		end
 	end
 	local n = 47 + (if saved ~= nil then buffer.len(saved) else 0)
 	local b = buffer.create(n)
@@ -565,8 +590,8 @@ local function answer(u: Unit, root: string, wire: buffer): buffer
 	buffer.writeu8(b, 21, if report.malformed then 1 else 0)
 	buffer.writeu8(b, 22, if (report.refused or 0) > 0 then 1 else 0)
 	buffer.writeinteger(b, 23, integer.create(measure))
-	buffer.writei32(b, 31, 0)
-	buffer.writei32(b, 35, 0)
+	buffer.writei32(b, 31, if retain then (report :: any).retained or 0 else 0)
+	buffer.writei32(b, 35, if retain then (report :: any).retainLost or 0 else 0)
 	if saved == nil then
 		buffer.writeinteger(b, 39, -1i)
 	else
@@ -598,10 +623,14 @@ local function pipe(host: any)
 		assert(b ~= nil, "wirefuzz: the roster ended inside a name")
 		return buffer.tostring(b)
 	end
-	local units: { [string]: any } = require("../../../build/luau-driver/units")
+	local units: { [string]: { string } } = require("../../../build/luau-driver/units") :: any
 	local loaded: { [string]: Unit | false } = {}
 	-- one unit, required from build/conformance-luau/<key>/; a unit the
-	-- target refused has no directory, and every root of it answers 0
+	-- target refused has no directory, and every root of it answers 0. Not
+	-- every schema file of a unit has a table module (examples-wide's
+	-- WideText.schema declares none), so a module the unit did not emit is
+	-- skipped, as the conformance driver skips it; a module that is there and
+	-- raises still refuses the unit.
 	local function unit(key: string): Unit?
 		local have = loaded[key]
 		if have == nil then
@@ -611,24 +640,39 @@ local function pipe(host: any)
 				lookup_S = S
 				local align = 8
 				for _, name in units[key] or {} do
-					local mod = require(base .. name)
+					-- a closure, not pcall(require, ...): require resolves
+					-- ./ and ../ against the chunk that calls it
+					local okm, mod = pcall(function(): any return require(base .. name) end)
+					if not okm then
+						if string.find(tostring(mod), "no module at", 1, true) then
+							continue
+						end
+						error(mod, 0)
+					end
 					for k, v in mod do
 						if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(v) == "table" and v.fields ~= nil and v.id ~= nil then
-							local a = record_layout(v).align
+							local a = layout.record_layout(v).align
 							if a > align then align = a end
 						end
 					end
 				end
-				return { S = S, load = require(base .. "load"), save = require(base .. "save"), align = align, measure = true }
+				return { S = S, load = require(base .. "schema_load"), save = require(base .. "schema_save"), retain = require(base .. "schema_retain"), align = align, measure = true }
 			end)
-			have = if ok then got else false
-			loaded[key] = have
+			local next: Unit | false = false
+			if ok then
+				next = got :: Unit
+			end
+			loaded[key] = next
+			have = next
 		end
-		return if have then have else nil
+		if have == false or have == nil then
+			return nil
+		end
+		return have
 	end
 	local count = u32()
 	assert(count ~= nil, "wirefuzz: no roster")
-	local roster: { { u: Unit, root: string } | false } = {}
+	local roster: { Entry | false } = {}
 	local reply = buffer.create(count)
 	for i = 1, count do
 		local key = str()
@@ -636,15 +680,30 @@ local function pipe(host: any)
 		local fb = readExact(2)
 		assert(fb ~= nil, "wirefuzz: the roster ended inside an entry")
 		local form, retain = buffer.readu8(fb, 0), buffer.readu8(fb, 1)
-		local entry: { u: Unit, root: string } | false = false
-		-- a FORM-2 entry is a batch reader and a RETAIN entry the retention
-		-- arm; this leg drives the plain file Load and Save only, so both
-		-- answer 0 (test/conformance/README.md, "The wire-fuzz driver")
-		if form == 1 and retain == 0 then
+		local entry: Entry | false = false
+		-- A FORM-2 entry is the message batch reader, which this leg does not
+		-- drive, so it answers 0 (test/conformance/README.md, "The wire-fuzz
+		-- driver"). A RETAIN entry is the retention arm, driven through
+		-- schema_retain.luau's LoadRetain and SaveRetain.
+		-- Every entry answered 0 is NOTED by name (__luaufuzz.note, the file
+		-- LUAUFUZZ_NOTE names): make/luau-fuzz.mk holds the list to
+		-- test/conformance/luau/wire-fuzz-absent.txt, so a root that drops out
+		-- is a reviewed change and never a quieter run.
+		local why = ""
+		if form ~= 1 then
+			why = "message"
+		else
 			local u = unit(key)
-			if u ~= nil and u.S.lookup(root) ~= nil then
-				entry = { u = u, root = root }
+			if u == nil then
+				why = "refused"
+			elseif not pcall(u.S.lookup, root) then
+				why = "no-codec"
+			else
+				entry = { u = u, root = root, retain = retain ~= 0 }
 			end
+		end
+		if not entry then
+			host.note(key .. "." .. root .. " form=" .. tostring(form) .. " " .. why)
 		end
 		roster[i] = entry
 		buffer.writeu8(reply, i - 1, if entry then 1 else 0)
@@ -661,7 +720,7 @@ local function pipe(host: any)
 		assert(wire ~= nil, "wirefuzz: the stream ended inside a mutant")
 		local entry = roster[index + 1]
 		assert(entry, "wirefuzz: a mutant for a root this leg answered 0")
-		host.write(answer(entry.u, entry.root, wire))
+		host.write(answer(entry.u, entry.root, wire, entry.retain))
 	end
 end
 

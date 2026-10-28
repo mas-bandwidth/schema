@@ -20,6 +20,11 @@
 //     the wire-fuzz driver (test/conformance/luau/wirefuzz.luau) answers each
 //     mutant before it reads the next (test/conformance/README.md, "The
 //     wire-fuzz driver");
+//   * __luaufuzz.note(line) appends the line to the file the environment
+//     variable LUAUFUZZ_NOTE names, and does nothing when it is unset: the one
+//     side channel a script under this host has that is neither the pipe nor
+//     the harness-captured stderr (the wire-fuzz driver lists the roster
+//     entries it answers 0 for there, make/luau-fuzz.mk pins them by name);
 //   * require(path) resolves "./" and "../" against the requiring chunk, the
 //     way the luau CLI does, and caches each module by its resolved path.
 //
@@ -35,6 +40,7 @@
 
 #include <chrono>
 #include <stdio.h>
+#include <stdlib.h>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -256,6 +262,24 @@ static int hostWrite(lua_State* L)
     return 0;
 }
 
+// note(line) appends line and a newline to $LUAUFUZZ_NOTE; unset, it is a
+// no-op, so a script calls it unconditionally.
+static int hostNote(lua_State* L)
+{
+    size_t len = 0;
+    const char* line = luaL_checklstring(L, 1, &len);
+    const char* path = getenv("LUAUFUZZ_NOTE");
+    if (!path || !*path)
+        return 0;
+    FILE* f = fopen(path, "ab");
+    if (!f)
+        luaL_error(L, "luaufuzzhost: note: cannot open %s", path);
+    bool ok = fwrite(line, 1, len, f) == len && fputc('\n', f) != EOF;
+    if (fclose(f) != 0 || !ok)
+        luaL_error(L, "luaufuzzhost: note: cannot write %s", path);
+    return 0;
+}
+
 static void interrupt(lua_State* L, int gc)
 {
     if (gc >= 0 || !gArmed)
@@ -298,6 +322,8 @@ int main(int argc, char** argv)
     lua_setfield(L, -2, "read");
     lua_pushcfunction(L, hostWrite, "write");
     lua_setfield(L, -2, "write");
+    lua_pushcfunction(L, hostNote, "note");
+    lua_setfield(L, -2, "note");
     lua_setglobal(L, "__luaufuzz");
 
     std::string script = normalize(argv[1]);
