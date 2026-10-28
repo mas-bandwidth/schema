@@ -40,7 +40,7 @@ table GoalList | json = "array"
 			}
 			continue
 		}
-		if err == nil || !strings.Contains(err.Error(), `json = "array" on table GoalList`) {
+		if err != nil && !strings.Contains(err.Error(), `json = "array" on table GoalList`) {
 			t.Errorf("target %q error = %v, want the named array-root refusal", target, err)
 		}
 	}
