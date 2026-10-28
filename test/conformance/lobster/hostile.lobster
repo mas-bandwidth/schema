@@ -23,8 +23,9 @@
 // Reads files only: no network, no clock.
 //
 // A carrier maps to the port's reader:
-//   wire   schema_rt.load (a refusal by the form byte or the int32 count cap;
-//          a read that stops short of its root terminator is `damaged`)
+//   wire   schema_rt.load_tolerant (a refusal by the form byte, the int32
+//          count cap or a non-finite float; a read that stops short of its
+//          root terminator is `damaged`)
 // The text carrier is absent: the corpus's text is the tolerant JSON text
 // form (internal/tabletext Model.Read), whose Lobster reader is the JSON form
 // card's (schema-lobster-json-form), not yet on this base; schema_rt.text_load
@@ -56,13 +57,16 @@ def saved(name:string, rec:schema_rt.Record) -> string:
 
 def wire_answer(name:string, table:string, data:string) -> string:
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load(table, data, rep)
+    let rec = schema_rt.load_tolerant(table, data, rep)
     if rep.refused:
         if length(data) >= 1 and data[0] == 2:
             return name + " refuse message_form_as_file\n"
         if length(data) >= 1 and data[0] != 1:
             return name + " refuse newer_form\n"
         return name + " refuse count_refusal\n"
+    if rep.non_finite_float != "":
+        // a NaN or infinity on the wire refuses the read by name (SPEC §4.3)
+        return name + " refuse non_finite_float\n"
     if rep.stopped or not rec:
         return name + " refuse damaged\n"
     return saved(name, rec)
