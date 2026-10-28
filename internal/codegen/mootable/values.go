@@ -227,9 +227,12 @@ type slot struct{ name, typ, init, comment string }
 func (g *Gen) elemType(f *ir.Field) string {
 	t := f.Type
 	switch {
-	case t.Pointer && t.Blob() && t.Kind == ir.TString, t.TextUnbounded():
+	case t.TextUnbounded():
 		return "string"
 	case t.Pointer && t.Blob():
+		// a blob is a NODE with identity (docs/SPEC-TABLES.md §2.5): two
+		// slots naming one record share one buffer, so *string is a buffer
+		// too, never a moo string, whose equal values cannot be told apart
 		return "buffer"
 	case t.Pointer:
 		return g.TypeRef(t.Name)
@@ -251,9 +254,16 @@ func (g *Gen) slots(f *ir.Field) []slot {
 	t := f.Type
 	var out []slot
 	switch {
+	case ir.TextListPlain(f) && f.Array == ir.ArrayList:
+		// a PLAIN TEXT LIST's element is its text (docs/SPEC-TABLES.md
+		// §2.13): kind 12, its own L and bytes, a moo string; the optional
+		// spelling keeps its generated record, whose presence frames it
+		out = append(out, slot{name, "{string}", "{}", "a text list: its length is the data's (docs/SPEC-TABLES.md §2.13)"})
+	case ir.TextListPlain(f):
+		out = append(out, slot{name, "{string}", fmt.Sprintf("table.create(%d, \"\")", f.ArrayBound), "a text list (docs/SPEC-TABLES.md §2.13)"})
 	case f.IsMap():
 		out = append(out, slot{name, "{" + g.TypeRef(f.MapEntry.Name) + "}", "{}", "a map: its entries, any order; the save sorts by key (docs/SPEC-TABLES.md §2.8)"})
-	case f.Array == ir.ArrayList && (t.Pointer || t.TextUnbounded()):
+	case f.Array == ir.ArrayList && t.Pointer:
 		out = append(out, slot{name, "{" + g.elemType(f) + " | false}", "{}", "a list of pointers: a null is false, never nil (docs/SPEC-TABLES.md §2.9)"})
 	case f.Array == ir.ArrayList && isBuffer(t):
 		out = append(out, slot{name, "{buffer}", "{}", "a list: its length is the data's (docs/SPEC-TABLES.md §2.9)"})
@@ -263,7 +273,7 @@ func (g *Gen) slots(f *ir.Field) []slot {
 	case f.Array != ir.ArrayNone && (t.Pointer || t.TextUnbounded()):
 		out = append(out, slot{name, "{" + g.elemType(f) + "?}", fmt.Sprintf("table.create(%d) :: {%s?}", f.ArrayBound, g.elemType(f)), "nil is null (docs/SPEC-TABLES.md §2.4)"})
 	case t.Pointer && t.Blob() && t.Kind == ir.TString:
-		out = append(out, slot{name, "string?", "nil", "a string buffer: nil is absent (docs/SPEC-TABLES.md §2.5)"})
+		out = append(out, slot{name, "buffer?", "nil", "a string buffer, UTF-8: nil is absent (docs/SPEC-TABLES.md §2.5)"})
 	case t.Pointer && t.Blob():
 		out = append(out, slot{name, "buffer?", "nil", "a bytes buffer: nil is absent (docs/SPEC-TABLES.md §2.5)"})
 	case t.TextUnbounded():
@@ -315,7 +325,7 @@ func (g *Gen) slots(f *ir.Field) []slot {
 func (g *Gen) fillFresh(f *ir.Field, path, ind string) {
 	name := path + "." + ir.GoExportName(f.Name)
 	t := f.Type
-	if f.Array != ir.ArrayNone && f.Array != ir.ArrayList && !t.Pointer && !t.TextUnbounded() && isFresh(t) && !isByteElem(f) && !f.IsMap() {
+	if f.Array != ir.ArrayNone && f.Array != ir.ArrayList && !ir.TextListPlain(f) && !t.Pointer && !t.TextUnbounded() && isFresh(t) && !isByteElem(f) && !f.IsMap() {
 		var ctor string
 		if isBuffer(t) {
 			ctor = fmt.Sprintf("buffer.create(%d)", bufferSize(t))
@@ -335,7 +345,7 @@ func (g *Gen) emitStruct(d *ir.Struct) {
 	g.Pf("%s", ir.DocComment(d.Doc, "", "--"))
 	what := "table"
 	if d.MapEntryOf != "" {
-		what = "map entry of " + d.MapEntryOf + ","
+		what = "generated record of " + d.MapEntryOf + ","
 	}
 	g.Pf("-- %s %s\n", what, d.Name)
 	g.Pf("export type %s = {\n", d.Name)

@@ -41,6 +41,8 @@ export type FieldDescriptor = {
 	flo: { number }?,
 	fhi: { number }?,
 	fres: { number }?,
+	flo32: number?,
+	fhi32: number?,
 	vs: { { any } }?,
 	kw: number?,
 	signed: boolean?,

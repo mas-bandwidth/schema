@@ -10,7 +10,10 @@
 package compiler
 
 import (
+	"fmt"
+
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -18,10 +21,20 @@ type mooTarget struct{}
 
 func (mooTarget) Names() []string { return []string{"moo"} }
 
+// Generate is the packet surface (one module per schema file,
+// internal/codegen/moo) and, for a unit that declares tables, the table
+// surface (internal/codegen/mootable): one <Base>Table.moo per file with
+// tables and the table runtime beside them. A table-free unit's output is the
+// packet surface's alone.
+//
+// THE VARIABLE WIRE CARRIES EVERY CONSTRUCT REGISTERED BELOW, each claimed by
+// a named test against the Go reference engine
+// (internal/codegen/mootable/construct_test.go,
+// TestMooTableConstructsMatchTheGoEngine; the conformance corpus,
+// TestMooTableSaveRoundTripsEveryInstance and
+// TestMooTableLoadMatchesTheReports). What is not registered is refused here
+// or in compiler/generate.go by name.
 func (mooTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := ir.RefuseWideTableKinds(u, "moo"); err != nil {
-		return nil, err
-	}
 	if err := refuseWideText(u, "moo"); err != nil {
 		return nil, err
 	}
@@ -37,12 +50,45 @@ func (mooTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseLists(u, "moo"); err != nil {
 		return nil, err
 	}
-	if err := refuseTables(u, "moo"); err != nil {
+	files, err := moo.Generate(u)
+	if err != nil {
 		return nil, err
 	}
-	return moo.Generate(u)
+	tables, err := mootable.Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range tables {
+		if _, dup := files[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed twice — a schema file named <X>Table.schema beside <X>.schema with tables collides on the table module; rename one file (docs/SPEC-TABLES.md)", name)
+		}
+		files[name] = data
+	}
+	return files, nil
 }
 
 func init() {
-	registerBuiltin(mooTarget{}, false, false, false, false)
+	// tables, a union with table arms, an array of unions and both byte
+	// buffers ride the variable wire (construct_test.go: unions_maps_keyed,
+	// blobs_pointers)
+	registerBuiltin(mooTarget{}, true, true, true, true)
+	// maps, []T and ?[N]T (construct_test.go: unions_maps_keyed,
+	// optional_map, text_lists; the conformance corpus)
+	registerMapCarrier("moo")
+	registerListCarrier("moo")
+	registerOptionalArrayCarrier("moo")
+	// wstring(N): the packet wire (internal/codegen/moo, the packet-wide
+	// gate) and the table wire's kind 33 (construct_test.go: wide_text)
+	registerWideTextCarrier("moo")
+	tableWideTextTargets["moo"] = true
+	// string, bytes and flags defaults: the packet constructors, and the
+	// table wire's elision and absent read (construct_test.go: defaults_at,
+	// defaults_off)
+	valueDefaultTargets = append(valueDefaultTargets, "moo")
+	registerPacketValueDefaultCarrier("moo")
+	// `was` on a variant, an arm or a type's field: the ids are the source
+	// names' (ir.TableFieldWireId, VariantWireName, WireName)
+	wasRowTargets = append(wasRowTargets, "moo")
+	// the constructs compiler/generate.go gates are registered in
+	// compiler/carries_moo.go
 }

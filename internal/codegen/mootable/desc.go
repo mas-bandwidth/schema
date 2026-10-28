@@ -259,6 +259,10 @@ func valueDesc(g *Gen, f *ir.Field, def bool) string {
 		parts := []string{"s = \"float\"", fmt.Sprintf("f32 = %v", t.Kind == ir.TFloat32)}
 		if f.HasFloatRange {
 			parts = append(parts, "flo = "+f64Pair(f.FMin), "fhi = "+f64Pair(f.FMax), "fres = "+f64Pair(f.Resolution))
+			if t.Kind == ir.TFloat32 {
+				// the ends a float32 read clamps TO, as float32(v) rounds them
+				parts = append(parts, fmt.Sprintf("flo32 = 0x%08x, fhi32 = 0x%08x", math.Float32bits(float32(f.FMin)), math.Float32bits(float32(f.FMax))))
+			}
 		}
 		_, init := g.scalar(f, def)
 		parts = append(parts, "def = "+init)
