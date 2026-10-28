@@ -242,8 +242,9 @@ byte blob, an optional array, a map, an unbounded list), so the target applies
 none of them, and every unit of the tables manifest generates
 (`TestLobsterGeneratesEveryManifestUnit`, whose witness is that the shared
 refusals still refuse units of that manifest). A PACKET type's string, bytes
-or flags default is still refused by name, because the type surface has no
-type-wire read path yet. The constructs of `compiler/carries.go` are held back
+or flags default and a packet `wstring(N)` are carried too: the type wire
+reads and writes both over serialize.lobster v2.1.1 (`write.go`, `read.go`;
+the packet gates are `internal/codegen/lobster/packet_*_test.go`). The constructs of `compiler/carries.go` are held back
 centrally unless a `carries_lobster*.go` file registers them; lobster carries
 the timestamp, the one-sided range, text lists, their total, unbounded text
 and `?T` over a variable closure.
