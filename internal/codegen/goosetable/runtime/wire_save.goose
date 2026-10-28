@@ -247,9 +247,9 @@ fn guard_holds(c: SaveCtx&, tab: i64, rec: i64, i: i64) -> bool {
     if c.unit.guards.len == 0 { return true; }
     let name = c.unit.tables[tab].name;
     for g in c.unit.guards {
-        if g.ordinal as i64 != i || g.owner != name { continue; }
-        let cond = c.unit.tables[tab].fields[g.cond as i64];
-        if bool_of(c, slot_of(c, rec, g.cond as i64), cond) != g.want { return false; }
+        if g.ordinal != i || g.owner != name { continue; }
+        let cond = c.unit.tables[tab].fields[g.cond];
+        if bool_of(c, slot_of(c, rec, g.cond), cond) != g.want { return false; }
     }
     return true;
 }
@@ -662,7 +662,7 @@ fn field_keyed(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
     var keys = d.variants;
     let name = c.unit.tables[owner].name;
     for k in c.unit.keys {
-        if k.ordinal as i64 == ordinal && k.owner == name { keys = k.variants; }
+        if k.ordinal == ordinal && k.owner == name { keys = k.variants; }
     }
     if s >= 0 && c.vals[s].made {
         for i in d.bound {
@@ -820,7 +820,10 @@ fn save_table(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVa
     var order: i64[>..<] = [];
     var index: i64[>..<] = [];
     var open: bool[>..<] = [];
-    var none = RetainStore { .. };
+    var rbytes: u8[>..<] = [];
+    var rrecs: RetainRec[>..<] = [];
+    var rids: u64[>..<] = [];
+    var none = RetainStore { capacity: 0, id_capacity: 0, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
     let at = out.len;
     var c = SaveCtx { data: data, unit: unit, vals: vals, nodes: nodes, out: out, ids: ids, order: order, index: index, open: open, root_tab: -1, refusal: 0, retain: none, retaining: false, retain_lost: 0 };
     for d, i in unit.tables { if d.name == root { c.root_tab = i; } }

@@ -23,6 +23,9 @@
 // (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-GOOSE.md, THE TABLE WIRE):
 //   wire         load every instance and save it back, byte for byte
 //   report       load every report row, print §4's counters and verdict
+//   retain       load with retention (§6.6), print the load's three counters
+//                and the save's retain_lost
+//   retain-save  the bytes that retaining save writes back
 // The other surfaces read forms other cards carry (the message form, JSON,
 // the cook, the block form) and are ABSENT here until they land.
 import os;
@@ -115,6 +118,72 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
+// surface_retain: the RETAIN-UNKNOWN round trip (docs/SPEC-TABLES.md §6.6).
+// `full` is a buffer the whole load fits in; `short` is one byte short of the
+// LAST record, found by loading once at full and reading what it used. The
+// id capacity is `full` or a count. The form-2 row (`retain-message`) reads a
+// message batch, which the message form carries: absent here.
+fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 1 { continue; }
+        if f[0] == "retain-message" {
+            if f.len > 3 && f[3] == unit { absent(f[1], ""); }
+            continue;
+        }
+        // the derived manifest carries no expectation: the harness keeps the
+        // counters and the saves, and asks retain-save only of rows that save
+        if f.len < 7 || f[0] != "retain" || f[2] != unit { continue; }
+        var data: u8[>..] = [];
+        load_file(f[4], data);
+        var ids_cap: i64 = -1;
+        if f[6] != "full" {
+            let n, ok = parse_int(f[6]);
+            if !ok { write_stderr(str("driver: ", f[1], ": ids ", f[6], "\n")); exit(1); }
+            ids_cap = n;
+        }
+        var cap: i64 = -1;
+        if f[5] == "short" {
+            // a roomy load first, to read what the whole load used
+            var vals: schema_rt::LoadVal[>..] = [];
+            var nodes: schema_rt::LoadNode[>..] = [];
+            var report = schema_rt::LoadReport { .. };
+            var rbytes: u8[>..<] = [];
+            var rrecs: schema_rt::RetainRec[>..<] = [];
+            var rids: u64[>..<] = [];
+            var store = schema_rt::RetainStore { capacity: -1, id_capacity: ids_cap, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
+            schema_rt::load_table_retain(conformance_unit(), f[3], data, vals, nodes, report, store);
+            cap = schema_rt::retain_last_short(store);
+        }
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var report = schema_rt::LoadReport { .. };
+        var rbytes: u8[>..<] = [];
+        var rrecs: schema_rt::RetainRec[>..<] = [];
+        var rids: u64[>..<] = [];
+        var store = schema_rt::RetainStore { capacity: cap, id_capacity: ids_cap, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
+        let root = schema_rt::load_table_retain(conformance_unit(), f[3], data, vals, nodes, report, store);
+        if root < 0 {
+            write_stderr(str("driver: ", f[1], " does not load\n"));
+            exit(1);
+        }
+        let load_retained = report.retained;
+        let load_lost = report.retain_lost;
+        let load_unknown = report.unknown;
+        var out: u8[>..<] = [];
+        let refusal = schema_rt::save_table_retain(conformance_unit(), f[3], data, vals, nodes, root, store, report, out);
+        if refusal != 0 {
+            absent(f[1], schema_rt::save_refusal_name(refusal));
+            continue;
+        }
+        if saved {
+            answer(f[1], out);
+        } else {
+            answer(f[1], str(load_retained, ",", load_lost, ",", load_unknown, " ", report.retain_lost - load_lost, "\n"));
+        }
+    }
+}
+
 fn main() {
     let argv = args();
     if argv.len < 3 {
@@ -122,7 +191,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nreport\n");
+        write_stdout("wire\nreport\nretain\nretain-save\n");
         return;
     }
     if argv.len != 4 {
@@ -135,6 +204,8 @@ fn main() {
     let unit = argv[3];
     if argv[1] == "report" { surface_report(lines, unit); return; }
     if argv[1] == "wire" { surface_wire(lines, unit); return; }
+    if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
+    if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);
 }

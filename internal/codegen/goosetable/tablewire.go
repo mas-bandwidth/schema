@@ -184,6 +184,20 @@ func emitTableWireUnit(g *goose.Gen) error {
 	if n := list("_TableUnitGuards", "GuardDesc", guards); n != "" {
 		l.add("guards", n)
 	}
+	// every id the unit can spell, ascending: a retaining save takes a
+	// retained id this build can name from the file's own table, and only
+	// the others from the caller's list (docs/SPEC-TABLES.md §6.6)
+	known := ir.TableWireIds(g.Unit)
+	sort.Slice(known, func(i, j int) bool { return known[i] < known[j] })
+	var knownLit []string
+	for _, id := range known {
+		knownLit = append(knownLit, fmt.Sprintf("0x%016x", id))
+	}
+	if len(knownLit) > 0 {
+		g.Declare("_TableUnitKnown")
+		g.Pf("let _TableUnitKnown: u64[%d] = [%s];\n", len(knownLit), strings.Join(knownLit, ", "))
+		l.add("known", "_TableUnitKnown")
+	}
 	g.Declare(UnitName)
 	if len(l.parts) == 0 {
 		g.Pf("let %s: %s::LoadUnit = %s::LoadUnit { .. };\n\n", UnitName, goose.RuntimeNamespace, goose.RuntimeNamespace)

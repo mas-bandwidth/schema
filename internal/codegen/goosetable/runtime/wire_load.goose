@@ -25,6 +25,7 @@ namespace schema_rt;
 
 import .schema_rt;
 import .schema_tables;
+import .wire_retain;
 
 // THE THREE STATES of a loaded value (docs/PORT-GOOSE.md, THE LOADED VALUE).
 let ValAbsent: u8 = 0;  // never rode: the value is the descriptor's default
@@ -96,6 +97,7 @@ struct LoadUnit {
     keys: const KeyDesc[:],
     deprecated: const DeprecatedVariant[:],
     guards: const GuardDesc[:],
+    known: const u64[:],      // every id this unit can spell, ascending (§6.6)
 }
 
 // LoadReg is one row of THE LOAD DISPATCH TABLE (registry/tablewire.goosereg,
@@ -152,6 +154,8 @@ struct LoadCtx {
     root_val: i64,
     cap: bool,       // §2.9: a count past int32 refuses rather than damages
     node_n: i64,     // the records the scan confirmed (0 when it failed)
+    retain: RetainStore&, // §6.6: the caller's stores, when retaining
+    retaining: bool,
 }
 
 // ---- the wire's number shapes (docs/SPEC-TABLES.md §3) ----
@@ -395,8 +399,8 @@ fn f32_value(bits: u32) -> f64 {
     let m: i64 = bits & 0x7FFFFF;
     var v: f64 = 0.0;
     if e == 0xFF { v = 1.0 / 0.0; }
-    else if e == 0 { v = (m as f64) * pow2(-149); }
-    else { v = ((m + 0x800000) as f64) * pow2(e - 150); }
+    else if e == 0 { v = m * pow2(-149); }
+    else { v = (m + 0x800000) * pow2(e - 150); }
     return if neg { -v } else { v };
 }
 
@@ -459,6 +463,8 @@ fn clear_fields(c: LoadCtx&, rec: i64) {
 // make_record gives slot `v` the field slots of table t, or resets the ones
 // it has: a body is the same storage across occurrences (§3).
 fn make_record(c: LoadCtx&, v: i64, t: i64) {
+    // a NEW OCCURRENCE of a body: what the earlier one retained dies with it
+    if c.retaining && c.vals[v].made { forget_rec(c, v); }
     if c.vals[v].made && c.vals[v].tab == t {
         clear_fields(c, v);
         return;
@@ -614,7 +620,7 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
             value = uraw as! i64;
         }
     }
-    if d.bits > 0 && (d.bits as i64) < width * 8 {
+    if d.bits > 0 && d.bits < width * 8 {
         let max = ((1 as u64) << (d.bits as! u64)) - 1;
         if (value as! u64) > max { value = max as! i64; rep.clamped += 1; }
     }
@@ -629,8 +635,8 @@ fn clamp_wide(rep: LoadReport&, raw: Int128, raw_signed: bool, d: FieldDesc) -> 
     var lo = d.lo;
     var hi = d.hi;
     if d.ibits != 0 || d.fbits != 0 {
-        lo = shl128(lo, d.fbits as i64);
-        hi = shl128(hi, d.fbits as i64);
+        lo = shl128(lo, d.fbits);
+        hi = shl128(hi, d.fbits);
     }
     if cmp128(raw, raw_signed, lo, d.signed) < 0 { rep.clamped += 1; return lo; }
     if cmp128(raw, raw_signed, hi, d.signed) > 0 { rep.clamped += 1; return hi; }
@@ -705,7 +711,9 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
         }
         if i < 0 {
             c.report.unknown += 1; // skipped by its length (§4)
+            let from = r.off;
             if !skip(c, r, kind) { c.report.malformed = true; return false; }
+            if c.retaining { capture(c, rec, id, kind, from, r.off); }
             continue;
         }
         let d = c.unit.tables[tab].fields[i];
@@ -858,6 +866,7 @@ fn load_enum(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, element: bool) -> boo
     if v == 0 {
         c.vals[slot].state = ValEmpty;
         c.report.unknown += 1;
+        if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
         return true;
     }
     if variant_deprecated(c, d.ref, id) {
@@ -962,7 +971,11 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             guard e else { r.off = end; return true, true; }
             var eshape = e.shape;
             if list {
-                // a fresh run, bounded by the bytes that can carry elements
+                // a fresh run, bounded by the bytes that can carry elements;
+                // the earlier occurrence's elements die with their records
+                if c.retaining && c.vals[slot].made {
+                    for k in c.vals[slot].count { forget_rec(c, c.vals[slot].first + k); }
+                }
                 let room = (sub.end - sub.off + 1) as! u64;
                 let n = (if keep < room { keep } else { room }) as! i64;
                 let first = reserve(c, n);
@@ -1113,6 +1126,7 @@ fn load_keyed(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool 
         }
         if at < 0 {
             c.report.unknown += 1; // a slot this reader cannot name
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
             sub.off += elen;
             continue;
         }
@@ -1260,6 +1274,7 @@ fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
             // the entry's body is read WHOLE now the key has chosen its place
             let at = if order == 0 { first + landed - 1 } else { first + landed };
             if at >= first + cap { c.report.malformed = true; break; }
+            if c.retaining && c.vals[at].made { forget_rec(c, at); } // a duplicate key's earlier entry
             c.vals[at] = LoadVal { shape: ShapeTab, .. };
             make_record(c, at, et);
             c.vals[at].state = ValPresent;
@@ -1301,6 +1316,7 @@ fn arm_kind(a: FieldDesc) -> u8 {
 // unknown; a retyped arm is judged by the field rules.
 recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bool {
     let u = union_index(c, name);
+    if c.retaining && c.vals[slot].made && c.vals[slot].first >= 0 { forget_rec(c, c.vals[slot].first); }
     c.vals[slot].tab = u;
     let ref, ok = leb(c, r);
     if !ok { c.report.malformed = true; return false; }
@@ -1322,6 +1338,7 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
     }
     if tag == 0 {
         c.report.unknown += 1;
+        if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
     } else {
         let arm = c.unit.unions[u].arms[tag - 1];
         let want = arm_kind(arm);
@@ -1580,7 +1597,11 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
         for d, i in c.unit.tables {
             if d.id == type_id && place_named(c, root, d.name) { t = i; break; }
         }
-        if t < 0 { c.report.unknown += 1; continue; }
+        if t < 0 {
+            c.report.unknown += 1;
+            if c.retaining { c.report.retain_lost += 1; } // an excluded class (§6.6)
+            continue;
+        }
         c.nodes[k].tab = t;
     }
     // PASS TWO: decode each body into its own storage
@@ -1600,12 +1621,10 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     return ok;
 }
 
-// load_table is THE LOAD: it reads `data` as a `root` (docs/SPEC-TABLES.md
-// §3, §4) into the caller's flat value table and node table, counting every
-// evolution event in `report`, and returns the root record's slot, -1 when
-// nothing was decoded (a refusal, or a file that cannot be read whole).
-fn load_table(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&) -> i64 {
-    var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, root_tab: -1, root_val: -1, .. };
+// load_with is the one load both entry points share: load_table, and
+// load_table_retain (wire_retain.goose) with retention on.
+fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
+    var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: retaining };
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a
     // file's own, and any form but 1 is refused with no damage reported
     if data.len < 1 { report.malformed = true; return -1; }
@@ -1645,4 +1664,16 @@ fn load_table(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVa
     // other verdict, and the caller discards the partial value
     if report.non_finite { return -1; }
     return c.root_val;
+}
+
+// load_table is THE LOAD: it reads `data` as a `root` (docs/SPEC-TABLES.md
+// §3, §4) into the caller's flat value table and node table, counting every
+// evolution event in `report`, and returns the root record's slot, -1 when
+// nothing was decoded (a refusal, or a file that cannot be read whole).
+fn load_table(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&) -> i64 {
+    var bytes: u8[>..<] = [];
+    var recs: RetainRec[>..<] = [];
+    var ids: u64[>..<] = [];
+    var none = RetainStore { capacity: 0, id_capacity: 0, used: 0, bytes: bytes, recs: recs, ids: ids };
+    return load_with(unit, root, data, vals, nodes, report, none, false);
 }
