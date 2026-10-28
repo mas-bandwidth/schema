@@ -51,7 +51,7 @@ function Reader:skip(n)
   return true
 end
 function Reader:align()
-  local v, ok = self:get((-self.off) & 7)
+  local v, ok = self:get(-self.off & 7)
   return ok and v == 0
 end
 function Reader:raw(n)
@@ -66,8 +66,13 @@ function Reader:raw(n)
 end
 
 -- ---- a byte writer for the resolved record (pieces joined once) ------------
-local function W() return { parts = {}, n = 0 } end
-local function w_raw(w, s) w.parts[#w.parts + 1] = s; w.n = w.n + #s end
+local function W()
+  return { parts = {}, n = 0 }
+end
+local function w_raw(w, s)
+  w.parts[#w.parts + 1] = s
+  w.n = w.n + #s
+end
 local function w_leb(w, v)
   v = v & MAX64
   local out = {}
@@ -78,15 +83,24 @@ local function w_leb(w, v)
   until v == 0
   w_raw(w, table.concat(out))
 end
-local function w_u8(w, v) w_raw(w, string.char(v & 0xff)) end
-local function w_u32(w, v) w_raw(w, string.pack("<I4", v)) end
-local function w_u64(w, v) w_raw(w, string.pack("<i8", v)) end
+local function w_u8(w, v)
+  w_raw(w, string.char(v & 0xff))
+end
+local function w_u32(w, v)
+  w_raw(w, string.pack("<I4", v))
+end
+local function w_u64(w, v)
+  w_raw(w, string.pack("<i8", v))
+end
 
 -- ---- shape helpers (docs/SPEC-TABLES.md §3.3) ------------------------------
 local function bits_max(n)
   if n <= 0 then return 0 end
   local b = 0
-  while n > 0 do b = b + 1; n = n >> 1 end
+  while n > 0 do
+    b = b + 1
+    n = n >> 1
+  end
   return b
 end
 local function bits_range(lo, hi)
@@ -94,11 +108,16 @@ local function bits_range(lo, hi)
   return bits_max(hi - lo)
 end
 local function kind_width(kind)
-  if kind == 1 or kind == 2 or kind == 6 or kind == 20 or kind == 25 then return 1
-  elseif kind == 3 or kind == 7 or kind == 21 or kind == 26 then return 2
-  elseif kind == 4 or kind == 8 or kind == 10 or kind == 22 or kind == 27 then return 4
-  elseif kind == 5 or kind == 9 or kind == 11 or kind == 23 or kind == 28 or kind == 36 then return 8
-  elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then return 16
+  if kind == 1 or kind == 2 or kind == 6 or kind == 20 or kind == 25 then
+    return 1
+  elseif kind == 3 or kind == 7 or kind == 21 or kind == 26 then
+    return 2
+  elseif kind == 4 or kind == 8 or kind == 10 or kind == 22 or kind == 27 then
+    return 4
+  elseif kind == 5 or kind == 9 or kind == 11 or kind == 23 or kind == 28 or kind == 36 then
+    return 8
+  elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then
+    return 16
   end
   return 0
 end
@@ -114,7 +133,10 @@ local function file_minimum(kind)
 end
 local function leb_bytes(v)
   local n = 1
-  while v >= 0x80 do v = v >> 7; n = n + 1 end
+  while v >= 0x80 do
+    v = v >> 7
+    n = n + 1
+  end
   return n
 end
 
@@ -124,15 +146,21 @@ local function vocab_entry(vocab, ref)
 end
 local function field_by_id(desc, id)
   if desc == nil then return nil end
-  for _, f in ipairs(desc.fields) do if f.id == id then return f end end
+  for _, f in ipairs(desc.fields) do
+    if f.id == id then return f end
+  end
   return nil
 end
 local function table_by_type(T, id)
-  for name, d in pairs(T.Tables) do if d.type_id == id then return name, d end end
+  for name, d in pairs(T.Tables) do
+    if d.type_id == id then return name, d end
+  end
   return nil
 end
 local function variant_index(variants, id)
-  for i, v in ipairs(variants) do if v[2] == id then return i end end
+  for i, v in ipairs(variants) do
+    if v[2] == id then return i end
+  end
   return nil
 end
 
@@ -170,14 +198,19 @@ message_skip = function(r, vocab, indexBits, e, depth)
     local ref, ok = r:get(vocab.refBits)
     if not ok or ref == 0 then return ok end
     local arm = vocab_entry(vocab, ref)
-    return arm ~= nil and arm.id ~= 0xfffffffffffffffd and arm.kind ~= 0 and message_skip(r, vocab, indexBits, arm,
-        depth + 1)
+    return arm ~= nil
+      and arm.id ~= 0xfffffffffffffffd
+      and arm.kind ~= 0
+      and message_skip(r, vocab, indexBits, arm, depth + 1)
   end
   if k == 12 or k == 33 then
     local n, ok = message_count(r, s)
     if not ok then return false end
     local width = 16
-    if k == 12 then width = 8; if not r:align() then return false end end
+    if k == 12 then
+      width = 8
+      if not r:align() then return false end
+    end
     return r:skip(n * width)
   end
   if k == 31 then
@@ -202,9 +235,17 @@ message_skip = function(r, vocab, indexBits, e, depth)
     for _ = 1, n do
       if k == 16 and not r:skip(vocab.refBits) then return false end
       local before = r.off
-      if not message_skip(r, vocab, indexBits, { id = 0, kind = s.elem, bits = s.elem_bits,
-          packing = s.elem_packing, max = s.elem_max, min = s.elem_min }, depth + 1)
-          or r.off == before then return false end
+      if
+        not message_skip(
+          r,
+          vocab,
+          indexBits,
+          { id = 0, kind = s.elem, bits = s.elem_bits, packing = s.elem_packing, max = s.elem_max, min = s.elem_min },
+          depth + 1
+        ) or r.off == before
+      then
+        return false
+      end
     end
     return true
   end
@@ -222,7 +263,9 @@ In.__index = In
 local function new_in(bits, vocab, w, limit)
   return setmetatable({ bits = bits, vocab = vocab, w = w, limit = limit }, In)
 end
-function In:room(n) return n >= 0 and n <= self.limit - self.w.n end
+function In:room(n)
+  return n >= 0 and n <= self.limit - self.w.n
+end
 function In:ref(zero)
   local ref, ok = self.bits:get(self.vocab.refBits)
   if not ok then return nil, false end
@@ -251,7 +294,10 @@ function In:scalar(e)
   local v, ok = self.bits:get(math.min(bits, 64))
   if not ok then return false end
   local hi = 0
-  if bits > 64 then hi, ok = self.bits:get(bits - 64); if not ok then return false end end
+  if bits > 64 then
+    hi, ok = self.bits:get(bits - 64)
+    if not ok then return false end
+  end
   if e.packing == 1 then
     local base = e.base or 0
     local sum = v + base
@@ -265,20 +311,39 @@ function In:scalar(e)
     local scaled = ratio * (e.qdelta or 0)
     v = string.unpack("<I4", string.pack("<f", scaled + (e.qmin or 0)))
   end
-  if (e.packing == nil or e.packing == 0) and bits > 0 and bits < 64 and (e.kind >= 2 and e.kind <= 5
-      or e.kind >= 20 and e.kind <= 24) then
+  if
+    (e.packing == nil or e.packing == 0)
+    and bits > 0
+    and bits < 64
+    and (e.kind >= 2 and e.kind <= 5 or e.kind >= 20 and e.kind <= 24)
+  then
     local sign = 1 << (bits - 1)
     if v & sign ~= 0 then v = v - (1 << bits) end
   end
   local signed = (e.kind >= 2 and e.kind <= 5) or (e.kind >= 20 and e.kind <= 24)
   if width == 1 then
-    if signed then w_raw(self.w, string.pack("<i1", v)) else w_u8(self.w, v & 0xff) end
+    if signed then
+      w_raw(self.w, string.pack("<i1", v))
+    else
+      w_u8(self.w, v & 0xff)
+    end
   elseif width == 2 then
-    if signed then w_raw(self.w, string.pack("<i2", v)) else w_raw(self.w, string.pack("<I2", v & 0xffff)) end
+    if signed then
+      w_raw(self.w, string.pack("<i2", v))
+    else
+      w_raw(self.w, string.pack("<I2", v & 0xffff))
+    end
   elseif width == 4 then
-    if signed then w_raw(self.w, string.pack("<i4", v)) else w_raw(self.w, string.pack("<I4", v & MAXUINT32)) end
-  elseif width == 8 then w_u64(self.w, v)
-  elseif width == 16 then w_raw(self.w, string.pack("<i8", v)); w_raw(self.w, string.pack("<i8", hi))
+    if signed then
+      w_raw(self.w, string.pack("<i4", v))
+    else
+      w_raw(self.w, string.pack("<I4", v & MAXUINT32))
+    end
+  elseif width == 8 then
+    w_u64(self.w, v)
+  elseif width == 16 then
+    w_raw(self.w, string.pack("<i8", v))
+    w_raw(self.w, string.pack("<i8", hi))
   end
   return true
 end
@@ -287,7 +352,11 @@ function In:opaque(e, framed)
   if e.kind == 12 or e.kind == 33 then
     n, ok = message_count(self.bits, e)
     if not ok then return false end
-    if e.kind == 33 then n = n * 2 elseif not self.bits:align() then return false end
+    if e.kind == 33 then
+      n = n * 2
+    elseif not self.bits:align() then
+      return false
+    end
   else
     if not self.bits:align() then return false end
     n, ok = self.bits:get(32)
@@ -326,10 +395,14 @@ function In:content(e, depth)
       w_u8(self.w, entry.kind)
       if not self:payload(entry, depth) then return false end
     end
-  elseif k == 14 or k == 16 then return self:elements(e, depth)
-  elseif k == 15 or k == 30 then return self:payload(e, depth)
-  elseif k == 32 then return true
-  elseif k == 12 or k == 31 or k == 33 then return self:opaque(e, false)
+  elseif k == 14 or k == 16 then
+    return self:elements(e, depth)
+  elseif k == 15 or k == 30 then
+    return self:payload(e, depth)
+  elseif k == 32 then
+    return true
+  elseif k == 12 or k == 31 or k == 33 then
+    return self:opaque(e, false)
   end
   return self:scalar(e)
 end
@@ -344,8 +417,17 @@ function In:elements(e, depth)
   local floor = file_minimum(e.elem)
   if e.kind == 16 then floor = 16 end
   if floor < 0 or n > math.floor((self.limit - self.w.n) / floor) then return false end
-  local element = { id = 0, kind = e.elem, bits = e.elem_bits, packing = e.elem_packing, max = e.elem_max,
-      min = e.elem_min, qcount = e.elem_qcount, qmin = e.elem_qmin, qdelta = e.elem_qdelta }
+  local element = {
+    id = 0,
+    kind = e.elem,
+    bits = e.elem_bits,
+    packing = e.elem_packing,
+    max = e.elem_max,
+    min = e.elem_min,
+    qcount = e.elem_qcount,
+    qmin = e.elem_qmin,
+    qdelta = e.elem_qdelta,
+  }
   -- §3.3: a raw element's payload width is its kind's storage width.
   if element.bits == nil and kind_width(e.elem) ~= 0 then element.bits = kind_width(e.elem) * 8 end
   for _ = 1, n do
@@ -386,13 +468,17 @@ end
 -- ---- the record store (the variable form's, retain.lua) --------------------
 local function path_step(p, ordinal, index)
   local q = { node = p.node, steps = {} }
-  for k, v in ipairs(p.steps) do q.steps[k] = v end
+  for k, v in ipairs(p.steps) do
+    q.steps[k] = v
+  end
   q.steps[#q.steps + 1] = { o = ordinal, i = index }
   return q
 end
 local function path_key(p)
   local out = { tostring(p.node), "|" }
-  for _, s in ipairs(p.steps) do out[#out + 1] = tostring(s.o) .. "," .. tostring(s.i) .. ";" end
+  for _, s in ipairs(p.steps) do
+    out[#out + 1] = tostring(s.o) .. "," .. tostring(s.i) .. ";"
+  end
   return table.concat(out)
 end
 
@@ -412,9 +498,7 @@ local function capture(_T, vocab, reader, indexBits, e, path, store, report, own
     local b = probe:get(width)
     local mask = e.kind == 10 and F32_EXP or F64_EXP
     if b ~= nil and b & mask == mask then
-      if report.nonFiniteFloat == nil then
-        report.nonFiniteFloat = owner .. string.format(".0x%016x", e.id)
-      end
+      if report.nonFiniteFloat == nil then report.nonFiniteFloat = owner .. string.format(".0x%016x", e.id) end
       return true
     end
   end
@@ -430,8 +514,8 @@ local function capture(_T, vocab, reader, indexBits, e, path, store, report, own
     report.retainLost = report.retainLost + 1
     return true
   end
-  store.list[#store.list + 1] = { key = path_key(path), id = e.id, kind = e.kind,
-      payload = table.concat(probe.w.parts), placed = false }
+  store.list[#store.list + 1] =
+    { key = path_key(path), id = e.id, kind = e.kind, payload = table.concat(probe.w.parts), placed = false }
   report.retained = report.retained + 1
   return true
 end
@@ -442,11 +526,18 @@ local decode_value, decode_body
 local function decode_scalar(R, d)
   local s = d.shape
   if s == "bool" then
-    local v, ok = R:get(1); return v ~= 0, ok
+    local v, ok = R:get(1)
+    return v ~= 0, ok
   elseif s == "int" or s == "flags" then
     local width, base = d.bits or (d.width or 0) * 8, 0
-    if d.lo ~= nil and d.hi ~= nil then width = bits_range(d.lo, d.hi); base = d.lo end
-    if s == "flags" then width = d.bits or 8; base = 0 end
+    if d.lo ~= nil and d.hi ~= nil then
+      width = bits_range(d.lo, d.hi)
+      base = d.lo
+    end
+    if s == "flags" then
+      width = d.bits or 8
+      base = 0
+    end
     local v, ok = R:get(width)
     if not ok then return 0, false end
     if base ~= 0 then v = v + base end
@@ -486,8 +577,11 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
     if index ~= 0 then
       local node = (reader.nodes or {})[index]
       if node == nil then return false end
-      if s == "pointer" then holder[key] = node
-      else holder[key] = node.blob end
+      if s == "pointer" then
+        holder[key] = node
+      else
+        holder[key] = node.blob
+      end
     end
     return true
   elseif s == "string" or s == "bytes" then
@@ -514,16 +608,27 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
   elseif s == "enum" then
     local ref, ok = reader:get(vocab.refBits)
     if not ok then return false end
-    if ref == 0 then holder[key] = nil; return true end
+    if ref == 0 then
+      holder[key] = nil
+      return true
+    end
     local e = vocab_entry(vocab, ref)
     if e == nil then return false end
-    for _, vr in ipairs(f.variants) do if vr[2] == e.id then holder[key] = vr[1]; return true end end
+    for _, vr in ipairs(f.variants) do
+      if vr[2] == e.id then
+        holder[key] = vr[1]
+        return true
+      end
+    end
     report.retainLost = report.retainLost + 1
     return true
   elseif s == "union" then
     local ref, ok = reader:get(vocab.refBits)
     if not ok then return false end
-    if ref == 0 then holder[key] = { tag = 0 }; return true end
+    if ref == 0 then
+      holder[key] = { tag = 0 }
+      return true
+    end
     local e = vocab_entry(vocab, ref)
     if e == nil then return false end
     local un = T.Unions[f.target]
@@ -548,7 +653,11 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
     return true
   elseif s == "table" then
     local nv
-    if holder[key] == nil then nv = T["New" .. f.target]() else nv = holder[key] end
+    if holder[key] == nil then
+      nv = T["New" .. f.target]()
+    else
+      nv = holder[key]
+    end
     local p = path
     if not inner then p = path_step(path, f.ordinal - 1, 0) end
     if not decode_body(T, vocab, reader, indexBits, T.Tables[f.target], nv, p, store, report) then return false end
@@ -572,7 +681,9 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
       local raw = reader:raw(n)
       if raw == nil then return false end
       local out = {}
-      for i = 1, #raw do out[i] = string.byte(raw, i) end
+      for i = 1, #raw do
+        out[i] = string.byte(raw, i)
+      end
       holder[key] = out
       return true
     end
@@ -588,11 +699,15 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
         local p = path_step(path, f.ordinal - 1, (kidx or 1) - 1)
         local ev = {}
         if d.elem.shape == "table" or d.elem.shape == "union" then
-          if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report, f.ordinal - 1,
-              true) then return false end
+          if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report, f.ordinal - 1, true) then
+            return false
+          end
         else
-          if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", path, store, report, f.ordinal - 1,
-              true) then return false end
+          if
+            not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", path, store, report, f.ordinal - 1, true)
+          then
+            return false
+          end
         end
         if kidx ~= nil then out[kidx] = ev.v end
       end
@@ -600,8 +715,9 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
       for i = 1, n do
         local p = path_step(path, f.ordinal - 1, i - 1)
         local ev = {}
-        if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report, f.ordinal - 1,
-            true) then return false end
+        if not decode_value(T, vocab, reader, indexBits, d.elem, ev, "v", p, store, report, f.ordinal - 1, true) then
+          return false
+        end
         out[i] = ev.v
       end
     end
@@ -698,7 +814,9 @@ local function load_one_retain(T, root, vocab, reader, store, report)
         local tname, td = table_by_type(T, te.id)
         if tname == nil then return nil end
         local def = T["New" .. tname]()
-        for kk, vv in pairs(def) do node[kk] = vv end
+        for kk, vv in pairs(def) do
+          node[kk] = vv
+        end
         if not decode_body(T, vocab, reader, indexBits, td, node, p, store, report) then return nil end
       end
       nodes[k + 1] = node
@@ -723,18 +841,30 @@ end
 
 function S.LoadRetainMessages(T, root, vocab, data, stores, report)
   report = report or {}
-  report.malformed = false; report.refused = 0; report.reason = ""
+  report.malformed = false
+  report.refused = 0
+  report.reason = ""
   report.nonFiniteFloat = nil
   report.retained = report.retained or 0
   report.retainLost = report.retainLost or 0
-  if #data == 0 then report.malformed = true; return nil end
+  if #data == 0 then
+    report.malformed = true
+    return nil
+  end
   if string.byte(data, 1) ~= 2 then
-    report.refused = 1; report.reason = "newer_form"; return nil
+    report.refused = 1
+    report.reason = "newer_form"
+    return nil
   end
   if not vocab.announced then
-    report.refused = 1; report.reason = "no_vocabulary"; return nil
+    report.refused = 1
+    report.reason = "no_vocabulary"
+    return nil
   end
-  if #data < 2 then report.malformed = true; return nil end
+  if #data < 2 then
+    report.malformed = true
+    return nil
+  end
   local count = string.byte(data, 2) + 1
   local reader = new_reader(data, 16)
   local values = {}
@@ -746,11 +876,16 @@ function S.LoadRetainMessages(T, root, vocab, data, stores, report)
       -- record lands and nothing captured stays.
       report.reason = "non_finite_float: " .. report.nonFiniteFloat
       if stores ~= nil then
-        for j = 1, i do if stores[j] ~= nil then stores[j].list = {} end end
+        for j = 1, i do
+          if stores[j] ~= nil then stores[j].list = {} end
+        end
       end
       return {}
     end
-    if v == nil then report.malformed = true; return values end
+    if v == nil then
+      report.malformed = true
+      return values
+    end
     values[i] = v
   end
   if not reader:align() or reader.off ~= reader.nbits then report.malformed = true end

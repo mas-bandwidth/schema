@@ -590,8 +590,8 @@ type fsSabotage struct {
 }
 
 var fsSabotages = []fsSabotage{
-	{"load.lua", "if b & F32_EXP == F32_EXP then r.at = r.at + 4;", "if false then r.at = r.at + 4;", "var-f32:"},
-	{"load.lua", "if b & F64_EXP == F64_EXP then r.at = r.at + 8;", "if false then r.at = r.at + 8;", "var-f64:"},
+	{"load.lua", "if b & F32_EXP == F32_EXP then\n      r.at = r.at + 4", "if false then\n      r.at = r.at + 4", "var-f32:"},
+	{"load.lua", "if b & F64_EXP == F64_EXP then\n      r.at = r.at + 8", "if false then\n      r.at = r.at + 8", "var-f64:"},
 	{"message.lua", "if v & D.F32_EXP == D.F32_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "msg-f32:"},
 	{"message.lua", "if v & D.F64_EXP == D.F64_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "msg-f64:"},
 	{"retainmessage.lua", "if v & F32_EXP == F32_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "retmsg-f32:"},
@@ -604,8 +604,8 @@ var fsSabotages = []fsSabotage{
 	{"uncook.lua", `if string.unpack("<i8", ctx.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000 then`, "if false then", "uncook-f64:"},
 	{"block.lua", "if b & 0x7f800000 == 0x7f800000 then return nil end", "if false then return nil end", "block-f32:"},
 	{"block.lua", "if b & 0x7ff0000000000000 == 0x7ff0000000000000 then return nil end", "if false then return nil end", "block-f64:"},
-	{"retain.lua", `if kind == 10 and string.unpack("<I4", b, start + 1) & D.F32_EXP == D.F32_EXP`, "if kind == 10 and false", "retain-f32:"},
-	{"retain.lua", `or kind == 11 and string.unpack("<i8", b, start + 1) & D.F64_EXP == D.F64_EXP then`, "or kind == 11 and false then", "retain-f64:"},
+	{"retain.lua", `kind == 10 and string.unpack("<I4", b, start + 1) & D.F32_EXP == D.F32_EXP`, "kind == 10 and false", "retain-f32:"},
+	{"retain.lua", `or kind == 11 and string.unpack("<i8", b, start + 1) & D.F64_EXP == D.F64_EXP`, "or kind == 11 and false", "retain-f64:"},
 }
 
 // TestLuaFiniteFloatNegativeControl is the reversed witness of the finite

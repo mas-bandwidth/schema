@@ -140,8 +140,8 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 	// exactly once, makes the generated round trip red.
 	t.Run("sabotaged_load", func(t *testing.T) {
 		t.Parallel()
-		const anchor = "local function r_u8(r)\n  if r.at >= r.lim then r.bad = true; return 0 end\n  local v = byteat(r)\n  r.at = r.at + 1\n  return v\nend"
-		const sabotaged = "local function r_u8(r)\n  if r.at >= r.lim then r.bad = true; return 0 end\n  local v = byteat(r)\n  r.at = r.at + 0\n  return v\nend"
+		const anchor = "  local v = byteat(r)\n  r.at = r.at + 1\n  return v\nend"
+		const sabotaged = "  local v = byteat(r)\n  r.at = r.at + 0\n  return v\nend"
 		src, ok := generated["load.lua"]
 		if !ok {
 			t.Fatal("the emitted unit has no load.lua")

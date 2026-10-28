@@ -104,7 +104,7 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 	}
 	m.Body.WriteString("return _M\n")
-	out := map[string][]byte{name + ".lua": lua.Wrap([]byte(m.Body.String()))}
+	out := map[string][]byte{name + ".lua": lua.Format([]byte(m.Body.String()))}
 	names, err := fs.Glob(runtime, "runtime/*.lua")
 	if err != nil {
 		return nil, err
@@ -817,7 +817,7 @@ func names(vs []string) string {
 	for i, v := range vs {
 		parts[i] = fmt.Sprintf("%q", v)
 	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	return lua.TableOf(parts)
 }
 
 // variants renders an enum's variants as { name, wire id } pairs in declared
@@ -835,7 +835,7 @@ func variants(e *ir.Enum) string {
 		}
 		parts[i] = fmt.Sprintf("{ %q, %s }", v, idLit(ir.TableWireId(e.VariantWireName(i))))
 	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	return lua.TableOf(parts)
 }
 
 // variantDeprecated is the variant's `| deprecated` marker
@@ -900,9 +900,9 @@ func defaultExpr(f *ir.Field) string {
 	case f.MapEntry != nil:
 		return "{}"
 	case f.Array == ir.ArrayFixed:
-		return "{ " + repeat(zeroExpr(f), f.ArrayBound) + " }"
+		return lua.TableOf(repeatList(zeroExpr(f), f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
-		return "{ " + repeat(zeroExpr(f), f.BornCount()) + " }"
+		return lua.TableOf(repeatList(zeroExpr(f), f.BornCount()))
 	case f.Array == ir.ArrayList:
 		return "{}"
 	case t.Pointer:
@@ -980,12 +980,12 @@ func zeroExpr(f *ir.Field) string {
 	return "0"
 }
 
-func repeat(expr string, n int64) string {
+func repeatList(expr string, n int64) []string {
 	parts := make([]string, n)
 	for i := range parts {
 		parts[i] = expr
 	}
-	return strings.Join(parts, ", ")
+	return parts
 }
 
 // init registers the closure-type storage pass: the fixed form's per-field

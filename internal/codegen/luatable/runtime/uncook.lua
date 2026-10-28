@@ -100,7 +100,8 @@ local function present_offset(T, f)
   elseif s == "bytes" then
     cur = align_up(at + (f.bound or 0), 4) + 4
   elseif s == "array" then
-    if f.list then cur = at + 16
+    if f.list then
+      cur = at + 16
     else
       cur = at + (f.elem_size or 0) * (f.bound or 0)
       if not f.fixed and f.keyed == nil then cur = align_up(cur, 4) + 4 end
@@ -115,12 +116,19 @@ local function present_offset(T, f)
   elseif s == "union" then
     local u = T.Unions[f.target]
     cur = at + (u and u.size or 0)
-  elseif s == "bool" then cur = at + 1
-  elseif s == "float" then cur = at + (f.f32 and 4 or 8)
-  elseif s == "flags" then cur = at + 8
-  elseif s == "enum" then cur = at + enum_width(f)
-  elseif s == "int" then cur = at + f.width
-  else cur = at end
+  elseif s == "bool" then
+    cur = at + 1
+  elseif s == "float" then
+    cur = at + (f.f32 and 4 or 8)
+  elseif s == "flags" then
+    cur = at + 8
+  elseif s == "enum" then
+    cur = at + enum_width(f)
+  elseif s == "int" then
+    cur = at + f.width
+  else
+    cur = at
+  end
   return cur
 end
 
@@ -130,13 +138,9 @@ end
 -- node's box, the load runtime's own shape (§3.1, §6.3).
 local function resolve(ctx, at, shape)
   local delta = i64(ctx, at)
-  if delta == 0 then
-    return nil
-  end
+  if delta == 0 then return nil end
   local i = ctx.off[at + delta]
-  if i == nil then
-    return nil
-  end
+  if i == nil then return nil end
   if shape == "string_blob" or shape == "bytes_blob" then
     local box = ctx.boxes[i]
     if box == nil then
@@ -155,9 +159,7 @@ end
 -- constructor's declared default (§2.3).
 read_field = function(ctx, f, base)
   local at = base + f.at
-  if f.optional and u8(ctx, base + present_offset(ctx.T, f)) == 0 then
-    return nil, false
-  end
+  if f.optional and u8(ctx, base + present_offset(ctx.T, f)) == 0 then return nil, false end
   local s = f.shape
   local v
   if s == "bool" then
@@ -168,17 +170,19 @@ read_field = function(ctx, f, base)
     -- a flags slot is a uint64 in every target (§7.2)
     v = int_at(ctx, at, 8, false)
   elseif s == "float" then
-    -- every read refuses a NaN or an infinity on its raw bits (SPEC-TABLES.md
-    -- §3.3), the uncook included: the scan Read runs first refuses one, and
-    -- this test holds the rule for a handle a caller checked itself
+    -- every read refuses a NaN or an infinity on its raw bits
+    -- (docs/SPEC-TABLES.md §3.3), the uncook included: the scan Read runs first refuses
+    -- one, and this test holds the rule for a handle a caller checked itself
     if f.f32 then
       if string.unpack("<I4", ctx.data, at + 1) & 0x7f800000 == 0x7f800000 then
-        ctx.nonFinite = true; return nil, false
+        ctx.nonFinite = true
+        return nil, false
       end
       v = string.unpack("<f", ctx.data, at + 1)
     else
       if string.unpack("<i8", ctx.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000 then
-        ctx.nonFinite = true; return nil, false
+        ctx.nonFinite = true
+        return nil, false
       end
       v = string.unpack("<d", ctx.data, at + 1)
     end
@@ -246,8 +250,9 @@ end
 
 read_element = function(ctx, e, at)
   local v = read_field(ctx, e, at)
-  if v == nil and (e.shape == "enum" or e.shape == "pointer" or
-      e.shape == "string_blob" or e.shape == "bytes_blob") then
+  if
+    v == nil and (e.shape == "enum" or e.shape == "pointer" or e.shape == "string_blob" or e.shape == "bytes_blob")
+  then
     return false
   end
   return v
@@ -276,7 +281,9 @@ read_array = function(ctx, f, at)
     return out
   end
   if f.keyed ~= nil then
-    for i = 1, f.bound do out[i] = zero_elem(ctx.T, f.elem) end
+    for i = 1, f.bound do
+      out[i] = zero_elem(ctx.T, f.elem)
+    end
     for i = 0, f.bound - 1 do
       out[i + 1] = read_element(ctx, f.elem, at + i * f.elem_step)
     end
@@ -307,8 +314,7 @@ read_map = function(ctx, f, at)
     read_record(ctx, inst, entry, start + i * entry.size)
     local key = inst[kf.name]
     local value = inst[vf.name]
-    if value == nil and (vf.shape == "pointer" or vf.shape == "string_blob" or
-        vf.shape == "bytes_blob") then
+    if value == nil and (vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       value = false
     end
     out[key] = value
@@ -351,7 +357,10 @@ read_record = function(ctx, v, st, base)
     if f.guard ~= nil then
       local live = true
       for _, t in ipairs(f.guard) do
-        if v[t.field] ~= t.want then live = false; break end
+        if v[t.field] ~= t.want then
+          live = false
+          break
+        end
       end
       if live then
         local value, present = read_field(ctx, f, base)
@@ -378,9 +387,13 @@ function U.Read(T, h)
   end
   local data = string.sub(h.bytes, h.data_offset + 1, h.data_offset + h.data_length)
   local by_id = {}
-  for _, d in pairs(T.Tables) do by_id[d.type_id] = d end
+  for _, d in pairs(T.Tables) do
+    by_id[d.type_id] = d
+  end
   local ctx = { T = T, h = h, data = data, dir = h.dir, off = {}, nodes = {}, boxes = {} }
-  for i, e in ipairs(h.dir) do ctx.off[e.offset] = i end
+  for i, e in ipairs(h.dir) do
+    ctx.off[e.offset] = i
+  end
   for i, e in ipairs(h.dir) do
     local st = by_id[e.type_id]
     if st ~= nil then ctx.nodes[i] = fresh(T, st) end

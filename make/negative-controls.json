@@ -114,12 +114,21 @@
       ]
     },
     {
+      "name": "lua-format",
+      "when": "pull-request",
+      "why": "the Lua format gate's control: one generated module with its first one-line early-out spelled as a block must fail the pinned StyLua's --check by name, and the unplanted copy pass. It needs only bin/schema's Lua build and the sha256-pinned StyLua the target fetches itself (make dist-stylua), no interpreter.",
+      "targets": [
+        "tables-lua-format-negative-control"
+      ]
+    },
+    {
       "name": "lua",
       "when": "pull-request",
-      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the conformance driver's load sabotage (red on lua / report, green on lua / wire), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), and the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), and the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
+        "conformance-negative-control-lua-walk",
         "schema-lua-fuzz-negative-control",
         "schema-lua-resource-bounds-negative-control"
       ],

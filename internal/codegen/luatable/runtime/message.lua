@@ -23,7 +23,10 @@ local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 local function bits_max(n)
   if n <= 0 then return 0 end
   local b = 0
-  while n > 0 do b = b + 1; n = n >> 1 end
+  while n > 0 do
+    b = b + 1
+    n = n >> 1
+  end
   return b
 end
 
@@ -42,7 +45,10 @@ end
 
 local function u_bits(n)
   local b = 0
-  while n ~= 0 do b = b + 1; n = n >> 1 end
+  while n ~= 0 do
+    b = b + 1
+    n = n >> 1
+  end
   return b
 end
 
@@ -93,7 +99,7 @@ function Reader:get(n)
 end
 
 function Reader:align()
-  local n = (-self.off) & 7
+  local n = -self.off & 7
   if n == 0 then return true end
   local v, ok = self:get(n)
   return ok and v == 0
@@ -139,11 +145,16 @@ function Writer:put(v, n)
   end
 end
 
-function Writer:align() self:put(0, (-self.bits) & 7) end
+function Writer:align()
+  self:put(0, -self.bits & 7)
+end
 
 function Writer:raw(s)
   self:align()
-  if self.measure then self.bits = self.bits + #s * 8; return end
+  if self.measure then
+    self.bits = self.bits + #s * 8
+    return
+  end
   for i = 1, #s do
     local at = (self.bits >> 3) + 1
     self.bytes[at] = string.byte(s, i)
@@ -154,7 +165,9 @@ end
 function Writer:result()
   local n = (self.bits + 7) >> 3
   local parts = {}
-  for i = 1, n do parts[i] = string.char(self.bytes[i] or 0) end
+  for i = 1, n do
+    parts[i] = string.char(self.bytes[i] or 0)
+  end
   return table.concat(parts)
 end
 
@@ -194,8 +207,7 @@ local function slot_field(T, f)
           ok = e.packing == nil
         end
       elseif f.shape == "array" then
-        ok = (e.max or 0) == (f.bound or 0) and (e.min or 0) == (f.min or 0)
-          and (e.elem or 0) == (f.elem_kind or 0)
+        ok = (e.max or 0) == (f.bound or 0) and (e.min or 0) == (f.min or 0) and (e.elem or 0) == (f.elem_kind or 0)
       elseif f.shape == "flags" then
         ok = (e.bits or 0) == (f.bits or 0)
       end
@@ -241,9 +253,7 @@ end
 -- A scalar's declared width and range (docs/SPEC-TABLES.md §3.3, the payload
 -- table): a ranged value rides value - min at bits_required(min, max).
 local function int_bits(d)
-  if d.lo ~= nil and d.hi ~= nil then
-    return bits_range(d.lo, d.hi), d.lo
-  end
+  if d.lo ~= nil and d.hi ~= nil then return bits_range(d.lo, d.hi), d.lo end
   if d.bits ~= nil then return d.bits, 0 end
   return d.width * 8, 0
 end
@@ -273,12 +283,8 @@ local function same_scalar(d, v)
   if v == nil then return false end
   local def = d.default
   if def == nil then def = elem_zero(d) end
-  if d.shape == "wide" then
-    return v.lo == def.lo and v.hi == def.hi
-  end
-  if d.shape == "float" then
-    return same_float(d.f32, v, def)
-  end
+  if d.shape == "wide" then return v.lo == def.lo and v.hi == def.hi end
+  if d.shape == "float" then return same_float(d.f32, v, def) end
   return v == def
 end
 
@@ -307,11 +313,15 @@ local function elem_rides(T, d, v)
   elseif s == "array" then
     if d.fixed then
       if d.elem.shape == "table" then return true end
-      for i = 1, d.bound do if elem_rides(T, d.elem, v[i]) then return true end end
+      for i = 1, d.bound do
+        if elem_rides(T, d.elem, v[i]) then return true end
+      end
       return false
     end
     if d.keyed then
-      for i = 1, #v do if elem_rides(T, d.elem, v[i]) then return true end end
+      for i = 1, #v do
+        if elem_rides(T, d.elem, v[i]) then return true end
+      end
       return false
     end
     return #v > 0
@@ -372,10 +382,13 @@ local read_value, load_body, variant_index
 local function read_scalar(R, d)
   local s = d.shape
   if s == "bool" then
-    local v, ok = R:get(1); return v ~= 0, ok
+    local v, ok = R:get(1)
+    return v ~= 0, ok
   elseif s == "int" or s == "flags" then
     local width, base = int_bits(d)
-    if s == "flags" then width, base = d.bits, 0 end
+    if s == "flags" then
+      width, base = d.bits, 0
+    end
     local v, ok = R:get(width)
     if not ok then return 0, false end
     if base ~= 0 then v = v + base end
@@ -458,7 +471,10 @@ read_value = function(R, T, f, holder, key, ctx)
   elseif s == "enum" then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
-    if ref == 0 then holder[key] = nil; return true end
+    if ref == 0 then
+      holder[key] = nil
+      return true
+    end
     local e = ctx.vocab[ref]
     if e == nil then return false end
     holder[key] = variant_name(T, f, e.id)
@@ -466,7 +482,10 @@ read_value = function(R, T, f, holder, key, ctx)
   elseif s == "union" then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
-    if ref == 0 then holder[key] = { tag = 0 }; return true end
+    if ref == 0 then
+      holder[key] = { tag = 0 }
+      return true
+    end
     local e = ctx.vocab[ref]
     if e == nil then return false end
     local un = T.Unions[f.target]
@@ -509,7 +528,9 @@ read_value = function(R, T, f, holder, key, ctx)
       local raw = R:raw(n)
       if raw == nil then return false end
       local out = {}
-      for i = 1, #raw do out[i] = string.byte(raw, i) end
+      for i = 1, #raw do
+        out[i] = string.byte(raw, i)
+      end
       holder[key] = out
       return true
     end
@@ -564,9 +585,7 @@ load_fields = function(R, T, name, value, ctx)
     if not ok then return false end
     if ref == 0 then return true end
     local e = ctx.vocab[ref]
-    if e == nil or e.id == NODE_ID or e.id == 0xfffffffffffffffe or e.id == 0xfffffffffffffffd then
-      return false
-    end
+    if e == nil or e.id == NODE_ID or e.id == 0xfffffffffffffffe or e.id == 0xfffffffffffffffd then return false end
     local f = field_by_id(T, desc, e.id)
     if f == nil then return false end
     ctx.field = f.name
@@ -590,7 +609,9 @@ local function write_scalar(W, d, v)
     W:put(v and 1 or 0, 1)
   elseif s == "int" or s == "flags" then
     local width, base = int_bits(d)
-    if s == "flags" then width, base = d.bits, 0 end
+    if s == "flags" then
+      width, base = d.bits, 0
+    end
     W:put(v - base, width)
   elseif s == "wide" then
     local lo, hi = (v and v.lo) or 0, (v and v.hi) or 0
@@ -629,14 +650,20 @@ write_value = function(W, T, f, holder, key, ctx)
     W:raw(v)
   elseif s == "wstring" then
     W:put(#v, bits_range(0, f.bound))
-    for i = 1, #v do W:put(v[i], 16) end
+    for i = 1, #v do
+      W:put(v[i], 16)
+    end
   elseif s == "enum" then
-    if v == nil then W:put(0, ctx.refBits) else
+    if v == nil then
+      W:put(0, ctx.refBits)
+    else
       W:put(slot(T, variant_id(T, f, v)), ctx.refBits)
     end
   elseif s == "union" then
     local tag = (v and v.tag) or 0
-    if tag == 0 then W:put(0, ctx.refBits) else
+    if tag == 0 then
+      W:put(0, ctx.refBits)
+    else
       local un = T.Unions[f.target]
       local arm = un.arms[tag]
       W:put(slot(T, arm.id), ctx.refBits)
@@ -654,7 +681,9 @@ write_value = function(W, T, f, holder, key, ctx)
       W:put(n, 32)
     elseif d.keyed then
       n = 0
-      for i = 1, #v do if elem_rides(T, d.elem, v[i]) then n = n + 1 end end
+      for i = 1, #v do
+        if elem_rides(T, d.elem, v[i]) then n = n + 1 end
+      end
       W:put(n - (d.min or 0), bits_range(d.min or 0, d.bound))
     else
       n = #v
@@ -811,7 +840,9 @@ local function load_one(R, T, root, vocab)
     -- Every node index gets its value BEFORE a record is read, so a pointer in
     -- record k may name record k+1 (a forward edge) and a cycle closes on the
     -- same table the caller will hold.
-    for k = 1, count do ctx.nodes[k + 1] = {} end
+    for k = 1, count do
+      ctx.nodes[k + 1] = {}
+    end
     for k = 1, count do
       local tref, tok = R:get(ctx.refBits)
       if not tok then return nil end
@@ -828,7 +859,9 @@ local function load_one(R, T, root, vocab)
         local tname = table_by_type(T, te.id)
         if tname == nil then return nil end
         local def = T["New" .. tname]()
-        for key, v in pairs(def) do node[key] = v end
+        for key, v in pairs(def) do
+          node[key] = v
+        end
         if not load_body(R, T, tname, node, ctx) then return nil, ctx.nonFinite end
       end
     end
@@ -859,7 +892,9 @@ local function save_one(W, T, root, value, vocab)
         local raw = type(body) == "table" and body.value or body
         W:put(#raw, 32)
         W:raw(raw)
-      elseif not write_body(W, T, name, num.order[k], ctx) then return false end
+      elseif not write_body(W, T, name, num.order[k], ctx) then
+        return false
+      end
     end
   else
     ctx.indexBits = 1
@@ -896,8 +931,7 @@ end
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
 -- not an entry's to give (§3.3).
 local function known_kind(kind)
-  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29)
-    or (kind >= 30 and kind <= 33)
+  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29) or (kind >= 30 and kind <= 33)
 end
 
 -- skip_shape steps over one announced shape, which is what makes the entry
@@ -907,15 +941,26 @@ local function skip_shape(kind, s, at)
     local _, nextAt = read_leb(s, from)
     return nextAt
   end
-  if kind == 0 or kind == 1 or kind == 11 or kind == 13 or kind == 15
-      or kind == 17 or kind == 30 or kind == 31 or kind == 32 then
+  if
+    kind == 0
+    or kind == 1
+    or kind == 11
+    or kind == 13
+    or kind == 15
+    or kind == 17
+    or kind == 30
+    or kind == 31
+    or kind == 32
+  then
     return at
   elseif (kind >= 2 and kind <= 9) or kind == 18 or kind == 19 then
     if at > #s then return nil end
-    local packing = string.byte(s, at); at = at + 1
+    local packing = string.byte(s, at)
+    at = at + 1
     if packing == 0 then return at end
     if packing ~= 1 then return nil end
-    at = leb(at); if at == nil then return nil end
+    at = leb(at)
+    if at == nil then return nil end
     if kind == 18 or kind == 19 then
       if at + 15 > #s then return nil end
       return at + 16
@@ -923,31 +968,39 @@ local function skip_shape(kind, s, at)
     return leb(at)
   elseif kind == 10 then
     if at > #s then return nil end
-    local packing = string.byte(s, at); at = at + 1
+    local packing = string.byte(s, at)
+    at = at + 1
     if packing == 0 then return at end
     if packing ~= 2 or at + 11 > #s then return nil end
     return at + 12
   elseif kind >= 20 and kind <= 29 then
     if at > #s then return nil end
-    local packing = string.byte(s, at); at = at + 1
+    local packing = string.byte(s, at)
+    at = at + 1
     if packing == 0 then return at end
     if packing ~= 1 then return nil end
-    at = leb(at); if at == nil then return nil end
+    at = leb(at)
+    if at == nil then return nil end
     if at + 15 > #s then return nil end
     return at + 16
   elseif kind == 12 or kind == 33 then
     return leb(at)
   elseif kind == 14 then
-    at = leb(at); if at == nil then return nil end
-    at = leb(at); if at == nil then return nil end
+    at = leb(at)
+    if at == nil then return nil end
+    at = leb(at)
+    if at == nil then return nil end
     if at > #s then return nil end
-    local elem = string.byte(s, at); at = at + 1
+    local elem = string.byte(s, at)
+    at = at + 1
     if elem == 12 or elem == 33 then return nil end
     return skip_shape(elem, s, at)
   elseif kind == 16 then
-    at = leb(at); if at == nil then return nil end
+    at = leb(at)
+    if at == nil then return nil end
     if at > #s then return nil end
-    local elem = string.byte(s, at); at = at + 1
+    local elem = string.byte(s, at)
+    at = at + 1
     if elem == 12 or elem == 33 then return nil end
     return skip_shape(elem, s, at)
   end
@@ -964,9 +1017,7 @@ local function vocabulary_entries(s, maxEntries)
     local id = string.unpack("<I8", s, at)
     local kind = string.byte(s, at + 8)
     at = at + 9
-    if id == ANNOUNCE_BUILD_VERSION_ID or id == ANNOUNCE_VOCABULARY_ID then
-      return nil, false
-    end
+    if id == ANNOUNCE_BUILD_VERSION_ID or id == ANNOUNCE_VOCABULARY_ID then return nil, false end
     if not known_kind(kind) then return nil, false end
     at = skip_shape(kind, s, at)
     if at == nil then return nil, false end
@@ -983,10 +1034,14 @@ end
 function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   report = report or {}
   if vocab.announced or vocab.refused then
-    report.refused = 1; report.reason = "second_announcement"; return false
+    report.refused = 1
+    report.reason = "second_announcement"
+    return false
   end
   if #data == 0 then
-    report.malformed = true; vocab.refused = true; return false
+    report.malformed = true
+    vocab.refused = true
+    return false
   end
   if string.byte(data, 1) ~= 1 then
     report.refused = 1
@@ -997,11 +1052,14 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   if maxBytes == nil or maxBytes == 0 then maxBytes = 64 * 1024 end
   if maxEntries == nil or maxEntries == 0 then maxEntries = 4096 end
   local function damage()
-    report.malformed = true; vocab.refused = true; return false
+    report.malformed = true
+    vocab.refused = true
+    return false
   end
   local function too_large(version)
     if version ~= nil then vocab.buildVersion = version end
-    report.refused = 1; report.reason = "vocabulary_too_large"
+    report.refused = 1
+    report.reason = "vocabulary_too_large"
     vocab.refused = true
     return false
   end
@@ -1029,16 +1087,20 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
     if ref == 0 then break end
     if ref > count or at > #body then return damage() end
     local id = ids[ref]
-    local kind = string.byte(body, at); at = at + 1
+    local kind = string.byte(body, at)
+    at = at + 1
     if id == ANNOUNCE_BUILD_VERSION_ID then
       if kind ~= 9 or at + 7 > #body then return damage() end
-      version = string.unpack("<I8", body, at); at = at + 8
+      version = string.unpack("<I8", body, at)
+      at = at + 8
       seenVersion = seenVersion + 1
     elseif id == ANNOUNCE_VOCABULARY_ID then
       if kind ~= 14 then return damage() end
-      local n; n, at = read_leb(body, at)
+      local n
+      n, at = read_leb(body, at)
       if n == nil or at + n - 1 > #body then return damage() end
-      local field = body:sub(at, at + n - 1); at = at + n
+      local field = body:sub(at, at + n - 1)
+      at = at + n
       if #field < 1 or string.byte(field, 1) ~= 6 then return damage() end
       local length, nextAt2 = read_leb(field, 2)
       if length == nil or nextAt2 + length - 1 ~= #field then return damage() end
@@ -1060,10 +1122,11 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   end
   for i = 1, T.MessageEntries do
     local e = T.MessageVocabulary[i]
-    vocab[i] = { id = e.id, kind = e.kind, packing = e.packing, bits = e.bits,
-      max = e.max, min = e.min, elem = e.elem }
+    vocab[i] = { id = e.id, kind = e.kind, packing = e.packing, bits = e.bits, max = e.max, min = e.min, elem = e.elem }
   end
-  for i = T.MessageEntries + 1, #vocab do vocab[i] = nil end
+  for i = T.MessageEntries + 1, #vocab do
+    vocab[i] = nil
+  end
   vocab.count = T.MessageEntries
   vocab.refBits = T.MessageRefBits
   vocab.buildVersion = version
@@ -1084,7 +1147,9 @@ local function strict_count(T, d, v)
     local desc = T.Tables[d.target]
     if desc == nil then return 0 end
     local n = 0
-    for _, f in ipairs(desc.fields) do n = n + strict_count(T, f, v[f.name]) end
+    for _, f in ipairs(desc.fields) do
+      n = n + strict_count(T, f, v[f.name])
+    end
     return n
   elseif s == "union" then
     local tag = v.tag or 0
@@ -1096,7 +1161,9 @@ local function strict_count(T, d, v)
     return 0
   elseif s == "array" then
     local n = 0
-    for i = 1, #v do n = n + strict_count(T, d.elem, v[i]) end
+    for i = 1, #v do
+      n = n + strict_count(T, d.elem, v[i])
+    end
     return n
   end
   return 0
@@ -1112,19 +1179,35 @@ function M.loadMessages(T, root, vocab, data, report, strict)
   -- every counter is cleared before the walk, so a reused report cannot refuse
   -- a clean batch for a previous read's clamped or malformed count.
   if strict then
-    report.unknown = 0; report.kindMismatch = 0; report.clamped = 0
-    report.widened = 0; report.duplicate = 0; report.blobShared = 0
+    report.unknown = 0
+    report.kindMismatch = 0
+    report.clamped = 0
+    report.widened = 0
+    report.duplicate = 0
+    report.blobShared = 0
   end
-  report.malformed = false; report.refused = 0; report.reason = ""
+  report.malformed = false
+  report.refused = 0
+  report.reason = ""
   report.nonFiniteFloat = nil
-  if #data == 0 then report.malformed = true; return nil end
+  if #data == 0 then
+    report.malformed = true
+    return nil
+  end
   if string.byte(data, 1) ~= 2 then
-    report.refused = 1; report.reason = "newer_form"; return nil
+    report.refused = 1
+    report.reason = "newer_form"
+    return nil
   end
   if not vocab.announced then
-    report.refused = 1; report.reason = "no_vocabulary"; return nil
+    report.refused = 1
+    report.reason = "no_vocabulary"
+    return nil
   end
-  if #data < 2 then report.malformed = true; return nil end
+  if #data < 2 then
+    report.malformed = true
+    return nil
+  end
   local count = string.byte(data, 2) + 1
   local R = new_reader(data, 16)
   local values = {}
@@ -1137,20 +1220,23 @@ function M.loadMessages(T, root, vocab, data, report, strict)
       report.reason = "non_finite_float: " .. nonfinite
       return {}
     end
-    if v == nil then report.malformed = true; return values end
+    if v == nil then
+      report.malformed = true
+      return values
+    end
     values[i] = v
   end
-  if not R:align() or R.off ~= R.nbits then
-    report.malformed = true
-  end
+  if not R:align() or R.off ~= R.nbits then report.malformed = true end
   if strict then
     local clamped = 0
     for i = 1, #values do
       clamped = clamped + strict_count(T, { shape = "table", target = root }, values[i])
     end
     if clamped > 0 then report.clamped = (report.clamped or 0) + clamped end
-    local refused = report.malformed or (report.clamped or 0) > 0
-      or (report.kindMismatch or 0) > 0 or (report.blobShared or 0) > 0
+    local refused = report.malformed
+      or (report.clamped or 0) > 0
+      or (report.kindMismatch or 0) > 0
+      or (report.blobShared or 0) > 0
     if refused then values = {} end
   end
   return values
@@ -1171,7 +1257,8 @@ function M.measureMessages(T, root, vocab, values)
   local refused = refuse_batch(T, root, values)
   if refused ~= nil then return -1, refused end
   local W = new_writer(true)
-  W:put(2, 8); W:put(#values - 1, 8)
+  W:put(2, 8)
+  W:put(#values - 1, 8)
   for i = 1, #values do
     local ok, why = save_one(W, T, root, values[i], vocab)
     if not ok then return -1, why or D.refuse_non_finite(T, root, values[i]) end
@@ -1186,7 +1273,8 @@ function M.saveMessages(T, root, vocab, values)
   local refused = refuse_batch(T, root, values)
   if refused ~= nil then return nil, refused end
   local W = new_writer(false)
-  W:put(2, 8); W:put(#values - 1, 8)
+  W:put(2, 8)
+  W:put(#values - 1, 8)
   for i = 1, #values do
     local ok, why = save_one(W, T, root, values[i], vocab)
     if not ok then return nil, why or D.refuse_non_finite(T, root, values[i]) end

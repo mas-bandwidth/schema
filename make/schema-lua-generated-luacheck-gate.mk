@@ -144,3 +144,74 @@ tables-lua-luacheck-negative-control: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/
 		echo "NEGATIVE CONTROL FAILED: luacheck did not name the plant"; cat build/lua-luacheck-control/plant.log; exit 1; }
 	@grep -n lua_luacheck_plant build/lua-luacheck-control/plant.log
 	@echo "luacheck-lua negative control: a planted dead local is named and turns the gate red"
+
+# THE FORMATTER, PINNED. StyLua is the Lua formatting authority this gate holds
+# the generated Lua to, the way clang-format is the C leg's (make/c.mk,
+# tables-c-clean): the pinned release, fetched from its official GitHub release
+# at the sha256 named per platform below into dist/ (gitignored), exactly as
+# dist-lua fetches the interpreter; any other sha256 is refused. The style is
+# make/lua-stylua.toml.
+STYLUA_VERSION := 2.5.2
+STYLUA_DIR     := dist/stylua-$(STYLUA_VERSION)
+STYLUA         ?= $(CURDIR)/$(STYLUA_DIR)/stylua
+STYLUA_CONFIG  := make/lua-stylua.toml
+STYLUA_PLATFORM := $(if $(filter Darwin,$(shell uname -s)),macos,linux)-$(if $(filter arm64 aarch64,$(shell uname -m)),aarch64,x86_64)
+STYLUA_SHA256_linux-x86_64  := bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab
+STYLUA_SHA256_linux-aarch64 := 0ef2ebf0b7e5a652b65c4cb96c6d9ffb3981a98547de3c764465bbf54a8d761a
+STYLUA_SHA256_macos-x86_64  := 53c50a1605d0a6345d160a1a5a21db40bcf2bf9cd23c17f7c277a63a1bff3a7f
+STYLUA_SHA256_macos-aarch64 := 92ff0889e16324801bc072692974bb67f8161e62010fc90f96c62a17f81f32c7
+STYLUA_ZIP     := stylua-$(STYLUA_VERSION)-$(STYLUA_PLATFORM).zip
+STYLUA_URL     := https://github.com/JohnnyMorganz/StyLua/releases/download/v$(STYLUA_VERSION)/stylua-$(STYLUA_PLATFORM).zip
+
+.PHONY: dist-stylua
+dist-stylua:
+	@mkdir -p dist
+	@if [ ! -f dist/$(STYLUA_ZIP) ]; then curl -fsSL -o dist/$(STYLUA_ZIP).part $(STYLUA_URL) && mv dist/$(STYLUA_ZIP).part dist/$(STYLUA_ZIP); fi
+	@got=$$(sha256sum dist/$(STYLUA_ZIP) 2>/dev/null | cut -d" " -f1); \
+	if [ -z "$$got" ]; then got=$$(shasum -a 256 dist/$(STYLUA_ZIP) | cut -d" " -f1); fi; \
+	if [ "$$got" != "$(STYLUA_SHA256_$(STYLUA_PLATFORM))" ]; then \
+		echo "dist-stylua REFUSES: dist/$(STYLUA_ZIP) has sha256 $$got, the pin is $(STYLUA_SHA256_$(STYLUA_PLATFORM))"; \
+		echo "  delete dist/$(STYLUA_ZIP) and run make dist-stylua again; a release that does not match the pin is never run"; \
+		exit 1; fi
+	@rm -rf $(STYLUA_DIR) && mkdir -p $(STYLUA_DIR) && unzip -q -o dist/$(STYLUA_ZIP) -d $(STYLUA_DIR) && chmod +x $(STYLUA_DIR)/stylua
+	@v=$$($(STYLUA_DIR)/stylua --version); if [ "$$v" != "stylua $(STYLUA_VERSION)" ]; then \
+		echo "dist-stylua REFUSES: the pinned release reports '$$v'"; exit 1; fi
+	@echo "dist-stylua: StyLua $(STYLUA_VERSION) $(STYLUA_PLATFORM) sha256 $(STYLUA_SHA256_$(STYLUA_PLATFORM))"
+
+# THE FORMAT GATE: every file of the generated corpus above is exactly what
+# the pinned StyLua writes for it (--check: a diff is a failure, printed). The
+# generator writes this style itself (internal/codegen/lua/format.go and the
+# emitters), and the table runtime is committed in it, so there is no
+# allowance file and nothing is reformatted here. The vendored serialize.lua
+# runtime (the *-serialize*.lua copies) is upstream's bytes pinned by sha256 in
+# SERIALIZE_PIN and is not this repository's to restyle; it is the only thing
+# the gate does not read, by name.
+.PHONY: tables-lua-format
+tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
+	@files="$$(find $(LUA_LUACHECK_CORPUS)/unique -name '*.lua' ! -name '*-serialize*.lua' | sort)"; \
+	n=$$(printf '%s\n' "$$files" | wc -l | tr -d ' '); \
+	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check $$files; then \
+		echo "tables-lua-format: the generated Lua above is not what StyLua $(STYLUA_VERSION) writes ($(STYLUA_CONFIG)); fix the generator"; \
+		exit 1; \
+	fi; \
+	echo "lua-format gate: $$n generated files are StyLua $(STYLUA_VERSION)-canonical"
+
+# THE FORMAT GATE's NEGATIVE CONTROL: one generated module, copied, with its
+# first one-line early-out spelled as a block (the shape StyLua collapses),
+# must fail --check and be named; the unplanted copy must pass.
+.PHONY: tables-lua-format-negative-control
+tables-lua-format-negative-control: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
+	@rm -rf build/lua-format-control && mkdir -p build/lua-format-control
+	@set -e; clean=$$(grep -l '^  if not stream:serialize[A-Za-z0-9]*(BITS, [0-9]*) then return false end$$' $(LUA_LUACHECK_CORPUS)/unique/*.lua | head -1); \
+	if [ -z "$$clean" ]; then echo "NEGATIVE CONTROL: the corpus has no one-line early-out to plant"; exit 1; fi; \
+	cp "$$clean" build/lua-format-control/clean.lua; \
+	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check build/lua-format-control/clean.lua > build/lua-format-control/clean.log 2>&1; then \
+		echo "NEGATIVE CONTROL: the unplanted control file is already red"; cat build/lua-format-control/clean.log; exit 1; fi; \
+	awk 'done == 0 && /^  if not stream:serialize[A-Za-z0-9]*\(BITS, [0-9]*\) then return false end$$/ { sub(/ return false end$$/, ""); print; print "    return false"; print "  end"; done = 1; next } { print }' \
+		build/lua-format-control/clean.lua > build/lua-format-control/planted.lua; \
+	if cmp -s build/lua-format-control/clean.lua build/lua-format-control/planted.lua; then echo "NEGATIVE CONTROL: the plant did not apply"; exit 1; fi; \
+	if $(STYLUA) --config-path $(STYLUA_CONFIG) --check build/lua-format-control/planted.lua > build/lua-format-control/planted.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the planted block left the format gate green"; exit 1; fi; \
+	grep -q 'planted.lua' build/lua-format-control/planted.log || { \
+		echo "NEGATIVE CONTROL FAILED: the format gate did not name the planted file"; cat build/lua-format-control/planted.log; exit 1; }
+	@echo "lua-format negative control: a non-canonical early-out is named and turns the gate red"
