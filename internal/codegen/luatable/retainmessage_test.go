@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"os/exec"
@@ -33,6 +34,7 @@ import (
 // negative controls at the end prove each planted bug turns this test red.
 func TestLuaRetainUnknownMessages(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
 	newer := `package probe
 fixed table Child { n int32
   k int32 }

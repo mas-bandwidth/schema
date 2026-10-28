@@ -2,6 +2,7 @@ package luatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"os/exec"
@@ -26,6 +27,7 @@ import (
 // fixed-class root Inner is refused by the same sentence the Go const carries.
 func TestLuaRetainUnknown(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)

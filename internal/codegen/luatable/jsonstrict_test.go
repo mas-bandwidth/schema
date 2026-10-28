@@ -136,6 +136,7 @@ func strictGoProbe(pkg string, rows []strictJSONRow, texts map[string][]byte, fi
 // hostile text, a clean read for an instance's canonical text).
 func TestLuaFromJsonIsStrict(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	// the generated Go oracle links the PINNED serialize.go (the sibling
 	// checkout CI clones at SERIALIZE_GO_TAG, or make deps' fetched copy),

@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"os/exec"
@@ -205,6 +206,7 @@ func fsLoadUnit(t *testing.T) *ir.Unit {
 
 func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
 	u := fsLoadUnit(t)
 
 	luaFiles, err := Generate(u)

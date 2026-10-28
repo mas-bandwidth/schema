@@ -9,6 +9,7 @@ package luatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"os/exec"
@@ -88,6 +89,7 @@ type jsonCase struct {
 // than the walker's key scratch (the unbounded rows' no-bound rule).
 func TestLuaTextListsJson(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
 	cases := map[string][]jsonCase{
 		"textlists": {
 			{"plain", "L", `{"names":["a","b"],"first":["x",null],"repos":["r1",""],"bases":[null,"z"]}`},

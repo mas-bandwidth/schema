@@ -25,6 +25,7 @@ import (
 // opens the Lua bytes with the generated Go reader.
 func TestLuaBlockBuilder(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "go and the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
