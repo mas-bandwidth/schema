@@ -827,247 +827,247 @@ macro_rules! with_root {
         match ($unit, $root) {
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
-                use graphdemo::{scene_from_json as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
+                use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
                 Some($body)
             }
             ("blobdemo", "Catalog") => {
                 #[allow(unused_imports)]
-                use blobdemo::{catalog_from_json as $from_json, catalog_load as $load, catalog_save_checked as $save, catalog_to_json_checked as $to_json};
+                use blobdemo::{catalog_from_json_bytes as $from_json, catalog_load as $load, catalog_save_checked as $save, catalog_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Cells") => {
                 #[allow(unused_imports)]
-                use mapdemo::{cells_from_json as $from_json, cells_load as $load, cells_save_checked as $save, cells_to_json_checked as $to_json};
+                use mapdemo::{cells_from_json_bytes as $from_json, cells_load as $load, cells_save_checked as $save, cells_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Chunks") => {
                 #[allow(unused_imports)]
-                use mapdemo::{chunks_from_json as $from_json, chunks_load as $load, chunks_save_checked as $save, chunks_to_json_checked as $to_json};
+                use mapdemo::{chunks_from_json_bytes as $from_json, chunks_load as $load, chunks_save_checked as $save, chunks_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Crews") => {
                 #[allow(unused_imports)]
-                use mapdemo::{crews_from_json as $from_json, crews_load as $load, crews_save_checked as $save, crews_to_json_checked as $to_json};
+                use mapdemo::{crews_from_json_bytes as $from_json, crews_load as $load, crews_save_checked as $save, crews_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Depth") => {
                 #[allow(unused_imports)]
-                use mapdemo::{depth_from_json as $from_json, depth_load as $load, depth_save_checked as $save, depth_to_json_checked as $to_json};
+                use mapdemo::{depth_from_json_bytes as $from_json, depth_load as $load, depth_save_checked as $save, depth_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Docs") => {
                 #[allow(unused_imports)]
-                use mapdemo::{docs_from_json as $from_json, docs_load as $load, docs_save_checked as $save, docs_to_json_checked as $to_json};
+                use mapdemo::{docs_from_json_bytes as $from_json, docs_load as $load, docs_save_checked as $save, docs_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Fleet") => {
                 #[allow(unused_imports)]
-                use mapdemo::{fleet_from_json as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                use mapdemo::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Pairs") => {
                 #[allow(unused_imports)]
-                use mapdemo::{pairs_from_json as $from_json, pairs_load as $load, pairs_save_checked as $save, pairs_to_json_checked as $to_json};
+                use mapdemo::{pairs_from_json_bytes as $from_json, pairs_load as $load, pairs_save_checked as $save, pairs_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Slots") => {
                 #[allow(unused_imports)]
-                use mapdemo::{slots_from_json as $from_json, slots_load as $load, slots_save_checked as $save, slots_to_json_checked as $to_json};
+                use mapdemo::{slots_from_json_bytes as $from_json, slots_load as $load, slots_save_checked as $save, slots_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Spans") => {
                 #[allow(unused_imports)]
-                use mapdemo::{spans_from_json as $from_json, spans_load as $load, spans_save_checked as $save, spans_to_json_checked as $to_json};
+                use mapdemo::{spans_from_json_bytes as $from_json, spans_load as $load, spans_save_checked as $save, spans_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Trails") => {
                 #[allow(unused_imports)]
-                use mapdemo::{trails_from_json as $from_json, trails_load as $load, trails_save_checked as $save, trails_to_json_checked as $to_json};
+                use mapdemo::{trails_from_json_bytes as $from_json, trails_load as $load, trails_save_checked as $save, trails_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Runs") => {
                 #[allow(unused_imports)]
-                use mapdemo::{runs_from_json as $from_json, runs_load as $load, runs_save_checked as $save, runs_to_json_checked as $to_json};
+                use mapdemo::{runs_from_json_bytes as $from_json, runs_load as $load, runs_save_checked as $save, runs_to_json_checked as $to_json};
                 Some($body)
             }
             ("tabledemo", "RootConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{root_config_from_json as $from_json, root_config_load as $load, root_config_save_checked as $save, root_config_to_json_checked as $to_json};
+                use tabledemo::{root_config_from_json_bytes as $from_json, root_config_load as $load, root_config_save_checked as $save, root_config_to_json_checked as $to_json};
                 Some($body)
             }
             ("tabledemo", "PackConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{pack_config_from_json as $from_json, pack_config_load as $load, pack_config_save_checked as $save, pack_config_to_json_checked as $to_json};
+                use tabledemo::{pack_config_from_json_bytes as $from_json, pack_config_load as $load, pack_config_save_checked as $save, pack_config_to_json_checked as $to_json};
                 Some($body)
             }
             ("tabledemo", "LoadoutConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{loadout_config_from_json as $from_json, loadout_config_load as $load, loadout_config_save_checked as $save, loadout_config_to_json_checked as $to_json};
+                use tabledemo::{loadout_config_from_json_bytes as $from_json, loadout_config_load as $load, loadout_config_save_checked as $save, loadout_config_to_json_checked as $to_json};
                 Some($body)
             }
             ("tabledemo", "ProfileConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{profile_config_from_json as $from_json, profile_config_load as $load, profile_config_save_checked as $save, profile_config_to_json_checked as $to_json};
+                use tabledemo::{profile_config_from_json_bytes as $from_json, profile_config_load as $load, profile_config_save_checked as $save, profile_config_to_json_checked as $to_json};
                 Some($body)
             }
             ("tabledemo", "ArchiveConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{archive_config_from_json as $from_json, archive_config_load as $load, archive_config_save_checked as $save, archive_config_to_json_checked as $to_json};
+                use tabledemo::{archive_config_from_json_bytes as $from_json, archive_config_load as $load, archive_config_save_checked as $save, archive_config_to_json_checked as $to_json};
                 Some($body)
             }
             ("tabledemo", "KeyedConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{keyed_config_from_json as $from_json, keyed_config_load as $load, keyed_config_save_checked as $save, keyed_config_to_json_checked as $to_json};
+                use tabledemo::{keyed_config_from_json_bytes as $from_json, keyed_config_load as $load, keyed_config_save_checked as $save, keyed_config_to_json_checked as $to_json};
                 Some($body)
             }
             ("tabledemo", "WideBlob") => {
                 #[allow(unused_imports)]
-                use tabledemo::{wide_blob_from_json as $from_json, wide_blob_load as $load, wide_blob_save_checked as $save, wide_blob_to_json_checked as $to_json};
+                use tabledemo::{wide_blob_from_json_bytes as $from_json, wide_blob_load as $load, wide_blob_save_checked as $save, wide_blob_to_json_checked as $to_json};
                 Some($body)
             }
             ("streamdemo", "Feed") => {
                 #[allow(unused_imports)]
-                use streamdemo::{feed_from_json as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json};
+                use streamdemo::{feed_from_json_bytes as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json};
                 Some($body)
             }
             ("listdemo", "Album") => {
                 #[allow(unused_imports)]
-                use listdemo::{album_from_json as $from_json, album_load as $load, album_save_checked as $save, album_to_json_checked as $to_json};
+                use listdemo::{album_from_json_bytes as $from_json, album_load as $load, album_save_checked as $save, album_to_json_checked as $to_json};
                 Some($body)
             }
             ("listdemo", "Army") => {
                 #[allow(unused_imports)]
-                use listdemo::{army_from_json as $from_json, army_load as $load, army_save_checked as $save, army_to_json_checked as $to_json};
+                use listdemo::{army_from_json_bytes as $from_json, army_load as $load, army_save_checked as $save, army_to_json_checked as $to_json};
                 Some($body)
             }
             ("listdemo", "Mixed") => {
                 #[allow(unused_imports)]
-                use listdemo::{mixed_from_json as $from_json, mixed_load as $load, mixed_save_checked as $save, mixed_to_json_checked as $to_json};
+                use listdemo::{mixed_from_json_bytes as $from_json, mixed_load as $load, mixed_save_checked as $save, mixed_to_json_checked as $to_json};
                 Some($body)
             }
             ("listdemo", "Save") => {
                 #[allow(unused_imports)]
-                use listdemo::{save_from_json as $from_json, save_load as $load, save_save_checked as $save, save_to_json_checked as $to_json};
+                use listdemo::{save_from_json_bytes as $from_json, save_load as $load, save_save_checked as $save, save_to_json_checked as $to_json};
                 Some($body)
             }
             ("listdemo", "Sheet") => {
                 #[allow(unused_imports)]
-                use listdemo::{sheet_from_json as $from_json, sheet_load as $load, sheet_save_checked as $save, sheet_to_json_checked as $to_json};
+                use listdemo::{sheet_from_json_bytes as $from_json, sheet_load as $load, sheet_save_checked as $save, sheet_to_json_checked as $to_json};
                 Some($body)
             }
             ("listdemo", "Unbounded") => {
                 #[allow(unused_imports)]
-                use listdemo::{unbounded_from_json as $from_json, unbounded_load as $load, unbounded_save_checked as $save, unbounded_to_json_checked as $to_json};
+                use listdemo::{unbounded_from_json_bytes as $from_json, unbounded_load as $load, unbounded_save_checked as $save, unbounded_to_json_checked as $to_json};
                 Some($body)
             }
             ("messagedemo", "ToolMessage") => {
                 #[allow(unused_imports)]
-                use messagedemo::{tool_message_from_json as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
+                use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
                 Some($body)
             }
             ("backenddemo", "LoginRequest") => {
                 #[allow(unused_imports)]
-                use backenddemo::{login_request_from_json as $from_json, login_request_load as $load, login_request_save_checked as $save, login_request_to_json_checked as $to_json};
+                use backenddemo::{login_request_from_json_bytes as $from_json, login_request_load as $load, login_request_save_checked as $save, login_request_to_json_checked as $to_json};
                 Some($body)
             }
             ("backenddemo", "MatchResult") => {
                 #[allow(unused_imports)]
-                use backenddemo::{match_result_from_json as $from_json, match_result_load as $load, match_result_save_checked as $save, match_result_to_json_checked as $to_json};
+                use backenddemo::{match_result_from_json_bytes as $from_json, match_result_load as $load, match_result_save_checked as $save, match_result_to_json_checked as $to_json};
                 Some($body)
             }
             ("backenddemo", "StorePurchase") => {
                 #[allow(unused_imports)]
-                use backenddemo::{store_purchase_from_json as $from_json, store_purchase_load as $load, store_purchase_save_checked as $save, store_purchase_to_json_checked as $to_json};
+                use backenddemo::{store_purchase_from_json_bytes as $from_json, store_purchase_load as $load, store_purchase_save_checked as $save, store_purchase_to_json_checked as $to_json};
                 Some($body)
             }
             ("vocabdemo", "Wide00") => {
                 #[allow(unused_imports)]
-                use vocabdemo::{wide00_from_json as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                use vocabdemo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
                 Some($body)
             }
             ("vocabdemo", "Wide09") => {
                 #[allow(unused_imports)]
-                use vocabdemo::{wide09_from_json as $from_json, wide09_load as $load, wide09_save_checked as $save, wide09_to_json_checked as $to_json};
+                use vocabdemo::{wide09_from_json_bytes as $from_json, wide09_load as $load, wide09_save_checked as $save, wide09_to_json_checked as $to_json};
                 Some($body)
             }
             ("vocab9demo", "Wide00") => {
                 #[allow(unused_imports)]
-                use vocab9demo::{wide00_from_json as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                use vocab9demo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
                 Some($body)
             }
             ("vocab9demo", "Wide19") => {
                 #[allow(unused_imports)]
-                use vocab9demo::{wide19_from_json as $from_json, wide19_load as $load, wide19_save_checked as $save, wide19_to_json_checked as $to_json};
+                use vocab9demo::{wide19_from_json_bytes as $from_json, wide19_load as $load, wide19_save_checked as $save, wide19_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblv1", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblv1::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblv1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblv2", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblv2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblv2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblp1", "Chain") => {
                 #[allow(unused_imports)]
-                use tblp1::{chain_from_json as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                use tblp1::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblp2", "Chain") => {
                 #[allow(unused_imports)]
-                use tblp2::{chain_from_json as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                use tblp2::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblp3", "Chain") => {
                 #[allow(unused_imports)]
-                use tblp3::{chain_from_json as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                use tblp3::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblm1", "Msg") => {
                 #[allow(unused_imports)]
-                use tblm1::{msg_from_json as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                use tblm1::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblm2", "Msg") => {
                 #[allow(unused_imports)]
-                use tblm2::{msg_from_json as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                use tblm2::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
                 Some($body)
             }
             ("tbla2", "Root") => {
                 #[allow(unused_imports)]
-                use tbla2::{root_from_json as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                use tbla2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblk1", "Root") => {
                 #[allow(unused_imports)]
-                use tblk1::{root_from_json as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                use tblk1::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblk2", "Root") => {
                 #[allow(unused_imports)]
-                use tblk2::{root_from_json as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                use tblk2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblw1", "Fleet") => {
                 #[allow(unused_imports)]
-                use tblw1::{fleet_from_json as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                use tblw1::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblw2", "Fleet") => {
                 #[allow(unused_imports)]
-                use tblw2::{fleet_from_json as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                use tblw2::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblr1", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblr1::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblr1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
                 Some($body)
             }
             ("tblr2", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblr2::{cfg_from_json as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblr2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
                 Some($body)
             }
             // wstring(N) ON THE TABLE WIRE (docs/SPEC-TABLES.md §3 kind 33,
@@ -1077,17 +1077,17 @@ macro_rules! with_root {
             // and Stamp beside it; map_text is the kind as a MAP VALUE (§2.8)
             ("widedemo", "Caption") => {
                 #[allow(unused_imports)]
-                use widedemo::{caption_from_json as $from_json, caption_load as $load, caption_save_checked as $save, caption_to_json_checked as $to_json};
+                use widedemo::{caption_from_json_bytes as $from_json, caption_load as $load, caption_save_checked as $save, caption_to_json_checked as $to_json};
                 Some($body)
             }
             ("widedemo", "Stamp") => {
                 #[allow(unused_imports)]
-                use widedemo::{stamp_from_json as $from_json, stamp_load as $load, stamp_save_checked as $save, stamp_to_json_checked as $to_json};
+                use widedemo::{stamp_from_json_bytes as $from_json, stamp_load as $load, stamp_save_checked as $save, stamp_to_json_checked as $to_json};
                 Some($body)
             }
             ("mapdemo", "Text") => {
                 #[allow(unused_imports)]
-                use mapdemo::{text_from_json as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
+                use mapdemo::{text_from_json_bytes as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
                 Some($body)
             }
             _ => None,
@@ -1203,7 +1203,7 @@ fn surface_json_read(manifest: &Manifest, out: &str) {
                 Err(e) => fail(&format!("cannot read {path}: {e}")),
             };
             let mut report = Default::default();
-            match from_json(&text, &mut report) {
+            match from_json(text.as_bytes(), &mut report) {
                 Some(v) => save(&v).unwrap_or_else(|why| fail(&format!("{}: the save refused the value: {why}", f[1]))),
                 None => fail(&format!("{}: FromJson refused the text", f[1])),
             }
@@ -1252,7 +1252,8 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
                 Ok(t) => t,
                 Err(e) => fail(&format!("cannot read {path}: {e}")),
             };
-            let text = String::from_utf8_lossy(&text);
+            // the RAW bytes: a lossy decode here would hide an ill-formed
+            // byte from the reader that must refuse it (§16.3)
             let mut report = Default::default();
             let value = from_json(&text, &mut report);
             let r = &report;

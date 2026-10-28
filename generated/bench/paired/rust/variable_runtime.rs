@@ -1655,13 +1655,15 @@ pub struct Jr<'a> {
     pub clamped: u64,
     pub duplicate: u64,
     pub malformed: bool,
+    /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
+    pub zero: bool,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
-        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, labels: HashMap::new() }
+        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -1775,12 +1777,18 @@ impl<'a> Jr<'a> {
                             && self.b[self.p] == b'\\'
                             && self.b[self.p + 1] == b'u'
                         {
+                            let mark = self.p;
                             self.p += 2;
                             let lo = self.hex4();
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
+                            } else {
+                                // a lone lead surrogate rides as itself, and the
+                                // escape after it is read on its own
+                                self.p = mark;
                             }
                         }
+                        self.zero |= cp == 0;
                         let ch = char::from_u32(cp).unwrap_or('\u{fffd}');
                         let mut buf = [0u8; 4];
                         out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
@@ -1795,7 +1803,28 @@ impl<'a> Jr<'a> {
                 self.p += 1;
             }
         }
-        Some(String::from_utf8_lossy(&out).into_owned())
+        // §16.3: bytes that are not well-formed UTF-8 spell no code point,
+        // so the read refuses them by name (string_not_utf8) at every string
+        // site, before any clamp, and never replaces them with U+FFFD
+        match String::from_utf8(out) {
+            Ok(s) => Some(s),
+            Err(_) => {
+                self.malformed = true;
+                None
+            }
+        }
+    }
+    /// read_text reads a string the read PLACES in text storage: a U+0000 in
+    /// it refuses the read (text_holds_zero, docs/SPEC-TABLES.md §16.3), while
+    /// a string the read only compares or skips goes through read_string.
+    pub fn read_text(&mut self) -> Option<String> {
+        self.zero = false;
+        let s = self.read_string()?;
+        if self.zero {
+            self.malformed = true;
+            return None;
+        }
+        Some(s)
     }
     pub fn read_null(&mut self) -> bool {
         self.space();
