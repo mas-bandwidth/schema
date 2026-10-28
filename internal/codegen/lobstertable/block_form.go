@@ -85,21 +85,26 @@ func blockRecord(g *lobster.Gen, blocks *ir.BlockUnit, ml *ir.MemberLayout, name
 			}
 		}
 		offOf, countOff, strideOff, stride := int64(-1), facts.CountOffset, int64(-1), int64(0)
+		maxRows, startAlign := int64(0), int64(ir.BlockAlign)
 		if outOfLine {
 			a := blArray(blocks, name, f.Name)
 			if a != nil {
 				offOf, countOff, strideOff, stride = a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride
+				maxRows = a.Max
+				if a.ElemAlign() > startAlign {
+					startAlign = a.ElemAlign()
+				}
 			}
 		}
 		sep := ","
 		if i == len(ml.Fields)-1 {
 			sep = ""
 		}
-		fmt.Fprintf(&out, "\n                    %s.BlockField { name: %s, offset: %d, size: %d, kind: %d, out_of_line: %v, offset_of_offset: %d, count_offset: %d, stride_offset: %d, stride: %d, is_array: %v, counted: %v, optional: %v, bound: %d, elem_size: %d, present_offset: %d, elem: %s }%s",
+		fmt.Fprintf(&out, "\n                    %s.BlockField { name: %s, offset: %d, size: %d, kind: %d, out_of_line: %v, offset_of_offset: %d, count_offset: %d, stride_offset: %d, stride: %d, is_array: %v, counted: %v, optional: %v, bound: %d, elem_size: %d, present_offset: %d, elem: %s, max: %d, start_align: %d }%s",
 			rt, lobster.StringLit([]byte(f.Name)), fl.Offset, fl.Size, ir.TableWireFieldKind(f),
 			outOfLine, offOf, countOff, strideOff, stride,
 			facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize, facts.PresentOffset,
-			lobster.StringLit([]byte(elem)), sep)
+			lobster.StringLit([]byte(elem)), maxRows, startAlign, sep)
 	}
 	out.WriteString("\n                ]::" + rt + ".BlockField,\n            }")
 	return out.String()
