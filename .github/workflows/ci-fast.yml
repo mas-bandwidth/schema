@@ -243,11 +243,14 @@ jobs:
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
             esac
+            case "$f" in
+              internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk) add_leg luau ;;
+            esac
           done <<EOF
           $files
           EOF
           if [ "$broad" = yes ]; then
-            legs="cpp go c rust js cs java dart elixir"
+            legs="cpp go c rust js cs java dart elixir luau"
           fi
 
           # THE PACKAGES. Every directory holding a changed .go file, as the
@@ -662,5 +665,7 @@ jobs:
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            luau)   make dist-luau
+                    make tables-luau-fixed-form tables-luau-versioning ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac

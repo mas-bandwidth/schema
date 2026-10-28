@@ -559,6 +559,18 @@ jobs:
           make tables-elixir-versioning \
             ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
 
+      # THE SAME SUITE ON THE LUAU LEG (§5.7 step 6). Its probes are generated
+      # Luau, one per row per column, run under the pinned interpreter, which
+      # this row installs as make/luau.mk's dist-luau does (the sha256 refused
+      # before anything is unpacked). The corpus is the one the steps above
+      # already built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus a
+      # failure rather than a silent skip. A few seconds of probes.
+      - name: the Luau leg reads backward over every versioning row
+        if: matrix.group == 'versioning'
+        run: |
+          make dist-luau
+          make tables-luau-versioning
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line

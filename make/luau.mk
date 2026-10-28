@@ -58,6 +58,86 @@ test-luau: toolchain-luau tables-fixedform-corpus \
 		go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
 update-goldens-luau: ;
 
+# THE FIXED FORM AND ITS §5 VERSIONING ROWS, THE TWO GATES EVERY LEG OWES
+# (docs/FIXED-FORM-ALGORITHM.md §5.7 step 6, §5.9 #11; ci-fast.yml's leg-gate
+# and ci-full.yml's versioning row run them by these names).
+#
+# tables-luau-fixed-form is the byte gate: every fixed corpus root written back
+# to the C++ reference's bytes, the lineage read of the FU pair, each named
+# refusal of a lineage entry that will not build, the integrity trailer, the
+# layout bounds and every refusal name against schema-go's own reader, and the
+# ragged tail. tables-luau-versioning is §5: both read columns of every row of
+# docs/FIXED-FORM-VERSIONING-TESTS.md against the reference's bytes and its
+# manifest, the floor, the hash, lineage_merge and the families
+# (internal/codegen/luautable/fixedversioning_*_test.go).
+#
+# `go test ./...` ASSERTS NOTHING HERE: the harness skips without the corpus,
+# which is right for a bare run and is how a §5 regression would ride into a
+# green. So each target builds the oracle first and sets SCHEMA_REQUIRE_CORPUS=1,
+# under which the skip is a FAILURE.
+
+.PHONY: tables-luau-fixed-form tables-luau-versioning
+tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
+	SCHEMA_REQUIRE_CORPUS=1 SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
+		go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal)$$'
+	@echo 'tables Luau fixed form: every corpus root on the C++ reference bytes, every refusal by name'
+
+tables-luau-versioning: toolchain-luau tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedVersioning.*|TestLuauFixedCompiledPlanTagPastArmSet)$$'
+	@echo 'tables Luau versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# THE TWO GATES' NEGATIVE CONTROLS (§5.9 #11: a gate nobody has watched fail may
+# be comparing a file with itself), registered in make/negative-controls.json's
+# luau group. Each replaces ONE line of the emitted runtime for one run through
+# `go test -overlay` (the runtime reaches the generator by go:embed, which the
+# overlay covers), so the tree is never touched, and each requires its gate red
+# for the reason it plants and no other.
+#
+# The fixed-form control writes every text length one too long, so the writer
+# leaves the reference's bytes; the versioning control answers a hash outside
+# the lineage as layout_malformed, the one name that carries §5's direction, so
+# the OLD-REFUSES-NEW column must go red naming layout_unknown.
+.PHONY: tables-luau-fixed-form-negative-control tables-luau-versioning-negative-control
+tables-luau-fixed-form-negative-control: toolchain-luau tables-fixedform-corpus
+	@rm -rf build/luau-fixed-nc && mkdir -p build/luau-fixed-nc
+	@sed 's|buffer.writeu32(buf, n.off, length)|buffer.writeu32(buf, n.off, length + 1) -- SABOTAGED|' \
+		internal/codegen/luautable/runtime/schema_fixed.luau > build/luau-fixed-nc/schema_fixed.luau
+	@test "$$(grep -c SABOTAGED build/luau-fixed-nc/schema_fixed.luau)" -ge 1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-fixed-nc/schema_fixed.luau"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/luau-fixed-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 go test -overlay build/luau-fixed-nc/overlay.json ./internal/codegen/luautable/ \
+			-count=1 -run '^TestLuauFixedFormAgreesWithTheByteOracle$$' > build/luau-fixed-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text length one off left the fixed form green"; \
+		cat build/luau-fixed-nc/log; exit 1; \
+	fi
+	@grep -q 'differs at byte' build/luau-fixed-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; \
+		  cat build/luau-fixed-nc/log; exit 1; }
+	@grep -m1 'differs at byte' build/luau-fixed-nc/log
+	@echo "negative control: one byte off the Luau writer reds the reference byte match"
+
+tables-luau-versioning-negative-control: toolchain-luau tables-fixedform-corpus
+	@rm -rf build/luau-versioning-nc && mkdir -p build/luau-versioning-nc
+	@sed 's|return no("layout_unknown")|return no("layout_malformed") -- SABOTAGED|' \
+		internal/codegen/luautable/runtime/schema_fixed.luau > build/luau-versioning-nc/schema_fixed.luau
+	@grep -q SABOTAGED build/luau-versioning-nc/schema_fixed.luau || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-versioning-nc/schema_fixed.luau"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/luau-versioning-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 go test -overlay build/luau-versioning-nc/overlay.json ./internal/codegen/luautable/ \
+			-count=1 -run '^TestLuauFixedVersioningOldRefusesNew$$' > build/luau-versioning-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
+		cat build/luau-versioning-nc/log; exit 1; \
+	fi
+	@grep -q 'owes layout_unknown, not layout_malformed' build/luau-versioning-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
+		  cat build/luau-versioning-nc/log; exit 1; }
+	@echo "negative control: layout_unknown answered as layout_malformed reds the OLD-REFUSES-NEW column"
+
+# the leg runs both gates' controls beside its packages
+test-luau: tables-luau-fixed-form-negative-control tables-luau-versioning-negative-control
+
 # build/conformance-luau is the manifest's units generated for luau, one
 # directory per unit. The schema_leg_luau tag is the target's until the port
 # joins the builtins (compiler/target_luau.go). A unit the target refuses is
