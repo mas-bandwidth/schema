@@ -18,9 +18,8 @@ target since the port came onto main, 2026-10-28: no build tag), `internal/codeg
 surface), `internal/codegen/lobstertable` (the table surface),
 `internal/codegen/lobster/lobsterrun` (the test helper), `make/lobster.mk`,
 `test/conformance/lobster/driver` and `bench/tables/lobster/leg`. The skeleton
-has no codec: the type and table surfaces are values, constructors and
-descriptors, and every wire, form and text surface is a later card (THE CARD
-MAP).
+had no codec; every wire, form and text surface, and the bench legs, landed
+as later cards (THE CARD MAP).
 
 **The pin.** Lobster v2026.8 (tag v2026.8, commit 0921f7dd5745), `make dist-lobster`: the release `lobster_linux_release.zip`, sha256
 `2f03fb96fdaf6935469c99e43ffb182cab0d797faec7b26eccc9a732df32ad31`, checked
@@ -213,7 +212,9 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/lobster/lobsterrun` | THE HARNESS's helper | this card |
 | `test/conformance/lobster/driver`, `ci.json`, `main.lobster` | the conformance leg | this card (driver, ci.json); conformance-leg (`main.lobster`) |
 | `make/lobster.mk` | the leg's build: `dist-lobster`, `toolchain-lobster`, `test-lobster`, `build/conformance-lobster` | this card; later cards add their own `make/lobster-*.mk` |
-| `bench/tables/lobster/leg` | the tables-bench leg, ABSENT until a codec exists | schema-lobster-bench |
+| `bench/lobster/run`, `main.lobster`, `harness.lobster`, `route.sh` | the type-bench leg (BenchMixed, family gen) and the harness and output routing both legs share | schema-lobster-bench |
+| `bench/tables/lobster/leg`, `table_main.lobster` | the tables-bench leg (TableMixed on the tolerant wire, family table) | schema-lobster-bench |
+| `make/lobster-bench.mk` | `bench-lobster-gate` (both legs' gates, no clock) and its negative control | schema-lobster-bench |
 
 **How a module reaches its runtime.** The runtime files are emitted beside
 the generated modules, and every import a generated module or runtime makes
@@ -358,6 +359,39 @@ as lines (lowercase hex for bytes).**
   program as C++, which is compiled with `clang -O2` against a checkout of
   aardappel/lobster at the pin's commit (its `dev/` tree, as the project's own
   `LOBSTER_TOCPP` build does), and the row names which build it measured.
+- **The bench legs as they run.** `bench/lobster/run` (BenchMixed through
+  `generated/bench/lobster`, family `gen`) and `bench/tables/lobster/leg`
+  (TableMixed through `generated/bench/tables/lobster` on the tolerant wire,
+  family `table`; the timed codec is the port's one runtime walk,
+  `load_tolerant` then `save`) run their program under the pin's DEFAULT JIT
+  with `--runtime-no-asserts`, every row `linkage=jit,checks=contract`. The
+  clock is `seconds_elapsed()`. A Lobster program has one output stream and
+  the compiler warns on it, so every line the runners print is tagged `csv `
+  or `log ` and `bench/lobster/route.sh` routes them to stdout and stderr and
+  refuses any other line: a warning fails the leg. Both are golden-gated
+  before the clock (`make bench-lobster-gate`, on the ci-fast lobster row;
+  `bench-lobster-gate-negative-control` flips each golden, plants a warning,
+  and plants a `seconds_elapsed()` clock and a corpus name in `.lobster` files
+  for `make shape-gate`, which scans `.lobster` and refuses that clock
+  outside the runner directories). **The `--cpp` row is owed**
+  (`port/lobster/bench-cpp` in docs/roadmap.sexp, card
+  schema-lobster-bench-cpp): `lobster --cpp` writes into the toolchain's
+  `dev/` tree, which the release archive does not carry, and its output builds
+  only with the engine's full build (SDL, FreeType, OpenGL) from a checkout at
+  the pin — a heavy build and a fleet job. Both legs print the card on stderr
+  and no `--cpp` number until it lands. No timed number is taken on the
+  studio; the first sitting is a fleet pass.
+- **The bench found a type-wire gap, now closed.** serialize.lobster's fixed
+  operations take a SIGNED Q format and refuse a declaration whose bounds the
+  signed storage cannot hold, so the generated code passing a `ufixed(8, 8)`
+  with max 250 as `(8, 8)` refused BenchMixed's own golden. A ufixed now rides
+  the widest signed declaration of the same fraction bits (`fixedDeclaration`,
+  write.go; the wire depends only on F and the raw bounds): storage 64 while
+  its raw maximum stays below 2^63, else storage 128 with the 64-bit pattern
+  zero-extended. `TestLobsterUnsignedFixedGoldens` reads and rewrites
+  `bench_mixed.bin` and `unsigned_probe.bin` (span's raw values fill uint64's
+  high half) byte for byte; its negative control restores the (I, F)
+  declarations and requires both to refuse.
 - **The conformance driver** (`test/conformance/lobster/driver`) runs
   `test/conformance/lobster/main.lobster` under the pinned toolchain. Lobster
   resolves imports when it compiles, so the program runs once per generated
@@ -478,7 +512,8 @@ stands:
 | the wire-fuzz differential and the hostile corpus | `make/lobster-fuzz.mk`, `make/lobster-hostile.mk` | landed; message-form and retain roots in the differential are owed |
 | the strict gate, CI, the register column, the roadmap column | `make/schema-lobster-generated-strict-gate.mk`, `.github/workflows/*`, `docs/PORTING.md`, `docs/roadmap.sexp` | landed |
 | the integrity trailer and the `forms` declaration (§2.12, §2.14) | — | owed |
-| the bench legs, JIT and `--cpp` | `bench/tables/lobster/` | owed |
+| the bench legs, JIT (packet and tables, golden-gated, `bench-lobster-gate`) | `bench/lobster/`, `bench/tables/lobster/`, `make/lobster-bench.mk` | landed; the first sitting is a fleet pass |
+| the bench legs' `--cpp` row | — | owed (`port/lobster/bench-cpp`, schema-lobster-bench-cpp) |
 | native snake_case naming (Lobster's own idiom; the port still spells names as Go does) | `lobster/`, `lobstertable/` | owed |
 
 Each carry-across construct of compiler/carries.go joins with its own

@@ -1241,7 +1241,7 @@ the reference on the same numbers; a sitting on the box is what certifies.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lobster |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #2262 — no tables bench leg yet (`bench/tables/lobster/leg` answers ABSENT) |
+| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #2262 — the leg is in the tree (`bench/tables/lobster/leg`, gated by `bench-lobster-gate`) but no labeled board yet: its first sitting is a fleet pass, never the studio |
 
 ### I9 — The soak is gated on the allocation count or a floor
 
@@ -1575,7 +1575,8 @@ reproduce the corpus refuses to time it rather than posting a number.
 technique in and lost the leg with its table wire (#515).
 
 **Proven in.** C++, C, C# and Go; Elixir proved the technique in before it lost
-the leg with its table wire (#515).
+the leg with its table wire (#515); Lobster (`bench-lobster-gate`, both of its
+legs, with `bench-lobster-gate-negative-control` flipping each golden).
 
 **Measured effect.** Structural.
 
@@ -1585,7 +1586,7 @@ the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lobster |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ❌ #2271 — no tables bench leg yet (`bench/tables/lobster/leg` answers ABSENT) |
+| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ✅ `bench-lobster-gate` `bench-lobster-gate-negative-control` |
 
 ### J6 — The card conformance check
 

@@ -26,7 +26,7 @@ backends' GENERATED codecs over the same shape under the same contract
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir   # one language leg
+    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|lobster   # one language leg
     bench/run.sh --quick         # the iteration instrument: bench_mixed only,
                                  # 3 measured runs per leg, golden gate intact,
                                  # and the blended table (per-message time
@@ -512,6 +512,17 @@ A runner is a standalone program in `bench/<lang>/` that:
   `../../build/bench/schema_bench_dart --csv`
 - **elixir**: `bench/elixir/main.exs` — run from `bench/elixir` under the
   pinned BEAM toolchain PATH as `elixir main.exs --csv`
+- **lobster**: `bench/lobster/main.lobster` — run from the repository root
+  as `bench/lobster/run --csv` under the pinned toolchain (`LOBSTER`
+  overrides; `make dist-lobster`): the generated codec in
+  `generated/bench/lobster` with its vendored serialize.lobster beside it,
+  the default JIT with `--runtime-no-asserts`, `linkage=jit`,
+  `checks=contract`, `inline=unknown`. Every line the program prints is
+  tagged and `bench/lobster/route.sh` refuses an untagged one, so a compiler
+  warning fails the leg. `make bench-lobster-gate` is its no-clock gate. The
+  `--cpp` ahead-of-time row docs/PORT-LOBSTER.md asks for is owed
+  (schema-lobster-bench-cpp): the pinned release has no `dev/` tree to
+  compile it against.
 
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.
