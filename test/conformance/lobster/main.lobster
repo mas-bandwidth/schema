@@ -29,13 +29,16 @@ import .block_form
 import .message
 import .cook
 import .retain_unknown
+import .json
 
 // the surfaces this leg answers: the variable wire's load and save (§3, §4),
 // the message form (§3.3), retain-unknown (§6.6), the cooked form's read,
 // write and forgery battery (§7), and the block form's reflective read with
-// its forgery battery (§19.2), each refusal with its reason
+// its forgery battery (§19.2), each refusal with its reason, and the JSON
+// text form (§16)
 let surfaces = ["wire", "message", "report", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
-    "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason"]
+    "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
+    "json-read", "json-write", "json-hostile"]
 
 let arguments = command_line_arguments()
 let argument_count = length(arguments)
@@ -317,6 +320,43 @@ def surface_retain(text:string, saves:bool):
             say(f[1], out)
         else:
             say(f[1], "{retained},{lost},{unknown} {save_lost}\n")
+// the JSON surfaces (docs/SPEC-TABLES.md §16): an instance line whose sixth
+// word is `no-text` has no text and is not asked (§16.7)
+def has_text(f:[string]) -> bool:
+    return not (length(f) > 5 and f[5] == "no-text")
+
+// JSON-READ: FromJson json/<name>.json, Save, the bytes.
+def surface_json_read(text:string):
+    for(rows(text, "instance")) f:
+        if has_text(f):
+            let rep = schema_rt.LoadReport {}
+            let rec = schema_rt.json_read(f[3], fixture("testdata/conformance/tables/json/" + f[1] + ".json"), rep)
+            assert rec
+            let out, why = schema_rt.save_reasoned(rec)
+            assert why == ""
+            say(f[1], out)
+
+// JSON-WRITE: Load the wire, ToJson, the text, as <name>.json.
+def surface_json_write(text:string):
+    for(rows(text, "instance")) f:
+        if has_text(f):
+            let rep = schema_rt.LoadReport {}
+            let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+            assert rec
+            let out, why = schema_rt.json_write(rec)
+            assert why == ""
+            say(f[1] + ".json", out)
+
+// JSON-HOSTILE: FromJson <tree>/<root>.json, `refused` or the report
+// `u,k,w,c,d,false,read`. A line is `json-hostile <case> <unit> <root> <tree>`.
+def surface_json_hostile(text:string):
+    for(rows(text, "json-hostile")) f:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.json_read(f[3], fixture(f[4] + "/" + f[3] + ".json"), rep)
+        if rec and not rep.malformed:
+            say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},false,read\n")
+        else:
+            say(f[1], "refused\n")
 
 if surface == "list":
     for(surfaces) s:
@@ -350,6 +390,12 @@ else:
         surface_reason(text, "block")
     elif surface == "cook-reason":
         surface_reason(text, "cook")
+    elif surface == "json-read":
+        surface_json_read(text)
+    elif surface == "json-write":
+        surface_json_write(text)
+    elif surface == "json-hostile":
+        surface_json_hostile(text)
     elif surface == "block-foreign":
         surface_block(text, true)
     else:
