@@ -912,6 +912,22 @@
       "squirrel": "3.2"
     },
     {
+      "name": "squirrel-tables",
+      "when": "pull-request",
+      "why": "the Squirrel port's in-package controls, one make target each (make/squirrel-negative-controls.mk), as make/go.mk wraps gotable's: the type surface's wire read and write controls (internal/codegen/squirrel), and the table surface's fixed form, JSON, load, message form, save and base64 text controls (internal/codegen/squirreltable), each run alone under test/slowgate/proof and each required to red exactly its own rows. Split from the squirrel row so each job stays under the 120 s rule: measured 3-9 s apiece, 35 s for the eight, warm on the studio (2026-10-28), the first one paying the package's test build.",
+      "targets": [
+        "tables-squirrel-type-wire-read-negative-control",
+        "tables-squirrel-type-wire-write-negative-control",
+        "tables-squirrel-fixed-form-negative-control",
+        "tables-squirrel-json-negative-control",
+        "tables-squirrel-load-negative-control",
+        "tables-squirrel-message-form-negative-control",
+        "tables-squirrel-save-negative-control",
+        "tables-squirrel-base64-text-negative-control"
+      ],
+      "squirrel": "3.2"
+    },
+    {
       "name": "schema-dart-strict-analyze",
       "when": "nightly",
       "why": "the strict Dart analyzer lens over the generated packet trees: one control plants a raw type in a scratch copy and requires the analyzer to reject it by file and rule, and the other plants an object != 0 (the fixed emitter's old nested-message default check) and requires unrelated_type_equality_checks by name. It runs nightly because the same job's heavy half generates and analyzes the table backend corpus, which is the costlier pass; the controls themselves are ~1 s each.",

@@ -233,4 +233,3 @@ _M.WriteWideInterop <- function(stream, value) {
   }
   return true;
 };
-
