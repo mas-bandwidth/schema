@@ -119,6 +119,21 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 		if carried["listdemo.Mixed"] {
 			seeds = append(seeds, repeatedUnionSeeds(t)...)
 		}
+		// A POINTER UNDER A FALSE GUARD IS NOT AN EDGE (docs/SPEC-TABLES.md
+		// §3.1, test/tables/G1.schema): guard_true_both_edges with its
+		// `at_rest` byte cleared still carries `resting` and its record, which
+		// the reader places and the save, numbering included, must drop.
+		if carried["tblg1.Guarded"] {
+			both, err := os.ReadFile(filepath.Join(repo, "testdata/wire/tables/guard_true_both_edges.bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if both[3] != 1 {
+				t.Fatalf("guard_true_both_edges no longer opens with at_rest = true: % x", both[:4])
+			}
+			both[3] = 0
+			seeds = append(seeds, rosterSeed{name: "guard_false_resting_rides", unit: "tblg1", root: "Guarded", data: both})
+		}
 		for _, retain := range []bool{false, true} {
 			driveSeeds(t, repo, bin, units, seeds, retain)
 		}
