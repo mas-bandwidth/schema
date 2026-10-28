@@ -232,6 +232,9 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		"parts_elem_kind":          "parts",
 		"parts_count_past_bound":   "parts",
 		"parts_index_out_of_range": "parts",
+		// mutant 235: the root's first field reference 1 (one) bumped to 11
+		// (past): a table body under past's int32 id is past's kind_mismatch
+		"map_depth_root_kind": "past",
 	}
 	compared := 0
 	pinUsed := map[string]bool{}
