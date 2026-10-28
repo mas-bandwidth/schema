@@ -98,6 +98,14 @@ end
 
 local function new_in(text: string): Input return { t = text, p = 1, bad = false, zero = false } end
 
+-- THE BYTE-ORDER MARK (docs/SPEC-TABLES.md §16.12): a text whose first three
+-- bytes are EF BB BF reads as the text after them (RFC 8259 §8.1). Only the
+-- UTF-8 mark, and only at the very start: anywhere else those bytes are not
+-- JSON. No writer emits one.
+local function byte_order_mark(inp: Input)
+  if inp.p == 1 and inp.t:sub(1, 3) == "\xEF\xBB\xBF" then inp.p = 4 end
+end
+
 local function space(inp: Input)
   while inp.p <= #inp.t do
     local c = inp.t:byte(inp.p)
@@ -1741,6 +1749,7 @@ local function core_from(T: any, name: string, text: string, report: any): any
   local desc = T.Tables[name]
   if desc == nil then report.malformed = true; return nil end
   local inp = new_in(text)
+  byte_order_mark(inp)
   if desc.jsonArray and value_shape(inp) ~= 'a' then
     report.malformed = true
     report.reason = "json_root_not_array: " .. name
