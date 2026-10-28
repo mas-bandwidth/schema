@@ -692,6 +692,25 @@ tables-rust-message-batch:
 
 test-rust: tables-rust-message-batch
 
+# THE FINITE FLOAT RULE ON THE RUST LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27: "Tables go finite-only too, same rule as packets"): every read
+# refuses a NaN or an infinity on its raw bits as non_finite_float, the
+# tolerant read included, every writer refuses one, and -0 and the subnormals
+# ride bit for bit, in the variable, message, fixed and cook forms and on a
+# retained unknown float. The gate is TestRustFiniteFloat; its reversed witness
+# takes each half of the rule out of the generated Rust in turn (the variable
+# read and writer, the retain test, the message read and writer, the fixed
+# read's finite pass and writer, the cook writer), and each must red exactly
+# its own clauses. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a
+# failure, so neither target passes on a SKIP.
+.PHONY: tables-rust-finite-float tables-rust-finite-float-negative-control
+tables-rust-finite-float:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloat$$' -v
+tables-rust-finite-float-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloatNegativeControl$$' -v
+
+test-rust: tables-rust-finite-float
+
 # THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
 # listing oracle as the reference, through the Rust surface, mirroring
 # tables-c-view. For each VIEW_CORPUS unit the target generates the unit with
@@ -766,7 +785,7 @@ build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.r
 tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
 	@set -e; for arm in '' '--retain'; do \
-		./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
+		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
 			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
 		cat build/rust-wire-fuzz-all.log; \
 		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
@@ -835,7 +854,7 @@ build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_
 # vectors out of this Card-only manifest. The greps hold the nonzero
 # seed/mutant claim and the zero-divergence claim explicitly.
 cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-rust-wire-fuzz.log 2>&1; \
@@ -856,7 +875,7 @@ cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
 # port.
 .PHONY: cards-rust-retain-fuzz
 cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --retain --seed 24845619678 --n 100 \
 		> build/cards-rust-retain-fuzz.log 2>&1; \
