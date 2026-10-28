@@ -44,7 +44,7 @@ local readLeb = function(b, state) {
   }
   state.bad=true; state.at=start; return 0;
 };
-local messageNarrowF32, messageWidenF32;
+local messageNarrowF32, messageWidenF32, f32;
 local parseShape;
 parseShape = function(b, state, kind) {
   local s={Kind=kind,Bits=-1,Packing=0,Base=0,Min=0,Max=0,ElemKind=0,Element=null,QMin=0.0,QDelta=0.0,QCount=0};
@@ -59,8 +59,14 @@ parseShape = function(b, state, kind) {
     if(s.Packing==2&&kind==10){
       if(state.at+12>state.end){state.bad=true;return s;}
       local lo=messageWidenF32(readU32(b,state.at)),hi=messageWidenF32(readU32(b,state.at+4)),res=messageWidenF32(readU32(b,state.at+8));state.at+=12;
+      // ir.TableMessageQuantization, in float32: a triple with min not below
+      // max, res not above zero, or a delta or step count that is not finite
+      // is refused; a step count below 1 is 1, and one past the largest
+      // float below 2^32 is that float
       if(!(lo<hi)||!(res>0)){state.bad=true;return s;}
-      local delta=messageWidenF32(messageNarrowF32(hi-lo)),steps=messageWidenF32(messageNarrowF32(delta/res));if(!(steps>=1)||steps>4294967040.0){state.bad=true;return s;}
+      local delta=f32(hi-lo),steps=f32(delta/res);
+      if(delta-delta!=0||steps-steps!=0){state.bad=true;return s;}
+      if(!(steps>=1))steps=1.0;else if(steps>4294967040.0)steps=4294967040.0;
       s.QMin=lo;s.QDelta=delta;s.QCount=ceil(steps).tointeger();s.Bits=0;local q=s.QCount;while(q>0){s.Bits++;q=q>>1;}return s;
     }
     state.bad=true;return s;
@@ -226,6 +232,18 @@ messageWidenF32 = function(bits) {
   else high=high|((exp-127+1023)<<52)|(mant<<29);
   return casti2f(high);
 };
+// f32 rounds a double to the nearest float32 and back, exactly
+f32 = function(x) { return messageWidenF32(messageNarrowF32(x.tofloat())); };
+// THE ONE RULE (§3.3): a finite float32 read into a COMPRESSED float32 field
+// clamps to the declared range and counts, a -0 lands as +0, and a float32
+// widened into a float64 field clamps nothing (the Go engine's clampFloat)
+local messageClampFloat = function(r, fd, v) {
+  if (!fd.f32 || fd.fmin == null) return v;
+  if (v < fd.fmin) { r.clamped++; return f32(fd.fmin); }
+  if (v > fd.fmax) { r.clamped++; return f32(fd.fmax); }
+  if (v == 0.0) return 0.0;
+  return v;
+};
 local bitCount = function(n) {
   local bits = 0;
   while (n > 0) { bits++; n = n >> 1; }
@@ -322,6 +340,9 @@ local defaultValue = function(fd, value, owner) {
   // ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
   // default rides, and a float32 compares at float32
   if (fd.shape == "float") {
+    // a COMPRESSED float compares by value at float32, as the engine's
+    // cellIsDefault does: its -0 is +0 (§3.3), so it elides as +0 does
+    if (fd.f32 && fd.fmin != null) return f32(value) == f32(fd.def);
     if (fd.f32) return messageNarrowF32(value.tofloat()) == messageNarrowF32(fd.def.tofloat());
     return castf2i(value.tofloat()) == castf2i(fd.def.tofloat());
   }
@@ -365,10 +386,14 @@ local writeScalar = function(T, w, fd, value) {
                           : (castf2i(value) & 0x7ff0000000000000) != 0x7ff0000000000000;
     if (!finite) { w.reason = "non_finite_float: " + fd.nf; w.bad = true; return; }
     if (fd.f32 && fd.qcount > 0) {
-      local v=messageWidenF32(messageNarrowF32(value)), norm=messageWidenF32(messageNarrowF32((v-fd.qmin)/fd.qdelta));
-      if(!(norm>=0))norm=0;else if(!(norm<=1))norm=1;
-      local scaled=messageWidenF32(messageNarrowF32(norm*fd.qcount));
-      local index=floor(messageWidenF32(messageNarrowF32(scaled+0.5))).tointeger();
+      // ir.TableMessageQuantize, BIT FOR BIT: every operation rounds to
+      // float32 as Go's explicit conversions do; a float32 add, subtract,
+      // multiply or divide computed in a double and rounded once is exactly
+      // the float32 operation
+      local v=f32(value), norm=f32(f32(v-fd.qmin)/fd.qdelta);
+      if(!(norm>=0))norm=0.0;else if(!(norm<=1))norm=1.0;
+      local scaled=f32(norm*f32(fd.qcount.tofloat()));
+      local index=floor(f32(scaled+0.5)).tointeger();
       if(index>fd.qcount)index=fd.qcount;
       put(w,index,fd.qbits);
     } else if (fd.f32) put(w, messageNarrowF32(value), 32);
@@ -404,8 +429,11 @@ local readScalar = function(r, T, v, fd, shape) {
     // batch refuses whole (LoadMessages). A quantized float's index always
     // names a finite value.
     if (shape.Kind==11) {local raw=get(r,64);if(r.bad)return 0.0;if((raw&0x7ff0000000000000)==0x7ff0000000000000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return casti2f(raw);}
-    if (shape.Kind==10 && shape.Packing!=2) {local raw=get(r,32);if(r.bad)return 0.0;if((raw&0x7f800000)==0x7f800000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return messageWidenF32(raw);}
-    if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(index>shape.QCount)index=shape.QCount;local ratio=messageWidenF32(messageNarrowF32(index.tofloat()/shape.QCount));local scaled=messageWidenF32(messageNarrowF32(ratio*shape.QDelta));return messageWidenF32(messageNarrowF32(scaled+shape.QMin));}
+    if (shape.Kind==10 && shape.Packing!=2) {local raw=get(r,32);if(r.bad)return 0.0;if((raw&0x7f800000)==0x7f800000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return messageClampFloat(r,fd,messageWidenF32(raw));}
+    // ir.TableMessageDequantize, bit for bit: an index above the step count is
+    // damage and never clamped (§3.3, SPEC.md §4.3), every product rounds to
+    // float32, and the float lands under the reader's own declared range
+    if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(r.bad)return 0.0;if(index>shape.QCount){r.bad=true;return 0.0;}local n=f32(f32(index.tofloat())/f32(shape.QCount.tofloat()));local scaled=f32(n*shape.QDelta);return messageClampFloat(r,fd,f32(scaled+shape.QMin));}
     if (shape.Kind==10) return messageWidenF32(get(r, 32));
     return casti2f(get(r, 64));
   }
