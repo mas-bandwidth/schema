@@ -178,7 +178,7 @@ func flagsMeta(u *ir.Unit) map[string][]string {
 // root and prints the report surface line u,k,w,c,d,m,verdict.
 func loadProbe(g *generatedUnit, rootName string) string {
 	var b strings.Builder
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./load\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./schema_load\")\n")
 	var mods []string
 	for name := range g.files {
 		if strings.HasSuffix(name, "Table.luau") {

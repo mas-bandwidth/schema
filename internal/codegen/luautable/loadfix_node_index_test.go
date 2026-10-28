@@ -93,8 +93,8 @@ func loadFixBEngine(t *testing.T, m *tabletext.Model, def *ir.Struct, data []byt
 func loadFixBMain(g *generatedUnit) string {
 	var b strings.Builder
 	b.WriteString("local inputs = require(\"./inputs\")\n")
-	b.WriteString("local load = require(\"./load\")\n")
-	b.WriteString("local save = require(\"./save\")\n")
+	b.WriteString("local load = require(\"./schema_load\")\n")
+	b.WriteString("local save = require(\"./schema_save\")\n")
 	b.WriteString("local S = require(\"./schema_tables\")\n")
 	var mods []string
 	for name := range g.files {

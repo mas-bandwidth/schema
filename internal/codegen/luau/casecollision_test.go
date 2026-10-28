@@ -46,13 +46,13 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 
 	t.Run("Text beside the runtime's text", func(t *testing.T) {
 		t.Parallel()
-		u := unitFromSchemas(t, map[string]string{"Text.schema": withType("TextProbe")})
+		u := unitFromSchemas(t, map[string]string{"Schema_text.schema": withType("TextProbe")})
 		runtime := map[string][]byte{"schema_text.luau": []byte("-- runtime\n")}
 		err := CheckBases(u, runtime)
 		if err == nil {
-			t.Fatal("Text.luau beside schema_text.luau was accepted")
+			t.Fatal("Schema_text.luau beside schema_text.luau was accepted")
 		}
-		for _, want := range []string{"Text.luau", "schema_text.luau", "Text.schema"} {
+		for _, want := range []string{"Schema_text.luau", "schema_text.luau", "Schema_text.schema"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("refusal does not name %s: %v", want, err)
 			}
@@ -121,7 +121,7 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 	// "Text beside the runtime's text" assertion above.
 	t.Run("exact comparison does not catch the case pair", func(t *testing.T) {
 		t.Parallel()
-		u := unitFromSchemas(t, map[string]string{"Text.schema": withType("TextProbe")})
+		u := unitFromSchemas(t, map[string]string{"Schema_text.schema": withType("TextProbe")})
 		runtime := map[string][]byte{"schema_text.luau": []byte("-- runtime\n")}
 		if _, _, collides := collidingNames(u, runtime, func(a, b string) bool { return a == b }); collides {
 			t.Fatal("the exact-comparison control caught Text/text, so it is not a control")

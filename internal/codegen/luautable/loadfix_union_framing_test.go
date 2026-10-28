@@ -38,8 +38,8 @@ func loadFixCProbe(g *generatedUnit, rootName string) string {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}
 	b.WriteString("local S = require(\"./schema_tables\")\n")
-	b.WriteString("local load = require(\"./load\")\n")
-	b.WriteString("local save = require(\"./save\")\n")
+	b.WriteString("local load = require(\"./schema_load\")\n")
+	b.WriteString("local save = require(\"./schema_save\")\n")
 	b.WriteString("local inputs = require(\"./inputs\")\n")
 	fmt.Fprintf(&b, "local ROOT = %q\n", rootName)
 	b.WriteString(`local function hex(b)

@@ -118,10 +118,10 @@ func luauMapPresenceGenerated(t *testing.T, u *ir.Unit) *generatedUnit {
 func luauMapPresenceProbe(g *generatedUnit) string {
 	var b strings.Builder
 	b.WriteString("local inputs = require(\"./inputs\")\n")
-	b.WriteString("local load = require(\"./load\")\n")
-	b.WriteString("local save = require(\"./save\")\n")
+	b.WriteString("local load = require(\"./schema_load\")\n")
+	b.WriteString("local save = require(\"./schema_save\")\n")
 	b.WriteString("local St = require(\"./schema_tables\")\n")
-	b.WriteString("local json = require(\"./json\")\n")
+	b.WriteString("local json = require(\"./schema_json\")\n")
 	var mods []string
 	for name := range g.files {
 		if strings.HasSuffix(name, "Table.luau") {

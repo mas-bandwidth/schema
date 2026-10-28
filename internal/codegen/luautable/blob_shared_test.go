@@ -132,7 +132,7 @@ func blobSharedWire(titleText string) []byte {
 func blobProbeMain(g *generatedUnit) string {
 	var b strings.Builder
 	b.WriteString("local inputs = require(\"./inputs\")\n")
-	b.WriteString("local L = require(\"./load\")\nlocal S = require(\"./save\")\nlocal R = require(\"./refusal\")\nlocal St = require(\"./schema_tables\")\n")
+	b.WriteString("local L = require(\"./schema_load\")\nlocal S = require(\"./schema_save\")\nlocal R = require(\"./schema_refusal\")\nlocal St = require(\"./schema_tables\")\n")
 	var mods []string
 	for name := range g.files {
 		if strings.HasSuffix(name, "Table.luau") {

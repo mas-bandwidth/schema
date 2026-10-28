@@ -40,8 +40,8 @@ func goBase64Verdict(text string) string {
 func b64CanonProbe(g *generatedUnit, rootName string) string {
 	var b strings.Builder
 	b.WriteString("local inputs = require(\"./inputs\")\n")
-	b.WriteString("local text = require(\"./text\")\n")
-	b.WriteString("local save = require(\"./save\")\n")
+	b.WriteString("local text = require(\"./schema_text\")\n")
+	b.WriteString("local save = require(\"./schema_save\")\n")
 	b.WriteString("local St = require(\"./schema_tables\")\n")
 	var mods []string
 	for name := range g.files {

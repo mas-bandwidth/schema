@@ -118,7 +118,7 @@ func cookProbe(g *generatedUnit, rootName, build string, nilBase bool) string {
 	for _, m := range mods {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./load\")\nlocal cook = require(\"./cookread\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal load = require(\"./schema_load\")\nlocal cook = require(\"./schema_cookread\")\n")
 	fmt.Fprintf(&b, "local root = %q\nlocal build = %si\n", rootName, build)
 	b.WriteString("local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }\n")
 	if nilBase {

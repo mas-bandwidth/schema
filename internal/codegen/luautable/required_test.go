@@ -213,7 +213,7 @@ func requiredLuauRead(t *testing.T, g *generatedUnit, cases []requiredCase) map[
 	}
 	sort.Strings(mods)
 	var b strings.Builder
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal R = require(\"./refusal\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal R = require(\"./schema_refusal\")\n")
 	for _, m := range mods {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}

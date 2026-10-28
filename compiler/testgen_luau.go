@@ -283,12 +283,12 @@ func tgLuauFile(u *ir.Unit, base string, roots []tgLuauRoot) []byte {
 	b.WriteString("-- AGPL-3.0, its output is not.\n")
 	b.WriteString("-- The round-trip and damage tests of mas-bandwidth/schema docs/SPEC-TABLES.md §16.11.\n")
 	b.WriteString("--!strict\n")
-	b.WriteString("local save = require(\"./save\")\n")
-	b.WriteString("local load = require(\"./load\")\n")
-	b.WriteString("local json = require(\"./json\")\n")
-	b.WriteString("local text = require(\"./text\")\n")
-	b.WriteString("local refusal = require(\"./refusal\")\n")
-	b.WriteString("local fixed = require(\"./fixed\")\n")
+	b.WriteString("local save = require(\"./schema_save\")\n")
+	b.WriteString("local load = require(\"./schema_load\")\n")
+	b.WriteString("local json = require(\"./schema_json\")\n")
+	b.WriteString("local text = require(\"./schema_text\")\n")
+	b.WriteString("local refusal = require(\"./schema_refusal\")\n")
+	b.WriteString("local fixed = require(\"./schema_fixed\")\n")
 	b.WriteString("local St = require(\"./schema_tables\")\n")
 	for _, f := range u.Files {
 		if f.Base != base && len(f.Tables) > 0 {
