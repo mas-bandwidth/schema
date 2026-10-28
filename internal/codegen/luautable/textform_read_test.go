@@ -253,9 +253,9 @@ const tfGoHelper = `func asTextFormError(err error, out **TableTextFormError) bo
 const tfGoJSONHelper = `package probe
 
 func tfJSONDocument(v *Document) []byte {
-	n := DocumentToJsonMeasure(v)
+	n := DocumentToJSONMeasure(v)
 	b := make([]byte, n)
-	if DocumentToJson(v, b) != n { return nil }
+	if DocumentToJSON(v, b) != n { return nil }
 	return b
 }
 `
@@ -326,8 +326,8 @@ func TestLuauLoadTextFormAgreesWithGo(t *testing.T) {
 			goFiles["oracle_test.go"] = []byte(fmt.Sprintf(tfGoProbe, lit.String(), loadSwitch.String(), jsonSwitch.String()) + tfGoHelper)
 			helper := tfGoJSONHelper
 			if unit.name == "variable" {
-				helper += `func tfJSONGraph(v *Graph) []byte { n := GraphToJsonMeasure(v); b := make([]byte, n); if GraphToJson(v, b) != n { return nil }; return b }
-func tfJSONStrict(v *Strict) []byte { n := StrictToJsonMeasure(v); b := make([]byte, n); if StrictToJson(v, b) != n { return nil }; return b }
+				helper += `func tfJSONGraph(v *Graph) []byte { n := GraphToJSONMeasure(v); b := make([]byte, n); if GraphToJSON(v, b) != n { return nil }; return b }
+func tfJSONStrict(v *Strict) []byte { n := StrictToJSONMeasure(v); b := make([]byte, n); if StrictToJSON(v, b) != n { return nil }; return b }
 `
 			}
 			goFiles["tojson.go"] = []byte(helper)
