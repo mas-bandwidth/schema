@@ -28,6 +28,10 @@ class BlockField:
     elem_size:int = 0
     present_offset:int = -1
     elem:string = ""
+    // an out-of-line array's declared [..N] maximum and where its rows may
+    // start: aligned to max(64, alignof(element)) (§19.1)
+    max:int = 0
+    start_align:int = 64
 
 class BlockRecord:
     name:string = ""
@@ -89,6 +93,8 @@ def block_float_put(fd:FieldDescriptor, data:string, at:int, size:int, x:float) 
     return if size == 4: write_float32_le(data, at, x) else: write_float64_le(data, at, x)
 
 let block_magic = 0x4b4c42414d484353
+// block_magic_swapped is the same word in the other order (§19.1)
+let block_magic_swapped = 0x5343484d41424c4b
 let block_byte_order = 1
 
 def bq(s:string) -> string:
@@ -208,11 +214,7 @@ def block_read_all(root:string, data:string) -> Record?:
     let bl = lookup_block(root)
     if not bl:
         return nil
-    if read_uint64_le(data, 0) != block_magic:
-        return nil
-    if read_uint64_le(data, 8) != bl.build_version:
-        return nil
-    if read_uint64_le(data, 16) != block_byte_order:
+    if block_open_reason(root, data, 0, false) != "ok":
         return nil
     let rec = block_read_record(bl, bl.projection, table_of(root), data, 0)
     for(bl.projection.fields) bf, i:
@@ -233,7 +235,61 @@ def block_read_all(root:string, data:string) -> Record?:
     return rec
 
 def block_open(root:string, data:string) -> bool:
-    return block_read(root, data) != nil
+    return block_open_reason(root, data, 0, false) == "ok"
+
+// block_open_reason is the block form's Open (docs/SPEC-TABLES.md §19.2;
+// internal/codegen/gotable's emitBlockOpen): every prologue and layout word
+// read before the final base-alignment check, in §19.2's order, answering the
+// first failing clause as the refusal enum's value name, or "ok". data is
+// exactly the extent the caller claims; lead is how far past a 64-aligned
+// base its buffer sits, and nobuf is a NULL buffer.
+def block_open_reason(root:string, data:string, lead:int, nobuf:bool) -> string:
+    let bl = lookup_block(root)
+    assert bl
+    if nobuf:
+        return "unaligned_base"
+    let bytes = length(data)
+    let head = bl.projection.size
+    if bytes < head:
+        return "truncated"
+    let magic = read_uint64_le(data, 0)
+    if magic != block_magic:
+        if magic == block_magic_swapped:
+            return "foreign_order"
+        return "not_a_cook"
+    if read_uint64_le(data, 16) != block_byte_order:
+        return "not_a_cook"
+    if read_uint64_le(data, 8) != bl.build_version:
+        return "wrong_build_version"
+    var used = head
+    for(bl.projection.fields) bf:
+        if not bf.out_of_line:
+            continue
+        // every number here comes from the instance: an offset with the top
+        // bit set reads negative and falls to the first bound below, and
+        // count and stride are bounded before they multiply
+        let offset_of = read_uint64_le(data, bf.offset_of_offset)
+        let count = read_uint32_le(data, bf.count_offset)
+        let stride = read_uint32_le(data, bf.stride_offset)
+        if stride != bf.stride:
+            return "bad_layout"
+        if count > bf.max:
+            return "bad_layout"
+        if offset_of < head or offset_of % bf.start_align != 0:
+            return "bad_layout"
+        if offset_of > bytes:
+            return "bad_layout"
+        let rows = count * stride
+        if rows > bytes - offset_of:
+            return "bad_layout"
+        if offset_of + rows > used:
+            used = offset_of + rows
+    let padding = (64 - used % 64) % 64
+    if padding > bytes - used:
+        return "truncated"
+    if lead % 64 != 0:
+        return "unaligned_base"
+    return "ok"
 
 // block_dump is THE ROW DUMP (testdata/conformance/tables/FORMAT.md): the
 // projection's own leaves, then every array row, in descriptor order.
