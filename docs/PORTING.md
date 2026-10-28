@@ -436,7 +436,7 @@ offset arithmetic and requires red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | moo |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 (the text walk is one runtime, byte-identical in every generated `<Package>Variable.js`, but no json-walk target compares the units) | ❌ #514 | ❌ #515 | ✅ `TestMooJsonOneWalk` (`internal/codegen/mootable/json_golden_test.go`: one `runtime/json.moo`, byte-identical in every unit that carries json; the modules carry three calls into it) `tables-moo-json`; control `TestMooJsonWalkNegativeControl` |
+| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 (the text walk is one runtime, byte-identical in every generated `<Package>Variable.js`, but no json-walk target compares the units) | ❌ #514 | ❌ #515 | ✅ `TestMooJsonOneWalk` (`internal/codegen/mootable/json_golden_test.go`: one `internal/codegen/mootable/runtime/json.moo`, byte-identical in every unit that carries json; the modules carry three calls into it) `tables-moo-json`; control `TestMooJsonWalkNegativeControl` |
 
 ### M10 — Hooks and the allocator contract
 

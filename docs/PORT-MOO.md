@@ -122,6 +122,41 @@ OS and architecture. No unit test uses real time, a socket or the network.
 | `moo-analyze` silent (no error, no lint warning) over every generated corpus | `TestMooGeneratedCodeIsAnalyzerClean`; its control `TestMooAnalyzerGateNegativeControl` |
 | the runtime is serialize.moo v2.1.1 verbatim | `TestMooRuntimeIsTheVendoredPin` against `runtime/SERIALIZE_PIN` |
 
+## THE TEXT FORMS (layer 4)
+
+`runtime/json.moo` is ONE WALK over the table descriptors (docs/SPEC-TABLES.md
+§8.1, §16), emitted byte-identical into every unit that carries json, and
+held to the compiler's own engine (`internal/tabletext`) case for case. Each
+table carrying json gets three calls: `<Name>FromJson(value, text, report?)`,
+`<Name>ToJsonMeasure(value)` and `<Name>ToJson(value, out)`; the module also
+hands the walk the two facts a descriptor lacks (a flags set's names, a text
+list's element) through `json.extra`.
+
+**No float on any path.** A binary32/binary64 pattern is spelled as C's
+`%.*g` at the fewest digits that read back at the field's width, from the
+value's exact decimal expansion rounded half to even; a token is read to the
+nearest pattern in one rounding; the wide kinds and fixed point convert
+exactly. All of it is integer arithmetic on 24-bit limbs, every limb
+operation below 2^47, so no moo number saturates. The read-back the writer's
+loop takes is the engine's own (a float32 is read through a double and
+narrowed, two roundings, on purpose).
+
+`runtime/textcarrier.moo` is §16.8's base64 carrier (canonical encode, the
+`base64_not_canonical` / `base64_damaged` decode, and `saveText` / `loadText`
+over a table's Save and strict read). It is not `text.moo` because
+`tables/maps/Text.schema` claims that module name.
+
+| gate | test |
+|---|---|
+| float writer and reader against the engine, both widths | `TestMooJsonFloatWriteMatchesEngine` (6002 patterns), `TestMooJsonFloatReadMatchesEngine` (1500 tokens); controls on the tie rule each way |
+| every textual instance reads silent and writes back byte for byte | `TestMooJsonGoldensRoundTrip` |
+| json-write on a value the reader did not build; json-read against it | `TestMooJsonWriteAndReadGates`; the walk control `TestMooJsonWalkNegativeControl` (json-read red, json-write green) |
+| every json-hostile verdict | `TestMooJsonHostileVerdicts` |
+| I13, the text differential | `TestMooJsonTextDifferential`, control `TestMooJsonTextDifferentialNegativeControl` |
+| JSONTestSuite (§16.12) | `TestMooJSONTestSuite`, control `TestMooJSONTestSuiteNegativeControl` |
+| one walk (M9) | `TestMooJsonOneWalk` |
+| the base64 carrier (§16.8) | `TestMooTextCarrier`, control `TestMooTextCarrierNegativeControl` |
+
 ## THE LAYERS
 
 The port lands in layers, each green on main before the layer that depends on
