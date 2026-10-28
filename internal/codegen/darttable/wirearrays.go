@@ -138,14 +138,15 @@ func (g *wireGen) emitSaveKeyed(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s\t\tfinal slotMark = w.state.mark();\n", ind)
 	g.pf("%s\t\tfinal keyRef = w.refFor(%s);\n", ind, enumVidExpr(e, "slot + 1"))
 	g.pf("%s\t\tfinal eb = w.sub();\n", ind)
-	if ek == wireKindTable {
+	switch ek {
+	case wireKindTable:
 		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
 		g.pf("%s\t\tif (eb.buf.length <= 1) { w.state.rollback(slotMark); continue; }\n", ind)
-	} else if ek == wireKindF32 || ek == wireKindF64 {
+	case wireKindF32, wireKindF64:
 		// a float slot at its default elides by BITS (docs/SPEC-TABLES.md §3.3)
 		g.pf("%s\t\tif (!(%s)) { w.state.rollback(slotMark); continue; }\n", ind, floatRides(single, "e", g.elemDefault(f)))
 		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
-	} else {
+	default:
 		g.pf("%s\t\tif (e == %s) { w.state.rollback(slotMark); continue; }\n", ind, g.elemDefault(f))
 		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
 	}

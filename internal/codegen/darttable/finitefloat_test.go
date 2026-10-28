@@ -62,7 +62,7 @@ fixed table F
 `
 
 // the retaining reader's V names `a` alone, so every float of the writer's V
-// is an unknown it retains
+// is an unknown it retains.
 const finiteFloatReaderSchema = `package rprobe
 
 table V
