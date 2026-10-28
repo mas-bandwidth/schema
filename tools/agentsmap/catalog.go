@@ -112,6 +112,8 @@ var catalog = []Entry{
 	e("internal/codegen/darttable", "Dart table emitter", "go test ./internal/codegen/darttable", "go test ./internal/codegen/darttable"),
 	e("internal/codegen/elixir", "Elixir packet emitter", "go test ./internal/codegen/elixirtable", "go test ./internal/codegen/elixirtable"),
 	e("internal/codegen/elixirtable", "Elixir table emitter", "go test ./internal/codegen/elixirtable", "go test ./internal/codegen/elixirtable"),
+	e("internal/codegen/lobster", "Lobster type emitter and packet wire (docs/PORT-LOBSTER.md)", "make test-lobster", "go test ./internal/codegen/lobster/..."),
+	e("internal/codegen/lobstertable", "Lobster table emitter (docs/PORT-LOBSTER.md)", "make test-lobster", "go test ./internal/codegen/lobstertable"),
 	e("internal/codegen/golang", "Go packet emitter", "go test ./internal/codegen/golang", "go test ./internal/codegen/golang"),
 	e("internal/codegen/gotable", "Go table emitter", "go test ./internal/codegen/gotable", "go test ./internal/codegen/gotable"),
 	e("internal/codegen/java", "Java packet emitter", "go test ./internal/codegen/java", "go test ./internal/codegen/java"),
