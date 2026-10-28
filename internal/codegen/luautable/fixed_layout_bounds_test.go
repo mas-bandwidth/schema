@@ -228,7 +228,7 @@ func TestLuauFixedLayoutBounds(t *testing.T) {
 	inputs := map[string][]byte{"valid": valid}
 	var main strings.Builder
 	main.WriteString("--!strict\n")
-	main.WriteString("local T = require(\"./ProbeTable\")\nlocal F = require(\"./fixed\")\nlocal inputs = require(\"./inputs\")\n")
+	main.WriteString("local T = require(\"./ProbeTable\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\n")
 	main.WriteString("local function fixedOf(layout: any): any\n\treturn { hash = T.RootFixedHash, recordBytes = T.RootFixedRecordBytes, layout = layout }\nend\n")
 	main.WriteString("local cases = {\n")
 	for _, name := range names {

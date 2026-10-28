@@ -141,7 +141,7 @@ func retainRunLuau(t *testing.T, g *generatedUnit, wire []byte, capacity int) *r
 	}
 	sort.Strings(mods)
 	var b strings.Builder
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal retain = require(\"./retain\")\nlocal load = require(\"./load\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal retain = require(\"./schema_retain\")\nlocal load = require(\"./schema_load\")\n")
 	for _, m := range mods {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}

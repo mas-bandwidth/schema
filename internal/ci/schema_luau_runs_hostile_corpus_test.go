@@ -196,11 +196,11 @@ func flagsMeta(u *ir.Unit) map[string][]string {
 func hostileProbe(cases []hostileCase, mods []string, flags map[string][]string, plant bool) string {
 	var b strings.Builder
 	b.WriteString(`local inputs = require("./inputs")
-local J = require("./json")
-local L = require("./load")
-local V = require("./save")
-local R = require("./refusal")
-local M = require("./message")
+local J = require("./schema_json")
+local L = require("./schema_load")
+local V = require("./schema_save")
+local R = require("./schema_refusal")
+local M = require("./schema_message")
 local S = require("./schema_tables")
 -- The text carrier has already passed the strict text read; the wire round
 -- trip below only puts its value where the canonical writer takes it. Use the
@@ -326,7 +326,7 @@ for _, c in CASES do
 		elseif n ~= 1 then
 			verdict, reason = "refuse", "damaged"
 		else
-			-- message.luau hands back each body as a bit range, not an
+			-- schema_message.luau hands back each body as a bit range, not an
 			-- instance. A body exactly one reference wide can only be the
 			-- zero reference that ends it (every other reference is followed
 			-- by at least the terminator), so it decodes to the root's
@@ -416,7 +416,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 					digest = "not-hex:" + g[3]
 				} else {
 					// The Luau text writer ends an object root's text with a
-					// newline (json.luau core_to); the engine canonical text does
+					// newline (schema_json.luau core_to); the engine canonical text does
 					// not, so drop that one line ending before hashing.
 					canonical = bytes.TrimSuffix(canonical, []byte("\n"))
 					sum := sha256.Sum256(canonical)
@@ -554,7 +554,7 @@ func TestLuauVocabularyDefaultEntryBound(t *testing.T) {
 		}
 	}
 	main := `local inputs = require("./inputs")
-local M = require("./message")
+local M = require("./schema_message")
 for _, name in { "entries_4096", "entries_4097" } do
 	local voc = M.NewVocabulary()
 	local rep = { malformed = false, verdict = 0, reason = "", unknown = 0 }

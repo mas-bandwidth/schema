@@ -83,7 +83,7 @@ func saveRetainRunLuau(t *testing.T, g *generatedUnit, wire []byte) []byte {
 	sort.Strings(mods)
 	var b strings.Builder
 	b.WriteString(luaurun.HexProbe)
-	b.WriteString("local retain = require(\"./retain\")\nlocal inputs = require(\"./inputs\")\n")
+	b.WriteString("local retain = require(\"./schema_retain\")\nlocal inputs = require(\"./inputs\")\n")
 	for _, m := range mods {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}

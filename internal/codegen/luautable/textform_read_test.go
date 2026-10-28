@@ -375,8 +375,8 @@ func tfJSONStrict(v *Strict) []byte { n := StrictToJsonMeasure(v); b := make([]b
 			var main strings.Builder
 			main.WriteString(jsonModules(g))
 			main.WriteString(jsonFlags(g))
-			main.WriteString("local json = require(\"./json\")\njson.SetFlags(SCHEMA_JSON_FLAGS)\n")
-			main.WriteString("local textform = require(\"./textform\")\ntextform.SetFlags(SCHEMA_JSON_FLAGS)\n")
+			main.WriteString("local json = require(\"./schema_json\")\njson.SetFlags(SCHEMA_JSON_FLAGS)\n")
+			main.WriteString("local textform = require(\"./schema_textform\")\ntextform.SetFlags(SCHEMA_JSON_FLAGS)\n")
 			main.WriteString("local cases = {")
 			for i, c := range selected {
 				fmt.Fprintf(&main, "\n\t{ name = %s, root = %s, text = %s },", tfLuauString(fmt.Sprintf("case%03d", i)), tfLuauString(c.root), tfLuauString(c.text))

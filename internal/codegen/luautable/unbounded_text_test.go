@@ -160,8 +160,8 @@ func luauUnboundedTextGenerated(t *testing.T, u *ir.Unit) *generatedUnit {
 func luauUnboundedTextProbe(g *generatedUnit) string {
 	var b strings.Builder
 	b.WriteString("local inputs = require(\"./inputs\")\n")
-	b.WriteString("local load = require(\"./load\")\n")
-	b.WriteString("local save = require(\"./save\")\n")
+	b.WriteString("local load = require(\"./schema_load\")\n")
+	b.WriteString("local save = require(\"./schema_save\")\n")
 	b.WriteString("local St = require(\"./schema_tables\")\n")
 	var mods []string
 	for name := range g.files {

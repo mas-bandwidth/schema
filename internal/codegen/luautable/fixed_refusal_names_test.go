@@ -225,7 +225,7 @@ func TestLuauFixedLoadNamesEveryRefusal(t *testing.T) {
 	}
 
 	var main strings.Builder
-	main.WriteString("local T = require(\"./ProbeTable\")\nlocal F = require(\"./fixed\")\nlocal inputs = require(\"./inputs\")\n")
+	main.WriteString("local T = require(\"./ProbeTable\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\n")
 	main.WriteString("local function fixedOf(root: string)\n")
 	main.WriteString("\treturn { hash = T[root .. \"FixedHash\"], recordBytes = T[root .. \"FixedRecordBytes\"], layout = T[root .. \"FixedLayout\"] }\nend\n")
 	main.WriteString("local cases = {\n")
