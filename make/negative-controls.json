@@ -847,10 +847,12 @@
     {
       "name": "luau",
       "when": "pull-request",
-      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row. Luau and the host C++ compiler, nothing else.",
+      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault, the nightly fuzz host's planted crash replayed, the wire-fuzz pipe's planted malformed count and the hostile corpus's planted text reader, each required to go red on its own row. The last two run in about a second each on hulk once built: the wire-fuzz control's prerequisites (the units and the native host) are the ones the first two build, and the hostile control's is the internal/ci test binary. Luau and the host C++ compiler, nothing else.",
       "targets": [
         "conformance-negative-control-luau",
-        "luau-nightly-fuzz-negative-control"
+        "luau-nightly-fuzz-negative-control",
+        "schema-luau-runs-hostile-corpus-negative-control",
+        "tables-luau-wire-fuzz-negative-control"
       ],
       "luau": "0.741"
     }
@@ -899,10 +901,6 @@
     {
       "target": "schema-luau-resource-bounds-negative-control",
       "reason": "runs in its own workflow, .github/workflows/schema-luau-resource-bounds.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) beside the gate it controls, so this leg would run it a second time."
-    },
-    {
-      "target": "schema-luau-runs-hostile-corpus-negative-control",
-      "reason": "runs in its own workflow, .github/workflows/schema-luau-runs-hostile-corpus.yml, on the nightly schedule and on dispatch, which installs the pinned Luau (make dist-luau) beside the gate it controls, so this leg would run it a second time."
     }
   ]
 }
