@@ -373,7 +373,7 @@ local function readScalar(f: any, w: Node, buf: buffer, at: number): any
 	elseif width == 8 then
 		local raw = buffer.readinteger(buf, at)
 		if f.dom == "integer" then return raw end
-		return tonumber(raw)
+		return integer.tonumber(raw)
 	else
 		v = 0
 	end
