@@ -2,6 +2,7 @@ package luau
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -428,3 +429,65 @@ do -- joins
   print(table.concat(parts))
 end
 `
+
+// A [N]uint8 that does not start on a byte boundary rides as N 8-bit groups,
+// never as serializeBytes, whose align would insert padding the wire does
+// not have (ir.AlignedFixedByteArrays). lead = 5 in 3 bits, then 01 02 03
+// from bit 3: 5 | 1<<3 | 2<<11 | 3<<19 = 0x18100D, 27 bits, 4 bytes. The
+// aligned twin, after an align, is the bulk copy and keeps its bytes whole.
+// Both read back.
+func TestLuauByteArraysBulkCopyOnlyOnAByteBoundary(t *testing.T) {
+	t.Parallel()
+	u := unitFromSchemas(t, map[string]string{"Bytes.schema": `package bulk
+
+type Odd
+{
+    lead bits(3)
+    data [3]uint8
+}
+
+type Even
+{
+    lead bits(3)
+    align
+    data [3]uint8
+}
+`})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(files["Bytes.luau"]), "stream:serializeBytes("); n != 2 {
+		t.Fatalf("serializeBytes appears %d times, want 2: Even's write and read only", n)
+	}
+	dir := t.TempDir()
+	writeAll(t, dir, files)
+	writeFile(t, dir, "main.luau", luaurun.HexProbe+`
+local serialize = require("./serialize")
+local B = require("./Bytes")
+for _, name in { "Odd", "Even" } do
+	local v = (B :: any)["New" .. name]()
+	v.Lead = 5
+	buffer.writeu8(v.Data, 0, 1); buffer.writeu8(v.Data, 1, 2); buffer.writeu8(v.Data, 2, 3)
+	local w = serialize.WriteStream.new(buffer.create(64))
+	assert((B :: any)["Write" .. name](w, v))
+	w:flush()
+	local data = w:data()
+	hex(data)
+	local back = (B :: any)["New" .. name]()
+	assert((B :: any)["Read" .. name](serialize.ReadStream.new(data), back))
+	assert(back.Lead == 5 and buffer.tostring(back.Data) == "\1\2\3", name .. " reads back")
+end
+`)
+	lines := luaurun.HexLines(t, luaurun.Run(t, dir, "main.luau", nil))
+	want := []string{"0d101800", "05010203"}
+	if len(lines) != 2 {
+		t.Fatalf("got %d lines, want 2", len(lines))
+	}
+	for i, w := range want {
+		if got := fmt.Sprintf("%x", lines[i]); got != w {
+			t.Errorf("%s: wrote %s, want %s", []string{"Odd", "Even"}[i], got, w)
+		}
+	}
+	luaurun.Analyze(t, dir, analyzable(files, "main.luau")...)
+}

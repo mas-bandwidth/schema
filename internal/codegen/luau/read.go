@@ -108,6 +108,8 @@ func emitReadStruct(g *Gen, d *ir.Struct) {
 	g.Pf("-- Read%s reads the type wire (SPEC §4.3, §6.1); false refuses without a latch\n", d.Name)
 	g.Pf("-- (a stream refusal rides stream:error(), named by the runtime's refusalName).\n")
 	g.Pf("function %s.Read%s(stream: any, value: any): boolean\n", g.Self, d.Name)
+	g.BulkBytes = ir.AlignedFixedByteArrays(d)
+	defer func() { g.BulkBytes = nil }()
 	if len(d.Items) == 0 {
 		g.Pf("  -- empty body — presence is the payload (SPEC §4.6)\n")
 	}
@@ -220,6 +222,13 @@ func emitReadField(g *Gen, f *ir.Field, ind string) {
 			g.Pf("%s%sCount = BITS.value\n", ind, name)
 			limit = name + "Count"
 		}
+		if isByteElem(f.Type) && !f.HasIntRange && f.Array == ir.ArrayFixed && g.BulkBytes[f] {
+			// byte aligned by construction (ir.AlignedFixedByteArrays): the
+			// bulk copy's align reads no bits, and the bytes land in storage
+			g.Pf("%sif buffer.len(%s) ~= %s then return false end -- [N]uint8 storage is N bytes\n", ind, name, bound)
+			g.call(ind, fmt.Sprintf("stream:serializeBytes(%s)", name), " -- [N]uint8 on a byte boundary: one bulk copy")
+			return
+		}
 		g.Pf("%sfor i = 1, %s do\n", ind, limit)
 		if isByteElem(f.Type) {
 			g.Pf("%s  local item = 0\n", ind)
@@ -273,7 +282,7 @@ func emitReadScalar(g *Gen, f *ir.Field, name, lenName, ind string) {
 		}
 		if f.HasIntRange {
 			if f.IntMin.Cmp(f.IntMax) == 0 {
-				g.Pf("%s%s = %s -- degenerate range: zero bits (SPEC §4.6)\n", ind, name, IntegerLit(f.IntMin))
+				g.Pf("%s%s = %s -- degenerate range: zero bits (SPEC §4.6)\n", ind, name, rawLiteral(f.Type, f.IntMin))
 				return
 			}
 			switch intRangePath(f.IntMin, f.IntMax) {
@@ -428,13 +437,17 @@ func emitReadWString(g *Gen, f *ir.Field, name, lenName, ind string) {
 	g.Pf("%send\n", ind)
 }
 
-// rawLiteral renders a fixed-point raw value: a Lua integer at 64 bits or
-// fewer, a { lo, hi } pair at 128.
+// rawLiteral renders a value in its field's storage domain (docs/PORT-LUAU.md,
+// THE TYPE MAPPING): a number at 32 bits or fewer, an integer at 64, an
+// Int128 pair at 128.
 func rawLiteral(t ir.FieldType, v *big.Int) string {
-	if t.Width > 64 {
+	switch {
+	case t.Width > 64:
 		return Int128Lit(v)
+	case t.Width > 32:
+		return IntegerLit(v)
 	}
-	return IntegerLit(v)
+	return v.String()
 }
 
 func emitZeroItems(g *Gen, items []ir.Item, path, ind string) {
