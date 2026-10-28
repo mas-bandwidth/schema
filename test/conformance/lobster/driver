@@ -89,6 +89,7 @@ case "$2" in
 wire) kind=instance ;;
 report) kind=report ;;
 block | block-foreign | block-dump) kind=block ;;
+message) kind=message ;;
 *)
 	echo "driver: $2 is listed but names no manifest kind here" >&2
 	exit 1
@@ -98,12 +99,29 @@ esac
 mkdir -p "$3" || exit 1
 rm -f "$dir/$2".*.out
 pids=
-for u in $(awk -v k="$kind" '$1 == k { print $3 }' "$manifest" | sort -u); do
+# a message line's third word is its CONNECTION; its unit is the third word
+# of that connection's line, so message rows select units through the join
+units_of() {
+	if [ "$kind" = message ]; then
+		awk 'NR == FNR { if ($1 == "connection") u[$2] = $3; next } $1 == "message" { print u[$3] }' "$manifest" "$manifest"
+	else
+		awk -v k="$kind" '$1 == k { print $3 }' "$manifest"
+	fi
+}
+# cases_of prints the cases of one unit, for a refused unit's absences
+cases_of() {
+	if [ "$kind" = message ]; then
+		awk -v w="$1" 'NR == FNR { if ($1 == "connection") u[$2] = $3; next } $1 == "message" && u[$3] == w { print $2 }' "$manifest" "$manifest"
+	else
+		awk -v k="$kind" -v u="$1" '$1 == k && $3 == u { print $2 }' "$manifest"
+	fi
+}
+for u in $(units_of | sort -u); do
 	if [ -f "$units/$u/schema_tables.lobster" ]; then
 		run "$2" "$u" &
 		pids="$pids $!"
 	elif [ -f "$units/$u.refused" ]; then
-		awk -v k="$kind" -v u="$u" '$1 == k && $3 == u { print $2 " absent" }' "$manifest" >"$dir/$2.$u.out"
+		cases_of "$u" | awk '{ print $1 " absent" }' >"$dir/$2.$u.out"
 	else
 		echo "driver: unit $u is neither generated nor refused under $units" >&2
 		exit 1

@@ -26,10 +26,11 @@ import .load
 import .schema_save
 import .strict_and_refusals
 import .block_form
+import .message
 
 // the surfaces this leg answers: the variable wire's load and save (§3, §4),
 // and the block form's reflective read (§19.2) with its cross-endian refusal
-let surfaces = ["wire", "report", "block", "block-foreign", "block-dump"]
+let surfaces = ["wire", "report", "block", "block-foreign", "block-dump", "message"]
 
 let arguments = command_line_arguments()
 let argument_count = length(arguments)
@@ -145,6 +146,39 @@ def surface_block_dump(text:string):
     for(rows(text, "block")) f:
         say(f[1], schema_rt.block_dump(block_root(f[1]), fixture(f[3])))
 
+// the MESSAGE surface (test/conformance/README.md, "`message` IS THE ONE
+// SURFACE THAT READS TWO FILES"; docs/SPEC-TABLES.md §3.3): AnnounceRead the
+// connection's announcement into one direction's vocabulary, LoadMessages the
+// batch against it, SaveMessages, the bytes. A message line is
+// `message <name> <connection> <root> <file wire> <message wire>`, and its
+// third word is the CONNECTION, joined to its
+// `connection <key> <unit> 0x<build> <announcement>` line for the unit. A root
+// that is a plain table carries no message verbs (§3.3): a named absence.
+def surface_message(text:string):
+    let lines = tokenize(text, "\n", " \t\r")
+    for(lines) line:
+        let f = words(line)
+        if length(f) >= 6 and f[0] == "message":
+            var announcement = ""
+            var unit = ""
+            for(lines) other:
+                let c = words(other)
+                if length(c) >= 5 and c[0] == "connection" and c[1] == f[2]:
+                    unit = c[2]
+                    announcement = c[4]
+            if unit == unit_key:
+                if not schema_rt.is_message_root(f[3]):
+                    print(f[1] + " absent")
+                else:
+                    let v = schema_rt.new_vocabulary(schema_rt.message_entries_here())
+                    let rep = schema_rt.LoadReport {}
+                    assert schema_rt.announce_read(v, fixture(announcement), rep)
+                    let recs, count, ok = schema_rt.load_messages_tolerant(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
+                    assert ok and count == length(recs)
+                    let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})
+                    assert n == length(out)
+                    say(f[1], out)
+
 if surface == "list":
     for(surfaces) s:
         print(s)
@@ -157,6 +191,8 @@ else:
         surface_report(text)
     elif surface == "block":
         surface_block(text, false)
+    elif surface == "message":
+        surface_message(text)
     elif surface == "block-foreign":
         surface_block(text, true)
     else:
