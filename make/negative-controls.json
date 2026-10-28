@@ -843,6 +843,15 @@
         "schema-dart-generated-strict-analyze-nested-default-negative-control"
       ],
       "dart": "3.13.2"
+    },
+    {
+      "name": "lobster",
+      "when": "pull-request",
+      "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio, so it fits the per-commit rule with room.",
+      "targets": [
+        "schema-lobster-generated-strict-gate-negative-control"
+      ],
+      "lobster": "v2026.8"
     }
   ],
   "excluded": [
