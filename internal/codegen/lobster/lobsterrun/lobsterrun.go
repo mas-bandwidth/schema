@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Version is the pinned Lobster release (make/lobster.mk).
@@ -105,6 +107,13 @@ func RunExit(t testing.TB, dir, main string, inputs map[string][]byte, args ...s
 
 func run(t testing.TB, dir, main string, inputs map[string][]byte, args []string) ([]byte, []byte, error) {
 	t.Helper()
+	// a test that shells out to a toolchain is the slow half (internal/slowtest):
+	// make test-lobster and ci-full set SCHEMA_REQUIRE_CORPUS / SCHEMA_SLOW, so
+	// the gates always run it, and a bare `go test ./...` without the pin skips
+	// by name rather than failing
+	if !slowtest.Enabled() {
+		t.Skipf("SCHEMA_SLOW: this test shells out to the Lobster toolchain; set SCHEMA_SLOW=1 to run it (ci-full.yml and the make leg gates always do)")
+	}
 	lobster, why := Interpreter()
 	if lobster == "" {
 		t.Fatalf("lobsterrun: the Lobster toolchain does not resolve: %s", why)

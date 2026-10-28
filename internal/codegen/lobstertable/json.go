@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -19,7 +18,8 @@ func init() { Register("json", emitJson) }
 // do not carry, from the IR: a flags field's (or arm's) variant names, a text
 // list field (its JSON is a plain array of strings, §2.13), a `json = "array"`
 // table (§16.10) and a guarded field's branch condition (the write's
-// elision, Go's tabletext.Guards).
+// elision, Go's tabletext.Guards, walked here
+// by jsonGuards so the generator imports no engine package).
 func emitJson(g *lobster.Gen) error {
 	g.Import("json")
 	key := func(owner, field string) string {
@@ -49,7 +49,7 @@ func emitJson(g *lobster.Gen) error {
 		for _, f := range st.Fields {
 			field(st.Name, f)
 		}
-		guards := tabletext.Guards(st)
+		guards := jsonGuards(st)
 		names := make([]string, 0, len(guards))
 		for n := range guards {
 			names = append(names, n)
@@ -86,4 +86,35 @@ func emitJson(g *lobster.Gen) error {
 		}
 	}
 	return nil
+}
+
+// jsonGuard is one term of a guarded field's condition: the bool field it
+// reads and the value it must hold.
+type jsonGuard struct {
+	Field string
+	Want  bool
+}
+
+// jsonGuards maps each guarded field of st to its condition, outermost term
+// first: the same walk as the Go engine's tabletext.Guards, kept here so the
+// generator never imports the engine it is judged against (internal/ci,
+// TestSchemaEngineIsTheOracleImportIndependence).
+func jsonGuards(st *ir.Struct) map[string][]jsonGuard {
+	out := map[string][]jsonGuard{}
+	var walk func(items []ir.Item, cond []jsonGuard)
+	walk = func(items []ir.Item, cond []jsonGuard) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					out[item.F.Name] = append([]jsonGuard(nil), cond...)
+				}
+			case *ir.Branch:
+				walk(item.Then, append(cond[:len(cond):len(cond)], jsonGuard{item.Cond, !item.Neg}))
+				walk(item.Else, append(cond[:len(cond):len(cond)], jsonGuard{item.Cond, item.Neg}))
+			}
+		}
+	}
+	walk(st.Items, nil)
+	return out
 }
