@@ -100,6 +100,9 @@ class Slot:
 class Record:
     d:TableDescriptor
     fields:[Slot]
+    // held marks a node record the root reaches, for the one pass at the end
+    // of a variable load that unlinks the records it does not (RELEASE)
+    held:bool = false
 
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
@@ -1743,6 +1746,8 @@ def decode_variable(st:LoadState, root:Record, hi:int):
             body_at(reader(st, rec.lo, rec.hi), nr, true, false)
     if not st.count_refused:
         st.report.stopped = not body_at(reader(st, 1, hi), root, false, false)
+    if length(st.nodes) > 0:
+        unlink_unreached(st, root)
 
 // load_tolerant is THE TOLERANT READ, by its own name (docs/SPEC-TABLES.md
 // §6.5): it reads a form-1 wire at the root table named root into a fresh
@@ -1755,6 +1760,7 @@ def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
     let rec = load_walk(root, data, report)
     if report.non_finite_float != "":
         report.reason = "non_finite_float: " + report.non_finite_float
+        release(rec)
         return nil
     return rec
 
@@ -1789,8 +1795,89 @@ def strict_reason(rep:LoadReport) -> string:
 def load(root:string, data:string, report:LoadReport) -> Record?:
     let rec = load_tolerant(root, data, report)
     if strict_reason(report) != "":
+        release(rec)
         return nil
     return rec
+
+// RELEASE (docs/PORT-LOBSTER.md, THE LOAD). Lobster frees by reference
+// counting, and a pointer graph is legal with a cycle (§3.1): a tolerant load
+// places it, and a cycle of Records outlives every reference the caller
+// holds. Two rules keep a load from leaking:
+//
+// - THE LOAD OWNS WHAT THE ROOT DOES NOT REACH. At the end of a variable
+//   load, a node record no pointer path from the root reaches (an orphan,
+//   or a cycle among orphans) has its own pointer edges unlinked, so nothing
+//   holds it once the load returns. A reached record is untouched.
+// - THE CALLER OWNS WHAT THE ROOT REACHES, and release(root) is the
+//   owner-side end of it: every pointer edge reachable from the root is
+//   cleared, so each record's count falls to what the caller still holds.
+//   A load that answers nil after decoding (a refusal) releases its own
+//   record first. After release the graph's pointers read null.
+//
+// Both walks clear an edge before following it, so they end on any graph,
+// and both keep an explicit work list, so a long chain costs no stack.
+
+// rec_edges walks one record and the records it holds BY VALUE (bodies,
+// arms, elements, map entries), collecting the pointer targets into nodes,
+// and clearing each pointer edge when clear is set.
+def rec_edges(rec:Record, nodes:[Record], clear:bool) -> void:
+    let stack:[Record] = [rec]
+    while length(stack) > 0:
+        let r = pop(stack)
+        for(r.fields) sl:
+            slot_edges(stack, nodes, sl, clear)
+
+def slot_edges(stack:[Record], nodes:[Record], sl:Slot, clear:bool) -> void:
+    value_edges(stack, nodes, sl.cell, clear)
+    for(sl.elems) v:
+        value_edges(stack, nodes, v, clear)
+    for(sl.entries) v:
+        value_edges(stack, nodes, v, clear)
+
+def value_edges(stack:[Record], nodes:[Record], v:Value, clear:bool) -> void:
+    let n = v.node
+    if n:
+        push(nodes, n)
+        if clear:
+            v.node = nil
+    let t = v.tab
+    if t:
+        push(stack, t)
+    let a = v.arm
+    if a:
+        slot_edges(stack, nodes, a, clear)
+
+// unlink_unreached is the load's own pass: mark what the root reaches, unlink
+// every node record it does not, then clear the marks.
+def unlink_unreached(st:LoadState, root:Record) -> void:
+    let marked:[Record] = [root]
+    let work:[Record] = [root]
+    root.held = true
+    while length(work) > 0:
+        let found:[Record] = []
+        rec_edges(pop(work), found, false)
+        for(found) n:
+            if not n.held:
+                n.held = true
+                push(marked, n)
+                push(work, n)
+    for(st.nodes) node:
+        let nr = node.rec
+        if nr and not nr.held:
+            rec_edges(nr, [], true)
+    for(marked) r:
+        r.held = false
+
+// release is the owner-side end of a loaded graph (above).
+def release(root:Record?) -> void:
+    let work:[Record] = []
+    if root:
+        push(work, root)
+    while length(work) > 0:
+        let found:[Record] = []
+        rec_edges(pop(work), found, true)
+        for(found) n:
+            push(work, n)
 
 // load_walk is the framing walk both reads share (Go's decodeWalk).
 def load_walk(root:string, data:string, report:LoadReport) -> Record?:
@@ -1827,5 +1914,6 @@ def load_walk(root:string, data:string, report:LoadReport) -> Record?:
         report.stopped = true
         return nil
     if report.missing_required > 0:
+        release(rec)
         return nil
     return rec

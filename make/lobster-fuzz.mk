@@ -25,10 +25,11 @@
 # count; tables-lobster-release, which certify.yml discovers and runs by name,
 # runs the shared N.
 #
-# The VM reports a loaded cyclic pointer graph as leaked at exit; the units
-# that do are carried by name in test/conformance/lobster/wirefuzz-known-leaks.txt
-# (a finding the runtime owes), and a leak no line names, or a line whose unit
-# stopped leaking, fails the leg.
+# The leg releases every graph it loads (schema_rt.release), and a variable
+# load unlinks the node records its root does not reach, so a cyclic graph
+# leaks nothing; the VM's exit-time leak report fails the leg unless
+# test/conformance/lobster/wirefuzz-known-leaks.txt (empty) names the unit,
+# and a listed unit that stops leaking fails it too.
 
 LOBSTER_WIRE_FUZZ_N    ?= 200
 LOBSTER_WIRE_FUZZ_SEED ?= $(SEED)

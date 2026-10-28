@@ -68,8 +68,11 @@ def wire_answer(name:string, table:string, data:string) -> string:
         // a NaN or infinity on the wire refuses the read by name (SPEC §4.3)
         return name + " refuse non_finite_float\n"
     if rep.stopped or not rec:
+        schema_rt.release(rec)
         return name + " refuse damaged\n"
-    return saved(name, rec)
+    let answer = saved(name, rec)
+    schema_rt.release(rec)
+    return answer
 
 let manifest = read_file(corpus + "/manifest.tsv")
 assert manifest

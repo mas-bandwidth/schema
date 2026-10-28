@@ -115,9 +115,12 @@ def load_one(name:string):
         // a stopped read saves nothing
         let stopped = rep.stopped
         if stopped or not got:
+            schema_rt.release(got)
             reply(record(false, rep, rep.malformed, form_refused, -1, ""))
             return
         let n, out = save_answer(got)
+        // the leg owns the graph it loaded and ends it (RELEASE)
+        schema_rt.release(got)
         reply(record(true, rep, rep.malformed, false, n, out))
         return
     // THE FILE ARM, a fixed root: it always loads. A refused or empty wire
@@ -127,6 +130,7 @@ def load_one(name:string):
     if not rec:
         rec = schema_rt.new_record(schema_rt.table_of(name))
     let n, out = save_answer(rec)
+    schema_rt.release(rec)
     // a read that stopped short is damage, except a refusal, which is the
     // whole answer: nothing decoded, no counter moved (§3)
     reply(record(true, rep, rep.malformed or (rep.stopped and not form_refused), form_refused, n, out))
