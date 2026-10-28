@@ -71,6 +71,54 @@ tables-luau-json-strict-negative-control: toolchain-luau $(SERIALIZE_GO_RUNTIME)
 		'TestLuauJsonStrictNegativeControl' \
 		./internal/codegen/luautable -run '^TestLuauJsonStrictNegativeControl$$' -count=1 -timeout 600s
 
+# I13, THE TEXT DIFFERENTIAL (docs/PORTING.md): the emitted ToJson and save
+# against the compiler's own engine (internal/tabletext) over random
+# float-only instances, both directions, at the Go cell's seed and seed 1, a
+# variable root and a fixed root. The row runs inside test-luau; its control
+# writes a float32 at six significant digits in a scratch runtime and requires
+# red on the text comparison.
+.PHONY: tables-luau-text-differential tables-luau-text-differential-negative-control
+tables-luau-text-differential: toolchain-luau
+	sh test/slowgate/proof tables-luau-text-differential \
+		'TestLuauTextDifferentialAgainstTheGoEngine' \
+		./internal/codegen/luautable -run '^TestLuauTextDifferentialAgainstTheGoEngine$$' -count=1 -timeout 600s
+tables-luau-text-differential-negative-control: toolchain-luau
+	sh test/slowgate/proof tables-luau-text-differential-negative-control \
+		'TestLuauTextDifferentialNegativeControl' \
+		./internal/codegen/luautable -run '^TestLuauTextDifferentialNegativeControl$$' -count=1 -timeout 600s
+
+# M9, THE GENERIC-WALK GATE (docs/PORTING.md): the Luau text walk is one
+# runtime module, so every manifest unit that carries the text form must emit
+# it byte for byte as the embedded schema_json.luau spells it, and no
+# generated module may define a walk of its own. Pure Go, no interpreter; it
+# runs inside test-luau. The control plants an edited walk in one unit and a
+# second walk in another unit's table module and requires exactly those two.
+.PHONY: tables-luau-json-walk tables-luau-json-walk-negative-control
+tables-luau-json-walk:
+	sh test/slowgate/proof tables-luau-json-walk 'TestLuauJsonWalkIsOneRuntime' \
+		./internal/codegen/luautable -run '^TestLuauJsonWalkIsOneRuntime$$' -count=1 -timeout 600s
+tables-luau-json-walk-negative-control:
+	sh test/slowgate/proof tables-luau-json-walk-negative-control 'TestLuauJsonWalkNegativeControl' \
+		./internal/codegen/luautable -run '^TestLuauJsonWalkNegativeControl$$' -count=1 -timeout 600s
+
+# §16.12, THE OUTSIDE ORACLE: the emitted walk's JSON layer over every
+# vendored JSONTestSuite file against the standard's table (PENDING allowed and
+# listed), and the byte-order mark through the plain FromJson. Its control
+# lifts the depth cap in a scratch runtime and requires exactly
+# i_structure_500_nested_arrays.json named.
+.PHONY: tables-luau-jsontestsuite tables-luau-jsontestsuite-negative-control
+tables-luau-jsontestsuite: toolchain-luau
+	sh test/slowgate/proof tables-luau-jsontestsuite 'TestLuauJSONTestSuite' \
+		./internal/codegen/luautable -run '^TestLuauJSONTestSuite$$' -count=1 -timeout 600s
+tables-luau-jsontestsuite-negative-control: toolchain-luau
+	sh test/slowgate/proof tables-luau-jsontestsuite-negative-control 'TestLuauJSONTestSuiteNegativeControl' \
+		./internal/codegen/luautable -run '^TestLuauJSONTestSuiteNegativeControl$$' -count=1 -timeout 600s
+
+test-luau: tables-luau-json-walk tables-luau-json-walk-negative-control \
+	tables-luau-text-differential tables-luau-text-differential-negative-control \
+	tables-luau-jsontestsuite tables-luau-jsontestsuite-negative-control \
+	tables-luau-json-strict-negative-control
+
 # build/conformance-luau is the manifest's units generated for luau, one
 # directory per unit. The schema_leg_luau tag is the target's until the port
 # joins the builtins (compiler/target_luau.go). A unit the target refuses is
