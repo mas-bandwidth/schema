@@ -4,7 +4,9 @@
 // a bug in the runtime is reported against the vendored function, never
 // patched. The wire rules are docs/SPEC.md §4.3 (the bit stream) and §6.1
 // (storage); the refusals are the reader's, returning false with nothing
-// latched for a content verdict and the stream's own latch for an overflow.
+// latched for a content verdict and the stream's own latched refusal reason
+// (past_end, nonzero_padding, value_out_of_range: serialize format 2.0) for a
+// stream refusal.
 package luau
 
 import (
@@ -93,7 +95,7 @@ func emitReadStruct(g *Gen, d *ir.Struct) {
 	g.Pf("end\n\n")
 
 	g.Pf("-- Read%s reads the type wire (SPEC §4.3, §6.1); false refuses without a latch\n", d.Name)
-	g.Pf("-- (a stream overflow rides stream:error()).\n")
+	g.Pf("-- (a stream refusal rides stream:error(), named by the runtime's refusalName).\n")
 	g.Pf("function %s.Read%s(stream: any, value: any): boolean\n", g.Self, d.Name)
 	if len(d.Items) == 0 {
 		g.Pf("  -- empty body — presence is the payload (SPEC §4.6)\n")
@@ -320,8 +322,7 @@ func emitReadScalar(g *Gen, f *ir.Field, name, lenName, ind string) {
 		g.Pf("%s  local n = BITS.value\n", ind)
 		g.Pf("%s  local tmp = buffer.create(n)\n", ind)
 		g.call(ind+"  ", "stream:serializeBytes(tmp)", "")
-		g.Pf("%s  buffer.fill(%s, 0, 0)\n", ind, name)
-		g.Pf("%s  buffer.copy(%s, 0, tmp, 0, n)\n", ind, name)
+		g.Pf("%s  buffer.copy(%s, 0, tmp, 0, n) -- nothing past the used length is written (§5's tail rule)\n", ind, name)
 		g.Pf("%s  %s = n\n", ind, lenName)
 		if f.Type.Kind == ir.TString {
 			g.Pf("%s  if not utf8valid(%s, n) then return false end -- malformed UTF-8 (SPEC §4.7)\n", ind, name)
@@ -371,27 +372,36 @@ func emitReadBareInt(g *Gen, f *ir.Field, name, ind string) {
 	}
 }
 
+// emitReadWString reads a wstring(N) field (SPEC §4.12), composed from
+// primitives because serialize format 2.0 carries no wide-string call: the
+// length in [0, N] over bits_required(0, N) bits, then each code unit as a
+// 32-bit group, with no alignment anywhere. A group above 0xFFFF, a zero
+// group, and an unpaired surrogate (a high one not followed by a low one, a
+// low one not preceded by a high one, a high one last) refuse the read. The
+// code units land in storage as they are; nothing past the used length is
+// written (§5's tail rule).
 func emitReadWString(g *Gen, f *ir.Field, name, lenName, ind string) {
-	g.Pf("%sdo -- wstring: UTF-8 on the wire, UTF-16LE in 2N bytes of storage (SPEC §4.12)\n", ind)
-	g.call(ind+"  ", fmt.Sprintf("stream:serializeWideString(STR, %d)", f.Type.Size), "")
-	g.Pf("%s  local s = STR.value\n", ind)
-	g.Pf("%s  buffer.fill(%s, 0, 0)\n", ind, name)
-	g.Pf("%s  local units = 0\n", ind)
-	g.Pf("%s  local i = 1\n", ind)
-	g.Pf("%s  while i <= #s do\n", ind)
-	g.Pf("%s    local cp = utf8.codepoint(s, i)\n", ind)
-	g.Pf("%s    if cp <= 0xFFFF then\n", ind)
-	g.Pf("%s      buffer.writeu16(%s, units * 2, cp)\n", ind, name)
-	g.Pf("%s      units += 1\n", ind)
-	g.Pf("%s    else\n", ind)
-	g.Pf("%s      cp -= 0x10000\n", ind)
-	g.Pf("%s      buffer.writeu16(%s, units * 2, 0xD800 + bit32.rshift(cp, 10))\n", ind, name)
-	g.Pf("%s      buffer.writeu16(%s, units * 2 + 2, 0xDC00 + bit32.band(cp, 0x3FF))\n", ind, name)
-	g.Pf("%s      units += 2\n", ind)
+	g.Pf("%sdo -- wstring(%d): the length, then 32-bit groups of UTF-16 code units (SPEC §4.12)\n", ind, f.Type.Size)
+	g.call(ind+"  ", fmt.Sprintf("stream:serializeInt(BITS, 0, %d)", f.Type.Size), " -- the length guards the groups (§6.3)")
+	g.Pf("%s  local n = BITS.value\n", ind)
+	g.Pf("%s  local high = false\n", ind)
+	g.Pf("%s  for k = 0, n - 1 do\n", ind)
+	g.call(ind+"    ", "stream:serializeBits(BITS, 32)", "")
+	g.Pf("%s    local unit = BITS.value\n", ind)
+	g.Pf("%s    if unit == 0 or unit > 0xFFFF then return false end -- a zero group, or not a code unit\n", ind)
+	g.Pf("%s    if unit >= 0xD800 and unit <= 0xDBFF then\n", ind)
+	g.Pf("%s      if high then return false end -- a high surrogate not followed by a low one\n", ind)
+	g.Pf("%s      high = true\n", ind)
+	g.Pf("%s    elseif unit >= 0xDC00 and unit <= 0xDFFF then\n", ind)
+	g.Pf("%s      if not high then return false end -- a low surrogate not preceded by a high one\n", ind)
+	g.Pf("%s      high = false\n", ind)
+	g.Pf("%s    elseif high then\n", ind)
+	g.Pf("%s      return false -- a high surrogate not followed by a low one\n", ind)
 	g.Pf("%s    end\n", ind)
-	g.Pf("%s    i = utf8.offset(s, 2, i)\n", ind)
+	g.Pf("%s    buffer.writeu16(%s, k * 2, unit)\n", ind, name)
 	g.Pf("%s  end\n", ind)
-	g.Pf("%s  %s = units\n", ind, lenName)
+	g.Pf("%s  if high then return false end -- a high surrogate last\n", ind)
+	g.Pf("%s  %s = n\n", ind, lenName)
 	g.Pf("%send\n", ind)
 }
 

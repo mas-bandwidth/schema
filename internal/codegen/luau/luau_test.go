@@ -116,10 +116,10 @@ for _, a in { choice.First, choice.Second } do
 		assert(entry.Retries == -1 and entry.Preferred == Wire.Weapon.Railgun, "each arm's entries are at their defaults")
 	end
 end
-assert(ArmDefaults.DefaultChoiceType.Count == 2 and ArmDefaults.DefaultChoiceType.Max == 2, "tag Count and Max")
+assert(ArmDefaults.DefaultChoiceType.Max == 2 and (ArmDefaults.DefaultChoiceType :: any).Count == nil, "the tag exports Max and no Count (SPEC §4.2)")
 local bulk = ArmDefaults.NewDefaultBulkChoice()
 assert(buffer.len(bulk.First.Data) == 2 and bulk.First.DataLength == 0, "bytes(2) is a 2-byte buffer, used length zero")
-assert(Wire.Weapon.Max == 15 and Wire.Weapon.Count == 3, "enum Max is the widened extent, Count the declared variants")
+assert(Wire.Weapon.Max == 15 and (Wire.Weapon :: any).Count == nil, "enum Max is the widened extent and its only number (SPEC §4.2)")
 print("constructed " .. n)
 `)
 	writeFile(t, dir, "main.luau", main.String())
