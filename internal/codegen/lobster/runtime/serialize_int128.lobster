@@ -134,11 +134,9 @@ def serialize_read_u128_bits(s:serialize_read_stream, bits:int) -> serialize_uin
 
 // serialize_uint128: always 128 bits, the low 64-bit half first, each half
 // exactly serialize_bits(half, 64) (STANDARD.md, uint128; DESIGN.md (b)).
-// The whole width is gated before any bit moves, so a full buffer latches and
-// writes nothing for this call (DESIGN.md (e)).
+// The whole width is gated before any bit moves, so a full buffer traps and
+// writes nothing for this call (IMPLEMENTING.md U9, U10).
 def serialize_uint128(s:serialize_write_stream, value:serialize_uint128):
-    if s.failed:
-        return value, false
     if not s.write_gate(128):
         return value, false
     s.pack_bits64(value.lo, 64)
@@ -153,9 +151,12 @@ def serialize_uint128(s:serialize_read_stream, value:serialize_uint128):
     return serialize_uint128 { lo: lo, hi: hi }, true
 
 def serialize_uint128(s:serialize_measure_stream, value:serialize_uint128):
-    if s.failed:
-        return value, false
     return value, s.measure_bits(128)
+
+// The range check a write and a measure make (IMPLEMENTING.md U8, U9).
+def serialize_check_int128_in_range(value:serialize_int128, min:serialize_int128, max:serialize_int128):
+    if serialize_int128_compare(value, min) < 0 or serialize_int128_compare(value, max) > 0:
+        serialize_abort("serialize: value must be in [min, max]")
 
 // serialize_int128: the offset value - min in the unsigned 128-bit domain,
 // written in 32-bit groups from least significant upward (STANDARD.md,
@@ -165,11 +166,8 @@ def serialize_int128(s:serialize_write_stream, value:serialize_int128, min:seria
     // (STANDARD.md, int; DESIGN.md (e), "min > max").
     if serialize_int128_compare(min, max) > 0:
         serialize_abort("serialize: min must not be greater than max")
-    if s.failed:
-        return value, false
-    // A value outside [min, max] latches and writes nothing (DESIGN.md (e)).
-    if serialize_int128_compare(value, min) < 0 or serialize_int128_compare(value, max) > 0:
-        return value, s.fail()
+    // A value outside [min, max] traps (IMPLEMENTING.md U9).
+    serialize_check_int128_in_range(value, min, max)
     let umin = serialize_uint128_make(min.hi, min.lo)
     let umax = serialize_uint128_make(max.hi, max.lo)
     let uvalue = serialize_uint128_make(value.hi, value.lo)
@@ -185,9 +183,10 @@ def serialize_int128(s:serialize_write_stream, value:serialize_int128, min:seria
     return value, true
 
 def serialize_int128(s:serialize_read_stream, value:serialize_int128, min:serialize_int128, max:serialize_int128):
-    // min > max is API misuse, even on a latched stream (DESIGN.md (e)).
+    // min > max is a bad declaration: refused on a read, never an abort
+    // (IMPLEMENTING.md U7, U16).
     if serialize_int128_compare(min, max) > 0:
-        serialize_abort("serialize: min must not be greater than max")
+        return value, s.serialize_read_misuse()
     if s.failed:
         return value, false
     let umin = serialize_uint128_make(min.hi, min.lo)
@@ -202,13 +201,12 @@ def serialize_int128(s:serialize_read_stream, value:serialize_int128, min:serial
     // Reject, never clamp: the decoded offset must be at most the span
     // (STANDARD.md, int128; DESIGN.md (e)).
     if serialize_u128_compare(offset, span) > 0:
-        return value, s.fail()
+        return value, s.fail(serialize_refusal_value_out_of_range)
     let result = serialize_u128_add(umin, offset)
     return serialize_int128 { lo: result.lo, hi: result.hi }, true
 
 def serialize_int128(s:serialize_measure_stream, value:serialize_int128, min:serialize_int128, max:serialize_int128):
     if serialize_int128_compare(min, max) > 0:
         serialize_abort("serialize: min must not be greater than max")
-    if s.failed:
-        return value, false
+    serialize_check_int128_in_range(value, min, max)
     return value, s.measure_bits(serialize_bits_required128(min, max))

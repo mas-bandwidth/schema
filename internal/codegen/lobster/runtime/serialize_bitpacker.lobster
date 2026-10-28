@@ -46,12 +46,10 @@ def flush_bits(s:serialize_write_stream):
 def pack_bytes(s:serialize_write_stream, data:string, offset:int, count:int):
     if (s.bits_written & 7) != 0:
         serialize_abort("serialize: byte array serialization requires byte alignment")
-    // The gate is consulted once with the whole width before any byte moves, so
-    // a full buffer latches and a zero-count call still tests the latch
-    // (DESIGN.md (e); STANDARD.md, Reader Obligations, "Failure is terminal").
+    // The gate is consulted once with the whole width before any byte moves,
+    // so a payload that does not fit traps and writes nothing (IMPLEMENTING.md
+    // U9, U10).
     if count <= 0:
-        if not s.write_gate(0):
-            return
         return
     if not s.write_gate(count * 8):
         return
@@ -96,8 +94,11 @@ def unpack_bits64(s:serialize_read_stream, bits:int) -> int:
 // `data[offset..offset+count]` in place, using whole 64-bit words where the
 // run allows (STANDARD.md, bytes; DESIGN.md (d); serialize.c serialize_read_bytes).
 def unpack_bytes(s:serialize_read_stream, data:string, offset:int, count:int):
+    // An unaligned call is caller misuse: refused, never an abort, on a read
+    // (IMPLEMENTING.md U7). serialize_bytes aligns first, so it never reaches this.
     if (s.bits_read & 7) != 0:
-        serialize_abort("serialize: byte array serialization requires byte alignment")
+        s.serialize_read_misuse()
+        return
     // Refuse a read past the end before any load, with the whole width, so no
     // byte is read outside the data and a zero-count call still tests the latch
     // (DESIGN.md (e); STANDARD.md, Reader Obligations, "Reading past the end
@@ -123,18 +124,16 @@ def unpack_bytes(s:serialize_read_stream, data:string, offset:int, count:int):
 def serialize_bits(s:serialize_write_stream, value:int, bits:int):
     if bits < 1 or bits > 32:
         serialize_abort("serialize: bits must be in [1,32]")
-    if s.failed:
-        return value, false
-    if value < 0 or value > serialize_mask(bits):
-        return value, s.fail()
+    serialize_check_fits(value, bits)
     if not s.write_gate(bits):
         return value, false
     s.pack_bits(value, bits)
     return value, true
 
 def serialize_bits(s:serialize_read_stream, value:int, bits:int):
+    // A bad bit count on a read is refused, never an abort (IMPLEMENTING.md U7, U16).
     if bits < 1 or bits > 32:
-        serialize_abort("serialize: bits must be in [1,32]")
+        return value, s.serialize_read_misuse()
     if not s.read_gate(bits):
         return value, false
     return s.unpack_bits(bits), true
@@ -142,8 +141,7 @@ def serialize_bits(s:serialize_read_stream, value:int, bits:int):
 def serialize_bits(s:serialize_measure_stream, value:int, bits:int):
     if bits < 1 or bits > 32:
         serialize_abort("serialize: bits must be in [1,32]")
-    if s.failed:
-        return value, false
+    serialize_check_fits(value, bits)
     return value, s.measure_bits(bits)
 
 // serialize_bits64: bits in [1,64], value a u64 bit pattern with zero bits
@@ -151,18 +149,16 @@ def serialize_bits(s:serialize_measure_stream, value:int, bits:int):
 def serialize_bits64(s:serialize_write_stream, value:int, bits:int):
     if bits < 1 or bits > 64:
         serialize_abort("serialize: bits must be in [1,64]")
-    if s.failed:
-        return value, false
-    if bits < 64 and (value < 0 or value > serialize_mask(bits)):
-        return value, s.fail()
+    serialize_check_fits(value, bits)
     if not s.write_gate(bits):
         return value, false
     s.pack_bits64(value, bits)
     return value, true
 
 def serialize_bits64(s:serialize_read_stream, value:int, bits:int):
+    // A bad bit count on a read is refused, never an abort (IMPLEMENTING.md U7, U16).
     if bits < 1 or bits > 64:
-        serialize_abort("serialize: bits must be in [1,64]")
+        return value, s.serialize_read_misuse()
     if not s.read_gate(bits):
         return value, false
     return s.unpack_bits64(bits), true
@@ -170,8 +166,7 @@ def serialize_bits64(s:serialize_read_stream, value:int, bits:int):
 def serialize_bits64(s:serialize_measure_stream, value:int, bits:int):
     if bits < 1 or bits > 64:
         serialize_abort("serialize: bits must be in [1,64]")
-    if s.failed:
-        return value, false
+    serialize_check_fits(value, bits)
     return value, s.measure_bits(bits)
 
 // Bit length of a 64-bit unsigned pattern, 0 for 0 (serialize.c serialize_bit_length64).

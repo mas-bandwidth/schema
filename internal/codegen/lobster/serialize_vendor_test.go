@@ -22,6 +22,10 @@ import (
 // (conformance/int.txt and conformance/float.txt); the test reads no .ref/
 // checkout and adds no serialize dependency, because none exists in this
 // module.
+// lobsterSerializeRelease is the commit serialize.lobster's v2.1.1 tag names:
+// format 2.0 at standard 2.1, finite floats only, named refusals, misuse traps.
+const lobsterSerializeRelease = "7d52c2320d7a5bf1c3623154282fc40c6804911d"
+
 func TestLobsterVendoredSerializeIsThePin(t *testing.T) {
 	t.Parallel()
 
@@ -31,6 +35,9 @@ func TestLobsterVendoredSerializeIsThePin(t *testing.T) {
 	}
 	if len(commit) != 40 {
 		t.Fatalf("SERIALIZE_PIN commit %q is not a full 40-hex commit sha", commit)
+	}
+	if commit != lobsterSerializeRelease {
+		t.Fatalf("SERIALIZE_PIN commit %s is not serialize.lobster v2.1.1 (%s): the runtime is the port's latest release (docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT)", commit, lobsterSerializeRelease)
 	}
 
 	for name, want := range pinned {
@@ -126,24 +133,41 @@ hex(write_int(read_int(i, 0, 7), 0, 7))
 let f = write_float(3.141592653589793)
 hex(f)
 hex(write_float(read_float(f)))
+
+// standard 2.1: a packet reader ends with serialize_end, which refuses a
+// whole trailing byte and set padding by name (STANDARD.md, end).
+def end_refusal(data:string) -> string:
+    let r = serialize_read_stream_padded(data)
+    var v = 0
+    var ok = true
+    v, ok = r.serialize_int(v, 0, 7)
+    r.serialize_end()
+    return r.refusal_name()
+
+print(end_refusal("\x05"))
+print(end_refusal("\x0d"))
+print(end_refusal("\x05\x00"))
+print(end_refusal(""))
+let qnan = serialize_read_stream_padded("\x00\x00\xc0\x7f")
+var nv = 0.0
+var nok = true
+nv, nok = qnan.serialize_float(nv)
+print(qnan.refusal_name())
 `)
 	out := lobsterrun.Run(t, dir, "main.lobster", nil)
-	// The vendored port compiles with one unused-variable warning, which the
-	// pinned Lobster prints to stdout before the program runs. It is the
-	// vendored file's text and is not edited here (THE TASK: verbatim), so the
-	// warning lines are dropped and only the program's hex lines are read.
-	var hexOut strings.Builder
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if strings.Contains(line, "warning:") {
-			continue
-		}
-		hexOut.WriteString(line)
-		hexOut.WriteByte('\n')
+	// v2.1.1 compiles clean: a warning line ahead of the program's output is
+	// a red, never filtered (zero warnings).
+	if strings.Contains(string(out), "warning") {
+		t.Fatalf("the vendored serialize.lobster compiled with a warning:\n%s", out)
 	}
-	lines := lobsterrun.HexLines(t, []byte(hexOut.String()))
-	if len(lines) != 4 {
-		t.Fatalf("main.lobster printed %d hex lines, want 4", len(lines))
+	all := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(all) != 9 {
+		t.Fatalf("main.lobster printed %d lines, want 9:\n%s", len(all), out)
 	}
+	if got, want := strings.Join(all[4:], " "), "none nonzero_padding trailing_data past_end non_finite_float"; got != want {
+		t.Errorf("refusal names are %q, want %q", got, want)
+	}
+	lines := lobsterrun.HexLines(t, []byte(strings.Join(all[:4], "\n")+"\n"))
 
 	// conformance/int.txt, int-range-0-7-costs-three-bits
 	intRecord := []byte{0x05}

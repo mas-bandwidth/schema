@@ -1,8 +1,8 @@
-// serialize_bytes.lobster — bytes, string and wstring
-// (STANDARD.md, Bytes and Strings: bytes, string, wstring; DESIGN.md (d), (f)).
+// serialize_bytes.lobster — bytes and string
+// (STANDARD.md, Bytes and Strings: bytes, string; DESIGN.md (d), (f)).
 //
-// Every write validates the whole operation's width before any bit moves, so a
-// refused call latches and writes nothing (DESIGN.md (e)). Every read gates
+// Every write validates the whole operation's width before any bit moves, so
+// misuse traps and writes nothing (IMPLEMENTING.md U9, U10). Every read gates
 // before any load, refuses malformed content after the payload, and leaves the
 // caller's value untouched on a refusal (STANDARD.md, Reader Obligations).
 
@@ -66,21 +66,30 @@ def string_has_nul(data:string, n:int) -> bool:
             return true
     return false
 
-// The UTF-16 unit count and writer-side well-formedness: a NUL, a surrogate
-// code point or a value above U+10FFFF is bad text and latches on write
-// (STANDARD.md, wstring; DESIGN.md (e), write refusals).
-def wstring_units(value:[int]) -> int, bool:
-    var units = 0
-    for(value) c:
-        if c < 0 or c == 0 or c > 0x10FFFF:
-            return 0, false
-        if c >= 0xD800 and c <= 0xDFFF:
-            return 0, false
-        if c >= 0x10000:
-            units += 2
-        else:
-            units += 1
-    return units, true
+// The refusal a string payload earns, none for real text. The NUL scan runs
+// over the whole payload BEFORE the UTF-8 check, so a payload that breaks
+// both rules is embedded_nul (STANDARD.md, string). Reader and writer share it.
+def string_payload_refusal(data:string, n:int) -> serialize_refusal:
+    if string_has_nul(data, n):
+        return serialize_refusal_embedded_nul
+    if not string_utf8_valid(data, n):
+        return serialize_refusal_invalid_utf8
+    return serialize_refusal_none
+
+// The string checks a write and a measure make (IMPLEMENTING.md U3, U4, U6,
+// U9): buffer_size at least 1, the text shorter than buffer_size, no NUL, then
+// well-formed UTF-8. Returns the length.
+def serialize_check_string(value:string, buffer_size:int) -> int:
+    if buffer_size < 1:
+        serialize_abort("serialize: buffer_size must be at least 1")
+    let n = length(value)
+    if n >= buffer_size:
+        serialize_abort("serialize: string must be shorter than buffer_size")
+    if string_has_nul(value, n):
+        serialize_abort("serialize: string must not hold a NUL")
+    if not string_utf8_valid(value, n):
+        serialize_abort("serialize: string must be well-formed UTF-8")
+    return n
 
 // ---------------------------------------------------------------------------
 // bytes (STANDARD.md, bytes; DESIGN.md (d))
@@ -93,8 +102,6 @@ def serialize_bytes(s:serialize_write_stream, data:string, bytes:int):
         serialize_abort("serialize: bytes must not be negative")
     if length(data) < bytes:
         serialize_abort("serialize: bytes must not exceed the data length")
-    if s.failed:
-        return data, false
     let align = s.align_bits()
     // The whole operation, alignment included, is gated before a bit moves
     // (DESIGN.md (e)).
@@ -107,19 +114,21 @@ def serialize_bytes(s:serialize_write_stream, data:string, bytes:int):
     return data, true
 
 // Aligns first and verifies the padding is zero, then reads into `data`
-// (STANDARD.md, bytes, align; Reader Obligations).
+// (STANDARD.md, bytes, align; Reader Obligations). The align and its padding
+// check come before the payload's length, so set padding is nonzero_padding
+// even when the payload would also run past the end.
 def serialize_bytes(s:serialize_read_stream, data:string, bytes:int):
-    if bytes < 0:
-        serialize_abort("serialize: bytes must not be negative")
-    if length(data) < bytes:
-        serialize_abort("serialize: bytes must not exceed the data length")
+    // A negative count, or a destination shorter than the count, is caller
+    // misuse: refused on a read before any bit moves, never an abort
+    // (IMPLEMENTING.md U7; U16, destination capacity).
+    if bytes < 0 or length(data) < bytes:
+        return data, s.serialize_read_misuse()
     if s.failed:
         return data, false
-    let align = s.align_bits()
-    if not s.read_gate(align + bytes * 8):
+    if not s.serialize_align():
         return data, false
-    if align > 0 and s.unpack_bits(align) != 0:
-        return data, s.fail()
+    if not s.read_gate(bytes * 8):
+        return data, false
     if bytes > 0:
         s.unpack_bytes(data, 0, bytes)
     return data, true
@@ -131,8 +140,6 @@ def serialize_bytes(s:serialize_measure_stream, data:string, bytes:int):
         serialize_abort("serialize: bytes must not be negative")
     if length(data) < bytes:
         serialize_abort("serialize: bytes must not exceed the data length")
-    if s.failed:
-        return data, false
     if not s.serialize_align():
         return data, false
     return data, s.measure_bits(bytes * 8)
@@ -143,17 +150,9 @@ def serialize_bytes(s:serialize_measure_stream, data:string, bytes:int):
 
 // The length as serialize_int(length, 0, buffer_size - 1), then the payload as
 // serialize_bytes, which aligns (STANDARD.md, string). Bad text and a length
-// past the buffer latch and write nothing (DESIGN.md (e), write refusals).
+// past the buffer trap and write nothing (IMPLEMENTING.md U3, U4, U9).
 def serialize_string(s:serialize_write_stream, value:string, buffer_size:int):
-    if buffer_size < 1:
-        serialize_abort("serialize: buffer_size must be at least 1")
-    if s.failed:
-        return value, false
-    let n = length(value)
-    if n >= buffer_size:
-        return value, s.fail()
-    if string_has_nul(value, n) or not string_utf8_valid(value, n):
-        return value, s.fail()
+    let n = serialize_check_string(value, buffer_size)
     let length_bits = serialize_bits_required(0, buffer_size - 1)
     let align = (8 - ((s.bits_written + length_bits) & 7)) & 7
     if not s.write_gate(length_bits + align + n * 8):
@@ -169,9 +168,13 @@ def serialize_string(s:serialize_write_stream, value:string, buffer_size:int):
 
 // Reads the length, aligns, then the payload; refuses an interior NUL and
 // malformed UTF-8 (STANDARD.md, string). A refusal returns the input value.
+// The align's padding is checked, and the claimed length is held against the
+// bytes that remain (past_end), BEFORE the payload is allocated: a short
+// stream claiming a huge length allocates nothing.
 def serialize_string(s:serialize_read_stream, value:string, buffer_size:int):
+    // buffer_size below 1 is refused on a read, never an abort (IMPLEMENTING.md U7).
     if buffer_size < 1:
-        serialize_abort("serialize: buffer_size must be at least 1")
+        return value, s.serialize_read_misuse()
     if s.failed:
         return value, false
     var n = 0
@@ -179,24 +182,24 @@ def serialize_string(s:serialize_read_stream, value:string, buffer_size:int):
     n, ok = s.serialize_int(n, 0, buffer_size - 1)
     if not ok:
         return value, false
+    if not s.serialize_align():
+        return value, false
+    if not s.read_gate(n * 8):
+        return value, false
     var payload = ensure_size("", n, 0)
     payload, ok = s.serialize_bytes(payload, n)
     if not ok:
         return value, false
-    if string_has_nul(payload, n) or not string_utf8_valid(payload, n):
-        return value, s.fail()
+    let text_refusal = string_payload_refusal(payload, n)
+    if text_refusal != serialize_refusal_none:
+        return value, s.fail(text_refusal)
     return payload, true
 
 // The exact length width plus the align worst case and the payload
-// (STANDARD.md, The Measure Stream).
+// (STANDARD.md, The Measure Stream). Text the writer refuses (too long, a NUL,
+// not well-formed UTF-8) traps here too (IMPLEMENTING.md U3, U4, U6).
 def serialize_string(s:serialize_measure_stream, value:string, buffer_size:int):
-    if buffer_size < 1:
-        serialize_abort("serialize: buffer_size must be at least 1")
-    if s.failed:
-        return value, false
-    let n = length(value)
-    if n >= buffer_size:
-        return value, s.fail()
+    let n = serialize_check_string(value, buffer_size)
     var sent = 0
     var ok = true
     sent, ok = s.serialize_int(0, 0, buffer_size - 1)
@@ -207,102 +210,24 @@ def serialize_string(s:serialize_measure_stream, value:string, buffer_size:int):
     return value, s.measure_bits(n * 8)
 
 // ---------------------------------------------------------------------------
-// wstring (STANDARD.md, wstring; DESIGN.md (d))
+// serialize_copy_string (IMPLEMENTING.md U15; the reference's
+// serialize_copy_string): on the source's bytes, take those before the first
+// NUL; if there are more than dest_size - 1, keep the first dest_size - 1,
+// then drop bytes from the end while the first byte left out is a UTF-8
+// continuation byte (10xxxxxx), so the copy never ends inside a character and
+// serialize_string with buffer_size = dest_size accepts it. A Lobster string
+// is a value, so the prefix is returned and no terminator is stored.
+// dest_size below 1 is write misuse, and traps (U9).
 // ---------------------------------------------------------------------------
 
-// The length in UTF-16 code units, then each unit as a 32-bit group, with NO
-// alignment anywhere (STANDARD.md, wstring). An astral code point is split
-// into its surrogate pair, as serialize.c does on a 4-byte wchar_t platform.
-def serialize_wstring(s:serialize_write_stream, value:[int], buffer_size:int):
-    if buffer_size < 1:
-        serialize_abort("serialize: buffer_size must be at least 1")
-    if s.failed:
-        return value, false
-    let units, valid = wstring_units(value)
-    if not valid:
-        return value, s.fail()
-    if units >= buffer_size:
-        return value, s.fail()
-    let length_bits = serialize_bits_required(0, buffer_size - 1)
-    if not s.write_gate(length_bits + units * 32):
-        return value, false
-    var sent = 0
-    var ok = true
-    sent, ok = s.serialize_int(units, 0, buffer_size - 1)
-    if not ok:
-        return value, false
-    for(value) c:
-        if c >= 0x10000:
-            let v = c - 0x10000
-            var unit = 0
-            unit, ok = s.serialize_bits(0xD800 + (v >> 10), 32)
-            if not ok:
-                return value, false
-            unit, ok = s.serialize_bits(0xDC00 + (v & 0x3FF), 32)
-            if not ok:
-                return value, false
-        else:
-            var unit = 0
-            unit, ok = s.serialize_bits(c, 32)
-            if not ok:
-                return value, false
-    return value, true
-
-// Reads the unit count, then each UTF-16 code unit as a 32-bit group, with no
-// alignment; recombines surrogate pairs and refuses a group above 0xFFFF, a
-// zero unit and an unpaired or misordered surrogate (STANDARD.md, wstring).
-def serialize_wstring(s:serialize_read_stream, value:[int], buffer_size:int):
-    if buffer_size < 1:
-        serialize_abort("serialize: buffer_size must be at least 1")
-    if s.failed:
-        return value, false
-    var units = 0
-    var ok = true
-    units, ok = s.serialize_int(units, 0, buffer_size - 1)
-    if not ok:
-        return value, false
-    var out:[int] = []
-    var i = 0
-    while i < units:
-        var c = 0
-        c, ok = s.serialize_bits(c, 32)
-        if not ok:
-            return value, false
-        if c == 0 or c > 0xFFFF:
-            return value, s.fail()
-        if c >= 0xD800 and c <= 0xDBFF:
-            if i + 1 >= units:
-                return value, s.fail()
-            var low = 0
-            low, ok = s.serialize_bits(low, 32)
-            if not ok:
-                return value, false
-            if low < 0xDC00 or low > 0xDFFF:
-                return value, s.fail()
-            out.push(0x10000 + ((c - 0xD800) << 10) + (low - 0xDC00))
-            i += 2
-        elif c >= 0xDC00 and c <= 0xDFFF:
-            return value, s.fail()
-        else:
-            out.push(c)
-            i += 1
-    return out, true
-
-// The unit count's exact length width plus 32 bits per unit, no align
-// (STANDARD.md, wstring; The Measure Stream).
-def serialize_wstring(s:serialize_measure_stream, value:[int], buffer_size:int):
-    if buffer_size < 1:
-        serialize_abort("serialize: buffer_size must be at least 1")
-    if s.failed:
-        return value, false
-    let units, valid = wstring_units(value)
-    if not valid:
-        return value, s.fail()
-    if units >= buffer_size:
-        return value, s.fail()
-    var sent = 0
-    var ok = true
-    sent, ok = s.serialize_int(0, 0, buffer_size - 1)
-    if not ok:
-        return value, false
-    return value, s.measure_bits(units * 32)
+def serialize_copy_string(source:string, dest_size:int) -> string:
+    if dest_size < 1:
+        serialize_abort("serialize: copy_string dest_size must be at least 1")
+    var n = 0
+    while n < length(source) and read_uint8_le(source, n) != 0:
+        n += 1
+    if n > dest_size - 1:
+        n = dest_size - 1
+        while n > 0 and (read_uint8_le(source, n) & 0xC0) == 0x80:
+            n -= 1
+    return substring(source, 0, n)

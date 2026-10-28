@@ -8,6 +8,7 @@ package lobsterrun
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -76,6 +77,34 @@ func repoRoot() (string, error) {
 // with both streams when the program does not compile or exits nonzero.
 func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	t.Helper()
+	stdout, stderr, err := run(t, dir, main, inputs, nil)
+	if err != nil {
+		t.Fatalf("lobsterrun: lobster %s: %v\nstdout:\n%s\nstderr:\n%s", main, err, stdout, stderr)
+	}
+	return stdout
+}
+
+// RunExit is [Run] for a program whose exit status is the result: it passes
+// args to the program (command_line_arguments()) and returns stdout and the
+// exit code instead of failing the test on a nonzero one. A run that does not
+// start, or that the toolchain does not compile (exit 1 with a compile
+// error), still fails the test. It is how a test observes a write-side trap:
+// serialize.lobster's serialize_abort prints the rule and exits 70.
+func RunExit(t testing.TB, dir, main string, inputs map[string][]byte, args ...string) ([]byte, int) {
+	t.Helper()
+	stdout, stderr, err := run(t, dir, main, inputs, args)
+	if err == nil {
+		return stdout, 0
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || strings.Contains(string(stdout), ": error: ") {
+		t.Fatalf("lobsterrun: lobster %s: %v\nstdout:\n%s\nstderr:\n%s", main, err, stdout, stderr)
+	}
+	return stdout, exit.ExitCode()
+}
+
+func run(t testing.TB, dir, main string, inputs map[string][]byte, args []string) ([]byte, []byte, error) {
+	t.Helper()
 	lobster, why := Interpreter()
 	if lobster == "" {
 		t.Fatalf("lobsterrun: the Lobster toolchain does not resolve: %s", why)
@@ -93,14 +122,17 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(lobster, main)
+	argv := []string{main}
+	if len(args) > 0 {
+		argv = append(argv, "--")
+		argv = append(argv, args...)
+	}
+	cmd := exec.Command(lobster, argv...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("lobsterrun: lobster %s: %v\nstdout:\n%s\nstderr:\n%s", main, err, stdout.Bytes(), stderr.Bytes())
-	}
-	return stdout.Bytes()
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 // HexLines reads stdout's lowercase hex lines back into bytes; a line that
