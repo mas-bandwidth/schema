@@ -116,6 +116,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		return nil, err
 	}
 	maps.Copy(out, views)
+	// the block form's descriptors ride ON THE SIDE, <Base>Block.luau
+	// (blockform.go), and name no module this unit already emits
+	blockMods, err := GenerateBlock(u)
+	if err != nil {
+		return nil, err
+	}
+	for name, data := range blockMods {
+		if _, taken := out[name]; taken {
+			return nil, fmt.Errorf("luau block form: %s is already a module of this unit", name)
+		}
+		out[name] = data
+	}
 	// SPEC-TABLES.md §2.12: a unit with no table carrying json, block or
 	// cook omits those runtime surfaces. Fixed, view, message and retain are
 	// governed by surface, not forms.
@@ -1085,8 +1097,8 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 		)
 	case "schema_cookread.luau":
 		replaceOnce(
-			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
-			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tlocal d0 = S.lookup(root)\n\tif d0 ~= nil and d0.table and d0.forms ~= nil and d0.forms.cook ~= true then\n\t\terror(\"schema: table \" .. root .. \" does not carry cook (forms declaration)\")\n\tend\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
+			"function C.Check(root: string, bytes: buffer?, build: integer?, base: number?, extent: number?): string?\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
+			"function C.Check(root: string, bytes: buffer?, build: integer?, base: number?, extent: number?): string?\n\tlocal d0 = S.lookup(root)\n\tif d0 ~= nil and d0.table and d0.forms ~= nil and d0.forms.cook ~= true then\n\t\terror(\"schema: table \" .. root .. \" does not carry cook (forms declaration)\")\n\tend\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
 		)
 	case "schema_cook.luau":
 		replaceOnce(

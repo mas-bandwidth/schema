@@ -464,41 +464,86 @@ local function refuse(reason: string): (nil, string)
 	return nil, reason
 end
 
+-- Check is Open's header check alone, in §7.4's order, over a cook that
+-- starts `base` bytes into `bytes` and runs `extent` bytes from there (the
+-- length the caller claims; the rest of the buffer by default). It answers
+-- nil when the header admits the cook, or the first failing clause's name,
+-- spelled as Go's TableRefuseReason. Like Go's Open it reads the header and
+-- nothing in the region, so a forged reference slot is the deref's business,
+-- not Open's; and the base's alignment is LAST, against the alignment the
+-- header carries, because it is the one clause that reads nothing out of the
+-- cook (§7.4). A nil buffer is a null base: unaligned_base.
+function C.Check(root: string, bytes: buffer?, build: integer?, base: number?, extent: number?): string?
+	if bytes == nil or typeof(bytes) ~= "buffer" then
+		return "unaligned_base"
+	end
+	local at = base or 0
+	local n = extent or (buffer.len(bytes) - at)
+	if n < HEADER_BYTES then return "truncated" end
+	local magic = buffer.readinteger(bytes, at)
+	if magic ~= MAGIC then
+		if magic == MAGIC_FOREIGN then return "foreign_order" end
+		return "not_a_cook"
+	end
+	if buffer.readinteger(bytes, at + 16) ~= 1i then return "not_a_cook" end
+	if build ~= nil and buffer.readinteger(bytes, at + 8) ~= build then return "wrong_build_version" end
+	if buffer.readinteger(bytes, at + 48) ~= 0i or buffer.readinteger(bytes, at + 56) ~= 0i then return "reserved_not_zero" end
+	local rootSize = recordLayout(root).size
+	local rootAlign = recordLayout(root).align
+	-- the header's words are unsigned: a saturated one reads as -1 here and
+	-- must refuse as the huge number it is, never pass as a small one
+	local alignWord = buffer.readinteger(bytes, at + 40)
+	if integer.ult(alignWord, 8i) or integer.ugt(alignWord, integer.create(MAX_ALIGN)) then
+		return "bad_alignment"
+	end
+	local alignment = integer.tonumber(alignWord)
+	if bit32.band(alignment, alignment - 1) ~= 0 or alignment % rootAlign ~= 0 then
+		return "bad_alignment"
+	end
+	local dataOffset = align_up(HEADER_BYTES, alignment)
+	if dataOffset > n then return "truncated" end
+	local room = integer.create(n - dataOffset)
+	local dataWord = buffer.readinteger(bytes, at + 24)
+	if integer.ugt(dataWord, room) then return "truncated" end
+	local dataLength = integer.tonumber(dataWord)
+	local attribution = buffer.readinteger(bytes, at + 32)
+	if attribution ~= integer.create(n - dataOffset - dataLength) or dataLength < rootSize then
+		return "truncated"
+	end
+	if at % alignment ~= 0 then return "unaligned_base" end
+	return nil
+end
+
 -- Open checks the header in §7.4's order and answers the root value read from
 -- the region, or (nil, reason). The caller passes this build's version, the
 -- fact Go's Table source carries as a constant.
 function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)
-	if bytes == nil or typeof(bytes) ~= "buffer" then
-		return refuse("unaligned_base")
-	end
-	local n = buffer.len(bytes)
-	if n < HEADER_BYTES then return refuse("truncated") end
-	local magic = buffer.readinteger(bytes, 0)
-	if magic ~= MAGIC then
-		if magic == MAGIC_FOREIGN then return refuse("foreign_order") end
-		return refuse("not_a_cook")
-	end
-	if buffer.readinteger(bytes, 16) ~= 1i then return refuse("not_a_cook") end
-	if build ~= nil and buffer.readinteger(bytes, 8) ~= build then return refuse("wrong_build_version") end
-	if buffer.readinteger(bytes, 48) ~= 0i or buffer.readinteger(bytes, 56) ~= 0i then return refuse("reserved_not_zero") end
+	local why = C.Check(root, bytes, build, 0, nil)
+	if why ~= nil then return refuse(why) end
+	local b = bytes :: buffer
 	local d = S.lookup(root)
-	local rootSize = recordLayout(root).size
-	local rootAlign = recordLayout(root).align
-	local alignment = integer.tonumber(buffer.readinteger(bytes, 40))
-	if alignment < 8 or alignment > MAX_ALIGN or bit32.band(alignment, alignment - 1) ~= 0 or alignment % rootAlign ~= 0 then
-		return refuse("bad_alignment")
-	end
-	local bytesN = n
-	local dataOffset = align_up(HEADER_BYTES, alignment)
-	local dataLength = integer.tonumber(buffer.readinteger(bytes, 24))
-	local attribution = integer.tonumber(buffer.readinteger(bytes, 32))
-	if dataOffset > bytesN or dataLength > bytesN - dataOffset or attribution ~= bytesN - dataOffset - dataLength or dataLength < rootSize then
-		return refuse("truncated")
-	end
-	local ctx: Ctx = { b = bytes, dataOffset = dataOffset, dataLength = dataLength, memo = {} }
+	local dataOffset = align_up(HEADER_BYTES, integer.tonumber(buffer.readinteger(b, 40)))
+	local dataLength = integer.tonumber(buffer.readinteger(b, 24))
+	local ctx: Ctx = { b = b, dataOffset = dataOffset, dataLength = dataLength, memo = {} }
 	local value = d.new()
 	readRecord(ctx, value, root, dataOffset)
 	return value, nil
 end
+
+-- the region's C ABI layout, as the reader computes it (§2.7, §7.2): a
+-- reflective walk of the region's own bytes (the conformance node dump,
+-- docs/SPEC-TABLES.md §7.5) reads offsets and widths from here rather than
+-- re-deriving them.
+C.layout = table.freeze({
+	record = recordLayout,
+	union = unionLayout,
+	field = layoutField,
+	elem = elemLayout,
+	offsets = recordOffsets,
+	enumWidth = enum_width,
+	intWidth = intWidth,
+	alignUp = align_up,
+	headerBytes = HEADER_BYTES,
+})
 
 return table.freeze(C)
