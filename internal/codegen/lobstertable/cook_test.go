@@ -158,7 +158,7 @@ def run():
     let w = read_file("w")
     assert w
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load(%s, w, rep)
+    let rec = schema_rt.load_tolerant(%s, w, rep)
     assert rec
     let m = %s.%sCookMeasure(rec)
     print("{m}")

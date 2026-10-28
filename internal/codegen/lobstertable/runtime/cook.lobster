@@ -502,7 +502,7 @@ def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
         co_u8(c.o, at, if sl.cell.b: 1 else: 0)
     elif s == "float":
         if fd.f32:
-            co_u32(c.o, at, save_narrow32(sl.cell.f), c.big)
+            co_u32(c.o, at, f32bits(sl.cell.f), c.big)
         else:
             co_u64(c.o, at, f64bits(sl.cell.f), c.big)
     elif s == "enum":
@@ -546,7 +546,7 @@ def cw_elem(c:CookWrite, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff
         co_u8(c.o, at, if v.b: 1 else: 0)
     elif s == "float":
         if e.f32:
-            co_u32(c.o, at, save_narrow32(v.f), c.big)
+            co_u32(c.o, at, f32bits(v.f), c.big)
         else:
             co_u64(c.o, at, f64bits(v.f), c.big)
     elif s == "enum":

@@ -298,7 +298,7 @@ def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> R
     retain.known = known_ids()
     let mark = length(retain_captures)
     register_retain_capture(RetainCaptureImpl { retain: retain, report: report })
-    let rec = load(root, data, report)
+    let rec = load_tolerant(root, data, report)
     truncate(retain_captures, mark)
     if rec:
         return rec
