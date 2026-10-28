@@ -212,9 +212,15 @@ static SCHEMA_UNUSED uint8_t * table_retain_begin(TableRetainWalk keep,uint64_t 
 }
 static SCHEMA_UNUSED void table_retain_commit(TableRetainWalk keep,uint8_t * record,const TableRetainIn * s,TableReport * report)
 {int64_t bytes=SCHEMA_TABLE_RETAIN_HEADER+8*(int64_t)keep.path.depth+s->used;table_retain_put32(record,(uint32_t)bytes);table_retain_put32(record+12,(uint32_t)s->used);keep.retain->used+=bytes;keep.retain->count++;report->retained++;}
+/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+   §3.3, §6.6): kind 10's or 11's raw bits, and a NaN or an infinity refuses
+   the read as non_finite_float. Nothing is kept, the read goes on as it does
+   for a known field, and the load answers the refusal at its end. */
 static SCHEMA_UNUSED int table_retain_capture(TableReader * r,uint64_t id,uint8_t kind,TableRetainWalk keep)
 {
  TableRetainIn s;TableReader source=*r;uint8_t * record;if(!table_reader_skip(r,kind))return 0;if(!keep.retain)return 1;
+ if(kind==10||kind==11){uint64_t raw=0;int64_t i;for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
+  if(kind==10?!table_bits_finite32((uint32_t)raw):!table_bits_finite64(raw)){table_non_finite_float(r->report);return 1;}}
  record=table_retain_begin(keep,id,kind,&s);if(!record){r->report->retain_lost++;return 1;}source.size=r->offset;s.input=source;
  if(!table_retain_in_payload(&s,kind,0)||s.input.offset!=source.size){r->report->retain_lost++;return 1;}table_retain_commit(keep,record,&s,r->report);return 1;
 }

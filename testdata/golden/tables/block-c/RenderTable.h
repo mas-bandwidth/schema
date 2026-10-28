@@ -76,7 +76,7 @@ typedef struct blockdemo_table_report_t
        the tolerant read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported form byte, not framing damage */
+    int refused;           /* a refusal by name (reason), not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
@@ -84,6 +84,13 @@ typedef struct blockdemo_table_report_t
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+       an infinity is refused on its raw bits by every read, the tolerant one
+       included, so a read that moves this answers refused, reason
+       SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
+       a read can tell its own refusal from a caller's report that already
+       held one. */
+    int32_t non_finite_floats;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -92,7 +99,11 @@ typedef struct blockdemo_table_report_t
     uint64_t layout_hash;
 } blockdemo_table_report_t;
 
-enum SCHEMA_BLOCKDEMO_TABLE_REFUSAL_REASON { SCHEMA_BLOCKDEMO_TABLE_NO_REFUSAL, SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM, SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE };
+/* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
+   bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
+   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   names it whichever form a unit carries. */
+enum SCHEMA_BLOCKDEMO_TABLE_REFUSAL_REASON { SCHEMA_BLOCKDEMO_TABLE_NO_REFUSAL, SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM, SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT = 21 };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -510,15 +521,6 @@ static SCHEMA_UNUSED int blockdemo_table_kind_widens( uint8_t kind, uint8_t decl
     if ( declared == 18 ) { return kind >= 2 && kind <= 5; }
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
-}
-static SCHEMA_UNUSED double blockdemo_table_wire_widen_f32( uint32_t bits )
-{
-    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
-    {
-        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
-        double d; memcpy( &d, &wide, 8 ); return d;
-    }
-    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
 }
 static SCHEMA_UNUSED int blockdemo_table_wire_open( blockdemo_table_reader_t * r, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
@@ -2326,6 +2328,37 @@ static SCHEMA_UNUSED uint32_t blockdemo_table_float_to_bits( float f ) { uint32_
 static SCHEMA_UNUSED double blockdemo_table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 static SCHEMA_UNUSED uint64_t blockdemo_table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+/* A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's own rule): a
+   NaN or an infinity, whatever its sign or payload, has an all-ones exponent,
+   and that is the whole test. Every read runs it on the RAW BITS, before they
+   become a float and before the field is written; every writer runs it on the
+   bits of the value it was handed. -0 and the subnormals are finite and ride
+   bit-exact. */
+static SCHEMA_UNUSED int blockdemo_table_bits_finite32( uint32_t bits ) { return ( bits & 0x7f800000u ) != 0x7f800000u; }
+static SCHEMA_UNUSED int blockdemo_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
+static SCHEMA_UNUSED int blockdemo_table_float_finite( float f ) { return blockdemo_table_bits_finite32( blockdemo_table_float_to_bits( f ) ); }
+static SCHEMA_UNUSED int blockdemo_table_double_finite( double d ) { return blockdemo_table_bits_finite64( blockdemo_table_double_to_bits( d ) ); }
+/* table_non_finite_float is a read meeting one: the read is REFUSED by name,
+   non_finite_float, and the walk goes on so the framing verdict is the one a
+   finite wire gets; the load that started it answers the refusal at its end
+   (table_non_finite_refused) and lands nothing. */
+static SCHEMA_UNUSED void blockdemo_table_non_finite_float( blockdemo_table_report_t * report )
+{
+    report->refused = 1;
+    report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
+    report->non_finite_floats++;
+}
+/* table_non_finite_refused is that load's end: 1 when the walk met a
+   non-finite float since before, the refusal stamped again over whatever the
+   walk met after it, because it outranks any damage (§3.3). */
+static SCHEMA_UNUSED int blockdemo_table_non_finite_refused( blockdemo_table_report_t * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return 0; }
+    report->refused = 1;
+    report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
+    return 1;
+}
+
 #endif /* SCHEMA_BLOCKDEMO_TABLE_PRIMITIVES */
 
 #ifndef SCHEMA_BLOCKDEMO_TABLE_REFUSE_RUNTIME
@@ -2364,13 +2397,15 @@ static SCHEMA_UNUSED const uint8_t * blockdemo_table_cook_refuse(blockdemo_table
    what the strict read refuses -- an unknown form, wire damage, a blob named
    from two slots, a clamp or a kind mismatch -- and unknown, widened and
    retained alone never refuse. decoded is the tolerant read's own answer.
-   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   It sets the report's ONE TYPED REASON, a non-finite float first (it
+   outranks any damage, §3.3), then damage before blob_shared before
    clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
    them, and answers 1 when the plain name must refuse. */
 static SCHEMA_UNUSED int blockdemo_table_report_strict_refuses( blockdemo_table_report_t * report, int decoded )
 {
     blockdemo_table_refuse_reason_t reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
-    if ( report->refused ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED; }
     else if ( report->clamped > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_CLAMPED; }
@@ -3108,6 +3143,10 @@ static SCHEMA_UNUSED int blockdemo_table_message_number(blockdemo_table_message_
  if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
  return 1;
 }
+/* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
+   infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
+   bits become a value, *value untouched, and the walk goes on. A quantized
+   index names a finite value and is never tested. */
 static SCHEMA_UNUSED int blockdemo_table_message_float(blockdemo_table_message_reader_t * r,const blockdemo_table_message_entry_t * e,float * value)
 {
  uint64_t raw;
@@ -3115,7 +3154,10 @@ static SCHEMA_UNUSED int blockdemo_table_message_float(blockdemo_table_message_r
  if(e->packing==2) {
   if(raw>e->qcount)return 0;
   *value=blockdemo_table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
- }else *value=blockdemo_table_bits_to_float((uint32_t)raw);
+ }else if(!blockdemo_table_bits_finite32((uint32_t)raw)){blockdemo_table_non_finite_float(r->report);
+ return 2;
+ }
+ else *value=blockdemo_table_bits_to_float((uint32_t)raw);
  return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_table_message_open(blockdemo_table_message_reader_t * r,const blockdemo_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
@@ -3677,9 +3719,10 @@ static SCHEMA_UNUSED int blockdemo_render_camera_save_body( blockdemo_table_writ
         }
     }
     { /* fov */
-        if ( !( value->fov == 0.0f ) )
+        if ( !( blockdemo_table_float_to_bits( value->fov ) == blockdemo_table_float_to_bits( 0.0f ) ) )
         {
             blockdemo_table_writer_header_at( w, 76, 0xdcb27c18fed9e15cull, 10 );
+            if ( !blockdemo_table_float_finite( value->fov ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put32( w, blockdemo_table_float_to_bits( value->fov ) );
         }
     }
@@ -3897,7 +3940,11 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->fov = blockdemo_table_bits_to_float( blockdemo_table_reader_get32( &(*r) ) );
+                {
+                    uint32_t decoded_bits = blockdemo_table_reader_get32( &(*r) );
+                    if ( !blockdemo_table_bits_finite32( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->fov = blockdemo_table_bits_to_float( decoded_bits ); }
+                }
                 break;
             }
             default:
@@ -3913,12 +3960,15 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_camera_load_tolerant( blockdemo_render_camera_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_camera_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_camera_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_camera_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_camera_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_camera_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -3987,8 +4037,10 @@ static SCHEMA_UNUSED int blockdemo_render_camera_save_message_body(blockdemo_tab
  }
  }
  { /* fov */
- if(!(value->fov == 0.0f)) {
+ if(!(blockdemo_table_float_to_bits( value->fov ) == blockdemo_table_float_to_bits( 0.0f ))) {
   blockdemo_table_bit_put(w,18,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_float_finite(value->fov)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_float_to_bits(value->fov),32);
  }
  }
@@ -4109,16 +4161,21 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { float decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
+ { float decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(float)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(float)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->fov=decoded;
-  }
+  if(finite){value->fov=decoded;
+  } }
  break;
  }
  default:r->report->unknown++;
@@ -4134,6 +4191,8 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_messages_tolerant(blockdem
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -4146,9 +4205,16 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_messages_tolerant(blockdem
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_camera_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_camera_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_camera_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_camera_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_camera_load_messages( blockdemo_render_camera_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -4251,9 +4317,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_save_body( blockdemo_table_writer
         }
     }
     { /* thrust */
-        if ( !( value->thrust == 0.0f ) )
+        if ( !( blockdemo_table_float_to_bits( value->thrust ) == blockdemo_table_float_to_bits( 0.0f ) ) )
         {
             blockdemo_table_writer_header_at( w, 70, 0xcfd587cb3100cd73ull, 10 );
+            if ( !blockdemo_table_float_finite( value->thrust ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put32( w, blockdemo_table_float_to_bits( value->thrust ) );
         }
     }
@@ -4528,7 +4595,11 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->thrust = blockdemo_table_bits_to_float( blockdemo_table_reader_get32( &(*r) ) );
+                {
+                    uint32_t decoded_bits = blockdemo_table_reader_get32( &(*r) );
+                    if ( !blockdemo_table_bits_finite32( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->thrust = blockdemo_table_bits_to_float( decoded_bits ); }
+                }
                 break;
             }
             case 0x5de0015285763c46ull: /* object_sequence */
@@ -4634,12 +4705,15 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_ship_load_tolerant( blockdemo_render_ship_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_ship_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_ship_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_ship_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_ship_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_ship_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -4708,8 +4782,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_save_message_body(blockdemo_table
  }
  }
  { /* thrust */
- if(!(value->thrust == 0.0f)) {
+ if(!(blockdemo_table_float_to_bits( value->thrust ) == blockdemo_table_float_to_bits( 0.0f ))) {
   blockdemo_table_bit_put(w,51,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_float_finite(value->thrust)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_float_to_bits(value->thrust),32);
  }
  }
@@ -4879,16 +4955,21 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { float decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
+ { float decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(float)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(float)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->thrust=decoded;
-  }
+  if(finite){value->thrust=decoded;
+  } }
  break;
  }
  case UINT64_C(0x5de0015285763c46): {
@@ -4991,6 +5072,8 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_messages_tolerant(blockdemo_
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5003,9 +5086,16 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_messages_tolerant(blockdemo_
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_ship_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_ship_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_ship_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_ship_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_ship_load_messages( blockdemo_render_ship_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -5486,12 +5576,15 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_turret_load_tolerant( blockdemo_render_turret_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_turret_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_turret_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_turret_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_turret_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_turret_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5788,6 +5881,8 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_messages_tolerant(blockdem
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5800,9 +5895,16 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_messages_tolerant(blockdem
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_turret_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_turret_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_turret_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_turret_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_turret_load_messages( blockdemo_render_turret_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -6175,12 +6277,15 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_missile_load_tolerant( blockdemo_render_missile_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_missile_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_missile_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_missile_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_missile_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_missile_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -6445,6 +6550,8 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_messages_tolerant(blockde
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -6457,9 +6564,16 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_messages_tolerant(blockde
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_missile_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_missile_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_missile_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_missile_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_missile_load_messages( blockdemo_render_missile_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -6834,12 +6948,15 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_tolerant( blockdemo_render_dynamic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_dynamic_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_dynamic_prop_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_dynamic_prop_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_dynamic_prop_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_dynamic_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -7108,6 +7225,8 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages_tolerant(bl
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -7120,9 +7239,16 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages_tolerant(bl
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_dynamic_prop_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_dynamic_prop_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_dynamic_prop_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_dynamic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages( blockdemo_render_dynamic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -7204,9 +7330,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_save_body( blockdemo_table
         }
     }
     { /* scale */
-        if ( !( value->scale == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->scale ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             blockdemo_table_writer_header_at( w, 32, 0x6aacb9fbb71a1d91ull, 11 );
+            if ( !blockdemo_table_double_finite( value->scale ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->scale ) );
         }
     }
@@ -7328,14 +7455,20 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->scale = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->scale = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->scale = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -7348,7 +7481,11 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->scale = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->scale = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0x17a3a1a985f75aecull: /* flags */
@@ -7516,12 +7653,15 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_static_prop_load_tolerant( blockdemo_render_static_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_static_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_static_prop_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_static_prop_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_static_prop_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_static_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -7572,8 +7712,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_save_message_body(blockdem
  }
  }
  { /* scale */
- if(!(value->scale == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->scale ) == blockdemo_table_double_to_bits( 0.0 ))) {
   blockdemo_table_bit_put(w,19,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->scale)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->scale),64);
  }
  }
@@ -7689,16 +7831,21 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->scale=decoded;
-  }
+  if(finite){value->scale=decoded;
+  } }
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
@@ -7791,6 +7938,8 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages_tolerant(blo
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -7803,9 +7952,16 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages_tolerant(blo
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_static_prop_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_static_prop_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_static_prop_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_static_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages( blockdemo_render_static_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -7887,9 +8043,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_body( blockdemo_tab
         }
     }
     { /* scale */
-        if ( !( value->scale == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->scale ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             blockdemo_table_writer_header_at( w, 32, 0x6aacb9fbb71a1d91ull, 11 );
+            if ( !blockdemo_table_double_finite( value->scale ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->scale ) );
         }
     }
@@ -8018,14 +8175,20 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->scale = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->scale = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->scale = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -8038,7 +8201,11 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->scale = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->scale = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0x17a3a1a985f75aecull: /* flags */
@@ -8221,12 +8388,15 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_tolerant( blockdemo_render_cosmetic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_cosmetic_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_cosmetic_prop_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_cosmetic_prop_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_cosmetic_prop_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_cosmetic_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -8277,8 +8447,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_message_body(blockd
  }
  }
  { /* scale */
- if(!(value->scale == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->scale ) == blockdemo_table_double_to_bits( 0.0 ))) {
   blockdemo_table_bit_put(w,19,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->scale)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->scale),64);
  }
  }
@@ -8400,16 +8572,21 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->scale=decoded;
-  }
+  if(finite){value->scale=decoded;
+  } }
  break;
  }
  case UINT64_C(0x17a3a1a985f75aec): {
@@ -8519,6 +8696,8 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages_tolerant(b
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -8531,9 +8710,16 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages_tolerant(b
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_cosmetic_prop_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_cosmetic_prop_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_cosmetic_prop_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_cosmetic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages( blockdemo_render_cosmetic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -8615,9 +8801,10 @@ static SCHEMA_UNUSED int blockdemo_render_laser_save_body( blockdemo_table_write
         }
     }
     { /* t */
-        if ( !( value->t == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->t ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             blockdemo_table_writer_header_at( w, 50, 0xaf63e94c860202a3ull, 11 );
+            if ( !blockdemo_table_double_finite( value->t ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->t ) );
         }
     }
@@ -8731,14 +8918,20 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->t = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->t = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->t = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -8751,7 +8944,11 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->t = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->t = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xcd29c05f390294ecull: /* laser_id */
@@ -8864,12 +9061,15 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_laser_load_tolerant( blockdemo_render_laser_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_laser_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_laser_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_laser_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_laser_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_laser_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -8920,8 +9120,10 @@ static SCHEMA_UNUSED int blockdemo_render_laser_save_message_body(blockdemo_tabl
  }
  }
  { /* t */
- if(!(value->t == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->t ) == blockdemo_table_double_to_bits( 0.0 ))) {
   blockdemo_table_bit_put(w,27,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->t)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->t),64);
  }
  }
@@ -9029,16 +9231,21 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->t=decoded;
-  }
+  if(finite){value->t=decoded;
+  } }
  break;
  }
  case UINT64_C(0xcd29c05f390294ec): {
@@ -9115,6 +9322,8 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_messages_tolerant(blockdemo
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -9127,9 +9336,16 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_messages_tolerant(blockdemo
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_laser_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_laser_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_laser_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_laser_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_laser_load_messages( blockdemo_render_laser_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -9211,9 +9427,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_save_body( blockdemo_table_w
         }
     }
     { /* t */
-        if ( !( value->t == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->t ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             blockdemo_table_writer_header_at( w, 50, 0xaf63e94c860202a3ull, 11 );
+            if ( !blockdemo_table_double_finite( value->t ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->t ) );
         }
     }
@@ -9334,14 +9551,20 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->t = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->t = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->t = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -9354,7 +9577,11 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->t = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->t = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xfd7f3fa0b16ed778ull: /* explosion_id */
@@ -9514,12 +9741,15 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_explosion_load_tolerant( blockdemo_render_explosion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_explosion_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_explosion_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_explosion_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_explosion_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_explosion_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -9570,8 +9800,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_save_message_body(blockdemo_
  }
  }
  { /* t */
- if(!(value->t == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->t ) == blockdemo_table_double_to_bits( 0.0 ))) {
   blockdemo_table_bit_put(w,27,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->t)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->t),64);
  }
  }
@@ -9685,16 +9917,21 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->t=decoded;
-  }
+  if(finite){value->t=decoded;
+  } }
  break;
  }
  case UINT64_C(0xfd7f3fa0b16ed778): {
@@ -9788,6 +10025,8 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages_tolerant(block
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -9800,9 +10039,16 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages_tolerant(block
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_explosion_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_explosion_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_explosion_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_explosion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages( blockdemo_render_explosion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -10876,12 +11122,15 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_frame_load_tolerant( blockdemo_render_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_frame_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_frame_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_frame_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_frame_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_frame_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -11288,6 +11537,8 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_messages_tolerant(blockdemo
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -11300,9 +11551,16 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_messages_tolerant(blockdemo
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_frame_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_frame_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_frame_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_frame_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_frame_load_messages( blockdemo_render_frame_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -11342,18 +11600,21 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_save_body( blockdemo_table_wri
     if ( w->buffer == NULL && !w->check_default )
     {
         int64_t payload_bytes = 1; /* the zero reference ending this body */
-        if ( !( value->x == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->x ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
+            if ( !blockdemo_table_double_finite( value->x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_id_at( w, 53, 0xaf63f54c86021707ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        if ( !( value->y == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->y ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
+            if ( !blockdemo_table_double_finite( value->y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_id_at( w, 52, 0xaf63f44c86021554ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        if ( !( value->z == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->z ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
+            if ( !blockdemo_table_double_finite( value->z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_id_at( w, 54, 0xaf63f74c86021a6dull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
@@ -11362,26 +11623,29 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_save_body( blockdemo_table_wri
         return !w->overflow;
     }
     { /* x */
-        if ( !( value->x == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->x ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 53, 0xaf63f54c86021707ull, 11 );
+            if ( !blockdemo_table_double_finite( value->x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->x ) );
         }
     }
     { /* y */
-        if ( !( value->y == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->y ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 52, 0xaf63f44c86021554ull, 11 );
+            if ( !blockdemo_table_double_finite( value->y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->y ) );
         }
     }
     { /* z */
-        if ( !( value->z == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->z ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 54, 0xaf63f74c86021a6dull, 11 );
+            if ( !blockdemo_table_double_finite( value->z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->z ) );
         }
     }
@@ -11432,14 +11696,20 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->x = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->x = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->x = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -11452,7 +11722,11 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->x = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->x = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xaf63f44c86021554ull: /* y */
@@ -11466,14 +11740,20 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->y = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->y = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->y = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -11486,7 +11766,11 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->y = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->y = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xaf63f74c86021a6dull: /* z */
@@ -11500,14 +11784,20 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->z = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->z = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->z = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -11520,7 +11810,11 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->z = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->z = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             default:
@@ -11536,12 +11830,15 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_vector3_load_tolerant( blockdemo_render_vector3_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_vector3_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_vector3_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_vector3_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_vector3_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_vector3_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -11568,29 +11865,35 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_save_message_body(blockdemo_ta
 {
  (void)value;
  { /* x */
- if(!(value->x == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->x ) == blockdemo_table_double_to_bits( 0.0 ))) {
   if(w->check_default) {w->bits=BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   blockdemo_table_bit_put(w,46,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->x)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->x),64);
  }
  }
  { /* y */
- if(!(value->y == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->y ) == blockdemo_table_double_to_bits( 0.0 ))) {
   if(w->check_default) {w->bits=BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   blockdemo_table_bit_put(w,47,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->y)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->y),64);
  }
  }
  { /* z */
- if(!(value->z == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->z ) == blockdemo_table_double_to_bits( 0.0 ))) {
   if(w->check_default) {w->bits=BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   blockdemo_table_bit_put(w,48,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->z)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->z),64);
  }
  }
@@ -11642,16 +11945,21 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->x=decoded;
-  }
+  if(finite){value->x=decoded;
+  } }
  break;
  }
  case UINT64_C(0xaf63f44c86021554): {
@@ -11660,16 +11968,21 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->y=decoded;
-  }
+  if(finite){value->y=decoded;
+  } }
  break;
  }
  case UINT64_C(0xaf63f74c86021a6d): {
@@ -11678,16 +11991,21 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->z=decoded;
-  }
+  if(finite){value->z=decoded;
+  } }
  break;
  }
  default:r->report->unknown++;
@@ -11703,6 +12021,8 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages_tolerant(blockde
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -11715,9 +12035,16 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages_tolerant(blockde
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_vector3_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_vector3_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_vector3_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_vector3_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages( blockdemo_render_vector3_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -11757,23 +12084,27 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_body( blockdemo_table_
     if ( w->buffer == NULL && !w->check_default )
     {
         int64_t payload_bytes = 1; /* the zero reference ending this body */
-        if ( !( value->x == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->x ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
+            if ( !blockdemo_table_double_finite( value->x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_id_at( w, 53, 0xaf63f54c86021707ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        if ( !( value->y == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->y ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
+            if ( !blockdemo_table_double_finite( value->y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_id_at( w, 52, 0xaf63f44c86021554ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        if ( !( value->z == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->z ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
+            if ( !blockdemo_table_double_finite( value->z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_id_at( w, 54, 0xaf63f74c86021a6dull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        if ( !( value->w == 1.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->w ) == blockdemo_table_double_to_bits( 1.0 ) ) )
         {
+            if ( !blockdemo_table_double_finite( value->w ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_id_at( w, 51, 0xaf63ea4c86020456ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
@@ -11782,34 +12113,38 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_body( blockdemo_table_
         return !w->overflow;
     }
     { /* x */
-        if ( !( value->x == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->x ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 53, 0xaf63f54c86021707ull, 11 );
+            if ( !blockdemo_table_double_finite( value->x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->x ) );
         }
     }
     { /* y */
-        if ( !( value->y == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->y ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 52, 0xaf63f44c86021554ull, 11 );
+            if ( !blockdemo_table_double_finite( value->y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->y ) );
         }
     }
     { /* z */
-        if ( !( value->z == 0.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->z ) == blockdemo_table_double_to_bits( 0.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 54, 0xaf63f74c86021a6dull, 11 );
+            if ( !blockdemo_table_double_finite( value->z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->z ) );
         }
     }
     { /* w */
-        if ( !( value->w == 1.0 ) )
+        if ( !( blockdemo_table_double_to_bits( value->w ) == blockdemo_table_double_to_bits( 1.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 51, 0xaf63ea4c86020456ull, 11 );
+            if ( !blockdemo_table_double_finite( value->w ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->w ) );
         }
     }
@@ -11860,14 +12195,20 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->x = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->x = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->x = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -11880,7 +12221,11 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->x = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->x = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xaf63f44c86021554ull: /* y */
@@ -11894,14 +12239,20 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->y = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->y = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->y = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -11914,7 +12265,11 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->y = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->y = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xaf63f74c86021a6dull: /* z */
@@ -11928,14 +12283,20 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->z = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->z = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->z = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -11948,7 +12309,11 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->z = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->z = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xaf63ea4c86020456ull: /* w */
@@ -11962,14 +12327,20 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                             case 10:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = blockdemo_table_wire_widen_f32( blockdemo_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = blockdemo_table_reader_get32( &(*r) );
+                                if ( !blockdemo_table_bits_finite32( widened_bits ) ) { blockdemo_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) blockdemo_table_bits_to_float( widened_bits );
                                 value->w = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->w = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                                    else { value->w = blockdemo_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -11982,7 +12353,11 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->w = blockdemo_table_bits_to_double( blockdemo_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = blockdemo_table_reader_get64( &(*r) );
+                    if ( !blockdemo_table_bits_finite64( decoded_bits ) ) { blockdemo_table_non_finite_float( r->report ); }
+                    else { value->w = blockdemo_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             default:
@@ -11998,12 +12373,15 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
    body the walk could not finish. */
 static SCHEMA_UNUSED int blockdemo_render_quaternion_load_tolerant( blockdemo_render_quaternion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
-    blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
+    blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     blockdemo_render_quaternion_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return blockdemo_render_quaternion_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = blockdemo_render_quaternion_load_body( &r, value );
+    if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_render_quaternion_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN render_quaternion_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -12030,38 +12408,46 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_message_body(blockdemo
 {
  (void)value;
  { /* x */
- if(!(value->x == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->x ) == blockdemo_table_double_to_bits( 0.0 ))) {
   if(w->check_default) {w->bits=BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   blockdemo_table_bit_put(w,46,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->x)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->x),64);
  }
  }
  { /* y */
- if(!(value->y == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->y ) == blockdemo_table_double_to_bits( 0.0 ))) {
   if(w->check_default) {w->bits=BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   blockdemo_table_bit_put(w,47,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->y)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->y),64);
  }
  }
  { /* z */
- if(!(value->z == 0.0)) {
+ if(!(blockdemo_table_double_to_bits( value->z ) == blockdemo_table_double_to_bits( 0.0 ))) {
   if(w->check_default) {w->bits=BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   blockdemo_table_bit_put(w,48,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->z)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->z),64);
  }
  }
  { /* w */
- if(!(value->w == 1.0)) {
+ if(!(blockdemo_table_double_to_bits( value->w ) == blockdemo_table_double_to_bits( 1.0 ))) {
   if(w->check_default) {w->bits=BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   blockdemo_table_bit_put(w,49,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!blockdemo_table_double_finite(value->w)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   blockdemo_table_bit_put(w,blockdemo_table_double_to_bits(value->w),64);
  }
  }
@@ -12113,16 +12499,21 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->x=decoded;
-  }
+  if(finite){value->x=decoded;
+  } }
  break;
  }
  case UINT64_C(0xaf63f44c86021554): {
@@ -12131,16 +12522,21 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->y=decoded;
-  }
+  if(finite){value->y=decoded;
+  } }
  break;
  }
  case UINT64_C(0xaf63f74c86021a6d): {
@@ -12149,16 +12545,21 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->z=decoded;
-  }
+  if(finite){value->z=decoded;
+  } }
  break;
  }
  case UINT64_C(0xaf63ea4c86020456): {
@@ -12167,16 +12568,21 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  if(!blockdemo_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!blockdemo_table_message_float(r,entry,&narrow))goto malformed;
- decoded=blockdemo_table_wire_widen_f32(blockdemo_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=blockdemo_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!blockdemo_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)blockdemo_table_bits_to_double(raw);
+ finite=blockdemo_table_bits_finite64(raw);
+ if(finite)decoded=(double)blockdemo_table_bits_to_double(raw);
+ else blockdemo_table_non_finite_float(r->report);
  }
-  value->w=decoded;
-  }
+  if(finite){value->w=decoded;
+  } }
  break;
  }
  default:r->report->unknown++;
@@ -12192,6 +12598,8 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages_tolerant(bloc
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -12204,9 +12612,16 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages_tolerant(bloc
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!blockdemo_render_quaternion_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!blockdemo_render_quaternion_load_message_body(&r,values+i))break;
  (*count)++;
- }return blockdemo_table_message_close(&r);
+ }ok=i==bodies&&blockdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(blockdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)blockdemo_render_quaternion_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN render_quaternion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages( blockdemo_render_quaternion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
@@ -12503,6 +12918,102 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_put8( b + 73, (uint8_t) value->team );
 }
 
+/* RenderVector3's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_vector3_fixed_finite_body_( const blockdemo_render_vector3_t * value )
+{
+    if ( !blockdemo_table_double_finite( value->x ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->y ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->z ) ) { return 0; }
+    return 1;
+}
+
+/* RenderQuaternion's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_fixed_finite_body_( const blockdemo_render_quaternion_t * value )
+{
+    if ( !blockdemo_table_double_finite( value->x ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->y ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->z ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->w ) ) { return 0; }
+    return 1;
+}
+
+/* RenderCamera's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_camera_fixed_finite_body_( const blockdemo_render_camera_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->position ) ) { return 0; }
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    if ( !blockdemo_table_float_finite( value->fov ) ) { return 0; }
+    return 1;
+}
+
+/* RenderShip's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_fixed_finite_body_( const blockdemo_render_ship_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->position ) ) { return 0; }
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    if ( !blockdemo_table_float_finite( value->thrust ) ) { return 0; }
+    return 1;
+}
+
+/* RenderTurret's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_fixed_finite_body_( const blockdemo_render_turret_t * value )
+{
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    return 1;
+}
+
+/* RenderMissile's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_fixed_finite_body_( const blockdemo_render_missile_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->position ) ) { return 0; }
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    return 1;
+}
+
+/* RenderDynamicProp's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_fixed_finite_body_( const blockdemo_render_dynamic_prop_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->position ) ) { return 0; }
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    return 1;
+}
+
+/* RenderStaticProp's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_fixed_finite_body_( const blockdemo_render_static_prop_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->position ) ) { return 0; }
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->scale ) ) { return 0; }
+    return 1;
+}
+
+/* RenderCosmeticProp's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_fixed_finite_body_( const blockdemo_render_cosmetic_prop_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->position ) ) { return 0; }
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->scale ) ) { return 0; }
+    return 1;
+}
+
+/* RenderLaser's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_fixed_finite_body_( const blockdemo_render_laser_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->start ) ) { return 0; }
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->finish ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->t ) ) { return 0; }
+    return 1;
+}
+
+/* RenderExplosion's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_finite_body_( const blockdemo_render_explosion_t * value )
+{
+    if ( !schema_blockdemo_render_vector3_fixed_finite_body_( &value->position ) ) { return 0; }
+    if ( !schema_blockdemo_render_quaternion_fixed_finite_body_( &value->rotation ) ) { return 0; }
+    if ( !blockdemo_table_double_finite( value->t ) ) { return 0; }
+    return 1;
+}
+
 /* RenderShip's read-side bounds. */
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( blockdemo_render_ship_t * value, int32_t * clamped, int32_t * damaged )
 {
@@ -12676,6 +13187,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_save( const blockdemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_camera_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_camera_fixed_hash );
@@ -12727,6 +13242,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_camera_fixed_plan;
     int32_t entry_count = blockdemo_render_camera_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_camera_fixed_plan_guarded;
@@ -12796,11 +13312,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockd
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_camera_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_camera_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_camera_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
@@ -12984,6 +13514,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_ship_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_ship_fixed_hash );
@@ -13035,6 +13569,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_ship_fixed_plan;
     int32_t entry_count = blockdemo_render_ship_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_ship_fixed_plan_guarded;
@@ -13104,6 +13639,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_ship_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -13111,6 +13648,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdem
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_ship_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_ship_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -13288,6 +13837,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_turret_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_turret_fixed_hash );
@@ -13339,6 +13892,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_turret_fixed_plan;
     int32_t entry_count = blockdemo_render_turret_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_turret_fixed_plan_guarded;
@@ -13408,6 +13962,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_turret_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -13415,6 +13971,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockd
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_turret_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_turret_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -13597,6 +14165,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_missile_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_missile_fixed_hash );
@@ -13648,6 +14220,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_missile_fixed_plan;
     int32_t entry_count = blockdemo_render_missile_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_missile_fixed_plan_guarded;
@@ -13717,6 +14290,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_missile_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -13724,6 +14299,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( block
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_missile_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_missile_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -13908,6 +14495,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_dynamic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_dynamic_prop_fixed_hash );
@@ -13959,6 +14550,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_dynamic_prop_fixed_plan;
     int32_t entry_count = blockdemo_render_dynamic_prop_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_dynamic_prop_fixed_plan_guarded;
@@ -14028,6 +14620,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_dynamic_prop_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -14035,6 +14629,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( 
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_dynamic_prop_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -14219,6 +14825,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_static_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_static_prop_fixed_hash );
@@ -14270,6 +14880,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_static_prop_fixed_plan;
     int32_t entry_count = blockdemo_render_static_prop_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_static_prop_fixed_plan_guarded;
@@ -14339,6 +14950,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_static_prop_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -14346,6 +14959,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( b
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_static_prop_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_static_prop_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -14532,6 +15157,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_cosmetic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_cosmetic_prop_fixed_hash );
@@ -14583,6 +15212,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_cosmetic_prop_fixed_plan;
     int32_t entry_count = blockdemo_render_cosmetic_prop_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_cosmetic_prop_fixed_plan_guarded;
@@ -14652,6 +15282,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_cosmetic_prop_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -14659,6 +15291,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant(
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_cosmetic_prop_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -14837,6 +15481,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_laser_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_laser_fixed_hash );
@@ -14888,6 +15536,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_laser_fixed_plan;
     int32_t entry_count = blockdemo_render_laser_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_laser_fixed_plan_guarded;
@@ -14957,6 +15606,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_laser_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -14964,6 +15615,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockde
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_laser_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_laser_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -15146,6 +15809,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    for ( k = 0; k < count; ++k )
+    {
+        if ( !schema_blockdemo_render_explosion_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
+    }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_explosion_fixed_hash );
@@ -15197,6 +15864,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
     int32_t reserved_at;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
+    int32_t read_clamped, read_widened;
     const blockdemo_table_fixed_entry_t * entries = blockdemo_render_explosion_fixed_plan;
     int32_t entry_count = blockdemo_render_explosion_fixed_plan_count;
     int32_t entry_guarded = blockdemo_render_explosion_fixed_plan_guarded;
@@ -15266,6 +15934,8 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
         blockdemo_render_explosion_reset( &defaults );
     }
+    read_clamped = report->clamped;
+    read_widened = report->widened;
     for ( k = 0; k < count; ++k )
     {
         int32_t rec_clamped = report->clamped;
@@ -15273,6 +15943,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blo
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
+           bounds pass: every record this call wrote is reset and no
+           counter moves. */
+        if ( !schema_blockdemo_render_explosion_fixed_finite_body_( values + k ) )
+        {
+            int64_t j;
+            for ( j = 0; j <= k; ++j ) { blockdemo_render_explosion_reset( values + j ); }
+            report->clamped = read_clamped;
+            report->widened = read_widened;
+            blockdemo_table_non_finite_float( report );
+            return -1;
+        }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
@@ -15701,7 +16383,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_camera_cook_body_(struct blockd
     blockdemo_table_cook_put(at+56,(uint64_t)value->camera_id,4,order);
     blockdemo_table_cook_put(at+60,(uint64_t)value->camera_type,4,order);
     blockdemo_table_cook_put(at+64,(uint64_t)value->target_object_id,4,order);
-    { uint32_t bits; memcpy(&bits,&value->fov,4); blockdemo_table_cook_put(at+68,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->fov,4); if(!blockdemo_table_bits_finite32(bits)) { return 0; } blockdemo_table_cook_put(at+68,bits,4,order); }
     return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_cook_measure(const blockdemo_render_camera_t * value) { (void)value; return 152; }
@@ -15710,7 +16392,7 @@ static SCHEMA_UNUSED int blockdemo_render_camera_cook(const blockdemo_render_cam
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<152) { return 0; }
     memset(raw,0,152);
-    if(!schema_blockdemo_render_camera_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_camera_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+144,UINT64_C(0x11c6b29d15f30306),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
 }
@@ -15723,7 +16405,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_ship_cook_body_(struct blockdem
     blockdemo_table_cook_put(at+56,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+64,(uint64_t)value->object_id,4,order);
     blockdemo_table_cook_put(at+68,(uint64_t)value->target_object_id,4,order);
-    { uint32_t bits; memcpy(&bits,&value->thrust,4); blockdemo_table_cook_put(at+72,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->thrust,4); if(!blockdemo_table_bits_finite32(bits)) { return 0; } blockdemo_table_cook_put(at+72,bits,4,order); }
     blockdemo_table_cook_put(at+76,(uint64_t)value->object_sequence,1,order);
     blockdemo_table_cook_put(at+77,(uint64_t)value->ship_type,1,order);
     blockdemo_table_cook_put(at+78,(uint64_t)value->team,1,order);
@@ -15737,7 +16419,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_cook(const blockdemo_render_ship_
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<168) { return 0; }
     memset(raw,0,168);
-    if(!schema_blockdemo_render_ship_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_ship_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,168); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+160,UINT64_C(0x5b00edd93fad6007),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,88,1,8,order); return 1;
 }
@@ -15762,7 +16444,7 @@ static SCHEMA_UNUSED int blockdemo_render_turret_cook(const blockdemo_render_tur
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<144) { return 0; }
     memset(raw,0,144);
-    if(!schema_blockdemo_render_turret_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_turret_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+136,UINT64_C(0x4034181fa408c29f),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,64,1,8,order); return 1;
 }
@@ -15785,7 +16467,7 @@ static SCHEMA_UNUSED int blockdemo_render_missile_cook(const blockdemo_render_mi
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<152) { return 0; }
     memset(raw,0,152);
-    if(!schema_blockdemo_render_missile_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_missile_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+144,UINT64_C(0x93dab31114da135b),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
 }
@@ -15808,7 +16490,7 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_cook(const blockdemo_rend
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<152) { return 0; }
     memset(raw,0,152);
-    if(!schema_blockdemo_render_dynamic_prop_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_dynamic_prop_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+144,UINT64_C(0xcca6d00e1bb40147),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
 }
@@ -15818,7 +16500,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_cook_body_(struct b
     (void)n; (void)at; (void)value; (void)order;
     if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
     if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
-    { uint64_t bits; memcpy(&bits,&value->scale,8); blockdemo_table_cook_put(at+56,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->scale,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+56,bits,8,order); }
     blockdemo_table_cook_put(at+64,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+72,(uint64_t)value->static_prop_id,4,order);
     blockdemo_table_cook_put(at+76,(uint64_t)value->prop_type,1,order);
@@ -15831,7 +16513,7 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_cook(const blockdemo_rende
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<160) { return 0; }
     memset(raw,0,160);
-    if(!schema_blockdemo_render_static_prop_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_static_prop_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+152,UINT64_C(0xc19ad62b865276fe),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
 }
@@ -15841,7 +16523,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_cook_body_(struct
     (void)n; (void)at; (void)value; (void)order;
     if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
     if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
-    { uint64_t bits; memcpy(&bits,&value->scale,8); blockdemo_table_cook_put(at+56,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->scale,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+56,bits,8,order); }
     blockdemo_table_cook_put(at+64,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+72,(uint64_t)value->cosmetic_prop_id,4,order);
     blockdemo_table_cook_put(at+76,(uint64_t)value->prop_sequence,1,order);
@@ -15855,7 +16537,7 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_cook(const blockdemo_ren
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<160) { return 0; }
     memset(raw,0,160);
-    if(!schema_blockdemo_render_cosmetic_prop_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_cosmetic_prop_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+152,UINT64_C(0x5ff5bdbae776636f),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
 }
@@ -15865,7 +16547,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_laser_cook_body_(struct blockde
     (void)n; (void)at; (void)value; (void)order;
     if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->start,order)) { return 0; }
     if(!schema_blockdemo_render_vector3_cook_body_(n,at+24,&value->finish,order)) { return 0; }
-    { uint64_t bits; memcpy(&bits,&value->t,8); blockdemo_table_cook_put(at+48,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->t,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+48,bits,8,order); }
     blockdemo_table_cook_put(at+56,(uint64_t)value->laser_id,4,order);
     blockdemo_table_cook_put(at+60,(uint64_t)value->laser_type,1,order);
     blockdemo_table_cook_put(at+61,(uint64_t)value->team,1,order);
@@ -15877,7 +16559,7 @@ static SCHEMA_UNUSED int blockdemo_render_laser_cook(const blockdemo_render_lase
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<144) { return 0; }
     memset(raw,0,144);
-    if(!schema_blockdemo_render_laser_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_laser_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+136,UINT64_C(0xb0947dbe6c23d994),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,64,1,8,order); return 1;
 }
@@ -15887,7 +16569,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_explosion_cook_body_(struct blo
     (void)n; (void)at; (void)value; (void)order;
     if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
     if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
-    { uint64_t bits; memcpy(&bits,&value->t,8); blockdemo_table_cook_put(at+56,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->t,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+56,bits,8,order); }
     blockdemo_table_cook_put(at+64,(uint64_t)value->explosion_id,4,order);
     blockdemo_table_cook_put(at+68,(uint64_t)value->parent_object_id,4,order);
     blockdemo_table_cook_put(at+72,(uint64_t)value->explosion_type,1,order);
@@ -15900,7 +16582,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_cook(const blockdemo_render_
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<160) { return 0; }
     memset(raw,0,160);
-    if(!schema_blockdemo_render_explosion_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_explosion_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+152,UINT64_C(0x0cc738b585c9e5f8),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
 }
@@ -15953,7 +16635,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_cook(const blockdemo_render_fram
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<7879400) { return 0; }
     memset(raw,0,7879400);
-    if(!schema_blockdemo_render_frame_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_blockdemo_render_frame_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,7879400); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+7879392,UINT64_C(0x9b2749fb3fc30f4e),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,7879320,1,8,order); return 1;
 }
@@ -15961,19 +16643,19 @@ static SCHEMA_UNUSED int schema_blockdemo_render_vector3_cook_body_(struct block
 {
     const blockdemo_render_vector3_t * value=(const blockdemo_render_vector3_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    { uint64_t bits; memcpy(&bits,&value->x,8); blockdemo_table_cook_put(at+0,bits,8,order); }
-    { uint64_t bits; memcpy(&bits,&value->y,8); blockdemo_table_cook_put(at+8,bits,8,order); }
-    { uint64_t bits; memcpy(&bits,&value->z,8); blockdemo_table_cook_put(at+16,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->x,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+0,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->y,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+8,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->z,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+16,bits,8,order); }
     return 1;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_quaternion_t * value=(const blockdemo_render_quaternion_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    { uint64_t bits; memcpy(&bits,&value->x,8); blockdemo_table_cook_put(at+0,bits,8,order); }
-    { uint64_t bits; memcpy(&bits,&value->y,8); blockdemo_table_cook_put(at+8,bits,8,order); }
-    { uint64_t bits; memcpy(&bits,&value->z,8); blockdemo_table_cook_put(at+16,bits,8,order); }
-    { uint64_t bits; memcpy(&bits,&value->w,8); blockdemo_table_cook_put(at+24,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->x,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+0,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->y,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+8,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->z,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+16,bits,8,order); }
+    { uint64_t bits; memcpy(&bits,&value->w,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+24,bits,8,order); }
     return 1;
 }
 /* ---- relocatability: the wire is a pure length-prefixed stream AND the
