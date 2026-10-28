@@ -281,6 +281,8 @@ var armClauses = []struct {
 	{[]string{"enum"}, "  defp arm_content(%{t: :enum} = a, v, _idx_map, ids, order) do\n"},
 	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t}, nil, _idx_map, ids, order) when t in [:pointer, :blob],\n"},
 	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],\n"},
+	{[]string{"pointer"}, "  defp arm_node_key(:pointer, a, v), do: {a.type_id, v}\n"},
+	{[]string{"blob"}, "  defp arm_node_key(:blob, _a, v), do: blob_site(v)\n"},
 	{[]string{"list"}, "  defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do\n"},
 	{[]string{"union"}, "  defp arm_content(%{t: :union} = a, v, idx_map, ids, order),\n"},
 	{[]string{"void"}, "  defp read_arm_payload(%{t: :void}, name, _inner, _framed, _nodes, _ids, report),\n"},
@@ -362,8 +364,8 @@ func withArmKinds(runtime string, kinds map[string]bool) string {
 // union the literal @unions is empty, so every Map.fetch! on it is one
 // Elixir's type checker proves always raises; such a unit is emitted without
 // them.
-var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "read_arm",
-	"read_arm_payload", "json_arm", "json_read_arm"}
+var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "arm_node_key",
+	"read_arm", "read_arm_payload", "json_arm", "json_read_arm"}
 
 var unionClauses = []string{
 	"  defp collect_list_nodes(%{elem_kind: 15}",
@@ -521,18 +523,66 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, table)
 
     # the node table's records in §3.1's first-visit order, one record per
-    # DISTINCT node: a node two fields share is numbered once, so the saved
-    # wire matches the reference backends byte for byte (§3.1)
-    nodes = collect_nodes(desc, value, []) |> Enum.reverse()
-    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_content(n), i} end)
+    # DISTINCT node: a table node two fields share is numbered once, so the
+    # saved wire matches the reference backends byte for byte (§3.1), and a
+    # blob is a node of its own SLOT (§2.5), so two slots holding equal bytes
+    # are two records. A blob the tolerant read found named from two slots
+    # refuses the save by name, blob_shared (§2.5).
+    try do
+      nodes = collect_root(desc, value)
+      idx_map = node_index(nodes)
 
-    {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
+      blob_site_begin(:root)
+      {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
 
-    {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
+      {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
 
-    ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
+      ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
-    {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
+      {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
+    catch
+      :blob_shared -> {:error, :blob_shared}
+    after
+      Process.delete(:elixir_blob_site)
+    end
+  end
+
+  # collect_root numbers the value's nodes in §3.1's first-visit order, with
+  # each blob keyed by the SLOT that holds it (blob_site/1).
+  defp collect_root(desc, value) do
+    blob_site_begin(:root)
+    collect_nodes(desc, value, []) |> Enum.reverse()
+  end
+
+  defp node_index(nodes),
+    do: nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_content(n), i} end)
+
+  # A BLOB IS NUMBERED BY ITS SLOT, never by its content (docs/SPEC-TABLES.md
+  # §2.5, §3.1): a BEAM binary has no identity, so the slot is the identity —
+  # the body that holds it (the root, or the table node by its content) and its
+  # position among that body's blob slots in declaration order. The node walk
+  # and the body writer meet a body's blob slots in the same order, so the two
+  # name the same site. A {:blob_shared, bytes} slot is the tolerant read's
+  # mark of a blob a second slot named, and every writer refuses it (§2.5).
+  defp blob_site_begin(holder), do: Process.put(:elixir_blob_site, {holder, 0})
+
+  defp blob_site({:blob_shared, _bytes}), do: throw(:blob_shared)
+
+  defp blob_site(_bytes) do
+    {holder, n} = Process.get(:elixir_blob_site)
+    Process.put(:elixir_blob_site, {holder, n + 1})
+    {:blob, holder, n}
+  end
+
+  # a table node's body is its own holder: its blob slots count from zero
+  defp in_node_holder(node, fun) do
+    prev = Process.put(:elixir_blob_site, {node_content(node), 0})
+
+    try do
+      fun.()
+    after
+      Process.put(:elixir_blob_site, prev)
+    end
   end
 
   # collect_nodes is the declaration-order DFS walk of every node this value
@@ -547,7 +597,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         :blob ->
           case Map.get(value, f.name) do
             nil -> acc
-            v -> push_node(acc, {f.type_id, :blob, nil, v})
+            v -> [{f.type_id, :blob, blob_site(v), v} | acc]
           end
 
         :pointer ->
@@ -556,8 +606,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               acc
 
             v ->
-              acc = push_node(acc, {f.type_id, :table, f.elem, v})
-              collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
+              push_node(acc, {f.type_id, :table, f.elem, v})
           end
 
         :table ->
@@ -601,14 +650,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp push_node(acc, node) do
+  # push_node numbers a TABLE node a pointer names, once, and walks its body
+  # the first time only: a node reached again is the one record (§3.1).
+  defp push_node(acc, {_type_id, :table, elem, v} = node) do
     c = node_content(node)
 
-    if Enum.any?(acc, fn n -> node_content(n) == c end), do: acc, else: [node | acc]
+    if Enum.any?(acc, fn n -> node_content(n) == c end) do
+      acc
+    else
+      in_node_holder(node, fn -> collect_nodes(Map.fetch!(@tables, elem), v, [node | acc]) end)
+    end
   end
 
-  # identity is the type and the content (docs/SPEC-TABLES.md §3.1). An empty
-  # *bytes and an empty *string are two nodes; the same bytes named twice are one.
+  # a table node's identity is its type and content (docs/SPEC-TABLES.md
+  # §3.1); a blob's is its slot (blob_site/1), so equal bytes in two slots are
+  # two nodes, and an empty *bytes and an empty *string are two nodes.
+  defp node_content({_type_id, :blob, site, _bytes}), do: site
   defp node_content({type_id, _kind, _ref, c}), do: {type_id, c}
 
   # SPEC-TABLES §2.8: textual string keys compare bytewise, integer keys by
@@ -649,8 +706,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         acc
 
       e, acc ->
-        acc = push_node(acc, {f.elem_type_id, :table, f.elem, e})
-        collect_nodes(Map.fetch!(@tables, f.elem), e, acc)
+        push_node(acc, {f.elem_type_id, :table, f.elem, e})
     end)
   end
 
@@ -675,7 +731,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
-        idx = Map.fetch!(idx_map, {f.type_id, v})
+        idx = Map.fetch!(idx_map, blob_site(v))
         {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, leb_encode(idx)]}
     end
   end
@@ -975,7 +1031,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: {leb_encode(0), ids, order}
 
   defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],
-    do: {leb_encode(Map.fetch!(idx_map, {a.type_id, v})), ids, order}
+    do: {leb_encode(Map.fetch!(idx_map, arm_node_key(t, a, v))), ids, order}
+
+  defp arm_node_key(:pointer, a, v), do: {a.type_id, v}
+  defp arm_node_key(:blob, _a, v), do: blob_site(v)
 
   defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do
     elements = pad_fixed(a, v || [])
@@ -1070,9 +1129,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp node_body({_type_id, :blob, _ref, bytes}, _idx_map, ids, order),
     do: {bytes, ids, order}
 
-  defp node_body({_type_id, :table, ref, v}, idx_map, ids, order) do
+  defp node_body({_type_id, :table, ref, v} = node, idx_map, ids, order) do
     desc = Map.fetch!(@tables, ref)
-    {_idx, ids, order, body} = save_fields(desc, v, idx_map, ids, order, [])
+
+    {_idx, ids, order, body} =
+      in_node_holder(node, fn -> save_fields(desc, v, idx_map, ids, order, []) end)
+
     {IO.iodata_to_binary([body, <<0>>]), ids, order}
   end
 
@@ -1096,10 +1158,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
-            {value, report} = decode(desc, fields, nodes, ids)
+            {{value, report}, shared} = blob_namings(fn -> decode(desc, fields, nodes, ids) end)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
+            report = Map.put(report, :blob_shared, shared)
             {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
         end
     end
@@ -1342,6 +1405,68 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # THE TOLERANT READ OF A SHARED BLOB (docs/SPEC-TABLES.md §2.5): a blob is
+  # owned by one slot, and a wire whose two slots name ONE blob record is read,
+  # not refused. The first slot reads the bytes; every other slot reads
+  # {:blob_shared, bytes} — the same binary, never a copy — and counts once in
+  # the report's blob_shared counter, so a save, a measure and a text write of
+  # that value refuse it by name rather than writing a copy per slot. A slot is
+  # the body that holds it (the root, or a table node by its index) and its
+  # position among that body's blob reads, so a table node a second pointer
+  # decodes again names the same slots and is not a sharing.
+  defp blob_namings(fun) do
+    Process.put(:elixir_blob_read, %{holder: :root, n: 0, named: %{}, shared: MapSet.new()})
+
+    try do
+      result = fun.()
+      {result, MapSet.size(Process.get(:elixir_blob_read).shared)}
+    after
+      Process.delete(:elixir_blob_read)
+    end
+  end
+
+  defp in_read_holder(idx, fun) do
+    case Process.get(:elixir_blob_read) do
+      nil ->
+        fun.()
+
+      outer ->
+        Process.put(:elixir_blob_read, %{outer | holder: {:node, idx}, n: 0})
+
+        try do
+          fun.()
+        after
+          inner = Process.get(:elixir_blob_read)
+          Process.put(:elixir_blob_read, %{inner | holder: outer.holder, n: outer.n})
+        end
+    end
+  end
+
+  defp blob_named(idx, bytes) do
+    case Process.get(:elixir_blob_read) do
+      nil ->
+        bytes
+
+      st ->
+        site = {st.holder, st.n}
+        st = %{st | n: st.n + 1}
+
+        case Map.fetch(st.named, idx) do
+          :error ->
+            Process.put(:elixir_blob_read, %{st | named: Map.put(st.named, idx, site)})
+            bytes
+
+          {:ok, ^site} ->
+            Process.put(:elixir_blob_read, st)
+            bytes
+
+          {:ok, _first} ->
+            Process.put(:elixir_blob_read, %{st | shared: MapSet.put(st.shared, site)})
+            {:blob_shared, bytes}
+        end
+    end
+  end
+
   # node_value resolves one node index to its value (docs/SPEC-TABLES.md §3.1):
   # index 0 is null, 1 is the root (never a pointee), and k >= 2 is record
   # k - 2. A blob node's value is its bytes; a table node's is the decoded body,
@@ -1355,18 +1480,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     else
       case Enum.at(nodes, at) do
         {:blob, bytes} -> {:value, bytes}
-        {:table, name, body} -> decode_node_table(nodes, name, body, ids)
+        {:table, name, body} -> decode_node_table(nodes, name, body, ids, idx)
         _ -> :null
       end
     end
   end
 
-  defp decode_node_table(nodes, name, body, ids) do
+  defp decode_node_table(nodes, name, body, ids, idx) do
     desc = Map.fetch!(@tables, name)
 
     case entries(body, ids, desc.string_blob, false) do
       {:ok, fields, []} ->
-        {value, _report} = decode(desc, fields, nodes, ids)
+        {value, _report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
         {:value, value}
 
       _ ->
@@ -1478,7 +1603,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {idx, _} ->
         case node_value(nodes, idx, ids) do
           {:value, bytes} when is_binary(bytes) ->
-            {:cont, bytes, report}
+            {:cont, blob_named(idx, bytes), report}
 
           {:value, _} ->
             # a table node named by a *bytes/*string pointer is a kind mismatch
@@ -2211,7 +2336,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # (§16.1); the reader places every key it can name, counts the rest and
   # clamps rather than truncating (§16.2). A node named more than once is
   # defined once under "&node" and named by "&node" alone after (§16.7).
-  # Sharing is content equality, the same rule save uses for one node record.
+  # A table's sharing is content equality, the same rule save uses for one
+  # node record; a blob the tolerant read found named from two slots refuses
+  # the text by name, blob_shared (§2.5, §16.7).
 
   def to_json(table, value) when is_map(value) do
     desc = Map.fetch!(@tables, table)
@@ -2226,7 +2353,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     if shared_blob do
       # a blob's text is a string, which has no first key for "&node" (§16.7)
-      {:error, :shared}
+      {:error, :blob_shared}
     else
       Process.put(:elixir_json_refs, counts)
       Process.put(:elixir_json_labels, %{})
@@ -2295,8 +2422,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp tally_field(%{t: :pointer, elem: name}, v, acc) when is_map(v),
     do: tally_node(name, v, acc)
 
-  defp tally_field(%{t: :blob, type_id: id}, v, acc) when is_binary(v),
-    do: Map.update(acc, {:blob, id, v}, 1, &(&1 + 1))
+  # a blob is its slot's own (§2.5), so equal bytes in two slots are two
+  # strings; only the tolerant read's {:blob_shared, bytes} mark is a sharing
+  defp tally_field(%{t: :blob, type_id: id}, {:blob_shared, _bytes}, acc),
+    do: Map.put(acc, {:blob, id, :shared}, 2)
 
   defp tally_field(%{t: :table, elem: name}, v, acc) when is_map(v) do
     child = Map.fetch!(@tables, name)
@@ -3916,31 +4045,44 @@ const variableRetainSource = `
   end
 
   def measure_retain(table, value, retain) when is_map(value) do
-    {:ok, bytes, _retain, _report} = save_retain_internal(table, value, retain, empty_report())
-    byte_size(bytes)
+    case save_retain_internal(table, value, retain, empty_report()) do
+      {:ok, bytes, _retain, _report} -> byte_size(bytes)
+      {:error, :blob_shared} -> -1
+    end
   end
 
   def save_retain(table, _value, retain, report) when table in @uncarried,
     do: {:error, :uncarried, report, retain}
 
   def save_retain(table, value, retain, report) when is_map(value) do
-    {:ok, bytes, retain, report} = save_retain_internal(table, value, retain, report)
-    {:ok, bytes, report, retain}
+    case save_retain_internal(table, value, retain, report) do
+      {:ok, bytes, retain, report} -> {:ok, bytes, report, retain}
+      {:error, :blob_shared} -> {:error, :blob_shared, report, retain}
+    end
   end
 
   defp save_retain_internal(table, value, retain, report) do
     desc = Map.fetch!(@tables, table)
-    nodes = collect_nodes(desc, value, []) |> Enum.reverse()
-    idx_map = nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_content(n), i} end)
 
-    {_idx_map, ids, order, retain, report, body} =
-      save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
+    try do
+      nodes = collect_root(desc, value)
+      idx_map = node_index(nodes)
 
-    {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
-    ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
+      blob_site_begin(:root)
 
-    {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]),
-     retain, report}
+      {_idx_map, ids, order, retain, report, body} =
+        save_fields_retain(desc, value, idx_map, %{}, [], retain, report, [], [])
+
+      {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
+      ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
+
+      {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>]),
+       retain, report}
+    catch
+      :blob_shared -> {:error, :blob_shared}
+    after
+      Process.delete(:elixir_blob_site)
+    end
   end
 
   defp save_fields_retain(desc, value, idx_map, ids, order, retain, report, path, acc) do

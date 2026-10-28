@@ -714,8 +714,17 @@ defmodule Driver do
         case mod.load(root, File.read!(wire)) do
           {:ok, value, _report} ->
             case mod.save(root, value) do
-              {:ok, bytes} -> write(outdir, name, bytes)
-              _ -> write_absent(outdir, name)
+              {:ok, bytes} ->
+                write(outdir, name, bytes)
+
+              # THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob the
+              # tolerant read found named from two slots refuses the save by
+              # name, and the case answers that name beside its absence
+              {:error, :blob_shared} ->
+                File.write!(Path.join(outdir, name <> ".absent"), "blob_shared")
+
+              _ ->
+                write_absent(outdir, name)
             end
 
           _ ->
