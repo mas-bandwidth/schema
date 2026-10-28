@@ -571,3 +571,88 @@ do
   if ok then print("joins OK") else print("joins " .. why) end
 end
 `
+
+// armDefaultsProbe is the packet arm-defaults oracle every port's harness
+// reads (make/checks/packet-arm-defaults.mk, test/go/main.go): First = 1 in
+// 2 bits, count 0 in 2, marker 5 in 3 is the independent 7-bit 0x51. It is
+// read twice into a poisoned value, the second time over the same tag: the
+// selected arm must start at its declared defaults, both backing entries
+// included, and the unselected arm keeps its storage (SPEC §4.8, §5).
+const armDefaultsProbe = `
+local serialize = require("./serialize")
+local A = require("./ArmDefaults")
+local W = require("./Wire")
+local inp = A.NewDefaultChoice()
+inp.Type = A.DefaultChoiceType.First
+inp.First.Marker = 5
+local w = serialize.WriteStream.new(buffer.create(16))
+assert(A.WriteDefaultChoice(w, inp), "write constructed DefaultChoice")
+assert(w:bitsProcessed() == 7, "DefaultChoice writes the independent 7-bit oracle")
+w:flush()
+hex(w:data())
+local out = A.NewDefaultChoice()
+out.Type = A.DefaultChoiceType.Second
+out.Second.EntriesCount = 1
+out.Second.Marker = 3
+for i = 1, 2 do
+	out.Second.Entries[i].Retries = 91
+	out.Second.Entries[i].Preferred = W.Weapon.Missile
+end
+local second, first = out.Second, out.First
+for _ = 1, 2 do
+	out.First.EntriesCount = 2
+	out.First.Marker = 7
+	for i = 1, 2 do
+		out.First.Entries[i].Retries = 123
+		out.First.Entries[i].Preferred = W.Weapon.Laser
+	end
+	local r = serialize.ReadStream.new(buffer.fromstring("\x51"))
+	assert(A.ReadDefaultChoice(r, out), "read independent DefaultChoice oracle")
+	assert(r:bitsProcessed() == 7, "DefaultChoice consumes exactly 7 bits")
+	assert(out.Type == A.DefaultChoiceType.First and out.First.EntriesCount == 0 and out.First.Marker == 5,
+		"DefaultChoice selects First and reads count zero, marker five")
+	for i = 1, 2 do
+		if out.First.Entries[i].Retries ~= -1 or out.First.Entries[i].Preferred ~= W.Weapon.Railgun then
+			print("FAILED: DefaultChoice reconstructs both backing entries, including repeated tags")
+		end
+	end
+	assert(out.First == first, "the selected arm is reset in place, never reallocated")
+	assert(out.Second == second and out.Second.EntriesCount == 1 and out.Second.Marker == 3
+		and out.Second.Entries[1].Retries == 91, "DefaultChoice preserves the unselected arm and its backing storage")
+end
+`
+
+// TestLuauSelectedArmStartsAtItsDefaults is the Luau leg of the packet
+// arm-defaults gate; its control resets the selected arm with Zero instead
+// of Init, and the backing-entry assertion must go red by name.
+func TestLuauSelectedArmStartsAtItsDefaults(t *testing.T) {
+	t.Parallel()
+	u := unitFromDir(t, filepath.Join("..", "..", "..", "examples"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const failure = "FAILED: DefaultChoice reconstructs both backing entries, including repeated tags"
+	run := func(files map[string][]byte) string {
+		dir := t.TempDir()
+		writeAll(t, dir, files)
+		writeFile(t, dir, "main.luau", luaurun.HexProbe+armDefaultsProbe)
+		return string(luaurun.Run(t, dir, "main.luau", nil))
+	}
+	if out := run(files); out != "51\n" {
+		t.Fatalf("the arm-defaults probe printed %q, want the oracle 51 and nothing else", out)
+	}
+	const anchor = "_M.InitDefaultArm(value.First) -- the selected arm"
+	module := string(files["ArmDefaults.luau"])
+	if strings.Count(module, anchor) != 1 {
+		t.Fatalf("negative-control anchor %q matched %d times", anchor, strings.Count(module, anchor))
+	}
+	sabotaged := map[string][]byte{}
+	for name, body := range files {
+		sabotaged[name] = body
+	}
+	sabotaged["ArmDefaults.luau"] = []byte(strings.Replace(module, anchor, "_M.ZeroDefaultArm(value.First) -- SABOTAGED: the selected arm", 1))
+	if out := run(sabotaged); !strings.Contains(out, failure) {
+		t.Errorf("negative control: an arm reset to zero instead of its defaults did not print %q; got %q", failure, out)
+	}
+}

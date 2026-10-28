@@ -32,11 +32,25 @@ against the schema by `luau-analyze`; every module the tests generate passes
 it with no errors (`TestLuauTypesConstructAtTheirDefaults`,
 `TestLuauTableDescriptorsLoad`). A value is a Luau table with EVERY field
 present from construction (the storage principle, SPEC §6.1), each named by
-`ir.GoExportName` — the Go, C# and JavaScript spelling, so the checker's
-collision claims already cover Luau. `New<Name>()` builds a value at its
-defaults (SPEC §5): a specified default where one is declared, the zero form
+`ir.GoExportName` — the Go and C# spelling, so the checker's collision
+claims already cover Luau. `New<Name>()` builds a value at its defaults
+(SPEC §5): a specified default where one is declared, the zero form
 otherwise, nested types and union arms pre-allocated, and a `[A..B]` count
 born at `A`.
+
+**The naming is Roblox's, decided 2026-10-28 against main's rework.** Main
+moved JavaScript members to lowerCamelCase, Dart to Dart 3 extension types,
+Elixir to atoms and Java to UPPER_SNAKE constants: each port took its
+language's own convention. Luau's is the Roblox engine's: properties,
+module functions, enum items and types are PascalCase (`part.Position`,
+`Enum.Material.Plastic`, `Vector3.new`), so a generated value reads like an
+engine object a game script already holds. Members stay PascalCase
+(`ShipType`, `TextLength`, `ItemsCount`, a union's `Type`), the functions
+stay `New<Name>` / `Init<Name>` / `Zero<Name>` / `Write<Name>` /
+`Read<Name>` on the module table, and an enum is a frozen table of its
+variants whose extent is the member `Max` — `E.Max`, as C++, Rust, Dart and
+Java spell it inside the enum's own scope. `Max` is a reserved variant name,
+so no variant can alias it, and an enum exports no `Count` (SPEC §4.2).
 
 The value domain has three integer widths and one rule: **a `number` (an
 IEEE double) holds every integer of 32 bits or fewer, an `integer` holds 64,
@@ -57,10 +71,10 @@ few bits it rides in.
 | `float32` | `number` holding the float32 value exactly (f32 ⊂ f64) | the default rounded as Go's `float32(v)`, rendered as the shortest literal that parses AS A DOUBLE to it (never the shortest float32 text, which Luau reads as the unrounded double); pinned by TestLuauFloat32DefaultsRoundAsGo |
 | `float32 \| min, max, resolution` | `number` — the attributes describe the wire, not the storage | as `float32` |
 | `float64` | `number` | `0`, or the default |
-| an enum `E` | `number`; `M.E` is a frozen table `{ None = 0, <variants> = 1.., Count, Max }` and `M.EnumNameE(v)` names a value | the default variant's number, else `0` (None) |
+| an enum `E` | `number`; `M.E` is a frozen table `{ None = 0, <variants> = 1.., Max }` (no `Count`, SPEC §4.2) and `M.EnumNameE(v)` names a value | the default variant's number, else `0` (None) |
 | a `flags` set `F` | `integer` (uint64 storage in every target, SPEC §4.2); masks are `M.F<Variant>` integers, `M.FCount` the declared count, `M.FlagNameF(bit)` | `0i`, or the default mask |
 | a type `T` | `T`, a nested table | `New<T>()` |
-| a union `U` (§4.8) | `U` = `{ Type: number, <Arm>: <arm value>... }`; `M.UType` is the tag table (`None`, arms from 1, `Count`, `Max`) | `Type = 0`, every payload arm pre-allocated; a payload-free arm has no slot |
+| a union `U` (§4.8) | `U` = `{ Type: number, <Arm>: <arm value>... }`; `M.UType` is the tag table (`None`, arms from 1, `Max`; no `Count`) | `Type = 0`, every payload arm pre-allocated; a payload-free arm has no slot |
 | `string(N)`, `bytes(N)` | a `buffer` of N bytes and `<Name>Length: number` beside it (SPEC §4.7) | `buffer.create(N)`, the default's bytes written in, length set |
 | `wstring(N)` (§4.12) | a `buffer` of 2N bytes holding UTF-16LE code units, and `<Name>Length` in code units | `buffer.create(2N)` |
 | `[N]uint8` | a `buffer` of N bytes, 0-based — the bulk path's own type | `buffer.create(N)` |
@@ -113,6 +127,59 @@ name in `schema_tables.luau` (`S.lookup(name)`), and every module whose
 descriptor names another requires the module that registers it. The ONE
 runtime walk per form reads them; no form emits per-table code except where
 its card says so.
+
+### The packet wire (SPEC §4.3, §5, §6.1)
+
+Every packet type and union `X` gets, on its module table:
+
+- `XMaxBits` / `XMaxBytes`: the longest wire path with every `align` at its
+  worst case, and the write-buffer size rounded up to 8 bytes (SPEC §6.1
+  item 4).
+- `WriteX(stream, v): boolean` and `ReadX(stream, value): boolean` over the
+  vendored serialize.luau streams. A read refusal of content (a const, a
+  range, UTF-8, an interior null, a surrogate) returns false and latches
+  nothing; a stream refusal is latched on the stream, `stream:error()` naming
+  it (`past_end`, `nonzero_padding`, `value_out_of_range`: format 2.0).
+- `InitX(value)`: what `NewX()` builds, in place — every buffer and nested
+  value reused. A union read that selects an arm resets it with `Init<Arm>`,
+  so the selected arm starts at its declared defaults (SPEC §4.8) and no
+  table is allocated per read.
+- `ZeroX(value)`: the §5 zero form, used for an untaken branch.
+
+**The writer contract is checked in every build.** Luau has no debug build
+and no compile-out assert, so, as in Go and Elixir, a value outside its
+declared range or of the wrong Luau type makes the write return false before
+any of it rides. The check runs BEFORE the runtime call: serialize.luau 2.x
+raises on write misuse (IMPLEMENTING.md U9), and a generated writer never
+hands it a value it would raise on. A signed bare integer rides as its two's
+complement (`v % 2^width`); a ranged value or a fixed raw value as its offset
+from the minimum.
+
+**Holders, not tables.** Each module declares the holders `BITS`, `BIG`,
+`BOOL`, `WIDE` once; a write or read fills one and the call consumes it, so
+no table is allocated per field.
+
+**`[N]uint8` takes one bulk copy only on a byte boundary**
+(`ir.AlignedFixedByteArrays`): the runtime's `serializeBytes` aligns first,
+which would insert padding the wire does not have anywhere else. Elsewhere
+it is N 8-bit groups.
+
+**`wstring(N)` is composed from primitives** (SPEC §4.12; format 2.0 has no
+wide-string call): the length over `bits_required(0, N)`, then each code unit
+as a 32-bit group; the reader refuses a group above `0xFFFF`, a zero group
+and every unpaired surrogate, the writer a zero unit. Storage is UTF-16
+code units, no transcode. A string, bytes or wstring read writes nothing
+past the used length (§5's tail rule).
+
+**The gates** (`make/luau-packet.mk`, riding `test-luau`): `packet-utf8-luau`
+and `packet-wide-luau` answer the shared harness `build/packet-text/harness`
+against the C++ oracle, every corpus row and every bit flip; the wide gate
+adds `--contracts`; `packet-defaults-luau` holds the eight C++ pins of
+`testdata/wire/packet-defaults`; `luau-ludicrous` writes `examples128` against
+the C++-pinned goldens. Each has a negative control in the `luau` group of
+`make/negative-controls.json`. The harness speaks stdin and the interpreter
+has no io, so `test/packet-text/luau/stdin.sh` carries the lines in as a
+source module.
 
 ## 64-BIT AND 128-BIT INTEGERS
 
@@ -191,8 +258,10 @@ Fixed now for the pro cards; never renamed.
 
 **The vendored serialize.luau port.** `runtime/serialize*.luau` is the port's
 `src/` directory copied verbatim at the commit `runtime/SERIALIZE_PIN` names,
-which also carries one sha256 per file. The type-wire cards call this library
-rather than a private bit reader or writer.
+which also carries one sha256 per file: serialize.luau v2.1.1 (serialize
+format 2.0) since 2026-10-28. The type wire calls this library rather than a
+private bit reader or writer; a gap in it is fixed in serialize.luau and
+re-vendored, never worked around here.
 
 **Modules.** One module per schema file, `<Base>.luau` (the type surface),
 and `<Base>Table.luau` for a file with tables or with a packet type a table
