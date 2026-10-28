@@ -1416,12 +1416,12 @@ func (g *tableGen) emitFixedFiniteElement(f *ir.Field, expr string, depth, inden
 			g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
 			inner := strings.Repeat(" ", indent+8)
 			i := fixedLoopVar(depth)
-			switch {
-			case v.F.Array == ir.ArrayFixed:
+			switch v.F.Array {
+			case ir.ArrayFixed:
 				g.pf("%sfor ( int64_t %s = 0; %s < %d; ++%s )\n%s{\n", inner, i, i, v.F.ArrayBound, i, inner)
 				g.emitFixedFiniteElement(v.F, armValue(expr, v)+"["+i+"]", depth+1, indent+12)
 				g.pf("%s}\n", inner)
-			case v.F.Array == ir.ArrayCounted:
+			case ir.ArrayCounted:
 				g.pf("%sfor ( int64_t %s = 0; %s < (int64_t) %s && %s < %d; ++%s )\n%s{\n", inner, i, i, armCount(expr, v), i, v.F.ArrayBound, i, inner)
 				g.emitFixedFiniteElement(v.F, armValue(expr, v)+"["+i+"]", depth+1, indent+12)
 				g.pf("%s}\n", inner)
