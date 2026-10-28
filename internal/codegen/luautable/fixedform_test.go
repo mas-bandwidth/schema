@@ -8,6 +8,8 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -76,6 +78,85 @@ func build(t *testing.T, schema string) (string, string, map[string][]byte) {
 	return dir, strings.TrimSuffix(filepath.Base(schema), ".schema") + "Table", files
 }
 
+// fixedNonFiniteValue is one corpus-manifest value whose bits are a NaN or an
+// infinity: its path, then the float's spelled bits (the dump writes a float as
+// its digits and its bits, "nan|0x7F800001").
+var fixedNonFiniteValue = regexp.MustCompile(`^([A-Za-z0-9_.\[\]]+)=[^|]*\|0x([0-9A-Fa-f]{16}|[0-9A-Fa-f]{8})$`)
+
+// fixedManifestNonFinite reads, per `file=` line of the corpus manifest, the
+// leaf name of the first value the reference wrote as a NaN or an infinity,
+// and "" for a file that holds none, as the Go leg's fixedOracleManifestNonFinite
+// does. Under the finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3) such a
+// file is a MUST-REFUSE vector: the reference's writer still emits the pattern
+// until the C++ card of the finite-tables plan (#2232) regenerates the corpus
+// with finite values, and a leg that refuses it is the leg that keeps the rule.
+// The manifest decides, so the identity row comes back by itself the day the
+// corpus turns finite.
+func fixedManifestNonFinite(t *testing.T, corpus string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if os.IsNotExist(err) {
+		return out
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, ok := strings.Cut(line, " values=")
+		if !ok {
+			continue
+		}
+		file := ""
+		for field := range strings.FieldsSeq(head) {
+			if v, ok := strings.CutPrefix(field, "file="); ok {
+				file = v
+			}
+		}
+		for value := range strings.SplitSeq(values, ",") {
+			m := fixedNonFiniteValue.FindStringSubmatch(value)
+			if m == nil {
+				continue
+			}
+			bits, err := strconv.ParseUint(m[2], 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nonFinite := len(m[2]) == 8 && bits&0x7F800000 == 0x7F800000 || len(m[2]) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000
+			if nonFinite && file != "" && out[file] == "" {
+				leaf := m[1]
+				if i := strings.LastIndexByte(leaf, '.'); i >= 0 {
+					leaf = leaf[i+1:]
+				}
+				out[file] = leaf
+			}
+		}
+	}
+	return out
+}
+
+// fixedRefusalProbe loads a corpus file the manifest says holds a non-finite
+// float and prints the refusal: its name and the field it names.
+const fixedRefusalProbe = `local ok, err = pcall(F.load, T.%sDescriptor, %s, inputs.oracle%s)
+if ok then
+	print("loaded")
+else
+	local e: any = err
+	print("refused " .. tostring(e.name) .. " " .. tostring(e.field))
+end
+`
+
+// checkFixedRefusal holds a must-refuse probe's line to non_finite_float naming
+// <Root>.<leaf>.
+func checkFixedRefusal(t *testing.T, file, root, leaf string, out []byte) {
+	t.Helper()
+	got := strings.TrimSpace(string(out))
+	want := "refused non_finite_float " + root + "." + leaf
+	if got != want {
+		t.Errorf("%s holds a non-finite %s, a must-refuse vector (docs/SPEC-TABLES.md §3.3): the Luau load answered %q, want %q", file, leaf, got, want)
+	}
+}
+
 func fixedVars(root string) string {
 	return fmt.Sprintf(`local fixed = { hash = T.%[1]sFixedHash, recordBytes = T.%[1]sFixedRecordBytes, layout = T.%[1]sFixedLayout }`, root)
 }
@@ -89,6 +170,7 @@ func fixedVars(root string) string {
 func TestLuauFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	t.Parallel()
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
+	nonFinite := fixedManifestNonFinite(t, corpus)
 	var compared atomic.Int32
 	for _, v := range fixedCorpusVectors {
 		t.Run(strings.TrimSuffix(v.file, ".bin"), func(t *testing.T) {
@@ -101,6 +183,16 @@ func TestLuauFixedFormAgreesWithTheByteOracle(t *testing.T) {
 				t.Fatalf("the oracle file %s is absent: build it with make tables-fixedform-corpus: %v", v.file, err)
 			}
 			dir, mod, _ := build(t, v.schema)
+			if leaf := nonFinite[v.file]; leaf != "" {
+				probe := fmt.Sprintf("--!strict\nlocal T = require(\"./%s\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\n", mod) +
+					fixedVars(v.root) + "\n" + fmt.Sprintf(fixedRefusalProbe, v.root, "fixed", "")
+				if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(probe), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				checkFixedRefusal(t, v.file, v.root, leaf, luaurun.Run(t, dir, "main.luau", map[string][]byte{"oracle": oracle}))
+				compared.Add(1)
+				return
+			}
 			main := "--!strict\nlocal T = require(\"./%s\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\n" +
 				fixedVars(v.root) + "\nlocal values = F.load(T.%sDescriptor, fixed, inputs.oracle)\nlocal out = F.save(T.%sDescriptor, fixed, values)\nprint(hex(out))\n"
 			main = fmt.Sprintf(main, mod, v.root, v.root)
@@ -190,7 +282,19 @@ func TestLuauFixedFormVersioning(t *testing.T) {
 	}
 
 	dir, mod, _ := build(t, "test/tables/FU2.schema")
-	main := hexProbe + fmt.Sprintf(`--!strict
+	leaf := fixedManifestNonFinite(t, corpus)["fu1.bin"]
+	if leaf != "" {
+		// the older file holds a non-finite float (until #2232 regenerates the
+		// corpus): the newer reader refuses it, before any widening runs
+		probe := fmt.Sprintf("--!strict\nlocal T = require(\"./%s\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\nlocal foreign = %s\n", mod, fixedLiteral(oldOracle)) +
+			fmt.Sprintf(fixedRefusalProbe, "FuRoot", "{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }", ", foreign")
+		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(probe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		checkFixedRefusal(t, "fu1.bin", "FuRoot", leaf, luaurun.Run(t, dir, "main.luau", map[string][]byte{"oracle": oldOracle}))
+	}
+	if leaf == "" {
+		main := hexProbe + fmt.Sprintf(`--!strict
 local T = require("./%s")
 local F = require("./schema_fixed")
 local inputs = require("./inputs")
@@ -199,34 +303,35 @@ local values = F.load(T.FuRootDescriptor, %s, inputs.old, foreign)
 local out = F.save(T.FuRootDescriptor, foreign, values)
 print(hex(out))
 `, mod, fixedLiteral(oldOracle), "{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }")
-	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"old": oldOracle})
-	got, err := hex.DecodeString(strings.TrimSpace(string(out)))
-	if err != nil {
-		t.Fatalf("the newer probe printed %q: %v", out, err)
-	}
-	if string(got) != string(oldOracle) {
-		at := 0
-		for at < len(got) || at < len(oldOracle) {
-			var a, b byte
-			if at < len(got) {
-				a = got[at]
-			}
-			if at < len(oldOracle) {
-				b = oldOracle[at]
-			}
-			if a != b {
-				break
-			}
-			at++
+		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
+			t.Fatal(err)
 		}
-		t.Errorf("the newer reader did not read the older record back to its bytes (first diff %d)", at)
+		out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"old": oldOracle})
+		got, err := hex.DecodeString(strings.TrimSpace(string(out)))
+		if err != nil {
+			t.Fatalf("the newer probe printed %q: %v", out, err)
+		}
+		if string(got) != string(oldOracle) {
+			at := 0
+			for at < len(got) || at < len(oldOracle) {
+				var a, b byte
+				if at < len(got) {
+					a = got[at]
+				}
+				if at < len(oldOracle) {
+					b = oldOracle[at]
+				}
+				if a != b {
+					break
+				}
+				at++
+			}
+			t.Errorf("the newer reader did not read the older record back to its bytes (first diff %d)", at)
+		}
 	}
 
 	dir, mod, _ = build(t, "test/tables/FU1.schema")
-	main = fmt.Sprintf(`--!strict
+	main := fmt.Sprintf(`--!strict
 local T = require("./%s")
 local F = require("./schema_fixed")
 local inputs = require("./inputs")
@@ -238,7 +343,7 @@ if ok then print("read") elseif type(err) == "table" then print(err.name) else p
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out = luaurun.Run(t, dir, "main.luau", map[string][]byte{"new": newOracle})
+	out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"new": newOracle})
 	if strings.TrimSpace(string(out)) != "layout_unknown" {
 		t.Errorf("the older reader did not refuse the newer file as layout_unknown: %q", out)
 	}

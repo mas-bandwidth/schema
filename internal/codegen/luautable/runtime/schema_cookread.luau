@@ -60,12 +60,20 @@ local function i_at(b: buffer, at: number, width: number, signed: boolean): any
 	return n
 end
 
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
+-- as packets"): a NaN or an infinity is not a value of the type.
+-- Open tests each float's RAW BITS before they become a value and refuses
+-- one, non_finite_float naming <Owner>.<field>, before handing back anything.
+local f32tmp = buffer.create(4)
+local function f_finite(b: buffer, at: number, single: boolean): boolean
+	if single then return bit32.band(buffer.readu32(b, at), 0x7F800000) ~= 0x7F800000 end
+	return bit32.band(buffer.readu32(b, at + 4), 0x7FF00000) ~= 0x7FF00000
+end
+
 local function f_at(b: buffer, at: number, single: boolean): number
 	if not single then return buffer.readf64(b, at) end
-	local bits = buffer.readu32(b, at)
-	local tmp = buffer.create(4)
-	buffer.writeu32(tmp, 0, bits)
-	return buffer.readf32(tmp, 0)
+	buffer.writeu32(f32tmp, 0, buffer.readu32(b, at))
+	return buffer.readf32(f32tmp, 0)
 end
 
 -- enum_width is the ORDINAL slot's storage width (§4.2, §7.2): the smallest
@@ -213,6 +221,9 @@ type Ctx = {
 	dataOffset: number,
 	dataLength: number,
 	memo: { [number]: any },
+	owner: string,
+	field: string,
+	nonFinite: string?,
 }
 
 local readRecord: any
@@ -262,7 +273,13 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 	if s == "bool" then return buffer.readu8(ctx.b, at) ~= 0 end
 	if s == "int" then return i_at(ctx.b, at, intWidth(fd), fd.signed == true) end
 	if s == "flags" then return buffer.readinteger(ctx.b, at) end
-	if s == "float" then return f_at(ctx.b, at, fd.f32 == true) end
+	if s == "float" then
+		if not f_finite(ctx.b, at, fd.f32 == true) then
+			if ctx.nonFinite == nil then ctx.nonFinite = ctx.owner .. "." .. (fd.name or ctx.field) end
+			return 0.0
+		end
+		return f_at(ctx.b, at, fd.f32 == true)
+	end
 	if s == "enum" then
 		local w = enum_width(#fd.vs)
 		return as_number(i_at(ctx.b, at, w, false))
@@ -386,6 +403,7 @@ function readUnion(ctx: Ctx, name: string, at: number): any
 		u.Type = arm.tag
 		return u
 	end
+	ctx.owner, ctx.field = name, arm.name
 	local value = readField(ctx, arm, at + L.armOffset, true)
 	u.Type = arm.tag
 	-- the arm lands through the same store as a record field, so a string
@@ -436,6 +454,7 @@ function readRecord(ctx: Ctx, value: any, name: string, base: number)
 	local offsets = recordOffsets(d.fields)
 	for i, fd in d.fields do
 		if fd.guard == nil then
+			ctx.owner, ctx.field = name, fd.name
 			local at = base + offsets[i]
 			local got = readField(ctx, fd, at, true)
 			putField(value, fd, got)
@@ -449,6 +468,7 @@ function readRecord(ctx: Ctx, value: any, name: string, base: number)
 				if value[term[1]] ~= term[2] then live = false; break end
 			end
 			if live then
+				ctx.owner, ctx.field = name, fd.name
 				local at = base + offsets[i]
 				local got = readField(ctx, fd, at, true)
 				putField(value, fd, got)
@@ -495,9 +515,10 @@ function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)
 	if dataOffset > bytesN or dataLength > bytesN - dataOffset or attribution ~= bytesN - dataOffset - dataLength or dataLength < rootSize then
 		return refuse("truncated")
 	end
-	local ctx: Ctx = { b = bytes, dataOffset = dataOffset, dataLength = dataLength, memo = {} }
+	local ctx: Ctx = { b = bytes, dataOffset = dataOffset, dataLength = dataLength, memo = {}, owner = root, field = "?", nonFinite = nil }
 	local value = d.new()
 	readRecord(ctx, value, root, dataOffset)
+	if ctx.nonFinite ~= nil then return nil, "non_finite_float: " .. ctx.nonFinite end
 	return value, nil
 end
 

@@ -847,11 +847,12 @@
     {
       "name": "luau",
       "when": "pull-request",
-      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row. The packet FINITE-FLOAT controls (SPEC.md §4.3) ride here too: each removes one direction of the vendored serialize.luau v2.1.1 float check at both widths, in the copy the generator emitted (tools/sabotage/packet_finite_luau.go), and test/packet-finite/luau/main.luau must fail exactly the 36 read or the 37 write vectors its .expected names; one schema build and two interpreter runs, a few seconds. Luau and the host C++ compiler, nothing else.",
+      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row. The packet FINITE-FLOAT controls (SPEC.md §4.3) ride here too: each removes one direction of the vendored serialize.luau v2.1.1 float check at both widths, in the copy the generator emitted (tools/sabotage/packet_finite_luau.go), and test/packet-finite/luau/main.luau must fail exactly the 36 read or the 37 write vectors its .expected names; one schema build and two interpreter runs, a few seconds. The TABLE finite-float control (docs/SPEC-TABLES.md §3.3) removes each of eleven rules' checks from the emitted table runtime in turn (variable read and write, retained unknown float, message read and write, fixed read and write, cook read and write, block accessor, JSON writer) and TestLuauTablesAreFiniteOnly's probe must red on exactly that rule's rows; one Go test, under a second. Luau and the host C++ compiler, nothing else.",
       "targets": [
         "conformance-negative-control-luau",
         "luau-nightly-fuzz-negative-control",
-        "packet-finite-luau-negative-control"
+        "packet-finite-luau-negative-control",
+        "tables-luau-finite-float-negative-control"
       ],
       "luau": "0.741"
     }

@@ -396,9 +396,26 @@ local walk_element: any
 local walk_enum: any
 local _ids: { [number]: integer } = {}
 
-local function capture(store: any, report: any, ids: { [number]: integer }, node: number, steps: { any }, id: integer, kind: number, r: any)
+-- A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+-- §3.3, §6.6; ruling 3, 2026-10-27): kind 10's four bytes and kind 11's eight
+-- are tested on their raw bits, and a NaN or an infinity refuses the read,
+-- uniformity winning over carrying bytes this reader cannot name. The name is
+-- the body's table and the id it cannot name, <Table>.0x<id>.
+local _nonFinite: string? = nil
+local idScratch = buffer.create(8)
+local function retainedFloatName(owner: string, id: integer): string
+	buffer.writeinteger(idScratch, 0, id)
+	return string.format("%s.0x%08x%08x", owner, buffer.readu32(idScratch, 4), buffer.readu32(idScratch, 0))
+end
+
+local function capture(store: any, report: any, ids: { [number]: integer }, node: number, steps: { any }, id: integer, kind: number, r: any, owner: string)
 	local start = r.at
 	if not skip(r, kind) then return end
+	if (kind == 10 and r.at - start == 4 and bit32.band(buffer.readu32(r.b, start), 0x7F800000) == 0x7F800000)
+		or (kind == 11 and r.at - start == 8 and bit32.band(buffer.readu32(r.b, start + 4), 0x7FF00000) == 0x7FF00000) then
+		if _nonFinite == nil then _nonFinite = retainedFloatName(owner, id) end
+		return
+	end
 	local out = new_out()
 	local src = new_reader(r.b, start, r.at)
 	if not resolve_payload(src, ids, kind, out, 0) or src.at ~= src.e then
@@ -607,7 +624,7 @@ walk_body = function(desc: any, r: any, steps: { any }, store: any, report: any,
 		if id == NodeTableId or id == BuildVersionId or id == MessageVocabularyId then return end
 		local fd = byId[id]
 		if fd == nil then
-			capture(store, report, _ids, node, steps, id, kind, r)
+			capture(store, report, _ids, node, steps, id, kind, r, desc.name)
 		elseif kind == fd.k then
 			walk_field(fd, r, steps, store, report, node)
 		else
@@ -684,6 +701,7 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 	if v == nil then
 		return v, new_store()
 	end
+	_nonFinite = nil
 	local store = new_store()
 	local len = buffer.len(bytes)
 	local count = 0
@@ -720,6 +738,13 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 		end
 	end
 	walk_body(desc, new_reader(bytes, 1, endpos), {}, store, report, 1)
+	if _nonFinite ~= nil then
+		-- the strict read's own refusal, as a known float's (§3.3)
+		report.nonFiniteFloat = _nonFinite
+		report.reason = "non_finite_float"
+		report.field = _nonFinite
+		return nil, new_store()
+	end
 	return v, store
 end
 

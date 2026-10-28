@@ -112,23 +112,15 @@ local function r_f64(r: any): number
 	return v
 end
 
--- a float32 rides by its bits and never through a conversion (§4.3, M21):
--- a NaN is widened by bit surgery, so a signalling one keeps its payload and
--- clear quiet bit instead of being quieted by the hardware conversion
--- (docs/SPEC-TABLES.md §3.3, a plain float's special values)
-local function r_f32bits(r: any): number
-	if r.at + 4 > r.e then r.bad = true; return 0.0 end
-	local bits = buffer.readu32(r.b, r.at)
-	r.at = r.at + 4
-	local f = buffer.create(8)
-	if bit32.band(bits, 0x7F800000) == 0x7F800000 and bit32.band(bits, 0x007FFFFF) ~= 0 then
-		local payload = bit32.band(bits, 0x007FFFFF)
-		buffer.writeu32(f, 0, bit32.lshift(bit32.band(payload, 7), 29))
-		buffer.writeu32(f, 4, bit32.bor(bit32.band(bits, 0x80000000), 0x7FF00000, bit32.rshift(payload, 3)))
-		return buffer.readf64(f, 0)
-	end
-	buffer.writeu32(f, 0, bits)
-	return buffer.readf32(f, 0)
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
+-- as packets"): its RAW BITS are tested before they become a value, and an
+-- exponent of all ones (a NaN of any sign or payload, or an infinity) is
+-- refused as non_finite_float. Every finite float32 widens to a double
+-- exactly, so the read is the ordinary conversion; no bit surgery is owed.
+local f32scratch = buffer.create(4)
+local function f32_of(bits: number): number
+	buffer.writeu32(f32scratch, 0, bits)
+	return buffer.readf32(f32scratch, 0)
 end
 
 -- a 128-bit value is its two 64-bit halves, the low one first (§3)
@@ -408,6 +400,22 @@ local function bound_shift(v: any, fbits: number): any
 	return v * (2 ^ fbits)
 end
 
+-- THE NON-FINITE REFUSAL (docs/SPEC-TABLES.md §3.3): the first float a walk
+-- met holding a NaN or an infinity, named <Owner>.<field>. The walk goes on,
+-- so the framing it meets is the one a finite wire meets, and the load
+-- answers the refusal at its end. _ownerName and _fieldName are the body and
+-- the field the walk is in, for an element or arm descriptor that has none.
+local _nonFinite: string? = nil
+local _ownerName: string = "?"
+local _fieldName: string = "?"
+
+-- refuseNonFinite records the first non-finite float (docs/SPEC-TABLES.md §3.3)
+local function refuseNonFinite(fd: any)
+	if _nonFinite == nil then
+		_nonFinite = _ownerName .. "." .. (fd.name or _fieldName)
+	end
+end
+
 local function scalar_at(r: any, fd: any, kind: number, report: any): any
 	local width = width_of(kind)
 	if width == 0 then report.malformed = true; return nil end
@@ -418,8 +426,23 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 		local b = r_u8(r)
 		if b > 1 then report.malformed = true end
 		x = b ~= 0
-	elseif kind == 10 then x = r_f32bits(r)
-	elseif kind == 11 then x = r_f64(r)
+	elseif kind == 10 then
+		local bits = r_u32(r)
+		if bit32.band(bits, 0x7F800000) == 0x7F800000 then
+			refuseNonFinite(fd)
+			x = 0.0
+		else
+			x = f32_of(bits)
+		end
+	elseif kind == 11 then
+		-- the high half holds the whole exponent field; the width is checked above
+		if bit32.band(buffer.readu32(r.b, r.at + 4), 0x7FF00000) == 0x7FF00000 then
+			refuseNonFinite(fd)
+			r.at = r.at + 8
+			x = 0.0
+		else
+			x = r_f64(r)
+		end
 	elseif kind == 2 then x = r_i8(r)
 	elseif kind == 3 then x = r_i16(r)
 	elseif kind == 4 then x = r_i32(r)
@@ -444,12 +467,6 @@ local function scalar_at(r: any, fd: any, kind: number, report: any): any
 			x = r_int128(r)
 		end
 	else report.malformed = true; return nil end
-	-- A PLAIN FLOAT'S NaN or infinity lands as its pattern and moves no
-	-- counter; the read NAMES it so the strict read refuses it as non_finite
-	-- (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"; §6.5).
-	if fd.s == "float" and fd.lo == nil and (x ~= x or x - x ~= 0) then
-		report.nonFinite = (report.nonFinite or 0) + 1
-	end
 	-- §4: a narrower value widens into this declaration's domain
 	if fd.dom == "integer" and typeof(x) == "number" then x = integer.create(x) end
 	-- A 128-BIT DECLARATION WIDENS A NARROWER WIRE KIND (docs/SPEC-TABLES.md
@@ -609,7 +626,7 @@ local function loadFixDScanKey(keyfd: any, body: any, entry: any): (any, boolean
 	local keyVal: any = loadFixDKeyValue(keyfd, keyvals)
 	local kindBad = false
 	local entryWidened = false
-	local quiet = { malformed = false, clamped = 0, nonFinite = 0 }
+	local quiet = { malformed = false, clamped = 0 }
 	while true do
 		local ref = r_leb(scan)
 		if scan.bad then return keyVal, kindBad, entryWidened, false end
@@ -1167,6 +1184,10 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	for _, a in un.arms do
 		if a.id == armID then arm = a; break end
 	end
+	if arm ~= nil then
+		_ownerName = fd.t
+		_fieldName = arm.name
+	end
 	local want = arm == nil and 0 or (arm.s == "void" and 32 or arm.k)
 	if arm == nil then
 		report.unknown = report.unknown + 1
@@ -1394,6 +1415,10 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			end
 		end
 		local fd = byId[id]
+		if fd ~= nil then
+			_ownerName = desc.name
+			_fieldName = fd.name
+		end
 		if fd == nil then
 			_report.unknown = _report.unknown + 1
 			if not skip(r, kind) then _report.malformed = true; return false end
@@ -1433,6 +1458,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	_table = o.table
 	_report = report
 	_countRefused = false
+	_nonFinite = nil
 	_pending = {}
 	_nodes = {}
 	local desc = S.lookup(root)
@@ -1499,6 +1525,15 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	local rootReader = new_reader(bytes, 1, o.e)
 	read_body(desc, rootReader, v, false)
 	resolve(report)
+	-- A NaN OR AN INFINITY REFUSES THE READ, TOLERANT AND STRICT ALIKE
+	-- (docs/SPEC-TABLES.md §3.3): nothing of the value lands, and the report
+	-- names the field, non_finite_float: <Owner>.<field>.
+	if _nonFinite ~= nil then
+		report.nonFiniteFloat = _nonFinite
+		report.reason = "non_finite_float: " .. _nonFinite
+		report.refused = (report.refused or 0) + 1
+		return nil
+	end
 	-- A REGION READ KEEPS ITS RECOVERED VALUE under the explicit tolerant
 	-- name (docs/SPEC-TABLES.md §6.5); ReadStrict is the caller that refuses
 	-- a count_refusal by name.
@@ -1510,19 +1545,18 @@ end
 -- blob_shared sits where Go's Err() checks BlobShared, between malformed and
 -- clamped (§2.5), so a wire that is both clamped and blob-shared refuses as
 -- blob_shared.
-local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch", "nonFinite" }
+local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch" }
 local NAMES: { [string]: string } = {
 	missingRequired = "missing_required",
 	malformed = "malformed",
 	blobShared = "blob_shared",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
-	nonFinite = "non_finite",
 }
 
 -- a report at rest, in schema_load.luau's shape (docs/SPEC-TABLES.md §4)
 local function fresh(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0, nonFinite = 0, blobShared = 0 }
+	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0, blobShared = 0 }
 end
 
 local function moved(report: any, k: string): boolean
@@ -1896,7 +1930,7 @@ local function reset(report: any)
 	report.widened = 0
 	report.duplicate = 0
 	report.missingRequired = 0
-	report.nonFinite = 0
+	report.nonFiniteFloat = nil
 	report.blobShared = 0
 	report.missingName = nil
 	report.reason = nil
@@ -1939,6 +1973,12 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		return nil
 	end
 	local v = L.loadTolerant(root, b, rep)
+	if rep.nonFiniteFloat ~= nil then
+		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
+		rep.reason = "non_finite_float"
+		rep.field = rep.nonFiniteFloat
+		return nil
+	end
 	if _countRefused then
 		-- the BUILDER-path storage refusal (docs/SPEC-TABLES.md §6.5, Go
 		-- tablewire.CountRefusal): the tolerant region read kept its prefix,

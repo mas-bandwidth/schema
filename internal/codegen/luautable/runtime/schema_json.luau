@@ -1848,9 +1848,14 @@ local function int_ok(fd: any, v: any): boolean
 end
 
 -- §16.3: a non-finite float has no JSON spelling, and a compressed float off
--- its declared range is one the strict reader clamps.
+-- its declared range is one the strict reader clamps. A float32 field is
+-- finite AFTER its narrowing (docs/SPEC-TABLES.md §3.3, as the packet rule):
+-- a double past the float32 range narrows to an infinity and is refused too.
+local narrowScratch = buffer.create(4)
 local function float_ok(fd: any, v: number): boolean
-  if v ~= v or v == math.huge or v == -math.huge then refuse_reason = "nonfinite_float"; return false end
+  local x = v
+  if fd.f32 and x == x then buffer.writef32(narrowScratch, 0, x); x = buffer.readf32(narrowScratch, 0) end
+  if x ~= x or x == math.huge or x == -math.huge then refuse_reason = "non_finite_float"; return false end
   if fd.lo ~= nil and (v < fd.lo or v > fd.hi) then refuse_reason = "clamped"; return false end
   return true
 end

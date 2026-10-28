@@ -118,7 +118,7 @@ func strictGoToken(name string) string {
 	case strings.Contains(name, "text_holds_zero"):
 		return "text_holds_zero"
 	case strings.Contains(name, "no JSON spelling"):
-		return "nonfinite_float"
+		return "non_finite_float"
 	}
 	return name
 }
