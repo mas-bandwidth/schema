@@ -155,6 +155,13 @@ local readU64 = function(r) {
 // <Owner>.<field> name on the load's state (refuseNonFinite) and lands
 // nothing that survives: the load answers the refusal at its end.
 local NONFINITE = { nonFinite = true };
+// a finite double narrowed to the nearest float32 (Go's float32(v)): the
+// blob's 'f' view is the C conversion, round to nearest, ties to even
+local F32_SCRATCH = blob(4);
+local narrowToF32 = function(v) {
+  F32_SCRATCH.seek(0); F32_SCRATCH.writen(v, 'f');
+  F32_SCRATCH.seek(0); return F32_SCRATCH.readn('f');
+};
 local finiteF32 = function(bits) { return (bits & 0x7f800000) != 0x7f800000; };
 local finiteF64 = function(bits) { return (bits & 0x7ff0000000000000) != 0x7ff0000000000000; };
 
@@ -253,6 +260,18 @@ local wideCompare = function(a, b, signed) {
 // 128 bits"; §4.1 counts that event `clamped`, as it does for every scalar.
 local clampScalar = function(fd, kind, x, report) {
   if (x == null) return null;
+  // A COMPRESSED FLOAT32 CLAMPS TO ITS DECLARED RANGE (docs/SPEC-TABLES.md
+  // §3.3, §4; the Go engine's scalarAt): the finite value compares with the
+  // declared bounds as doubles, one past an end lands as that end narrowed
+  // to float32 and counts clamped, and a -0 lands as +0, uncounted. A float32
+  // widened into a float64 field (kind 10 under 11) clamps nothing.
+  if (fd.shape == "float") {
+    if (kind != 10 || !fd.f32 || fd.fmin == null) return x;
+    if (x < fd.fmin) { x = narrowToF32(fd.fmin); report.clamped = report.clamped + 1; }
+    else if (x > fd.fmax) { x = narrowToF32(fd.fmax); report.clamped = report.clamped + 1; }
+    else if (x == 0.0) x = 0.0;
+    return x;
+  }
   if (typeof x == "array") {
     if (fd.lo != null && fd.hi != null) {
       local lo = widePair(fd.lo), hi = widePair(fd.hi);

@@ -535,11 +535,11 @@ func fieldDesc(u *ir.Unit, f *ir.Field, ordinal int) string {
 	return render(d, fieldKeys)
 }
 
-var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist", "nf", "qcount", "qmin", "qdelta", "qbits"}
+var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax"}
 
 var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
 	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
-	"optional", "required", "deprecated", "textlist", "unbounded", "nf", "qcount", "qmin", "qdelta", "qbits"}
+	"optional", "required", "deprecated", "textlist", "unbounded", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax"}
 
 // baseDesc is the facts of the field's VALUE type, which an array's element
 // shares.
@@ -550,6 +550,7 @@ func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
 		"entry": "null", "textlist": "0", "unbounded": "false", "nf": "null",
 		"qcount": "0", "qmin": "0.0", "qdelta": "0.0", "qbits": "0",
+		"fmin": "null", "fmax": "null",
 	}
 	if f.Type.TextUnbounded() {
 		// UNBOUNDED TEXT (§2.13.1): the reader has no capacity to clamp at.
@@ -610,6 +611,14 @@ func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 		// a COMPRESSED float32's message-form quantizer (docs/SPEC-TABLES.md
 		// §3.3, SPEC.md §4.3): the step count, min, delta and index width
 		// the message writer quantizes by; 0 steps for a float carried whole
+		// a COMPRESSED float's declared range, as declared (a float64, not
+		// rounded to float32): the variable and fixed reads clamp a finite
+		// value past an end to it and count clamped (docs/SPEC-TABLES.md §3.3,
+		// §4), exactly as the Go engine's scalarAt compares
+		if f.HasFloatRange {
+			d["fmin"] = squirrel.Float64Lit(f.FMin)
+			d["fmax"] = squirrel.Float64Lit(f.FMax)
+		}
 		shape := ir.TableFieldShape(f)
 		if shape.Inner != nil && (f.Array != ir.ArrayNone || f.KeyEnum != "") {
 			shape = *shape.Inner

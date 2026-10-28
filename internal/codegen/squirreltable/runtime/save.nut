@@ -157,6 +157,12 @@ local refuseNonFinite = function(d) {
 // ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
 // default rides, and a float32 compares at float32
 local floatIsDefault = function(d, val, def) {
+  // a COMPRESSED float compares by value at float32 (the engine's
+  // cellIsDefault): its -0 is +0 (§3.3), so it elides as +0 does
+  if (d.f32 && d.fmin != null) {
+    local a = narrowF32(val.tofloat()), b = narrowF32(def.tofloat());
+    return a == b || ((a & 0x7fffffff) == 0 && (b & 0x7fffffff) == 0);
+  }
   if (d.f32) return narrowF32(val.tofloat()) == narrowF32(def.tofloat());
   return castf2i(val.tofloat()) == castf2i(def.tofloat());
 };

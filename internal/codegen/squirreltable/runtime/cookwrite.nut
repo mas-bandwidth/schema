@@ -396,13 +396,20 @@ elementWrite = function(T, e, val, buf, regionBase, at, order, nodes, offsets, e
 
 _M.CookMeasure <- function(T, root, value) {
   CUR = T;
+  _M.CookReason <- null;
   local form = ("cookForms" in T) && (root in T.cookForms) ? T.cookForms[root] : null;
   if (form == null || value == null) return -1;
   local nodes = number(T, root, value);
   if (nodes == null) return -1;
   local lay = layout(nodes);
   local dataOffset = ciUp(HEADER(), lay.align);
-  return dataOffset + lay.data + nodes.len() * 16;
+  local total = dataOffset + lay.data + nodes.len() * 16;
+  // THE MEASURE REFUSES WHAT THE WRITE REFUSES (docs/SPEC-TABLES.md §3.3):
+  // a NaN or an infinity anywhere in the value is -1 with the Cook's own
+  // reason, non_finite_float: <Owner>.<field>, so measure and write never
+  // disagree. The walk is the write itself, into scratch.
+  if (!_M.Cook(T, root, value, blob(total), 1)) return -1;
+  return total;
 };
 
 _M.Cook <- function(T, root, value, buf, order) {
