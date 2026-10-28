@@ -376,8 +376,7 @@ def message_open(data:string, rep:LoadReport) -> Reader?, int:
             if w.off != w.hi:
                 return r, 2
             return r, 0
-        let named_id, named = rid(w, ref)
-        assert named_id == named_id
+        let _, named = rid(w, ref)
         if not named or not has(w, 1):
             return r, 0
         if not skip(w, u8(w)):
@@ -615,8 +614,8 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
         let ref, ok = mb_get(r, v.ref_bits)
         if not ok or ref == 0:
             return ok
-        let name_id, named = message_name(v, ref)
-        return named and name_id == name_id
+        let _, named = message_name(v, ref)
+        return named
     if k == 13:
         return message_skip_body(m, depth + 1)
     if k == 17:
@@ -792,8 +791,7 @@ def message_wide(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     var high = false
     var i = 0
     while i < n:
-        let u, unit_ok = mb_get(r, 16)
-        assert unit_ok
+        let u, _ = mb_get(r, 16)
         if u == 0 or (u >= 0xdc00 and u <= 0xdfff and not high) or (high and (u < 0xdc00 or u > 0xdfff)):
             rep.malformed = true
             return false
@@ -1144,7 +1142,7 @@ def load_messages(root:string, v:MessageVocabulary, data:string, rep:LoadReport,
 
 // ---- the write ----
 
-// mw_elem_rides is a value's own elision (Go's emitMessageRides over an
+// mw_cell_rides is a value's own elision (Go's emitMessageRides over an
 // element or a field that is no array): a nested body rides when it holds
 // more than its terminator, everything else when it is not its default.
 def mw_cell_rides(w:MessageWriter, d:FieldDescriptor, kind:int, v:Value, element:bool) -> bool, bool:
