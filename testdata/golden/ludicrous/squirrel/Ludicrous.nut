@@ -409,4 +409,3 @@ _M.WriteFixedQuat <- function(stream, value) {
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
   return true;
 };
-
