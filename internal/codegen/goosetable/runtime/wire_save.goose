@@ -128,6 +128,7 @@ let SaveRefuseEnumNoVariant: i64 = 3;
 let SaveRefuseDeprecatedVariant: i64 = 4;
 let SaveRefuseUnionNoArm: i64 = 5;
 let SaveRefuseUnknownRoot: i64 = 6;
+let SaveRefuseNonFiniteFloat: i64 = 7;
 
 // save_refusal_name is a refusal's name, "" for none.
 fn save_refusal_name(code: i64) -> const u8[:] {
@@ -138,6 +139,7 @@ fn save_refusal_name(code: i64) -> const u8[:] {
         SaveRefuseDeprecatedVariant => "deprecated_variant",
         SaveRefuseUnionNoArm => "union_no_arm",
         SaveRefuseUnknownRoot => "unknown_root",
+        SaveRefuseNonFiniteFloat => "non_finite_float",
         _ => "",
     };
 }
@@ -188,6 +190,12 @@ fn float_default_bits(d: FieldDesc) -> u64 {
     let v = if d.has_def { d.def_f } else { 0.0 };
     if d.is_f32 { return f32_bits(v as f32); }
     return f64_bits(v);
+}
+
+// float_special: a NaN or an infinity, which no form carries (§3.3)
+fn float_special(bits: u64, single: bool) -> bool {
+    if single { return (bits & 0x7F800000) == 0x7F800000; }
+    return (bits & 0x7FF0000000000000) == 0x7FF0000000000000;
 }
 
 fn float_nan(bits: u64, single: bool) -> bool {
@@ -598,6 +606,11 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
         return;
     }
     let v = scalar_bits(c, s, d);
+    if d.shape == ShapeFloat && float_special(v.lo, kind == KindF32) {
+        // every writer refuses a NaN or an infinity (§3, §3.3)
+        refuse(c, SaveRefuseNonFiniteFloat);
+        return;
+    }
     let w = kind_width(kind);
     if w == 16 {
         put_le(c, v.lo, 8);

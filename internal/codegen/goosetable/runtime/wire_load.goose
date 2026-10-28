@@ -63,6 +63,9 @@ struct LoadReport {
     refused: bool,
     blob_shared: i64,
     count_refused: bool,
+    non_finite: bool,  // §3.3: a NaN or an infinity refused the read
+    retained: i64,     // §6.6: the unknown fields whose bytes were kept
+    retain_lost: i64,  // §6.6: every unknown the load or save could not keep
 }
 
 // KeyDesc is the key enum of one enum-keyed array (docs/SPEC-TABLES.md §3.2):
@@ -530,14 +533,14 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
     }
     if kind == KindF32 {
         let bits = rd_le(c, r, 4) as! u32;
-        if (bits & 0x7F800000) == 0x7F800000 && (bits & 0x007FFFFF) != 0 {
-            // a NaN's payload is data; under a declared range it clamps to min
-            if d.frange && declared == KindF32 {
-                out.bits = Int128 { lo: f32_bits(d.flo as f32), hi: 0 };
-                rep.clamped += 1;
-                return true;
-            }
-            out.bits = Int128 { lo: if declared == KindF64 { widen_f32(bits) } else { bits }, hi: 0 };
+        if (bits & 0x7F800000) == 0x7F800000 {
+            // A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+            // become a value (docs/SPEC-TABLES.md §3.3, "same rule as
+            // packets"), a compressed float included; the walk goes on so the
+            // framing verdict is a finite wire's, and load_table answers the
+            // refusal at its end
+            rep.non_finite = true;
+            out.state = ValAbsent;
             return true;
         }
         if declared == KindF64 {
@@ -556,7 +559,13 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         return true;
     }
     if kind == KindF64 {
-        out.bits = Int128 { lo: rd_le(c, r, 8), hi: 0 };
+        let bits = rd_le(c, r, 8);
+        if (bits & 0x7FF0000000000000) == 0x7FF0000000000000 {
+            rep.non_finite = true; // §3.3, as kind 10 above
+            out.state = ValAbsent;
+            return true;
+        }
+        out.bits = Int128 { lo: bits, hi: 0 };
         return true;
     }
     let signed = kind_signed(kind);
@@ -1629,8 +1638,11 @@ fn load_table(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVa
         // a value-only table has no node table (§3)
         var r = body;
         body_at(c, r, t, c.root_val, false, false);
-        return c.root_val;
+    } else {
+        load_variable(c, body);
     }
-    load_variable(c, body);
+    // A NON-FINITE FLOAT IS THE READ'S OWN REFUSAL (§3.3): it outranks every
+    // other verdict, and the caller discards the partial value
+    if report.non_finite { return -1; }
     return c.root_val;
 }

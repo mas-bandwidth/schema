@@ -84,7 +84,7 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
         schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
         let text = str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
                        report.duplicate, ",", bool_word(report.malformed), ",",
-                       if report.refused { "refused" } else { "read" }, "\n");
+                       if report.refused || report.non_finite { "refused" } else { "read" }, "\n");
         answer(f[1], text);
     }
 }
