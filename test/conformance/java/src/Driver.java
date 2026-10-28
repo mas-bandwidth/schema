@@ -709,6 +709,12 @@ public final class Driver {
         Files.write(Path.of(out, name + ".absent"), new byte[0]);
     }
 
+    // spillAbsentReason is spillAbsent with the reason the spec gives, written
+    // into the marker so the matrix's absence names its rule.
+    private static void spillAbsentReason(String out, String name, String reason) throws IOException {
+        Files.write(Path.of(out, name + ".absent"), reason.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     // Resolve only public root codecs actually emitted for this unit. Entry
     // body helpers are package-private and cannot appear as conformance roots.
     private static final class VariableCodec {
@@ -1105,7 +1111,11 @@ public final class Driver {
             try {
                 MessageCodec codec = messageCodec(conn[2], f[3]);
                 if (codec == null) {
-                    spillAbsent(out, f[1]);
+                    // a message row whose root is a plain `table` carries no
+                    // message verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T`
+                    // may not" ride the form), so the leg answers ABSENT and
+                    // names the reason, as the Go reference does
+                    spillAbsentReason(out, f[1], "plain table: §3.3");
                     continue;
                 }
                 Object vocab = codec.vocab();
@@ -1165,10 +1175,11 @@ public final class Driver {
             List<tblrt1.NodeVariable.Value> roots = new ArrayList<>();
             List<tblrt1.TableRetain> stores = new ArrayList<>();
             if (message) {
-                // the MESSAGE FORM over a variable root (§3.3) is not in this
-                // leg yet: <Root>Message is emitted for fixed roots only, so a
-                // form-2 batch of RT1's Node has no reader here to retain with
-                spillAbsent(out, f[1]);
+                // RT1's Node is a plain `table`, which carries no message verbs
+                // (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
+                // the form), so the leg answers ABSENT and names the reason, as
+                // the Go reference does
+                spillAbsentReason(out, f[1], "plain table: §3.3");
                 continue;
             } else {
                 tblrt1.TableRetain store = retainStore(f[6]);

@@ -1012,6 +1012,42 @@ public final class BenchMixedRetain {
             w.put8(22);
             w.put32(v.serverTime);
         }
+        if (!v.entities.isEmpty()) {
+            w.putLeb(w.ref(BenchMixedVariable.F_entities));
+            w.put8(14);
+            TableVariable.Writer aw = w.sub(new byte[1 << 20]);
+            aw.put8(13);
+            aw.putLeb(v.entities.size());
+            for (int i = 0; i < v.entities.size(); i++) {
+                MixedEntityVariable.Value e = v.entities.get(i);
+                TableVariable.Writer ew = aw.sub(new byte[1 << 20]);
+                path[2 * depth] = 9;
+                path[2 * depth + 1] = i;
+                MixedEntityRetain.writeBodyRetain(ew, nodes, e, retain, report, path, depth + 1);
+                aw.putLeb(ew.off);
+                aw.putBytes(ew.buf, 0, ew.off);
+            }
+            w.putLeb(aw.off);
+            w.putBytes(aw.buf, 0, aw.off);
+        }
+        if (!v.stats.isEmpty()) {
+            w.putLeb(w.ref(BenchMixedVariable.F_stats));
+            w.put8(14);
+            TableVariable.Writer aw = w.sub(new byte[1 << 20]);
+            aw.put8(13);
+            aw.putLeb(v.stats.size());
+            for (int i = 0; i < v.stats.size(); i++) {
+                MixedStatVariable.Value e = v.stats.get(i);
+                TableVariable.Writer ew = aw.sub(new byte[1 << 20]);
+                path[2 * depth] = 10;
+                path[2 * depth + 1] = i;
+                MixedStatRetain.writeBodyRetain(ew, nodes, e, retain, report, path, depth + 1);
+                aw.putLeb(ew.off);
+                aw.putBytes(ew.buf, 0, ew.off);
+            }
+            w.putLeb(aw.off);
+            w.putBytes(aw.buf, 0, aw.off);
+        }
         if (v.gameEvent.tag != 0) {
             w.putLeb(w.ref(BenchMixedVariable.F_gameEvent));
             w.put8(15);
@@ -1154,12 +1190,14 @@ public final class BenchMixedRetain {
                 int listMark = retain.idUsed;
                 TableVariable.Writer rec = w.sub(new byte[1 << 20]);
                 int[] pat = new int[] {at + hdr};
-                long ref = TableRetain.ref(rec, retain, id, report);
+                // the record is ONE loss however deep it fails, counted once
+                // below, so the walk itself is handed no report (§6.6)
+                long ref = TableRetain.ref(rec, retain, id, null);
                 boolean ok = ref != 0;
                 if (ok) {
                     rec.putLeb(ref);
                     rec.put8(kind);
-                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);
+                    ok = TableRetain.emit(rec, retain, null, retain.bytes, pat, kind);
                 }
                 if (ok) {
                     w.putBytes(rec.buf, 0, rec.off);

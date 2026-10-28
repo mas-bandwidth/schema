@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestCookWriteUnionsJavaReversed holds the four things the Java cook writer
@@ -25,6 +27,7 @@ import (
 // The intact unit passing is cook_<pkg> in TestBlockBuildAndCookWriteJava;
 // here each plant must fail, and must have patched exactly one line.
 func TestCookWriteUnionsJavaReversed(t *testing.T) {
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	plants := []struct {
 		name, schema, pkg, root, row, file, old, new string
@@ -77,6 +80,7 @@ func TestCookWriteUnionsJavaReversed(t *testing.T) {
 // arm carries (§7.6): the value cannot be held, so it measures -1 and names
 // invalid_value, and the same driver accepts the value before it is damaged.
 func TestCookWriteUnionTagRefusedJava(t *testing.T) {
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	javac, javaBin := javaTools(t)
 	dir := compileCookUnit(t, javac, cookUnitFiles(t, "../../../test/tables/V1.schema"), "tblv1",
