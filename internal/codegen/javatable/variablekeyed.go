@@ -34,6 +34,12 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 		return expr + ".length==0"
 	case ir.TBytes:
 		return "java.util.Arrays.equals(" + expr + "," + variableDefault(f) + ")"
+	case ir.TFloat32:
+		// A FLOAT IS ITS DEFAULT BY ITS BITS (docs/SPEC-TABLES.md §3.3): a -0
+		// under a +0 default rides.
+		return "Float.floatToRawIntBits(" + expr + ")==Float.floatToRawIntBits(" + variableDefault(f) + ")"
+	case ir.TFloat64:
+		return "Double.doubleToRawLongBits(" + expr + ")==Double.doubleToRawLongBits(" + variableDefault(f) + ")"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Struct:

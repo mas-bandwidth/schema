@@ -451,7 +451,12 @@ public final class BenchPacketVariable {
             } else if (id == F_x) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.x = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.x");
+                        } else {
+                            v.x = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -463,7 +468,12 @@ public final class BenchPacketVariable {
             } else if (id == F_y) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.y = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.y");
+                        } else {
+                            v.y = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -475,7 +485,12 @@ public final class BenchPacketVariable {
             } else if (id == F_z) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.z = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.z");
+                        } else {
+                            v.z = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -642,20 +657,20 @@ public final class BenchPacketVariable {
             w.put8(1);
             w.put8(v.flag ? 1 : 0);
         }
-        if (v.x != 0.0f) {
+        if (Float.floatToRawIntBits(v.x) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_x));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.x));
+            w.putF32(v.x);
         }
-        if (v.y != 0.0f) {
+        if (Float.floatToRawIntBits(v.y) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_y));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.y));
+            w.putF32(v.y);
         }
-        if (v.z != 0.0f) {
+        if (Float.floatToRawIntBits(v.z) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_z));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.z));
+            w.putF32(v.z);
         }
         if (v.big != 0L) {
             w.putLeb(w.ref(F_big));
@@ -730,6 +745,9 @@ public final class BenchPacketVariable {
         }
         w.put8(0);
         w.trailer();
+        if (w.ids.nonFinite) {
+            return null;
+        }
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 

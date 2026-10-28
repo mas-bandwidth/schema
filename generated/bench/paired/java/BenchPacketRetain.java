@@ -286,7 +286,12 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_x) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.x = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.x");
+                        } else {
+                            v.x = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -298,7 +303,12 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_y) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.y = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.y");
+                        } else {
+                            v.y = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -310,7 +320,12 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_z) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.z = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.z");
+                        } else {
+                            v.z = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -426,6 +441,14 @@ public final class BenchPacketRetain {
             return;
         }
         int pEnd = r.off;
+        if (kind == 10 && pEnd - pStart == 4 && (get32(r.buf, pStart) & 0x7f800000) == 0x7f800000
+                || kind == 11
+                        && pEnd - pStart == 8
+                        && (get64(r.buf, pStart) & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            TableVariable.nonFiniteFloat(
+                    report, TableVariable.retainedFloatName("BenchPacket", id));
+            return;
+        }
         byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);
         if (resolved == null) {
             report.retainLost++;
@@ -517,7 +540,7 @@ public final class BenchPacketRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow ? -1 : w.off;
+        return w.overflow || ids.nonFinite ? -1 : w.off;
     }
 
     static void writeFieldsRetain(
@@ -564,20 +587,20 @@ public final class BenchPacketRetain {
             w.put8(1);
             w.put8(1);
         }
-        if (v.x != 0.0f) {
+        if (Float.floatToRawIntBits(v.x) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_x));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.x));
+            w.putF32(v.x);
         }
-        if (v.y != 0.0f) {
+        if (Float.floatToRawIntBits(v.y) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_y));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.y));
+            w.putF32(v.y);
         }
-        if (v.z != 0.0f) {
+        if (Float.floatToRawIntBits(v.z) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_z));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.z));
+            w.putF32(v.z);
         }
         if (v.big != 0L) {
             w.putLeb(w.ref(BenchPacketVariable.F_big));

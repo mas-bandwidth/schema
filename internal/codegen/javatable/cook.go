@@ -399,9 +399,13 @@ func (g *cookGen) emitWrite() {
 	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
 	g.f("        return p == null ? -1 : p.total;\n    }\n\n")
 	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
+	// a NaN or an infinity is the cook's own refusal, named non_finite_float
+	// (docs/SPEC-TABLES.md §3.3), and every other invalid value invalid_value
 	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
-	g.f("        long bytes = cookMeasure(value);\n")
-	g.f("        return new MeasureReason(bytes, bytes < 0 ? \"invalid_value\" : \"ok\");\n    }\n\n")
+	g.f("        boolean[] nonFinite = new boolean[1];\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite);\n")
+	g.f("        long bytes = p == null ? -1 : p.total;\n")
+	g.f("        return new MeasureReason(bytes, bytes >= 0 ? \"ok\" : nonFinite[0] ? \"non_finite_float\" : \"invalid_value\");\n    }\n\n")
 	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n")
 	g.f("        if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) { return false; }\n")
 	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")

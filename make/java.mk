@@ -994,6 +994,39 @@ tables-java-keyed-negative-control:
 		echo "negative control: dropping the $$end bound reds the keyed accessor on that end only"; \
 	done
 
+# FINITE TABLE FLOATS, Java side (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27:
+# "Tables go finite-only too, same rule as packets"): every read refuses a NaN
+# or an infinity on its raw bits as non_finite_float, the tolerant one too,
+# naming the field (variable, retaining, message batch, fixed form before its
+# bounds); a retained unknown kind 10/11 entry is tested like a known one; every
+# writer refuses one (variable, retaining, message, fixed, the cook's plan); a
+# block or cook record's float accessor refuses one by name; -0 and the
+# subnormals ride bit for bit. The gate is TestJavaFiniteFloats, one line per
+# check. Its NEGATIVE CONTROL removes each check from the generated code in turn
+# (the variable read, the retained unknown, the message read, the fixed read,
+# the variable writer, the accessor) and requires exactly that check's lines
+# red and every other line green. Under SCHEMA_REQUIRE_CORPUS=1 a missing JDK
+# is a failure, not a skip.
+.PHONY: tables-java-finite-float tables-java-finite-float-negative-control
+tables-java-finite-float:
+	@mkdir -p build/java-finite
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloats$$' \
+		> build/java-finite/log 2>&1 || { tail -40 build/java-finite/log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaFiniteFloats ' build/java-finite/log || \
+		{ echo "tables-java-finite-float: TestJavaFiniteFloats did not run to a PASS"; tail -20 build/java-finite/log; exit 1; }
+	@echo 'tables Java: every table read and writer refuses a NaN or an infinity as non_finite_float, -0 and subnormals exact (§3.3)'
+test-java: tables-java-finite-float
+
+tables-java-finite-float-negative-control:
+	@mkdir -p build/java-finite
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloatNegativeControl$$' \
+		> build/java-finite/control.log 2>&1 || { tail -40 build/java-finite/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestJavaFiniteFloatNegativeControl ' build/java-finite/control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: TestJavaFiniteFloatNegativeControl did not run to a PASS"; tail -20 build/java-finite/control.log; exit 1; }
+	@grep 'negative control: with the' build/java-finite/control.log
+
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
 # stated beside as a VALUE ORACLE, because a reader and a writer that share one
@@ -1625,7 +1658,7 @@ cards-java-wire-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.stam
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
+			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n \
 				>> build/cards-java-wire-fuzz.log 2>&1; \
@@ -1649,7 +1682,7 @@ cards-java-retain-fuzz: build/conformance-harness build/cards-java-wire-fuzz/.st
 	@set -- $(CARDS_JAVA_FUZZ_SEEDS); \
 		while [ "$$#" -ge 2 ]; do \
 			seed=$$1; n=$$2; shift 2; \
-			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
+			timeout $(CARDS_JAVA_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 				--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 				--driver "$(CURDIR)/build/cards-java-wire-fuzz/driver" --seed $$seed --n $$n --retain \
 				>> build/cards-java-retain-fuzz.log 2>&1; \

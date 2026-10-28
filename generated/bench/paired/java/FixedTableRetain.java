@@ -112,6 +112,13 @@ public final class FixedTableRetain {
             return;
         }
         int pEnd = r.off;
+        if (kind == 10 && pEnd - pStart == 4 && (get32(r.buf, pStart) & 0x7f800000) == 0x7f800000
+                || kind == 11
+                        && pEnd - pStart == 8
+                        && (get64(r.buf, pStart) & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            TableVariable.nonFiniteFloat(report, TableVariable.retainedFloatName("FixedTable", id));
+            return;
+        }
         byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);
         if (resolved == null) {
             report.retainLost++;
@@ -203,7 +210,7 @@ public final class FixedTableRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow ? -1 : w.off;
+        return w.overflow || ids.nonFinite ? -1 : w.off;
     }
 
     static void writeFieldsRetain(
