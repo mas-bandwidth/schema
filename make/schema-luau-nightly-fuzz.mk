@@ -106,8 +106,8 @@ local function runtimeFor(unit)
 	if runtimes[unit] ~= nil then return runtimes[unit] end
 	local base = "./generated/" .. unit .. "/"
 	local ok, S, Sv, Ld, Rf, Tx = pcall(function()
-		return require(base .. "schema_tables"), require(base .. "save"),
-			require(base .. "load"), require(base .. "refusal"), require(base .. "text")
+		return require(base .. "schema_tables"), require(base .. "schema_save"),
+			require(base .. "schema_load"), require(base .. "schema_refusal"), require(base .. "schema_text")
 	end)
 	if not ok then error("fuzz runtime missing for " .. unit .. ": " .. tostring(S)) end
 	local rt = { S = S, save = Sv, load = Ld, strict = Rf, text = Tx }
@@ -409,8 +409,8 @@ local function runtimeFor(unit)
 	if runtimes[unit] ~= nil then return runtimes[unit] end
 	local base = "./generated/" .. unit .. "/"
 	local ok, S, Ld, Rf, Tx = pcall(function()
-		return require(base .. "schema_tables"), require(base .. "load"),
-			require(base .. "refusal"), require(base .. "text")
+		return require(base .. "schema_tables"), require(base .. "schema_load"),
+			require(base .. "schema_refusal"), require(base .. "schema_text")
 	end)
 	if not ok then return nil end
 	local rt = { S = S, load = Ld, strict = Rf, text = Tx }
@@ -689,7 +689,7 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 		&& cp -r $(LUAU_NF)/generated $(LUAU_NF_NC)/generated \
 		&& cp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF_NC)/ \
 		&& cp $(LUAU_NF)/gen-replay.sh $(LUAU_NF_NC)/
-	@planted=0; for f in $(LUAU_NF_NC)/generated/*/load.luau; do \
+	@planted=0; for f in $(LUAU_NF_NC)/generated/*/schema_load.luau; do \
 		if grep -q 'if count < 0 or count > math.floor' "$$f"; then \
 			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f"; \
 			planted=$$((planted + 1)); fi; done; \
