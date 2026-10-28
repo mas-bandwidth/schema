@@ -155,7 +155,8 @@ over a table's Save and strict read). It is not `text.moo` because
 | I13, the text differential | `TestMooJsonTextDifferential`, control `TestMooJsonTextDifferentialNegativeControl` |
 | JSONTestSuite (§16.12) | `TestMooJSONTestSuite`, control `TestMooJSONTestSuiteNegativeControl` |
 | one walk (M9) | `TestMooJsonOneWalk` |
-| the base64 carrier (§16.8) | `TestMooTextCarrier`, control `TestMooTextCarrierNegativeControl` |
+| the base64 carrier (§16.8) | `TestMooTextCarrier`, control `TestMooTextCarrierNegativeControl`; the generated `<Name>SaveText` / `<Name>LoadText` over the moo wire, `TestMooTextCarrierSurface` |
+| json-read and json-write over the moo table wire (the conformance surfaces) | `TestMooJsonWireSurfaces` (blobdemo and mapdemo owed by the tables layer: a `*string` blob loads as a buffer) |
 
 ## THE LAYERS
 

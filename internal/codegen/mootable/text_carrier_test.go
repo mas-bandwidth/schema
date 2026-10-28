@@ -4,8 +4,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
@@ -115,4 +119,81 @@ func TestMooTextCarrierNegativeControl(t *testing.T) {
 		t.Fatal("ignoring the spare pad bits passed the carrier gate: it cannot see a set pad bit")
 	}
 	t.Logf("ignoring the pad bits: %d texts named", bad)
+}
+
+// TestMooTextCarrierSurface: every textual instance's wire, through the
+// generated <Name>LoadText and <Name>SaveText, is the same wire (the carrier
+// is byte for byte, §16.8), and the value LoadText lands writes the golden
+// text; a text with a CR inside, or one byte outside the alphabet, refuses by
+// its name before any read.
+func TestMooTextCarrierSurface(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the generated carrier)")
+	t.Parallel()
+	m := readTextManifest(t)
+	byUnit := map[string][]textInstance{}
+	for _, in := range m.instances {
+		byUnit[in.unit] = append(byUnit[in.unit], in)
+	}
+	total := 0
+	for _, key := range sortedKeys(byUnit) {
+		u := loadUnit(t, m.units[key])
+		if _, owed := wireOwed[key]; owed || !unitCarriesJson(u) {
+			continue
+		}
+		dir := generateUnitDir(t, u, nil)
+		inputs := map[string][]byte{}
+		var b strings.Builder
+		b.WriteString(probePrelude)
+		b.WriteString(`local function run(mod: any, root: string, text: string)
+	local value, why = mod[root .. "LoadText"](text, nil)
+	if value == nil then
+		hexs("refused " .. tostring(why))
+		return
+	end
+	local again = mod[root .. "SaveText"](value)
+	hexs(if again == text then "same" else "differs")
+	local out = buffer.create(mod[root .. "ToJsonMeasure"](value))
+	mod[root .. "ToJson"](value, out)
+	hexs(buffer.tostring(out))
+	local _, cr = mod[root .. "LoadText"](string.sub(text, 1, 4) .. "\r" .. string.sub(text, 5), nil)
+	local _, bad = mod[root .. "LoadText"]("#" .. string.sub(text, 2), nil)
+	hexs(tostring(cr) .. " " .. tostring(bad))
+end
+`)
+		for i, in := range byUnit[key] {
+			wire, err := os.ReadFile(filepath.Join(repoRoot, in.wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			inputs[fmt.Sprintf("b%d", i)] = []byte(base64.StdEncoding.EncodeToString(wire))
+			fmt.Fprintf(&b, "run(require(\"./%s\"), %q, buffer.tostring(inputs.b%d))\n", tableModule(u, in.root), in.root, i)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "main.moo"), []byte(b.String()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		lines := decodeHexLines(t, moorun.Run(t, dir, "main.moo", inputs))
+		at := 0
+		for _, in := range byUnit[key] {
+			total++
+			if at >= len(lines) {
+				t.Fatalf("unit %s: the probe stopped early", key)
+			}
+			if strings.HasPrefix(lines[at], "refused") {
+				t.Errorf("%s (%s): LoadText %s", in.name, key, lines[at])
+				at++
+				continue
+			}
+			if lines[at] != "same" {
+				t.Errorf("%s (%s): SaveText(LoadText(text)) is not the text", in.name, key)
+			}
+			if lines[at+1] != string(readGolden(t, in.name)) {
+				t.Errorf("%s (%s): the value LoadText landed does not write the golden", in.name, key)
+			}
+			if lines[at+2] != "base64_not_canonical base64_damaged" {
+				t.Errorf("%s (%s): the damaged texts answered %s", in.name, key, lines[at+2])
+			}
+			at += 3
+		}
+	}
+	t.Logf("%d instances", total)
 }
