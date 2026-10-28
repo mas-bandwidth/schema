@@ -1222,4 +1222,8 @@ function S.measure(d: any, v: any): (number?, any?)
 	return w.n, nil
 end
 
+-- number is the numbering (§3.1), shared with the message form's writer
+-- (table_message.moo), so both forms number one graph one way
+S.number = number
+
 return table.freeze(S)
