@@ -21,8 +21,9 @@ func init() {
 // emitFixedForm joins the fixed form (form byte 3) to every table module: for
 // each root the unit declares in THIS file, one block of static data — the
 // wire hash, the record body's byte size, and the layout as emitted by the
-// shared walk. The runtime builds its plan from this data and the descriptors
-// (docs/FIXED-FORM-ALGORITHM.md §4).
+// shared walk, then the root's lineage and floor (fixedlineage.go). The
+// runtime builds its plans from this data and the descriptors
+// (docs/FIXED-FORM-ALGORITHM.md §4, §5.2).
 func emitFixedForm(g *luau.Gen) error {
 	for _, t := range ir.TableFixedFormRoots(g.Unit) {
 		if g.Unit.DeclFile[t.Name] != g.File.Base {
@@ -49,4 +50,5 @@ func emitRootData(g *luau.Gen, root *ir.Struct) {
 			luau.IntegerLit(new(big.Int).SetUint64(e.ID)), e.Kind, e.Size, e.Children, e.Note)
 	}
 	g.Pf("})\n\n")
+	emitLineage(g, root, FixedLineageEntry{Wire: hash, Layout: layout, Record: fixedHashBytes + record})
 }

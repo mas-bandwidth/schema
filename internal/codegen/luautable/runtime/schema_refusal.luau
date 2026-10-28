@@ -34,17 +34,18 @@ local FORM_FIXED = 3
 -- emitted layout, its own refusals by name
 local function readFixed(T: any, root: string, bytes: buffer, report: any): any
 	local d = T[root .. "Descriptor"]
-	local fixed = { hash = T[root .. "FixedHash"], recordBytes = T[root .. "FixedRecordBytes"], layout = T[root .. "FixedLayout"] }
-	local ok, out = pcall(F.load, d, fixed, bytes)
-	if not ok then
-		if type(out) == "table" and (out :: any).name ~= nil then
-			report.reason = (out :: any).name
-			-- truncated and reserved_not_zero keep report.malformed set beside
-			-- the name, as Go's fixed load keeps Malformed (§5.3)
-			if (out :: any).malformed == true then report.malformed = true end
-			return nil
-		end
-		error(out, 0)
+	local fixed = {
+		hash = T[root .. "FixedHash"], recordBytes = T[root .. "FixedRecordBytes"], layout = T[root .. "FixedLayout"],
+		lineage = T[root .. "FixedLineage"], floor = T[root .. "FixedFloor"],
+	}
+	local fx: any = {}
+	local out = F.read(d, fixed, bytes, fx)
+	if out == nil then
+		report.reason = fx.reason
+		-- truncated and reserved_not_zero keep report.malformed set beside
+		-- the name, as Go's fixed load keeps Malformed (§5.3)
+		if fx.malformed == true then report.malformed = true end
+		return nil
 	end
 	if #out ~= 1 then
 		report.malformed = true
@@ -109,7 +110,7 @@ R.ReadStrictNames = table.freeze({
 	count_refusal = true,
 	-- the fixed reader's own, answered through schema_fixed.luau for a form-3 file
 	-- (§3.4, §6.5): Go's names, every framing-damage return included
-	layout_malformed = true, layout_record_too_large = true, layout_unknown = true,
+	layout_malformed = true, layout_record_too_large = true, layout_unknown = true, layout_unsupported = true,
 	layout_kind_invalid = true,
 	plan_too_large = true, count_over_bound = true,
 	truncated = true, reserved_not_zero = true, no_layout = true,

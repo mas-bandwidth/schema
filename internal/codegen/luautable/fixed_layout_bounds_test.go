@@ -252,10 +252,11 @@ for _, c in cases do
 		return F.load(T.RootDescriptor, fixedOf(T.RootFixedLayout), inputs[name])
 	end)
 	print("identity|" .. name .. "|" .. outcome(ok, err))
-	-- AND THE FORGED-FOREIGN LOAD: a writer layout that is itself forged, so
-	-- the byte comparison passes and the bounded plan walk must refuse it.
+	-- AND THE FORGED-LINEAGE LOAD: a lineage entry whose layout is itself
+	-- forged, so the byte comparison passes and the entry's bounded plan walk
+	-- must refuse it, the name the entry's own lane carries (§5.9 #36).
 	local fok, ferr = pcall(function()
-		return F.load(T.RootDescriptor, fixedOf(layout), inputs[name], fixedOf(layout))
+		return F.load(T.RootDescriptor, fixedOf(layout), inputs[name])
 	end)
 	print("foreign|" .. name .. "|" .. outcome(fok, ferr))
 end
