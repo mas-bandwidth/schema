@@ -1135,6 +1135,72 @@ public final class Driver {
         return 0;
     }
 
+    // ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6; FORMAT.md, `retain`)
+    //
+    // RT1 loads what RT2 wrote, with retention on, into caller-owned storage:
+    // a byte buffer and an id list, never grown. `short` is ONE BYTE SHORT OF
+    // THE LAST RECORD, found the way the page says: load once at a roomy
+    // capacity, read what it used, and load again one byte under that. The
+    // `retain` surface answers the load's three counters and the retain_lost
+    // the save adds; `retain-save` answers the saved file itself.
+    private static final int RETAIN_BYTES = 1 << 20;
+    private static final int RETAIN_IDS = 1 << 17;
+
+    private static tblrt1.TableRetain retainStore(String ids) {
+        return new tblrt1.TableRetain(RETAIN_BYTES, ids.equals("full") ? RETAIN_IDS : Integer.parseInt(ids));
+    }
+
+    private static int surfaceRetain(String out, boolean saved) throws IOException {
+        for (String[] f : lines) {
+            if (!f[0].equals("retain") && !f[0].equals("retain-message")) {
+                continue;
+            }
+            boolean message = f[0].equals("retain-message");
+            int at = message ? 1 : 0;
+            if (!f[2 + at].equals("tblrt1") || !f[3 + at].equals("Node")) {
+                return failInt(f[1] + ": no retaining codec for " + f[2 + at] + " " + f[3 + at]);
+            }
+            byte[] wire = Files.readAllBytes(Paths.get(f[4 + at]));
+            tblrt1.TableVariable.Report report = new tblrt1.TableVariable.Report();
+            List<tblrt1.NodeVariable.Value> roots = new ArrayList<>();
+            List<tblrt1.TableRetain> stores = new ArrayList<>();
+            if (message) {
+                // the MESSAGE FORM over a variable root (§3.3) is not in this
+                // leg yet: <Root>Message is emitted for fixed roots only, so a
+                // form-2 batch of RT1's Node has no reader here to retain with
+                spillAbsent(out, f[1]);
+                continue;
+            } else {
+                tblrt1.TableRetain store = retainStore(f[6]);
+                if (f[5].equals("short")) {
+                    tblrt1.NodeRetain.loadRetain(wire, store, new tblrt1.TableVariable.Report());
+                    store.capacity = store.used - 1;
+                }
+                roots.add(tblrt1.NodeRetain.loadRetain(wire, store, report));
+                stores.add(store);
+            }
+            if (report.malformed || report.refused || roots.contains(null)) {
+                return failInt(f[1] + ": the retaining load refused " + f[4 + at]);
+            }
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            tblrt1.TableVariable.Report save = new tblrt1.TableVariable.Report();
+            for (int i = 0; i < roots.size(); i++) {
+                long size = tblrt1.NodeRetain.measureRetain(roots.get(i), stores.get(i));
+                byte[] file = tblrt1.NodeRetain.saveRetain(roots.get(i), stores.get(i), save);
+                if (size < 0 || file == null || file.length != size) {
+                    return failInt(f[1] + ": the retaining save refused or disagreed with its measure");
+                }
+                bytes.write(file);
+            }
+            if (saved) {
+                spill(out, f[1], bytes.toByteArray());
+            } else {
+                spill(out, f[1], report.retained + "," + report.retainLost + "," + report.unknown + " " + save.retainLost + "\n");
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -1148,6 +1214,7 @@ public final class Driver {
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
             System.out.print("wire\nreport\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
+                    + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -1166,6 +1233,8 @@ public final class Driver {
             case "json-write": return surfaceJsonWrite(out);
             case "json-hostile": return surfaceJsonHostile(out);
             case "message": return surfaceMessage(out);
+            case "retain": return surfaceRetain(out, false);
+            case "retain-save": return surfaceRetain(out, true);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);

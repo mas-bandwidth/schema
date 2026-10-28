@@ -271,12 +271,14 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("                int listMark = retain.idUsed;\n")
 	b.WriteString("                TableVariable.Writer rec = w.sub(new byte[1 << 20]);\n")
 	b.WriteString("                int[] pat = new int[]{at + hdr};\n")
-	b.WriteString("                long ref = TableRetain.ref(rec, retain, id, report);\n")
+	b.WriteString("                // the record is ONE loss however deep it fails, counted once\n")
+	b.WriteString("                // below, so the walk itself is handed no report (§6.6)\n")
+	b.WriteString("                long ref = TableRetain.ref(rec, retain, id, null);\n")
 	b.WriteString("                boolean ok = ref != 0;\n")
 	b.WriteString("                if (ok) {\n")
 	b.WriteString("                    rec.putLeb(ref);\n")
 	b.WriteString("                    rec.put8(kind);\n")
-	b.WriteString("                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);\n")
+	b.WriteString("                    ok = TableRetain.emit(rec, retain, null, retain.bytes, pat, kind);\n")
 	b.WriteString("                }\n")
 	b.WriteString("                if (ok) { w.putBytes(rec.buf, 0, rec.off); }\n")
 	b.WriteString("                else {\n")
@@ -342,6 +344,15 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	}
 	m := varMember(f)
 	fieldRef := fmt.Sprintf("%sVariable.F_%s", st.Name, m)
+	// A POINTER, alone or in an array, is a node index (kind 17) into the
+	// node table the save builds from the same graph, so its write is the
+	// variable codec's own; the pointee's body rides in that table.
+	if isStruct(f) && f.Type.Pointer {
+		var body strings.Builder
+		writeFieldSave(&body, u, st, f)
+		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
+		return
+	}
 	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
 		var body strings.Builder
 		writeFieldSave(&body, u, st, f)
@@ -375,8 +386,16 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 			}
 			b.WriteString("                default: w.putLeb(0); break;\n")
 			b.WriteString("            }\n        }\n")
-		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array == ir.ArrayList {
-			fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
+			// EVERY ARRAY OF TABLES — unbounded, counted or fixed — is kind 14
+			// over element bodies, and each element body carries its own
+			// retained tail (§6.6). A fixed array is written whole, as the
+			// variable codec writes it; the others only when they hold one.
+			if f.Array == ir.ArrayFixed {
+				b.WriteString("        {\n")
+			} else {
+				fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+			}
 			fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 			b.WriteString("            TableVariable.Writer aw = w.sub(new byte[1 << 20]);\n")
 			fmt.Fprintf(b, "            aw.put8(13); aw.putLeb(v.%s.size());\n", m)
