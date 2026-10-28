@@ -284,6 +284,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	}
 	lines := strings.Split(content, "\n")
 	var steps []ciStep
+	groups := matrixGroups(lines)
 
 	type rawStep struct {
 		startLine int
@@ -415,7 +416,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 
 		// Step condition: explicitly disabled steps must not count as enabled;
 		// unresolved execution conditions cannot certify coverage.
-		if !isStepConditionEnabled(rs.ifCond) {
+		if !isStepConditionEnabled(rs.ifCond, groups) {
 			steps = append(steps, ciStep{
 				file:     file,
 				line:     rs.runLine,
@@ -455,7 +456,7 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 	return steps, nil
 }
 
-func isStepConditionEnabled(ifCond string) bool {
+func isStepConditionEnabled(ifCond string, groups map[string]bool) bool {
 	ifCond = strings.TrimSpace(ifCond)
 	if ifCond == "" {
 		return true
@@ -472,10 +473,37 @@ func isStepConditionEnabled(ifCond string) bool {
 	}
 	norm := strings.ReplaceAll(ifCond, `"`, `'`)
 	norm = strings.ReplaceAll(norm, " ", "")
-	if norm == "matrix.group=='unit-codegen'" || norm == "matrix.group=='unit-rest'" {
-		return true
+	// A step conditioned on ONE row of a `group:` matrix the same file declares
+	// runs on that row. A row the file does not declare runs nowhere, so it
+	// earns nothing; neither does any compound condition.
+	if group, ok := strings.CutPrefix(norm, "matrix.group=='"); ok {
+		if group, ok = strings.CutSuffix(group, "'"); ok && groups[group] {
+			return true
+		}
 	}
 	return false
+}
+
+// matrixGroups returns the rows of every one-line `group: [ a, b ]` matrix in
+// a workflow file: the row names a `matrix.group == 'a'` condition may name.
+func matrixGroups(lines []string) map[string]bool {
+	groups := map[string]bool{}
+	for _, line := range lines {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "group:")
+		if !ok {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		if !strings.HasPrefix(rest, "[") || !strings.HasSuffix(rest, "]") {
+			continue
+		}
+		for name := range strings.SplitSeq(rest[1:len(rest)-1], ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				groups[name] = true
+			}
+		}
+	}
+	return groups
 }
 
 // CI coverage recognizes an intentionally small shell subset. Unsupported lines
@@ -503,6 +531,21 @@ func parseCIStepCommands(lines []string, stepEnvSlow bool) (func(pkg, test strin
 }
 
 var ciPackage = regexp.MustCompile(`^\./[A-Za-z0-9_./-]+$`)
+
+// modulePath is this module's import path: what `go list ./...` prints ahead
+// of each package directory, and what a `grep -v` filter in the complement
+// command reads.
+const modulePath = "github.com/mas-bandwidth/schema/v2"
+
+// The complement command: `go test $(go list ./... | grep -v 'X' | grep -v 'Y')`,
+// or the same over `go list ./dir/...`.
+// A filter is a literal with an optional trailing `$` (no other regular
+// expression syntax), so its basic-regex meaning to grep and its meaning here
+// are the same: a substring, or with `$` a suffix, of the import path.
+var (
+	ciComplement     = regexp.MustCompile(`^go test \$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
+	ciComplementDrop = regexp.MustCompile(`grep -v ['"]([A-Za-z0-9_/-]+\$?)['"]`)
+)
 var ciBareRun = regexp.MustCompile(`^[A-Za-z0-9_./^-]+$`)
 
 func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test string) bool, bool, bool) {
@@ -527,12 +570,35 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 		}
 		cmd = strings.TrimSpace(strings.TrimPrefix(cmd, fields[0]))
 	}
-	// This is the one supported substitution, compared as a complete command.
-	// Its package selection cannot be inferred from a substring in another argument.
-	if cmd == "go test $(go list ./... | grep -v '/internal/codegen/')" ||
-		cmd == `go test $(go list ./... | grep -v "/internal/codegen/")` {
+	// This is the one supported substitution, matched as a complete command:
+	// the packages one `go list ./...` or `go list ./dir/...` pattern names,
+	// less every package whose import path one of a chain of `grep -v` filters
+	// drops. Its package selection cannot be inferred from a substring in
+	// another argument.
+	if m := ciComplement.FindStringSubmatch(cmd); m != nil {
+		base := strings.TrimSuffix(strings.TrimSuffix(m[1], "..."), "/")
+		var drops []string
+		for _, f := range ciComplementDrop.FindAllStringSubmatch(m[2], -1) {
+			drops = append(drops, f[1])
+		}
 		return func(pkg, test string) bool {
-			return pkg != "./internal/codegen" && !strings.HasPrefix(pkg, "./internal/codegen/")
+			if base != "." && pkg != base && !strings.HasPrefix(pkg, base+"/") {
+				return false
+			}
+			path := modulePath + "/" + strings.TrimPrefix(pkg, "./")
+			if pkg == "." {
+				path = modulePath
+			}
+			for _, d := range drops {
+				if lit, anchored := strings.CutSuffix(d, "$"); anchored {
+					if strings.HasSuffix(path, lit) {
+						return false
+					}
+				} else if strings.Contains(path, d) {
+					return false
+				}
+			}
+			return true
 		}, slow, true
 	}
 	fields = strings.Fields(cmd)
@@ -540,8 +606,8 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 		return nil, false, false
 	}
 	var packages []string
-	run := ""
-	seenRun := false
+	run, skip := "", ""
+	seenRun, seenSkip := false, false
 	for i := 2; i < len(fields); i++ {
 		field := fields[i]
 		switch {
@@ -550,35 +616,28 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 				return nil, false, false
 			}
 			seenRun = true
-			value := strings.TrimPrefix(field, "-run=")
-			if field == "-run" {
-				i++
-				if i == len(fields) {
-					return nil, false, false
-				}
-				value = fields[i]
-			}
-			// Single quotes preserve regex metacharacters literally. Bare values are
-			// limited to words without shell expansion; other quoting is unsupported.
-			if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
-				run = value[1 : len(value)-1]
-				if strings.ContainsRune(run, '\'') {
-					return nil, false, false
-				}
-			} else {
-				if !ciBareRun.MatchString(value) {
-					return nil, false, false
-				}
-				run = value
-			}
-			if _, err := regexp.Compile(run); err != nil {
+			value, next, ok := patternValue(fields, i, "-run")
+			if !ok {
 				return nil, false, false
 			}
+			run, i = value, next
+		case field == "-skip" || strings.HasPrefix(field, "-skip="):
+			// -skip earns credit only for the tests it does NOT match, read with
+			// Go's own semantics; `-skip .` therefore earns nothing at all.
+			if seenSkip {
+				return nil, false, false
+			}
+			seenSkip = true
+			value, next, ok := patternValue(fields, i, "-skip")
+			if !ok {
+				return nil, false, false
+			}
+			skip, i = value, next
 		case field == "-count=1", field == "-v", field == "-json":
 			// These options do not remove selected tests.
 		default:
 			// Unknown options, redirections, substitutions and command separators all
-			// fail this package grammar. In particular -list/-skip do not earn credit.
+			// fail this package grammar. In particular -list does not earn credit.
 			if field != "." && !ciPackage.MatchString(field) {
 				return nil, false, false
 			}
@@ -596,6 +655,9 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 		if seenRun && !matchesRun(run, test) {
 			return false
 		}
+		if seenSkip && matchesRun(skip, test) {
+			return false
+		}
 		for _, pattern := range packages {
 			if pattern == "./..." || pattern == pkg {
 				return true
@@ -609,6 +671,39 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 		}
 		return false
 	}, slow, true
+}
+
+// patternValue reads the regular expression of a -run or -skip option at
+// fields[i], in either the `-flag value` or the `-flag=value` spelling, and
+// returns the index of the last field it consumed.
+func patternValue(fields []string, i int, flagName string) (string, int, bool) {
+	field := fields[i]
+	value := strings.TrimPrefix(field, flagName+"=")
+	if field == flagName {
+		i++
+		if i == len(fields) {
+			return "", i, false
+		}
+		value = fields[i]
+	}
+	// Single quotes preserve regex metacharacters literally. Bare values are
+	// limited to words without shell expansion; other quoting is unsupported.
+	var pattern string
+	if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
+		pattern = value[1 : len(value)-1]
+		if strings.ContainsRune(pattern, '\'') {
+			return "", i, false
+		}
+	} else {
+		if !ciBareRun.MatchString(value) {
+			return "", i, false
+		}
+		pattern = value
+	}
+	if _, err := regexp.Compile(pattern); err != nil {
+		return "", i, false
+	}
+	return pattern, i, true
 }
 
 func coveredByCI(steps []ciStep, t gatedTest) string {
@@ -838,7 +933,7 @@ func packagesOf(cmd string, gated map[string]bool) []string {
 		default:
 			continue
 		}
-		if spelled != "./..." && !gated[spelled] {
+		if spelled != "./..." && !gated[spelled] && !gatedUnder(spelled, gated) {
 			continue
 		}
 		if !seen[spelled] {
@@ -847,6 +942,21 @@ func packagesOf(cmd string, gated map[string]bool) []string {
 		}
 	}
 	return found
+}
+
+// gatedUnder reports whether a `./dir/...` pattern names at least one gated
+// package, so a recipe over a subtree is held to the rule like one over ./...
+func gatedUnder(spelled string, gated map[string]bool) bool {
+	base, ok := strings.CutSuffix(spelled, "/...")
+	if !ok {
+		return false
+	}
+	for pkg := range gated {
+		if pkg == base || strings.HasPrefix(pkg, base+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 var runFlag = regexp.MustCompile(`-run[= ]+'?"?([^'"\s]+)'?"?`)

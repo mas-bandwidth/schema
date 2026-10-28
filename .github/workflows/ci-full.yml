@@ -181,21 +181,46 @@ jobs:
     # 10-minute test timeout; the gate is not loosened to fit that runner.
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
-    # THREE PACKAGE GROUPS, ONE PER ROW, because this job was 650 s median
-    # (2026-09-11) and a matrix row is a job: the emitter packages, everything
-    # else, and the seven fixed-form versioning suites that cannot ride
-    # `go test ./...` at all. Every step below is the step it was; what is new
-    # is which row runs it, and no step runs in none of them.
-    #   unit-codegen — go test ./internal/codegen/...
-    #   unit-rest    — go vet ./..., go test over the complement, the
-    #                  projection's three controls, the toolchain control, and
-    #                  the one Linux cache write
-    #   versioning   — §5 on the Go, C, Rust, JavaScript, Dart, C# and Elixir
-    #                  legs, with the three SDKs only that row needs
+    # EIGHT ROWS, because this job was 650 s median (2026-09-11) and a matrix
+    # row is a job: the emitter packages, the compiler package in two halves,
+    # everything else, the Elixir emitter alone, the slow-gate accounting in
+    # two halves, and the seven fixed-form
+    # versioning suites that cannot ride `go test ./...` at all. Every step
+    # below is the step it was; what is new is which row runs it, and no step
+    # runs in none of them or in two.
+    #   unit-codegen    — go test ./internal/codegen/... less elixirtable
+    #   unit-compiler-1 — go test ./compiler, the tests one pattern names
+    #   unit-compiler-2 — go test ./compiler, every other test
+    #   unit-rest       — go vet ./..., go test over everything that is
+    #                     neither an emitter package nor ./compiler, the
+    #                     projection's three controls, the toolchain control,
+    #                     the python leg and the one Linux cache write
+    #   unit-elixir     — go test internal/codegen/elixirtable, alone
+    #   slow-gate-codegen — the slowtest accounting (schema#988) over the
+    #                     emitter packages
+    #   slow-gate-rest  — the same accounting over every other package
+    #   versioning      — §5 on the Go, C, Rust, Java, JavaScript, Dart, C#
+    #                     and Elixir legs, with the three SDKs only that row
+    #                     needs
+    #
+    # WHY unit-rest WAS CUT AGAIN (2026-10-27). On run 40596125566 the one
+    # unit-rest row ran 14m55s against this 15-minute cap: the complement's
+    # `go test` took 7m26s, nearly all of it ./compiler (441 s; the next
+    # package, internal/fuzz, was 79 s and internal/goldens 77 s), the
+    # accounting's plain `go test ./...` took 6m22s more, and the Java
+    # versioning suite, whose step carried no row condition, ran 41 s in every
+    # row. So ./compiler is two rows split by test name, the accounting is two
+    # rows split by package, and the Java suite is the versioning row's alone.
+    # internal/codegen/elixirtable is a row of its own: its allocation test is
+    # load-sensitive, and alone it is 4m35s, which would put unit-rest over
+    # half its cap. Which
+    # row runs which package and which test is held by
+    # tools/slowgatescan's TestCIFullGoTestRunsEveryTestExactlyOnce: a test
+    # that no row selects, or that two rows select, is red there by name.
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-rest, versioning ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -332,19 +357,60 @@ jobs:
       # seconds instead of minutes (the owner's rule, twice today: "Remember the
       # 1-2 minute iteration rule on unit tests."). THIS LANE SETS IT, so the
       # merge and nightly runs check exactly what they checked before.
+      #
+      # LESS internal/codegen/elixirtable, which the unit-rest row runs in a
+      # step of its own: its TestOffsetsComposeFromHalvesElixir measures
+      # allocations and is load-sensitive, so it runs with no other package's
+      # tests beside it, on a row of its own (2026-10-27).
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/...
+        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')
+
+      # THE COMPILER PACKAGE, IN TWO ROWS, because on its own it is 441 s of
+      # the complement below and one package is one test binary: the only cut
+      # that splits it is by test name. ONE PATTERN, handed to -run on the
+      # first row and to -skip on the second, so the two rows are complements
+      # and a new test lands in the second row with no edit here. It is spelled
+      # out on both lines because tools/slowgatescan reads these lines and
+      # credits what they select (a shell variable would earn nothing), and
+      # its TestCIFullGoTestRunsEveryTestExactlyOnce goes red if the two
+      # spellings ever stop being complements. The pattern was balanced on a
+      # -json timing of the package (2026-10-27: the C++ and issue tests 138 s,
+      # the rest 142 s, at GOMAXPROCS=4); -v keeps each test's time in the log
+      # for the next rebalance.
+      - name: go test the compiler package, first half
+        if: matrix.group == 'unit-compiler-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(Cpp|CPP|Issue)'
+
+      - name: go test the compiler package, second half
+        if: matrix.group == 'unit-compiler-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -skip '^Test(Cpp|CPP|Issue)'
 
       # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
-      # new package lands in one group or the other with no edit to this file.
-      - name: go test everything that is not an emitter package
+      # new package lands in this row with no edit to this file.
+      - name: go test everything that is not an emitter package or the compiler
         if: matrix.group == 'unit-rest'
         env:
           SCHEMA_SLOW: '1'
-        run: go test $(go list ./... | grep -v '/internal/codegen/')
+        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$')
+
+      # THE ELIXIR EMITTER'S PACKAGE, ALONE. Its allocation test measures heap
+      # words and is load-sensitive, so it is not inside the emitter row's
+      # `go test`, where every codegen package compiles and runs at once; it
+      # runs on a row with nothing else on it.
+      # -count=1 because a self-hosted runner keeps its Go test cache warm,
+      # and a cached pass is a measurement taken on some earlier run's load.
+      - name: go test the Elixir emitter package on its own
+        if: matrix.group == 'unit-elixir'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 ./internal/codegen/elixirtable
 
       # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
       # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is
@@ -354,9 +420,16 @@ jobs:
       # make target that sets the variable, run only by the two steps above, or
       # run by NOBODY. The third bucket fails the job. The table is uploaded as
       # build/slowgate/coverage.tsv so the accounting is read, not believed.
-      - name: every slowtest gate is run by somebody, by name (schema#988)
-        if: matrix.group == 'unit-rest'
-        run: make slow-gate-coverage
+      # TWO ROWS, ONE VERDICT: the accounting is per skip, so the emitter
+      # packages and the rest, each read on its own row, reach the verdict one
+      # plain `go test ./...` would, at half the wall time each.
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages
+        if: matrix.group == 'slow-gate-codegen'
+        run: make slow-gate-coverage-codegen
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package
+        if: matrix.group == 'slow-gate-rest'
+        run: make slow-gate-coverage-rest
 
       # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
       # test/conformance/go/rows, which `go test ./...` never sees because they
@@ -419,6 +492,7 @@ jobs:
       # and the JDK pin with it. SCHEMA_REQUIRE_CORPUS=1 lives inside the recipe,
       # so a corpus that failed to build cannot pass here quietly.
       - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
+        if: matrix.group == 'versioning'
         run: make tables-java-versioning
 
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
@@ -503,7 +577,7 @@ jobs:
       # THE PYTHON LEG (#1400). Each ported row is a self-checking script, and
       # until this step no job ran one: the row was documentation of a rule,
       # not a gate over it. The runner's own python3 is enough; the target
-      # refuses a run that found no rows. Its control is in the base group of
+      # refuses a run that found no rows. Its control is in the base-3 group of
       # make/negative-controls.json. This is ci-full.yml's go-test job, the
       # stream's replacement for the ci.yml job the original step rode.
       - name: the python leg's rows pass
