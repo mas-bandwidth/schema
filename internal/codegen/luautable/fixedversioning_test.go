@@ -661,16 +661,16 @@ func luauResolvePath(t *testing.T, root *ir.Struct, expr, path string) (string, 
 		if !last {
 			t.Fatalf("the manifest path %q runs past the leaf %s", path, name)
 		}
-		switch {
-		case f.Type.Kind == ir.TString:
+		switch f.Type.Kind {
+		case ir.TString:
 			return expr, f, "string"
-		case f.Type.Kind == ir.TWString:
+		case ir.TWString:
 			return expr, f, "wstring"
-		case f.Type.Kind == ir.TFloat32:
+		case ir.TFloat32:
 			return expr, f, "f32"
-		case f.Type.Kind == ir.TFloat64:
+		case ir.TFloat64:
 			return expr, f, "f64"
-		case f.Type.Kind == ir.TFixed:
+		case ir.TFixed:
 			return expr, f, "fixed"
 		}
 		return expr, f, "int"
