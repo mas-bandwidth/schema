@@ -23,7 +23,7 @@ func jsonProbeDir(t *testing.T, main string, runtime map[string][]byte) string {
 	t.Helper()
 	dir := t.TempDir()
 	files := moo.Runtime()
-	for name, data := range TextRuntime() {
+	for name, data := range Runtime() {
 		files[name] = data
 	}
 	for name, data := range runtime {

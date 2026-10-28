@@ -1,5 +1,5 @@
 --!strict
--- text.moo — THE BASE64 TEXT CARRIER (docs/SPEC-TABLES.md §16.8; docs/PORT-MOO.md,
+-- textcarrier.moo — THE BASE64 TEXT CARRIER (docs/SPEC-TABLES.md §16.8; docs/PORT-MOO.md,
 -- THE LAYERS, layer 4). A text channel carries a table as the CANONICAL base64 of
 -- its whole binary wire: the standard alphabet, padded, pad bits zero, and no
 -- byte outside the alphabet and `=`. The form byte, the framing check and every
