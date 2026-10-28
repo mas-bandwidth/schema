@@ -84,6 +84,17 @@ func (g *Gen) call(ind, expr, comment string) {
 }
 
 func emitReadStruct(g *Gen, d *ir.Struct) {
+	g.Pf("-- Init%s resets a value to what New%s builds, in place: its declared defaults\n", d.Name, d.Name)
+	g.Pf("-- (SPEC §5), every buffer and nested value reused, so a reused value costs no\n")
+	g.Pf("-- allocation.\n")
+	g.Pf("function %s.Init%s(value: any)\n", g.Self, d.Name)
+	if len(d.Fields) == 0 {
+		g.Pf("  -- empty body — nothing to reset (SPEC §4.6)\n")
+	}
+	for _, f := range d.Fields {
+		emitInitField(g, f, "value."+ir.GoExportName(f.Name), "  ")
+	}
+	g.Pf("end\n\n")
 	g.Pf("-- Zero%s resets the §5 ZERO form: all-zero storage, without declared defaults.\n", d.Name)
 	g.Pf("function %s.Zero%s(value: any)\n", g.Self, d.Name)
 	if len(d.Fields) == 0 {
@@ -105,6 +116,18 @@ func emitReadStruct(g *Gen, d *ir.Struct) {
 }
 
 func emitReadUnion(g *Gen, d *ir.Union) {
+	g.Pf("-- Init%s resets the union to what New%s builds, in place: None, and every\n", d.Name, d.Name)
+	g.Pf("-- payload arm at its declared defaults (SPEC §4.8).\n")
+	g.Pf("function %s.Init%s(value: any)\n  value.Type = 0\n", g.Self, d.Name)
+	for _, v := range d.Variants {
+		if v.Void() {
+			continue
+		}
+		f := *v.F
+		f.Name = v.Name
+		emitInitField(g, &f, "value."+ir.GoExportName(v.Name), "  ")
+	}
+	g.Pf("end\n\n")
 	g.Pf("-- Zero%s resets the union to None; unselected arms are unspecified (SPEC §4.8).\n", d.Name)
 	g.Pf("function %s.Zero%s(value: any)\n  value.Type = 0\nend\n\n", g.Self, d.Name)
 	g.Pf("function %s.Read%s(stream: any, value: any): boolean\n", g.Self, d.Name)
@@ -123,7 +146,7 @@ func emitReadUnion(g *Gen, d *ir.Union) {
 			continue
 		}
 		arm := ir.GoExportName(v.Name)
-		g.Pf("    value.%s = %s -- fresh declared defaults on every selection\n", arm, g.ctor(v.Type, false))
+		g.Pf("    %s(value.%s) -- the selected arm starts at its declared defaults, in place (SPEC §4.8, §5)\n", funcName(g, "Init", v.Type), arm)
 		g.Pf("    return %s(stream, value.%s)\n", funcName(g, "Read", v.Type), arm)
 		g.Pf("  end\n")
 	}
@@ -492,6 +515,8 @@ func ZeroValue(g *Gen, t ir.FieldType) string {
 		switch t.Ref.(type) {
 		case *ir.Struct, *ir.Union:
 			return g.ctor(t.Name, false)
+		case *ir.Flags:
+			return "0i" // flags store uint64 as an integer (docs/PORT-LUAU.md)
 		}
 		return "0"
 	}
@@ -502,4 +527,54 @@ func ZeroValue(g *Gen, t ir.FieldType) string {
 		return "0i"
 	}
 	return "0"
+}
+
+// emitInitField resets one field to its construction value (what New<Name>
+// builds, SPEC §5) without replacing any table or buffer the value already
+// holds: a buffer is zeroed and takes its default bytes again, a nested value
+// and every array element is reset in place, a counted array returns to its
+// born count. A 128-bit value is a fresh pair (an Int128 is a value).
+func emitInitField(g *Gen, f *ir.Field, name, ind string) {
+	t := f.Type
+	switch {
+	case f.Array != ir.ArrayNone:
+		switch {
+		case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+			g.Pf("%sfor i = 1, %d do buffer.fill(%s[i], 0, 0); %sLength[i] = 0 end\n", ind, f.ArrayBound, name, name)
+		case isByteElem(t):
+			g.Pf("%sbuffer.fill(%s, 0, 0)\n", ind, name)
+		case isInitable(g, t):
+			g.Pf("%sfor i = 1, %d do %s(%s[i]) end\n", ind, f.ArrayBound, funcName(g, "Init", t.Name), name)
+		default:
+			_, init := g.elem(f)
+			g.Pf("%sfor i = 1, %d do %s[i] = %s end\n", ind, f.ArrayBound, name, init)
+		}
+		if f.Array == ir.ArrayCounted {
+			g.Pf("%s%sCount = %d -- the born count (SPEC §4.6)\n", ind, name, f.BornCount())
+		}
+	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+		g.Pf("%sbuffer.fill(%s, 0, 0)\n%s%sLength = 0\n", ind, name, ind, name)
+		for _, line := range g.ByteDefault(f, name) {
+			g.Pf("%s%s\n", ind, line)
+		}
+	case isInitable(g, t):
+		g.Pf("%s%s(%s)\n", ind, funcName(g, "Init", t.Name), name)
+	default:
+		_, init := g.scalar(f)
+		g.Pf("%s%s = %s\n", ind, name, init)
+	}
+}
+
+// isInitable reports a named packet type or union, which has an Init<Name>.
+func isInitable(g *Gen, t ir.FieldType) bool {
+	if t.Kind != ir.TNamed {
+		return false
+	}
+	switch r := t.Ref.(type) {
+	case *ir.Struct:
+		return !r.IsTable
+	case *ir.Union:
+		return g.Unit.TableUnions[t.Name] == nil
+	}
+	return false
 }
