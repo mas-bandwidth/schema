@@ -10,7 +10,7 @@ SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),
 
 build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
-	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
+	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
 	@touch $@
 
 .PHONY: packet-utf8-go packet-utf8-go-negative-control
@@ -34,14 +34,14 @@ test-go: packet-utf8-go packet-utf8-go-negative-control
 
 generated/go-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang go --out generated/go-ludicrous examples128
-	@printf 'module ludicrous\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go-ludicrous/go.mod
+	@printf 'module ludicrous\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../$(SERIALIZE_GO)\n' > generated/go-ludicrous/go.mod
 	@touch $@
 
 # the Go target: generated package + module wiring (the go.mod is build
 # wiring, not schema output — the emitter writes only .go files)
 generated/go/.stamp: bin/schema $(SCHEMAS)
 	./bin/schema generate --lang go --out generated/go examples
-	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../$(SERIALIZE_GO)\n' > generated/go/go.mod
+	@printf 'module example\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../$(SERIALIZE_GO)\n' > generated/go/go.mod
 	@touch $@
 
 # The same corpus through the C# table backend (docs/SPEC-TABLES.md, schema#262):
@@ -236,7 +236,7 @@ cards-generate: bin/schema
 	./bin/schema generate --lang go --out build/tables-generated-go/cards-future tables/cards/testdata/upgrade/future/DECLARATION.schema
 	$(call go_table_module,cards-initial,cardsinitial)
 	$(call go_table_module,cards-future,cardsfuture)
-	@printf 'module cards\n\ngo 1.26\n\nrequire (\n\tcardsfuture v0.0.0\n\tcardsinitial v0.0.0\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
+	@printf 'module cards\n\ngo 1.26\n\nrequire (\n\tcardsfuture v0.0.0\n\tcardsinitial v0.0.0\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n\nreplace cardsinitial => ../cards-initial\n\nreplace cardsfuture => ../cards-future\n' > build/tables-generated-go/cards/go.mod
 	cp tables/cards/cards.go build/tables-generated-go/cards/cards.go
 	cp tables/cards/cards_test.go build/tables-generated-go/cards/cards_test.go
 	cp tables/cards/parse.go build/tables-generated-go/cards/parse.go
@@ -281,7 +281,7 @@ cards-example: cards-generate
 	@mkdir -p build/cards-example/testdata
 	cp tables/cards/example/go.mod build/cards-example/go.mod
 	cp tables/cards/example/example_test.go build/cards-example/example_test.go
-	@printf '\nreplace cards => %s\n\nreplace github.com/mas-bandwidth/serialize.go => %s\n' \
+	@printf '\nreplace cards => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
 		"$(CURDIR)/build/tables-generated-go/cards" "$(abspath $(SERIALIZE_GO))" >> build/cards-example/go.mod
 	@mkdir -p build/tables-generated-go/cards-future/probe
 	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.Id[:], &r.IdLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
@@ -484,7 +484,7 @@ test-go: cards-test cards-example cards-wire-fuzz
 # The shared Go runtime is the default (docs/SPEC-TABLES.md §8.4), so every
 # generated table module requires this module and replaces it with the tree.
 define go_table_module
-@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > build/tables-generated-go/$(1)/go.mod
+@printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' $(2) > build/tables-generated-go/$(1)/go.mod
 endef
 
 # THE STANDALONE GATE, Go — the M4b twin of `tables-cs-standalone`,
@@ -615,20 +615,20 @@ GO_BENCH_RUNTIME := standalone
 generated/bench/tables/go/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/go
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/tables/go bench/corpus/BenchTable.schema
-	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../../$(SERIALIZE_GO)\n' > generated/bench/tables/go/go.mod
 
 # Keep both compiler-owned source and module wiring in the discovered generation
 # graph. Default wiring is byte-identical to the paired driver's generated unit.
 generated/bench/paired/go/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/go.mk
 	@mkdir -p generated/bench/paired/go
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../../$(SERIALIZE_GO)\n' > generated/bench/paired/go/go.mod
 	@touch $@
 
 generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go bench/corpus/Bench.schema
 	./bin/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out generated/bench/go/realworld bench/corpus/RealWorld.schema
-	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
+	@printf 'module bench\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../$(SERIALIZE_GO)\n' > generated/bench/go/go.mod
 	@touch $@
 
 build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod
@@ -698,7 +698,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
 build/packet-wide/go/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema make/go.mk
 	./bin/schema generate --lang go --out build/packet-wide/go build/packet-wide/source/WideText.schema
 	./bin/schema generate --lang go --out build/packet-wide/go/shapes test/packet-wide/Shapes.schema
-	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-wide/go/go.mod
+	@printf 'module packetwide\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-wide/go/go.mod
 	@touch $@
 
 .PHONY: packet-wide-go packet-wide-go-negative-control
@@ -1002,11 +1002,11 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 		"$(CURDIR)" "$(CURDIR)" > build/go-fixed-sabotage/overlay.json
 	@go build -overlay=build/go-fixed-sabotage/overlay.json -o build/go-fixed-sabotage/schema ./cmd/schema
 	@./build/go-fixed-sabotage/schema generate --lang go --runtime $(GO_BENCH_RUNTIME) --out build/go-fixed-sabotage/gen bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' > build/go-fixed-sabotage/gen/go.mod
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => $(CURDIR)/$(SERIALIZE_GO)\n' > build/go-fixed-sabotage/gen/go.mod
 	@cp bench/paired/go/go.mod build/go-fixed-sabotage/table.mod
 	@cd bench/paired/go && go mod edit -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod \
 		-replace benchtable=$(CURDIR)/build/go-fixed-sabotage/gen \
-		-replace github.com/mas-bandwidth/serialize.go=$(CURDIR)/$(SERIALIZE_GO)
+		-replace github.com/mas-bandwidth/serialize.go/v2=$(CURDIR)/$(SERIALIZE_GO)
 	@cd bench/paired/go && go build -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod -tags matched \
 		-o $(CURDIR)/build/go-fixed-sabotage/leg ../../tables/go/table_main.go ../../tables/go/shape_matched.go
 	@if ./build/go-fixed-sabotage/leg --gate --indexed --wire-dir bench/paired/corpus \

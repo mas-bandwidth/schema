@@ -48,7 +48,7 @@ import (
 
 	"bench"
 
-	serialize "github.com/mas-bandwidth/serialize.go"
+	serialize "github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // NumVariants is BENCH-STANDARD §2.7's rotating-buffer count: 64. One buffer

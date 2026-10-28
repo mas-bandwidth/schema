@@ -304,7 +304,7 @@ func (g *cookGen) assemble() ([]byte, error) {
 		imports = append(imports, `"unsafe"`)
 	}
 	if strings.Contains(g.structs.String(), "serialize.") {
-		imports = append(imports, `"github.com/mas-bandwidth/serialize.go"`)
+		imports = append(imports, `"github.com/mas-bandwidth/serialize.go/v2"`)
 	}
 	h.WriteString(goImports(imports))
 	h.WriteString(g.runtime.String())

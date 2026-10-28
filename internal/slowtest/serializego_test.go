@@ -20,7 +20,7 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module github.com/mas-bandwidth/serialize.go\n"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module github.com/mas-bandwidth/serialize.go/v2\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return dir

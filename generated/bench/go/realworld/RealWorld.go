@@ -14,7 +14,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // ProtocolID is the unit's protocol id, the hash of its wire shape. Two
@@ -279,6 +279,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F001Int < -805495 || value.F001Int > 805495 {
 		return serialize.ErrValueOutOfRange
 	}
+	if math.Float64bits(value.F002F64)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	if value.F003Int < -835897 || value.F003Int > 835897 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -288,8 +291,14 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F006Int < -1513 || value.F006Int > 1513 {
 		return serialize.ErrValueOutOfRange
 	}
+	if math.Float32bits(value.F007F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	if value.F009Int < -22 || value.F009Int > 22 {
 		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F010F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
 	}
 	f0 := uint64(value.F001Int+805495) & 0x1fffff
 	f1 := math.Float64bits(value.F002F64)
@@ -324,6 +333,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	w4 := f9>>8 | f10<<24 | f11<<34
 	stream.SerializeBits64(&w4, 35)
 	if value.F012Bool {
+		if math.Float32bits(value.F013F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		if value.F014Uint > 775 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -346,6 +358,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F018Int < -834 || value.F018Int > 834 {
 		return serialize.ErrValueOutOfRange
 	}
+	if math.Float64bits(value.F019F64)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.F020F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	f17 := uint64(int32(value.F018Int)+834) & 0x7ff
 	f18 := math.Float64bits(value.F019F64)
 	f19 := uint64(math.Float32bits(value.F020F32)) & 0xffffffff
@@ -355,6 +373,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits64(&w7, 43)
 	fixedValue2 := int64(value.F021Ufixed)
 	stream.SerializeFixed64(&fixedValue2, 20, 12, 0, 25141)
+	if math.Float32bits(value.F022F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.F024F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	f20 := uint64(math.Float32bits(value.F022F32)) & 0xffffffff
 	f21 := uint64(value.F023Bits) & 0x1ffffff
 	f22 := uint64(math.Float32bits(value.F024F32)) & 0xffffffff
@@ -364,6 +388,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	stream.SerializeBits(&w9, 25)
 	fixedValue3 := int64(value.F025Fixed)
 	stream.SerializeFixed64(&fixedValue3, 8, 8, -119, 119)
+	if math.Float32bits(value.F030F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	if value.F032Int < -3 || value.F032Int > 3 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -423,6 +450,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	w13 := f35 | f36<<7 | f37<<37
 	stream.SerializeBits64(&w13, 38)
 	if value.F043Bool {
+		if math.Float32bits(value.F044F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		if value.F046Uint > 76063 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -446,6 +476,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		if value.F052Int < -57 || value.F052Int > 57 {
 			return serialize.ErrValueOutOfRange
 		}
+		if math.Float32bits(value.F053F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		if value.F054Int < -35 || value.F054Int > 35 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -464,6 +497,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	}
 	if value.F057Int < -15 || value.F057Int > 15 {
 		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.F058F32)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float64bits(value.F059F64)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
 	}
 	if value.F062Uint > 503 {
 		return serialize.ErrValueOutOfRange
@@ -593,6 +632,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	if value.F086Uint > 399 {
 		return serialize.ErrValueOutOfRange
 	}
+	if math.Float64bits(value.F087F64)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	if value.F088Int < -694 || value.F088Int > 694 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -658,6 +700,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	value.F001Int = int32(v0) - 805495
 	v1 := c0>>21 | c1<<43
+	if v1&0x7ff0000000000000 == 0x7ff0000000000000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F002F64 = math.Float64frombits(v1)
 	v2 := (c1 >> 21) & 0x1fffff
 	if v2 > 1671794 { // a value smuggled into the bit headroom is refused
@@ -681,6 +726,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	value.F006Int = int16(int32(v5) - 1513)
 	v6 := (c2 >> 18) & 0xffffffff
+	if v6&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F007F32 = math.Float32frombits(uint32(v6))
 	v7 := c2>>50 | c3<<14
 	value.F008U64 = v7
@@ -690,6 +738,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	value.F009Int = int8(int32(v8) - 22)
 	v9 := (c3>>56 | c4<<8) & 0xffffffff
+	if v9&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F010F32 = math.Float32frombits(uint32(v9))
 	v10 := (c4 >> 24) & 0x3ff
 	value.F011Bits = uint32(v10)
@@ -702,6 +753,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 			return stream.Err()
 		}
 		v14 := c5 & 0xffffffff
+		if v14&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.F013F32 = math.Float32frombits(uint32(v14))
 		v15 := (c5 >> 32) & 0x3ff
 		if v15 > 775 { // a value smuggled into the bit headroom is refused
@@ -745,8 +799,14 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	value.F018Int = int16(int32(v17) - 834)
 	v18 := c6>>11 | c7<<53
+	if v18&0x7ff0000000000000 == 0x7ff0000000000000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F019F64 = math.Float64frombits(v18)
 	v19 := (c7 >> 11) & 0xffffffff
+	if v19&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F020F32 = math.Float32frombits(uint32(v19))
 	fixedValue2 := int64(0)
 	stream.SerializeFixed64(&fixedValue2, 20, 12, 0, 25141)
@@ -760,10 +820,16 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		return stream.Err()
 	}
 	v20 := c8 & 0xffffffff
+	if v20&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F022F32 = math.Float32frombits(uint32(v20))
 	v21 := (c8 >> 32) & 0x1ffffff
 	value.F023Bits = uint32(v21)
 	v22 := (c8>>57 | c9<<7) & 0xffffffff
+	if v22&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F024F32 = math.Float32frombits(uint32(v22))
 	fixedValue3 := int64(0)
 	stream.SerializeFixed64(&fixedValue3, 8, 8, -119, 119)
@@ -790,6 +856,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	v26 := c10>>18 | c11<<46
 	value.F029I64 = int64(v26)
 	v27 := (c11 >> 18) & 0xffffffff
+	if v27&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F030F32 = math.Float32frombits(uint32(v27))
 	v28 := (c11 >> 50) & 0x1
 	value.F031Bits = uint32(v28)
@@ -848,6 +917,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 			return stream.Err()
 		}
 		v38 := c14 & 0xffffffff
+		if v38&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.F044F32 = math.Float32frombits(uint32(v38))
 		v39 := (c14 >> 32) & 0xfff
 		value.F045Bits = uint32(v39)
@@ -886,6 +958,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 		}
 		value.F052Int = int8(int32(v43) - 57)
 		v44 := (c16 >> 8) & 0xffffffff
+		if v44&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.F053F32 = math.Float32frombits(uint32(v44))
 		v45 := (c16 >> 40) & 0x7f
 		if v45 > 70 { // a value smuggled into the bit headroom is refused
@@ -923,8 +998,14 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	value.F057Int = int8(int32(v48) - 15)
 	v49 := (c17 >> 11) & 0xffffffff
+	if v49&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F058F32 = math.Float32frombits(uint32(v49))
 	v50 := c17>>43 | c18<<21
+	if v50&0x7ff0000000000000 == 0x7ff0000000000000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F059F64 = math.Float64frombits(v50)
 	v51 := (c18 >> 43) & 0xff
 	value.F060Bits = uint32(v51)
@@ -1070,6 +1151,9 @@ func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
 	}
 	value.F086Uint = uint16(v75)
 	v76 := c25>>30 | c26<<34
+	if v76&0x7ff0000000000000 == 0x7ff0000000000000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.F087F64 = math.Float64frombits(v76)
 	v77 := (c26 >> 30) & 0x7ff
 	if v77 > 1388 { // a value smuggled into the bit headroom is refused

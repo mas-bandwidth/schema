@@ -1,5 +1,5 @@
 // THE GO VERSIONING PROBES FIND THEIR OWN RUNTIME. fixedversioning_test.go:1126
-// wrote the probe's go.mod with a replace of github.com/mas-bandwidth/serialize.go
+// wrote the probe's go.mod with a replace of github.com/mas-bandwidth/serialize.go/v2
 // to a directory named serialize.go BESIDE the repository checkout — four levels
 // up from the gotable package — and nothing staged that sibling (schema#1881
 // fetched only the C++ runtime), so a cold read on a bench with no sibling died

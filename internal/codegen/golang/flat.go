@@ -664,7 +664,7 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		}, true
 
 	// The float cases are the only classification that reaches the math
-	// package, and they set needsMath from inside their emit/read closures —
+	// package, and they set needsMath from inside their guard/emit/read closures —
 	// at EMISSION, never here. Classification is speculative: flatGroupSize,
 	// flatStructRun and the run accumulators all classify runs that may never
 	// be emitted, and a run that falls back to the per-field form calls
@@ -675,32 +675,12 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		if f.HasFloatRange {
 			return g.flatCompressedPiece(f, name)
 		}
-		emit := g.constEmit("uint64(math.Float32bits("+name+"))", 32, "")
-		return flatPiece{
-			bits: 32, guard: noGuard,
-			emit: func(ind string, idx int) {
-				g.needsMath = true
-				emit(ind, idx)
-			},
-			read: func(ind, src string) {
-				g.needsMath = true
-				g.pf("%s%s = math.Float32frombits(uint32(%s))\n", ind, name, src)
-			},
-		}, true
+		return g.flatFloatPiece(32, "math.Float32bits("+name+")", "0x7f800000",
+			name+" = math.Float32frombits(uint32(%s))"), true
 
 	case ir.TFloat64:
-		emit := g.constEmit("math.Float64bits("+name+")", 64, "")
-		return flatPiece{
-			bits: 64, guard: noGuard,
-			emit: func(ind string, idx int) {
-				g.needsMath = true
-				emit(ind, idx)
-			},
-			read: func(ind, src string) {
-				g.needsMath = true
-				g.pf("%s%s = math.Float64frombits(%s)\n", ind, name, src)
-			},
-		}, true
+		return g.flatFloatPiece(64, "math.Float64bits("+name+")", "0x7ff0000000000000",
+			name+" = math.Float64frombits(%s)"), true
 
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -756,6 +736,40 @@ func (g *gen) flatScalarPiece(f *ir.Field, name string) (flatPiece, bool) {
 		return g.flatIntPiece(f, name)
 	}
 	return flatPiece{}, false
+}
+
+// flatFloatPiece is a bare float32 or float64: its IEEE-754 bit pattern rides
+// as is, so the flat form places the bits itself and never reaches the
+// runtime's SerializeFloat32/64. It therefore owns the finite rule those carry
+// under serialize format 2.0 (SPEC §4.3): a NaN or an infinity, whose exponent
+// field is all ones, is refused with serialize.ErrNonFiniteFloat on write and
+// on read, tested on the raw bits; negative zero and the subnormals ride bit
+// exact. bitsExpr is the pattern at its own width, exponent the mask of its
+// exponent field, and store the field store with a %s for the extracted bits.
+func (g *gen) flatFloatPiece(bits int64, bitsExpr, exponent, store string) flatPiece {
+	wide := bitsExpr
+	if bits < 64 {
+		wide = "uint64(" + bitsExpr + ")"
+	}
+	emit := g.constEmit(wide, bits, "")
+	return flatPiece{
+		bits: bits,
+		guard: func(ind string, idx int) {
+			g.needsMath = true
+			g.pf("%sif %s&%s == %s { // NaN and the infinities are not values of the type\n", ind, bitsExpr, exponent, exponent)
+			g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
+		},
+		emit: func(ind string, idx int) {
+			g.needsMath = true
+			emit(ind, idx)
+		},
+		read: func(ind, src string) {
+			g.needsMath = true
+			g.pf("%sif %s&%s == %s { // a NaN or infinity pattern is refused on its raw bits\n", ind, src, exponent, exponent)
+			g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
+			g.pf("%s"+store+"\n", ind, src)
+		},
+	}
 }
 
 // flatCompressedPiece folds a ranged float's quantization into the run. The

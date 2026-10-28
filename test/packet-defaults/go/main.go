@@ -14,7 +14,7 @@ import (
 	d "packetdefaults"
 	p "packetplain"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 var failed bool

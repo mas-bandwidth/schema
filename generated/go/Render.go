@@ -8,7 +8,7 @@
 package example
 
 import (
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // RenderBlockMaxSprites is a schema constant.

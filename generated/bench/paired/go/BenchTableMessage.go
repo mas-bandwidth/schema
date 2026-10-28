@@ -12,7 +12,7 @@ package bench
 
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 	"math"
 	"unsafe"
 )

@@ -4391,11 +4391,11 @@ module starlightconsume
 go 1.26
 
 require (
-	github.com/mas-bandwidth/serialize.go v0.0.0
+	github.com/mas-bandwidth/serialize.go/v2 v2.0.0
 	starlight v0.0.0
 )
 
-replace github.com/mas-bandwidth/serialize.go => ../serialize.go
+replace github.com/mas-bandwidth/serialize.go/v2 => ../serialize.go
 
 replace starlight => ./gengo
 ```
@@ -4564,7 +4564,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 
 	"starlight"
 )

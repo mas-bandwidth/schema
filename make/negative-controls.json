@@ -65,13 +65,14 @@
     {
       "name": "base-packet",
       "when": "pull-request",
-      "why": "the four packet families on the host toolchain, and the wide-scalar controls beside them: each is one small compile off the generated tree, and they share it. Measured 42 s over 22 controls.",
+      "why": "the five packet families on the host toolchain, and the wide-scalar controls beside them: each is one small compile off the generated tree, and they share it. Measured 42 s over 22 controls, before the Go finite-float control (two small Go builds) joined them.",
       "targets": [
         "packet-arm-defaults-c-negative-control",
         "packet-arm-defaults-cpp-negative-control",
         "packet-arm-defaults-go-negative-control",
         "packet-defaults-c-negative-control",
         "packet-defaults-go-negative-control",
+        "packet-finite-go-negative-control",
         "packet-utf8-c-negative-control",
         "packet-utf8-go-negative-control",
         "packet-void-c-read-negative-control",

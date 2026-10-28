@@ -31,3 +31,22 @@ func TestInitialismsLeavesUpperRunsAlone(t *testing.T) {
 		}
 	}
 }
+
+// TestImportName pins the name an unaliased import is referred to by: a
+// major-version suffix is not the package name (serialize.go 2.0's module
+// path ends in /v2), and serialize.go is package serialize.
+func TestImportName(t *testing.T) {
+	for path, want := range map[string]string{
+		"github.com/mas-bandwidth/serialize.go/v2": "serialize",
+		"github.com/mas-bandwidth/serialize.go":    "serialize",
+		"github.com/mas-bandwidth/schema/v2/ir":    "ir",
+		"encoding/binary":                          "binary",
+		"math":                                     "math",
+		"example.com/v2":                           "example.com",
+		"example.com/vector":                       "vector",
+	} {
+		if got := ImportName(path); got != want {
+			t.Errorf("ImportName(%q) = %q, want %q", path, got, want)
+		}
+	}
+}

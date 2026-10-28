@@ -721,7 +721,7 @@ func runAllRuntimesGo(t *testing.T, u *ir.Unit, ann []byte, cases []depthBoundar
 	}
 	dir := t.TempDir()
 	runtime := slowtest.SerializeGo(t, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module depthprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module depthprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	var testSrc strings.Builder
 	testSrc.WriteString(`package depthprobe
 

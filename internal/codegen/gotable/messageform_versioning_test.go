@@ -87,7 +87,7 @@ func TestRemote(t *testing.T) {
 `, setup, asserts)
 	runtime := slowtest.SerializeGo(t, "../../../")
 	root := map[string][]byte{
-		"go.mod":          []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)),
+		"go.mod":          []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)),
 		"version_test.go": []byte(src),
 	}
 	writeFiles(t, dir, root)

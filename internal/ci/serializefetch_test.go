@@ -86,7 +86,7 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 		copyMakeWorkspace(t, root, makeRoot)
 		mirrors := filepath.Join(tmp, "mirrors")
 		makeBareRuntimeWithBranchCollision(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), pin,
-			map[string]string{"go.mod": "module github.com/mas-bandwidth/serialize.go\n"})
+			map[string]string{"go.mod": "module github.com/mas-bandwidth/serialize.go/v2\n"})
 		siblingModule := filepath.Join(tmp, "serialize.go", "go.mod")
 		tagCommit := gitOutput(t, "--git-dir", filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), "rev-parse", "refs/tags/"+pin+"^{commit}")
 		branchCommit := gitOutput(t, "--git-dir", filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), "rev-parse", "refs/heads/"+pin)
@@ -171,7 +171,7 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 		pin := makePin(t, makefile, "SERIALIZE_GO_PIN")
 		mirrors := filepath.Join(tmp, "mirrors")
 		makeBareRuntime(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.go.git"), pin,
-			map[string]string{"go.mod": "module github.com/mas-bandwidth/serialize.go\n"})
+			map[string]string{"go.mod": "module github.com/mas-bandwidth/serialize.go/v2\n"})
 		destination := filepath.Join(tmp, "serialize.go")
 		bin := filepath.Join(tmp, "bin")
 		if err := os.MkdirAll(bin, 0o755); err != nil {

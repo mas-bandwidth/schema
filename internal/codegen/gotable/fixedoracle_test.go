@@ -106,9 +106,9 @@ func fixedOracleRun(t *testing.T, schema, probe string) {
 	maps.Copy(files, tables)
 	mod := "module probe\n\ngo 1.26\n"
 	for _, data := range files {
-		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
+		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go/v2"`) {
 			runtime := slowtest.SerializeGo(t, "../../../")
-			mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+			mod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
 			break
 		}
 	}

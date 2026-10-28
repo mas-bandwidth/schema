@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // ProbeID is a schema constant.
@@ -1134,6 +1134,12 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		offsetValue2 := uint32(value.Items[i])
 		stream.SerializeBits(&offsetValue2, 8)
 	}
+	if math.Float32bits(value.FloatValue)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float64bits(value.DoubleValue)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
 		return serialize.ErrValueOutOfRange
 	}
@@ -1246,6 +1252,9 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 		return stream.Err()
 	}
 	v11 := c6 & 0xffffffff
+	if v11&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.FloatValue = math.Float32frombits(uint32(v11))
 	v12 := (c6 >> 32) & 0x3ff
 	if v12 > 1000 { // a value smuggled into the bit headroom is refused
@@ -1254,6 +1263,9 @@ func ReadTestData(stream *serialize.ReadStream, value *TestData) error {
 	normalizedValue := float32(v12) / 1000.0
 	value.CompressedFloatValue = float32(normalizedValue * 10.0)
 	v13 := c6>>42 | c1<<22
+	if v13&0x7ff0000000000000 == 0x7ff0000000000000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.DoubleValue = math.Float64frombits(v13)
 	v14 := (c1 >> 42) & 0xff
 	value.Int8Value = int8(uint8(v14))

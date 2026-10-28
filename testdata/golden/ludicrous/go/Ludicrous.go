@@ -12,7 +12,7 @@ package ludicrous
 import (
 	"errors"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // ProtocolID is the unit's protocol id, the hash of its wire shape. Two

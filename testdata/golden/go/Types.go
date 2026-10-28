@@ -10,7 +10,7 @@ package example
 import (
 	"math"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // Vec3 is the storage of schema type Vec3; WriteVec3 and ReadVec3 carry it on
@@ -450,6 +450,21 @@ const InputMaxBytes = 24
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteInput(stream *serialize.WriteStream, value *Input) error {
+	if math.Float32bits(value.StickX)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.StickY)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.Throttle)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.Yaw)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.Pitch)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	f0 := uint64(math.Float32bits(value.StickX)) & 0xffffffff
 	f1 := uint64(math.Float32bits(value.StickY)) & 0xffffffff
 	f2 := uint64(math.Float32bits(value.Throttle)) & 0xffffffff
@@ -510,14 +525,29 @@ func ReadInput(stream *serialize.ReadStream, value *Input) error {
 		return stream.Err()
 	}
 	v0 := c0 & 0xffffffff
+	if v0&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.StickX = math.Float32frombits(uint32(v0))
 	v1 := (c0 >> 32) & 0xffffffff
+	if v1&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.StickY = math.Float32frombits(uint32(v1))
 	v2 := c1 & 0xffffffff
+	if v2&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.Throttle = math.Float32frombits(uint32(v2))
 	v3 := (c1 >> 32) & 0xffffffff
+	if v3&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.Yaw = math.Float32frombits(uint32(v3))
 	v4 := c2 & 0xffffffff
+	if v4&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.Pitch = math.Float32frombits(uint32(v4))
 	v5 := (c2 >> 32) & 0x1
 	value.Fire = v5 != 0
@@ -573,6 +603,21 @@ func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 		return stream.Err()
 	}
 	for i := int32(0); i < value.InputsCount; i++ {
+		if math.Float32bits(value.Inputs[i].StickX)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
+		if math.Float32bits(value.Inputs[i].StickY)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
+		if math.Float32bits(value.Inputs[i].Throttle)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
+		if math.Float32bits(value.Inputs[i].Yaw)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
+		if math.Float32bits(value.Inputs[i].Pitch)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+			return serialize.ErrNonFiniteFloat
+		}
 		f0 := uint64(math.Float32bits(value.Inputs[i].StickX)) & 0xffffffff
 		f1 := uint64(math.Float32bits(value.Inputs[i].StickY)) & 0xffffffff
 		f2 := uint64(math.Float32bits(value.Inputs[i].Throttle)) & 0xffffffff
@@ -649,14 +694,29 @@ func ReadInputPacket(stream *serialize.ReadStream, value *InputPacket) error {
 			return stream.Err()
 		}
 		v0 := c0 & 0xffffffff
+		if v0&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.Inputs[i].StickX = math.Float32frombits(uint32(v0))
 		v1 := (c0 >> 32) & 0xffffffff
+		if v1&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.Inputs[i].StickY = math.Float32frombits(uint32(v1))
 		v2 := c1 & 0xffffffff
+		if v2&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.Inputs[i].Throttle = math.Float32frombits(uint32(v2))
 		v3 := (c1 >> 32) & 0xffffffff
+		if v3&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.Inputs[i].Yaw = math.Float32frombits(uint32(v3))
 		v4 := c2 & 0xffffffff
+		if v4&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+			return serialize.ErrNonFiniteFloat
+		}
 		value.Inputs[i].Pitch = math.Float32frombits(uint32(v4))
 		v5 := (c2 >> 32) & 0x1
 		value.Inputs[i].Fire = v5 != 0

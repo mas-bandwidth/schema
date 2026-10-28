@@ -41,6 +41,20 @@ func RespellFiles(files map[string][]byte) error {
 	return nil
 }
 
+// ImportName is the name a file refers to an unaliased import by: the path's
+// last element, past a major-version suffix and without a ".go" suffix, so
+// github.com/mas-bandwidth/serialize.go/v2 is package serialize.
+func ImportName(path string) string {
+	elem := path[strings.LastIndex(path, "/")+1:]
+	if rest, ok := strings.CutPrefix(elem, "v"); ok && rest != "" && strings.Trim(rest, "0123456789") == "" {
+		if j := strings.LastIndex(path, "/"); j > 0 {
+			parent := path[:j]
+			elem = parent[strings.LastIndex(parent, "/")+1:]
+		}
+	}
+	return strings.TrimSuffix(elem, ".go")
+}
+
 // RespellSource is RespellFiles for one file.
 func RespellSource(src []byte) ([]byte, error) {
 	if !needsRespell(src) {
@@ -57,11 +71,10 @@ func RespellSource(src []byte) ([]byte, error) {
 		if err != nil || strings.HasPrefix(path, ownModule) {
 			continue
 		}
-		name := path[strings.LastIndex(path, "/")+1:]
+		name := ImportName(path)
 		if imp.Name != nil {
 			name = imp.Name.Name
 		}
-		name = strings.TrimSuffix(name, ".go") // serialize.go is package serialize
 		foreign[name] = true
 	}
 	skip := map[*ast.Ident]bool{}

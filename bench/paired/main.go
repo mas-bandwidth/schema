@@ -781,7 +781,7 @@ func generateAndBuild(langs []string) error {
 				}
 			}
 		case "go":
-			if e := os.WriteFile("generated/bench/paired/go/go.mod", []byte("module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ../../../../../serialize.go\n"), 0644); e != nil {
+			if e := os.WriteFile("generated/bench/paired/go/go.mod", []byte("module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../../../serialize.go\n"), 0644); e != nil {
 				return e
 			}
 			for _, wire := range []string{"table", "packet"} {
@@ -801,7 +801,7 @@ func generateAndBuild(langs []string) error {
 				if e = os.WriteFile(mod, b, 0644); e != nil {
 					return e
 				}
-				if e := execute(command{args: []string{"go", "mod", "edit", "-modfile", mod, "-replace", dep + "=" + target, "-replace", "github.com/mas-bandwidth/serialize.go=" + serGo}, dir: dir}); e != nil {
+				if e := execute(command{args: []string{"go", "mod", "edit", "-modfile", mod, "-replace", dep + "=" + target, "-replace", "github.com/mas-bandwidth/serialize.go/v2=" + serGo}, dir: dir}); e != nil {
 					return e
 				}
 				a := []string{"go", "build", "-modfile", mod, "-o", abs(binary(wire, lang))}

@@ -106,7 +106,7 @@ func TestRaggedTail(t *testing.T) {
 	runtimePath := f8SerializeGo(t, repoRoot)
 
 	// Write go.mod.
-	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", repoRoot, runtimePath)
+	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", repoRoot, runtimePath)
 	if err := os.WriteFile(filepath.Join(pkgDir, "go.mod"), []byte(goMod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestRaggedTail(t *testing.T) {
 	}
 
 	runtimePath := f8SerializeGo(t, repoRoot)
-	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", repoRoot, runtimePath)
+	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", repoRoot, runtimePath)
 	if err := os.WriteFile(filepath.Join(pkgDir, "go.mod"), []byte(goMod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ func TestRaggedTailByName(t *testing.T) {
 	runtimePath := f8SerializeGo(t, repoRoot)
 
 	// Write go.mod.
-	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", repoRoot, runtimePath)
+	goMod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", repoRoot, runtimePath)
 	if err := os.WriteFile(filepath.Join(pkgDir, "go.mod"), []byte(goMod), 0o600); err != nil {
 		t.Fatal(err)
 	}

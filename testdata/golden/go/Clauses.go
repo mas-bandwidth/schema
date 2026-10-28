@@ -10,7 +10,7 @@ package example
 import (
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // W13 is the storage of schema type W13; WriteW13 and ReadW13 carry it on the

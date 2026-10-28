@@ -86,7 +86,7 @@ fixed table Root {
 					t.Fatal(err)
 				}
 				runtime := slowtest.SerializeGo(t, "..")
-				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go => %q\n)\n", root, runtime))
+				write("go.mod", fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %q\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %q\n)\n", root, runtime))
 				write("defaults_test.go", replace.Replace(tableClosureDefaultsGo))
 				cmd := exec.Command("go", "test", "-count=1", ".")
 				cmd.Dir = dir

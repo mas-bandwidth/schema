@@ -282,7 +282,7 @@ func blockBuildMatchesTheGoBuilderOverBlockdemo(t *testing.T) {
 		t.Fatal(err)
 	}
 	maps.Copy(files, goTables)
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["image_test.go"] = []byte(goProbe.String())
 	for name, data := range files {
 		if !strings.Contains(name, "/") {

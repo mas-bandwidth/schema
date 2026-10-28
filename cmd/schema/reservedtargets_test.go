@@ -178,7 +178,7 @@ func (s *ReadStream) Err() error { return s.err }
 	if err := os.WriteFile(filepath.Join(runtime, "serialize.go"), []byte(stub), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(runtime, "go.mod"), []byte("module github.com/mas-bandwidth/serialize.go\n\ngo 1.26\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(runtime, "go.mod"), []byte("module github.com/mas-bandwidth/serialize.go/v2\n\ngo 1.26\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -213,7 +213,7 @@ func (s *ReadStream) Err() error { return s.err }
 				fail("generate: %s", outBytes)
 				return
 			}
-			mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go => %s\n)\n", checkout, runtime)
+			mod := fmt.Sprintf("module t\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/schema/v2 => %s\n\tgithub.com/mas-bandwidth/serialize.go/v2 => %s\n)\n", checkout, runtime)
 			if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o644); err != nil {
 				fail("%v", err)
 				return

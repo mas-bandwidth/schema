@@ -159,7 +159,7 @@ concurrency:
 env:
   SERIALIZE_TAG: v2.1.0
   SERIALIZE_C_TAG: v2.0.2
-  SERIALIZE_GO_TAG: v1.15.1
+  SERIALIZE_GO_TAG: v2.0.1
   SERIALIZE_RS_TAG: v3.1.0
   SERIALIZE_CS_TAG: v1.9.1
   SERIALIZE_JS_TAG: v2.0.1
@@ -424,7 +424,7 @@ jobs:
       # THE GO TESTS LINK SIBLING RUNTIMES, so this job clones them exactly as
       # ci-full.yml's `go-test` does. A dozen tests under compiler/ and
       # internal/codegen/ write a probe module whose go.mod carries
-      # `replace github.com/mas-bandwidth/serialize.go => <abs ../serialize.go>`
+      # `replace github.com/mas-bandwidth/serialize.go/v2 => <abs ../serialize.go>`
       # (compiler/tableclosuredefaults_test.go:79,
       # internal/codegen/golang/golang_test.go:557, seven more under
       # internal/codegen/gotable) and then `go build` it; the C++, C and C#
