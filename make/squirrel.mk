@@ -66,7 +66,9 @@ build/conformance-squirrel: build/schema-squirrel testdata/conformance/tables/MA
 	@echo "conformance-squirrel: $$(ls -d $@/*/ 2>/dev/null | wc -l) units generated, $$(wc -l < $@/REFUSED.txt) refused (build/conformance-squirrel/REFUSED.txt)"
 
 .PHONY: test-squirrel update-goldens-squirrel
-test-squirrel: toolchain-squirrel dist-squirrel build/fixedform-corpus/.stamp
+# the Go oracle (TestSquirrelViewMatchesTheGoView and the fixed-load oracle) builds
+# against the pinned serialize.go, fetched when no sibling is present
+test-squirrel: toolchain-squirrel dist-squirrel build/fixedform-corpus/.stamp $(SERIALIZE_GO_RUNTIME)/go.mod
 	sh test/slowgate/proof test-squirrel \
 		'TestSkeletonFixture TestSquirrelFileNamesNeverShadowModuleLocals TestSqrunFailsAScriptThatThrows TestSqrunRoundTripsInputs TestSquirrelLoaderResolvesOnlyItsDirectory TestSquirrelTypeWireReadNegativeControl TestSquirrelTypeWireReadsTheGoldens TestSquirrelTypeWireWriteNegativeControl TestSquirrelTypeWireWritesTheGoldens TestSquirrelTypesConstructAtTheirDefaults TestVendoredSquirrelSerializeIsThePin' \
 		-count=1 -timeout 600s ./internal/codegen/squirrel/
