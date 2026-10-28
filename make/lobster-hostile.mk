@@ -11,9 +11,8 @@
 #
 # A disagreement the port already owes is carried, by name, in
 # test/conformance/lobster/hostile-known-findings.tsv and printed as a
-# FIX-CARD (today: the text carrier waits on the JSON form card, the message
-# and announcement carriers on the message form card). A disagreement no
-# FIX-CARD names is a failure, and a FIX-CARD that has gone green is a failure
+# FIX-CARD (none today: all 161 cases agree, over every carrier). A
+# disagreement no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a failure
 # too, so the list cannot rot into silence.
 #
 # The planted-bad-pattern control flips the load's stopped verdict in a copy

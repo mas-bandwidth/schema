@@ -6,11 +6,9 @@
 // test/conformance/lobster/hostile.lobster in it, runs it once under the
 // pinned toolchain, and holds every answer to the committed engine verdict:
 // a refusal by the engine's reason, an accept by the SHA-256 of the decoded
-// value's canonical text (internal/tabletext.Model.Write). Lobster has no text
-// writer yet, so an accepted value comes back as the port's own saved wire and
-// is read back through the engine to write that text; the wire-fuzz
-// differential (make/lobster-fuzz.mk) holds the port's writer to the engine's
-// byte for byte, so what is compared is the value the port's reader decoded.
+// value's canonical text: the port's own JSON writer, whose one shape
+// difference from the engine's (internal/tabletext.Model.Write) is the
+// trailing newline, dropped here.
 //
 // A disagreement the port already owes is carried by name in the findings
 // file and printed as a FIX-CARD; one no finding names fails, and a finding
@@ -25,6 +23,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -37,8 +36,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 const program = "test/conformance/lobster/hostile.lobster"
@@ -94,22 +91,6 @@ func generate(units, schema string) error {
 		}
 	}
 	return nil
-}
-
-func model(units, schema string) (*tabletext.Model, error) {
-	path, err := schemaPath(units, schema)
-	if err != nil {
-		return nil, err
-	}
-	paths, err := compiler.GatherPaths([]string{path})
-	if err != nil {
-		return nil, err
-	}
-	u, err := compiler.New().Load(paths)
-	if err != nil {
-		return nil, err
-	}
-	return tabletext.NewModel(u), nil
 }
 
 // run stages the program in the unit and answers every case of the schema.
@@ -173,28 +154,17 @@ func run(units, corpus, schema string) (map[string][]string, error) {
 	return got, nil
 }
 
-// digest is the canonical text's SHA-256 of a value the port saved: the
-// engine reads the wire back and writes its text.
-func digest(m *tabletext.Model, table, savedHex string) (string, error) {
-	wire, err := hex.DecodeString(savedHex)
+// digest is the canonical text's SHA-256: the port's JSON text with its one
+// shape difference from the engine's removed, the trailing newline.
+func digest(textHex string) (string, error) {
+	if textHex == "-" {
+		return "-", nil
+	}
+	text, err := hex.DecodeString(textHex)
 	if err != nil {
 		return "", err
 	}
-	st := m.Lookup(table)
-	if st == nil {
-		return "", fmt.Errorf("no table %s", table)
-	}
-	inst := m.New(st)
-	var r tabletext.Report
-	ok, err := tablewire.Decode(m, inst, wire, &r)
-	if err != nil || !ok || r.Malformed {
-		return "", fmt.Errorf("the engine does not read the port's saved wire cleanly (ok=%t err=%v malformed=%t)", ok, err, r.Malformed)
-	}
-	text, err := m.Write(inst)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(text)
+	sum := sha256.Sum256(bytes.TrimSuffix(text, []byte("\n")))
 	return hex.EncodeToString(sum[:]), nil
 }
 
@@ -249,7 +219,6 @@ func main() {
 	}
 	sort.Strings(schemas)
 	answers := map[string]map[string][]string{}
-	models := map[string]*tabletext.Model{}
 	for _, schema := range schemas {
 		if !*noGenerate {
 			if err := generate(*units, schema); err != nil {
@@ -257,9 +226,6 @@ func main() {
 			}
 		}
 		if answers[schema], err = run(*units, *corpus, schema); err != nil {
-			fatalf("%v", err)
-		}
-		if models[schema], err = model(*units, schema); err != nil {
 			fatalf("%v", err)
 		}
 	}
@@ -273,7 +239,7 @@ func main() {
 		case !ok:
 			got = "no answer"
 		case a[0] == "accept":
-			d, err := digest(models[c.Schema], c.Table, a[1])
+			d, err := digest(a[1])
 			if err != nil {
 				got = "accept, " + err.Error()
 			} else {
