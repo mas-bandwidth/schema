@@ -468,18 +468,42 @@ func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings := runHostileCorpus(t, root, filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus"), true)
+	corpus := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
+	findings := runHostileCorpus(t, root, corpus, true)
 	if len(findings) == 0 {
 		t.Fatal("the planted reader bug left the hostile-corpus runner green")
 	}
-	found := 0
-	for _, f := range findings {
-		if strings.Contains(f, "FIX-CARD: luau-hostile-corpus:") {
-			found++
+	// The plant fails exactly its rows: every text-carrier case the manifest
+	// does not already expect to refuse as damaged, and nothing else. A
+	// finding outside that set is a red the plant did not cause, so the
+	// control would pass on it vacuously.
+	want := map[string]bool{}
+	for _, c := range loadHostileManifest(t, corpus) {
+		if c.carrier == "text" && (c.verdict != "refuse" || c.reason != "damaged") {
+			want[c.name] = true
 		}
 	}
-	if found == 0 {
-		t.Fatal("the planted reader bug was caught without a FIX-CARD line")
+	if len(want) == 0 {
+		t.Fatal("the manifest has no text-carrier case the plant could turn red")
+	}
+	const prefix = "FIX-CARD: luau-hostile-corpus: "
+	got := map[string]bool{}
+	for _, f := range findings {
+		rest, ok := strings.CutPrefix(f, prefix)
+		if !ok {
+			t.Errorf("the planted reader bug was caught without a FIX-CARD line: %s", f)
+			continue
+		}
+		name, _, _ := strings.Cut(rest, " ")
+		got[name] = true
+		if !want[name] {
+			t.Errorf("a finding the plant did not cause (not a text-carrier row it turns red): %s", f)
+		}
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("the plant should turn text-carrier case %s red and the runner did not", name)
+		}
 	}
 }
 
