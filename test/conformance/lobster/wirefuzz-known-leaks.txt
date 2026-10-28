@@ -1,0 +1,16 @@
+# THE LOBSTER WIRE-FUZZ LEG's KNOWN FINDINGS (make/lobster-fuzz.mk;
+# test/conformance/lobster/wirefuzzhost). One `<unit> <arm>` per line.
+#
+# The pinned Lobster VM frees by reference counting, and a load of a pointer
+# graph whose edges close a cycle (§3.1: a cycle is legal on the wire and a
+# tolerant load places it) builds a cycle of Records that is never freed. Every
+# mutant of these units agrees with the Go oracle; the VM then reports the
+# cycles it could not free at exit ("LEAKS FOUND"). A long-running Lobster
+# reader that loads hostile pointered wires grows by every cyclic graph it
+# reads: the runtime owes an explicit release of a loaded graph (break the
+# node edges when the caller drops the root). A unit that stops leaking fails
+# the leg until its line is deleted; a new leaking unit fails until it is
+# reviewed here.
+blobdemo builder
+graphdemo builder
+streamdemo builder
