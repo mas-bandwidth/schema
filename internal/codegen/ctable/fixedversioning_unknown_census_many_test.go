@@ -39,7 +39,7 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
     {
         int64_t n2;
         memset( &r, 0, sizeof( r ) );
-        n2 = census_fixed_load( back, 8, data, len, plan, 4096, NULL, &r );
+        n2 = census_fixed_load_tolerant( back, 8, data, len, plan, 4096, NULL, &r );
         if ( n2 != 3 ) { printf( "unknown_census_many: the SECOND read did not return three records: %lld\n", (long long) n2 ); return 1; }
         if ( r.unknown != 1 ) { printf( "unknown_census_many: the SECOND read owes unknown == 1 again, not %d\n", r.unknown ); return 1; }
     }

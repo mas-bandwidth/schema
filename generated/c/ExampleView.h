@@ -65,6 +65,12 @@ typedef struct example_table_report_t
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
+       TableRefuseReason, the same value a measure's -1 and a cook's open
+       answer, set by every plain read name on its refusal and OK otherwise.
+       unknown, widened and retained alone leave it OK. The tolerant reads
+       never write it. */
+    int refuse_reason;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the

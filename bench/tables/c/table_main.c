@@ -60,7 +60,7 @@
 #define benchtable_table_mixed_t bench_bench_mixed_t
 #define benchtable_table_mixed_reset bench_bench_mixed_reset
 #define benchtable_table_mixed_save bench_bench_mixed_save
-#define benchtable_table_mixed_load bench_bench_mixed_load
+#define benchtable_table_mixed_load_tolerant bench_bench_mixed_load_tolerant
 #else
 #include "BenchTableTable.h"
 #endif
@@ -382,7 +382,7 @@ static int bench_load( benchtable_table_mixed_t * value, const uint8_t * bytes, 
 {
     BENCH_Q( table_report_t ) report;
     memset( &report, 0, sizeof( report ) );
-    return benchtable_table_mixed_load( value, bytes, size, &report ) && !report.malformed;
+    return benchtable_table_mixed_load_tolerant( value, bytes, size, &report ) && !report.malformed;
 }
 
 static void bench_table( const char * name, const char * golden, long base_iters )
@@ -524,7 +524,7 @@ static int64_t fixed_load_all( bench_fixed_table_t * values, const uint8_t * byt
 {
     BENCH_Q( table_report_t ) report;
     memset( &report, 0, sizeof( report ) );
-    return bench_fixed_table_fixed_load( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
+    return bench_fixed_table_fixed_load_tolerant( values, FixedCount, bytes, size, g_fixed_plan, FixedPlanCapacity, NULL, &report );
 }
 
 /* ------------------------------------------------------------------------
@@ -722,7 +722,7 @@ static size_t g_lineage_bytes = 0;
 #define g_plan_poisoned g_fixed_values
 #define plan_load_all( values, report ) \
     ( memset( ( report ), 0, sizeof( *( report ) ) ), \
-      bench_fixed_table_fixed_load( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
+      bench_fixed_table_fixed_load_tolerant( ( values ), FixedCount, g_lineage, (int64_t) g_lineage_bytes, g_fixed_plan, FixedPlanCapacity, NULL, ( report ) ) )
 
 /* THE PLAN READ'S ANSWER, pinned before any clock. Gates P1, P3 and P4 below
    are shape-blind: no field is named, only the lineage the build laid down and

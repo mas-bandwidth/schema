@@ -85,23 +85,23 @@ int main(void)
     CHECK(root_save(&value, saved, -1) == -1);
     CHECK(root_save(&value, NULL, n) == -1);
     memset(&report, 0, sizeof(report));
-    CHECK(root_load(&decoded, expected, n, &report));
+    CHECK(root_load_tolerant(&decoded, expected, n, &report));
     CHECK(!report.malformed && !report.refused && !report.unknown && !report.kind_mismatch && !report.widened && !report.clamped);
     CHECK(root_save(&decoded, saved, n) == n);
     CHECK(memcmp(saved, expected, sizeof(expected)) == 0);
-    CHECK(root_load(&decoded, expected, n, NULL));
+    CHECK(root_load_tolerant(&decoded, expected, n, NULL));
     memcpy(damaged, expected, sizeof(expected));
     damaged[0] = 2;
     memset(&report, 0, sizeof(report));
-    CHECK(!root_load(&decoded, damaged, n, &report));
+    CHECK(!root_load_tolerant(&decoded, damaged, n, &report));
     CHECK(report.refused && report.reason == SCHEMA_TABLE_MESSAGE_FORM_AS_FILE && !report.malformed);
     CHECK(root_measure(&decoded) == 10);
     damaged[0] = 99;
     memset(&report, 0, sizeof(report));
-    CHECK(!root_load(&decoded, damaged, n, &report));
+    CHECK(!root_load_tolerant(&decoded, damaged, n, &report));
     CHECK(report.refused && report.reason == SCHEMA_TABLE_NEWER_FORM && !report.malformed);
     memset(&report, 0, sizeof(report));
-    CHECK(!root_load(&decoded, NULL, n, &report) && report.malformed && !report.refused);
+    CHECK(!root_load_tolerant(&decoded, NULL, n, &report) && report.malformed && !report.refused);
     return 0;
 }
 `, octets.String(), fill.String())
@@ -194,7 +194,7 @@ static int load_ids(const uint64_t *ids, uint64_t n, TableReport *report)
     for ( i = 0; i < n; i++ ) { put_le64(buf + o, ids[i]); o += 8; }
     put_le64(buf + o, n); o += 8;
     memset(report, 0, sizeof(*report));
-    return leaf_load(&value, buf, o, report);
+    return leaf_load_tolerant(&value, buf, o, report);
 }
 int main(void)
 {
@@ -270,7 +270,7 @@ func TestCTableWireWidening(t *testing.T) {
     int main(void) {
         Root value; TableReport report; uint8_t saved[sizeof(expected)];
         memset(&report, 0, sizeof(report));
-        if (!root_load(&value, wire, sizeof(wire), &report)) return 1;
+        if (!root_load_tolerant(&value, wire, sizeof(wire), &report)) return 1;
         if (report.widened != 5 || report.clamped != 4 || report.malformed || report.refused) return 2;
         if (root_measure(&value) != (int64_t)sizeof(expected)) { fprintf(stderr, "measure %%lld expected %%zu: low %%d high %%d positive %%llu samples %%d [%%u, %%u]\n", (long long)root_measure(&value), sizeof(expected), value.low, value.high, (unsigned long long)value.positive, value.samples_count, value.samples[0], value.samples[1]); return 3; }
         if (root_save(&value, saved, sizeof(saved)) != (int64_t)sizeof(expected)) return 4;
@@ -308,12 +308,12 @@ int main(void) {
  CHECK(value.data_length == 2 && !memcmp(value.data,"ab",2));
  CHECK(value.caps == CAPS_JUMP && root_measure(&value) == 10);
  memset(&report,0,sizeof(report));
- CHECK(root_load(&value,damaged,sizeof(damaged),&report));
+ CHECK(root_load_tolerant(&value,damaged,sizeof(damaged),&report));
  CHECK(report.malformed && value.name_length == 3 && !memcmp(value.name,"new",4));
  value.name_length = 0; value.name[0] = 0; value.data_length = 0; value.caps = 0;
  n=root_save(&value,out,sizeof(out)); CHECK(n > 10);
  memset(&report,0,sizeof(report));
- CHECK(root_load(&copy,out,n,&report));
+ CHECK(root_load_tolerant(&copy,out,n,&report));
  CHECK(!report.malformed && copy.name_length == 0 && copy.data_length == 0 && copy.caps == 0);
  return 0;
 }
@@ -339,11 +339,11 @@ int main(void) {
  const char * first="{\"small\":18446744073709551615,\"bounded\":18446744073709551615,\"debt\":-9223372036854775808}";
  const char * second="{\"small\":-1e30,\"bounded\":-1e30}";
  memset(&report,0,sizeof(report));
- CHECK(root_from_json(&value,first,(int64_t)strlen(first),&report));
+ CHECK(root_from_json_tolerant(&value,first,(int64_t)strlen(first),&report));
  CHECK(value.small == 255 && value.bounded == UINT64_MAX && value.debt == INT64_MIN);
  CHECK(report.clamped == 1 && !report.kind_mismatch && !report.malformed);
  memset(&report,0,sizeof(report));
- CHECK(root_from_json(&value,second,(int64_t)strlen(second),&report));
+ CHECK(root_from_json_tolerant(&value,second,(int64_t)strlen(second),&report));
  CHECK(value.small == 0 && value.bounded == 0 && report.clamped == 4);
  CHECK(!report.kind_mismatch && !report.malformed);
  return 0;
@@ -370,7 +370,7 @@ int main(void) {
  n=root_measure(&value);
  if(n<=10 || n>1024 || root_save(&value,out,n)!=n) return 1;
  memset(&report,0,sizeof(report));
- if(!root_load(&copy,out,n,&report) || report.malformed || copy.child%s.value!=1) return 2;
+ if(!root_load_tolerant(&copy,out,n,&report) || report.malformed || copy.child%s.value!=1) return 2;
  return 0;
 }
 `, member.String(), member.String()))
@@ -436,11 +436,11 @@ int main(void) {
  extent=root_load_measure_ex(expected,sizeof(expected),&attribution,&reason);
  CHECK(extent>0 && attribution==3*(int64_t)sizeof(TableNodeDirEntry) && reason==99);
  region=(uint8_t *)malloc((size_t)extent);CHECK(region!=NULL);memset(&report,0,sizeof(report));
- loaded=root_load(region,extent,expected,sizeof(expected),&report);
+ loaded=root_load_tolerant(region,extent,expected,sizeof(expected),&report);
  CHECK(loaded!=NULL && !report.malformed && !report.unknown && !report.kind_mismatch);
  CHECK(node_at(NULL,&loaded->slots[2])==node_at(NULL,&loaded->first));
  CHECK(loaded->slots[1].value==0 && loaded->slots_count==3);
- CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder_tolerant(&copy,expected,sizeof(expected),&report));
  CHECK(root_builder_lock(&copy));
  CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));
  CHECK(!memcmp(saved,expected,sizeof(saved)));
@@ -448,7 +448,7 @@ int main(void) {
  text_bytes=root_to_json_measure(loaded);CHECK(text_bytes>0 && text_bytes<4096);
  CHECK(root_to_json(loaded,text,sizeof(text))==text_bytes);
  CHECK(root_builder_init(&copy));memset(&report,0,sizeof(report));
- CHECK(root_from_json(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch && !report.unknown);
+ CHECK(root_from_json_tolerant(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch && !report.unknown);
  CHECK(root_builder_lock(&copy));
  CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));
  CHECK(!memcmp(saved,expected,sizeof(saved)));
@@ -514,11 +514,11 @@ int main(void) {
  CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
  CHECK(root_to_json_measure(locked)>0);
  extent=root_load_measure(expected,sizeof(expected));CHECK(extent>0);region=(uint8_t *)malloc((size_t)extent);CHECK(region!=NULL);
- locked=root_load(region,extent,expected,sizeof(expected),&report);CHECK(locked!=NULL && !report.malformed && !report.unknown);
+ locked=root_load_tolerant(region,extent,expected,sizeof(expected),&report);CHECK(locked!=NULL && !report.malformed && !report.unknown);
  CHECK(report.blob_shared==0);
  CHECK(table_bytes_at(NULL,&locked->data).data!=table_bytes_at(NULL,&locked->alias).data);
  CHECK(!strcmp(table_string_at(NULL,&locked->text).data,"hello"));
- CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder_tolerant(&copy,expected,sizeof(expected),&report));
  CHECK(root_builder_lock(&copy));CHECK(root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected));
  CHECK(!memcmp(saved,expected,sizeof(saved)));root_builder_shutdown(&copy);root_builder_shutdown(&builder);free(region);
  CHECK(root_builder_init(&builder));root=root_builder_root(&builder);
@@ -563,7 +563,7 @@ static int exercise(Counts * counts) {
  TableAllocator a={allocate,release,counts}; RootBuilder b,copy; TableReport report={0};
  TableCtx ctx; uint8_t wire[2048],cook[4096],messages[4096];const Root * batch[2]; char text[1024]; int64_t n,m,result; int ok=0,have_copy=0;
  if(!root_builder_init_with_allocator(&b,a))goto done;
- if(!root_from_json(&b,source,(int64_t)strlen(source),&report))goto done;
+ if(!root_from_json_tolerant(&b,source,(int64_t)strlen(source),&report))goto done;
  ctx.arena=&b.arena;
  n=root_measure(&ctx,root_builder_root(&b));if(n<=0 || n>2048)goto done;
  if(root_save(&ctx,root_builder_root(&b),wire,n)!=n)goto done;
@@ -584,7 +584,7 @@ static int exercise(Counts * counts) {
  memset(messages,0xa5,sizeof(messages));result=root_save_messages_with_allocator(batch,2,messages,m,&report,a);
  if(!tail_intact(messages,m,sizeof(messages))){abort();}if(result!=m)goto done;
  have_copy=1;if(!root_builder_init_with_allocator(&copy,a))goto done;
- if(!root_load_builder(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
+ if(!root_load_builder_tolerant(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
  if(node_at(NULL,&((const Root *)(const void *)copy.region)->first)!=node_at(NULL,&((const Root *)(const void *)copy.region)->second))goto done;
  ok=1;
  done:
@@ -714,15 +714,15 @@ int main(void) {
  CHECK(root_save(NULL,locked,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
  bytes=root_load_measure(expected,sizeof(expected));CHECK(bytes==168);
  region=(uint8_t *)malloc((size_t)bytes);CHECK(region!=NULL);
- loaded=root_load(region,bytes,expected,sizeof(expected),&report);CHECK(loaded!=NULL && !report.malformed);
+ loaded=root_load_tolerant(region,bytes,expected,sizeof(expected),&report);CHECK(loaded!=NULL && !report.malformed);
  CHECK(root_nodes_at(&loaded->nodes,0)==row_at(NULL,&loaded->tail));
  CHECK(*row_numbers_at(&root_rows_at(&loaded->rows,0)->numbers,2)==3);
  CHECK(root_save(NULL,loaded,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
- CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));CHECK(root_builder_lock(&copy));
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder_tolerant(&copy,expected,sizeof(expected),&report));CHECK(root_builder_lock(&copy));
  CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
  root_builder_shutdown(&copy);
  text_bytes=root_to_json(loaded,text,sizeof(text));CHECK(text_bytes>0);
- CHECK(root_builder_init(&copy));CHECK(root_from_json(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch);CHECK(root_builder_lock(&copy));
+ CHECK(root_builder_init(&copy));CHECK(root_from_json_tolerant(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch);CHECK(root_builder_lock(&copy));
  CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
  root_builder_shutdown(&copy);root_builder_shutdown(&b);free(region);return 0;
 }
@@ -783,14 +783,14 @@ int main(void) {
  CHECK(root_numbers_index_find(&index,&locked->numbers,3)==NULL);
  CHECK(root_save(NULL,locked,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
  bytes=root_load_measure(expected,sizeof(expected));CHECK(bytes>0);region=(uint8_t *)malloc((size_t)bytes);CHECK(region!=NULL);
- loaded=root_load(region,bytes,expected,sizeof(expected),&report);CHECK(loaded!=NULL && !report.malformed && !report.kind_mismatch);
+ loaded=root_load_tolerant(region,bytes,expected,sizeof(expected),&report);CHECK(loaded!=NULL && !report.malformed && !report.kind_mismatch);
  CHECK(root_links_find(&loaded->links,1)==root_links_find(&loaded->links,UINT64_MAX));
  CHECK(root_save(NULL,loaded,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
- CHECK(root_builder_init(&copy));CHECK(root_load_builder(&copy,expected,sizeof(expected),&report));CHECK(root_builder_lock(&copy));
+ CHECK(root_builder_init(&copy));CHECK(root_load_builder_tolerant(&copy,expected,sizeof(expected),&report));CHECK(root_builder_lock(&copy));
  CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
  root_builder_shutdown(&copy);
  text_bytes=root_to_json(loaded,text,sizeof(text));CHECK(text_bytes>0);
- CHECK(root_builder_init(&copy));CHECK(root_from_json(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch);CHECK(root_builder_lock(&copy));
+ CHECK(root_builder_init(&copy));CHECK(root_from_json_tolerant(&copy,text,text_bytes,&report));CHECK(!report.malformed && !report.kind_mismatch);CHECK(root_builder_lock(&copy));
  CHECK(root_save(NULL,(const Root *)(const void *)copy.region,wire,sizeof(wire))==(int64_t)sizeof(expected));CHECK(!memcmp(wire,expected,sizeof(expected)));
  root_builder_shutdown(&copy);root_builder_shutdown(&b);free(region);return 0;
 }
@@ -855,6 +855,6 @@ func TestCTableMapWideningCount(t *testing.T) {
 #include <stdlib.h>
 #include <string.h>
 #define CHECK(x) do{if(!(x)){fprintf(stderr,"map widening line %%d: %%s\n",__LINE__,#x);return 1;}}while(0)
-int main(void){const uint8_t wire[]={%s},want[]={%s};TableReport report={0};int64_t n=root_load_measure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc((size_t)n);const Root * root=root_load(region,n,wire,sizeof(wire),&report);CHECK(root);CHECK(report.widened==3);CHECK(!report.malformed&&!report.kind_mismatch);uint8_t out[sizeof(want)];CHECK(root_save(NULL,root,out,sizeof(out))==sizeof(out));CHECK(memcmp(out,want,sizeof(out))==0);free(region);return 0;}
+int main(void){const uint8_t wire[]={%s},want[]={%s};TableReport report={0};int64_t n=root_load_measure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc((size_t)n);const Root * root=root_load_tolerant(region,n,wire,sizeof(wire),&report);CHECK(root);CHECK(report.widened==3);CHECK(!report.malformed&&!report.kind_mismatch);uint8_t out[sizeof(want)];CHECK(root_save(NULL,root,out,sizeof(out))==sizeof(out));CHECK(memcmp(out,want,sizeof(out))==0);free(region);return 0;}
 `, cppWire(wire), cppWire(want)))
 }

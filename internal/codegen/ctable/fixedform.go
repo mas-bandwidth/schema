@@ -685,8 +685,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   built from the lock's bytes. The signature keeps both so every caller in\n")
 	g.pf("   test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,\n")
 	g.pf("   not API). */\n")
+	g.pf("/* %s is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it\n", g.api(st.Name, "fixed_load_tolerant"))
+	g.pf("   keeps every recovered record, the counters counted onto the report. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
-		g.api(st.Name, "fixed_load"), st.Name)
+		g.api(st.Name, "fixed_load_tolerant"), st.Name)
 	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
@@ -809,6 +811,32 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    report->unknown += census_unknown;\n")
 	g.pf("    report->kind_mismatch += census_kind;\n")
 	g.pf("    return count;\n}\n\n")
+	g.emitFixedLoadStrict(st)
+}
+
+// emitFixedLoadStrict emits the PLAIN <name>_fixed_load, which is the STRICT
+// read (docs/SPEC-TABLES.md §6.5), as the Go oracle's FixedLoad wraps
+// FixedLoadTolerant (internal/codegen/gotable/fixedform.go) and the C++ one
+// does (internal/codegen/cpptable/fixedform.go): -1 for every refusal of the
+// tolerant read and for a read the strict rule refuses, with every value it
+// had written reset. A supplied report receives THIS read's report.
+func (g *tableGen) emitFixedLoadStrict(st *ir.Struct) {
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for\n", g.api(st.Name, "fixed_load"))
+	g.pf("   every refusal of %s and for a read the strict rule\n", g.api(st.Name, "fixed_load_tolerant"))
+	g.pf("   refuses -- malformed, clamped, kind-mismatched or refused -- with every\n")
+	g.pf("   value it had written reset to its declared defaults. A supplied report\n")
+	g.pf("   receives THIS read's report, its refuse_reason set. unknown and widened\n")
+	g.pf("   alone never refuse. */\n")
+	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
+		g.api(st.Name, "fixed_load"), st.Name)
+	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
+	g.pf("    TableReport local;\n    int64_t n, k;\n")
+	g.pf("    if ( report == NULL ) { report = &local; }\n")
+	g.pf("    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
+	g.pf("    n = %s( values, capacity, data, bytes, plan, plan_capacity, cache, report );\n", g.api(st.Name, "fixed_load_tolerant"))
+	g.pf("    if ( !table_report_strict_refuses( report, n >= 0 ) ) { return n; }\n")
+	g.pf("    for ( k = 0; k < n; ++k ) { %s( values + k ); }\n", g.api(st.Name, "reset"))
+	g.pf("    return -1;\n}\n\n")
 }
 
 func fixedOpName(op int) string {

@@ -20,7 +20,7 @@ void fixed_v2_read_v1( const uint8_t * data, int64_t bytes )
     tblv2_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = tblv2_cfg_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblv2_cfg_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "V2 reads V1: one record" );
     fixed_check( back.grade == TBLV2_GRADE_GOLD, "ENUM: a variant inserted in the middle is remapped by NAME" );
     fixed_check( back.effect.type == TBLV2_EFFECT_TYPE_WARD, "UNION: an arm inserted in the middle is remapped by NAME" );

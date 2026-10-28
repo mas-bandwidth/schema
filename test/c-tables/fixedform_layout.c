@@ -92,7 +92,7 @@ static void refuses( const uint8_t * broken, int64_t bytes, int want, const char
     int64_t n;
     tblfx1_fx_root_reset( &v );
     memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load( &v, 1, broken, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load_tolerant( &v, 1, broken, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n < 0 && r.refused && r.reason == want, what );
     /* NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
        record would be the damage the refusal exists to prevent. */
@@ -113,7 +113,7 @@ void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes )
         tblfx1_table_report_t r;
         tblfx1_fx_root_reset( &v );
         memset( &r, 0, sizeof( r ) );
-        fixed_check( tblfx1_fx_root_fixed_load( &v, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1 && !r.refused,
+        fixed_check( tblfx1_fx_root_fixed_load_tolerant( &v, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1 && !r.refused,
                      "C layout validation: the unbroken file reads, so the breaks below are the breaks" );
     }
 

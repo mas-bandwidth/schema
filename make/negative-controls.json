@@ -341,6 +341,14 @@
       ]
     },
     {
+      "name": "base-c-strict-load",
+      "when": "pull-request",
+      "why": "the C strict-read control (docs/SPEC-TABLES.md \u00a76.5): the plain read names made tolerant through a go test -overlay of the C emitter, so compiler/tablescstrictload_test.go must go red. Its overlay rebuild of the compiler test binary took about 2.5 minutes inside the base job on run 40618210451 and pushed that job past its five-minute timeout, so it runs alone.",
+      "targets": [
+        "tables-c-strict-load-negative-control"
+      ]
+    },
+    {
       "name": "wire-fuzz",
       "when": "pull-request",
       "why": "the tolerant-wire oracle, nested-arm trailing and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",

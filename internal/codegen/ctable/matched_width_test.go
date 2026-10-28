@@ -113,7 +113,7 @@ int main(void)
     CHECK(n > 0 && n <= (int64_t)sizeof(wire));
     CHECK(root_save(&value, wire, n) == n);
     memset(&report, 0, sizeof(report));
-    CHECK(root_load(&loaded, wire, n, &report));
+    CHECK(root_load_tolerant(&loaded, wire, n, &report));
     CHECK(!report.malformed && !report.refused && !report.unknown && !report.kind_mismatch && !report.widened && !report.clamped);
     CHECK(loaded.a == 0x1234 && loaded.b == -400);
     return 0;
@@ -146,7 +146,7 @@ int main(void)
     table_writer_finish(&w);
     CHECK(!w.overflow);
     memset(&report, 0, sizeof(report));
-    CHECK(root_load(&loaded, buf, w.offset, &report));
+    CHECK(root_load_tolerant(&loaded, buf, w.offset, &report));
     CHECK(report.widened == 2 && report.kind_mismatch == 0 && !report.malformed && !report.refused);
     CHECK(loaded.a == 9 && loaded.b == 7);
     return 0;
@@ -175,7 +175,7 @@ int main(void)
     table_writer_finish(&w);
     CHECK(!w.overflow);
     memset(&report, 0, sizeof(report));
-    CHECK(root_load(&loaded, buf, w.offset, &report));
+    CHECK(root_load_tolerant(&loaded, buf, w.offset, &report));
     CHECK(report.kind_mismatch == 1 && report.widened == 0 && !report.malformed && !report.refused);
     CHECK(loaded.b == 0);
     return 0;

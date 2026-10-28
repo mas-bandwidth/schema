@@ -39,7 +39,7 @@ int main(void)
         // named one: the plain BlobFromJson is strict (SPEC-TABLES §16.11).
         BlobFromJsonTolerant(value, text, (int64_t) n, &report);
 #else
-        base64test_blob_from_json(&value, text, (int64_t) n, &report);
+        base64test_blob_from_json_tolerant(&value, text, (int64_t) n, &report);
 #endif
         if (report.malformed) { puts("1 0 0 - -"); continue; }
 #ifdef __cplusplus

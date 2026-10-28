@@ -50,6 +50,6 @@ int main(){TableReport report;int64_t n=HandLoadMeasure(wire,sizeof(wire));CHECK
 	})
 	t.Run("c", func(t *testing.T) {
 		runCTableWireProbe(t, u, common+`
-int main(void){TableReport report={0};int64_t n=hand_load_measure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc((size_t)n);const Hand * r=hand_load(region,n,wire,sizeof(wire),&report);CHECK(r);CHECK(report.malformed);CHECK(r->entries_count==0);CHECK(r->entries[1].type==0);free(region);return 0;}`)
+int main(void){TableReport report={0};int64_t n=hand_load_measure(wire,sizeof(wire));CHECK(n>0);uint8_t * region=(uint8_t*)malloc((size_t)n);const Hand * r=hand_load_tolerant(region,n,wire,sizeof(wire),&report);CHECK(r);CHECK(report.malformed);CHECK(r->entries_count==0);CHECK(r->entries[1].type==0);free(region);return 0;}`)
 	})
 }

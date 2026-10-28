@@ -31,7 +31,7 @@
  * THE PRODUCTION PATH THIS TEST DRIVES is the same fixed-form path the
  * driver's other roots reach through their codec tables: the caller's entry
  * points ranged_signed_fixed_save() (build/tables-generated-c/examples/
- * RangesTable.h:8770) and ranged_signed_fixed_load() (RangesTable.h:8812),
+ * RangesTable.h:8770) and ranged_signed_fixed_load_tolerant() (RangesTable.h:8812),
  * the emitted store line schema_tabledemo_ranged_signed_fixed_write_body_
  * putting every width at its declared offset, the identity plan
  * ranged_signed_fixed_plan's copies landing them again, and the read-side
@@ -241,7 +241,7 @@ int main( void )
 
     memset( back, 0x5A, sizeof( back ) ); /* nothing may survive the read but a landed value */
     memset( &report, 0, sizeof( report ) );
-    check( ranged_signed_fixed_load( back, 3, file, n, NULL, 0, NULL, &report ) == 3,
+    check( ranged_signed_fixed_load_tolerant( back, 3, file, n, NULL, 0, NULL, &report ) == 3,
            "signed-integers/c/valid-data: all three records read" );
     check( silent( &report ),
            "signed-integers/c/valid-data: valid edges clamp NOTHING and refuse NOTHING — no counter moves" );

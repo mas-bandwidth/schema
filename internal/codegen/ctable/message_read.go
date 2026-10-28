@@ -408,8 +408,19 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
-	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages"), st.Name)
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5): the batch decode runs under the tolerant
+	// name, unchanged, and the plain name wraps it below.
+	g.pf("/* %s is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */\n", g.api(st.Name, "load_messages_tolerant"))
+	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages_tolerant"), st.Name)
 	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))return 0;(*count)++;}return table_message_close(&r);\n}\n", g.api(st.Name, "load_message_body"))
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */\n", g.api(st.Name, "load_messages"))
+	g.pf("static SCHEMA_UNUSED int %s( %s * values, int64_t * count, const TableVocabulary * vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_messages"), st.Name)
+	g.pf("    TableReport ignored;\n    int64_t i;\n    int ok;\n    if ( report == NULL ) report = &ignored;\n    /* this read's report, not the caller's last one */\n    memset( report, 0, sizeof( *report ) );\n")
+	g.pf("    ok = %s( values, count, vocabulary, buffer, bytes, report );\n", g.api(st.Name, "load_messages_tolerant"))
+	g.pf("    if ( !ok )\n    {\n        (void) table_report_strict_refuses( report, 0 );\n        return 0;\n    }\n")
+	g.pf("    if ( !table_report_strict_refuses( report, 1 ) ) return 1;\n")
+	g.pf("    for ( i = 0; i < *count; i++ ) %s( values + i );\n    *count = 0;\n    return 0;\n}\n", g.api(st.Name, "reset"))
 }
 
 func (g *tableGen) emitMessageMapKeyRead(f *ir.Field) {

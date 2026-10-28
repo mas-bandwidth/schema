@@ -95,7 +95,7 @@ int main( void )
     check( region_bytes >= (int64_t) sizeof( graphdemo_scene_t ), "load_measure sized a region" );
     region = (uint8_t *) malloc( (size_t) region_bytes );
     memset( &report, 0, sizeof( report ) );
-    loaded = graphdemo_scene_load( region, region_bytes, wire, wire_bytes, &report );
+    loaded = graphdemo_scene_load_tolerant( region, region_bytes, wire, wire_bytes, &report );
     check( loaded != NULL, "load into the caller's region" );
     check( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0,
            "the report is silent over bytes this build wrote" );
@@ -127,7 +127,7 @@ int main( void )
         graphdemo_scene_builder_t again;
         check( graphdemo_scene_builder_init( &again ), "second builder init" );
         memset( &report, 0, sizeof( report ) );
-        check( graphdemo_scene_load_builder( &again, wire, wire_bytes, &report ), "load into a builder" );
+        check( graphdemo_scene_load_builder_tolerant( &again, wire, wire_bytes, &report ), "load into a builder" );
         check( !report.malformed, "the builder load is silent" );
         {
             graphdemo_table_ctx_t ctx2;

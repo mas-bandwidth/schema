@@ -598,7 +598,7 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 		g.pf("/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */\n")
 		g.pf("static SCHEMA_UNUSED int %s(const uint8_t * wire, int64_t bytes, int64_t total)\n{\n", helper)
 		g.pf("    uint8_t * region; TableReport report; const %s * loaded; int shared;\n    region=(uint8_t *)table_allocate(table_default_allocator(),total);\n    if(region==NULL) { return 1; }\n    memset(&report,0,sizeof(report));\n", n)
-		g.pf("    loaded=%s(region,total,wire,bytes,&report);\n    table_release(table_default_allocator(),region);\n    if(loaded==NULL) { return 1; }\n    shared=report.blob_shared>0; return shared;\n}\n", g.api(n, "load"))
+		g.pf("    loaded=%s(region,total,wire,bytes,&report);\n    table_release(table_default_allocator(),region);\n    if(loaded==NULL) { return 1; }\n    shared=report.blob_shared>0; return shared;\n}\n", g.api(n, "load_tolerant"))
 	}
 }
 
@@ -639,7 +639,12 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		return
 	}
-	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load"))
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5). Both decodes run under the tolerant
+	// names, unchanged; the plain names are thin wrappers emitted after them.
+	// The retain family is outside the rule (§6.6) and returned above.
+	g.pf("/* %s is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */\n", g.api(n, "load_tolerant"))
+	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load_tolerant"))
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return NULL; }\n")
 	g.pf("    total=%s(&reader,&data,&records);\n", g.sym(n, "load_layout"))
 	g.pf("    if(total<0 || region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }\n    memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);\n")
@@ -650,7 +655,8 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	}
 	g.pf("    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;%s\n    place.base=region; place.capacity=data; place.used=%s(&reader); sink.region=&place; sink.worker=NULL;\n", blobNamedAlloc, g.sym(n, "wire_storage"))
 	g.pf("    if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink)) { table_release(table_default_allocator(),nodes.blob_named); return NULL; }\n    table_release(table_default_allocator(),nodes.blob_named); return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_graph"), n, n)
-	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", g.api(n, "load_builder"), n)
+	g.pf("/* %s is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */\n", g.api(n, "load_builder_tolerant"))
+	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", g.api(n, "load_builder_tolerant"), n)
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; %s * root; int ok;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return 0; }\n", n)
 	g.pf("    scan=table_node_scan_begin(&reader); while(table_node_scan_next(&scan,&id,&body)) { records++; }\n    if(records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1) { report->malformed=1; return 0; }\n")
 	g.pf("    root=%s(builder); if(root==NULL) { report->malformed=1; return 0; }\n", g.api(n, "builder_root"))
@@ -660,4 +666,23 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 		blobNamedAllocBuilder = " if((nodes.blob_named=(uint8_t *)table_allocate(builder->arena.allocator,(int64_t)records+1))==NULL) { report->malformed=1; table_release(builder->arena.allocator,directory); return 0; }"
 	}
 	g.pf("    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;%s\n    sink.region=NULL; sink.worker=&builder->main;\n    ok=%s(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;\n}\n", blobNamedAllocBuilder, g.sym(n, "load_graph"))
+	g.emitGraphLoadStrict(st)
+}
+
+// emitGraphLoadStrict emits the PLAIN region and builder reads of a variable
+// root, which are the STRICT reads (docs/SPEC-TABLES.md §6.5), as thin wrappers
+// over the tolerant names: the report is this read's own, and whatever the
+// strict rule refuses answers no root (the region read) or 0 (the builder
+// read, whose builder the caller shuts down and whose root it does not use),
+// with the report's refuse_reason the one typed reason.
+func (g *tableGen) emitGraphLoadStrict(st *ir.Struct) {
+	n := st.Name
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */\n", g.api(n, "load"))
+	g.pf("static SCHEMA_UNUSED const %s * %s( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", n, g.api(n, "load"))
+	g.pf("    TableReport ignored;\n    const %s * root;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n", n)
+	g.pf("    root = %s( region, region_bytes, wire, wire_bytes, report );\n    return table_report_strict_refuses( report, root != NULL ) ? NULL : root;\n}\n", g.api(n, "load_tolerant"))
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set; the caller shuts the builder down. */\n", g.api(n, "load_builder"))
+	g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report )\n{\n", g.api(n, "load_builder"), n)
+	g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
+	g.pf("    decoded = %s( builder, wire, wire_bytes, report );\n    return !table_report_strict_refuses( report, decoded );\n}\n", g.api(n, "load_builder_tolerant"))
 }

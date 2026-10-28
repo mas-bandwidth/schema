@@ -22,9 +22,9 @@ static tblut2_table_fixed_entry_t g_plan[PlanCapacity];
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
-static int64_t fixed_ut2_load( tblut2_ut_root_t * back, const uint8_t * data, int64_t bytes, tblut2_table_report_t * report )
+static int64_t fixed_ut2_load_tolerant( tblut2_ut_root_t * back, const uint8_t * data, int64_t bytes, tblut2_table_report_t * report )
 {
-    return tblut2_ut_root_fixed_load( back, 1, data, bytes, g_plan, PlanCapacity, NULL, report );
+    return tblut2_ut_root_fixed_load_tolerant( back, 1, data, bytes, g_plan, PlanCapacity, NULL, report );
 }
 
 int64_t fixed_ut2_bytes( void ) { return tblut2_ut_root_fixed_measure( 1 ); }
@@ -47,7 +47,7 @@ void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
     tblut2_ut_root_t back = { 0 };
     tblut2_table_report_t r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fixed_ut2_load( &back, data, bytes, &r ) == 1,
+    fixed_check( fixed_ut2_load_tolerant( &back, data, bytes, &r ) == 1,
                  "C two lanes, compiled: the record reads" );
     fixed_check( back.pick.type == TBLUT2_PICK_TYPE_B,
                  "C two lanes, compiled: the arm is remapped by NAME, not by ordinal" );

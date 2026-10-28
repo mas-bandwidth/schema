@@ -197,7 +197,7 @@ static void one( int32_t many_count, int32_t few_count, int banks_shape )
     /* a load and a re-save reproduce the file, which is what says the id
        table's order and the references into it agree with the bytes */
     memset( &report, 0, sizeof( report ) );
-    if ( !outer_load( &back, buffer, wrote, &report ) )
+    if ( !outer_load_tolerant( &back, buffer, wrote, &report ) )
     {
         printf( "LOAD FAILED %d/%d/%d\n", many_count, few_count, banks_shape ); failures++;
     }
@@ -436,7 +436,7 @@ int main( void )
     }
 
     memset( &report, 0, sizeof( report ) );
-    if ( !root_load( &back, buffer, wrote, &report ) )
+    if ( !root_load_tolerant( &back, buffer, wrote, &report ) )
     {
         printf( "LOAD FAILED\n" );
         return 1;

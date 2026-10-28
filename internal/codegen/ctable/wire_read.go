@@ -173,10 +173,28 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	if g.retain || g.isVar(st.Name) || st.IsMapEntry() {
 		return
 	}
-	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load"), st.Name)
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5). The decode runs under the tolerant name,
+	// unchanged; the plain name is a thin wrapper over it.
+	g.pf("/* %s is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the\n", g.api(st.Name, "load_tolerant"))
+	g.pf("   recovered value and its report, and answers 0 only for a refusal or a\n")
+	g.pf("   body the walk could not finish. */\n")
+	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_tolerant"), st.Name)
 	g.pf("    TableReport ignored; TableReader r;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n")
 	g.pf("    %s( value );\n    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n", g.api(st.Name, "reset"))
 	g.pf("    return %s( &r, value );\n}\n\n", g.api(st.Name, "load_body"))
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses\n", g.api(st.Name, "load"))
+	g.pf("   whatever the strict read refuses -- an unknown form, wire damage, a clamp\n")
+	g.pf("   or a kind mismatch -- answering 0 with the value reset to its declared\n")
+	g.pf("   defaults and the report this read's own, its refuse_reason set. unknown\n")
+	g.pf("   and widened alone never refuse. */\n")
+	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load"), st.Name)
+	g.pf("    TableReport ignored;\n    int decoded;\n")
+	g.pf("    if ( report == NULL ) { report = &ignored; }\n")
+	g.pf("    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
+	g.pf("    decoded = %s( value, buffer, bytes, report );\n", g.api(st.Name, "load_tolerant"))
+	g.pf("    if ( table_report_strict_refuses( report, decoded ) )\n    {\n        %s( value );\n        return 0;\n    }\n", g.api(st.Name, "reset"))
+	g.pf("    return 1;\n}\n\n")
 }
 
 func (g *tableGen) wireReadFieldAt(f *ir.Field, kind int, dst string) {

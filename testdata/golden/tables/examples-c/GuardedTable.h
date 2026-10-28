@@ -78,6 +78,12 @@ typedef struct tabledemo_table_report_t
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
+       TableRefuseReason, the same value a measure's -1 and a cook's open
+       answer, set by every plain read name on its refusal and OK otherwise.
+       unknown, widened and retained alone leave it OK. The tolerant reads
+       never write it. */
+    int refuse_reason;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -2360,6 +2366,24 @@ enum {
 };
 static SCHEMA_UNUSED const uint8_t * tabledemo_table_cook_refuse(tabledemo_table_refuse_reason_t * out,tabledemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
+/* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
+   what the strict read refuses -- an unknown form, wire damage, a blob named
+   from two slots, a clamp or a kind mismatch -- and unknown, widened and
+   retained alone never refuse. decoded is the tolerant read's own answer.
+   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
+   them, and answers 1 when the plain name must refuse. */
+static SCHEMA_UNUSED int tabledemo_table_report_strict_refuses( tabledemo_table_report_t * report, int decoded )
+{
+    tabledemo_table_refuse_reason_t reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
+    if ( report->refused ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( !decoded || report->malformed ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( report->blob_shared > 0 ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED; }
+    else if ( report->clamped > 0 ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_CLAMPED; }
+    else if ( report->kind_mismatch > 0 ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; }
+    report->refuse_reason = reason;
+    return reason != SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
+}
 #endif
 
 
@@ -5914,7 +5938,8 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_rea
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_tabledemo_patrol_wire_storage_(reader); carve.region=&extent; }
       nodes->sink=&carve;  read_ok=tabledemo_patrol_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
 }
-static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report)
+/* patrol_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report)
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t reader; tabledemo_table_node_map_t nodes; tabledemo_table_node_dir_entry_t * directory; tabledemo_table_region_sink_t place; tabledemo_table_sink_t sink; int64_t data,records,total;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }
@@ -5928,7 +5953,8 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load(uint8_t * 
     if(!schema_tabledemo_patrol_load_graph_(&reader,(tabledemo_patrol_t *)(void *)region,&nodes,directory,&sink)) { tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return NULL; }
     tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return (const tabledemo_patrol_t *)(const void *)region;
 }
-static SCHEMA_UNUSED int tabledemo_patrol_load_builder(tabledemo_patrol_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report)
+/* patrol_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
+static SCHEMA_UNUSED int tabledemo_patrol_load_builder_tolerant(tabledemo_patrol_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report)
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t reader; tabledemo_table_node_map_t nodes; tabledemo_table_node_dir_entry_t * directory; tabledemo_table_sink_t sink; tabledemo_table_node_scan_t scan; tabledemo_table_reader_t body; uint64_t id; int64_t records=0; tabledemo_patrol_t * root; int ok;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }
@@ -5943,6 +5969,26 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder(tabledemo_patrol_builder_
     sink.region=NULL; sink.worker=&builder->main;
     ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); tabledemo_table_release(builder->arena.allocator,directory); tabledemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
 }
+/* The PLAIN patrol_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
+static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    const tabledemo_patrol_t * root;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    root = tabledemo_patrol_load_tolerant( region, region_bytes, wire, wire_bytes, report );
+    return tabledemo_table_report_strict_refuses( report, root != NULL ) ? NULL : root;
+}
+/* The PLAIN patrol_load_builder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set; the caller shuts the builder down. */
+static SCHEMA_UNUSED int tabledemo_patrol_load_builder( tabledemo_patrol_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = tabledemo_patrol_load_builder_tolerant( builder, wire, wire_bytes, report );
+    return !tabledemo_table_report_strict_refuses( report, decoded );
+}
 /* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
 static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_blob_shared_(const uint8_t * wire, int64_t bytes, int64_t total)
 {
@@ -5950,7 +5996,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_blob_shared_(const uint8_t
     region=(uint8_t *)tabledemo_table_allocate(tabledemo_table_default_allocator(),total);
     if(region==NULL) { return 1; }
     memset(&report,0,sizeof(report));
-    loaded=tabledemo_patrol_load(region,total,wire,bytes,&report);
+    loaded=tabledemo_patrol_load_tolerant(region,total,wire,bytes,&report);
     tabledemo_table_release(tabledemo_table_default_allocator(),region);
     if(loaded==NULL) { return 1; }
     shared=report.blob_shared>0; return shared;
@@ -6156,7 +6202,8 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_message_load_into_(tabledemo_ta
  r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int tabledemo_patrol_load_messages(const tabledemo_patrol_t ** roots,int64_t * count,uint8_t * region,int64_t region_bytes,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
+/* patrol_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered root and the report. */
+static SCHEMA_UNUSED int tabledemo_patrol_load_messages_tolerant(const tabledemo_patrol_t ** roots,int64_t * count,uint8_t * region,int64_t region_bytes,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
  tabledemo_table_report_t ignored={0};
  tabledemo_table_message_reader_t r;
@@ -6180,6 +6227,26 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_messages(const tabledemo_patrol_t
  if(!schema_tabledemo_patrol_message_load_into_(&r,region,region_bytes,&used,roots+i))return 0;
  (*count)++;
  }return tabledemo_table_message_close(&r);
+}
+/* The PLAIN patrol_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int tabledemo_patrol_load_messages( const tabledemo_patrol_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = tabledemo_patrol_load_messages_tolerant( roots, count, region, region_bytes, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) tabledemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !tabledemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) roots[i] = NULL;
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_table_reader_t * reader, tabledemo_patrol_t * root, tabledemo_table_node_map_t * nodes, tabledemo_table_node_dir_entry_t * directory, tabledemo_table_sink_t * sink, tabledemo_table_retain_walk_t retention)
 {
@@ -6541,7 +6608,17 @@ static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_patrol_table_
 
 int schema_tabledemo_patrol_from_json_( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report );
 int64_t schema_tabledemo_patrol_to_json_( const tabledemo_patrol_t * value, char * buffer, int64_t capacity, tabledemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int tabledemo_patrol_from_json( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report ) { return schema_tabledemo_patrol_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int tabledemo_patrol_from_json_tolerant( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report ) { return schema_tabledemo_patrol_from_json_(builder,text,bytes,report); }
+/* The PLAIN patrol_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int tabledemo_patrol_from_json( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_tabledemo_patrol_from_json_( builder, text, bytes, report );
+    return !tabledemo_table_report_strict_refuses( report, decoded );
+}
 static SCHEMA_UNUSED int64_t tabledemo_patrol_to_json_measure( const tabledemo_patrol_t * value ) { return schema_tabledemo_patrol_to_json_(value,NULL,0,tabledemo_table_default_allocator()); }
 static SCHEMA_UNUSED int64_t tabledemo_patrol_to_json( const tabledemo_patrol_t * value, char * buffer, int64_t capacity ) { return schema_tabledemo_patrol_to_json_(value,buffer,capacity,tabledemo_table_default_allocator()); }
 

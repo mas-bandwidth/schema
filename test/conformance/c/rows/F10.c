@@ -67,7 +67,7 @@ int main( void )
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
 
-    n = cell_fixed_load( &back, 1, wire, bytes, NULL, 0, NULL, &r );
+    n = cell_fixed_load_tolerant( &back, 1, wire, bytes, NULL, 0, NULL, &r );
 
     if ( n != -1 )
     {

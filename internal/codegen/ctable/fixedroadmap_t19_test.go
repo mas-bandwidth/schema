@@ -146,7 +146,7 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     if ( n < 0 ) { printf( "alpha save failed\n" ); return 1; }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
         { printf( "alpha load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_ALPHA ) { printf( "alpha arm=%d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].lead != -2147483647 - 1 || back[0].trail != 2147483647 )
@@ -175,7 +175,7 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
         { printf( "quiet load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_QUIET ) { printf( "quiet arm=%d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].lead != 2147483647 || back[0].trail != -2147483647 - 1 )
@@ -198,7 +198,7 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
         { printf( "signal load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_SIGNAL ) { printf( "signal arm=%d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].lead != -2147483647 - 1 || back[0].trail != 2147483647 )
@@ -226,7 +226,7 @@ func TestFixedRoadmapCT19PayloadFreeArms(t *testing.T) {
     }
     memset( back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
-    if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+    if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
         { printf( "forged load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
     if ( back[0].pick.type != PICK_TYPE_NONE )
         { printf( "forged tag=%d, want None\n", (int) back[0].pick.type ); return 1; }

@@ -79,7 +79,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 0);
     CHECK(report.refused && !report.malformed && report.reason == SCHEMA_TABLE_NO_VOCABULARY);
     return 0;
@@ -121,7 +121,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport body; memset(&body, 0, sizeof(body));
-    CHECK(!root_load_messages(storage, &count, &w, wire, (int64_t)sizeof(wire), &body));
+    CHECK(!root_load_messages_tolerant(storage, &count, &w, wire, (int64_t)sizeof(wire), &body));
     CHECK(count == 0 && body.reason == SCHEMA_TABLE_NO_VOCABULARY);
     return 0;
 }
@@ -259,7 +259,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 2 && report.refused && !report.malformed && report.reason == SCHEMA_TABLE_BATCH_TOO_LARGE);
     CHECK(storage[0].a == 0 && storage[0].b == 0 && storage[0].c == 0);
     return 0;
@@ -287,7 +287,7 @@ int main(void)
     for(i = 0; i < 3; i++) root_reset(storage + i);
     int64_t count = 3;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 1);
     CHECK(report.malformed && !report.refused);
     return 0;
@@ -310,7 +310,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
     CHECK(count == 1 && report.malformed && !report.refused);
     return 0;
 }
@@ -333,7 +333,7 @@ int main(void)
     Root storage[1]; root_reset(storage);
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
-    CHECK(!root_load_messages(storage, &count, &v, form1, (int64_t)sizeof(form1), &report));
+    CHECK(!root_load_messages_tolerant(storage, &count, &v, form1, (int64_t)sizeof(form1), &report));
     CHECK(count == 0 && report.refused && !report.malformed && report.reason == SCHEMA_TABLE_NEWER_FORM);
     /* a form-2 batch handed to the FILE reader -- the announcement's form-1
        reader -- refuses by name and moves no counter. */
@@ -392,7 +392,7 @@ static int load_one(const TableVocabulary * v, const uint8_t * buf, int64_t n, R
     root_reset(storage);
     *count = 1;
     memset(report, 0, sizeof(*report));
-    return root_load_messages(storage, count, v, buf, n, report);
+    return root_load_messages_tolerant(storage, count, v, buf, n, report);
 }
 static int expect_ok(const char * row, const TableVocabulary * v, const uint8_t * buf, int64_t n)
 {
@@ -584,9 +584,9 @@ func cMessageManifestRows(t *testing.T) {
 				}
 				source += "int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};int64_t count=1;uint8_t out[sizeof(wire)];if(!announce_read(&v,expected,sizeof(expected),&report))return 1;"
 				if row[1] == "graph_tree" {
-					source += fmt.Sprintf("const %s * values[1]={0};int64_t need=%s_load_measure_messages(&v,wire,sizeof(wire));if(need<0)return 2;uint8_t * region=malloc((size_t)need);if(!region)return 3;if(!%s_load_messages(values,&count,region,need,&v,wire,sizeof(wire),&report))return 4;", row[3], fn, fn)
+					source += fmt.Sprintf("const %s * values[1]={0};int64_t need=%s_load_measure_messages(&v,wire,sizeof(wire));if(need<0)return 2;uint8_t * region=malloc((size_t)need);if(!region)return 3;if(!%s_load_messages_tolerant(values,&count,region,need,&v,wire,sizeof(wire),&report))return 4;", row[3], fn, fn)
 				} else {
-					source += fmt.Sprintf("%s values[1];if(!%s_load_messages(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
+					source += fmt.Sprintf("%s values[1];if(!%s_load_messages_tolerant(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
 				}
 				// "A batch of bodies is the unit this form reads and writes." (§3.3)
 				source += fmt.Sprintf("if(count!=1||%s_measure_messages(values,count,&report)!=sizeof(wire)||%s_save_messages(values,count,out,sizeof(out),&report)!=sizeof(wire))return 5;return memcmp(out,wire,sizeof(wire));}\n", fn, fn)

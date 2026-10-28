@@ -216,7 +216,7 @@ int main(void)
     off = kTableFixedHeaderBytes + 4 + texty_fixed_layout_bytes + 8; /* header + layout length + layout + the record hash */
     table_fixed_put32(buf + off, 100u); /* the length word, forged past the bound 8 */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == 1);
     CHECK(!r.refused && !r.malformed);
     CHECK(r.clamped == 1);
@@ -329,7 +329,7 @@ int main(void)
     CHECK(n > 0);
     buf[off + 4 + 1] = 0xFF; /* "a\xFFc" cannot begin a UTF-8 sequence */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
     CHECK(r.refused == 1);
     CHECK(r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED);
@@ -341,7 +341,7 @@ int main(void)
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     buf[off + 4 + 1] = 0x00; /* "a\0c" — a zero among the used bytes is the same refusal */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
     CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
     return 0;
@@ -377,7 +377,7 @@ int main(void)
     CHECK(n > 0);
     buf[off + 4 + 1] = 0xC3; /* "a\xC3" — the continuation byte never comes */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
     CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
     texty_reset(&value);
@@ -386,7 +386,7 @@ int main(void)
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     table_fixed_put32(buf + off, 100u); /* the length word, past the 8-byte bound */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == 1);
     CHECK(!r.refused && !r.malformed && r.clamped == 1);
     CHECK(out.s_length == 8 && memcmp(out.s, "abcdefgh", 8) == 0);
@@ -396,7 +396,7 @@ int main(void)
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     memset(buf + off + 4 + 2, 0xFF, 6); /* garbage in the slack past the used 2 */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == 1);
     CHECK(!r.refused && !r.malformed && r.clamped == 0);
     CHECK(out.s_length == 2 && memcmp(out.s, "ab", 2) == 0);
@@ -409,7 +409,7 @@ int main(void)
     n = texty_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     table_fixed_put32(buf + off, 100u); /* the length word, past the 8-byte bound */
     memset(&r, 0, sizeof(r));
-    n = texty_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = texty_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
     CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
     CHECK(r.clamped == 0 && r.widened == 0 && r.unknown == 0);
@@ -438,7 +438,7 @@ int main(void)
     n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     CHECK(n > 0);
     memset(&r, 0, sizeof(r));
-    n = wide_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == -1);
     CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
     wide_reset(&value);
@@ -447,7 +447,7 @@ int main(void)
     n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     table_fixed_put32(buf + off, 100u); /* 100 units past the 8-unit bound */
     memset(&r, 0, sizeof(r));
-    n = wide_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == 1);
     CHECK(!r.refused && !r.malformed && r.clamped == 1);
     CHECK(out.w_length == 8);
@@ -457,7 +457,7 @@ int main(void)
     n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
     buf[off + 4 + 2] = 0x00; buf[off + 4 + 3] = 0xD8; /* a lone surrogate in the slack */
     memset(&r, 0, sizeof(r));
-    n = wide_fixed_load(&out, 1, buf, n, plan, 4096, NULL, &r);
+    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
     CHECK(n == 1);
     CHECK(!r.refused && !r.malformed && r.clamped == 0);
     CHECK(out.w_length == 1);

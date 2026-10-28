@@ -18,7 +18,7 @@ void fixed_fu2_read_fu1( const uint8_t * data, int64_t bytes )
     tblfu2_table_report_t r;
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfu2_fu_root_fixed_load( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
+    fixed_check( tblfu2_fu_root_fixed_load_tolerant( back, 2, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 2,
                  "C text under an arm: the compiled read takes both records" );
     fixed_check( back[0].pick.type == TBLFU2_PICK_TYPE_LABELLED, "C text under an arm: compiled, the SECOND arm" );
     fixed_check( back[0].pick.as.labelled.lead == 101,
