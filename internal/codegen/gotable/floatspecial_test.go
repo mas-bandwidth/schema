@@ -1,24 +1,30 @@
 package gotable
 
 // A PLAIN FLOAT'S SPECIAL VALUES, IN EVERY FORM (docs/SPEC-TABLES.md §3.3, "A
-// PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE"). A float32 or float64 with no
-// declared range rides every binary form as its bit pattern (§3), and the rule
-// settles the two places the forms used to disagree:
+// PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE"; Glenn, 2026-10-27: "Tables go
+// finite-only too, same rule as packets. NaN/inf refused on write and read,
+// -0 and subnormals kept"). The rule, held on every Go form:
 //
 //   - -0 is a value: the default elision compares BIT PATTERNS, so a -0 rides
 //     the variable and message forms instead of being elided and read back as
 //     +0, and the text reads -0 as -0. Found by the schema Go fuzz campaign:
 //     {"echo":-0} read from JSON wrote -0 as text and +0 through the wire.
-//   - a NaN or an infinity rides the binary forms bit for bit, the tolerant
-//     variable read names it non_finite in Reason and counts nothing, and the
-//     STRICT read refuses it (TableRefuseNonFinite), because the JSON writer
-//     has no spelling for one (§16.3). Found by the same campaign: ReadStrict
-//     accepted a NaN that ToJSONMeasure then refused.
+//   - the subnormals are ordinary values and ride bit for bit.
+//   - a NaN (any sign, any payload) or an infinity is refused by EVERY WRITER
+//     (measure and save answer -1 in the variable, message and fixed forms,
+//     ToJSON as before), and EVERY READ refuses one on its raw bits, the
+//     tolerant read included: it answers false, lands nothing, and the report
+//     names the field, non_finite_float: <Table>.<field>, with Err()
+//     TableRefuseNonFiniteFloat. Since no writer emits one, the reads are
+//     driven by hand-built wires: a finite payload flipped to the pattern, as
+//     a damaged byte or a foreign writer would hand it.
 //
-// So a value ReadStrict accepts is one Save, ToJSON and SaveText all write.
 // Every assertion is on the RAW BITS: -0 == +0 and NaN != NaN under ==.
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const fsSchema = `package probe
 
@@ -53,7 +59,6 @@ import (
 	"bytes"
 	"errors"
 	"math"
-	"strings"
 	"testing"
 )
 
@@ -69,9 +74,11 @@ var fsCases = []fsCase{
 	{"minus_zero", 0x80000000, 0x8000000000000000, true},
 	{"nan_quiet", 0x7FC00000, 0x7FF8000000000000, false},
 	{"nan_payload", 0xFFA5A5A5, 0x7FF00DEFACED0001, false}, // signalling, a rich payload
+	{"nan_signalling", 0x7F800001, 0xFFF0000000000001, false},
 	{"plus_inf", 0x7F800000, 0x7FF0000000000000, false},
 	{"minus_inf", 0xFF800000, 0xFFF0000000000000, false},
 	{"largest_subnormal", 0x007FFFFF, 0x000FFFFFFFFFFFFF, true},
+	{"smallest_negative_subnormal", 0x80000001, 0x8000000000000001, true},
 }
 
 // the bits every float slot holds: a, b, xs[0..2], ys[0..1] and the union arm r.
@@ -136,43 +143,128 @@ func landed(t *testing.T, form string, c fsCase, got, want fsBits) {
 	}
 }
 
-// silent: a special value is an ordinary value to every counter.
-func silent(t *testing.T, form string, c fsCase, r *TableReport) {
+// clean: a finite special value is an ordinary value to every counter.
+func clean(t *testing.T, form string, c fsCase, r *TableReport) {
 	t.Helper()
-	if r.Clamped != 0 || r.KindMismatch != 0 || r.Unknown != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Malformed {
-		t.Errorf("%s %s: counted %+v, want every counter zero", form, c.name, *r)
+	if r.Clamped != 0 || r.KindMismatch != 0 || r.Unknown != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Malformed || r.Reason != "" || r.NonFiniteFloat != "" || r.Err() != nil {
+		t.Errorf("%s %s: counted %+v, want a clean read", form, c.name, *r)
 	}
 }
 
-// named: the tolerant variable read names a non-finite float and nothing else.
-func named(t *testing.T, form string, c fsCase, r *TableReport) {
+// refused: a read of a non-finite float answers false, names the field, and
+// its typed reason is non_finite_float.
+func refused(t *testing.T, form string, ok bool, r *TableReport, field string) {
 	t.Helper()
-	silent(t, form, c, r)
-	if c.finite {
-		if r.Reason != "" || r.Err() != nil {
-			t.Errorf("%s %s: Reason %q Err %v, want a clean read", form, c.name, r.Reason, r.Err())
+	if ok || r.NonFiniteFloat != field || r.Reason != "non_finite_float: "+field || !errors.Is(r.Err(), TableRefuseNonFiniteFloat) {
+		t.Errorf("%s: ok %v report %+v Err %v, want the refusal non_finite_float: %s", form, ok, *r, r.Err(), field)
+	}
+}
+
+func strictRefused(t *testing.T, form string, err error) {
+	t.Helper()
+	if !errors.Is(err, TableRefuseNonFiniteFloat) || err.Error() != "non_finite_float" {
+		t.Errorf("%s: strict read answered %v, want the refusal non_finite_float", form, err)
+	}
+}
+
+// flipped is the wire with its one copy of from replaced by to.
+func flipped(t *testing.T, wire, from, to []byte) []byte {
+	t.Helper()
+	i := bytes.Index(wire, from)
+	if i < 0 || bytes.Index(wire[i+len(from):], from) >= 0 {
+		t.Fatalf("want exactly one % x in % x", from, wire)
+	}
+	out := append([]byte(nil), wire...)
+	copy(out[i:], to)
+	return out
+}
+
+func le64(v uint64) []byte {
+	var b [8]byte
+	for i := range b {
+		b[i] = byte(v >> (8 * i))
+	}
+	return b[:]
+}
+
+func le32(v uint32) []byte { return []byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)} }
+
+// flippedBits is a bitpacked batch with its one width-bit copy of from (low
+// bit first, as the bit writer puts it) replaced by to.
+func flippedBits(t *testing.T, buf []byte, from, to uint64, width int) []byte {
+	t.Helper()
+	get := func(at int) uint64 {
+		var v uint64
+		for i := range width {
+			if buf[(at+i)/8]>>uint((at+i)%8)&1 == 1 {
+				v |= 1 << uint(i)
+			}
 		}
-		return
+		return v
 	}
-	if !(strings.HasPrefix(r.Reason, "non_finite: Root.") || strings.HasPrefix(r.Reason, "non_finite: Var.")) || !errors.Is(r.Err(), TableRefuseNonFinite) {
-		t.Errorf("%s %s: Reason %q Err %v, want non_finite named as <Table>.<field> and refused", form, c.name, r.Reason, r.Err())
+	found := -1
+	for at := 0; at+width <= len(buf)*8; at++ {
+		if get(at) == from {
+			if found >= 0 {
+				t.Fatalf("the %d-bit pattern %#x rides twice", width, from)
+			}
+			found = at
+		}
 	}
+	if found < 0 {
+		t.Fatalf("the %d-bit pattern %#x does not ride", width, from)
+	}
+	out := append([]byte(nil), buf...)
+	for i := range width {
+		bit := byte(1) << uint((found+i)%8)
+		if to>>uint(i)&1 == 1 {
+			out[(found+i)/8] |= bit
+		} else {
+			out[(found+i)/8] &^= bit
+		}
+	}
+	return out
 }
 
-func strictRefused(t *testing.T, form string, c fsCase, err error) {
+func vocabulary(t *testing.T) *TableVocabulary {
 	t.Helper()
-	if !errors.Is(err, TableRefuseNonFinite) || err.Error() != "non_finite" {
-		t.Errorf("%s %s: strict read answered %v, want the refusal non_finite", form, c.name, err)
+	ann := make([]byte, AnnounceMeasure())
+	Announce(ann)
+	storage := make([]TableMessageEntry, 64)
+	var vocab TableVocabulary
+	vocab.Init(storage)
+	var arep TableReport
+	if !AnnounceRead(&vocab, ann, &arep) {
+		t.Fatalf("announce read: %+v", arep)
 	}
+	return &vocab
 }
 
-// THE FIXED CLASS, variable wire, strict read, text and message forms.
+// THE FIXED CLASS: the variable wire, the strict read, text and message forms.
+// A finite special value rides every form; a non-finite one is refused by
+// every writer.
 func TestRoot(t *testing.T) {
 	for _, c := range fsCases {
 		var v Root
 		fillRoot(&v, c)
 		want := c.want(true)
-		// The variable wire carries every pattern: Save never refuses one.
+		values := []*Root{&v}
+		if !c.finite {
+			sink := make([]byte, 4096)
+			if RootMeasure(&v) != -1 || RootSave(&v, sink) != -1 {
+				t.Errorf("root %s: the variable writer did not refuse", c.name)
+			}
+			if RootMeasureMessages(values, nil) != -1 || RootSaveMessages(values, sink, nil) != -1 {
+				t.Errorf("root %s: the message writer did not refuse", c.name)
+			}
+			if RootToJSONMeasure(&v) != -1 || RootToJSON(&v, sink) != -1 {
+				t.Errorf("root %s: the text writer did not refuse", c.name)
+			}
+			if _, err := RootSaveText(&v); err == nil {
+				t.Errorf("root %s: SaveText wrote it; its carrier is the binary wire", c.name)
+			}
+			continue
+		}
 		n := RootMeasure(&v)
 		if n <= 0 {
 			t.Fatalf("root %s: measure %d", c.name, n)
@@ -187,99 +279,68 @@ func TestRoot(t *testing.T) {
 			t.Fatalf("root %s: load %+v", c.name, rep)
 		}
 		landed(t, "root wire", c, rootBits(&got), want)
-		named(t, "root wire", c, &rep)
-		// the plain RootLoad is strict (§6.5): it refuses a non-finite
-		// pattern by name and accepts every finite one, -0 included
-		var plain Root
-		var prep TableReport
-		if ok := RootLoad(&plain, wire, &prep); ok != c.finite || (!c.finite && !errors.Is(prep.Err(), TableRefuseNonFinite)) {
-			t.Errorf("root %s: plain Load ok %v err %v, want ok %v", c.name, ok, prep.Err(), c.finite)
-		}
+		clean(t, "root wire", c, &rep)
 		strict, err := RootReadStrict(wire)
-		text, textErr := RootSaveText(&v)
-		if textErr != nil {
-			t.Errorf("root %s: SaveText refused %v; the base64 carrier is the binary wire", c.name, textErr)
+		if err != nil {
+			t.Fatalf("root %s: strict read %v", c.name, err)
 		}
-		_, loadTextErr := RootLoadText(text, nil)
-		if !c.finite {
-			strictRefused(t, "root strict", c, err)
-			strictRefused(t, "root LoadText", c, loadTextErr)
-			if m := RootToJSONMeasure(&v); m != -1 {
-				t.Errorf("root %s: ToJSONMeasure %d, want the refusal -1", c.name, m)
-			}
-			var sink [1024]byte
-			if m := RootToJSON(&v, sink[:]); m != -1 {
-				t.Errorf("root %s: ToJSON %d, want the refusal -1", c.name, m)
-			}
-		} else {
-			if err != nil || loadTextErr != nil {
-				t.Fatalf("root %s: strict read %v, LoadText %v", c.name, err, loadTextErr)
-			}
-			landed(t, "root strict", c, rootBits(strict), want)
-			// Every writer writes what the strict read accepted.
-			m := RootToJSONMeasure(strict)
-			if m <= 0 || RootMeasure(strict) <= 0 {
-				t.Fatalf("root %s: a strict-clean value refused by a writer (json %d)", c.name, m)
-			}
-			if _, err := RootSaveText(strict); err != nil {
-				t.Errorf("root %s: SaveText of a strict-clean value: %v", c.name, err)
-			}
-			js := make([]byte, m)
-			if RootToJSON(strict, js) != m {
-				t.Fatalf("root %s: ToJSON", c.name)
-			}
-			// The text lands the same bits as the wire, and so does the text
-			// read saved back to the wire: one value, every form.
-			var fromText Root
-			var trep TableReport
-			if !RootFromJSON(&fromText, js, &trep) {
-				t.Fatalf("root %s: FromJSON %+v of %s", c.name, trep, js)
-			}
-			landed(t, "root text", c, rootBits(&fromText), want)
-			named(t, "root text", c, &trep)
-			back := make([]byte, RootMeasure(&fromText))
-			RootSave(&fromText, back)
-			again, err := RootReadStrict(back)
-			if err != nil {
-				t.Fatalf("root %s: text -> wire -> strict: %v", c.name, err)
-			}
-			landed(t, "root text->wire", c, rootBits(again), want)
+		landed(t, "root strict", c, rootBits(strict), want)
+		text, err := RootSaveText(&v)
+		if err != nil {
+			t.Fatalf("root %s: SaveText %v", c.name, err)
 		}
+		if _, err := RootLoadText(text, nil); err != nil {
+			t.Fatalf("root %s: LoadText %v", c.name, err)
+		}
+		// Every writer writes what a read accepted, and the text lands the
+		// same bits as the wire: one value, every form.
+		m := RootToJSONMeasure(strict)
+		if m <= 0 {
+			t.Fatalf("root %s: ToJSONMeasure %d", c.name, m)
+		}
+		js := make([]byte, m)
+		if RootToJSON(strict, js) != m {
+			t.Fatalf("root %s: ToJSON", c.name)
+		}
+		var fromText Root
+		var trep TableReport
+		if !RootFromJSON(&fromText, js, &trep) {
+			t.Fatalf("root %s: FromJSON %+v of %s", c.name, trep, js)
+		}
+		landed(t, "root text", c, rootBits(&fromText), want)
+		clean(t, "root text", c, &trep)
 		// THE MESSAGE FORM elides by the same bit compare and carries the pattern.
-		values := []*Root{&v}
 		var wrep TableReport
 		buf := make([]byte, RootMeasureMessages(values, nil))
-		if RootSaveMessages(values, buf, &wrep) != int64(len(buf)) {
-			t.Fatalf("message %s: save", c.name)
-		}
-		if wrep.Clamped != 0 {
-			t.Errorf("message %s: the writer counted %d clamps, want 0", c.name, wrep.Clamped)
-		}
-		ann := make([]byte, AnnounceMeasure())
-		Announce(ann)
-		var storage [64]TableMessageEntry
-		var vocab TableVocabulary
-		vocab.Init(storage[:])
-		var arep TableReport
-		if !AnnounceRead(&vocab, ann, &arep) {
-			t.Fatalf("announce read: %+v", arep)
+		if RootSaveMessages(values, buf, &wrep) != int64(len(buf)) || wrep.Clamped != 0 {
+			t.Fatalf("message %s: save %+v", c.name, wrep)
 		}
 		msgs := make([]Root, 1)
 		var mrep TableReport
-		if k, ok := RootLoadMessagesTolerant(msgs, &vocab, buf, &mrep); k != 1 || !ok {
+		if k, ok := RootLoadMessagesTolerant(msgs, vocabulary(t), buf, &mrep); k != 1 || !ok {
 			t.Fatalf("message %s: load %d %v %+v", c.name, k, ok, mrep)
 		}
 		landed(t, "message", c, rootBits(&msgs[0]), want)
-		named(t, "message", c, &mrep)
+		clean(t, "message", c, &mrep)
 	}
 }
 
-// THE VARIABLE CLASS: the builder-backed read, strict read and text.
+// THE VARIABLE CLASS: the builder-backed read, the strict read and text.
 func TestVar(t *testing.T) {
 	for _, c := range fsCases {
 		var v Var
 		fillVar(&v, c)
 		want := c.want(true)
+		if !c.finite {
+			sink := make([]byte, 4096)
+			if VarMeasure(&v) != -1 || VarSave(&v, sink) != -1 {
+				t.Errorf("var %s: the variable writer did not refuse", c.name)
+			}
+			if VarToJSONMeasure(&v) != -1 {
+				t.Errorf("var %s: the text writer did not refuse", c.name)
+			}
+			continue
+		}
 		n := VarMeasure(&v)
 		if n <= 0 {
 			t.Fatalf("var %s: measure %d", c.name, n)
@@ -297,32 +358,16 @@ func TestVar(t *testing.T) {
 			t.Fatalf("var %s: load %+v", c.name, rep)
 		}
 		landed(t, "var wire", c, varBits(b.GetRoot()), want)
-		named(t, "var wire", c, &rep)
+		clean(t, "var wire", c, &rep)
 		b.Shutdown()
 		strict, err := VarReadStrict(wire)
-		text, textErr := VarSaveText(&v)
-		if textErr != nil {
-			t.Errorf("var %s: SaveText refused %v", c.name, textErr)
-		}
-		_, loadTextErr := VarLoadText(text, nil)
-		if !c.finite {
-			strictRefused(t, "var strict", c, err)
-			strictRefused(t, "var LoadText", c, loadTextErr)
-			if m := VarToJSONMeasure(&v); m != -1 {
-				t.Errorf("var %s: ToJSONMeasure %d, want the refusal -1", c.name, m)
-			}
-			continue
-		}
-		if err != nil || loadTextErr != nil {
-			t.Fatalf("var %s: strict read %v, LoadText %v", c.name, err, loadTextErr)
+		if err != nil {
+			t.Fatalf("var %s: strict read %v", c.name, err)
 		}
 		landed(t, "var strict", c, varBits(strict), want)
 		m := VarToJSONMeasure(strict)
 		if m <= 0 {
-			t.Fatalf("var %s: ToJSONMeasure of a strict-clean value %d", c.name, m)
-		}
-		if _, err := VarSaveText(strict); err != nil {
-			t.Errorf("var %s: SaveText of a strict-clean value: %v", c.name, err)
+			t.Fatalf("var %s: ToJSONMeasure %d", c.name, m)
 		}
 		js := make([]byte, m)
 		if VarToJSON(strict, js) != m {
@@ -335,128 +380,116 @@ func TestVar(t *testing.T) {
 			t.Fatalf("var %s: FromJSON %+v of %s", c.name, trep, js)
 		}
 		landed(t, "var text", c, varBits(tb.GetRoot()), want)
-		named(t, "var text", c, &trep)
-		back := make([]byte, VarMeasure(tb.GetRoot()))
-		VarSave(tb.GetRoot(), back)
-		again, err := VarReadStrict(back)
-		if err != nil {
-			t.Fatalf("var %s: text -> wire -> strict: %v", c.name, err)
-		}
-		landed(t, "var text->wire", c, varBits(again), want)
+		clean(t, "var text", c, &trep)
 		tb.Shutdown()
 	}
 }
 
-// A HAND-BUILT WIRE: one float payload flipped to a NaN or an infinity, as a
-// damaged byte or a foreign writer would hand it. The tolerant read lands the
-// pattern, the strict read refuses it by name.
+// A HAND-BUILT WIRE: one float payload flipped to a special value, in every
+// float position of both classes — a float32 field, a float64 field, a
+// counted array's element, a fixed array's element and a union arm. A finite
+// value lands as its bits; a NaN or an infinity is refused by the tolerant
+// read, the strict read and the builder read alike, naming its own field, and
+// lands nothing.
 func TestFlippedPayload(t *testing.T) {
-	half := []byte{0, 0, 0, 0, 0, 0, 0xE0, 0x3F} // 0.5 as a float64, little-endian
+	half64, half32 := le64(f64(0.5)), le32(math.Float32bits(0.5))
+	sites := []struct {
+		field string
+		set   func(r *Root, v *Var)
+		bits  func(r *Root) uint64
+		wide  bool
+	}{
+		{"a", func(r *Root, v *Var) { r.A, v.A = 0.5, 0.5 }, func(r *Root) uint64 { return uint64(math.Float32bits(r.A)) }, false},
+		{"b", func(r *Root, v *Var) { r.B, v.B = 0.5, 0.5 }, func(r *Root) uint64 { return f64(r.B) }, true},
+		{"xs", func(r *Root, v *Var) { r.Xs[1], r.XsCount, v.Xs[1], v.XsCount = 0.5, 2, 0.5, 2 }, func(r *Root) uint64 { return f64(r.Xs[1]) }, true},
+		{"ys", func(r *Root, v *Var) { r.Ys[0], v.Ys[0] = 0.5, 0.5 }, func(r *Root) uint64 { return f64(r.Ys[0]) }, true},
+	}
 	for _, c := range fsCases {
-		var to [8]byte
-		for i := range to {
-			to[i] = byte(c.b64 >> (8 * i))
-		}
-		patch := func(wire []byte) []byte {
-			i := bytes.Index(wire, half)
-			if i < 0 || bytes.Index(wire[i+8:], half) >= 0 {
-				t.Fatalf("%s: want exactly one 0.5 payload", c.name)
+		for _, s := range sites {
+			var r Root
+			var v Var
+			RootReset(&r)
+			VarReset(&v)
+			s.set(&r, &v)
+			from, to := half64, le64(c.b64)
+			if !s.wide {
+				from, to = half32, le32(c.b32)
 			}
-			copy(wire[i:], to[:])
-			return wire
-		}
-		var r Root
-		RootReset(&r)
-		r.B = 0.5
-		wire := make([]byte, RootMeasure(&r))
-		RootSave(&r, wire)
-		wire = patch(wire)
-		var got Root
-		var rep TableReport
-		if !RootLoadTolerant(&got, wire, &rep) || f64(got.B) != c.b64 {
-			t.Errorf("root flip %s: landed %#x ok %+v", c.name, f64(got.B), rep)
-		}
-		named(t, "root flip", c, &rep)
-		if _, err := RootReadStrict(wire); c.finite && err != nil {
-			t.Errorf("root flip %s: strict %v", c.name, err)
-		} else if !c.finite {
-			strictRefused(t, "root flip", c, err)
-		}
-		var v Var
-		VarReset(&v)
-		v.B = 0.5
-		vwire := make([]byte, VarMeasure(&v))
-		VarSave(&v, vwire)
-		vwire = patch(vwire)
-		if s, err := VarReadStrict(vwire); c.finite && (err != nil || f64(s.B) != c.b64) {
-			t.Errorf("var flip %s: strict %v", c.name, err)
-		} else if !c.finite {
-			strictRefused(t, "var flip", c, err)
-		}
-	}
-}
-
-// A HAND-BUILT FLOAT32 WIRE: the same flip on a four-byte payload.
-func TestFlippedFloat32Payload(t *testing.T) {
-	half := []byte{0, 0, 0, 0x3F} // 0.5 as a float32, little-endian
-	for _, c := range fsCases {
-		to := []byte{byte(c.b32), byte(c.b32 >> 8), byte(c.b32 >> 16), byte(c.b32 >> 24)}
-		var r Root
-		RootReset(&r)
-		r.A = 0.5
-		wire := make([]byte, RootMeasure(&r))
-		RootSave(&r, wire)
-		i := bytes.Index(wire, half)
-		if i < 0 || bytes.Index(wire[i+4:], half) >= 0 {
-			t.Fatalf("%s: want exactly one float32 0.5 payload in % x", c.name, wire)
-		}
-		copy(wire[i:], to)
-		var got Root
-		var rep TableReport
-		if !RootLoadTolerant(&got, wire, &rep) || math.Float32bits(got.A) != c.b32 {
-			t.Errorf("root flip32 %s: landed %#x ok %+v", c.name, math.Float32bits(got.A), rep)
-		}
-		named(t, "root flip32", c, &rep)
-		if _, err := RootReadStrict(wire); c.finite && err != nil {
-			t.Errorf("root flip32 %s: strict %v", c.name, err)
-		} else if !c.finite {
-			strictRefused(t, "root flip32", c, err)
+			wire := make([]byte, RootMeasure(&r))
+			RootSave(&r, wire)
+			wire = flipped(t, wire, from, to)
+			vwire := make([]byte, VarMeasure(&v))
+			VarSave(&v, vwire)
+			vwire = flipped(t, vwire, from, to)
+			var got Root
+			var rep TableReport
+			ok := RootLoadTolerant(&got, wire, &rep)
+			_, strictErr := RootReadStrict(wire)
+			vstrict, vErr := VarReadStrict(vwire)
+			var b VarBuilder
+			b.Init()
+			var brep TableReport
+			bok := VarLoadBuilderTolerant(&b, vwire, &brep)
+			b.Shutdown()
+			if c.finite {
+				want := uint64(c.b64)
+				if !s.wide {
+					want = uint64(c.b32)
+				}
+				if !ok || s.bits(&got) != want || strictErr != nil || vErr != nil || !bok {
+					t.Errorf("flip %s %s: ok %v landed %#x strict %v var strict %v builder %v %+v", s.field, c.name, ok, s.bits(&got), strictErr, vErr, bok, brep)
+				}
+				_ = vstrict
+				continue
+			}
+			refused(t, "root flip "+s.field+" "+c.name, ok, &rep, "Root."+s.field)
+			var reset Root
+			RootReset(&reset)
+			if rootBits(&got) != rootBits(&reset) {
+				t.Errorf("root flip %s %s: the refused read landed %#x", s.field, c.name, rootBits(&got))
+			}
+			strictRefused(t, "root flip "+s.field+" "+c.name, strictErr)
+			strictRefused(t, "var flip "+s.field+" "+c.name, vErr)
+			refused(t, "var builder flip "+s.field+" "+c.name, bok, &brep, "Var."+s.field)
 		}
 	}
-}
-
-// AN ELEMENT is named by the table that declares its array, in the variable
-// wire and in the message form alike (§3.3: non_finite: <Table>.<field>).
-func TestElementNamedByItsTable(t *testing.T) {
-	var v Root
-	RootReset(&v)
-	v.Xs, v.XsCount = [3]float64{0, math.NaN(), 0}, 3
-	wire := make([]byte, RootMeasure(&v))
-	RootSave(&v, wire)
+	// a UNION ARM is named by the union that declares it
+	var r Root
+	RootReset(&r)
+	r.U.Type = ShapeTypeR
+	r.U.R().Value = 0.5
+	wire := make([]byte, RootMeasure(&r))
+	RootSave(&r, wire)
 	var got Root
 	var rep TableReport
-	RootLoad(&got, wire, &rep)
-	if rep.Reason != "non_finite: Root.xs" {
-		t.Errorf("wire: Reason %q, want non_finite: Root.xs", rep.Reason)
-	}
+	ok := RootLoadTolerant(&got, flipped(t, wire, half64, le64(0x7FF8000000000000)), &rep)
+	refused(t, "union arm", ok, &rep, "Shape.r")
+}
+
+// THE MESSAGE FORM refuses on the raw bits too: a body holding a non-finite
+// float refuses the batch, the tolerant read included, with a count of 0.
+func TestMessageFlipped(t *testing.T) {
+	var v Root
+	RootReset(&v)
+	v.Xs[2], v.XsCount = 0.5, 3
 	values := []*Root{&v}
-	var wrep TableReport
 	buf := make([]byte, RootMeasureMessages(values, nil))
-	RootSaveMessages(values, buf, &wrep)
-	ann := make([]byte, AnnounceMeasure())
-	Announce(ann)
-	var storage [64]TableMessageEntry
-	var vocab TableVocabulary
-	vocab.Init(storage[:])
-	var arep TableReport
-	if !AnnounceRead(&vocab, ann, &arep) {
-		t.Fatalf("announce read: %+v", arep)
+	if RootSaveMessages(values, buf, nil) != int64(len(buf)) {
+		t.Fatal("message save")
 	}
-	msgs := make([]Root, 1)
-	var mrep TableReport
-	RootLoadMessages(msgs, &vocab, buf, &mrep)
-	if mrep.Reason != "non_finite: Root.xs" || !errors.Is(mrep.Err(), TableRefuseNonFinite) {
-		t.Errorf("message: Reason %q Err %v, want non_finite: Root.xs refused", mrep.Reason, mrep.Err())
+	for _, bits := range []uint64{0x7FF8000000000000, 0xFFF0000000000000, 0x7FF00DEFACED0001} {
+		bad := flippedBits(t, buf, f64(0.5), bits, 64)
+		msgs := make([]Root, 1)
+		var mrep TableReport
+		k, ok := RootLoadMessagesTolerant(msgs, vocabulary(t), bad, &mrep)
+		if k != 0 {
+			t.Errorf("message %#x: delivered %d bodies", bits, k)
+		}
+		refused(t, "message", ok, &mrep, "Root.xs")
+		var strict TableReport
+		if k, ok := RootLoadMessages(msgs, vocabulary(t), bad, &strict); k != 0 || ok || !errors.Is(strict.Err(), TableRefuseNonFiniteFloat) {
+			t.Errorf("strict message %#x: %d %v %v", bits, k, ok, strict.Err())
+		}
 	}
 }
 
@@ -471,7 +504,7 @@ func TestTextMinusZeroByHand(t *testing.T) {
 	w := fsCases[1].want(false)
 	w.r = 0xDEAD
 	landed(t, "text by hand", fsCases[1], rootBits(&got), w)
-	silent(t, "text by hand", fsCases[1], &rep)
+	clean(t, "text by hand", fsCases[1], &rep)
 	wire := make([]byte, RootMeasure(&got))
 	RootSave(&got, wire)
 	s, err := RootReadStrict(wire)
@@ -480,7 +513,6 @@ func TestTextMinusZeroByHand(t *testing.T) {
 	}
 	landed(t, "text by hand -> wire", fsCases[1], rootBits(s), w)
 }
-
 `
 
 // THE FIXED FORM (§3.4) is emitted for a unit of fixed tables alone, so it is
@@ -498,9 +530,9 @@ fixed table Flat
 const fsFlatProbe = `package probe
 
 import (
+	"bytes"
 	"errors"
 	"math"
-	"strings"
 	"testing"
 )
 
@@ -529,36 +561,19 @@ func flatBits(v *Flat) fsBits {
 	return fsBits{a: math.Float32bits(v.A), b: f64(v.B), y0: f64(v.Ys[0]), y1: f64(v.Ys[1])}
 }
 
-func landed(t *testing.T, form string, c fsCase, got, want fsBits) {
-	t.Helper()
-	if got != want {
-		t.Errorf("%s %s: landed %#x, want %#x", form, c.name, got, want)
+func le64(v uint64) []byte {
+	var b [8]byte
+	for i := range b {
+		b[i] = byte(v >> (8 * i))
 	}
+	return b[:]
 }
 
-func silent(t *testing.T, form string, c fsCase, r *TableReport) {
-	t.Helper()
-	if r.Clamped != 0 || r.KindMismatch != 0 || r.Unknown != 0 || r.Widened != 0 || r.Duplicate != 0 || r.Malformed {
-		t.Errorf("%s %s: counted %+v, want every counter zero", form, c.name, *r)
-	}
-}
-
-func named(t *testing.T, form string, c fsCase, r *TableReport) {
-	t.Helper()
-	silent(t, form, c, r)
-	if c.finite {
-		if r.Reason != "" || r.Err() != nil {
-			t.Errorf("%s %s: Reason %q Err %v, want a clean read", form, c.name, r.Reason, r.Err())
-		}
-		return
-	}
-	if !strings.HasPrefix(r.Reason, "non_finite: ") || !errors.Is(r.Err(), TableRefuseNonFinite) {
-		t.Errorf("%s %s: Reason %q Err %v, want non_finite named and refused", form, c.name, r.Reason, r.Err())
-	}
-}
-
-// THE FIXED FORM carries the record whole: every pattern lands as written,
-// nothing counts, and the writer refuses no plain float.
+// THE FIXED FORM carries the record whole: a finite pattern, -0 and the
+// subnormals included, lands as written and nothing counts; the writer
+// refuses a NaN or an infinity, and a record that carries one anyway is
+// refused by the strict and the tolerant load alike, naming the field, with
+// every value the call wrote back at its defaults.
 func TestFixed(t *testing.T) {
 	for _, c := range fsCases {
 		f := math.Float64frombits(c.b64)
@@ -566,32 +581,91 @@ func TestFixed(t *testing.T) {
 		FlatReset(&v)
 		v.A, v.B, v.Ys = math.Float32frombits(c.b32), f, [2]float64{f, f}
 		buf := make([]byte, FlatFixedMeasure(1))
+		if !c.finite {
+			if FlatFixedSave([]Flat{v}, buf) != -1 {
+				t.Errorf("fixed %s: the writer wrote a non-finite float", c.name)
+			}
+			if _, err := FlatFixedSaveReason([]Flat{v}, buf); !errors.Is(err, TableRefuseInvalidValue) {
+				t.Errorf("fixed %s: the writer's reason %v, want invalid_value", c.name, err)
+			}
+			if FlatMeasure(&v) != -1 {
+				t.Errorf("fixed %s: the variable writer did not refuse", c.name)
+			}
+			continue
+		}
 		if FlatFixedSave([]Flat{v}, buf) < 0 {
-			t.Fatalf("fixed %s: the writer refused a plain float", c.name)
+			t.Fatalf("fixed %s: the writer refused a finite float", c.name)
 		}
 		var got [1]Flat
 		var plan [64]TableFixedEntry
 		var rep TableReport
-		if k := FlatFixedLoad(got[:], buf, plan[:], &rep); k != 1 {
+		if k := FlatFixedLoad(got[:], buf, plan[:], &rep); k != 1 || rep.Err() != nil {
 			t.Fatalf("fixed %s: load %d %q", c.name, k, rep.Reason)
 		}
-		landed(t, "fixed", c, flatBits(&got[0]), fsBits{c.b32, c.b64, c.b64, c.b64})
-		silent(t, "fixed", c, &rep)
-		// The variable wire of the same flat value agrees with it.
-		wire := make([]byte, FlatMeasure(&v))
-		FlatSave(&v, wire)
-		var back Flat
-		var wrep TableReport
-		FlatLoadTolerant(&back, wire, &wrep)
-		landed(t, "flat wire", c, flatBits(&back), fsBits{c.b32, c.b64, c.b64, c.b64})
-		named(t, "flat wire", c, &wrep)
+		if flatBits(&got[0]) != (fsBits{c.b32, c.b64, c.b64, c.b64}) {
+			t.Errorf("fixed %s: landed %#x", c.name, flatBits(&got[0]))
+		}
+	}
+	// THE READ, over a record a foreign writer could hand it: two records, the
+	// second one's float flipped, so the refusal is total over the batch.
+	for _, site := range []struct {
+		field string
+		set   func(v *Flat)
+		from  []byte
+	}{
+		{"a", func(v *Flat) { v.A = 0.5 }, []byte{0, 0, 0, 0x3F}},
+		{"b", func(v *Flat) { v.B = 0.5 }, le64(f64(0.5))},
+		{"ys", func(v *Flat) { v.Ys[1] = 0.5 }, le64(f64(0.5))},
+	} {
+		for _, c := range fsCases {
+			if c.finite {
+				continue
+			}
+			var one, two Flat
+			FlatReset(&one)
+			FlatReset(&two)
+			one.B = 7
+			site.set(&two)
+			buf := make([]byte, FlatFixedMeasure(2))
+			if FlatFixedSave([]Flat{one, two}, buf) < 0 {
+				t.Fatal("fixed save")
+			}
+			to := le64(c.b64)
+			if len(site.from) == 4 {
+				to = []byte{byte(c.b32), byte(c.b32 >> 8), byte(c.b32 >> 16), byte(c.b32 >> 24)}
+			}
+			i := bytes.Index(buf, site.from)
+			if i < 0 || bytes.Index(buf[i+len(site.from):], site.from) >= 0 {
+				t.Fatalf("%s: want one % x in the file", site.field, site.from)
+			}
+			copy(buf[i:], to)
+			for _, tolerant := range []bool{false, true} {
+				got := make([]Flat, 2)
+				var plan [64]TableFixedEntry
+				var rep TableReport
+				var k int64
+				if tolerant {
+					k = FlatFixedLoadTolerant(got, buf, plan[:], &rep)
+				} else {
+					k = FlatFixedLoad(got, buf, plan[:], &rep)
+				}
+				if k != -1 || rep.NonFiniteFloat != "Flat."+site.field || rep.Reason != "non_finite_float: Flat."+site.field || !errors.Is(rep.Err(), TableRefuseNonFiniteFloat) {
+					t.Errorf("fixed %s %s tolerant=%v: %d %+v", site.field, c.name, tolerant, k, rep)
+				}
+				var reset Flat
+				FlatReset(&reset)
+				if flatBits(&got[0]) != flatBits(&reset) || flatBits(&got[1]) != flatBits(&reset) {
+					t.Errorf("fixed %s %s: the refused batch kept %#x %#x", site.field, c.name, flatBits(&got[0]), flatBits(&got[1]))
+				}
+			}
+		}
 	}
 }
 `
 
 // THE ENUM-KEYED SLOT elides by the same bit compare (write.go's keyed
-// elision): a -0 in one slot rides, a +0 is elided, and the strict read refuses
-// a non-finite slot by name.
+// elision): a -0 in one slot rides and a +0 is elided; the writer refuses a
+// non-finite slot, and a read refuses one by name.
 const fsKeyedSchema = `package probe
 
 enum Level { Low, High }
@@ -605,6 +679,7 @@ fixed table Keyed
 const fsKeyedProbe = `package probe
 
 import (
+	"bytes"
 	"errors"
 	"math"
 	"testing"
@@ -627,6 +702,32 @@ func TestKeyed(t *testing.T) {
 		var v Keyed
 		KeyedReset(&v)
 		v.Ks[1] = math.Float64frombits(c.b64)
+		if !c.finite {
+			if KeyedMeasure(&v) != -1 {
+				t.Errorf("keyed %s: the writer did not refuse", c.name)
+			}
+			// the read, over a wire whose slot was flipped after the write
+			v.Ks[1] = 0.5
+			wire := make([]byte, KeyedMeasure(&v))
+			KeyedSave(&v, wire)
+			half := []byte{0, 0, 0, 0, 0, 0, 0xE0, 0x3F}
+			i := bytes.Index(wire, half)
+			if i < 0 {
+				t.Fatal("no 0.5 in the keyed wire")
+			}
+			for k := range 8 {
+				wire[i+k] = byte(c.b64 >> (8 * k))
+			}
+			var got Keyed
+			var rep TableReport
+			if KeyedLoadTolerant(&got, wire, &rep) || rep.Reason != "non_finite_float: Keyed.ks" || math.Float64bits(got.Ks[1]) != 0 {
+				t.Errorf("keyed %s: tolerant %+v landed %#x", c.name, rep, math.Float64bits(got.Ks[1]))
+			}
+			if _, err := KeyedReadStrict(wire); !errors.Is(err, TableRefuseNonFiniteFloat) {
+				t.Errorf("keyed %s: strict %v", c.name, err)
+			}
+			continue
+		}
 		wire := make([]byte, KeyedMeasure(&v))
 		KeyedSave(&v, wire)
 		if rides := int64(len(wire)) > base; rides != (c.b64 != 0) {
@@ -637,12 +738,8 @@ func TestKeyed(t *testing.T) {
 		if !KeyedLoadTolerant(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
 			t.Errorf("keyed %s: landed %#x %#x %+v", c.name, math.Float64bits(got.Ks[0]), math.Float64bits(got.Ks[1]), rep)
 		}
-		_, err := KeyedReadStrict(wire)
-		if c.finite && err != nil {
+		if _, err := KeyedReadStrict(wire); err != nil {
 			t.Errorf("keyed %s: strict %v", c.name, err)
-		}
-		if !c.finite && (!errors.Is(err, TableRefuseNonFinite) || rep.Reason != "non_finite: Keyed.ks") {
-			t.Errorf("keyed %s: strict %v, Reason %q, want non_finite: Keyed.ks", c.name, err, rep.Reason)
 		}
 	}
 }
@@ -748,4 +845,44 @@ func TestGoPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 	runGenerated(t, fsFlatSchema, fsFlatProbe)
 	runGenerated(t, fsKeyedSchema, fsKeyedProbe)
 	runGenerated(t, fsNegSchema, fsNegProbe)
+}
+
+// TestGoFiniteFloatNegativeControl is the finite rule's reversed witness: each
+// of its three halves is sabotaged in the generated unit, one at a time, and
+// the probe above must go red on exactly that half — the raw-bits test every
+// variable and message read runs, the fixed form's finite pass, and the
+// writer's clause. A control that cannot go red is not a gate.
+func TestGoFiniteFloatNegativeControl(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, schema, probe string
+		sabotage            [][2]string
+		want                string
+	}{
+		{"read", fsSchema, fsProbe, [][2]string{
+			{"b&0x7f800000 == 0x7f800000", "false && b&0x7f800000 == 0x7f800000 /* SABOTAGED */"},
+			{"b&0x7ff0000000000000 == 0x7ff0000000000000", "false && b&0x7ff0000000000000 == 0x7ff0000000000000 /* SABOTAGED */"},
+		}, "want the refusal non_finite_float"},
+		{"fixed", fsFlatSchema, fsFlatProbe, [][2]string{
+			{`FlatFixedFiniteBody(&values[k]); why != ""`, `FlatFixedFiniteBody(&values[k]); false && why != "" /* SABOTAGED */`},
+		}, "tolerant="},
+		{"writer", fsKeyedSchema, fsKeyedProbe, [][2]string{
+			{"value.Ks[i]-value.Ks[i] != 0", "false && value.Ks[i]-value.Ks[i] != 0 /* SABOTAGED */"},
+		}, "the writer did not refuse"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := runGeneratedEdited(t, c.schema, c.probe, func(files map[string][]byte) {
+				for _, s := range c.sabotage {
+					patch(t, files, s[0], s[1])
+				}
+			})
+			if err == nil {
+				t.Fatalf("NEGATIVE CONTROL FAILED: the %s half of the finite rule is gone and the probe stayed GREEN\n%s", c.name, out)
+			}
+			if !strings.Contains(string(out), c.want) {
+				t.Fatalf("NEGATIVE CONTROL FAILED: the probe went red, but not on the %s half\n%s", c.name, out)
+			}
+		})
+	}
 }

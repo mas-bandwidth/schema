@@ -620,12 +620,13 @@ Four spellings are Dart's own and the reason is at each site.
   budget runs out depends on the loop around the codec. So no generated Dart
   body calls a float32 conversion (issue 404, PORTING M3): the packet, block
   and message emitters spell it at each assignment through the typed-data
-  views, NaN payloads narrowed and widened in software as before, and `make tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
+  views, and `make tables-dart-float-jit` holds the packet codec at zero steady JIT scavenges
   on the pinned SDK 3.13.2 — measured at 76 per 2,000,000 passes of five
   float32 and three float64 fields with the helpers, from one caller or two,
-  and 0 hand-inlined. Two further costs are the JIT's and never AOT's: a
-  `float32` carrying a NaN with a payload costs one boxed double, and a 64-bit
+  and 0 hand-inlined. A further cost is the JIT's and never AOT's: a 64-bit
   integer field holding a value outside ±2⁶² costs one boxed integer per read.
+  (The NaN-payload bit surgery this note used to cite is retired with the NaN,
+  §3.3; the Dart leg's finite-tables card removes the last of it.)
 - **THE VERBS ARE MEMBERS OF THE VALUE** — `config.measure()`,
   `config.save(out)`, `config.load(bytes, report)`, `loadBody`, `saveBody`,
   `reset`, `fromJson`, `toJson`, `toJsonMeasure` — methods on a table's own
@@ -6891,13 +6892,14 @@ In general `-0` and `+0` take the index of the grid point the rule chooses for
 `0`, and decode to that point; it is index `0` only when `min` is `0`. The index
 never leaves `[0, count]` and a decoded value never leaves `[min, max]`, so in
 every form a compressed float lands inside its declared range and a NaN or an
-infinity never lands at all. Until the Go leg lands the 2026-10-27 rule,
-`internal/codegen/gotable/cfloat_special_values_test.go` and
-`internal/codegen/gotable/fixedcfloat_test.go` pin the older clamp (a NaN to
-`min`, `+Inf` to `max`, `-Inf` to `min`, each counted); the Go card flips
-those rows to refusals. A leg that lands a NaN, clamps one instead of refusing
-it, keeps a `-0`'s sign bit, or clamps a finite value without counting is out
-of conformance with this paragraph.
+infinity never lands at all. The rule is held on the Go leg and in the Go
+oracle by `internal/codegen/gotable/cfloat_special_values_test.go` (every
+form, both shapes: the refusals, `-0`, `+0` and a finite value past each end)
+and `internal/codegen/gotable/fixedcfloat_test.go`
+(`TestFixedCFloatNonFiniteIsRefused`), and by
+`internal/tablewire/cfloat_special_oracle_test.go`. A leg that lands a NaN,
+clamps one instead of refusing it, keeps a `-0`'s sign bit, or clamps a finite
+value without counting is out of conformance with this paragraph.
 
 **A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A `float32`
 or `float64` with no declared range is defined for every FINITE IEEE-754
@@ -6970,14 +6972,18 @@ legs agree byte for byte on every value except that one. Each other leg owes
 three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
 included, which today gives `-0` C's `==`), and the finite rule of
 2026-10-27: the writer's refusal and every read's `non_finite_float`
-refusal, in all three binary forms. Until a leg lands that rule it keeps the
-2026-10-18/19 behaviour (a NaN or an infinity rides, and only a strict read,
-where the leg has one, refuses it as `non_finite`), and the NaN pins
-(`testdata/wire/tables/floats_nan.bin`) and
+refusal, in all three binary forms. The Go leg and the tool's engines
+(`internal/tablewire`, `internal/tablecook`) keep the rule, held by
 `internal/codegen/gotable/floatspecial_test.go`
-(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) hold the old behaviour
-until the Go leg flips them. The per-leg work is listed in the finite-tables
-cards.
+(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) and
+`internal/tablewire/floatnan_test.go`, which reads the reference's NaN pin
+(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. Until a leg
+lands the rule it keeps the 2026-10-18/19 behaviour (a NaN or an infinity
+rides, and only a strict read, where the leg has one, refuses it as
+`non_finite`); each leg's work is its card in docs/roadmap.sexp
+(`tables-finite/<leg>`), and the cross-language gates that meet a non-finite
+float on a leg not yet converted name that card (the wire fuzzer's
+`--finite-owed`, the Elixir hostile-corpus FIX-CARD).
 
 **FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** A reader handed a
 form-`2` wire where a file was expected refuses by name: a batch stored on its

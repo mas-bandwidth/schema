@@ -1,14 +1,15 @@
 package gotable
 
 // A COMPRESSED FLOAT'S SPECIAL VALUES, IN EVERY FORM (docs/SPEC-TABLES.md
-// §3.3, "A COMPRESSED FLOAT'S SPECIAL VALUES"). The rule under test is one rule
-// for four forms: a value written as NaN never lands as NaN — it clamps to
-// `min` and counts wherever the form clamps (the message WRITER, the fixed and
-// variable READS), and the text form, which has no spelling for it, refuses it
-// at write; +Inf and -Inf clamp to `max` and `min` and count the same way, or
-// are refused by the text form the same way; -0 lands exactly as +0 does, the
-// value 0 (in the message form, the INDEX OF 0 for that range), with no sign
-// bit and no count.
+// §3.3, "A COMPRESSED FLOAT'S SPECIAL VALUES"; ruling 1 of 2026-10-27, "same
+// rule as packets"). The rule under test is one rule for four forms: a NaN or
+// an infinity is REFUSED, never clamped — every writer refuses one (the message
+// writer before its quantizer runs), and the fixed and variable READS, which
+// carry the float whole, refuse one on its raw bits as non_finite_float, naming
+// the field, before the bounds pass; a FINITE value past an end clamps to that
+// end and counts wherever the form clamps (the message WRITER, the fixed and
+// variable READS); -0 lands exactly as +0 does, the value 0 (in the message
+// form, the INDEX OF 0 for that range), with no sign bit and no count.
 //
 // Two ranges, because a range that starts at 0 cannot tell "the index of 0"
 // from "index 0": A is [0, 1] at 0.01 (count 100, 0 is index 0) and B is
@@ -26,7 +27,8 @@ import (
 
 // THE QUANTIZER ITSELF, through the Go oracle's ir.TableMessageQuantize and
 // TableMessageDequantize: the index each special value takes and the float that
-// index names, on both ranges. This is the table the spec states.
+// index names, on both ranges. This is the table the spec states. A NaN or an
+// infinity has no row: every writer refuses one before the quantizer runs.
 func TestCompressedFloatSpecialValuesQuantizer(t *testing.T) {
 	type row struct {
 		name  string
@@ -41,22 +43,18 @@ func TestCompressedFloatSpecialValuesQuantizer(t *testing.T) {
 		rows  []row
 	}{
 		{"range_0_1", ir.TableMessageShape{Packing: ir.TableMessageQuantized, QMin: 0, QMax: 1, QRes: 0.01}, 100, []row{
-			{"nan_quiet", 0x7FC00000, 0, 0x00000000},
-			{"nan_payload", 0x7F800001, 0, 0x00000000},
 			{"minus_zero", 0x80000000, 0, 0x00000000},
 			{"plus_zero", 0x00000000, 0, 0x00000000},
-			{"plus_inf", 0x7F800000, 100, 0x3F800000},
-			{"minus_inf", 0xFF800000, 0, 0x00000000},
+			{"above_max", 0x40000000, 100, 0x3F800000},
+			{"below_min", 0xC0000000, 0, 0x00000000},
 		}},
 		{"range_minus1_1", ir.TableMessageShape{Packing: ir.TableMessageQuantized, QMin: -1, QMax: 1, QRes: 0.01}, 200, []row{
-			{"nan_quiet", 0x7FC00000, 0, 0xBF800000},
-			{"nan_payload", 0x7F800001, 0, 0xBF800000},
 			// -0 and +0 take the INDEX OF 0 for this range, which is 100, and
 			// that index decodes to +0 — not index 0, which is min.
 			{"minus_zero", 0x80000000, 100, 0x00000000},
 			{"plus_zero", 0x00000000, 100, 0x00000000},
-			{"plus_inf", 0x7F800000, 200, 0x3F800000},
-			{"minus_inf", 0xFF800000, 0, 0xBF800000},
+			{"above_max", 0x40000000, 200, 0x3F800000},
+			{"below_min", 0xC0000000, 0, 0xBF800000},
 		}},
 	} {
 		count, _, ok := ir.TableMessageQuantization(shape.s)
@@ -89,19 +87,32 @@ const cfSpecialProbe = `package probe
 import ("bytes"; "math"; "testing")
 
 type cfCase struct {
-	name   string
-	in     uint32
-	a, b   uint32 // the bits that land in A [0, 1] and B [-1, 1]
-	counts int32  // the clamps the form counts across A and B
-	text   bool   // the text form writes it at all
+	name    string
+	in      uint32
+	a, b    uint32 // the bits that land in A [0, 1] and B [-1, 1]
+	counts  int32  // the clamps the form counts across A and B
+	refused bool   // a NaN or an infinity: every writer and every read refuses it
+	text    bool   // the text form writes it (a finite value past an end is not asked of it)
 }
 
 var cfCases = []cfCase{
-	{"nan", 0x7FC00000, 0x00000000, 0xBF800000, 2, false},
-	{"minus_zero", 0x80000000, 0x00000000, 0x00000000, 0, true},
-	{"plus_zero", 0x00000000, 0x00000000, 0x00000000, 0, true},
-	{"plus_inf", 0x7F800000, 0x3F800000, 0x3F800000, 2, false},
-	{"minus_inf", 0xFF800000, 0x00000000, 0xBF800000, 2, false},
+	{"nan", 0x7FC00000, 0, 0, 0, true, false},
+	{"nan_payload", 0xFFA5A5A5, 0, 0, 0, true, false},
+	{"minus_zero", 0x80000000, 0x00000000, 0x00000000, 0, false, true},
+	{"plus_zero", 0x00000000, 0x00000000, 0x00000000, 0, false, true},
+	{"plus_inf", 0x7F800000, 0, 0, 0, true, false},
+	{"minus_inf", 0xFF800000, 0, 0, 0, true, false},
+	{"above_max", 0x40000000, 0x3F800000, 0x3F800000, 2, false, false},
+	{"below_min", 0xC0000000, 0x00000000, 0xBF800000, 2, false, false},
+}
+
+// cfRefused is a read's refusal of a non-finite float: nothing clamped, and A,
+// the first field, named.
+func cfRefused(t *testing.T, form string, c cfCase, rep *TableReport) {
+	t.Helper()
+	if rep.NonFiniteFloat != "Reading.a" || rep.Reason != "non_finite_float: Reading.a" || rep.Clamped != 0 || rep.Err() != TableRefuseNonFiniteFloat {
+		t.Errorf("%s %s: %+v, want the non_finite_float refusal of Reading.a and no clamp", form, c.name, *rep)
+	}
 }
 
 func cfValue(bits uint32) Reading {
@@ -122,13 +133,21 @@ func cfLanded(t *testing.T, form string, c cfCase, got Reading) {
 	}
 }
 
-// THE MESSAGE FORM: the writer quantizes and clamps, so the WRITER counts
+// THE MESSAGE FORM: the writer refuses a NaN or an infinity before it
+// quantizes, and quantizes and clamps a finite value, so the WRITER counts
 // (SaveMessages's report); the reader sees only an index inside [0, count]
 // and counts nothing.
 func TestMessage(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(c.in)
 		values := []*Reading{&v}
+		if c.refused {
+			var sink [64]byte
+			if ReadingMeasureMessages(values, nil) != -1 || ReadingSaveMessages(values, sink[:], nil) != -1 {
+				t.Errorf("message %s: the writer quantized a non-finite float", c.name)
+			}
+			continue
+		}
 		buf := make([]byte, ReadingMeasureMessages(values, nil))
 		var wrep TableReport
 		if ReadingSaveMessages(values, buf, &wrep) != int64(len(buf)) {
@@ -169,11 +188,10 @@ func TestMessageIndex(t *testing.T) {
 		index uint64
 		count int32
 	}{
-		{"nan", 0x7FC00000, 0, 1},
 		{"minus_zero", 0x80000000, 100, 0},
 		{"plus_zero", 0x00000000, 100, 0},
-		{"plus_inf", 0x7F800000, 200, 1},
-		{"minus_inf", 0xFF800000, 0, 1},
+		{"above_max", 0x40000000, 200, 1},
+		{"below_min", 0xC0000000, 0, 1},
 	} {
 		var buf [8]byte
 		w := TableBitWriter{Buffer: buf[:]}
@@ -188,12 +206,13 @@ func TestMessageIndex(t *testing.T) {
 }
 
 // THE FIXED FORM: forge the hostile bits into a valid record because the Go
-// writer refuses values that its reader would clamp. The READ counts.
+// writer refuses values that its reader would clamp or refuse. The READ
+// refuses a non-finite one first, and clamps and counts a finite one.
 func TestFixed(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(0)
 		buf := make([]byte, ReadingFixedMeasure(1))
-		if c.counts > 0 && ReadingFixedSave([]Reading{cfValue(c.in)}, buf) >= 0 {
+		if (c.counts > 0 || c.refused) && ReadingFixedSave([]Reading{cfValue(c.in)}, buf) >= 0 {
 			t.Fatalf("fixed %s: writer accepted a value its reader clamps", c.name)
 		}
 		if ReadingFixedSave([]Reading{v}, buf) < 0 {
@@ -205,6 +224,13 @@ func TestFixed(t *testing.T) {
 		var got [1]Reading
 		var plan [64]TableFixedEntry
 		var rep TableReport
+		if c.refused {
+			if n := ReadingFixedLoadTolerant(got[:], buf, plan[:], &rep); n != -1 {
+				t.Errorf("fixed %s: the tolerant read landed %d records", c.name, n)
+			}
+			cfRefused(t, "fixed", c, &rep)
+			continue
+		}
 		if n := ReadingFixedLoadTolerant(got[:], buf, plan[:], &rep); n != 1 {
 			t.Fatalf("fixed %s: load n=%d why=%q", c.name, n, rep.Reason)
 		}
@@ -221,7 +247,7 @@ func TestVariable(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(0x3F000000) // 0.5, present in both fields
 		buf := make([]byte, ReadingMeasure(&v))
-		if c.counts > 0 {
+		if c.counts > 0 || c.refused {
 			invalid := cfValue(c.in)
 			if ReadingSave(&invalid, buf) >= 0 {
 				t.Fatalf("variable %s: writer accepted a value its reader clamps", c.name)
@@ -246,6 +272,13 @@ func TestVariable(t *testing.T) {
 		}
 		var got Reading
 		var rep TableReport
+		if c.refused {
+			if ReadingLoadTolerant(&got, buf, &rep) {
+				t.Errorf("variable %s: the tolerant read landed it", c.name)
+			}
+			cfRefused(t, "variable", c, &rep)
+			continue
+		}
 		if !ReadingLoadTolerant(&got, buf, &rep) {
 			t.Fatalf("variable %s: load %+v", c.name, rep)
 		}
@@ -262,6 +295,9 @@ func TestVariable(t *testing.T) {
 // same way.
 func TestText(t *testing.T) {
 	for _, c := range cfCases {
+		if c.counts > 0 {
+			continue // a finite value past an end is the binary forms' row
+		}
 		v := cfValue(c.in)
 		n := ReadingToJSONMeasure(&v)
 		if !c.text {

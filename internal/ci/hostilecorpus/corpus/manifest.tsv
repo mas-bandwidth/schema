@@ -158,5 +158,6 @@ wire-count-refusal	wire	schemas/probe.schema	Root	inputs/wire-count-refusal.bin	
 wire-empty	wire	tables/examples	ShipEntry	inputs/wire-empty.bin	bounds: zero bytes is below the smallest readable wire	refuse	damaged	-
 wire-form-02	wire	tables/examples	ShipEntry	inputs/wire-form-02.bin	bound: the message form offered where a file was expected	refuse	message_form_as_file	-
 wire-form-ff	wire	tables/examples	ShipEntry	inputs/wire-form-ff.bin	bound: a form byte past the message form (2), one above the highest form the reader carries	refuse	newer_form	-
+wire-non-finite-float	wire	tables/examples	ShipEntry	inputs/wire-non-finite-float.bin	bound: a float32 (health) whose bits are a signalling NaN; every read refuses one on its raw bits (docs/SPEC-TABLES.md §3.3, finite floats 2026-10-27)	refuse	non_finite_float	-
 wire-truncated-tail	wire	tables/examples	ShipEntry	inputs/wire-truncated-tail.bin	bounds: the wire body cut short of its declared length	refuse	damaged	-
 wire-valid	wire	tables/examples	ShipEntry	inputs/wire-valid.bin	hand-built accept case from the engine's own encode	accept	-	0bfa420b0f4335197fa96598a7d246852cee1559275a6463f1f2f0f2532aec2e

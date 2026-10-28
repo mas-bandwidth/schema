@@ -129,21 +129,30 @@ func TestFormVerdicts(t *testing.T) {
 }
 `
 
-// Hardware float conversion quiets signaling NaNs. The table wire instead
-// preserves the sign, quiet bit and payload when widening a kind-10 value.
+// THE FLOAT RUNG UNDER THE FINITE RULE (docs/SPEC-TABLES.md §3.3, §4;
+// 2026-10-27): a kind-10 payload read into a float64 is refused on its raw
+// bits when it is a NaN or an infinity — the tolerant read too, naming the
+// field and landing nothing — and every finite one, -0 and the subnormals
+// included, widens exactly through the ordinary conversion.
 func TestWireSignalingNaNWideningAndLEBOverflow(t *testing.T) {
 	runGenerated(t, `package probe
 fixed table Root { value float64 }
 `, `package probe
 import("testing";"math";"hash/fnv")
-func TestSignalingNaN(t *testing.T) {
+func rung(bits uint32) []byte {
  h:=fnv.New64a();h.Write([]byte("value"))
+ var ids TableIds;buffer:=make([]byte,128);w:=TableWriter{Buffer:buffer,Ids:&ids};w.Put8(1);w.ID(h.Sum64());w.Put8(10);w.Put32(bits);w.Put8(0);w.Trailer()
+ return buffer[:w.Offset]
+}
+func TestSignalingNaN(t *testing.T) {
  for _,bits:=range []uint32{0x7f800001,0xff812345,0x7fc12345,0x7f800000,0xff800000} {
-  var ids TableIds;buffer:=make([]byte,128);w:=TableWriter{Buffer:buffer,Ids:&ids};w.Put8(1);w.ID(h.Sum64());w.Put8(10);w.Put32(bits);w.Put8(0);w.Trailer()
   var value Root;var report TableReport
-  if !RootLoadTolerant(&value,buffer[:w.Offset],&report)||report.Widened!=1||report.Malformed {t.Fatalf("load %#x: %+v",bits,report)}
-  want:=uint64(bits>>31)<<63|0x7ff0000000000000|uint64(bits&0x7fffff)<<29
-  if got:=math.Float64bits(value.Value);got!=want {t.Fatalf("widen %#x: %#x want %#x",bits,got,want)}
+  if RootLoadTolerant(&value,rung(bits),&report)||report.Reason!="non_finite_float: Root.value"||report.Err()!=TableRefuseNonFiniteFloat||value.Value!=0 {t.Fatalf("load %#x: %+v landed %v",bits,report,value.Value)}
+ }
+ for _,bits:=range []uint32{0x3fc00000,0x80000000,0x007fffff,0x80000001} {
+  var value Root;var report TableReport
+  if !RootLoadTolerant(&value,rung(bits),&report)||report.Widened!=1||report.Malformed {t.Fatalf("load %#x: %+v",bits,report)}
+  if got,want:=math.Float64bits(value.Value),math.Float64bits(float64(math.Float32frombits(bits)));got!=want {t.Fatalf("widen %#x: %#x want %#x",bits,got,want)}
  }
 }
 func TestLEBTenthByteOverflow(t *testing.T) {

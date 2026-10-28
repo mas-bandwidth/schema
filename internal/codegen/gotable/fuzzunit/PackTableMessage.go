@@ -60,11 +60,13 @@ func GunnerSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gun
 						return false
 					}
 					{
-						v := math.Float32frombits(payload1.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "GunnerSettings.reaction")
+						b := payload1.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerSettings.reaction")
+						} else {
+							v := math.Float32frombits(b)
+							value.Reaction = v
 						}
-						value.Reaction = v
 					}
 				}
 				if widened {
@@ -157,7 +159,7 @@ func GunnerSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Gun
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "GunnerSettings") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -168,6 +170,9 @@ func GunnerSettingsSaveMessageBody(w *TableMessageWriter, value *GunnerSettings)
 	{
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			w.Put(11, TableMessageRefBitsHere)
+			if value.Reaction-value.Reaction != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0))
 		}
 	}
@@ -287,11 +292,13 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 						return false
 					}
 					{
-						v := math.Float32frombits(payload1.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "GunnerSettings.reaction")
+						b := payload1.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerSettings.reaction")
+						} else {
+							v := math.Float32frombits(b)
+							value.Reaction = v
 						}
-						value.Reaction = v
 					}
 				}
 				if widened {
@@ -430,7 +437,13 @@ func GunnerSettingsLoadMessagesTolerant(values []GunnerSettings, vocabulary *Tab
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !GunnerSettingsLoadMessageBody(&r, &values[i]) {
+		if !GunnerSettingsLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					GunnerSettingsReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -524,11 +537,13 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 						return false
 					}
 					{
-						v := math.Float32frombits(payload6.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ShipEntry.health")
+						b := payload6.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ShipEntry.health")
+						} else {
+							v := math.Float32frombits(b)
+							value.Health = v
 						}
-						value.Health = v
 					}
 				}
 				if widened {
@@ -562,11 +577,13 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 						return false
 					}
 					{
-						v := math.Float32frombits(payload7.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ShipEntry.mass")
+						b := payload7.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ShipEntry.mass")
+						} else {
+							v := math.Float32frombits(b)
+							value.Mass = v
 						}
-						value.Mass = v
 					}
 				}
 				if widened {
@@ -687,7 +704,7 @@ func ShipEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *ShipEntr
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "ShipEntry") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -711,12 +728,18 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 	{
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
 			w.Put(14, TableMessageRefBitsHere)
+			if value.Health-value.Health != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			w.Put(15, TableMessageRefBitsHere)
+			if value.Mass-value.Mass != 0 {
+				return false
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Mass)), uint64(0))
 		}
 	}
@@ -881,11 +904,13 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload6.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ShipEntry.health")
+						b := payload6.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ShipEntry.health")
+						} else {
+							v := math.Float32frombits(b)
+							value.Health = v
 						}
-						value.Health = v
 					}
 				}
 				if widened {
@@ -919,11 +944,13 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload7.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ShipEntry.mass")
+						b := payload7.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ShipEntry.mass")
+						} else {
+							v := math.Float32frombits(b)
+							value.Mass = v
 						}
-						value.Mass = v
 					}
 				}
 				if widened {
@@ -1079,7 +1106,13 @@ func ShipEntryLoadMessagesTolerant(values []ShipEntry, vocabulary *TableVocabula
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !ShipEntryLoadMessageBody(&r, &values[i]) {
+		if !ShipEntryLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					ShipEntryReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -1290,11 +1323,13 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 								return false
 							}
 							{
-								v := math.Float32frombits(payload5.Get32())
-								if v != v || v-v != 0 {
-									tableNonFinite(&r.Report.Reason, "GlobalSettings.spawn_delays")
+								b := payload5.Get32()
+								if b&0x7f800000 == 0x7f800000 {
+									tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GlobalSettings.spawn_delays")
+								} else {
+									v := math.Float32frombits(b)
+									(*p) = v
 								}
-								(*p) = v
 							}
 						}
 						r.Retain = store
@@ -1310,7 +1345,7 @@ func GlobalSettingsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Glo
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "GlobalSettings") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1367,6 +1402,9 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 			w.Put(10, TableMessageRefBitsHere)
 			w.Put(uint64(3)-3, 0)
 			for i := range int(3) {
+				if value.SpawnDelays[i]-value.SpawnDelays[i] != 0 {
+					return false
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.SpawnDelays[i])), uint64(0))
 			}
 		}
@@ -1616,11 +1654,13 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 								return false
 							}
 							{
-								v := math.Float32frombits(payload13.Get32())
-								if v != v || v-v != 0 {
-									tableNonFinite(&r.Report.Reason, "GlobalSettings.spawn_delays")
+								b := payload13.Get32()
+								if b&0x7f800000 == 0x7f800000 {
+									tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GlobalSettings.spawn_delays")
+								} else {
+									v := math.Float32frombits(b)
+									(*p) = v
 								}
-								(*p) = v
 							}
 						}
 					}
@@ -1681,7 +1721,13 @@ func GlobalSettingsLoadMessagesTolerant(values []GlobalSettings, vocabulary *Tab
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !GlobalSettingsLoadMessageBody(&r, &values[i]) {
+		if !GlobalSettingsLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					GlobalSettingsReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -1981,7 +2027,7 @@ func PackConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *PackCon
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "PackConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -2467,7 +2513,13 @@ func PackConfigLoadMessagesTolerant(values []PackConfig, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !PackConfigLoadMessageBody(&r, &values[i]) {
+		if !PackConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					PackConfigReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}

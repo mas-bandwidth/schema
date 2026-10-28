@@ -29,7 +29,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		g.pf("}\n")
 	}
 	if g.retain {
-		g.pf("default:r.Report.Unknown++;if !r.capture(entry){r.Report.Malformed=true;return false}\n}}}\n")
+		g.pf("default:r.Report.Unknown++;if !r.capture(entry,%q){r.Report.Malformed=true;return false}\n}}}\n", st.DeclaredName())
 	} else {
 		g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Malformed=true;return false}\n}}}\n")
 	}
@@ -51,10 +51,10 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		if st.Integrity != "" {
 			sealed = "true"
 		}
-		g.pf("func %sLoadMessagesTolerant(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpenSealed(vocabulary,data,report,"+sealed+");defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i := range count {if !%sLoadMessageBody(&r,&values[i]){return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name)
+		g.pf("func %sLoadMessagesTolerant(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpenSealed(vocabulary,data,report,"+sealed+");defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i := range count {if !%sLoadMessageBody(&r,&values[i])||r.Report.NonFiniteFloat!=\"\"{if tableNonFiniteRefused(&r.Report){for j := range i+1 {%sReset(&values[j])};return 0,false};return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name, st.Name)
 		return
 	}
-	g.pf("func %sLoadMessagesTolerant(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i := range count {if !%sLoadMessageBody(&r,&values[i]){return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name)
+	g.pf("func %sLoadMessagesTolerant(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i := range count {if !%sLoadMessageBody(&r,&values[i])||r.Report.NonFiniteFloat!=\"\"{if tableNonFiniteRefused(&r.Report){for j := range i+1 {%sReset(&values[j])};return 0,false};return i,false}};return count,tableMessageBatchClose(&r)}\n", st.Name, g.storageName(st.Name), st.Name, st.Name)
 }
 func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset, ind string) {
 	g.pf("%swidened:=false;if %s.Shape.Kind!=%d||%s.Element.Kind!=%d {\n", ind, entry, mine.Kind, entry, mine.Shape.Elem)

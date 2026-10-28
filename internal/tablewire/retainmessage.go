@@ -95,6 +95,13 @@ func (rt *retainState) captureMessage(d *bitDecoder, inst *tabletext.Instance, e
 	// charges, and it is the same ceiling `keep` would apply: a record that
 	// cannot fit is dropped, one `retain_lost` counts, and `malformed` does
 	// not move. A record that fits is transcoded byte for byte as before.
+	if !retainedFloatFinite(d, entry, at) {
+		// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+		// §3.3, §6.6): a NaN or an infinity refuses the read, uniformity
+		// winning over carrying bytes this reader cannot name
+		d.report.RefuseNonFinite(retainedFloatName(inst, entry.Id))
+		return
+	}
 	budget := max(rt.store.Capacity-rt.store.used-9, 0)
 	rs := &resolver{outCap: budget}
 	was := d.r.off
@@ -110,6 +117,28 @@ func (rt *retainState) captureMessage(d *bitDecoder, inst *tabletext.Instance, e
 		return
 	}
 	rt.keep(inst, entry.Id, entry.Kind, rs.out, d.report)
+}
+
+// retainedFloatFinite reads a retained entry of a float kind on its raw bits,
+// at `at`, without moving the cursor: true for every other kind, for a
+// quantized float (whose index names a finite value), and for bits the body
+// does not hold, which the transcoding walk answers as damage.
+func retainedFloatFinite(d *bitDecoder, entry ir.TableVocabularyEntry, at int) bool {
+	was := d.r.off
+	defer func() { d.r.off = was }()
+	d.r.off = at
+	switch int(entry.Kind) {
+	case ir.TableKindF64:
+		raw, ok := d.r.get(64)
+		return !ok || tabletext.FiniteF64(raw)
+	case ir.TableKindF32:
+		if entry.Shape.Packing == ir.TableMessageQuantized {
+			return true
+		}
+		raw, ok := d.r.get(32)
+		return !ok || tabletext.FiniteF32(uint32(raw))
+	}
+	return true
 }
 
 // msgRef resolves one reference against the CONNECTION'S VOCABULARY and answers

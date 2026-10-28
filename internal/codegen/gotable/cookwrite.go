@@ -127,7 +127,8 @@ func(w *tableCookWriter) value(p unsafe.Pointer,f *TableFieldInfo,at int64,live 
  if f.Table!=nil{return w.record(p,f.Table(),at,live)}
  width:=f.CookElemSize
  if width==16 {lo:=*(*uint64)(p);hi:=*(*uint64)(unsafe.Add(p,8));if w.order==TableByteOrderBig {lo,hi=hi,lo};w.put(at,lo,8);w.put(at+8,hi,8);return true}
- value:=tableJSONGetRaw(p,f.ElemSize);if f.EnumDeprecated!=nil&&f.EnumDeprecated(value){return false};if f.Kind==1 {value=0;if *(*bool)(p){value=1}};w.put(at,value,width);return true
+ // A cooked float is finite (docs/SPEC-TABLES.md §3.3): NaN and infinity refuse.
+ value:=tableJSONGetRaw(p,f.ElemSize);if f.EnumDeprecated!=nil&&f.EnumDeprecated(value){return false};if f.Kind==1 {value=0;if *(*bool)(p){value=1}};if f.Kind==10&&value&0x7f800000==0x7f800000||f.Kind==11&&value&0x7ff0000000000000==0x7ff0000000000000 {return false};w.put(at,value,width);return true
 }
 func tableCookFixed(p unsafe.Pointer,t *TableTypeInfo,buffer []byte,order TableByteOrder)bool {
  if p==nil||order!=TableByteOrderLittle&&order!=TableByteOrderBig{return false};align:=max(int64(8),int64(t.CookAlign));data:=(int64(t.CookSize)+align-1)& -align;total:=64+data+16;if int64(len(buffer))<total{return false}

@@ -25,6 +25,6 @@ func init() {
 			},
 			cards.CardToJSONMeasure, cards.CardToJSON, cards.CardCookMeasure, cards.CardCookFrom,
 			func(r *cards.TableReport) report {
-				return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == cards.TableOpenRefused}
+				return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == cards.TableOpenRefused || r.NonFiniteFloat != ""}
 			}))
 }

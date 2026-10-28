@@ -823,7 +823,7 @@ func RangedSignedLoadMessageBodyRetain(r *TableRetainMessageReader, value *Range
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "RangedSigned") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1838,7 +1838,13 @@ func RangedSignedLoadMessagesTolerant(values []RangedSigned, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !RangedSignedLoadMessageBody(&r, &values[i]) {
+		if !RangedSignedLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					RangedSignedReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -2652,7 +2658,7 @@ func RangedUnsignedLoadMessageBodyRetain(r *TableRetainMessageReader, value *Ran
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "RangedUnsigned") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -3667,7 +3673,13 @@ func RangedUnsignedLoadMessagesTolerant(values []RangedUnsigned, vocabulary *Tab
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !RangedUnsignedLoadMessageBody(&r, &values[i]) {
+		if !RangedUnsignedLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					RangedUnsignedReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
@@ -3928,7 +3940,7 @@ func RangedWidthsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Range
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "RangedWidths") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -4321,7 +4333,13 @@ func RangedWidthsLoadMessagesTolerant(values []RangedWidths, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !RangedWidthsLoadMessageBody(&r, &values[i]) {
+		if !RangedWidthsLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					RangedWidthsReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}

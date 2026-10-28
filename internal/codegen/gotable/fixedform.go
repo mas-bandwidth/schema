@@ -490,6 +490,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range order {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE READ-SIDE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3):
+	// it runs before the bounds pass, and a NaN or an infinity refuses.
+	for _, st := range order {
+		g.emitFixedFiniteBodyFn(st)
+	}
 	// THE WRITE-SIDE CONTRACT, in the same order: the checks the read side
 	// would answer with a clamp or a refusal, answered here with a refusal.
 	for _, st := range order {
@@ -1347,6 +1352,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// the writer's count the plan carries — the remap table's length word, or an
 	// unguarded const's DstSize — which the storage clamp cannot see. Silent for
 	// the identity plan, whose entries are `copy`.
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
+		// FIRST, before the bounds pass, over the storage the run just wrote,
+		// and a NaN or an infinity refuses the whole batch as
+		// non_finite_float, the tolerant read included. Nothing of the batch
+		// is kept: every record this call wrote goes back to its defaults,
+		// as the strict read's refusals leave them.
+		g.pf("\t\tif why := %sFixedFiniteBody(&values[k]); why != \"\" {\n", st.Name)
+		g.pf("\t\t\tfor j := range k + 1 {\n\t\t\t\t%sReset(&values[j])\n\t\t\t}\n", st.Name)
+		g.pf("\t\t\t*report = TableReport{NonFiniteFloat: why}\n\t\t\ttableNonFiniteRefused(report)\n\t\t\treturn -1\n\t\t}\n")
+	}
 	g.pf("\t\ttableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
@@ -1483,6 +1499,11 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 	if f.Deprecated {
 		return false
 	}
+	// A PLAIN float has no bound to clamp, and the writer still refuses a NaN
+	// or an infinity (docs/SPEC-TABLES.md §3.3, plainFloatFinite).
+	if _, ok := plainFloatFinite(f, ""); ok {
+		return true
+	}
 	// A counted array must check its own count even when its element has no
 	// bounded fields. In particular, an unbounded named struct still has Max.
 	if f.Array == ir.ArrayCounted {
@@ -1537,15 +1558,14 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 
 // compressedFloatClamp is the ONE bounds rule a compressed float takes wherever
 // a read holds it to its declared range (docs/SPEC-TABLES.md §3.3, A COMPRESSED
-// FLOAT'S SPECIAL VALUES): a NaN clamps to `min` and COUNTS, exactly as -Inf
-// and a finite value below `min` do, because every comparison against a NaN is
-// false and a pass of `< min` / `> max` alone hands the NaN to the caller
-// whole; +Inf and a value above `max` clamp to `max` and count; and a -0 lands
-// as +0, the value 0 itself, with no sign bit and no count, because it is
-// inside the range and only its spelling differs. `v != v` is the NaN test,
-// and it needs no import in the generated file.
+// FLOAT'S SPECIAL VALUES): a value below `min` clamps to `min` and COUNTS, one
+// above `max` clamps to `max` and counts, and a -0 lands as +0, the value 0
+// itself, with no sign bit and no count, because it is inside the range and
+// only its spelling differs. A NaN or an infinity never reaches it: every read
+// refuses one on its raw bits first, as non_finite_float, before this bounds
+// pass runs (2026-10-27).
 func compressedFloatClamp(expr, lo, hi, count string) string {
-	return fmt.Sprintf("if %[1]s != %[1]s { %[1]s = %[2]s; %[4]s } else if %[1]s < %[2]s { %[1]s = %[2]s; %[4]s } else if %[1]s > %[3]s { %[1]s = %[3]s; %[4]s } else if %[1]s == 0 { %[1]s = 0 }",
+	return fmt.Sprintf("if %[1]s < %[2]s { %[1]s = %[2]s; %[4]s } else if %[1]s > %[3]s { %[1]s = %[3]s; %[4]s } else if %[1]s == 0 { %[1]s = 0 }",
 		expr, lo, hi, count)
 }
 
@@ -1758,6 +1778,13 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 	if b, ok := scalarWidthBound(f, expr); ok {
 		bound([]scalarBound{b})
 	}
+	// THE WRITER'S FINITE RULE for a plain float (docs/SPEC-TABLES.md §3.3):
+	// the read side's finite pass refuses what this refuses.
+	if chk {
+		if cond, ok := plainFloatFinite(f, expr); ok {
+			g.pf("%sif %s { return false }\n", ind, cond)
+		}
+	}
 }
 
 // emitFixedTextCheck is the WRITER's string rule for one string(N) field
@@ -1849,4 +1876,135 @@ func (g *tableGen) raw(s string) {
 		return
 	}
 	g.body.WriteString(s)
+}
+
+/* ---- the read-side finite pass ---------------------------------------------
+
+A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+finite-only too, same rule as packets"): every fixed read refuses a NaN or an
+infinity as non_finite_float, naming the field, tolerant and strict alike, and
+the test runs FIRST, before the bounds pass, so a compressed float's clamp
+never sees one. Like the bounds pass it runs over STORAGE, straight-line, after
+the record lands, so ONE pass covers both plans: the identity copy and a
+lineage plan's widenF, whose ordinary conversion keeps a NaN a NaN and an
+infinity an infinity. It walks only what a read can have written — a counted
+array's live elements, an optional's payload when present, a union's set arm —
+and x-x != 0 is the whole test: NaN for both non-finite classes, zero for
+every finite value, -0 and the subnormals included. */
+
+// fixedFiniteNeededStruct is whether a fixed type holds a float anywhere a
+// read lands one.
+func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedFiniteNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFiniteNeededField(f *ir.Field, seen map[string]bool) bool {
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedFiniteNeededStruct(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedFiniteNeededField(v.F, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFixedFiniteBodyFn emits <T>FixedFiniteBody: the first non-finite float's
+// <Owner>.<field> name, or "" for a record whose floats are all finite. A type
+// that holds no float gets no function (§2.2's zero-cost rule).
+func (g *tableGen) emitFixedFiniteBodyFn(st *ir.Struct) {
+	if !fixedFiniteNeededStruct(st, map[string]bool{}) {
+		return
+	}
+	g.pf("// %sFixedFiniteBody is %s's read-side finite rule (docs/SPEC-TABLES.md §3.3).\n", st.Name, st.Name)
+	g.pf("func %sFixedFiniteBody(value *%s) string {\n", st.Name, g.fixedStorage(st.Name))
+	for _, f := range st.Fields {
+		g.emitFixedFiniteField(f, f, "value", 1)
+	}
+	g.pf("\treturn \"\"\n}\n\n")
+}
+
+// emitFixedFiniteField walks one field line's live extent. named is the
+// declaration the refusal names: the field itself, or a union arm's own line
+// where the walk holds a copy renamed to the arm's storage member.
+func (g *tableGen) emitFixedFiniteField(f, named *ir.Field, val string, tabs int) {
+	if !fixedFiniteNeededField(f, map[string]bool{}) {
+		return
+	}
+	ind := strings.Repeat("\t", tabs)
+	if f.Type.Optional {
+		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
+		g.emitFixedFinitePayload(f, named, val, tabs+1)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedFinitePayload(f, named, val, tabs)
+}
+
+func (g *tableGen) emitFixedFinitePayload(f, named *ir.Field, val string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	loop := func(count string) {
+		g.pf("%sfor i := range %s {\n", ind, count)
+		g.emitFixedFiniteElement(f, named, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1)
+		g.pf("%s}\n", ind)
+	}
+	switch {
+	case f.KeyEnum != "":
+		loop(fmt.Sprint(f.KeyEnumRef.Max))
+	case f.Array == ir.ArrayFixed:
+		loop(fmt.Sprint(f.ArrayBound))
+	case f.Array == ir.ArrayCounted:
+		// the count was refused past its bound before the record landed
+		// (tableFixedTextRefusal); min keeps the walk inside storage anyway
+		loop(fmt.Sprintf("min(int64(%s.%sCount), %d)", val, member(f), f.ArrayBound))
+	default:
+		g.emitFixedFiniteElement(f, named, val+"."+member(f), tabs)
+	}
+}
+
+func (g *tableGen) emitFixedFiniteElement(f, named *ir.Field, expr string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("%sif %s-%s != 0 {\n%s\treturn %q\n%s}\n", ind, expr, expr, ind, g.floatOwner(named), ind)
+		return
+	case ir.TNamed:
+	default:
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedFiniteNeededStruct(r, map[string]bool{}) {
+			g.pf("%sif why := %sFixedFiniteBody(&%s); why != \"\" {\n%s\treturn why\n%s}\n", ind, r.Name, expr, ind, ind)
+		}
+	case *ir.Union:
+		g.pf("%sswitch %s.Type {\n", ind, expr)
+		for _, v := range r.Variants {
+			if v.F == nil || !fixedFiniteNeededField(v.F, map[string]bool{}) {
+				continue
+			}
+			arm := *v.F
+			arm.Name = v.Name
+			g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
+			g.emitFixedFiniteField(&arm, v.F, expr, tabs+1)
+		}
+		g.pf("%s}\n", ind)
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -49,6 +50,20 @@ func DecodeRegion(m *tabletext.Model, inst *tabletext.Instance, data []byte, rep
 // names are ADDITIVE: nothing below reads a byte differently, counts an event
 // differently or places a value differently because retention is on.
 func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
+	// A NON-FINITE FLOAT IS THIS READ'S OWN REFUSAL (docs/SPEC-TABLES.md
+	// §3.3): a name an earlier read left on a reused report neither refuses
+	// this one nor is lost by it.
+	prior := report.NonFiniteFloat
+	report.NonFiniteFloat = ""
+	ok, err := decodeWalk(m, inst, data, report, rt, region)
+	if refusal := refusedNonFinite(report); refusal != nil {
+		return false, refusal
+	}
+	report.NonFiniteFloat = prior
+	return ok, err
+}
+
+func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, region bool) (bool, error) {
 	// THE FORM BYTE IS READ FIRST, before the trailer and before any body, so
 	// a file that is both a newer form and damaged is a refusal and never
 	// damage (§3).
@@ -397,6 +412,14 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 				return false
 			}
 			if r.rt != nil {
+				if !retainedPayloadFinite(kind, r.buf[from:r.off]) {
+					// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE
+					// (docs/SPEC-TABLES.md §3.3, §6.6), and a NaN or an
+					// infinity refuses the read: uniformity wins over carrying
+					// bytes this reader cannot name
+					r.report.RefuseNonFinite(retainedFloatName(inst, id))
+					continue
+				}
 				r.rt.capture(inst, id, kind, r.buf[from:r.off], r.ids, r.report)
 			}
 			continue
@@ -1437,25 +1460,20 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 		return true
 	case ir.TableKindF32:
 		bits := r.u32()
-		if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
-			// a NaN's PAYLOAD IS DATA the reference carries bit for bit: the
-			// hardware float32→float64 conversion would set the quiet bit, so
-			// the widening is done on the bits. EXCEPT UNDER A DECLARED RANGE:
-			// a compressed float's NaN is a value outside [min, max], and it
-			// clamps to min and counts exactly as -Inf does (§3.3, the
-			// special values). A comparison against a NaN is false, so the
-			// clamp below cannot see it, and this is where it is held.
-			if f.HasFloatRange && declared == ir.TableKindF32 {
-				cell.F = float64(float32(f.FMin))
-				r.report.Clamped++
-				return true
-			}
-			cell.F = widenF32NaN(bits)
+		if !tabletext.FiniteF32(bits) {
+			// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+			// become a value and before the field is written
+			// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as
+			// packets"): every read refuses it as non_finite_float, a compressed
+			// float included, whose test runs before its bounds. The walk goes
+			// on so the framing verdict is the one a finite wire gets, and the
+			// read answers the refusal at its end (refusedNonFinite).
+			r.report.RefuseNonFinite(FloatOwner(r.m, f))
 			return true
 		}
 		v := float64(math.Float32frombits(bits))
 		if declared == ir.TableKindF64 {
-			// f32 WIDENED into f64 (§4): every float32 value is exactly
+			// f32 WIDENED into f64 (§4): every finite float32 value is exactly
 			// representable, and a float64 field's declared range clamps
 			// nothing on this wire, exactly as a payload at eight bytes
 			cell.F = v
@@ -1476,7 +1494,12 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 		cell.F = float64(float32(v))
 		return true
 	case ir.TableKindF64:
-		cell.F = math.Float64frombits(r.u64())
+		bits := r.u64()
+		if !tabletext.FiniteF64(bits) {
+			r.report.RefuseNonFinite(FloatOwner(r.m, f))
+			return true
+		}
+		cell.F = math.Float64frombits(bits)
 		return true
 	}
 	if ir.TableKindWide(kind) {
@@ -1591,3 +1614,68 @@ func (*CountRefusal) Error() string {
 }
 
 func (r *wireReader) countRefused() bool { return r.countRefusal != nil && *r.countRefusal }
+
+// NonFiniteRefusal is every read's refusal of a float whose bits are a NaN or
+// an infinity (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// finite-only too, same rule as packets"): the tolerant read refuses it as the
+// strict one does, so the caller must discard the partial value. Field names
+// the first such field, <Table>.<field>, and the report carries the same name.
+type NonFiniteRefusal struct{ Field string }
+
+func (e *NonFiniteRefusal) Error() string { return "non_finite_float: " + e.Field }
+
+// refusedNonFinite answers a read whose walk recorded a non-finite float: the
+// refusal outranks every other verdict a body could reach after it, because a
+// non-finite float is not a value any reader can repair or keep.
+func refusedNonFinite(report *tabletext.Report) error {
+	if report.NonFiniteFloat == "" {
+		return nil
+	}
+	report.Reason = "non_finite_float: " + report.NonFiniteFloat
+	return &NonFiniteRefusal{Field: report.NonFiniteFloat}
+}
+
+// FloatOwner names a float field as <Owner>.<field> for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3), the owner being the table, type or union
+// that declares it — the name the generated readers record. The cook's engine
+// (internal/tablecook) names its refusals by it too.
+func FloatOwner(m *tabletext.Model, f *ir.Field) string {
+	if m != nil && m.Unit != nil {
+		for _, set := range []map[string]*ir.Struct{m.Unit.Tables, m.Unit.Structs} {
+			for _, st := range set {
+				if slices.Contains(st.Fields, f) {
+					return st.Name + "." + f.Name
+				}
+			}
+		}
+		for _, set := range []map[string]*ir.Union{m.Unit.Unions, m.Unit.TableUnions} {
+			for _, u := range set {
+				for i := range u.Variants {
+					if u.Variants[i].F == f {
+						return u.Name + "." + f.Name
+					}
+				}
+			}
+		}
+	}
+	return f.Name
+}
+
+// retainedPayloadFinite is the raw-bits test on an unknown entry the read is
+// retaining (docs/SPEC-TABLES.md §3.3, §6.6): kind 10's four bytes and kind
+// 11's eight, little-endian, and true for every other kind.
+func retainedPayloadFinite(kind uint8, payload []byte) bool {
+	switch int(kind) {
+	case ir.TableKindF32:
+		return len(payload) != 4 || tabletext.FiniteF32(binary.LittleEndian.Uint32(payload))
+	case ir.TableKindF64:
+		return len(payload) != 8 || tabletext.FiniteF64(binary.LittleEndian.Uint64(payload))
+	}
+	return true
+}
+
+// retainedFloatName names a retained unknown float for the refusal: the body's
+// table and the field id it cannot name, as <Table>.0x<id>.
+func retainedFloatName(inst *tabletext.Instance, id uint64) string {
+	return fmt.Sprintf("%s.0x%016x", inst.Def.Name, id)
+}

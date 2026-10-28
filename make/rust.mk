@@ -766,7 +766,7 @@ build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.r
 tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
 	@set -e; for arm in '' '--retain'; do \
-		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
+		./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
 			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
 		cat build/rust-wire-fuzz-all.log; \
 		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
@@ -835,7 +835,7 @@ build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_
 # vectors out of this Card-only manifest. The greps hold the nonzero
 # seed/mutant claim and the zero-divergence claim explicitly.
 cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-rust-wire-fuzz.log 2>&1; \
@@ -856,7 +856,7 @@ cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
 # port.
 .PHONY: cards-rust-retain-fuzz
 cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --retain --seed 24845619678 --n 100 \
 		> build/cards-rust-retain-fuzz.log 2>&1; \

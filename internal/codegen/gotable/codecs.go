@@ -1035,10 +1035,14 @@ func scalarWidthBound(f *ir.Field, expr string) (scalarBound, bool) {
 }
 
 // writeBoundViolation is the Go expression that is true when a scalar's value
-// is outside its declared min/max or its bits(N) width, and "" when nothing
-// bounds it. A writer refuses a value for which it is true; it never clamps.
+// is outside its declared min/max or its bits(N) width, or is a plain float
+// that is not finite, and "" when nothing bounds it. A writer refuses a value
+// for which it is true; it never clamps.
 func writeBoundViolation(f *ir.Field, expr string) string {
 	var parts []string
+	if b, ok := plainFloatFinite(f, expr); ok {
+		parts = append(parts, b)
+	}
 	for _, b := range scalarRangeBounds(f, expr) {
 		parts = append(parts, b.cond)
 	}
@@ -1046,4 +1050,17 @@ func writeBoundViolation(f *ir.Field, expr string) string {
 		parts = append(parts, b.cond)
 	}
 	return strings.Join(parts, " || ")
+}
+
+// plainFloatFinite is the WRITE-SIDE finite rule for a float with no declared
+// range (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as packets"):
+// the condition that is true for a NaN or an infinity, which no form carries.
+// x-x is NaN for both and zero for every finite x, so one subtraction and one
+// compare answer it. A compressed float needs no clause of its own: its range
+// test already refuses both (scalarRangeBounds).
+func plainFloatFinite(f *ir.Field, expr string) (string, bool) {
+	if f.HasFloatRange || f.Type.Kind != ir.TFloat32 && f.Type.Kind != ir.TFloat64 {
+		return "", false
+	}
+	return expr + "-" + expr + " != 0", true
 }

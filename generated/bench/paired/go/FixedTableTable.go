@@ -196,7 +196,11 @@ func FixedTableLoadTolerant(value *FixedTable, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !FixedTableLoadBody(&r, value) {
+	if !FixedTableLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			FixedTableReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -948,10 +952,7 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	case MixedEventTypePickup:
 		MixedPickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
 	}
-	if value.AimX != value.AimX {
-		value.AimX = -1.0
-		(*clamped)++
-	} else if value.AimX < -1.0 {
+	if value.AimX < -1.0 {
 		value.AimX = -1.0
 		(*clamped)++
 	} else if value.AimX > 1.0 {
@@ -960,10 +961,7 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	} else if value.AimX == 0 {
 		value.AimX = 0
 	}
-	if value.AimY != value.AimY {
-		value.AimY = -1.0
-		(*clamped)++
-	} else if value.AimY < -1.0 {
+	if value.AimY < -1.0 {
 		value.AimY = -1.0
 		(*clamped)++
 	} else if value.AimY > 1.0 {
@@ -972,10 +970,7 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 	} else if value.AimY == 0 {
 		value.AimY = 0
 	}
-	if value.AimZ != value.AimZ {
-		value.AimZ = -1.0
-		(*clamped)++
-	} else if value.AimZ < -1.0 {
+	if value.AimZ < -1.0 {
 		value.AimZ = -1.0
 		(*clamped)++
 	} else if value.AimZ > 1.0 {
@@ -1019,6 +1014,34 @@ func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
 func FixedTableFixedClampBody(value *FixedTable, clamped *int32) {
 	_, _ = value, clamped
 	BenchMixedFixedClampBody(&value.Value, clamped)
+}
+
+// BenchMixedFixedFiniteBody is BenchMixed's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func BenchMixedFixedFiniteBody(value *BenchMixed) string {
+	if value.AimX-value.AimX != 0 {
+		return "BenchMixed.aim_x"
+	}
+	if value.AimY-value.AimY != 0 {
+		return "BenchMixed.aim_y"
+	}
+	if value.AimZ-value.AimZ != 0 {
+		return "BenchMixed.aim_z"
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return "BenchMixed.recoil"
+	}
+	if value.Drift-value.Drift != 0 {
+		return "BenchMixed.drift"
+	}
+	return ""
+}
+
+// FixedTableFixedFiniteBody is FixedTable's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func FixedTableFixedFiniteBody(value *FixedTable) string {
+	if why := BenchMixedFixedFiniteBody(&value.Value); why != "" {
+		return why
+	}
+	return ""
 }
 
 // MixedEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
@@ -1196,6 +1219,12 @@ func BenchMixedFixedCheckBody(value *BenchMixed) bool {
 	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
 		return false
 	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
+		return false
+	}
 	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
 		return false
 	}
@@ -1285,6 +1314,12 @@ func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
 		return false
 	}
 	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
 		return false
 	}
 	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
@@ -1799,6 +1834,14 @@ func FixedTableFixedLoadTolerant(values []FixedTable, data []byte, plan []TableF
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		if why := FixedTableFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				FixedTableReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
 		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the

@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -52,6 +53,7 @@ func TestGoFixedSharedByteOracleAndHostileInput(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	records := fixedOracleManifestRecords(t, filepath.Join(corpus, "manifest.txt"))
+	nonFinite := fixedOracleManifestNonFinite(t, filepath.Join(corpus, "manifest.txt"))
 	for _, v := range fixedOracleVectors {
 		t.Run(strings.TrimSuffix(v.file, ".bin"), func(t *testing.T) {
 			t.Parallel()
@@ -79,6 +81,7 @@ func TestGoFixedSharedByteOracleAndHostileInput(t *testing.T) {
 				"ROOT", v.root,
 				"FILE", strconv.Quote(filepath.Join(corpus, v.file)),
 				"RECORDS", strconv.Itoa(n),
+				"NONFINITE", strconv.Quote(nonFinite[v.file]),
 			).Replace(fixedOracleProbe)
 			fixedOracleRun(t, schema, probe)
 		})
@@ -159,14 +162,71 @@ func fixedOracleManifestRecords(t *testing.T, path string) map[string]int {
 	return out
 }
 
-// fixedOracleProbe runs inside the emitted package. PKG, ROOT, FILE and RECORDS
-// are substituted per vector.
+// fixedOracleNonFiniteValue is one manifest value whose bits are a NaN or an
+// infinity: its path, then the float's spelled bits (the dump writes a float
+// as its digits and its bits, "nan|0x7F800001").
+var fixedOracleNonFiniteValue = regexp.MustCompile(`^([A-Za-z0-9_.\[\]]+)=[^|]*\|0x([0-9A-Fa-f]{16}|[0-9A-Fa-f]{8})$`)
+
+// fixedOracleManifestNonFinite reads, per `file=` line of the corpus manifest,
+// the leaf name of the first value the reference wrote as a NaN or an infinity,
+// and "" for a file that holds none. Under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3) such a file is a MUST-REFUSE vector for this leg:
+// the reference's own writer still emits the pattern until the C++ card of the
+// finite-tables plan regenerates the corpus with finite values, and a leg that
+// refuses it is the leg that keeps the rule. The manifest decides, so the
+// identity row comes back by itself the day the corpus turns finite.
+func fixedOracleManifestNonFinite(t *testing.T, path string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return out // no manifest, no value oracle: the caller's own reads decide
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, ok := strings.Cut(line, " values=")
+		if !ok {
+			continue
+		}
+		file := ""
+		for field := range strings.FieldsSeq(head) {
+			if v, ok := strings.CutPrefix(field, "file="); ok {
+				file = v
+			}
+		}
+		for _, value := range strings.Split(values, ",") {
+			m := fixedOracleNonFiniteValue.FindStringSubmatch(value)
+			if m == nil {
+				continue
+			}
+			bits, err := strconv.ParseUint(m[2], 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nonFinite := len(m[2]) == 8 && bits&0x7F800000 == 0x7F800000 || len(m[2]) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000
+			if nonFinite && file != "" && out[file] == "" {
+				leaf := m[1]
+				if i := strings.LastIndexByte(leaf, '.'); i >= 0 {
+					leaf = leaf[i+1:]
+				}
+				out[file] = leaf
+			}
+		}
+	}
+	return out
+}
+
+// fixedOracleProbe runs inside the emitted package. PKG, ROOT, FILE, RECORDS
+// and NONFINITE are substituted per vector.
 var fixedOracleProbe = `package PKG
 
 import (
 	"bytes"
 	"encoding/binary"
 	"os"
+	"strings"
 	"testing"
 	"unsafe"
 )
@@ -217,12 +277,22 @@ func TestOracleAndHostile(t *testing.T) {
 	plan := make([]TableFixedEntry, 4096)
 	back := make([]ROOT, records)
 	r := dirty()
-	if n := ROOTFixedLoad(back, file, plan, &r); n != records || r != (TableReport{}) {
-		t.Fatalf("oracle: the reference file did not read clean: n=%d %+v", n, r)
-	}
-	out := make([]byte, ROOTFixedMeasure(records))
-	if m := ROOTFixedSave(back, out); m != int64(len(file)) || !bytes.Equal(out, file) {
-		t.Fatalf("oracle: write-read-write differs (%d bytes against the file's %d)", m, len(file))
+	// A REFERENCE FILE HOLDING A NaN OR AN INFINITY is a must-refuse vector
+	// under the finite rule (docs/SPEC-TABLES.md §3.3): every read refuses it,
+	// naming the field, and there is no value to write back.
+	const nonFinite = NONFINITE
+	if nonFinite != "" {
+		if n := ROOTFixedLoad(back, file, plan, &r); n != -1 || r.Err() != TableRefuseNonFiniteFloat || !strings.HasSuffix(r.NonFiniteFloat, "."+nonFinite) {
+			t.Fatalf("oracle: the reference file carries a non-finite %s and was not refused by name: n=%d %+v", nonFinite, n, r)
+		}
+	} else {
+		if n := ROOTFixedLoad(back, file, plan, &r); n != records || r != (TableReport{}) {
+			t.Fatalf("oracle: the reference file did not read clean: n=%d %+v", n, r)
+		}
+		out := make([]byte, ROOTFixedMeasure(records))
+		if m := ROOTFixedSave(back, out); m != int64(len(file)) || !bytes.Equal(out, file) {
+			t.Fatalf("oracle: write-read-write differs (%d bytes against the file's %d)", m, len(file))
+		}
 	}
 
 	// §7 row 3, the negative controls, cut from the reference bytes: each is
@@ -299,3 +369,22 @@ func TestOracleAndHostile(t *testing.T) {
 	}
 }
 `
+
+// TestFixedOracleManifestNonFinite pins the manifest reading the oracle gate
+// stands on: the first NaN or infinity a file's values spell, at either width,
+// by its leaf name, and nothing for a file whose floats are all finite.
+func TestFixedOracleManifestNonFinite(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "manifest.txt")
+	manifest := `file=fu1.bin row=fu1 side=none root=FuRoot records=3 values=v[0].flag=1,v[0].pick.labelled.label="he\,llo",v[0].heat=nan|0x7F800001,v[1].heat=-nan|0xFFA5A5A5,v[2].heat=1.5|0x3FC00000
+file=fu2.bin row=fu2 side=none root=FuRoot records=2 values=v[1].heat=-2.25|0xC002000000000000,v[0].wide=inf|0x7FF0000000000000
+file=fx1.bin row=fx1 side=none root=FxRoot records=2 values=v[0].keep=4242,v[0].x=-0|0x80000000,v[1].y=4.9e-324|0x0000000000000001
+`
+	if err := os.WriteFile(path, []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := fixedOracleManifestNonFinite(t, path)
+	if got["fu1.bin"] != "heat" || got["fu2.bin"] != "wide" || got["fx1.bin"] != "" {
+		t.Fatalf("non-finite leaves %v, want fu1 heat, fu2 wide, fx1 none", got)
+	}
+}

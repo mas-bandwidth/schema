@@ -205,8 +205,11 @@ type TableReport struct {
 	Clamped              int32            // out-of-range values clamped to declared bounds
 	// ClampedField names the field or path whose value a read clamped
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
-	// refusal carries it, apart from Reason, which non_finite may already own.
+	// refusal carries it, apart from Reason.
 	ClampedField string
+	// NonFiniteFloat names the first NaN or infinity float a read met,
+	// <Table>.<field>: every read refuses it (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+	NonFiniteFloat string
 	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
 	// A body carrying an id twice is legal input
 	// whose last occurrence wins, silently. A wire read always leaves it zero.
@@ -596,7 +599,9 @@ const (
 	TableRefuseBase64Damaged
 	TableRefuseBase64NotCanonical
 	TableRefuseIntegrityMismatch
-	TableRefuseNonFinite
+	// TableRefuseNonFiniteFloat: a NaN or infinity float, refused by every read and
+	// writer (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3); the retired non_finite's ordinal (§6.5).
+	TableRefuseNonFiniteFloat
 	// TableRefuseBlobShared: one blob record named from two slots (mas-bandwidth/schema docs/SPEC-TABLES.md
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
@@ -679,8 +684,8 @@ func (r TableRefuseReason) Error() string {
 		return "base64_not_canonical"
 	case TableRefuseIntegrityMismatch:
 		return "integrity_mismatch"
-	case TableRefuseNonFinite:
-		return "non_finite"
+	case TableRefuseNonFiniteFloat:
+		return "non_finite_float"
 	case TableRefuseBlobShared:
 		return "blob_shared"
 	case TableRefusePreviousForm:
@@ -778,14 +783,18 @@ func (m TableMissingRequired) Error() string { return "missing_required: " + m.F
 // Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
 // The read report). A strict read refuses malformed, clamped, kind-mismatched,
 // unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field), a non-finite plain float (§3.3, a plain float's
-// special values: non_finite, named in Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// (§2.3, naming the field), a non-finite float (§3.3, refused by every read:
+// non_finite_float, named in NonFiniteFloat and Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
 	}
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Remote: r.BuildVersionRemote, Own: r.BuildVersionOwn}
+	}
+	// A NON-FINITE FLOAT outranks every later verdict: no read keeps one (§3.3).
+	if r.NonFiniteFloat != "" {
+		return TableRefuseNonFiniteFloat
 	}
 	// The fixed form's named refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3) answer as
 	// their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
@@ -884,34 +893,34 @@ func (r *TableReport) Err() error {
 	if r.KindMismatch > 0 {
 		return TableRefuseKindMismatch
 	}
-	{
-		const p = "non_finite: "
-		if len(r.Reason) >= len(p) && r.Reason[:len(p)] == p {
-			return TableRefuseNonFinite
-		}
-	}
 	return nil
 }
 
-// tableNonFinite names a plain float32/float64 the read landed as a NaN or an
-// infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, a plain float's special values): the
-// pattern lands as written and counts nothing, and the name is what the
-// strict read refuses as non_finite. The first name a read records wins. It
-// takes the report's Reason, not a method on TableReport, so the shared runtime
-// (§8.4) can export it: generated code outside the shared set reaches no
-// unexported member, and the file reader's *TableReport and the message
-// reader's TableReport value both pass &r.Report.Reason.
-func tableNonFinite(reason *string, field string) {
-	if *reason == "" {
-		*reason = "non_finite: " + field
+// tableNonFiniteFloat names a float whose raw bits a read found to be a NaN or
+// an infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the field is not written and the load,
+// tolerant too, refuses as non_finite_float. The first name wins. It takes the
+// report's slot, not a method, so the shared runtime (§8.4) can export it; the
+// file and message readers both pass &r.Report.NonFiniteFloat.
+func tableNonFiniteFloat(slot *string, field string) {
+	if *slot == "" {
+		*slot = field
 	}
+}
+
+// tableNonFiniteRefused names a load's non-finite float in Reason; the caller
+// refuses and lands nothing (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func tableNonFiniteRefused(report *TableReport) bool {
+	if report.NonFiniteFloat == "" {
+		return false
+	}
+	report.Reason = "non_finite_float: " + report.NonFiniteFloat
+	return true
 }
 
 // tableTextClamped names the field whose value a read clamped (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §6.5), so a strict read can say which field. The first name a read records
-// wins, as for non_finite. It lands in the report's own ClampedField slot,
-// apart from Reason: Reason may already carry a non_finite name, and the
-// clamped refusal must not lose its field to it. The slot is named by pointer
+// wins, as for non_finite_float. It lands in the report's own ClampedField slot,
+// apart from Reason, so the clamped refusal keeps its field whatever Reason holds. The slot is named by pointer
 // so the same emitted call compiles in every reader context (the table read's
 // *TableReader, the message read's TableMessageReader).
 func tableTextClamped(clampedField *string, field string) {
@@ -1364,6 +1373,9 @@ func (r TableReader) EndsEarly() bool {
 
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report: report}
+	if report != nil {
+		report.NonFiniteFloat = ""
+	} // this read's own refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3)
 	if len(data) == 0 {
 		return r, TableOpenDamaged
 	}
@@ -1475,13 +1487,6 @@ func (r *TableReader) Signed(kind uint8) int64 {
 // text test (emitTextWords): a function of the runtime file, which imports
 // encoding/binary, so the generated writers in any file of the unit can call it.
 func tableUTF8Word(p []byte) uint64 { return binary.LittleEndian.Uint64(p) }
-
-func tableWidenFloat(b uint32) uint64 {
-	if b&0x7f800000 == 0x7f800000 {
-		return uint64(b>>31)<<63 | 0x7ff0000000000000 | uint64(b&0x7fffff)<<29
-	}
-	return math.Float64bits(float64(math.Float32frombits(b)))
-}
 
 func tableUTF8Valid(data []byte) bool {
 	// One pass, eight bytes a step: z gathers the zero-byte test of every word
@@ -2089,20 +2094,10 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			report.Widened++
 		case tableFixedWidenF:
-			bits := tableFixedGet32(src[p.Src:])
-			var widened uint64
-			if bits&0x7f800000 == 0x7f800000 {
-				// THE ALL-ONES EXPONENT IS ASSEMBLED BY HAND (mas-bandwidth/schema docs/SPEC-TABLES.md
-				// §3.4, §21.2; the variable form's own float rung): the hardware
-				// f32->f64 conversion QUIETS a signalling NaN and can drop a
-				// payload bit, so the sign, the all-ones exponent and the 23-bit
-				// mantissa shifted left by 29 are carried exactly and the quiet
-				// bit stays as the writer wrote it.
-				widened = uint64(bits>>31)<<63 | 0x7ff0000000000000 | uint64(bits&0x7fffff)<<29
-			} else {
-				widened = math.Float64bits(float64(math.Float32frombits(bits)))
-			}
-			tableFixedPut64(dst[p.Dst:], widened)
+			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,
+			// §21.2): exact for a finite float32; a NaN or an infinity stays one,
+			// and the finite pass after the run refuses it.
+			tableFixedPut64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(tableFixedGet32(src[p.Src:])))))
 			report.Widened++
 		case tableFixedConst:
 			aux := p.Aux
@@ -4367,7 +4362,11 @@ func TableEntityLoadTolerant(value *TableEntity, data []byte, report *TableRepor
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TableEntityLoadBody(&r, value) {
+	if !TableEntityLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TableEntityReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -4666,7 +4665,11 @@ func TableStatLoadTolerant(value *TableStat, data []byte, report *TableReport) b
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TableStatLoadBody(&r, value) {
+	if !TableStatLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TableStatReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -5265,6 +5268,9 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			if ref := w.Ids.refAtHit(50, 0x9cef31fff7e2e457); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Recoil-value.Recoil != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Recoil))
 		}
 	}
@@ -5272,6 +5278,9 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		if math.Float64bits(value.Drift) != math.Float64bits(0.0) {
 			if ref := w.Ids.refAtHit(27, 0x5ab3f9c9341f6c04); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
+			}
+			if value.Drift-value.Drift != 0 {
+				return false
 			}
 			w.Put64(math.Float64bits(value.Drift))
 		}
@@ -5753,23 +5762,24 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v {
-					v = 0.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
-				} else if v < 0.0 {
-					v = 0.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
-				} else if v > 65535.0 {
-					v = 65535.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
-				} else if v == 0 {
-					v = 0
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.server_time")
+				} else {
+					v := math.Float32frombits(b)
+					if v < 0.0 {
+						v = 0.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
+					} else if v > 65535.0 {
+						v = 65535.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.server_time")
+					} else if v == 0 {
+						v = 0
+					}
+					value.ServerTime = v
 				}
-				value.ServerTime = v
 			}
 		case 0x935d0fb07bb3822a: // entities
 			if kind != 14 {
@@ -6087,23 +6097,24 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v {
-					v = -1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
-				} else if v < -1.0 {
-					v = -1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
-				} else if v > 1.0 {
-					v = 1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
-				} else if v == 0 {
-					v = 0
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.aim_x")
+				} else {
+					v := math.Float32frombits(b)
+					if v < -1.0 {
+						v = -1.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
+					} else if v > 1.0 {
+						v = 1.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_x")
+					} else if v == 0 {
+						v = 0
+					}
+					value.AimX = v
 				}
-				value.AimX = v
 			}
 		case 0xdbaf7ae5e2429516: // aim_y
 			if kind != 10 {
@@ -6119,23 +6130,24 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v {
-					v = -1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
-				} else if v < -1.0 {
-					v = -1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
-				} else if v > 1.0 {
-					v = 1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
-				} else if v == 0 {
-					v = 0
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.aim_y")
+				} else {
+					v := math.Float32frombits(b)
+					if v < -1.0 {
+						v = -1.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
+					} else if v > 1.0 {
+						v = 1.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_y")
+					} else if v == 0 {
+						v = 0
+					}
+					value.AimY = v
 				}
-				value.AimY = v
 			}
 		case 0xdbaf79e5e2429363: // aim_z
 			if kind != 10 {
@@ -6151,23 +6163,24 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v {
-					v = -1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
-				} else if v < -1.0 {
-					v = -1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
-				} else if v > 1.0 {
-					v = 1.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
-				} else if v == 0 {
-					v = 0
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.aim_z")
+				} else {
+					v := math.Float32frombits(b)
+					if v < -1.0 {
+						v = -1.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
+					} else if v > 1.0 {
+						v = 1.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.aim_z")
+					} else if v == 0 {
+						v = 0
+					}
+					value.AimZ = v
 				}
-				value.AimZ = v
 			}
 		case 0x9cef31fff7e2e457: // recoil
 			if kind != 10 {
@@ -6183,11 +6196,13 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TableMixed.recoil")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.recoil")
+				} else {
+					v := math.Float32frombits(b)
+					value.Recoil = v
 				}
-				value.Recoil = v
 			}
 		case 0x5ab3f9c9341f6c04: // drift
 			if kind != 11 {
@@ -6197,16 +6212,19 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 						return false
 					}
 					{
-						var v float64
+						finite, v := true, float64(0)
 						if kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(r.Get32()))
+							b := r.Get32()
+							finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))
 						} else {
-							v = math.Float64frombits(r.Get64())
+							b := r.Get64()
+							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "TableMixed.drift")
+						if !finite {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.drift")
+						} else {
+							value.Drift = v
 						}
-						value.Drift = v
 					}
 					r.Report.Widened++
 					break
@@ -6223,11 +6241,13 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				return false
 			}
 			{
-				v := math.Float64frombits(r.Get64())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "TableMixed.drift")
+				b := r.Get64()
+				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.drift")
+				} else {
+					v := math.Float64frombits(b)
+					value.Drift = v
 				}
-				value.Drift = v
 			}
 		case 0xa3348580461faf16: // wide_key
 			if kind != 9 {
@@ -6319,23 +6339,24 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v {
-					v = 0.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
-				} else if v < 0.0 {
-					v = 0.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
-				} else if v > 250.0 {
-					v = 250.0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
-				} else if v == 0 {
-					v = 0
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TableMixed.ping")
+				} else {
+					v := math.Float32frombits(b)
+					if v < 0.0 {
+						v = 0.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
+					} else if v > 250.0 {
+						v = 250.0
+						r.Report.Clamped++
+						tableTextClamped(&r.Report.ClampedField, "TableMixed.ping")
+					} else if v == 0 {
+						v = 0
+					}
+					value.Ping = v
 				}
-				value.Ping = v
 			}
 		case 0x560d6527ccd8515f: // crc_hint
 			if kind != 8 {
@@ -6545,7 +6566,11 @@ func TableMixedLoadTolerant(value *TableMixed, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TableMixedLoadBody(&r, value) {
+	if !TableMixedLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TableMixedReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -6961,7 +6986,11 @@ func TableHitEventLoadTolerant(value *TableHitEvent, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TableHitEventLoadBody(&r, value) {
+	if !TableHitEventLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TableHitEventReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -7266,7 +7295,11 @@ func TableChatEventLoadTolerant(value *TableChatEvent, data []byte, report *Tabl
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TableChatEventLoadBody(&r, value) {
+	if !TableChatEventLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TableChatEventReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -7571,7 +7604,11 @@ func TablePickupEventLoadTolerant(value *TablePickupEvent, data []byte, report *
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !TablePickupEventLoadBody(&r, value) {
+	if !TablePickupEventLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			TablePickupEventReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -8291,10 +8328,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 		value.FrameTick = 281474976710655
 		(*clamped)++
 	}
-	if value.ServerTime != value.ServerTime {
-		value.ServerTime = 0.0
-		(*clamped)++
-	} else if value.ServerTime < 0.0 {
+	if value.ServerTime < 0.0 {
 		value.ServerTime = 0.0
 		(*clamped)++
 	} else if value.ServerTime > 65535.0 {
@@ -8321,10 +8355,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 	case TableEventTypePickup:
 		TablePickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
 	}
-	if value.AimX != value.AimX {
-		value.AimX = -1.0
-		(*clamped)++
-	} else if value.AimX < -1.0 {
+	if value.AimX < -1.0 {
 		value.AimX = -1.0
 		(*clamped)++
 	} else if value.AimX > 1.0 {
@@ -8333,10 +8364,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 	} else if value.AimX == 0 {
 		value.AimX = 0
 	}
-	if value.AimY != value.AimY {
-		value.AimY = -1.0
-		(*clamped)++
-	} else if value.AimY < -1.0 {
+	if value.AimY < -1.0 {
 		value.AimY = -1.0
 		(*clamped)++
 	} else if value.AimY > 1.0 {
@@ -8345,10 +8373,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 	} else if value.AimY == 0 {
 		value.AimY = 0
 	}
-	if value.AimZ != value.AimZ {
-		value.AimZ = -1.0
-		(*clamped)++
-	} else if value.AimZ < -1.0 {
+	if value.AimZ < -1.0 {
 		value.AimZ = -1.0
 		(*clamped)++
 	} else if value.AimZ > 1.0 {
@@ -8364,10 +8389,7 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 		value.Flux = 1000000000000000000
 		(*clamped)++
 	}
-	if value.Ping != value.Ping {
-		value.Ping = 0.0
-		(*clamped)++
-	} else if value.Ping < 0.0 {
+	if value.Ping < 0.0 {
 		value.Ping = 0.0
 		(*clamped)++
 	} else if value.Ping > 250.0 {
@@ -8394,6 +8416,32 @@ func TableMixedFixedClampBody(value *TableMixed, clamped *int32) {
 		value.IdleTicks = 15
 		(*clamped)++
 	}
+}
+
+// TableMixedFixedFiniteBody is TableMixed's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func TableMixedFixedFiniteBody(value *TableMixed) string {
+	if value.ServerTime-value.ServerTime != 0 {
+		return "TableMixed.server_time"
+	}
+	if value.AimX-value.AimX != 0 {
+		return "TableMixed.aim_x"
+	}
+	if value.AimY-value.AimY != 0 {
+		return "TableMixed.aim_y"
+	}
+	if value.AimZ-value.AimZ != 0 {
+		return "TableMixed.aim_z"
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return "TableMixed.recoil"
+	}
+	if value.Drift-value.Drift != 0 {
+		return "TableMixed.drift"
+	}
+	if value.Ping-value.Ping != 0 {
+		return "TableMixed.ping"
+	}
+	return ""
 }
 
 // TableEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
@@ -8574,6 +8622,12 @@ func TableMixedFixedCheckBody(value *TableMixed) bool {
 	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
 		return false
 	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
+		return false
+	}
 	if value.Flux < -1000000000000000000 || value.Flux > 1000000000000000000 {
 		return false
 	}
@@ -8666,6 +8720,12 @@ func TableMixedFixedCheckBodyExact(value *TableMixed) bool {
 		return false
 	}
 	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
 		return false
 	}
 	if value.Flux < -1000000000000000000 || value.Flux > 1000000000000000000 {
@@ -9803,6 +9863,14 @@ func TableMixedFixedLoadTolerant(values []TableMixed, data []byte, plan []TableF
 		}
 		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
 			return tableFixedRefuse(report, why)
+		}
+		if why := TableMixedFixedFiniteBody(&values[k]); why != "" {
+			for j := range k + 1 {
+				TableMixedReset(&values[j])
+			}
+			*report = TableReport{NonFiniteFloat: why}
+			tableNonFiniteRefused(report)
+			return -1
 		}
 		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the

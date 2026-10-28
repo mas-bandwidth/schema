@@ -1252,8 +1252,8 @@ build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_
 
 .PHONY: tables-c-wire-fuzz
 tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
 # Wide text on the packet wire, using the shared group's corpus.
 build/packet-wide/c/.stamp: bin/schema build/packet-wide/source/WideText.schema
@@ -1300,7 +1300,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@grep -q 'SABOTAGED canonical LEB128' build/c-wire-sabotage/generated/examples/TablesTable.h || { echo 'NEGATIVE CONTROL: canonical LEB128 sabotage did not apply'; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
 		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-wire-sabotage/driver -lm
-	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
+	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
 	@grep -q 'the report differs' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
@@ -1393,8 +1393,8 @@ tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-a
 	sh test/slowgate/proof tables-c-retain \
 		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
 		./compiler -run '^TestCTableRetain' -count=1
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
 tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative

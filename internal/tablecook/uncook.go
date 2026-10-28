@@ -247,13 +247,21 @@ func (r *regionReader) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 		cell.B = r.buf[at] != 0
 		return nil
 	case ir.TFloat32:
-		// the widening half of §3's bit-pattern rule: a float32 NaN's payload
-		// rides in the top of the double's mantissa rather than crossing the
-		// two widths through a conversion (SPEC.md §4.3, schema#480)
-		cell.F = tablewire.WidenF32(r.ord.Uint32(r.buf[at:]))
+		// every read refuses a NaN or an infinity on its raw bits
+		// (docs/SPEC-TABLES.md §3.3), the uncook included; a finite float32
+		// widens into the float64 cell exactly
+		bits := r.ord.Uint32(r.buf[at:])
+		if !tabletext.FiniteF32(bits) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(r.m, f)}
+		}
+		cell.F = float64(math.Float32frombits(bits))
 		return nil
 	case ir.TFloat64:
-		cell.F = math.Float64frombits(r.ord.Uint64(r.buf[at:]))
+		bits := r.ord.Uint64(r.buf[at:])
+		if !tabletext.FiniteF64(bits) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(r.m, f)}
+		}
+		cell.F = math.Float64frombits(bits)
 		return nil
 	case ir.TInt, ir.TFixed:
 		if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {

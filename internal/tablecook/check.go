@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,7 +41,8 @@ type CheckResult struct {
 // carries a sentinel entry, names a type the unit does not have, does not
 // ascend, or overlaps a node with the next; a reference that leaves the region,
 // that the directory does not name, or that it names as another type; a
-// misaligned reference; or a count companion outside its declared bound.
+// misaligned reference; a count companion outside its declared bound; or a
+// float whose bits are a NaN or an infinity (non_finite_float, §3.3).
 func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	var res CheckResult
 	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), rootAlignmentOf(m, file))
@@ -174,8 +176,9 @@ func checkDirectory(m *tabletext.Model, h Header, dir []DirectoryEntry) error {
 }
 
 // scan is PASS TWO's state, and there is deliberately none of it per node: an
-// entry's type id says which walk to run over that node, and the walk reads no
-// field value and decodes no payload.
+// entry's type id says which walk to run over that node, and the walk decodes
+// no payload: the field values it reads are a union's tag and a float's bits,
+// tested for finiteness (§3.3) and never interpreted.
 type scan struct {
 	m        *tabletext.Model
 	h        Header
@@ -471,8 +474,23 @@ func (s *scan) element(at int64, f *ir.Field) error {
 	if f.Type.Pointer {
 		return s.ref(at, f) // an element of an array of pointers (§2.1)
 	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the check is the cook's
+		// strict validator (§7), and it refuses a NaN or an infinity on its raw
+		// bits as non_finite_float, as every read does
+		if !tabletext.FiniteF32(s.ord.Uint32(s.buf[at:])) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(s.m, f)}
+		}
+		return nil
+	case ir.TFloat64:
+		if !tabletext.FiniteF64(s.ord.Uint64(s.buf[at:])) {
+			return &tablewire.NonFiniteRefusal{Field: tablewire.FloatOwner(s.m, f)}
+		}
+		return nil
+	}
 	if f.Type.Kind != ir.TNamed {
-		return nil // a scalar has nothing a walker could be steered by
+		return nil // any other scalar has nothing a walker could be steered by
 	}
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Struct:

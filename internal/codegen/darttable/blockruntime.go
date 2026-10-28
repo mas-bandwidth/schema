@@ -47,7 +47,7 @@ enum TableRefuseReason {
   base64Damaged('base64_damaged'),
   base64NotCanonical('base64_not_canonical'),
   integrityMismatch('integrity_mismatch'),
-  nonFinite('non_finite'),
+  nonFiniteFloat('non_finite_float'),
   blobShared('blob_shared'),
   previousForm('previous_form'),
   newerForm('newer_form'),

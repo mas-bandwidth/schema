@@ -1454,7 +1454,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::base64_damaged: return "base64_damaged";
         case blockdemo::base64_not_canonical: return "base64_not_canonical";
         case blockdemo::integrity_mismatch: return "integrity_mismatch";
-        case blockdemo::non_finite: return "non_finite";
+        case blockdemo::non_finite_float: return "non_finite_float";
         case blockdemo::blob_shared: return "blob_shared";
         case blockdemo::previous_form: return "previous_form";
         case blockdemo::newer_form: return "newer_form";

@@ -163,7 +163,13 @@ func FixedTableLoadMessagesTolerant(values []FixedTable, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !FixedTableLoadMessageBody(&r, &values[i]) {
+		if !FixedTableLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					FixedTableReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}
