@@ -1937,12 +1937,12 @@ func (g *gen) emitFixedFiniteUnion(un *ir.Union) {
 // shape (emitFixedClampArm).
 func (g *gen) emitFixedFiniteArm(f *ir.Field, indent int) {
 	ind := strings.Repeat(" ", indent)
-	switch {
-	case f.Array == ir.ArrayFixed:
+	switch f.Array {
+	case ir.ArrayFixed:
 		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
 		g.emitFixedFiniteElement(f, "arm[i]", indent+4)
 		g.pf("%s}\n", ind)
-	case f.Array == ir.ArrayCounted:
+	case ir.ArrayCounted:
 		g.pf("%sfor i in 0..arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
 		g.emitFixedFiniteElement(f, "arm.value[i]", indent+4)
 		g.pf("%s}\n", ind)
