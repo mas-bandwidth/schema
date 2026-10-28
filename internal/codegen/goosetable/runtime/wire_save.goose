@@ -34,7 +34,7 @@ let KindWstring: u8 = 33;
 let KindEnum: u8 = 30;
 let KindU8: u8 = 6;
 
-// SaveCtx is one save's context of borrowed tables (goose_spec.md A.6).
+// SaveCtx is one save's context of borrowed tables (the Goose spec's struct-of-references pattern).
 struct SaveCtx {
     data: const u8[:],
     unit: LoadUnit,

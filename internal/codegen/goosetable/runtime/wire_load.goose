@@ -67,6 +67,26 @@ struct LoadReport {
     non_finite: bool,  // §3.3: a NaN or an infinity refused the read
     retained: i64,     // §6.6: the unknown fields whose bytes were kept
     retain_lost: i64,  // §6.6: every unknown the load or save could not keep
+    stopped: bool,     // §3: framing damage stopped the walk; the value keeps what it decoded
+    reason: i64,       // a refusal's name (LoadRefuse*; load_refusal_name), 0 for none
+}
+
+// THE LOAD'S REFUSALS BY THE ENGINE'S NAME AND NUMBER (gotable's
+// TableRefuseReason; docs/SPEC-TABLES.md §3, §3.3): a form byte other than 1
+// is refused, form 2 by name because a message is never a file's own form.
+let LoadRefuseOk: i64 = 0;
+let LoadRefuseNewerForm: i64 = 26;
+let LoadRefuseMessageFormAsFile: i64 = 27;
+let LoadRefuseNonFiniteFloat: i64 = 23;
+
+// load_refusal_name is a refusal's name, the string the engine's error gives.
+fn load_refusal_name(code: i64) -> const u8[:] {
+    return match code {
+        LoadRefuseNewerForm => "newer_form",
+        LoadRefuseMessageFormAsFile => "message_form_as_file",
+        LoadRefuseNonFiniteFloat => "non_finite_float",
+        _ => "",
+    };
 }
 
 // KeyDesc is the key enum of one enum-keyed array (docs/SPEC-TABLES.md §3.2):
@@ -139,7 +159,7 @@ struct LoadNode { tab: i64, blob: u8, off: i64, len: i64, val: i64, named: bool 
 // Rd is one reader's window over the input: [off, end).
 struct Rd { off: i64, end: i64 }
 
-// LoadCtx is the walk's context of borrowed tables (goose_spec.md A.6).
+// LoadCtx is the walk's context of borrowed tables (the Goose spec's struct-of-references pattern).
 struct LoadCtx {
     data: const u8[:],
     unit: LoadUnit,
@@ -1320,9 +1340,15 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
     c.vals[slot].tab = u;
     let ref, ok = leb(c, r);
     if !ok { c.report.malformed = true; return false; }
-    c.vals[slot].bits = Int128 { lo: 0, hi: 0 };
-    c.vals[slot].count = 0;
-    if ref == 0 { c.vals[slot].state = ValEmpty; return true; }
+    if ref == 0 {
+        c.vals[slot].bits = Int128 { lo: 0, hi: 0 };
+        c.vals[slot].count = 0;
+        c.vals[slot].state = ValEmpty;
+        return true;
+    }
+    // the arm's framing is read whole BEFORE the union is reset: framing
+    // damage stops here and leaves what an earlier occurrence placed
+    // (tablewire unionCell)
     let arm_id, named = idof(c, ref);
     if !named { c.report.malformed = true; return false; }
     if !has(r, 1) { c.report.malformed = true; return false; }
@@ -1331,6 +1357,8 @@ recursive fn load_union(c: LoadCtx&, r: Rd&, slot: i64, name: const u8[:]) -> bo
     if !good || !fits(r, n) { c.report.malformed = true; return false; }
     let len = n as! i64;
     var sub = Rd { off: r.off, end: r.off + len };
+    c.vals[slot].bits = Int128 { lo: 0, hi: 0 };
+    c.vals[slot].count = 0;
     c.vals[slot].state = ValEmpty;
     var tag: i64 = 0;
     for a, i in c.unit.unions[u].arms {
@@ -1628,7 +1656,11 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a
     // file's own, and any form but 1 is refused with no damage reported
     if data.len < 1 { report.malformed = true; return -1; }
-    if data[0] != 1 { report.refused = true; return -1; }
+    if data[0] != 1 {
+        report.refused = true;
+        report.reason = if data[0] == 2 { LoadRefuseMessageFormAsFile } else { LoadRefuseNewerForm };
+        return -1;
+    }
     // THE ID TABLE, from the end (§3): the count, then 8 x count entries
     if data.len < 9 { report.malformed = true; return -1; }
     let count = le_at(data, data.len - 8, 8);
@@ -1656,13 +1688,13 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     if !unit.tables[t].variable {
         // a value-only table has no node table (§3)
         var r = body;
-        body_at(c, r, t, c.root_val, false, false);
-    } else {
-        load_variable(c, body);
+        if !body_at(c, r, t, c.root_val, false, false) { report.stopped = true; }
+    } else if !load_variable(c, body) {
+        report.stopped = true;
     }
     // A NON-FINITE FLOAT IS THE READ'S OWN REFUSAL (§3.3): it outranks every
     // other verdict, and the caller discards the partial value
-    if report.non_finite { return -1; }
+    if report.non_finite { report.reason = LoadRefuseNonFiniteFloat; return -1; }
     return c.root_val;
 }
 
