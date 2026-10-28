@@ -39,18 +39,22 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 	if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi; \
 	out=build/luau-table-control; \
 	rm -rf $$out && mkdir -p $$out/backup; \
-	for f in build/conformance-luau/*/load.luau; do \
+	for f in build/conformance-luau/*/schema_load.luau; do \
 		k=$${f#build/conformance-luau/}; mkdir -p $$out/backup/$$(dirname $$k); cp $$f $$out/backup/$$k; \
 	done; \
-	trap 'for f in build/conformance-luau/*/load.luau; do k=$${f#build/conformance-luau/}; cp $$out/backup/$$k $$f; done' EXIT; \
-	for f in build/conformance-luau/*/load.luau; do \
+	trap 'for f in build/conformance-luau/*/schema_load.luau; do k=$${f#build/conformance-luau/}; cp $$out/backup/$$k $$f; done' EXIT; \
+	for f in build/conformance-luau/*/schema_load.luau; do \
 		sed -i '/^[[:space:]]*resolve(report)$$/a\	report.unknown = report.unknown + 1' $$f; \
+		grep -q '^	report.unknown = report.unknown + 1$$' $$f || { \
+			echo "negative control failed: no resolve(report) line in $$f to plant after; the sabotage would be vacuous" >&2; exit 1; }; \
 	done; \
 	printf 'luau test/conformance/luau/driver\n' > $$out/drivers.txt; \
 	if ./build/conformance-harness run --drivers $$out/drivers.txt --work $$out/work > $$out/log 2>&1; then \
 		echo "negative control failed: the luau load sabotage left conformance green" >&2; \
 		exit 1; \
 	fi; \
-	grep -q 'luau / report' $$out/log; \
-	grep -q '^wire          pass' $$out/log; \
+	grep -q 'luau / report' $$out/log || { \
+		echo "negative control failed: the harness went red but not on luau / report, the row the load sabotage names ($$out/log)" >&2; exit 1; }; \
+	grep -q '^wire          pass' $$out/log || { \
+		echo "negative control failed: luau / wire is not green beside the sabotage, so the red is not the plant's alone ($$out/log)" >&2; exit 1; }; \
 	echo "Luau table negative control: the load sabotage is caught by report and leaves wire green"

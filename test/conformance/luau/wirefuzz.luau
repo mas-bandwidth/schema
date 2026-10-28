@@ -619,7 +619,7 @@ local function pipe(host: any)
 						end
 					end
 				end
-				return { S = S, load = require(base .. "load"), save = require(base .. "save"), align = align, measure = true }
+				return { S = S, load = require(base .. "schema_load"), save = require(base .. "schema_save"), align = align, measure = true }
 			end)
 			have = if ok then got else false
 			loaded[key] = have
