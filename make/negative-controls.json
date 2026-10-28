@@ -850,7 +850,8 @@
       "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row. Luau and the host C++ compiler, nothing else.",
       "targets": [
         "conformance-negative-control-luau",
-        "luau-nightly-fuzz-negative-control"
+        "luau-nightly-fuzz-negative-control",
+        "tables-luau-json-strict-negative-control"
       ],
       "luau": "0.741"
     }

@@ -159,7 +159,7 @@ local function report()
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
 local r = report()
-local v = json.FromJson("Box", inputs.text, r)
+local v = json.FromJsonTolerant("Box", inputs.text, r)
 if v == nil then print("refused"); return end
 print(string.format("km=%d u=%d", r.kindMismatch, r.unknown))
 print(string.format("len=%d", #v.L))

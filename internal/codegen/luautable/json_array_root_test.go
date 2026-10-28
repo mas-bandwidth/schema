@@ -58,7 +58,7 @@ local function hex(b)
   return table.concat(parts)
 end
 local report = { malformed = false, reason = "", refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = json.FromJson("GoalList", inputs.text, report)
+local v = json.FromJsonTolerant("GoalList", inputs.text, report)
 if v == nil then
   print("nil")
   print(tostring(report.malformed) .. "|" .. report.reason .. "|" .. tostring(report.kindMismatch))

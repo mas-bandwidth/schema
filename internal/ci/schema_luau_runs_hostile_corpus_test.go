@@ -272,7 +272,7 @@ for _, c in CASES do
 	local v = nil
 	if c.carrier == "text" then
 		local rep = newreport()
-		v = J.FromJson(c.root, b, rep)
+		v = J.FromJsonTolerant(c.root, b, rep)
 		if v == nil then
 			verdict, reason = "refuse", nn(rep.reason)
 		else

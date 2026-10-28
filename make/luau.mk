@@ -58,6 +58,19 @@ test-luau: toolchain-luau tables-fixedform-corpus \
 		go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
 update-goldens-luau: ;
 
+# THE STRICT TEXT READ (docs/SPEC-TABLES.md §6.5, §2.3): J.FromJson is the
+# plain name and refuses what the strict read refuses, J.FromJsonTolerant keeps
+# the recovered value, and both count a missing required field. The gate,
+# TestLuauJsonPlainReadIsStrict, runs inside test-luau against schema-go's
+# generated FromJSON and FromJSONTolerant; its control plants the plain name
+# made tolerant and the required close removed in a scratch copy of the
+# emitted runtime and requires each to red exactly its own cases.
+.PHONY: tables-luau-json-strict-negative-control
+tables-luau-json-strict-negative-control: toolchain-luau $(SERIALIZE_GO_RUNTIME)/go.mod
+	SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) sh test/slowgate/proof tables-luau-json-strict-negative-control \
+		'TestLuauJsonStrictNegativeControl' \
+		./internal/codegen/luautable -run '^TestLuauJsonStrictNegativeControl$$' -count=1 -timeout 600s
+
 # build/conformance-luau is the manifest's units generated for luau, one
 # directory per unit. The schema_leg_luau tag is the target's until the port
 # joins the builtins (compiler/target_luau.go). A unit the target refuses is
