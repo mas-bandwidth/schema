@@ -20,7 +20,7 @@
 #                              the walk control (json-read red, json-write green),
 #                              the float tie rule both ways, the I13 tie-break, the
 #                              JSONTestSuite end-of-text rule, the carrier pad bits
-MOO_TEXT_GATES    := TestMooJsonFloat(Write|Read)MatchesEngine|TestMooJsonGoldensRoundTrip|TestMooJsonHostileVerdicts|TestMooJsonWriteAndReadGates|TestMooJSONTestSuite$$|TestMooTextCarrier$$
+MOO_TEXT_GATES    := TestMooJsonFloat(Write|Read)MatchesEngine|TestMooJsonGoldensRoundTrip|TestMooJsonHostileVerdicts|TestMooJsonWriteAndReadGates|TestMooJSONTestSuite$$|TestMooTextCarrier$$|TestMooTextCarrierSurface|TestMooJsonWireSurfaces|TestMooJsonOneWalk
 MOO_TEXT_CONTROLS := NegativeControl$$
 
 .PHONY: tables-moo-json tables-moo-json-differential tables-moo-json-negative-controls

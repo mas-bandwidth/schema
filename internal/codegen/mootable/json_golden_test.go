@@ -32,7 +32,7 @@ type textManifest struct {
 	hostile   []textHostile
 }
 
-type textInstance struct{ name, unit, root string }
+type textInstance struct{ name, unit, root, wire string }
 
 type textHostile struct{ name, unit, root, tree, verdict string }
 
@@ -59,7 +59,7 @@ func readTextManifest(t *testing.T) textManifest {
 				noText = noText || x == "no-text"
 			}
 			if !noText {
-				m.instances = append(m.instances, textInstance{fields[1], fields[2], fields[3]})
+				m.instances = append(m.instances, textInstance{fields[1], fields[2], fields[3], fields[4]})
 			}
 		case "json-hostile":
 			// moo CARRIES every rule the Go walk holds first (the zero escape,
