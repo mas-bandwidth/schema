@@ -8,13 +8,27 @@
 # the generated ones), so the toolchain is the only Lobster dependency. The
 # default points at the repo-local unpacked release; the fleet installs the
 # same pin and may override with LOBSTER=<path>. To populate dist/
-# (gitignored), run `make dist-lobster`:
-#   url:    https://github.com/aardappel/lobster/releases/download/v2026.8/lobster_linux_release.zip
-#   sha256: 2f03fb96fdaf6935469c99e43ffb182cab0d797faec7b26eccc9a732df32ad31
-#   unzip into dist/lobster-v2026.8/ (bin/lobster, modules/ beside it)
+# (gitignored), run `make dist-lobster`, which takes the host's release archive
+# from https://github.com/aardappel/lobster/releases/tag/v2026.8 and unzips it
+# into dist/lobster-v2026.8/ (bin/lobster, modules/ beside it). One sha256 per
+# archive, each the release's own published digest:
+#   lobster_linux_release.zip    2f03fb96fdaf6935469c99e43ffb182cab0d797faec7b26eccc9a732df32ad31
+#   lobster_osx_arm_release.zip  18088b1bfdfa4e93f972b806e240aa2eece6528a183124884e74b698c8218f31
+#   lobster_osx_x64_release.zip  ab6c5e2489a64e0ff5d84fa508c065640738e2bd95ebabbfa50258000d85f584
+# The macOS archives are what certify.yml's macos-latest `make test` installs.
 LOBSTER_VERSION := v2026.8
-LOBSTER_ZIP_URL := https://github.com/aardappel/lobster/releases/download/$(LOBSTER_VERSION)/lobster_linux_release.zip
+LOBSTER_HOST    := $(shell uname -s)-$(shell uname -m)
+ifeq ($(LOBSTER_HOST),Darwin-arm64)
+LOBSTER_ZIP     := lobster_osx_arm_release.zip
+LOBSTER_ZIP_SHA := 18088b1bfdfa4e93f972b806e240aa2eece6528a183124884e74b698c8218f31
+else ifeq ($(LOBSTER_HOST),Darwin-x86_64)
+LOBSTER_ZIP     := lobster_osx_x64_release.zip
+LOBSTER_ZIP_SHA := ab6c5e2489a64e0ff5d84fa508c065640738e2bd95ebabbfa50258000d85f584
+else
+LOBSTER_ZIP     := lobster_linux_release.zip
 LOBSTER_ZIP_SHA := 2f03fb96fdaf6935469c99e43ffb182cab0d797faec7b26eccc9a732df32ad31
+endif
+LOBSTER_ZIP_URL := https://github.com/aardappel/lobster/releases/download/$(LOBSTER_VERSION)/$(LOBSTER_ZIP)
 LOBSTER_DIST    := $(CURDIR)/dist/lobster-$(LOBSTER_VERSION)
 LOBSTER         ?= $(LOBSTER_DIST)/bin/lobster
 export LOBSTER
@@ -25,12 +39,12 @@ export LOBSTER
 .PHONY: dist-lobster
 dist-lobster:
 	@mkdir -p $(LOBSTER_DIST) build/dist-lobster
-	@curl -fsSL -o build/dist-lobster/lobster_linux_release.zip $(LOBSTER_ZIP_URL)
-	@got=$$(sha256sum build/dist-lobster/lobster_linux_release.zip | cut -d' ' -f1); \
+	@curl -fsSL -o build/dist-lobster/$(LOBSTER_ZIP) $(LOBSTER_ZIP_URL)
+	@got=$$( { sha256sum build/dist-lobster/$(LOBSTER_ZIP) 2>/dev/null || shasum -a 256 build/dist-lobster/$(LOBSTER_ZIP); } | cut -d' ' -f1); \
 	if [ "$$got" != "$(LOBSTER_ZIP_SHA)" ]; then \
-		echo "dist-lobster REFUSES: lobster_linux_release.zip sha256 $$got is not the pin $(LOBSTER_ZIP_SHA)"; \
-		rm -f build/dist-lobster/lobster_linux_release.zip; exit 1; fi
-	@unzip -o -q build/dist-lobster/lobster_linux_release.zip 'bin/*' 'modules/*' -d $(LOBSTER_DIST)
+		echo "dist-lobster REFUSES: $(LOBSTER_ZIP) sha256 $$got is not the pin $(LOBSTER_ZIP_SHA)"; \
+		rm -f build/dist-lobster/$(LOBSTER_ZIP); exit 1; fi
+	@unzip -o -q build/dist-lobster/$(LOBSTER_ZIP) 'bin/*' 'modules/*' -d $(LOBSTER_DIST)
 	@chmod +x $(LOBSTER_DIST)/bin/lobster
 	@echo "dist-lobster: lobster $(LOBSTER_VERSION) at $(LOBSTER_DIST) sha256 $(LOBSTER_ZIP_SHA)"
 
