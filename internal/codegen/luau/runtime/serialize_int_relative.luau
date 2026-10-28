@@ -1,7 +1,7 @@
 --!strict
 -- serialize_int_relative.luau — int_relative (DESIGN.md (a), (c), (g) and
 -- (h); STANDARD.md int_relative), wire compatible with serialize (format
--- version 1.1) and serialize.go v1.15.1 write_stream.go, read_stream.go and
+-- version 2.0) and serialize.go v2.0.0 write_stream.go, read_stream.go and
 -- measure_stream.go: the same values produce the same bytes and the same
 -- refusals.
 --
@@ -30,8 +30,18 @@ local RAISE_CURRENT_TYPE = "serialize: serializeIntRelative current must be inte
 local RAISE_HOLDER_TYPE = "serialize: serializeIntRelative holder must be table"
 
 -- The latched kinds (DESIGN.md (a)); the stream values are the same strings.
-local OVERFLOW = "overflow"
+local PAST_END = "past_end"
 local VALUE_OUT_OF_RANGE = "value_out_of_range"
+
+-- The write-misuse traps (IMPLEMENTING.md U9, U6): raised, never latched.
+local RAISE_RANGE = "serialize: serializeIntRelative current must be above previous and in the domain"
+local RAISE_ROOM = "serialize: the write does not fit the room left in the buffer"
+local NON_CANONICAL = "non_canonical"
+
+-- The last bounded tier's top difference (STANDARD.md int_relative): an
+-- absolute tier carrying a difference no greater than this is a second
+-- encoding of a value a bounded tier carries.
+local BOUNDED_MAX = 69914
 
 -- intRelativeBuckets (serialize.go stream.go): each bucket's payload is
 -- serialize_int(d, min, max), whose wire width is BitsRequired(min, max).
@@ -45,29 +55,29 @@ local BUCKETS = {
 }
 
 -- an int32 holds only integers, so a non-integer number is not a value the
--- parameter TYPE could hold; raise before the latch, as Go's panic does.
-local function requireInteger(value: any, message: string)
-	if type(value) ~= "number" or value ~= value or value % 1 ~= 0 then
-		error(message, 3)
-	end
+-- parameter TYPE could hold (DESIGN.md (a)).
+local function isInteger(value: any): boolean
+	return type(value) == "number" and value == value and value % 1 == 0
 end
 
--- orderTable checks the holder shape, the Luau form of Go's non-nil *int32.
-local function requireHolder(holder: any)
-	if type(holder) ~= "table" then
-		error(RAISE_HOLDER_TYPE, 3)
+-- declarationMisuse applies the panicIntRelativeDomain rule and the holder
+-- shape (the Luau form of Go's non-nil *int32): previous is the caller's own
+-- state, never packet data, so a previous outside the domain is caller misuse
+-- on every stream, checked before the latch (serialize.go read/write/measure
+-- SerializeIntRelative; DESIGN.md (g)). It returns the rule broken, or nil; the
+-- arm raises it on write and measure and refuses ValueOutOfRange on read
+-- (IMPLEMENTING.md U7, U16).
+local function declarationMisuse(previous: any, holder: any): string?
+	if not isInteger(previous) then
+		return RAISE_PREVIOUS_TYPE
 	end
-end
-
--- checkPrevious applies the panicIntRelativeDomain rule: previous is the
--- caller's own state, never packet data, so it is API misuse on every stream
--- and is raised before the latch (serialize.go read/write/measure
--- SerializeIntRelative; DESIGN.md (g)).
-local function checkPrevious(previous: any)
-	requireInteger(previous, RAISE_PREVIOUS_TYPE)
 	if previous < INT_RELATIVE_MIN or previous > INT_RELATIVE_MAX then
-		error(RAISE_DOMAIN, 3)
+		return RAISE_DOMAIN
 	end
+	if type(holder) ~= "table" then
+		return RAISE_HOLDER_TYPE
+	end
+	return nil
 end
 
 -- writeWidth is the number of bits the writer emits: the flag ladder plus
@@ -92,7 +102,7 @@ end
 -- goes past the data's end; STANDARD.md int_relative rule 3).
 local function canRead(s: any, bits: number): boolean
 	if s:_available() < bits then
-		return s:_fail(OVERFLOW)
+		return s:_fail(PAST_END)
 	end
 	return true
 end
@@ -113,27 +123,31 @@ local M = {}
 
 -- writeIntRelative writes current relative to previous, taking the first tier
 -- the difference fits (STANDARD.md int_relative: the canonical encoding).
--- previous outside the domain raises; previous not less than current and
--- current outside the domain latch ValueOutOfRange; a full buffer latches
--- Overflow before any bit moves (DESIGN.md (g)).
+-- previous outside the domain, previous not less than current, current
+-- outside the domain and a write that does not fit the room left all trap
+-- before any bit moves, and latch nothing (IMPLEMENTING.md U9; DESIGN.md (g)).
 function M.writeIntRelative(s: any, previous: number, holder: any): boolean
-	checkPrevious(previous)
-	requireHolder(holder)
+	local bad = declarationMisuse(previous, holder)
+	if bad ~= nil then
+		return s:_misuse(bad)
+	end
 	if s:_latched() then
 		return false
 	end
 	local current = holder.value
-	requireInteger(current, RAISE_CURRENT_TYPE)
+	if not isInteger(current) then
+		return s:_misuse(RAISE_CURRENT_TYPE)
+	end
 	if previous >= current then
-		return s:_fail(VALUE_OUT_OF_RANGE)
+		return s:_misuse(RAISE_RANGE)
 	end
 	if current > INT_RELATIVE_MAX then
-		return s:_fail(VALUE_OUT_OF_RANGE)
+		return s:_misuse(RAISE_RANGE)
 	end
 	local difference = current - previous
 	local width = writeWidth(difference)
 	if s:_available() < width then
-		return s:_fail(OVERFLOW)
+		return s:_misuse(RAISE_ROOM)
 	end
 	if difference == 1 then
 		s:_writeBits(1, 1)
@@ -159,8 +173,10 @@ end
 -- read_stream.go SerializeIntRelative). A refusal latches and leaves the
 -- holder unwritten.
 function M.readIntRelative(s: any, previous: number, holder: any): boolean
-	checkPrevious(previous)
-	requireHolder(holder)
+	local bad = declarationMisuse(previous, holder)
+	if bad ~= nil then
+		return s:_misuse(bad)
+	end
 	if s:_latched() then
 		return false
 	end
@@ -190,25 +206,41 @@ function M.readIntRelative(s: any, previous: number, holder: any): boolean
 	if not canRead(s, 32) then
 		return false
 	end
-	return result(s, previous, s:_readBits(32), holder)
+	-- the absolute tier: the domain and ordering rule first, then the
+	-- canonical rule, a difference a bounded tier carries refused as
+	-- NonCanonical (STANDARD.md int_relative, "The absolute tier is canonical
+	-- too"). The group is unsigned and a number, so the difference cannot wrap.
+	local absolute = s:_readBits(32)
+	if absolute > INT_RELATIVE_MAX or absolute <= previous then
+		return s:_fail(VALUE_OUT_OF_RANGE)
+	end
+	if absolute - previous <= BOUNDED_MAX then
+		return s:_fail(NON_CANONICAL)
+	end
+	holder.value = absolute
+	return true
 end
 
 -- measureIntRelative counts exactly the bits writeIntRelative would emit and
 -- refuses the same caller errors (serialize.go measure_stream.go
 -- SerializeIntRelative; DESIGN.md (h)).
 function M.measureIntRelative(s: any, previous: number, holder: any): boolean
-	checkPrevious(previous)
-	requireHolder(holder)
+	local bad = declarationMisuse(previous, holder)
+	if bad ~= nil then
+		return s:_misuse(bad)
+	end
 	if s:_latched() then
 		return false
 	end
 	local current = holder.value
-	requireInteger(current, RAISE_CURRENT_TYPE)
+	if not isInteger(current) then
+		return s:_misuse(RAISE_CURRENT_TYPE)
+	end
 	if previous >= current then
-		return s:_fail(VALUE_OUT_OF_RANGE)
+		return s:_misuse(RAISE_RANGE)
 	end
 	if current > INT_RELATIVE_MAX then
-		return s:_fail(VALUE_OUT_OF_RANGE)
+		return s:_misuse(RAISE_RANGE)
 	end
 	return s:_measure(writeWidth(current - previous))
 end
