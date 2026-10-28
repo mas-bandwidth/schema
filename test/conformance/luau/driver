@@ -1,0 +1,44 @@
+#!/bin/sh
+# THE LUAU LEG's driver (test/conformance/README.md; docs/PORT-LUAU.md, THE
+# HARNESS).
+#
+# Every surface is handed to ONE Luau program, test/conformance/luau/main.luau,
+# under the pinned interpreter. The interpreter has no io library, so this
+# script is the host shim both ways: the manifest goes IN as source (a module
+# build/conformance-luau/driver/manifest.luau holding its text as a string
+# literal, which main.luau requires), and the answers come OUT on stdout, one
+# line per case — the case name, a space, the answer's bytes as lowercase hex —
+# which this script writes as one file per case into <outdir> (a case the leg
+# cannot answer is the line "<case> absent", written as <case>.absent).
+#
+# While main.luau is absent the leg answers ABSENT: `list` prints nothing and
+# every surface exits 2. The surfaces' cards add main.luau and the list grows
+# with them (docs/PORT-LUAU.md, THE CARD MAP).
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+main=test/conformance/luau/main.luau
+luau=${LUAU:-dist/luau-0.741/luau}
+if [ ! -f "$main" ]; then
+	case "$2" in
+	list) exit 0 ;;
+	*) exit 2 ;;
+	esac
+fi
+dir=build/conformance-luau/driver
+mkdir -p "$dir" || exit 1
+perl -e 'local $/; my $t = <STDIN>; my $h = unpack("H*", $t); $h =~ s/(..)/\\x$1/g; print "return \"$h\"\n";' <"$1" >"$dir/manifest.luau" || exit 1
+case "$2" in
+list)
+	exec "$luau" "$main" -a list
+	;;
+*)
+	mkdir -p "$3" || exit 1
+	"$luau" "$main" -a "$2" >"$dir/$2.out"
+	status=$?
+	[ "$status" -eq 0 ] || exit "$status"
+	LUAU_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{LUAU_OUTDIR}/$c.absent") or die; close $f; next } open(my $f, ">:raw", "$ENV{LUAU_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
+	;;
+esac
