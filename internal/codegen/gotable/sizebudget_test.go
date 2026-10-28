@@ -33,7 +33,8 @@ const (
 	// -31: the emitted loops range over their counts and the clamps call min/max (modernize-clean generated Go)
 	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	// +821: table floats are finite only (SPEC-TABLES §3.3, Glenn 2026-10-27): every float read tests its raw bits, every tolerant load and message batch refuses a non-finite one, and every fixed type holding a float gains its finite pass and its writer clause (tables-finite/go)
-	goExamplesLineBudget = 66058
+	// +165: a VARIABLE root rides the message form over a region (SPEC-TABLES §3.3, "The message form over a variable root", 2026-10-28): each plain root gains MeasureMessages, SaveMessages, LoadMessagesMeasure, LoadMessagesTolerant, LoadMessages and LoadRetainMessages
+	goExamplesLineBudget = 66223
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

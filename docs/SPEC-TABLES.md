@@ -89,12 +89,13 @@ refuses to version; and neither refusal strands anyone, because —
 *"if you are ever constrained by type or fixed table, table (variable
 table) is there for you."*
 
-**The MESSAGE FORM (form byte `2`, §3.3) is the fixed table on the wire
-between peers**: a BATCH of fixed tables under ONE ANNOUNCED BLOCK, each
-body packed through the type's own codec. It is a fixed table's and nobody
-else's — a message-form request naming a plain `table` is REFUSED naming the
-table (§2.2, §11), because a message is a bitpacked body under one announced
-vocabulary and the shape has to be one the declaration fixes.
+**The MESSAGE FORM (form byte `2`, §3.3) is the table wire between peers**: a
+BATCH of bodies of one root under ONE ANNOUNCED VOCABULARY, each body
+bitpacked. It is EVERY table's. A `fixed table` rides it by value, each body
+packed through the type's own codec, and a plain `table` rides it with its
+NODE TABLE as each body's first field and the batch read into one region
+(§3.3, "The message form over a variable root"). The class decides how a body
+is framed and stored, never whether it may ride.
 
 **NEITHER CLASS BORROWS THE OTHER'S FORM.** A declared `fixed table` encodes
 as form `3`, ALWAYS; a plain `table` encodes as form `1`, always; and a reader
@@ -836,10 +837,11 @@ fixed table ShipConfig
 
 **The declaration is `table` or `fixed table`, and the word is the class**
 (§2.2). `fixed table T` is the FIXED wire — a plain struct of known sizeof,
-none of the arena machinery, a block form (§2.7) and the message form (§3.3) —
+none of the arena machinery, a block form (§2.7) and the message form by value (§3.3) —
 and the compiler REFUSES anything in its by-value closure that would make a
 body variable size, naming the field and the table (§11). A plain `table T` is
-the VARIABLE wire, always, whatever its fields happen to be.
+the VARIABLE wire, always, whatever its fields happen to be, and it rides the
+message form too, over a region (§3.3).
 
 A table body is a type body — the field grammar of SPEC §4.2, hosted by
 `table`: bare and ranged integers, `bits(N)`, `bool`, floats and
@@ -1021,8 +1023,9 @@ And a nested `fixed table` stops the walk, because its own closure was checked
 at its own declaration — so a break is reported once, where a reader can edit
 it.
 
-**The MESSAGE FORM (§3.3) is a fixed table's**, and a message-form request
-naming a plain `table` is refused naming the table.
+**The MESSAGE FORM (§3.3) is every table's.** A fixed table rides it by value
+and a plain `table` with its node table first, so the class decides how a body
+is framed, never whether it may ride.
 
 **The BLOCK FORM does not enter the class — it READS it** (§2.7). The form
 declares nothing, so there is nothing to take account of; the class instead
@@ -4115,10 +4118,11 @@ list IS an array of that record — the bounded list is `[N]` records and a live
 `<Field>Count`, the unbounded list a `TableList` of records (§2.9) — which is
 why the cooked form (§7), the view (§8) and retain-unknown (§6.6) carry a text
 list with no rule of their own: each walks it as the array of records it is
-stored as. The fixed, block (§19) and message forms apply only to fixed tables,
-so for a text list, which lives only in a variable table, they are inapplicable
-and emit nothing for its table (not a refusal), as for an equal variable table
-holding an array of records. The element record's `?string(M)` value is the one
+stored as. The fixed and block (§19) forms apply only to fixed tables, so for a
+text list, which lives only in a variable table, they are inapplicable and emit
+nothing for its table (not a refusal), as for an equal variable table holding an
+array of records. The message form is every table's (§3.3) and asks its own
+question of a text list's table, which is the unbounded-text rule below. The element record's `?string(M)` value is the one
 place a `?` on a string is legal, and only the generator writes it: in a
 declaration `?string(N)` stays the follow-on §15 names.
 
@@ -4358,12 +4362,12 @@ through the slot. The read path allocates nothing the bounded one does not: a
 region load carves the bytes from the extent `LoadMeasure` already counted, and
 a builder load takes them from the arena as it takes a list's elements.
 
-**THE MESSAGE FORM DOES NOT APPLY.** §2.13 states the rule: the fixed, block
-(§19) and message forms apply only to fixed tables, and a text list lives only
-in a variable table, so they are inapplicable and emit nothing for its table,
-unbounded text included. The message form is fixed-only (§3.3), and a fixed
-table cannot hold unbounded text (§2.2, the refusals above), so a table whose
-closure holds it never meets the form.
+**THE MESSAGE FORM DOES NOT APPLY.** §2.13 states the rule for the fixed and
+block (§19) forms: they apply only to fixed tables, and a text list lives only
+in a variable table. The message form is every table's (§3.3), but its payloads
+spell text at a declared bound and unbounded text has none, so the form has no
+payload for it: Go emits no message verb for a table whose closure holds it
+(`messageCarries`), and the FILE form is where it goes.
 
 **MAP KEYS compare by BYTES, unsigned, a shorter prefix first, at any length**
 (§2.8): `Find`, `Insert` (replace included), `Erase`, `Each` and the index hash
@@ -6026,13 +6030,14 @@ byte, no byte length and no alignment inside a message or between messages.
 form-`1` wire is the three parts §3 describes and every rule above holds over it
 unchanged. Nothing in this subsection touches a file.
 
-**THE FORM IS A FIXED TABLE'S, and that is a declaration, not a derivation**
-(§2.2). A message is a bitpacked body under a vocabulary announced once, so the
-shape a reader steps through has to be one the declaration fixes: `fixed table
-T` may ride here, a plain `table T` may not, and a message-form request naming
-one is REFUSED naming the table (§11) rather than quietly writing another form.
-The FILE form is every table's, fixed and variable alike, and is where a
-variable root goes.
+**THE FORM IS EVERY TABLE'S, and the class decides only how a body is framed
+and stored** (§2.2). A `fixed table` root rides by value, one body a value,
+with no numbering. A plain `table` root, plain or pointered, rides with its
+NODE TABLE as each body's first field and the batch read into one region, and
+that is DEFINED below ("The message form over a variable root") exactly as the
+C++ reference and C carry it, with the corpus's pinned bytes normative. Neither
+the tool nor an emitter refuses a variable root: a port that does not yet
+carry one answers its rows absent and owes it on the roadmap.
 
 ---
 
@@ -6781,6 +6786,196 @@ away, so element zero is element zero either way.
 
 ---
 
+#### The message form over a variable root
+
+**A PLAIN `table` RIDES THE MESSAGE FORM, AND THIS IS ITS DEFINITION.** The
+ruling of 2026-10-28 is that a variable root, plain or pointered, is CARRIED by
+every port and refused by none. The definition is what the C++ reference
+already emits (`internal/codegen/cpptable/messagevariable.go`:
+`emitVariableMessageSurface`, `emitVariableMessageLoadSurface` and
+`emitRootNodeMessageDispatch`) and what C emits beside it
+(`internal/codegen/ctable/message_graph.go`, `emitMessageGraph`). **The bytes
+the conformance corpus pins for it are NORMATIVE**, and where this prose and
+those bytes disagree, the bytes win and the prose is the bug:
+
+| the row (`testdata/conformance/tables/MANIFEST.txt`) | the surfaces | the pinned bytes |
+|---|---|---|
+| `message graph_tree graph_conn Scene` (`tables/pointers/Graph.schema`) | `message` | `testdata/wire/tables/graph_tree_message.bin` |
+| `retain-message retain_message_tail retain_conn tblrt1 Node` (`test/tables/RT1.schema`) | `retain`, `retain-save` | `testdata/wire/tables/retain_message.bin`, read; `retain_message_save_0.bin` and `retain_message_save_1.bin`, the two bodies saved back |
+
+Beside them, `graph_batch_message.bin` (three pointered bodies in one batch)
+and `graph_empty_message.bin` (a root that reaches no node) are pinned by the
+harness's own `TestAPointeredBatch`, and the compiler's engine
+(`internal/tablewire`, `EncodeMessages` / `DecodeMessages`) reproduces all of
+them. Everything above this subsection holds unchanged for a variable root:
+the form byte, the count, the bodies as one bit stream, the announcement, the
+payload table, the refusals, damage. What a variable root adds is a NUMBERING
+PER BODY and the storage that numbering lands in.
+
+The notation is `docs/PACKET-WIRE-ALGORITHM.md`'s: `PUT(v, n)` and `GET(n)`
+move `n` bits low bit first, `ALIGN` zero-fills (or, reading, verifies zero) to
+the next byte boundary of the batch buffer, and `REF(e)` is a reference to the
+vocabulary slot of entry `e` at `bits_required(0, E)` bits.
+
+**THE WRITE.** `MeasureMessages` and `SaveMessages` take an array of `M` root
+values (a C++ root is a locked region's, `builder.AsConst()`, or a loaded
+one's) and walk it once each. Measure counts the bits the save puts, and the
+two derive the same numbering from the same graph, so `measure == save`
+(§9) holds per body and per batch.
+
+```
+SAVE_MESSAGES(roots[0 .. M-1]):
+  if M < 1 or M > 256:      refuse batch_too_large, write nothing
+  PUT(2, 8); PUT(M - 1, 8)                       -- form byte, count (above)
+  for each root R, in order:
+    records := NUMBER(R)                          -- §3.1: depth-first pre-order over
+                                                  -- pointer edges, first visit wins
+    if a blob is named from two slots: refuse blob_shared (§2.5, §16.7)
+    n := len(records)                             -- the ROOT is not a record
+    W := bits_required(0, n + 1)                  -- THIS BODY's index width
+    if n > 0:                                     -- the NODE TABLE, the FIRST field
+      PUT(REF(node-table id), refbits)
+      PUT(n, 32)
+      for k in 1 .. n:
+        PUT(REF(type id of records[k]), refbits)  -- a table's wire-name id, or a
+                                                  -- reserved blob id
+        if records[k] is a table:  WRITE_BODY(records[k], W)
+        else (a blob):             PUT(len, 32); ALIGN; the bytes verbatim
+    WRITE_BODY(R, W)
+  ALIGN                                           -- the final pad; bytes = 2 + ceil(bits/8)
+
+WRITE_BODY(T, W):
+  for each field of T in declaration order that rides (elision, §3):
+    PUT(REF(field entry), refbits); the payload, per the payload table above,
+    a POINTER being its node index at W bits
+  PUT(0, refbits)                                 -- the body's own terminator
+```
+
+- **A NUMBERING IS ONE BODY'S.** `NUMBER` is §3.1's walk restarted for each
+  root: index `0` is null, `1` is the root, record `k` is index `k + 1`, and
+  nothing carries from one body to the next. Two bodies naming "the same" node
+  each write it in their own node table.
+- **THE INDEX WIDTH IS THE BODY'S**, `bits_required(0, n + 1)` for a body of
+  `n` records. A body with no node table has `n = 0` and a width of ONE bit,
+  which no writer spends, because every pointer it holds is null and null is
+  elided; a reader that meets a pointer there reads one bit (below).
+- **A ROOT THAT REACHES NO NODE WRITES NO NODE TABLE** (above), so a plain
+  `table` with no pointer under it is, on the wire, its fields and its
+  terminator and nothing else (`graph_empty_message.bin`).
+- **A NESTED BODY USES ITS BODY'S WIDTH.** A record's body, a by-value nested
+  table, a map entry and a union arm inside one root all write their pointers at
+  that root's `W`.
+
+**THE READ.** `LoadMessages` reads the batch into ONE REGION the caller sized
+with the message overload of `LoadMeasure` and writes each body's root into
+the caller's array of root pointers (above, "A BATCH OF POINTERED ROOTS TAKES
+ONE REGION FOR THE BATCH"). A bit stream carries no record lengths, so each
+body is read in TWO PASSES, and the root's own fields are read last, against a
+numbering already known whole.
+
+```
+LOAD_MESSAGES(vocabulary, data, roots[0 .. capacity-1], region):
+  open the batch: form byte, vocabulary, count M      -- the refusals above
+  if M > capacity: count := M; refuse batch_too_large -- nothing decoded
+  used := 0
+  for b in 0 .. M-1:
+    if not BODY_INTO(b): count := b; return false     -- damage: b bodies stand
+  verify the final pad is zero and no byte follows    -- else malformed, count = M
+  count := M
+
+BODY_INTO(b):
+  at := offset
+  ref := GET(refbits)
+  if ref names the node-table id: n := GET(32)
+  else:                           n := 0; offset := at   -- no node table: the
+                                                          -- reference is a field's
+  W := bits_required(0, n + 1)
+  place the body's node DIRECTORY, n + 1 entries, at `used`
+  -- PASS ONE: the framing, every node placed, no body decoded
+  records_start := offset
+  for k in 1 .. n:
+    t := GET(refbits)            -- must name a kind-0 entry: 0, above E, the
+                                 -- node-table id or any entry of another kind
+                                 -- is malformed (§3.1)
+    if t is a reserved blob id:
+      len := GET(32); ALIGN; step over len bytes        -- framing by the id alone
+      placed iff this root's pointers reach that blob kind (§2.5)
+    else:
+      step over the body by its announced shapes
+      placed iff t names a table this root's pointers reach (by WIRE name, §5)
+    if placed: directory[k] := its storage, carved at `used`
+    else:      directory[k] := ABSENT; unknown += 1   -- once, at the node
+  fields_start := offset
+  place the ROOT, reset to its defaults; roots[b] := it  -- handed back NOW
+  -- PASS TWO: each placed record's body into the storage it owns
+  offset := records_start
+  for k in 1 .. n:
+    GET(refbits)
+    if a blob: GET(32); ALIGN; copy the bytes into its storage if placed
+               (a text blob's bytes are UTF-8 checked first, §3.1: malformed)
+    else if ABSENT: step over the body
+    else: READ_BODY(record k, W)
+  if offset != fields_start: malformed               -- the passes disagree
+  READ_BODY(root, W)
+```
+
+- **AN INDEX RESOLVES AGAINST THE BODY'S OWN DIRECTORY** under §3.1's rules
+  unchanged: `0` is null, `1` the root, `k + 1` record `k`; an index naming an
+  ABSENT record reads null, an index past `n + 1` is malformed, and a blob named
+  from two slots resolves to the one node and counts `blob_shared` on the
+  tolerant read (§2.5).
+- **AN UNKNOWN RECORD IS COUNTED ONCE, AT THE NODE**, never once per pointer to
+  it, and keeps its index (§3.1). A blob record whose kind this root's pointers
+  cannot reach is the same `unknown`: its FRAMING was its type id's and was
+  stepped over exactly, its PLACEMENT is the root's and there is none.
+- **THE ROOT IS HANDED BACK AS SOON AS IT IS PLACED**, before its fields decode,
+  so damage inside body `k`'s own fields still leaves `roots[k]` pointing at
+  what the decode put there. The COUNT, `k`, is what says it is not a body
+  (above, "DAMAGE INSIDE BODY `k`").
+- **A NODE COUNT THE STREAM CANNOT HOLD IS MALFORMED.** Every record spends at
+  least its type reference, so a count above the bits left over `refbits` is
+  damage before any record is read, and nothing is reserved on the wire's
+  claim (§3.1's bounded-work rule).
+
+**THE REGION**, for a port whose storage is a caller-owned region (C++, C, C#,
+Go). A body's chunk is its DIRECTORY (`n + 1` entries of an offset and a type
+id, entry `0` the root), then each PLACED record's storage in WIRE order (a
+table's aligned `sizeof` plus the extent its lists and maps take, a blob's
+header and bytes), then the ROOT's aligned `sizeof` plus its extent. An ABSENT
+record commands no storage. `LoadMeasure`'s message overload is the sum of the
+chunks, read off the framing alone by the same two-pass scan with no field
+value decoded, and it stops after the first body whose root framing gives out,
+because the load delivers the bodies before that one and no more. The sizes
+are each port's storage and not the wire's; what the region ports share is the
+order. A port with managed storage builds the same graph in its own idiom: the
+WIRE, the COUNTERS and the COUNT are what is normative.
+
+**THE STRICT READ** (§6.5), where a port splits it from the tolerant one, is the
+tolerant read and then `report.Err()`: a batch the strict rule refuses answers a
+count of `0` with every root it had written cleared. Go spells the pair
+`<T>LoadMessages` (strict) and `<T>LoadMessagesTolerant`, and the region sizing
+`<T>LoadMessagesMeasure`, because Go has no overload for `LoadMeasure`'s
+message form.
+
+**RETENTION** on a variable root's batch is `LoadRetainMessages`: the same read
+with ONE RETENTION BUFFER A BODY, an array parallel to the roots, each reset
+when its body's root is placed and holding only that body's records, because a
+retained record's first step is an index into that body's own directory (§6.6).
+A record this reader cannot name is one of §6.6's six excluded classes, so it
+counts `unknown` AND `retain_lost`. Each record's body is a path root at its own
+node index and the root's at `1`. A body is SAVED BACK through the VARIABLE
+form's own `SaveRetain` from `roots[k]` and `retains[k]`, so what a retained
+message becomes is a form-`1` file, and form `2` with retention stays refused
+(`SaveRetainMessages`, below). `retain_message_tail` pins all of it: the
+counters `retained = 10`, `retain_lost = 6`, `unknown = 17`, a save that loses
+`0`, and the two saved files byte for byte.
+
+**WHERE A PORT STANDS** is WHERE THE FORM IS CARRIED, below. A port that does
+not yet carry a variable root answers its rows ABSENT, never refused, and owes
+the carry on the roadmap (`docs/roadmap.sexp`).
+
+---
+
 #### Form byte `2` keeps its number, and the byte body is replaced
 
 **THE BITPACKED BODY TAKES FORM BYTE `2`. It does not take `3`.** An earlier
@@ -6804,22 +6999,25 @@ damage (§3). A wire that had shipped would have taken `3` on that same rule.
 
 #### Retention, and what does not move
 
-**RETENTION (§6.6) ON A MESSAGE BODY: THE FORM CARRIES NONE, AND THE REFUSAL
-IS AT COMPILE TIME.** A message body is a FIXED table's (§2.2, above), and a
-fixed-class root is a value with no region and no node directory, so the region
-round trip retention rests on (§6.6) does not exist for it. **Go emits
-`LoadRetainMessages` and `SaveRetainMessages` as REFUSED-BY-NAME CONSTANTS**, a
-symbol a caller may name whose value is the refusal sentence, and NOT as
-functions returning `-1`: there is no run-time retention path on form `2` to
-return one. The reason is the same one this form states for its vocabulary: a
-retained id is by definition a name this build's closure does not contain, so a
-form-`2` writer has no slot AND no announced shape for it, and the caller's own
-retained-id list names ids into a FILE's trailer that a form-`2` receiver never
-reads. **A caller that must carry unknowns across a rewrite writes the VARIABLE
-form**, which carries its own table and takes §6.6 unchanged. **A RELAY needs
-neither**: a service forwarding another peer's messages forwards that peer's
-announcement and its batch bytes verbatim, which is exact, allocates nothing and
-loses nothing.
+**RETENTION (§6.6) ON A MESSAGE BODY: A VARIABLE ROOT READS WITH IT, A FIXED
+ROOT REFUSES IT BY NAME, AND NO FORM-`2` WRITE CARRIES IT.** A variable root's
+batch reads with retention through `LoadRetainMessages`, one region for the
+batch and one retention buffer a body (above, "The message form over a variable
+root"), and saves each body back through the VARIABLE form's own `SaveRetain`.
+A fixed-class root is a value with no region and no node directory, so the
+region round trip retention rests on (§6.6) does not exist for it: **Go emits a
+fixed root's `LoadRetainMessages` and every root's `SaveRetainMessages` as
+REFUSED-BY-NAME CONSTANTS**, a symbol a caller may name whose value is the
+refusal sentence, and NOT as functions returning `-1`: there is no run-time
+path to return one. Form `2` never WRITES retained records, for the reason this
+form states for its vocabulary: a retained id is by definition a name this
+build's closure does not contain, so a form-`2` writer has no slot AND no
+announced shape for it, and the caller's own retained-id list names ids into a
+FILE's trailer that a form-`2` receiver never reads. **A caller that must carry
+unknowns across a rewrite writes the VARIABLE form**, which carries its own
+table and takes §6.6 unchanged. **A RELAY needs neither**: a service forwarding
+another peer's messages forwards that peer's announcement and its batch bytes
+verbatim, which is exact, allocates nothing and loses nothing.
 
 **THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE, and the pin is a ROUND TRIP.**
 One body is bytes and the other is bits, so there is no substitution that turns
@@ -7063,14 +7261,17 @@ claim that every subset is the same surface.
   that is not a map entry. That emit is not gated on `fixed table`. A variable
   table also gets `LoadMeasure` and, in `region.go`, the region overloads of
   those three verbs and `LoadRetainMessages`.
-- **Go** (`internal/codegen/gotable/messagewrite.go`, `messageread.go`) carries
-  the batch for a `fixed table` root only, and only when the `message` surface
-  is on (it is in the default set; `--surface` can drop it). A plain `table`
-  root gets no `MeasureMessages`, `SaveMessages`, `LoadMessages` or
-  `LoadRetainMessages`. `LoadRetainMessages` on a fixed root is a named refusal
-  when the retain surface is on: retention needs a region, and a fixed root has
-  none. A table whose closure holds unbounded text emits no message codec
-  (`messageCarries`).
+- **Go** (`internal/codegen/gotable/messagewrite.go`, `messageread.go`,
+  `messageregion.go`, `retainmessage.go`) carries the batch for every root when
+  the `message` surface is on (it is in the default set; `--surface` can drop
+  it). A `fixed table` root gets `MeasureMessages`, `SaveMessages`,
+  `LoadMessages` and `LoadMessagesTolerant` on the value array. A plain `table`
+  root gets the same verbs over an array of root pointers and one region,
+  `LoadMessagesMeasure` to size it, and, when the retain surface is on, the
+  region read `LoadRetainMessages` (`emitRegionMessage`,
+  `emitRetainMessageSurface`). `LoadRetainMessages` on a fixed root is a named
+  refusal: retention needs a region, and a fixed root has none. A table whose
+  closure holds unbounded text emits no message codec (`messageCarries`).
 - **Rust** (`internal/codegen/rusttable/message.go`, `messagebatch.go`) emits
   the announcement when the unit has a fixed root, and the batch verbs for
   fixed roots a fixed closure reaches. A plain `table` grows no message verb.
@@ -7095,6 +7296,13 @@ claim that every subset is the same surface.
   verb per root. The entry bound and the byte bound are fields of that
   vocabulary (default 4096 and 64 KiB), because the BEAM has no caller-owned
   array.
+
+**A VARIABLE ROOT IS OWED BY RUST, JAVA, JAVASCRIPT, DART AND ELIXIR.** The
+form is every table's ("The message form over a variable root", above), and C++,
+C, C# and Go carry a plain `table` root today. The five backends above that
+emit a fixed root's batch only answer `graph_tree` and `retain_message_tail`
+absent until each carries the variable root, and each owes it as an open entry
+in `docs/roadmap.sexp`.
 
 ---
 
@@ -8600,7 +8808,7 @@ reader refuses it by name.
 |---|---|---|
 | `0` | **never assigned**; a reader refuses it by name, so a zero-filled buffer is a refusal and never a decode | §3 |
 | `1` | **the VARIABLE form** — form byte, root body, id table. The one arm whose header is the form byte alone | §3 |
-| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **FIXED-ONLY: the root must be a `fixed table`** | §3.3 |
+| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **Every table's**: a fixed root by value, a variable root with its node table first, over one region | §3.3 |
 | `3` | **the FIXED form** — the header's layout hash, then a record of values under that LAYOUT | this section |
 | `4` | **the COOK** — PLANNED; the header's hash is over the BUILD | §7 |
 | `5` | **the BLOCK form** — PLANNED; the header's hash is over the BUILD | §19 |
@@ -13518,8 +13726,6 @@ in build version (§20.5).
   guarded (`if`) field (SPEC §4.5), or a nested plain `table` held by value.
   The class is DECLARED, so a feature that stops a table being fixed is a
   compile error at the declaration and never a silent change of wire.
-- **A MESSAGE-FORM request naming a plain `table`** (§2.2, §3.3), naming the
-  table: the message form is a fixed table's. The FILE form is every table's.
 - Recursive nesting (§2 — the cycle is named).
 - A bare rename hazard: `was` naming the field's own name, or the table's
   own name (§5).
@@ -13962,8 +14168,10 @@ in build version (§20.5).
   clauses and the accelerator-only `truncated` reason. Builder
   `PackMeasureReason` is a method, so it adds no package-level name claim.
 
-  Go's message form is fixed roots only: `<T>LoadMessages` takes a slice of
-  values, and no variable root gets a message reader or its region sizing. Its
+  Go's message form takes a slice of values for a fixed root and, for a
+  variable root, a slice of root pointers and one region: `<T>LoadMessages`
+  and `<T>LoadMessagesTolerant` fill it, `<T>LoadMessagesMeasure` sizes it,
+  and `<T>LoadRetainMessages` is its retaining read (§3.3). Its
   `SaveMessageBody` and `LoadMessageBody` helpers are package-level functions,
   so their suffixes are claimed too.
 

@@ -558,6 +558,14 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 				g.into(&g.message, func() {
 					g.emitMessageWrite(st)
 					g.emitMessageRead(st)
+					// a VARIABLE root carries the form too, over a region
+					// (docs/SPEC-TABLES.md §3.3), as C++ and C carry it
+					if regional {
+						g.emitRegionMessage(st)
+						if s.Retain {
+							g.emitRetainMessageSurface(st)
+						}
+					}
 				})
 			}
 			if regional {

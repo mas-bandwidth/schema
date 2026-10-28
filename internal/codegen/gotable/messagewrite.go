@@ -35,8 +35,9 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 		g.pf("}\n")
 	}
 	g.pf("w.Put(0,TableMessageRefBitsHere);return !w.Overflow\n}\n")
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
+	// A FIXED root's batch is by value, here; a VARIABLE root's rides over a
+	// region, emitted by emitRegionMessage (docs/SPEC-TABLES.md §3.3, "The
+	// message form over a variable root").
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
 		return
 	}

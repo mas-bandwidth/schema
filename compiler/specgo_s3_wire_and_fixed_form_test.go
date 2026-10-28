@@ -95,12 +95,13 @@ func TestSpecGoS3WireAndFixedForm(t *testing.T) {
 			stale:   []string{"`schema pack` writes form"},
 		},
 		{
-			// §3.4 FORM-BYTE REGISTRY: form 2 is fixed-only now
-			// (messageform_fixedonly_test.go).
-			name:    "3.4-form-two-fixed-only",
+			// §3.4 FORM-BYTE REGISTRY: form 2 is every table's
+			// (§3.3, "The message form over a variable root";
+			// gotable/messageform_fixedonly_test.go).
+			name:    "3.4-form-two-every-table",
 			section: "3.4",
-			want:    []string{"FIXED-ONLY"},
-			stale:   []string{"PLANNED to become FIXED-ONLY"},
+			want:    []string{"**Every table's**: a fixed root by value, a variable root with its node table first"},
+			stale:   []string{"FIXED-ONLY", "PLANNED to become FIXED-ONLY"},
 		},
 		{
 			// §3.4 one reader path / untrusted peer / conformance set: plans

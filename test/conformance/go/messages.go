@@ -3,6 +3,7 @@ package main
 import (
 	"backenddemo"
 	"fmt"
+	"graphdemo"
 	"os"
 	"path/filepath"
 	"vocab9demo"
@@ -94,10 +95,8 @@ func surfaceMessage(lines []line, out string) error {
 		}
 		codec := findMessageCodec(unit, f[3])
 		if codec == nil {
-			// A message row whose root is a plain `table` carries no message
-			// verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
-			// the form), so the driver answers ABSENT and names the reason.
-			if err := spillAbsentReason(out, f[1], "plain table: §3.3"); err != nil {
+			// a root this driver binds no codec for answers ABSENT
+			if err := spillAbsent(out, f[1]); err != nil {
 				return err
 			}
 			continue
@@ -122,6 +121,14 @@ func surfaceMessage(lines []line, out string) error {
 }
 
 var messageCodecs = []messageCodec{
+	// a VARIABLE root rides the form over a region (docs/SPEC-TABLES.md §3.3)
+	regionMessageRow("graphdemo", "Scene", func() *graphdemo.TableVocabulary {
+		v := new(graphdemo.TableVocabulary)
+		v.Init(make([]graphdemo.TableMessageEntry, graphdemo.TableMessageEntriesHere))
+		return v
+	}, graphdemo.AnnounceMeasure, graphdemo.Announce, graphdemo.AnnounceRead, graphdemo.SceneLoadMessagesMeasure, graphdemo.SceneLoadMessagesTolerant, graphdemo.SceneMeasureMessages, graphdemo.SceneSaveMessages, func(r *graphdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
+	}),
 	messageRow("backenddemo", "LoginRequest", backenddemo.LoginRequestReset, func() *backenddemo.TableVocabulary {
 		v := new(backenddemo.TableVocabulary)
 		v.Init(make([]backenddemo.TableMessageEntry, backenddemo.TableMessageEntriesHere))

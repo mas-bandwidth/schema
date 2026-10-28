@@ -33,8 +33,9 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	} else {
 		g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Malformed=true;return false}\n}}}\n")
 	}
-	// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-	// "`fixed table T` may ride here, a plain `table T` may not".
+	// A FIXED root's batch is by value, here; a VARIABLE root's rides over a
+	// region, emitted by emitRegionMessage (docs/SPEC-TABLES.md §3.3, "The
+	// message form over a variable root").
 	if g.retain || !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
 		return
 	}

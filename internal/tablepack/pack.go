@@ -91,13 +91,9 @@ func PackMessages(m *tabletext.Model, trees []MessageTree) ([]byte, []string, ta
 		if st == nil {
 			return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", tree.Root, strings.Join(m.Roots(), ", "))
 		}
-		// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §2.2,
-		// §3.3), and the class is declared: a plain `table` is the
-		// VARIABLE wire, and a message-form request naming one is refused
-		// naming the table rather than quietly writing another form.
-		if !st.FixedDeclared {
-			return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names a plain `table`, and the MESSAGE FORM is a fixed table's: a message is a bitpacked body under one announced vocabulary, so the shape has to be one the declaration fixes. Declare it `fixed table %s`, or use the FILE form, which every table has (docs/SPEC-TABLES.md §2.2, §3.3)", tree.Root, tree.Root)
-		}
+		// THE MESSAGE FORM IS EVERY TABLE'S (docs/SPEC-TABLES.md §3.3): a
+		// fixed root rides it by value and a plain (variable) root with its
+		// node table first, exactly as the generated C++ and C carry it.
 		inst := m.New(st)
 		if err := p.rootTree(inst, tree.Root, tree.Dir); err != nil {
 			return nil, p.skipped, *p.report, err

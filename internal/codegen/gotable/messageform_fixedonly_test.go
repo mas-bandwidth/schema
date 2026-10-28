@@ -10,13 +10,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// TestGoMessageFormFixedOnly asserts, over one generated unit, that the four
+// TestGoMessageFormEveryRoot asserts, over one generated unit, that the four
 // message verbs — MeasureMessages, SaveMessages, LoadMessages and
-// LoadRetainMessages — exist for a `fixed table` root and are absent for a
-// plain `table` root. docs/SPEC-TABLES.md §3.3: "THE FORM IS A FIXED TABLE'S,
-// and that is a declaration, not a derivation ... `fixed table T` may ride
-// here, a plain `table T` may not.".
-func TestGoMessageFormFixedOnly(t *testing.T) {
+// LoadRetainMessages — exist for a `fixed table` root AND for a plain `table`
+// root. docs/SPEC-TABLES.md §3.3: the message form is EVERY table's; a fixed
+// root rides it by value and a variable root over a region, as the C++ and C
+// emitters carry it. The plain root's LoadRetainMessages is a real read, and
+// the fixed root's is the named refusal (§6.6).
+func TestGoMessageFormEveryRoot(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	schema := `package probe
@@ -37,23 +38,20 @@ fixed table Tight { n int32 }
 	if table == "" {
 		t.Fatal("the unit emitted no table module")
 	}
-	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
-		// "a plain `table T` may not" (docs/SPEC-TABLES.md §3.3).
-		if strings.Contains(table, "Loose"+verb) {
-			t.Errorf("a plain table root carries Loose%s (docs/SPEC-TABLES.md §3.3: \"a plain `table T` may not\")", verb)
-		}
-	}
-	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
-		// "`fixed table T` may ride here" (docs/SPEC-TABLES.md §3.3).
-		if !strings.Contains(table, "Tight"+verb) {
-			t.Errorf("a fixed table root lacks Tight%s (docs/SPEC-TABLES.md §3.3: \"`fixed table T` may ride here\")", verb)
+	for _, root := range []string{"Loose", "Tight"} {
+		for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
+			// every table root rides the message form (docs/SPEC-TABLES.md §3.3)
+			if !strings.Contains(table, root+verb) {
+				t.Errorf("the %s root lacks %s%s (docs/SPEC-TABLES.md §3.3: the message form is every table's)", root, root, verb)
+			}
 		}
 	}
 	compileTightCaller(t, files)
 }
 
-// compileTightCaller compiles a caller that names the fixed root's four message
-// verbs, proving they are real symbols and not mere source text.
+// compileTightCaller compiles and runs a caller that names both roots' four
+// message verbs, proving they are real symbols and not mere source text, and
+// that each root's batch round-trips.
 func compileTightCaller(t *testing.T, files map[string][]byte) {
 	t.Helper()
 	dir := t.TempDir()
@@ -75,12 +73,15 @@ func compileTightCaller(t *testing.T, files map[string][]byte) {
 	}
 }
 
-// tightCaller references all four verbs on the fixed root. LoadRetainMessages
-// is a named refusal for a fixed root (§6.6), so it is a constant and exists as
-// a symbol the caller may name.
+// tightCaller references all four verbs on both roots. LoadRetainMessages is a
+// named refusal for a fixed root (§6.6), so it is a constant and exists as a
+// symbol the caller may name; on the plain root it is the region read.
 const tightCaller = `package probe
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
 
 func TestTightMessageVerbs(t *testing.T) {
 	var v Tight
@@ -111,5 +112,38 @@ func TestTightMessageVerbs(t *testing.T) {
 		t.Fatalf("load %d %v %+v", count, ok, ar)
 	}
 	_ = TightLoadRetainMessages
+
+	// THE PLAIN ROOT rides the same wire over ONE REGION for the batch (§3.3)
+	loose := []*Loose{{N: 9}, {N: -3}}
+	m := LooseMeasureMessages(loose, nil)
+	if m < 2 {
+		t.Fatalf("loose measure %d", m)
+	}
+	lbuf := make([]byte, m)
+	if LooseSaveMessages(loose, lbuf, nil) != m || lbuf[0] != 2 || lbuf[1] != 1 {
+		t.Fatalf("loose save % x", lbuf)
+	}
+	size := LooseLoadMessagesMeasure(vocab, lbuf)
+	if size <= 0 {
+		t.Fatalf("loose load measure %d", size)
+	}
+	raw := make([]byte, size+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	region := raw[off : off+uintptr(size)]
+	roots := make([]*Loose, 2)
+	var lr TableReport
+	lc, lok := LooseLoadMessages(roots, region, vocab, lbuf, &lr)
+	if !lok || lc != 2 || roots[0].N != 9 || roots[1].N != -3 {
+		t.Fatalf("loose load %d %v %+v", lc, lok, lr)
+	}
+	retains := make([]TableRetain, 2)
+	for i := range retains {
+		retains[i] = TableRetain{Bytes: make([]byte, 1024), Ids: make([]TableRetainID, 64)}
+	}
+	again := make([]*Loose, 2)
+	rc, rok := LooseLoadRetainMessages(again, region, vocab, lbuf, retains, &lr)
+	if !rok || rc != 2 || again[1].N != -3 {
+		t.Fatalf("loose retaining load %d %v %+v", rc, rok, lr)
+	}
 }
 `

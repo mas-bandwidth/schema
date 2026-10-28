@@ -4,13 +4,67 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Message batches use one caller-owned region. Every body's directory comes
-// first, then its records, then its root, matching the C++ message layout.
-// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3):
-// "`fixed table T` may ride here, a plain `table T` may not". A fixed table
-// root uses the non-region batch surface emitted by emitMessageWrite and
-// emitMessageRead; the region runtime below carries the variable form's
-// directory.
+// THE MESSAGE FORM OVER A VARIABLE ROOT (docs/SPEC-TABLES.md §3.3, "The message
+// form over a variable root"): a plain `table` rides the form exactly as the C++
+// and C emitters carry it (internal/codegen/cpptable/messagevariable.go,
+// internal/codegen/ctable/message_graph.go), and the bytes the conformance
+// corpus pins for them are normative. A batch of variable roots takes ONE
+// caller-owned REGION: every body's node directory comes first, then its
+// records, then its root, matching the C++ message layout, and each body keeps
+// its own numbering. A fixed table root keeps the non-region batch surface
+// emitted by emitMessageWrite and emitMessageRead.
+//
+// emitRegionMessage emits one variable root's batch verbs: MeasureMessages and
+// SaveMessages over an array of root pointers, LoadMessagesMeasure for the
+// region the batch needs, and the TOLERANT and the STRICT (§6.5) reads.
+func (g *tableGen) emitRegionMessage(st *ir.Struct) {
+	if !st.IsTable || st.IsMapEntry() || !ir.VariableTables(g.unit)[st.Name] {
+		return
+	}
+	n, typ := st.Name, g.storageName(st.Name)
+	mask := regionBlobMask(st)
+	// THE MESSAGE FORM CARRIES THE TRAILER PER BATCH (§2.14, §3.3) for a root
+	// that declares `integrity`, as the fixed root's batch does; a unit with
+	// no declaring table opens and writes the bytes it did before.
+	open, measureFrame, bufferEnd, finish := "tableMessageBatchOpen(vocabulary,data,report)", "2", "buffer[2:]", "2+w.Bits/8"
+	if len(ir.TableIntegrityTables(g.unit)) > 0 {
+		sealed := "false"
+		if st.Integrity != "" {
+			sealed = "true"
+			measureFrame, bufferEnd, finish = "6", "buffer[2:len(buffer)-4]", "tableIntegritySeal(buffer,2+w.Bits/8)"
+		}
+		open = "tableMessageBatchOpenSealed(vocabulary,data,report," + sealed + ")"
+	}
+	minimum := measureFrame
+	refuse := "if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1}"
+	// a blob named from two slots is refused by name, blob_shared, and never
+	// written once a slot (§2.5, §16.7)
+	shared := "if w.numbering.reason==TableRefuseBlobShared&&report!=nil{tableMessageRefuse(report,\"blob_shared\")};return -1"
+	g.pf("// %sMeasureMessages sizes a batch of %s roots on the MESSAGE form (docs/SPEC-TABLES.md §3.3): one\n// count and one bit stream, each body carrying its own numbering with its node table first.\n", n, n)
+	g.pf("func %sMeasureMessages(values []*%s,report *TableReport,context ...TableWriteContext)int64 {arena,allocator:=tableWriteOptions(context);%s;w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil{return -1};if !tableMessageRegionWrite(&w,unsafe.Pointer(value),%sTableType(),arena,allocator){%s}};w.Align();if w.Overflow{return -1};return %s+w.Bits/8}\n", n, typ, refuse, n, shared, measureFrame)
+	g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport,context ...TableWriteContext)int64 {arena,allocator:=tableWriteOptions(context);%s;if len(buffer)<%s{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:%s}};for _,value:=range values {if value==nil{return -1};if !tableMessageRegionWrite(&w,unsafe.Pointer(value),%sTableType(),arena,allocator){%s}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return %s}\n", n, typ, refuse, minimum, bufferEnd, n, shared, finish)
+	g.pf("// %sLoadMessagesMeasure is the exact region bytes ONE BATCH needs (§3.3): a scan by the announced\n// shapes that reads no field value, -1 for a wire it cannot size.\n", n)
+	g.pf("func %sLoadMessagesMeasure(vocabulary *TableVocabulary,data []byte)int64 {return tableMessageRegionMeasure(vocabulary,data,%sTableType(),%d)}\n", n, n, mask)
+	g.pf("// %sLoadMessagesTolerant is the TOLERANT message read (docs/SPEC-TABLES.md §6.5, §3.3): the batch into\n// the caller's region, each body's root written into values; damage inside body k delivers k-1.\n", n)
+	g.pf("func %sLoadMessagesTolerant(values []*%s,region []byte,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=%s;defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};if len(region)==0||uintptr(unsafe.Pointer(&region[0]))%%uintptr(tableRegionAlign)!=0{r.Report.Malformed=true;return 0,false};clear(region);used:=int64(0);for i := range count {p,ok:=tableMessageRegionInto(&r,%sTableType(),%d,region,&used);values[i]=(*%s)(p);if !ok||r.Report.NonFiniteFloat!=\"\"{if tableNonFiniteRefused(&r.Report){for j := range i+1 {values[j]=nil};return 0,false};return i,false}};return count,tableMessageBatchClose(&r)}\n", n, typ, open, n, mask, typ)
+	g.pf("// %sLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever\n// %sReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every\n// root it had written cleared. A supplied report receives THIS read's report; report.Err() is the reason.\n", n, n)
+	g.pf("func %sLoadMessages(values []*%s,region []byte,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};count,ok:=%sLoadMessagesTolerant(values,region,vocabulary,data,read);if !ok{return count,false};if read.Err()!=nil{for i := range count {values[i]=nil};return 0,false};return count,true}\n", n, typ, n)
+}
+
+// regionBlobMask is the blob kinds a root's pointers reach: bit 0 a `*bytes`,
+// bit 1 a `*string` (§2.5), which is what a record of each commands storage for.
+func regionBlobMask(st *ir.Struct) int {
+	bytes, str := ir.PointerReachableBlobs(st)
+	mask := 0
+	if bytes {
+		mask |= 1
+	}
+	if str {
+		mask |= 2
+	}
+	return mask
+}
+
 func tableMessageRegionRuntime(u *ir.Unit) string {
 	s := goMessageRegionRuntime
 	if unitHasContainers(u) {

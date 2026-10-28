@@ -1,6 +1,10 @@
 package gotable
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 func (g *tableGen) emitRetainMessageRuntime() {
 	// the retaining reader types the descriptor's LoadMessageBodyRetain
@@ -24,11 +28,30 @@ func (g *tableGen) emitRetainMessageForm() {
 	g.pf("%s", source)
 }
 
-// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3): "`fixed
-// table T` may ride here, a plain `table T` may not". Retention on the form is
-// a region round trip (§6.6), and a fixed table has no region; the fixed root
-// refuses LoadRetainMessages by name instead (retain.go, the symbol refused by
-// a missing symbol is not refused by name).
+// emitRetainMessageSurface is the batch's RETAINING read over a variable root
+// (docs/SPEC-TABLES.md §3.3, §6.6), the C++ emitter's `<T>LoadRetainMessages`
+// (internal/codegen/cpptable/messagevariable.go): ONE REGION for the batch and
+// ONE RETENTION BUFFER A BODY, `retains` parallel to `values`, each reset by
+// this call and holding the records of the body it belongs to. A save from
+// `values[k]` takes `retains[k]` through the VARIABLE form's own SaveRetain;
+// retention writing form 2 stays refused by name (SaveRetainMessages). A fixed
+// root has no region and refuses LoadRetainMessages by name (retain.go).
+func (g *tableGen) emitRetainMessageSurface(st *ir.Struct) {
+	if !st.IsTable || st.IsMapEntry() || !ir.VariableTables(g.unit)[st.Name] {
+		return
+	}
+	n, typ := st.Name, g.storageName(st.Name)
+	open := "tableMessageBatchOpen(vocabulary,data,report)"
+	if len(ir.TableIntegrityTables(g.unit)) > 0 {
+		sealed := "false"
+		if st.Integrity != "" {
+			sealed = "true"
+		}
+		open = "tableMessageBatchOpenSealed(vocabulary,data,report," + sealed + ")"
+	}
+	g.pf("func %sLoadRetainMessages(values []*%s,region []byte,vocabulary *TableVocabulary,data []byte,retains []TableRetain,report *TableReport)(int64,bool){if report==nil{var ignored TableReport;report=&ignored};plain,count:=%s;r:=TableRetainMessageReader{tableMessagePlainReader:plain};defer func(){*report=r.Report}();if count<0{return 0,false};if count>int64(len(values))||count>int64(len(retains)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};if len(region)==0||uintptr(unsafe.Pointer(&region[0]))%%uintptr(tableRegionAlign)!=0{r.Report.Malformed=true;return 0,false};clear(region);used:=int64(0);for i := range count {r.Retain=&retains[i];p,ok:=tableMessageRegionIntoRetain(&r,%sTableType(),%d,region,&used);values[i]=(*%s)(p);if !ok||r.Report.NonFiniteFloat!=\"\"{if tableNonFiniteRefused(&r.Report){for j := range i+1 {values[j]=nil};return 0,false};return i,false}};return count,tableMessageBatchClose(&r.tableMessagePlainReader)}\n", n, typ, open, n, regionBlobMask(st), typ)
+}
+
 func (g *tableGen) retainMessagePush(index string) string {
 	if index == "" {
 		index = "0"

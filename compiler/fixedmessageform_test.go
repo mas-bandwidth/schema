@@ -1,50 +1,35 @@
-// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §2.2, §3.3), and
-// the corpora carry the keyword where the closure is legal. The owner's
-// ruling: "and enforce only fixed tables can use message form. this saves more
-// work."
+// THE MESSAGE FORM IS EVERY TABLE'S (docs/SPEC-TABLES.md §3.3): a fixed root
+// rides it by value and a plain (variable) root with its node table first, as
+// the generated C++ and C carry it and the conformance corpus pins. The
+// corpora carry the `fixed` keyword where the closure is legal (§2.2).
 package compiler
 
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// TestMessageFormRefusesAPlainTable: the surface that REQUESTS the message
+// TestMessageFormCarriesEveryTable: the surface that REQUESTS the message
 // form — `schema pack --message` and `schema unpack --announce`, both of which
-// come through PackMessages / UnpackMessages — refuses a plain `table` NAMING
-// THE TABLE, rather than quietly writing another form. The file form is every
-// table's, and the refusal says so.
-func TestMessageFormRefusesAPlainTable(t *testing.T) {
+// come through PackMessages / UnpackMessages — writes form `2` for a plain
+// `table` exactly as it does for a `fixed table` of the same body: the form is
+// not the declaration's to refuse.
+func TestMessageFormCarriesEveryTable(t *testing.T) {
 	c := New()
 	u := unitFromSource(t, "package probe\ntable Loose { n int32 }\nfixed table Tight { n int32 }\n")
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "Loose.json"), []byte(`{"n":7}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, _, _, err := c.PackMessage(u, "Loose", dir)
-	if err == nil {
-		t.Fatal("the message form accepted a plain `table`")
-	}
-	for _, want := range []string{"Loose", "plain `table`", "MESSAGE FORM is a fixed table's", "§3.3"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not carry %q: %v", want, err)
+	for _, root := range []string{"Loose", "Tight"} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, root+".json"), []byte(`{"n":7}`), 0o600); err != nil {
+			t.Fatal(err)
 		}
-	}
-
-	// and the fixed table of the same body IS the form's, so the refusal is
-	// about the DECLARATION and not about the fields
-	tight := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tight, "Tight.json"), []byte(`{"n":7}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	bytes, _, report, err := c.PackMessage(u, "Tight", tight)
-	if err != nil || !report.Silent() || len(bytes) == 0 {
-		t.Fatalf("a fixed table is the message form's: %v %+v", err, report)
-	}
-	if bytes[0] != 2 {
-		t.Errorf("form byte %d, want 2 — the message form (docs/SPEC-TABLES.md §3.3)", bytes[0])
+		bytes, _, report, err := c.PackMessage(u, root, dir)
+		if err != nil || !report.Silent() || len(bytes) == 0 {
+			t.Fatalf("%s: the message form refused or reported: %v %+v", root, err, report)
+		}
+		if bytes[0] != 2 {
+			t.Errorf("%s: form byte %d, want 2 — the message form (docs/SPEC-TABLES.md §3.3)", root, bytes[0])
+		}
 	}
 }
 
