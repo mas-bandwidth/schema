@@ -19,7 +19,7 @@ var nonGoCarriers = map[string][]string{
 	"cs":      {carryOptionalVariableClosure},
 	"cpp":     {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 	"dart":    {carryOptionalVariableClosure},
-	"lobster": {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText},
+	"lobster": {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {

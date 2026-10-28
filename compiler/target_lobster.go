@@ -23,7 +23,15 @@ func (lobsterTarget) Names() []string { return []string{"lobster"} }
 // (docs/PORT-LOBSTER.md, THE CARD MAP). The constructs the lobster leg does
 // not carry are refused centrally, by name (compiler/carries_lobster.go); a
 // construct the table surface does not describe is refused by lobstertable.
-func (lobsterTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (t lobsterTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage is the second entry point of §5.9 #1
+// (docs/FIXED-FORM-ALGORITHM.md): the driver read the unit's lock once
+// (compiler/lineage.go) and hands the lineage down as DATA, so lobstertable
+// opens no file and a build ships a reader for every layout the lock records.
+func (lobsterTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// THE LEG CARRIES THE VARIABLE WIRE (docs/PORT-LOBSTER.md, THE LOAD): its
 	// load and save walk the descriptors for every construct the shared
 	// refusals hold back from a port that has not met them — a string, bytes
@@ -46,7 +54,7 @@ func (lobsterTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	tables, err := lobstertable.Generate(u)
+	tables, err := lobstertable.GenerateLineage(u, lobsterTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +85,28 @@ func lobsterRefusePacketDefaults(u *ir.Unit) error {
 	carry, flags := carriers(packetValueDefaultTargets)
 	return fmt.Errorf("unit declares a string, bytes or flags default (%s): packet-wire defaults are %s only today, and the lobster form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
 		englishList(names), englishList(carry), englishList(flags))
+}
+
+// lobsterTableLineage is the lock's lineage in the Lobster backend's own
+// spelling; nil in, nil out (target_elixir.go's elixirTableLineage is the
+// shape this copies).
+func lobsterTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]lobstertable.FixedLineageEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := map[string][]lobstertable.FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(u) {
+		for _, e := range lineage.Entries(st.Name) {
+			out[st.Name] = append(out[st.Name], lobstertable.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
 }
 
 func init() {
