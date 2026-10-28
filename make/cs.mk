@@ -940,6 +940,30 @@ packet-wide-cs-negative-control: packet-wide-cs
 
 test-cs: packet-wide-cs packet-wide-cs-negative-control
 
+# THE FINITE-FLOAT CONTROL (SPEC §4.3, serialize format 2.0). test/cs's
+# TestFiniteFloats requires a non-finite float32/float64 packet read to be
+# refused as non_finite_float. This builds test/cs with serialize.cs's per-rule
+# switch (-p:SerializeConformanceControls=true) and deletes one finite rule at a
+# time: the run must go red on exactly that rule's read vectors, the list in
+# test/cs/finite-controls/<rule>.expected, and with no rule deleted it stays green.
+.PHONY: packet-finite-cs-negative-control
+packet-finite-cs-negative-control: toolchain-cs generated/cs/.stamp generated/bench/cs/.stamp
+	$(DOTNET) build test/cs/schematest.csproj -c Debug -p:SerializeConformanceControls=true \
+		--artifacts-path build/packet-finite/cs-negative --nologo -v quiet
+	cd test/cs && $(DOTNET) ../../build/packet-finite/cs-negative/bin/schematest/debug/schematest.dll
+	@for rule in float-finite double-finite; do \
+		if ( cd test/cs && SERIALIZE_CS_DELETED_RULE=$$rule $(DOTNET) ../../build/packet-finite/cs-negative/bin/schematest/debug/schematest.dll ) \
+			> build/packet-finite/cs-negative/$$rule.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: C# packet reads passed with $$rule deleted"; exit 1; fi; \
+		grep '^FAILED: ' build/packet-finite/cs-negative/$$rule.log > build/packet-finite/cs-negative/$$rule.got || true; \
+		if ! diff -u test/cs/finite-controls/$$rule.expected build/packet-finite/cs-negative/$$rule.got; then \
+			echo "NEGATIVE CONTROL FAILED: deleting $$rule did not fail exactly its vectors"; \
+			cat build/packet-finite/cs-negative/$$rule.log; exit 1; fi; \
+	done
+	@echo 'packet finite-float C# negative control: each deleted rule fails exactly its read vectors'
+
+test-cs: packet-finite-cs-negative-control
+
 # THE CARDS UNIT'S C# LEG (docs/SPEC-TABLES.md §2): the card record as a
 # generated variable table with an owning facade (tables/cards/cs) and the
 # brief text parsed once and rendered many times. These targets live in

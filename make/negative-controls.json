@@ -479,12 +479,13 @@
     {
       "name": "cs-packet",
       "when": "pull-request",
-      "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
+      "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the finite-float read rule (float-finite and double-finite each deleted in serialize.cs, each required to red exactly its own vectors), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
       "targets": [
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
         "packet-wide-cs-negative-control",
+        "packet-finite-cs-negative-control",
         "packet-clean-cs-negative-control",
         "tables-cs-clean-negative-control"
       ],

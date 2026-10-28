@@ -23,6 +23,8 @@
 // suite asserts that distinction explicitly.
 
 using System;
+using System.Buffers.Binary;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using Example;
@@ -451,13 +453,219 @@ static class Program
         Check(built.Retries == -1, "assignment copies a value");
     }
 
+    // ---- finite floats only (SPEC §4.3, serialize format 2.0) ----
+
+    // The patterns that are not values of the type: every NaN (sign, payload,
+    // quiet or signalling) and both infinities.
+    static readonly (uint Bits, string Name)[] NonFinite32 =
+    {
+        (0x7FC00000u, "quiet NaN"),
+        (0x7F800001u, "signalling NaN"),
+        (0xFFC00123u, "negative NaN with a payload"),
+        (0x7F800000u, "+inf"),
+        (0xFF800000u, "-inf"),
+    };
+
+    static readonly (ulong Bits, string Name)[] NonFinite64 =
+    {
+        (0x7FF8000000000000ul, "quiet NaN"),
+        (0x7FF0000000000001ul, "signalling NaN"),
+        (0xFFF8000000000123ul, "negative NaN with a payload"),
+        (0x7FF0000000000000ul, "+inf"),
+        (0xFFF0000000000000ul, "-inf"),
+    };
+
+    // Finite values a careless writer might normalize: negative zero and the
+    // subnormals. Each rides bit exact.
+    static readonly (uint Bits, string Name)[] Edge32 =
+    {
+        (0x80000000u, "-0"),
+        (0x00000001u, "the least subnormal"),
+        (0x807FFFFFu, "the most negative subnormal"),
+    };
+
+    static readonly (ulong Bits, string Name)[] Edge64 =
+    {
+        (0x8000000000000000ul, "-0"),
+        (0x0000000000000001ul, "the least subnormal"),
+        (0x800FFFFFFFFFFFFFul, "the most negative subnormal"),
+    };
+
+    sealed class WriterAssertFired : Exception
+    {
+        public WriterAssertFired()
+        {
+        }
+
+        public WriterAssertFired(string message)
+            : base(message)
+        {
+        }
+
+        public WriterAssertFired(string message, Exception inner)
+            : base(message, inner)
+        {
+        }
+    }
+
+    // Turns a fired Debug.Assert into an exception, the way serialize.cs's own
+    // tests observe a writer contract without FailFast taking the process.
+    sealed class ThrowingTraceListener : TraceListener
+    {
+        public override void Write(string message)
+        {
+        }
+
+        public override void WriteLine(string message)
+        {
+        }
+
+        public override void Fail(string message)
+        {
+            throw new WriterAssertFired(message);
+        }
+
+        public override void Fail(string message, string detailMessage)
+        {
+            throw new WriterAssertFired(message);
+        }
+    }
+
+    static bool AssertFires(Action action)
+    {
+        TraceListener[] saved = new TraceListener[Trace.Listeners.Count];
+        Trace.Listeners.CopyTo(saved, 0);
+        Trace.Listeners.Clear();
+        Trace.Listeners.Add(new ThrowingTraceListener());
+        try
+        {
+            action();
+            return false;
+        }
+        catch (WriterAssertFired)
+        {
+            return true;
+        }
+        finally
+        {
+            Trace.Listeners.Clear();
+            Trace.Listeners.AddRange(saved);
+        }
+    }
+
+    static bool WritesFloat(uint bits)
+    {
+        Input input = new Input();
+        input.StickX = BitConverter.UInt32BitsToSingle(bits);
+        return WriteInput(NewWriteStream(), ref input);
+    }
+
+    static bool WritesDouble(ulong bits)
+    {
+        Vec3 input = new Vec3();
+        input.X = BitConverter.UInt64BitsToDouble(bits);
+        return WriteVec3(NewWriteStream(), ref input);
+    }
+
+    // A float32 field (Input.StickX, the first 32 wire bits) and a float64 field
+    // (Vec3.X, the first 64) under the format 2.0 rule: a writer refuses a
+    // non-finite value, a reader refuses one on its raw bits as non_finite_float
+    // and leaves the field unwritten, and every finite pattern is bit exact.
+    static void TestFiniteFloats()
+    {
+        Input input = new Input();
+        input.StickX = 1.0f;
+        WriteStream ws = NewWriteStream();
+        Check(WriteInput(ws, ref input), "finite: write Input");
+        byte[] wire32 = Data(ws);
+        Check(BinaryPrimitives.ReadUInt32LittleEndian(wire32) == 0x3F800000u, "finite: Input.StickX is the first 32 wire bits");
+
+        Vec3 vec = new Vec3();
+        vec.X = 1.0;
+        ws = NewWriteStream();
+        Check(WriteVec3(ws, ref vec), "finite: write Vec3");
+        byte[] wire64 = Data(ws);
+        Check(BinaryPrimitives.ReadUInt64LittleEndian(wire64) == 0x3FF0000000000000ul, "finite: Vec3.X is the first 64 wire bits");
+
+        foreach ((uint bits, string name) in NonFinite32)
+        {
+            byte[] wire = (byte[]) wire32.Clone();
+            BinaryPrimitives.WriteUInt32LittleEndian(wire, bits);
+            Input output = new Input();
+            output.StickX = 7.0f;
+            ReadStream rs = new ReadStream(wire);
+            bool read = ReadInput(rs, ref output);
+            Check(!read && rs.Error == SerializeError.NonFiniteFloat && SerializeUtil.RefusalName(rs.Error) == "non_finite_float"
+                  && BitConverter.SingleToUInt32Bits(output.StickX) == 0x40E00000u,
+                  $"finite: a float32 read of {name} (0x{bits:X8}) is refused as non_finite_float, the field unwritten");
+#if DEBUG
+            Check(AssertFires(() => WritesFloat(bits)), $"finite: a float32 write of {name} is refused by the writer's assert");
+#else
+            // the writer's contract is a Debug.Assert, compiled out of a release
+            // build with every other write-side check (SPEC §5)
+            Check(WritesFloat(bits), $"release: the float32 finite contract is compiled out for {name}");
+#endif
+        }
+
+        foreach ((ulong bits, string name) in NonFinite64)
+        {
+            byte[] wire = (byte[]) wire64.Clone();
+            BinaryPrimitives.WriteUInt64LittleEndian(wire, bits);
+            Vec3 output = new Vec3();
+            output.X = 7.0;
+            ReadStream rs = new ReadStream(wire);
+            bool read = ReadVec3(rs, ref output);
+            Check(!read && rs.Error == SerializeError.NonFiniteFloat && SerializeUtil.RefusalName(rs.Error) == "non_finite_float"
+                  && BitConverter.DoubleToUInt64Bits(output.X) == 0x401C000000000000ul,
+                  $"finite: a float64 read of {name} (0x{bits:X16}) is refused as non_finite_float, the field unwritten");
+#if DEBUG
+            Check(AssertFires(() => WritesDouble(bits)), $"finite: a float64 write of {name} is refused by the writer's assert");
+#else
+            Check(WritesDouble(bits), $"release: the float64 finite contract is compiled out for {name}");
+#endif
+        }
+
+        foreach ((uint bits, string name) in Edge32)
+        {
+            Input edge = new Input();
+            edge.StickX = BitConverter.UInt32BitsToSingle(bits);
+            ws = NewWriteStream();
+            Check(WriteInput(ws, ref edge), $"finite: write float32 {name}");
+            byte[] wire = Data(ws);
+            Input output = new Input();
+            Check(BinaryPrimitives.ReadUInt32LittleEndian(wire) == bits && ReadInput(new ReadStream(wire), ref output)
+                  && BitConverter.SingleToUInt32Bits(output.StickX) == bits,
+                  $"finite: float32 {name} (0x{bits:X8}) round-trips bit exact");
+        }
+
+        foreach ((ulong bits, string name) in Edge64)
+        {
+            Vec3 edge = new Vec3();
+            edge.X = BitConverter.UInt64BitsToDouble(bits);
+            ws = NewWriteStream();
+            Check(WriteVec3(ws, ref edge), $"finite: write float64 {name}");
+            byte[] wire = Data(ws);
+            Vec3 output = new Vec3();
+            Check(BinaryPrimitives.ReadUInt64LittleEndian(wire) == bits && ReadVec3(new ReadStream(wire), ref output)
+                  && BitConverter.DoubleToUInt64Bits(output.X) == bits,
+                  $"finite: float64 {name} (0x{bits:X16}) round-trips bit exact");
+        }
+    }
+
     static int Main()
     {
+#if SERIALIZE_CONFORMANCE_CONTROLS
+        // packet-finite-cs-negative-control: the runtime built with its
+        // per-rule switch, one finite rule deleted, and this run must fail
+        // exactly that rule's read vectors (test/cs/finite-controls/)
+        SerializeConformanceControls.Deleted = Environment.GetEnvironmentVariable("SERIALIZE_CS_DELETED_RULE") ?? "";
+#endif
         wireDir = FindTestDataDir("wire");
         TestSelectedArmDefaults();
         TestSelectedArmDefaultsStream();
         TestEnumSurface();
         TestValueDefaults();
+        TestFiniteFloats();
 
         // ---- ShipCreate: the bool-gated flags branch, both ways ----
         {
