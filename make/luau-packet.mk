@@ -129,3 +129,46 @@ packet-defaults-luau-negative-control: packet-defaults-luau
 test-luau: packet-utf8-luau packet-utf8-luau-negative-control \
 	packet-wide-luau packet-wide-luau-negative-control \
 	packet-defaults-luau packet-defaults-luau-negative-control
+
+# ---------------------------------------------------------------- ludicrous
+# test/luau-ludicrous/main.luau, the twin of test/js-ludicrous and
+# test/ludicrous_main.cpp: examples128 written byte for byte against the
+# C++-pinned goldens, read back, defaults, branch zeroing and hostile
+# rejections. pins.luau carries the goldens in as source.
+LUAU_LUDICROUS_PINS := ludicrous_state ludicrous_state_untargeted degenerate_probe unsigned_probe
+define luau-ludicrous-tree
+	$(call luau-packet-generate,$(1),examples128,$(2))
+	cp test/luau-ludicrous/main.luau $(1)/main.luau
+	{ printf 'return {\n'; \
+	  for n in $(LUAU_LUDICROUS_PINS); do \
+		printf '\t["%s"] = "%s",\n' "$$n" "$$(od -An -v -tx1 testdata/wire/$$n.bin | tr -d ' \n')"; \
+	  done; printf '}\n'; } > $(1)/pins.luau
+endef
+
+build/luau-ludicrous/.stamp: $(LUAU_PACKET_SCHEMA) $(SCHEMAS128) test/luau-ludicrous/main.luau \
+	$(foreach p,$(LUAU_LUDICROUS_PINS),testdata/wire/$(p).bin)
+	$(call luau-ludicrous-tree,build/luau-ludicrous)
+	@touch $@
+
+.PHONY: luau-ludicrous luau-ludicrous-negative-control
+luau-ludicrous: toolchain-luau build/luau-ludicrous/.stamp
+	cd build/luau-ludicrous && $(LUAU) main.luau
+	cd build/luau-ludicrous && $(LUAU_ANALYZE) *.luau
+
+# The control removes the writer contract of a fixed(I, F) of 32 bits or
+# fewer: the wrong degenerate ufixed raw must then write, and the gate must
+# name exactly that refusal.
+luau-ludicrous-negative-control: luau-ludicrous
+	@rm -rf build/luau-ludicrous-negative && mkdir -p build/luau-ludicrous-negative
+	go run ./tools/sabotage -name luau-ludicrous-fixed-contract -out build/luau-ludicrous-negative/write.gotext internal/codegen/luau/write.go
+	@printf '{"Replace":{"%s/internal/codegen/luau/write.go":"%s/build/luau-ludicrous-negative/write.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/luau-ludicrous-negative/overlay.json
+	go build -tags schema_leg_luau -overlay=build/luau-ludicrous-negative/overlay.json -o build/luau-ludicrous-negative/schema ./cmd/schema
+	$(call luau-ludicrous-tree,build/luau-ludicrous-negative/generated,./build/luau-ludicrous-negative/schema)
+	@if (cd build/luau-ludicrous-negative/generated && $(LUAU) main.luau) > build/luau-ludicrous-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a removed fixed writer contract passed in Luau'; exit 1; fi
+	@grep -Fq 'FAILED: a wrong degenerate ufixed raw is REFUSED on write' build/luau-ludicrous-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Luau failed for another reason'; cat build/luau-ludicrous-negative/log; exit 1; }
+	@echo 'luau ludicrous negative control: a removed fixed writer contract fails its refusal check'
+
+test-luau: luau-ludicrous luau-ludicrous-negative-control
