@@ -97,8 +97,8 @@ table Var
 	}
 
 	main := `local inputs = require("./inputs")
-local load = require("./load")
-local R = require("./refusal")
+local load = require("./schema_load")
+local R = require("./schema_refusal")
 require("./VarTable")
 
 local function fresh()

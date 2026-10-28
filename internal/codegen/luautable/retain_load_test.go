@@ -253,7 +253,7 @@ func TestRetainOracle(t *testing.T) {
 	raw := make([]byte, n+63)
 	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
 	region := raw[off : off+uintptr(n)]
-	store := TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]TableRetainId, %d)}
+	store := TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]TableRetainID, %d)}
 	var report TableReport
 	if RootLoadRetain(region, wire, &store, &report) == nil { t.Fatal("load") }
 	fmt.Printf("report %%d %%d %%d %%v %%d %%d\n", report.Retained, report.RetainLost, report.Unknown, report.Malformed, store.Used, store.Count)

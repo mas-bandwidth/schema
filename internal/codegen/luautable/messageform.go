@@ -4,7 +4,7 @@
 // `AnnounceMeasure` as a constant byte array and its length rather than as a
 // walk"), so every <Base>Table.luau module carries the unit's bytes and the
 // facts a body walk needs. The read and write walks themselves are the home
-// runtime's (runtime/message.luau), driven by the descriptors luautable.go
+// runtime's (runtime/schema_message.luau), driven by the descriptors luautable.go
 // emits; no per-table code is written here.
 package luautable
 

@@ -121,10 +121,10 @@ func jsonFlags(g *generatedUnit) string {
 // wire as hex, the written text as hex, and one character per direction saying
 // whether it reported malformed.
 func jsonInstanceProbe(g *generatedUnit, rootName string) string {
-	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./json")
+	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./schema_json")
 json.SetFlags(SCHEMA_JSON_FLAGS)
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local function hex(b)
@@ -155,7 +155,7 @@ print((r1.malformed and "1" or "0") .. (r2.malformed and "1" or "0"))
 // jsonHostileProbe reads one hostile text and prints the manifest's verdict
 // line (`u,k,w,c,d,m,verdict`, or `refused`), docs/SPEC-TABLES.md §16.2, §4.
 func jsonHostileProbe(g *generatedUnit, rootName string) string {
-	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./json")
+	return jsonModules(g) + jsonFlags(g) + fmt.Sprintf(`local json = require("./schema_json")
 json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
@@ -287,7 +287,7 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = "local text = format_g(v, digits)"
 	const patched = `local text = single and string.format("%#.6g", v) or format_g(v, digits)`
-	src, err := os.ReadFile(filepath.Join("runtime", "json.luau"))
+	src, err := os.ReadFile(filepath.Join("runtime", "schema_json.luau"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 	if bad == string(src) {
 		t.Fatal("the patch changed nothing")
 	}
-	if err := os.WriteFile(filepath.Join(g.dir, "json.luau"), []byte(bad), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(g.dir, "schema_json.luau"), []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	text, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", "root_full.json"))
@@ -342,9 +342,9 @@ func TestLuauJsonNegativeControl(t *testing.T) {
 // the text ToJson writes after Save and Load of that value
 // (docs/SPEC-TABLES.md §16.5, both directions in one process).
 const jsonElemProbe = `require("./BoxTable")
-local json = require("./json")
-local load = require("./load")
-local save = require("./save")
+local json = require("./schema_json")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local function report()

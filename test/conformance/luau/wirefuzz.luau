@@ -49,7 +49,7 @@ type Unit = { S: any, load: any, save: any, align: number, measure: boolean? }
 -- the node-table directory and the blob bodies), and anything the framing
 -- cannot read whole answers -1, the LoadMeasure refusal (the harness accepts
 -- that on a wire whose oracle did not read whole either). A FIXED root has no
--- region and answers -1. The record layouts are the descriptor walk cook.luau
+-- region and answers -1. The record layouts are the descriptor walk schema_cook.luau
 -- uses (§8.1, §20.3), so this is the same C ABI model and not a second one.
 
 local KIND_BOOL, KIND_STRING, KIND_TABLE, KIND_ARRAY = 1, 12, 13, 14
@@ -673,7 +673,7 @@ else
 	for _, name in inputs.modules or {} do
 		require("./" .. name)
 	end
-	local u: Unit = { S = require("./schema_tables"), load = require("./load"), save = require("./save"), align = 8 }
+	local u: Unit = { S = require("./schema_tables"), load = require("./schema_load"), save = require("./schema_save"), align = 8 }
 	local root: string = inputs.root
 	if inputs.wires ~= nil then
 		-- the unit test's batch: one line per mutant, an ERR line for a raise

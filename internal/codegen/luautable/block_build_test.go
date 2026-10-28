@@ -138,7 +138,7 @@ func TestLuauBlockBuilderMatchesGo(t *testing.T) {
 
 	main := luaurun.HexProbe + fmt.Sprintf(`--!strict
 local T = require("./%s")
-local B = require("./block")
+local B = require("./schema_block")
 local p = %s
 local counts = %s
 local buf, bytes = B.Begin(p, counts)

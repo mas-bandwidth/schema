@@ -201,7 +201,7 @@ func TestLuauBase64TextRoundTripsEveryInstance(t *testing.T) {
 	t.Logf("compared %d instances through base64 text (%d text refusals, %d in the manifest, %d of refused units)", compared, refusedTexts, total, refusedRows)
 }
 
-// TestLuauBase64TextNegativeControl patches the emitted text.luau in memory —
+// TestLuauBase64TextNegativeControl patches the emitted schema_text.luau in memory —
 // one anchor, matched exactly once — so the pad is dropped on write, and
 // requires the text comparison to go red on an instance that round-trips clean
 // unpatched (docs/SPEC-TABLES.md §16.8: padded on write).
@@ -231,7 +231,7 @@ func TestLuauBase64TextNegativeControl(t *testing.T) {
 			if len(wire)%3 == 0 {
 				continue // no pad on this wire, so dropping the pad changes nothing
 			}
-			path := filepath.Join(g.dir, "text.luau")
+			path := filepath.Join(g.dir, "schema_text.luau")
 			src, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)

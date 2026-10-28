@@ -113,7 +113,7 @@ func luauMapPresenceGenerated(t *testing.T, u *ir.Unit) *generatedUnit {
 }
 
 // luauMapPresenceProbe loads each of the three wires, saves the value back
-// through save.luau and prints name, the presence companion, the entry count
+// through schema_save.luau and prints name, the presence companion, the entry count
 // and the saved bytes.
 func luauMapPresenceProbe(g *generatedUnit) string {
 	var b strings.Builder

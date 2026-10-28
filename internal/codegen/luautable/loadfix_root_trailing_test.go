@@ -124,8 +124,8 @@ func loadFixAstage(t *testing.T, wire []byte) string {
 		}
 	}
 	main := `local inputs = require("./inputs")
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 require("./TablesTable")
 require("./NestedTable")

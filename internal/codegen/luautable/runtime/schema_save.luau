@@ -1,5 +1,5 @@
 --!strict
--- save.luau — the Luau table runtime's VARIABLE FORM (form 1) SAVE and its
+-- schema_save.luau — the Luau table runtime's VARIABLE FORM (form 1) SAVE and its
 -- MEASURE (docs/SPEC-TABLES.md §3, §3.1, §6.3; docs/PORT-LUAU.md, THE CARD
 -- MAP). A port of the Go reference engine (internal/tablewire encode.go,
 -- nodes.go, nodetable.go) and of the JavaScript leg's THE SAVE and ONE FIELD

@@ -32,7 +32,7 @@ fixed table Fox | forms = "wire"
 }
 `
 	g := generateFiles(t, map[string]string{"Probe.schema": wireOnly})
-	for _, name := range []string{"json.luau", "textform.luau", "cook.luau", "cookread.luau", "block.luau", "blockread.luau"} {
+	for _, name := range []string{"schema_json.luau", "schema_textform.luau", "schema_cook.luau", "schema_cookread.luau", "schema_block.luau", "schema_blockread.luau"} {
 		if _, ok := g.files[name]; ok {
 			t.Errorf("wire-only unit emitted the %s runtime", name)
 		}
@@ -47,7 +47,7 @@ fixed table Fox | forms = "wire"
 	if !strings.Contains(module, "FoxFixedLayout") || !strings.Contains(module, "FoxFixedHash") {
 		t.Error("forms = wire suppressed the independent fixed surface")
 	}
-	for _, indep := range []string{"view.luau", "retain.luau", "message.luau", "fixed.luau", "load.luau", "save.luau"} {
+	for _, indep := range []string{"schema_view.luau", "schema_retain.luau", "schema_message.luau", "schema_fixed.luau", "schema_load.luau", "schema_save.luau"} {
 		if _, ok := g.files[indep]; !ok {
 			t.Errorf("forms = wire suppressed the independent %s surface", indep)
 		}
@@ -102,19 +102,19 @@ fixed table FoxAll
     x int32
 }
 `})
-	for _, name := range []string{"json.luau", "textform.luau", "cook.luau", "cookread.luau", "block.luau", "blockread.luau"} {
+	for _, name := range []string{"schema_json.luau", "schema_textform.luau", "schema_cook.luau", "schema_cookread.luau", "schema_block.luau", "schema_blockread.luau"} {
 		if _, ok := mixed.files[name]; !ok {
 			t.Fatalf("mixed unit lost the undeclared %s surface", name)
 		}
 	}
 	analyzeUnit(t, mixed)
 	probe := `local T = require("./ProbeTable")
-local J = require("./json")
-local X = require("./textform")
+local J = require("./schema_json")
+local X = require("./schema_textform")
 assert(type(X.LoadTextForm) == "function")
-local B = require("./blockread")
-local C = require("./cookread")
-local CW = require("./cook")
+local B = require("./schema_blockread")
+local C = require("./schema_cookread")
+local CW = require("./schema_cook")
 assert(T.PongDescriptor.forms.wire == true)
 assert(T.PongDescriptor.forms.json == nil)
 assert(T.FoxWireDescriptor.forms.wire == true)

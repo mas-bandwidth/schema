@@ -1,7 +1,7 @@
 // The ONE-SIDED INTEGER RANGE on the Luau table surface (docs/SPEC-TABLES.md
 // §4.3, SPEC §4.6): `a int64 | min = 0` bounds only the low side, the checker
 // fills the high side from the kind's own limit, and the descriptor's lo/hi
-// pair is what load.luau clamps a read against. The expected bytes and
+// pair is what schema_load.luau clamps a read against. The expected bytes and
 // verdicts are computed by the schema-go engine (internal/tablewire over
 // internal/tabletext), never typed by hand.
 package luautable_test
@@ -35,8 +35,8 @@ table OneSided
 `
 
 const oneSidedProbe = `local inputs = require("./inputs")
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 require("./ProbeTable")
 

@@ -112,10 +112,10 @@ func TestTestgenLuau(t *testing.T) {
 
 	// THE SABOTEUR: break the Luau save in memory at one anchor and require the
 	// generated tests to fail.
-	saved := luautable.Runtime()["fixed.luau"]
+	saved := luautable.Runtime()["schema_fixed.luau"]
 	anchor := "function F.save(d: any, fixed: Fixed, values: { any }): buffer\n"
 	if strings.Count(string(saved), anchor) != 1 {
-		t.Fatalf("the save anchor is not unique in fixed.luau")
+		t.Fatalf("the save anchor is not unique in schema_fixed.luau")
 	}
 	broken := strings.Replace(string(saved), anchor, "local testgenSabotageOnce = true\n"+anchor, 1)
 	writeAnchor := "\t\tbuffer.copy(out, p, rec, 0, fixed.recordBytes)\n\t\tp = p + fixed.recordBytes"
@@ -126,10 +126,10 @@ func TestTestgenLuau(t *testing.T) {
 		"\t\t\tbuffer.writeu8(out, at, (buffer.readu8(out, at) + 1) % 32)\n" +
 		"\t\tend\n\t\tp = p + fixed.recordBytes"
 	if strings.Count(broken, writeAnchor) != 1 {
-		t.Fatalf("the record-write anchor is not unique in fixed.luau")
+		t.Fatalf("the record-write anchor is not unique in schema_fixed.luau")
 	}
 	broken = strings.Replace(broken, writeAnchor, writeSabotage, 1)
-	if err := os.WriteFile(filepath.Join(dir, "fixed.luau"), []byte(broken), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "schema_fixed.luau"), []byte(broken), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	luauBin, why := luaurun.Interpreter()

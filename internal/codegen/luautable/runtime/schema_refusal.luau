@@ -1,8 +1,8 @@
 --!strict
--- refusal.luau — THE STRICT READ AND ITS NAMED REFUSALS (docs/SPEC-TABLES.md
+-- schema_refusal.luau — THE STRICT READ AND ITS NAMED REFUSALS (docs/SPEC-TABLES.md
 -- §6.5, §11, §2.14; docs/PORT-LUAU.md, THE CARD MAP). Emitted beside the
 -- unit's <Base>Table.luau modules by internal/codegen/luautable, which embeds
--- runtime/*.luau by glob, and required as require("./refusal").
+-- runtime/*.luau by glob, and required as require("./schema_refusal").
 --
 -- ReadStrict answers the root or refuses with ONE name, the set §6.5 states
 -- and Go's TableReport.Err() answers: wire_damaged (the file's own framing),
@@ -14,15 +14,15 @@
 -- key is last-wins, §2.8, §4): those stay counted on the report, with the
 -- field each first moved on.
 --
--- For form 1 it is a WRAPPER over load.luau's strict variable read (which
+-- For form 1 it is a WRAPPER over schema_load.luau's strict variable read (which
 -- judges the tolerant walk L.loadTolerant, §6.5); this file keeps the form
 -- dispatch and the fixed reader's path. There is no require cycle: refusal
 -- requires load, and load never requires refusal.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
-local L = require("./load")
-local F = require("./fixed")
+local L = require("./schema_load")
+local F = require("./schema_fixed")
 
 local R = {}
 
@@ -63,7 +63,7 @@ end
 -- NEITHER CLASS BORROWS THE OTHER'S FORM (docs/SPEC-TABLES.md, The three
 -- wires; §3, §3.4, §6.5): a reader emitted for one class refuses the other's
 -- form BY NAME, and a form byte's refusal says which direction. A DECLARED
--- FIXED root is read the way Go's <T>FixedLoad and fixed.luau's own reader
+-- FIXED root is read the way Go's <T>FixedLoad and schema_fixed.luau's own reader
 -- answer it: form 3 goes to its fixed reader (unknown_form when this build
 -- emits no fixed layout for it), form 1 is previous_form ("A form-1 file
 -- handed to a fixed root is previous_form — a NAMED REFUSAL, never a slow
@@ -94,7 +94,7 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 		return readFixed(T, root, b, rep)
 	end
 	-- the VARIABLE form's whole strict read lives beside the walk, in
-	-- load.luau, because a require cycle does not load (docs/SPEC-TABLES.md §6.5)
+	-- schema_load.luau, because a require cycle does not load (docs/SPEC-TABLES.md §6.5)
 	return L.ReadStrict(root, b, rep)
 end
 
@@ -105,9 +105,9 @@ R.ReadStrictNames = table.freeze({
 	integrity_mismatch = true, wire_damaged = true,
 	missing_required = true, malformed = true, clamped = true, kind_mismatch = true, non_finite = true, blob_shared = true,
 	-- the builder-path storage refusal (Go tablewire.CountRefusal, §2.9): a
-	-- collection count past the int32 cap, answered by load.luau
+	-- collection count past the int32 cap, answered by schema_load.luau
 	count_refusal = true,
-	-- the fixed reader's own, answered through fixed.luau for a form-3 file
+	-- the fixed reader's own, answered through schema_fixed.luau for a form-3 file
 	-- (§3.4, §6.5): Go's names, every framing-damage return included
 	layout_malformed = true, layout_record_too_large = true, layout_unknown = true,
 	layout_kind_invalid = true,

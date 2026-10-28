@@ -7,7 +7,7 @@ import (
 )
 
 // 2026-10-17 (schema-luau-refusals-by-name w3, head 9d8085da): the landed
-// load.luau never stored a string map key (a clean map with two string keys read
+// schema_load.luau never stored a string map key (a clean map with two string keys read
 // as duplicate: map_cells, map_docs, map_full, map_text) and read an extra length
 // inside a union arm holding a string, wstring or array (a clean file read as
 // malformed: message_arms, message_arm_edits, wide_sites, wide_narrow_arm).

@@ -164,7 +164,7 @@ func TestLuauLoadRefusesNegativeIdCount(t *testing.T) {
 	}
 
 	main := `local inputs = require("./inputs")
-local load = require("./load")
+local load = require("./schema_load")
 require("./BoxTable")
 for _, name in ipairs({ "minus-one", "high-bit", "past-end" }) do
 	local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }

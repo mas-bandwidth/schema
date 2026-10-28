@@ -166,7 +166,7 @@ func goAnnounce(data []byte) (announced, malformed bool) {
 	return v.Announced(), report.Malformed
 }
 
-const announceProbe = `local M = require("./message")
+const announceProbe = `local M = require("./schema_message")
 local inputs = require("./inputs")
 local v = M.NewVocabulary()
 local report = { malformed = false, verdict = 0, reason = "", unknown = 0 }
@@ -194,7 +194,7 @@ func TestLuauMessageAnnouncementRefusesNonMinimalLeb(t *testing.T) {
 	ann, unitPaths, refOff, vocabLenOff := announceGolden(t)
 	dir, mods, _ := buildMessageUnit(t, unitPaths)
 	var probe strings.Builder
-	probe.WriteString(`require("./message")
+	probe.WriteString(`require("./schema_message")
 require("./inputs")
 `)
 	for _, m := range mods {

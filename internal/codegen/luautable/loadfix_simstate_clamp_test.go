@@ -53,8 +53,8 @@ var loadFixJCases = []loadFixJCase{
 // header (loaded, five counters, malformed, refused, measure -1, retained,
 // retain_lost, saved length) and the saved bytes, lowercase hex.
 const loadFixJProbe = `local S = require("./schema_tables")
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local inputs = require("./inputs")
 
 local root = ROOTNAME

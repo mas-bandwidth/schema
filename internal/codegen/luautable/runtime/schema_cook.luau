@@ -1,5 +1,5 @@
 --!strict
--- cook.luau — the Luau table runtime's COOK WRITE side (docs/SPEC-TABLES.md
+-- schema_cook.luau — the Luau table runtime's COOK WRITE side (docs/SPEC-TABLES.md
 -- §7.6, §7.1, §7.2). Cook writes the file internal/tablecook writes for the
 -- same value: the 64-byte header, the packed region (the depth-first pre-order
 -- numbering of §3.1, every node at align_up(offset, alignof) for its own type)

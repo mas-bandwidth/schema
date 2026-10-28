@@ -22,7 +22,7 @@ import (
 // and the two counters that do not refuse with theirs (docs/SPEC-TABLES.md
 // §6.5, §11, §2.14).
 const refusalPrelude = `local inputs = require("./inputs")
-local R = require("./refusal")
+local R = require("./schema_refusal")
 local function nn(x: any): string
 	if x == nil then return "-" end
 	return tostring(x)
@@ -42,9 +42,9 @@ local function run(T: any, root: string, key: string, form: number?)
 		report.unknown .. ":" .. nn(report.unknownField) .. "|" ..
 		report.duplicate .. ":" .. nn(report.duplicateField))
 end
--- a form-3 file of n fresh records written by fixed.luau's own save (§3.4),
+-- a form-3 file of n fresh records written by schema_fixed.luau's own save (§3.4),
 -- with its header's layout hash flipped when asked
-local F = require("./fixed")
+local F = require("./schema_fixed")
 local S = require("./schema_tables")
 local function fixedFile(T: any, root: string, key: string, n: number, flip: boolean, layout: boolean)
 	local fixed = { hash = T[root .. "FixedHash"], recordBytes = T[root .. "FixedRecordBytes"], layout = T[root .. "FixedLayout"] }
@@ -68,7 +68,7 @@ type refusalCase struct {
 	root   string
 	input  string
 	form   int    // -1 for the input's own bytes
-	saved  int    // > 0: a form-3 file of saved-1 records from fixed.luau's save
+	saved  int    // > 0: a form-3 file of saved-1 records from schema_fixed.luau's save
 	flip   bool   // with saved: the header's layout hash flipped
 	layout bool   // with saved: the layout's entry count flipped
 	side   string // "unknown:<field>" or "duplicate:<field>" the report must still count
@@ -548,23 +548,23 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	t.Logf("%d report rows compared, %d cases in all; names %v; fixed root %s.%s, bare fixed root %q", compared, len(cases), names, fixedUnit, fixedRoot, bareRoot)
 }
 
-// TestLuauStrictReadNamesCoverEveryReason holds refusal.luau's ReadStrictNames
+// TestLuauStrictReadNamesCoverEveryReason holds schema_refusal.luau's ReadStrictNames
 // to the reasons the strict read can answer (docs/SPEC-TABLES.md §11, §6.5):
-// every reason refusal.luau sets, every counter name it maps, and every name
-// the fixed reader raises through it (fixed.luau, §3.4) is a member, and
+// every reason schema_refusal.luau sets, every counter name it maps, and every name
+// the fixed reader raises through it (schema_fixed.luau, §3.4) is a member, and
 // every member is one of them.
 func TestLuauStrictReadNamesCoverEveryReason(t *testing.T) {
 	t.Parallel()
 	rt := luautable.Runtime()
-	refusal, fixed := string(rt["refusal.luau"]), string(rt["fixed.luau"])
-	load := string(rt["load.luau"])
+	refusal, fixed := string(rt["schema_refusal.luau"]), string(rt["schema_fixed.luau"])
+	load := string(rt["schema_load.luau"])
 	if refusal == "" || fixed == "" || load == "" {
-		t.Fatal("the Luau table runtime emits no refusal.luau, fixed.luau or load.luau")
+		t.Fatal("the Luau table runtime emits no schema_refusal.luau, schema_fixed.luau or schema_load.luau")
 	}
 	answeredText := refusal + "\n" + load
 	start := strings.Index(refusal, "R.ReadStrictNames = table.freeze({")
 	if start < 0 {
-		t.Fatal("refusal.luau defines no R.ReadStrictNames")
+		t.Fatal("schema_refusal.luau defines no R.ReadStrictNames")
 	}
 	end := strings.Index(refusal[start:], "})")
 	block := refusal[start : start+end]

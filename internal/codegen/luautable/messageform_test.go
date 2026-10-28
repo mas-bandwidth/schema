@@ -206,12 +206,12 @@ func TestLuauMessageFormNegativeControl(t *testing.T) {
 	}
 	dir, mods, files := buildMessageUnit(t, units[conn.unit])
 	const anchor = "local count = buffer.readu8(data, 1) + 1"
-	runtime := string(files["message.luau"])
+	runtime := string(files["schema_message.luau"])
 	if strings.Count(runtime, anchor) != 1 {
 		t.Fatalf("the negative control's anchor appears %d times, want exactly once", strings.Count(runtime, anchor))
 	}
 	patched := strings.Replace(runtime, anchor, "local count = buffer.readu8(data, 1) + 0", 1)
-	if err := os.WriteFile(filepath.Join(dir, "message.luau"), []byte(patched), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "schema_message.luau"), []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := messageMain(t, dir, mods, row.root, ann, batch)
