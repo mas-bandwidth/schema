@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -55,10 +54,7 @@ table Outer
 	if err := os.WriteFile(schemaPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	u, err := compiler.New().Load([]string{schemaPath})
-	if err != nil {
-		t.Fatal(err)
-	}
+	u := luarun.LoadUnit(t, schemaPath)
 	root := u.Tables["Outer"]
 	if root == nil {
 		t.Fatal("the unit declares no table Outer")

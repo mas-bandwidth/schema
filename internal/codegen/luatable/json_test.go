@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -300,14 +299,8 @@ table F { v float32 }
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := compiler.GatherPaths([]string{dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
+	paths := []string{schemaPath}
+	u := luarun.LoadUnit(t, paths...)
 	probe := func(module string) string {
 		return `local T = require("` + module + `")
 local J = require("json")
@@ -400,14 +393,8 @@ table N
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := compiler.GatherPaths([]string{dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
+	paths := []string{dir}
+	u := luarun.LoadUnit(t, paths...)
 	module := ModuleName(u)
 	probe := `local T = require("` + module + `")
 local J = require("json")

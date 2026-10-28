@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 // packProbe builds the corpus tree's instance from its canonical text, saves
@@ -73,7 +74,7 @@ func TestLuaPackGoldensAgree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unit tabledemo: %v", err)
 	}
-	c := compiler.New()
+	model := tabletext.NewModel(u)
 	trees := []struct{ name, root, dir string }{
 		{"config", "PackConfig", filepath.Join(repo, "tables", "pack", "config")},
 		{"root", "RootConfig", filepath.Join(repo, "tables", "pack", "root")},
@@ -81,7 +82,7 @@ func TestLuaPackGoldensAgree(t *testing.T) {
 	for _, tree := range trees {
 		t.Run(tree.name, func(t *testing.T) {
 			t.Parallel()
-			wire, _, report, err := c.Pack(u, tree.root, tree.dir)
+			wire, _, report, err := tablepack.Pack(model, tree.root, tree.dir)
 			if err != nil {
 				t.Fatalf("pack %s: %v", tree.root, err)
 			}
@@ -89,7 +90,7 @@ func TestLuaPackGoldensAgree(t *testing.T) {
 				t.Fatalf("the corpus tree should match the schema exactly: %+v", report)
 			}
 			one := t.TempDir()
-			if _, err := c.UnpackOneFile(u, tree.root, wire, one); err != nil {
+			if _, err := tablepack.UnpackOneFile(model, tree.root, wire, one); err != nil {
 				t.Fatalf("unpack --one-file %s: %v", tree.root, err)
 			}
 			golden, err := os.ReadFile(filepath.Join(one, tree.root+".json"))
@@ -125,7 +126,7 @@ func TestLuaPackGoldensAgree(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(again, tree.root+".json"), loadedText, 0o644); err != nil {
 				t.Fatal(err)
 			}
-			repacked, _, report, err := c.Pack(u, tree.root, again)
+			repacked, _, report, err := tablepack.Pack(model, tree.root, again)
 			if err != nil {
 				t.Fatalf("pack of ToJson's text: %v", err)
 			}
@@ -136,7 +137,7 @@ func TestLuaPackGoldensAgree(t *testing.T) {
 				t.Errorf("pack -> Load -> ToJson -> pack moved bytes (%d against %d)", len(repacked), len(wire))
 			}
 			stable := t.TempDir()
-			if _, err := c.UnpackOneFile(u, tree.root, repacked, stable); err != nil {
+			if _, err := tablepack.UnpackOneFile(model, tree.root, repacked, stable); err != nil {
 				t.Fatalf("unpack --one-file after ToJson: %v", err)
 			}
 			text, err := os.ReadFile(filepath.Join(stable, tree.root+".json"))
