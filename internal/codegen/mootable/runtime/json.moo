@@ -1920,6 +1920,20 @@ skipValue = function(r: Reader, depth: number): boolean
 	return ok
 end
 
+-- jsonLayerAccepts(text): THE JSON LAYER over one whole text (docs/SPEC-TABLES.md
+-- §16.12): a leading byte-order mark, one value, whitespace and comments, then
+-- the end, under the reader's caps. JSONTestSuite holds it to the standard.
+function J.jsonLayerAccepts(text: string): boolean
+	local report: any = { reason = nil }
+	local r: Reader = { t = text, n = #text, pos = 1, bad = false, zero = false, report = report, graph = nil }
+	if string.sub(text, 1, 3) == "\239\187\191" then
+		r.pos = 4
+	end
+	local ok = skipValue(r, 0)
+	space(r)
+	return ok and not r.bad and r.pos == r.n + 1
+end
+
 ----------------------------------------------------------------------------
 -- THE WALK over the descriptors (docs/SPEC-TABLES.md §8.1, §16.2): one
 -- reader and one writer for every table, internal/tabletext's read.go and
