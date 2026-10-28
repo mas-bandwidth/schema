@@ -91,6 +91,22 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 	for _, path := range tables {
 		units = append(units, []string{filepath.ToSlash(strings.TrimPrefix(path, root+string(filepath.Separator)))})
 	}
+	// Every conformance manifest unit is analyzed, read from the manifest
+	// itself so a unit added there cannot be missed here.
+	seenUnit := map[string]bool{}
+	for _, paths := range units {
+		seenUnit[strings.Join(paths, "+")] = true
+	}
+	manifestUnits := luauManifestUnits(t, root)
+	if len(manifestUnits) == 0 {
+		t.Fatal("the conformance manifest names no units — this gate would skip them all")
+	}
+	for _, paths := range manifestUnits {
+		if key := strings.Join(paths, "+"); !seenUnit[key] {
+			seenUnit[key] = true
+			units = append(units, paths)
+		}
+	}
 	if len(units) == 0 {
 		t.Fatal("the Luau corpus is empty — this gate would pass over nothing")
 	}
@@ -137,8 +153,8 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.HasPrefix(data, []byte("--!strict\n")) {
-				t.Errorf("%s does not open with --!strict", path)
+			for _, finding := range luauDirectiveFindings(path, data) {
+				t.Error(finding)
 			}
 			if runtimeNames[filepath.Base(path)] {
 				sum := sha256.Sum256(data)
@@ -154,14 +170,8 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 	}
 	sort.Strings(modules)
 	sort.Strings(runtimes)
-	out, err := luauAnalyzeFiles(analyze, root, append(modules, runtimes...))
-	if err != nil {
-		t.Fatalf("luau-analyze reports errors: %v\n%s", err, out)
-	}
-	// luau-analyze exits 0 on lint warnings, so the exit code alone is not the
-	// gate: any diagnostic line is a finding that must be fixed or suppressed.
-	if len(bytes.TrimSpace(out)) != 0 {
-		t.Fatalf("luau-analyze reports warnings or errors:\n%s", out)
+	if finding := luauAnalyzerFinding(analyze, root, append(modules, runtimes...)); finding != "" {
+		t.Fatal(finding)
 	}
 	for key, why := range refusals {
 		if _, ok := luauKnownRefusals[key]; !ok {
@@ -179,48 +189,181 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 	t.Logf("luau-analyze --mode=strict: %d units, %d generated .luau files, %d named refusals", analyzed, files, len(refusals))
 }
 
-// TestLuauGeneratedAnalyzeStrictGatePlantedPattern proves the gate fires: it
-// copies one generated unit into a scratch directory, confirms it analyzes
-// clean, then plants a strict type error and requires luau-analyze to exit
-// non-zero and name the plant. The plant lives only in the scratch copy.
+// TestLuauGeneratedAnalyzeStrictGatePlantedPattern proves each of the gate's
+// three refusals fires, on the same verdict functions the gate runs. Each row
+// generates the examples unit into a scratch directory, confirms it passes,
+// plants one fault in Wire.luau and requires the gate to refuse it by name:
+//
+//   - type_error: a strict type error; luau-analyze exits non-zero.
+//   - lint_warning: an unused local; luau-analyze exits 0 and prints a
+//     LocalUnused warning, so only warnings-as-errors catches it.
+//   - nolint_directive: the same unused local under a --!nolint hot comment;
+//     luau-analyze is silent, so only the directive refusal catches it.
+//
+// The plants live only in the scratch copies.
 func TestLuauGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "luau-analyze (the pinned release)")
 	root := repoRoot(t)
 	analyze := luauAnalyzer(t, root)
-	dir, _, err := luauGenerateUnit(t, root, []string{"examples"})
-	if err != nil {
-		t.Fatalf("generate examples: %v", err)
-	}
-	if out, err := luauAnalyzeRaw(analyze, dir); err != nil {
-		t.Fatalf("the clean generated unit does not analyze: %v\n%s", err, out)
-	} else if len(bytes.TrimSpace(out)) != 0 {
-		t.Fatalf("the clean generated unit has diagnostics:\n%s", out)
-	}
 
-	plant := "luau_generated_analyze_strict_gate_planted_pattern"
-	target := filepath.Join(dir, "Wire.luau")
-	data, err := os.ReadFile(target)
+	const plant = "luau_generated_analyze_strict_gate_planted_pattern"
+	rows := []struct {
+		name string
+		// header is inserted after the --!strict line, body before return _M.
+		header, body string
+		// analyzerExit is whether luau-analyze itself must exit non-zero.
+		analyzerExit bool
+		// silent is whether luau-analyze must print nothing, so that only the
+		// directive refusal can catch the plant.
+		silent bool
+		// want is what the gate's finding must name.
+		want string
+	}{
+		{"type_error", "", fmt.Sprintf("local %s: number = \"this string is not a number\"\n", plant), true, false, plant},
+		{"lint_warning", "", fmt.Sprintf("do\n\tlocal %s = 1\nend\n", plant), false, false, "LocalUnused: Variable '" + plant + "'"},
+		{"nolint_directive", "--!nolint LocalUnused\n", fmt.Sprintf("do\n\tlocal %s = 1\nend\n", plant), false, true, "--!nolint LocalUnused"},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			dir, _, err := luauGenerateUnit(t, root, []string{"examples"})
+			if err != nil {
+				t.Fatalf("generate examples: %v", err)
+			}
+			if finding := luauGateVerdict(analyze, dir); finding != "" {
+				t.Fatalf("the clean generated unit does not pass the gate:\n%s", finding)
+			}
+			target := filepath.Join(dir, "Wire.luau")
+			data, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			const strict = "--!strict\n"
+			marker := []byte("\nreturn _M\n")
+			at := bytes.LastIndex(data, marker)
+			if !bytes.HasPrefix(data, []byte(strict)) || at < 0 {
+				t.Fatalf("%s does not open with --!strict and close with return _M; nowhere to plant", target)
+			}
+			var planted []byte
+			planted = append(planted, strict...)
+			planted = append(planted, row.header...)
+			planted = append(planted, data[len(strict):at+1]...)
+			planted = append(planted, row.body...)
+			planted = append(planted, data[at+1:]...)
+			if err := os.WriteFile(target, planted, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			out, analyzeErr := luauAnalyzeFiles(analyze, dir, []string{target})
+			if row.analyzerExit != (analyzeErr != nil) {
+				t.Fatalf("luau-analyze exit on the %s plant: got error %v, want non-zero exit %v\n%s", row.name, analyzeErr, row.analyzerExit, out)
+			}
+			if row.silent != (len(bytes.TrimSpace(out)) == 0) {
+				t.Fatalf("luau-analyze output on the %s plant: silent=%v, want silent=%v\n%s", row.name, len(bytes.TrimSpace(out)) == 0, row.silent, out)
+			}
+			finding := luauGateVerdict(analyze, dir)
+			if finding == "" {
+				t.Fatalf("the gate accepted the %s plant; it has no blade", row.name)
+			}
+			if !strings.Contains(finding, row.want) {
+				t.Fatalf("the gate refused the %s plant but did not name %q:\n%s", row.name, row.want, finding)
+			}
+		})
+	}
+}
+
+// luauAllowedDirectives are the only hot comments generated Luau may carry:
+// --!strict (required, on line 1) and the code-generation hints, which change
+// nothing the analyzer checks. --!nolint, --!nonstrict and --!nocheck would let
+// a file pass this gate without meeting it, so any other hot comment is refused.
+var luauAllowedDirectives = []string{"--!strict", "--!native", "--!optimize"}
+
+// luauDirectiveFindings refuses a file that does not open with --!strict or
+// that carries any hot comment the allowed list does not name.
+func luauDirectiveFindings(path string, data []byte) []string {
+	var findings []string
+	if !bytes.HasPrefix(data, []byte("--!strict\n")) {
+		findings = append(findings, fmt.Sprintf("%s does not open with --!strict", path))
+	}
+	for i, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "--!") {
+			continue
+		}
+		directive := strings.TrimSpace(line)
+		name := strings.Fields(directive)[0]
+		allowed := false
+		for _, a := range luauAllowedDirectives {
+			if name == a {
+				allowed = true
+			}
+		}
+		if name == "--!strict" && i != 0 {
+			allowed = false
+		}
+		if !allowed {
+			findings = append(findings, fmt.Sprintf("%s:%d carries the hot comment %q; the gate allows only --!strict on line 1, --!native and --!optimize, never a suppression", path, i+1, directive))
+		}
+	}
+	return findings
+}
+
+// luauAnalyzerFinding runs luau-analyze --mode=strict over files and returns
+// the gate's refusal, or "" when the analyzer is clean. luau-analyze exits 0
+// on lint warnings, so the exit code alone is not the gate: any diagnostic
+// line is a finding (warnings are errors).
+func luauAnalyzerFinding(analyze, dir string, files []string) string {
+	out, err := luauAnalyzeFiles(analyze, dir, files)
+	if err != nil {
+		return fmt.Sprintf("luau-analyze reports errors: %v\n%s", err, out)
+	}
+	if len(bytes.TrimSpace(out)) != 0 {
+		return fmt.Sprintf("luau-analyze reports warnings (warnings are errors here):\n%s", out)
+	}
+	return ""
+}
+
+// luauGateVerdict is the gate's whole verdict over one generated directory:
+// the directive refusals of every file, then the analyzer's findings.
+func luauGateVerdict(analyze, dir string) string {
+	files, err := filepath.Glob(filepath.Join(dir, "*.luau"))
+	if err != nil {
+		return err.Error()
+	}
+	if len(files) == 0 {
+		return dir + " has no .luau files"
+	}
+	sort.Strings(files)
+	var findings []string
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err.Error()
+		}
+		findings = append(findings, luauDirectiveFindings(path, data)...)
+	}
+	if finding := luauAnalyzerFinding(analyze, dir, files); finding != "" {
+		findings = append(findings, finding)
+	}
+	return strings.Join(findings, "\n")
+}
+
+// luauManifestUnits is every unit line of the conformance manifest, as its
+// schema paths.
+func luauManifestUnits(t *testing.T, root string) [][]string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	planted := []byte(fmt.Sprintf("\nlocal %s: number = \"this string is not a number\"\n", plant))
-	marker := []byte("\nreturn _M\n")
-	at := bytes.LastIndex(data, marker)
-	if at < 0 {
-		t.Fatalf("%s has no final return _M to plant before", target)
+	var units [][]string
+	for _, line := range strings.Split(string(data), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 3 && f[0] == "unit" {
+			units = append(units, f[2:])
+		}
 	}
-	data = append(append(append([]byte(nil), data[:at]...), planted...), data[at:]...)
-	if err := os.WriteFile(target, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, err := luauAnalyzeRaw(analyze, dir)
-	if err == nil {
-		t.Fatalf("luau-analyze accepted the planted pattern %q; the gate has no blade", plant)
-	}
-	if !strings.Contains(string(out), plant) {
-		t.Fatalf("luau-analyze rejected the plant but did not name it: %v\n%s", err, out)
-	}
+	return units
 }
 
 func luauAnalyzer(t *testing.T, root string) string {
@@ -294,13 +437,4 @@ func luauAnalyzeFiles(analyze, dir string, files []string) ([]byte, error) {
 	cmd := exec.Command(analyze, args...)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()
-}
-
-func luauAnalyzeRaw(analyze, dir string) ([]byte, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "*.luau"))
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(files)
-	return luauAnalyzeFiles(analyze, dir, files)
 }
