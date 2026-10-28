@@ -624,15 +624,16 @@ defmodule Driver do
   end
 
   # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
-  # short buffer, then write both byte orders. A root this leg does not carry
-  # writes <case>.absent rather than a wrong byte.
+  # short buffer, then write both byte orders. A root the cook writer does not
+  # lay out (cook_carried?/1: one that reaches a map, which `schema cook`
+  # refuses by name, §7.2) writes <case>.absent rather than a wrong byte.
   defp cook_one(nil, _root, _wire, outdir, name) do
     write_absent(outdir, name)
     write_absent(outdir, name <> "-be")
   end
 
   defp cook_one(mod, root, wire, outdir, name) do
-    if not function_exported?(mod, :cook_from, 4) or not mod.carried?(root) do
+    if not function_exported?(mod, :cook_from, 4) or not mod.cook_carried?(root) do
       write_absent(outdir, name)
       write_absent(outdir, name <> "-be")
     else

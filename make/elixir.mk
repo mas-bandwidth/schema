@@ -1217,6 +1217,39 @@ tables-elixir-keyed-max-negative-control:
 		  cat build/elixir-keyed-max-nc/log; exit 1; }
 	@echo 'negative control: dropping the key <= max guard reds TestKeyedAccessorCoversBothEndsElixir on key past max'
 
+# THE COOK NUMBERS A BLOB BY ITS SLOT (docs/SPEC-TABLES.md §2.5, §3.1, §7.6):
+# two slots holding equal bytes are two blob nodes in a cook as on the wire.
+# The control keys the cook's blob mark by the bytes instead of the slot, which
+# makes the equal-bytes slots one node, and requires
+# TestCookNumbersABlobByItsSlotElixir to red on blob_equal_bytes alone.
+ELIXIR_COOK_BLOB_SED := -e 's|    slot = {:cook_blob, length(acc)}|    slot = {:cook_blob, v}|'
+
+.PHONY: tables-elixir-cook-blob-negative-control
+tables-elixir-cook-blob-negative-control:
+	@rm -rf build/elixir-cook-blob-nc && mkdir -p build/elixir-cook-blob-nc
+	@sed $(ELIXIR_COOK_BLOB_SED) \
+		internal/codegen/elixirtable/cookwrite.go > build/elixir-cook-blob-nc/cookwrite.go.txt
+	@cmp -s internal/codegen/elixirtable/cookwrite.go build/elixir-cook-blob-nc/cookwrite.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_COOK_BLOB_SED matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-blob-nc/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-blob-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+			go test -overlay build/elixir-cook-blob-nc/overlay.json \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestCookNumbersABlobByItsSlotElixir$$' \
+			> build/elixir-cook-blob-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: keying the cook's blob by its bytes left TestCookNumbersABlobByItsSlotElixir green"; \
+		cat build/elixir-cook-blob-nc/log; exit 1; \
+	fi
+	@grep -q 'FAIL blob_equal_bytes: ' build/elixir-cook-blob-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: TestCookNumbersABlobByItsSlotElixir went red for another reason"; \
+		  cat build/elixir-cook-blob-nc/log; exit 1; }
+	@if grep 'FAIL ' build/elixir-cook-blob-nc/log | grep -v -q 'FAIL blob_equal_bytes'; then \
+		echo "NEGATIVE CONTROL FAILED: keying the blob by its bytes red more than blob_equal_bytes"; \
+		cat build/elixir-cook-blob-nc/log; exit 1; \
+	fi
+	@echo 'negative control: keying the cook blob by its bytes reds TestCookNumbersABlobByItsSlotElixir on blob_equal_bytes'
+
+test-elixir: tables-elixir-cook-blob-negative-control
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
 test-elixir: tables-elixir-message-batch

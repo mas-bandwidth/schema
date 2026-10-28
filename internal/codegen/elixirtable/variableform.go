@@ -168,11 +168,16 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  def descriptors, do: @tables\n\n")
 	uncarried := uncarriedRootNames(u)
 	b.WriteString(uncarriedAttribute(uncarried))
+	cookUncarried := cookUncarriedRootNames(u)
+	b.WriteString(cookUncarriedAttribute(cookUncarried))
 	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
 	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
 	if len(uncarried) == 0 {
-		runtime, cook, retain = withoutUncarriedClauses(runtime, cook, retain)
+		runtime, retain = withoutUncarriedClauses(runtime, retain)
+	}
+	if len(cookUncarried) == 0 {
+		cook = withoutCookUncarriedGuard(cook)
 	}
 	if !anyExtent {
 		cook = withoutExtentWalks(cook)
@@ -181,6 +186,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		runtime = withArmKinds(runtime, armKinds)
 	} else {
 		runtime = withoutUnions(runtime)
+		cook = cookWithoutUnions(cook)
 	}
 	b.WriteString(runtime)
 	// the formatter keeps a blank line between the runtime's last `end` and
@@ -472,23 +478,108 @@ var uncarriedClauses = []string{
 	"  def save_retain(table, _value, retain, report) when table in @uncarried,\n    do: {:error, :uncarried, report, retain}\n\n",
 }
 
-// withoutUncarriedClauses is the runtime, cook writer and retain sources for a
-// unit whose @uncarried is empty: the uncarried refusals go, and the cook
-// plan's guard keeps only its value check. Every edit must apply, so a
+// withoutUncarriedClauses is the runtime and retain sources for a unit whose
+// @uncarried is empty: the uncarried refusals go. Every edit must apply, so a
 // template change that moves one fails the emitter's tests rather than
 // silently shipping the guard.
-func withoutUncarriedClauses(runtime, cook, retain string) (string, string, string) {
-	drop := func(src, old, new string) string {
-		if strings.Count(src, old) != 1 {
-			panic("elixirtable: uncarried clause not found exactly once: " + old)
-		}
-		return strings.Replace(src, old, new, 1)
+func withoutUncarriedClauses(runtime, retain string) (string, string) {
+	runtime = replaceOnce(runtime, uncarriedClauses[0], "")
+	retain = replaceOnce(retain, uncarriedClauses[1], "")
+	retain = replaceOnce(retain, uncarriedClauses[2], "")
+	return runtime, retain
+}
+
+// cookUncarriedGuard is the cook plan's refusal of a root the cook writer does
+// not lay out. A unit whose @cook_uncarried is empty would read `table in []`,
+// a guard that never succeeds, so the plan keeps only its value check.
+const cookUncarriedGuard = "      if table in @cook_uncarried or not is_map(value) do\n"
+
+func withoutCookUncarriedGuard(cook string) string {
+	return replaceOnce(cook, cookUncarriedGuard, "      if not is_map(value) do\n")
+}
+
+// replaceOnce replaces the one occurrence of old, and panics when old is not
+// found exactly once, so a template edit that moves it fails the emitter's
+// tests rather than silently shipping the text.
+func replaceOnce(src, old, new string) string {
+	if strings.Count(src, old) != 1 {
+		panic("elixirtable: emitted text not found exactly once: " + old)
 	}
-	runtime = drop(runtime, uncarriedClauses[0], "")
-	retain = drop(retain, uncarriedClauses[1], "")
-	retain = drop(retain, uncarriedClauses[2], "")
-	cook = drop(cook, "      if table in @uncarried or not is_map(value) do\n", "      if not is_map(value) do\n")
-	return runtime, cook, retain
+	return strings.Replace(src, old, new, 1)
+}
+
+// cookUncarriedRootNames names every table in the closure the cook writer
+// does not lay out: one that reaches a map (docs/SPEC-TABLES.md §2.8, §7.2).
+// `schema cook` refuses every map-bearing unit by name (§7.2), so no tool cook
+// holds this writer's entry arrays to the byte; a union, an enum-keyed array
+// and every other shape is written. A holder follows a poisoned table by
+// value, by pointer, as an array element or as a union arm's payload.
+func cookUncarriedRootNames(u *ir.Unit) []string {
+	closure := ir.TableClosure(u)
+	poison := map[string]bool{}
+	reaches := func(f *ir.Field) bool {
+		if f == nil {
+			return false
+		}
+		if f.IsMap() {
+			return true
+		}
+		if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
+			return poison[st.Name]
+		}
+		return false
+	}
+	changed := true
+	for changed {
+		changed = false
+		for name := range closure {
+			st := u.Tables[name]
+			if poison[name] || st == nil {
+				continue
+			}
+			hit := st.IsMapEntry()
+			for _, f := range st.Fields {
+				if hit {
+					break
+				}
+				hit = reaches(f)
+				if un := unionRef(f); un != nil {
+					for _, arm := range un.Variants {
+						hit = hit || reaches(arm.F)
+					}
+				}
+			}
+			if hit {
+				poison[name] = true
+				changed = true
+			}
+		}
+	}
+	names := make([]string, 0, len(poison))
+	for name := range poison {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// cookUncarriedAttribute is the list cook_carried?/1 reads: the roots whose
+// cook the writer refuses as invalid_value and the conformance driver answers
+// absent (docs/SPEC-TABLES.md §7.2, §7.6).
+func cookUncarriedAttribute(names []string) string {
+	var b strings.Builder
+	b.WriteString("  # roots that reach a map (docs/SPEC-TABLES.md §2.8, §7.2). `schema cook`\n")
+	b.WriteString("  # refuses a map-bearing unit by name, so the cook writer does not lay out\n")
+	b.WriteString("  # entry arrays no tool cook holds it to; cook_carried?/1 answers false.\n")
+	var list strings.Builder
+	list.WriteString("[")
+	for _, name := range names {
+		fmt.Fprintf(&list, "%q, ", name)
+	}
+	list.WriteString("]")
+	b.WriteString(exAttribute("cook_uncarried", list.String()) + "\n")
+	b.WriteString("  def cook_carried?(table), do: table not in @cook_uncarried\n\n")
+	return b.String()
 }
 
 // uncarriedAttribute is the module attribute the public clauses guard on, and
@@ -499,9 +590,9 @@ func uncarriedAttribute(names []string) string {
 	var b strings.Builder
 	b.WriteString("  # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md\n")
 	b.WriteString("  # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them\n")
-	b.WriteString("  # (§3, §3.2, §16); the cook write and the wire-fuzz roster do not yet, so\n")
-	b.WriteString("  # carried?/1 answers false for them there and the driver writes\n")
-	b.WriteString("  # <case>.absent for a cook of one, and the roster sends it no mutant.\n")
+	b.WriteString("  # (§3, §3.2, §16) and the cook write lays them out (§7.2); the wire-fuzz\n")
+	b.WriteString("  # roster does not yet, so carried?/1 answers false for them there and the\n")
+	b.WriteString("  # roster sends it no mutant.\n")
 	var list strings.Builder
 	list.WriteString("[")
 	for _, name := range names {
@@ -4856,7 +4947,9 @@ func flagsRef(f *ir.Field) *ir.Flags {
 func armDescriptor(u *ir.Unit, arm ir.UnionVariant, ordinal int) string {
 	id := ir.TableWireId(arm.WireName())
 	if arm.Void() {
-		return fmt.Sprintf("%%{name: %q, json: %q, id: 0x%016X, kind: 32, arm_kind: 32, t: :void, default: nil},\n", arm.Name, arm.Name, id)
+		// ordinal is the arm's declaration position; its cooked tag is that
+		// plus one, tag 0 being None (docs/SPEC-TABLES.md §7.2)
+		return fmt.Sprintf("%%{name: %q, json: %q, id: 0x%016X, kind: 32, ordinal: %d, arm_kind: 32, t: :void, default: nil},\n", arm.Name, arm.Name, id, ordinal)
 	}
 	f := *arm.F
 	f.Name = arm.Name
