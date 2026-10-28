@@ -624,7 +624,18 @@ def t_set_scalar(p:TextParser, sl:Slot, v:TNode, path:string) -> bool:
         if v.kind != "num":
             t_set_fail(p, "text_kind_mismatch")
             return false
-        sl.cell.f = string_to_float(v.text)
+        // the token is already the grammar's number, so the one failure
+        // left is a magnitude past the storage, an infinity once parsed at
+        // the field's width: a float is finite (docs/SPEC-TABLES.md §3.3)
+        // and the text form refuses it as text_bound, as Go's resolver does
+        let x = string_to_float(v.text)
+        if (f.f32 and not finite_f32(x)) or not finite_f64(x):
+            t_set_fail(p, "text_bound")
+            return false
+        if f.franged and (x < f.flo or x > f.fhi):
+            t_set_fail(p, "text_bound")
+            return false
+        sl.cell.f = x
     elif s == "str" or s == "text":
         if v.kind != "str":
             t_set_fail(p, "text_kind_mismatch")

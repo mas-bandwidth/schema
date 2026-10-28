@@ -43,6 +43,17 @@ func TestLobsterFixedFormAgreesWithTheByteOracle(t *testing.T) {
 			t.Fatalf("%s: %v", c.file, err)
 		}
 		got := fixedRun(t, c.schema, c.root, want)
+		if fixedOracleNonFinite(t, corpus, c.file) {
+			// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the C++ corpus
+			// before finite-tables #2232 regenerates it still writes a NaN
+			// into this file, and every writer refuses one: the save answers
+			// nothing
+			if len(got) != 0 {
+				t.Errorf("%s: the oracle carries a NaN or an infinity and the save wrote %d bytes; every writer refuses one", c.file, len(got))
+			}
+			compared++
+			continue
+		}
 		if string(got) != string(want) {
 			t.Errorf("%s: save after load is not the oracle's bytes (got %d, want %d)", c.file, len(got), len(want))
 		}
@@ -138,7 +149,7 @@ def read_in() -> string:
     let f = read_file("in.bin")
     if f: return f
     return ""
-let values = %s.%sFixedLoad(read_in())
+let values = %s.%sFixedDecode(read_in())
 hex(%s.%sFixedSave(values))
 `, base, lobsterrun.HexProbe, u.Package, rootName, u.Package, rootName)
 	if err := os.WriteFile(filepath.Join(dir, "main.lobster"), []byte(main), 0o644); err != nil {
@@ -150,4 +161,20 @@ hex(%s.%sFixedSave(values))
 		t.Fatalf("%s: main printed %d hex lines, want 1", schema, len(lines))
 	}
 	return lines[0]
+}
+
+// fixedOracleNonFinite reports whether the oracle's manifest says file
+// carries a NaN or an infinity (`nan|0x…`, `inf|0x…`).
+func fixedOracleNonFinite(t *testing.T, corpus, file string) bool {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "file="+file+" ") {
+			return strings.Contains(line, "=nan|") || strings.Contains(line, "=inf|") || strings.Contains(line, "=-inf|")
+		}
+	}
+	return false
 }

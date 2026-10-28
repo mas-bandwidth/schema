@@ -67,6 +67,7 @@ let TableRefuseIntegrityMismatch = "integrity_mismatch"
 let TableRefuseInvalidValue = "invalid_value"
 let TableRefuseClamped = "clamped"
 let TableRefuseKindMismatch = "kind_mismatch"
+let TableRefuseNonFiniteFloat = "non_finite_float"
 
 class TableReport:
     verdict:int = 0
@@ -81,6 +82,9 @@ class TableReport:
     retained:int = 0
     retain_lost:int = 0
     malformed:bool = false
+    // non_finite_float names the first NaN or infinity a fixed read met,
+    // <Owner>.<field> (docs/SPEC-TABLES.md §3.3); the read refuses
+    non_finite_float:string = ""
 
 def fixed_reset_report(r:TableReport):
     r.verdict = 0
@@ -95,6 +99,16 @@ def fixed_reset_report(r:TableReport):
     r.retained = 0
     r.retain_lost = 0
     r.malformed = false
+    r.non_finite_float = ""
+
+// fixed_refuse_non_finite is a fixed read's refusal of a NaN or an infinity
+// (docs/SPEC-TABLES.md §3.3): the report holds only the name, and the reason
+// non_finite_float: <Owner>.<field>, as Go's tableNonFiniteRefused writes it.
+def fixed_refuse_non_finite(r:TableReport, field:string) -> int:
+    fixed_reset_report(r)
+    r.non_finite_float = field
+    r.reason = TableRefuseNonFiniteFloat + ": " + field
+    return -1
 
 def fixed_refuse(r:TableReport, reason:string) -> int:
     let h = r.layout_hash
@@ -132,21 +146,6 @@ def i128_lt(a:Int128, b:Int128) -> bool:
     if a.hi != b.hi:
         return a.hi < b.hi
     return ult(a.lo, b.lo)
-
-// fixed_evolve_f32frombits decodes a 32-bit IEEE 754 float32 image into a
-// Lobster float (f64), preserving ±0.0, subnormals, normals, ±Inf, and
-// signalling/quiet NaN payloads bit-for-bit.
-def fixed_evolve_f32frombits(b:int) -> float:
-    let sign = (b >> 31) & 1
-    let exp = (b >> 23) & 0xff
-    let frac = b & 0x7fffff
-    if exp == 0xff:
-        if frac == 0:
-            return f64frombits(shl(sign, 63) | 0x7ff0000000000000)
-        return f64frombits(shl(sign, 63) | 0x7ff0000000000000 | shl(frac, 29))
-    if exp == 0 and frac == 0:
-        return f64frombits(shl(sign, 63))
-    return read_float32_le(write_int32_le(zeros(4), 0, b), 0)
 
 class TableFixedGuardLink:
     grd:int = 0
@@ -1271,15 +1270,10 @@ def fixed_run(plan:[TableFixedEntry], count:int, src:string, src_base:int, dst_i
                             dst = write_int8_le(dst, p.dst + k, shr(raw, 8 * k) & 0xff)
                     report.widened += 1
                 case tableFixedWidenF:
-                    let bits = read_uint32_le(src, src_base + p.src)
-                    var widened = 0
-                    if (bits & 0x7f800000) == 0x7f800000:
-                        let sign = (bits >> 31) & 1
-                        let frac = bits & 0x7fffff
-                        widened = shl(sign, 63) | 0x7ff0000000000000 | shl(frac, 29)
-                    else:
-                        widened = f64bits(fixed_evolve_f32frombits(bits))
-                    dst = write_int64_le(dst, p.dst, widened)
+                    // every finite float32 widens exactly through the ordinary
+                    // conversion; a NaN stays a NaN and an infinity an
+                    // infinity, and the finite pass refuses either (§3.3)
+                    dst = write_float64_le(dst, p.dst, read_float32_le(src, src_base + p.src))
                     report.widened += 1
                 case tableFixedConst:
                     let aux = p.aux
@@ -1317,6 +1311,9 @@ def fixed_prefill_holes(img:string, def_bytes:string, holes:[TableFixedHole]) ->
     return out
 
 def fixed_report_err(r:TableReport) -> string:
+    // a non-finite float outranks every later verdict (§3.3)
+    if r.non_finite_float != "":
+        return TableRefuseNonFiniteFloat
     if r.fixed_raised and r.verdict == TableOpenRefused:
         if r.reason == TableRefusePreviousForm or r.reason == TableRefuseMessageFormAsFile or r.reason == TableRefuseNewerForm:
             return TableRefuseUnknownForm
@@ -1360,15 +1357,3 @@ def fixed_integrity_seal(buffer:string, n:int) -> int, string:
     let crc = fixed_crc32c(buffer, n)
     return n + 4, write_int32_le(buffer, n, crc)
 
-def fixed_evolve_f32bits(x:float) -> int:
-    let b = f64bits(x)
-    let sign = shr(b, 63) & 1
-    let exp = shr(b, 52) & 0x7ff
-    let frac = b & 0xfffffffffffff
-    if exp == 0x7ff:
-        if frac == 0:
-            return shl(sign, 31) | 0x7f800000
-        return shl(sign, 31) | 0x7f800000 | (shr(frac, 29) & 0x7fffff)
-    if exp == 0 and frac == 0:
-        return shl(sign, 31)
-    return read_uint32_le(write_float32_le(zeros(4), 0, x), 0)

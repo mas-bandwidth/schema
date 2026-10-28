@@ -62,6 +62,32 @@ def block_record(b:BlockLayout, name:string) -> BlockRecord?:
             return r
     return nil
 
+// block_non_finite names the first NaN or infinity the last block_read or
+// block_build met, <Owner>.<field> (docs/SPEC-TABLES.md §3.3): a block float
+// is finite, refused on its raw bits by the read and by the builder.
+var block_non_finite = ""
+
+def block_float_at(fd:FieldDescriptor, data:string, at:int, size:int) -> float:
+    if size == 4:
+        let bits = read_uint32_le(data, at)
+        if not finite_f32_bits(bits):
+            if block_non_finite == "":
+                block_non_finite = float_owner(fd)
+            return 0.0
+        return read_float32_le(data, at)
+    let bits = read_int64_le(data, at)
+    if not finite_f64_bits(bits):
+        if block_non_finite == "":
+            block_non_finite = float_owner(fd)
+        return 0.0
+    return read_float64_le(data, at)
+
+def block_float_put(fd:FieldDescriptor, data:string, at:int, size:int, x:float) -> string:
+    let ok = if size == 4: finite_f32(x) else: finite_f64(x)
+    if not ok and block_non_finite == "":
+        block_non_finite = float_owner(fd)
+    return if size == 4: write_float32_le(data, at, x) else: write_float64_le(data, at, x)
+
 let block_magic = 0x4b4c42414d484353
 let block_byte_order = 1
 
@@ -141,7 +167,7 @@ def block_read_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:int
     elif s == "bool":
         sl.cell.b = read_uint8_le(data, base) != 0
     elif s == "float":
-        sl.cell.f = if bf.elem_size == 4: read_float32_le(data, base) else: read_float64_le(data, base)
+        sl.cell.f = block_float_at(f, data, base, bf.elem_size)
     elif s == "int":
         if bf.elem_size == 16:
             sl.cell.w = Int128 { lo: read_int64_le(data, base), hi: read_int64_le(data, base + 8) }
@@ -162,13 +188,23 @@ def block_read_elem(bl:BlockLayout, bf:BlockField, v:Value, fd:FieldDescriptor, 
         if s == "bool":
             v.b = read_uint8_le(data, at) != 0
         elif s == "float":
-            v.f = if bf.elem_size == 4: read_float32_le(data, at) else: read_float64_le(data, at)
+            v.f = block_float_at(fd, data, at, bf.elem_size)
         elif s == "int" and bf.elem_size == 16:
             v.w = Int128 { lo: read_int64_le(data, at), hi: read_int64_le(data, at + 8) }
         else:
             v.i = bread_int(data, at, bf.elem_size, false)
 
+// block_read is the block's whole read: nil for a block this build does not
+// open, and nil for one holding a NaN or an infinity in any float, named in
+// block_non_finite (docs/SPEC-TABLES.md §3.3).
 def block_read(root:string, data:string) -> Record?:
+    block_non_finite = ""
+    let rec = block_read_all(root, data)
+    if block_non_finite != "":
+        return nil
+    return rec
+
+def block_read_all(root:string, data:string) -> Record?:
     let bl = lookup_block(root)
     if not bl:
         return nil
@@ -270,8 +306,17 @@ def balign(at:int, a:int) -> int:
 
 // block_build is §19.1's builder: one storage sized from the declared maxima,
 // the prologue and every triple written once, then the rows. It refuses a
-// count past its array's maximum by asserting, exactly as Begin returns false.
+// count past its array's maximum by asserting, exactly as Begin returns false,
+// and a NaN or an infinity in any float by answering "" with the field named
+// in block_non_finite (docs/SPEC-TABLES.md §3.3).
 def block_build(root:string, rec:Record) -> string:
+    block_non_finite = ""
+    let data = block_build_all(root, rec)
+    if block_non_finite != "":
+        return ""
+    return data
+
+def block_build_all(root:string, rec:Record) -> string:
     let bl = lookup_block(root)
     assert bl
     var data = zeros(bl.max_bytes)
@@ -336,7 +381,7 @@ def block_write_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:in
     elif s == "bool":
         data = write_int8_le(data, base, if sl.cell.b: 1 else: 0)
     elif s == "float":
-        data = if bf.elem_size == 4: write_float32_le(data, base, sl.cell.f) else: write_float64_le(data, base, sl.cell.f)
+        data = block_float_put(f, data, base, bf.elem_size, sl.cell.f)
     elif s == "int" and bf.elem_size == 16:
         data = write_int64_le(data, base, sl.cell.w.lo)
         data = write_int64_le(data, base + 8, sl.cell.w.hi)
@@ -351,7 +396,7 @@ def block_write_elem(bf:BlockField, v:Value, fd:FieldDescriptor, data:string, at
     if s == "bool":
         return write_int8_le(data, at, if v.b: 1 else: 0)
     if s == "float":
-        return if bf.elem_size == 4: write_float32_le(data, at, v.f) else: write_float64_le(data, at, v.f)
+        return block_float_put(fd, data, at, bf.elem_size, v.f)
     if s == "int" and bf.elem_size == 16:
         let d = write_int64_le(data, at, v.w.lo)
         return write_int64_le(d, at + 8, v.w.hi)

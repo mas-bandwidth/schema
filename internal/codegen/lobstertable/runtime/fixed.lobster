@@ -27,28 +27,3 @@ def fixed_file(layout:string, hash:int, body:string, count:int) -> string:
     out = write_substring(out, 20, layout, false)
     out = write_substring(out, 20 + length(layout), body, false)
     return out
-
-// fixed_f32bits is the 32-bit storage image of a float32 value without a
-// hardware conversion: the low 29 mantissa bits survive, so a signalling NaN
-// keeps its payload (docs/FIXED-FORM-ALGORITHM.md §3, PORT-LOBSTER FLOAT32).
-def fixed_f32bits(x:float) -> int:
-    let b = schema_rt.f64bits(x)
-    let sign = (b >> 63) & 1
-    let exp = (b >> 52) & 0x7ff
-    let frac = b & 0xfffffffffffff
-    if exp == 0x7ff:
-        if frac == 0:
-            return (sign << 31) | 0x7f800000
-        return (sign << 31) | 0x7f800000 | ((frac >> 29) & 0x7fffff)
-    return (sign << 31) | ((exp - 1023 + 127) << 23) | ((frac >> 29) & 0x7fffff)
-
-// fixed_f32frombits is [fixed_f32bits]'s inverse, payload and all.
-def fixed_f32frombits(b:int) -> float:
-    let sign = (b >> 31) & 1
-    let exp = (b >> 23) & 0xff
-    let frac = b & 0x7fffff
-    if exp == 0xff:
-        if frac == 0:
-            return schema_rt.f64frombits((sign << 63) | 0x7ff0000000000000)
-        return schema_rt.f64frombits((sign << 63) | 0x7ff0000000000000 | (frac << 29))
-    return schema_rt.f64frombits((sign << 63) | ((exp - 127 + 1023) << 52) | (frac << 29))

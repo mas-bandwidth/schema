@@ -152,6 +152,7 @@ func emitFixedEvolve(g *lobster.Gen) error {
 		emitFixedScatterFn(g, st)
 		emitFixedClampBodyFn(g, st)
 		emitFixedCheckBodyFn(g, st)
+		emitFixedFiniteBodyFn(g, st)
 		if ir.TableFixedClampNeeded(st) {
 			emitFixedClampFn(g, st)
 		}
@@ -586,7 +587,7 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 		g.Pf("%s%s = read_uint8_le(data, %s) != 0\n", ind, expr, at)
 		return
 	case t.Kind == ir.TFloat32:
-		g.Pf("%s%s = schema_rt.fixed_evolve_f32frombits(read_uint32_le(data, %s))\n", ind, expr, at)
+		g.Pf("%s%s = read_float32_le(data, %s)\n", ind, expr, at)
 		return
 	case t.Kind == ir.TFloat64:
 		g.Pf("%s%s = read_float64_le(data, %s)\n", ind, expr, at)
@@ -690,6 +691,11 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 	if f.Deprecated {
 		return false
 	}
+	// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the writer's contract
+	// refuses a NaN or an infinity, so every float is checked.
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		return true
+	}
 	if f.Array == ir.ArrayCounted {
 		return true
 	}
@@ -726,7 +732,7 @@ func fixedBoundNeeded(f *ir.Field, chk bool) bool {
 	}
 	if chk {
 		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes:
+		case ir.TString, ir.TWString, ir.TBytes, ir.TFloat32, ir.TFloat64:
 			return true
 		}
 	}
@@ -906,6 +912,14 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 
 	if chk {
 		switch f.Type.Kind {
+		case ir.TFloat32:
+			// the writer's finite rule (docs/SPEC-TABLES.md §3.3): a NaN or an
+			// infinity, at the width it is written, is invalid_value
+			g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return false\n", ind, expr, ind)
+			return true
+		case ir.TFloat64:
+			g.Pf("%sif not schema_rt.finite_f64(%s):\n%s    return false\n", ind, expr, ind)
+			return true
 		case ir.TString:
 			length := slotExpr(expr, f, "Length")
 			g.Pf("%sif %s < 0 or %s > %d or not schema_rt.fixed_utf8_valid_no_nul(%s, 0, %s):\n%s    return false\n",
@@ -948,9 +962,11 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 	return emitted
 }
 
+// emitCompressedFloatClamp is the bounds pass's compressed-float clamp. A NaN
+// or an infinity never reaches it: the finite pass refused the batch first
+// (docs/SPEC-TABLES.md §3.3, ruling 1 of 2026-10-27).
 func emitCompressedFloatClamp(g *lobster.Gen, expr, lo, hi, ind string) {
-	g.Pf("%sif %s != %s:\n%s    %s = %s\n%s    report.clamped += 1\n", ind, expr, expr, ind, expr, lo, ind)
-	g.Pf("%selif %s < %s:\n%s    %s = %s\n%s    report.clamped += 1\n", ind, expr, lo, ind, expr, lo, ind)
+	g.Pf("%sif %s < %s:\n%s    %s = %s\n%s    report.clamped += 1\n", ind, expr, lo, ind, expr, lo, ind)
 	g.Pf("%selif %s > %s:\n%s    %s = %s\n%s    report.clamped += 1\n", ind, expr, hi, ind, expr, hi, ind)
 	g.Pf("%selif %s == 0.0:\n%s    %s = 0.0\n", ind, expr, ind, expr)
 }
@@ -1515,6 +1531,18 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("            return schema_rt.fixed_refuse(report, why)\n")
 	g.Pf("        img = img2\n")
 	g.Pf("        %sScatter(img, 0, values[k])\n", name)
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
+		// first, before the bounds pass, over the storage just written; a NaN
+		// or an infinity refuses the whole batch as non_finite_float, the
+		// tolerant read included, and every record this call wrote goes back
+		// to its defaults.
+		g.Pf("        let nf = %sFixedFiniteBody(values[k])\n", st.Name)
+		g.Pf("        if nf != \"\":\n")
+		g.Pf("            for(k + 1) j:\n")
+		g.Pf("                %sReset(values[j])\n", st.Name)
+		g.Pf("            return schema_rt.fixed_refuse_non_finite(report, nf)\n")
+	}
 	g.Pf("        schema_rt.fixed_forged_bounds(entries, entry_count, data, rec_at + 8, report)\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.Pf("        %sFixedClamp(values[k], report)\n", st.Name)
@@ -1522,4 +1550,129 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    report.unknown += census_unknown\n")
 	g.Pf("    report.kind_mismatch += census_kind\n")
 	g.Pf("    return n\n\n")
+}
+
+// ---- The Read-Side Finite Pass ----------------------------------------------
+//
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// finite-only too, same rule as packets"; finite-tables #2226's Go shape):
+// every fixed read refuses a NaN or an infinity as non_finite_float, naming
+// the field, tolerant and strict alike. It runs over STORAGE after the record
+// lands, so one pass covers the identity copy and a lineage plan's widenF,
+// whose ordinary conversion keeps a NaN a NaN and an infinity an infinity. It
+// walks only what a read can have written: a counted array's live elements,
+// an optional's payload when present, a union's set arm.
+
+func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedFiniteNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFiniteNeededField(f *ir.Field, seen map[string]bool) bool {
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedFiniteNeededStruct(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedFiniteNeededField(v.F, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFixedFiniteBodyFn emits <T>FixedFiniteBody: the first non-finite float's
+// <Owner>.<field> name, or "" for a record whose floats are all finite. A type
+// that holds no float gets no function (§2.2's zero-cost rule).
+func emitFixedFiniteBodyFn(g *lobster.Gen, st *ir.Struct) {
+	if !fixedFiniteNeededStruct(st, map[string]bool{}) {
+		return
+	}
+	g.Pf("// %sFixedFiniteBody is %s's finite rule (docs/SPEC-TABLES.md §3.3): the\n", st.Name, st.Name)
+	g.Pf("// first NaN or infinity, named <Owner>.<field>, or \"\".\n")
+	g.Pf("def %sFixedFiniteBody(v:%s) -> string:\n", st.Name, st.Name)
+	for _, f := range st.Fields {
+		emitFixedFiniteField(g, f, st.Name, "v", "    ")
+	}
+	g.Pf("    return \"\"\n\n")
+}
+
+func emitFixedFiniteField(g *lobster.Gen, f *ir.Field, owner, val, ind string) {
+	if !fixedFiniteNeededField(f, map[string]bool{}) {
+		return
+	}
+	if f.Type.Optional {
+		g.Pf("%sif %s.%s:\n", ind, val, ir.GoExportName(f.Name+"_present"))
+		emitFixedFinitePayload(g, f, owner, val, ind+"    ")
+		return
+	}
+	emitFixedFinitePayload(g, f, owner, val, ind)
+}
+
+func emitFixedFinitePayload(g *lobster.Gen, f *ir.Field, owner, val, ind string) {
+	loop := func(count string) {
+		iv := fmt.Sprintf("i_nf_%s", ir.GoExportName(f.Name))
+		g.Pf("%sfor(%s) %s:\n", ind, count, iv)
+		emitFixedFiniteElement(g, f, owner, fmt.Sprintf("%s.%s[%s]", val, ir.GoExportName(f.Name), iv), ind+"    ")
+	}
+	switch {
+	case f.KeyEnumRef != nil:
+		loop(strconv.FormatInt(f.KeyEnumRef.Max, 10))
+	case f.Array == ir.ArrayFixed:
+		loop(strconv.FormatInt(f.ArrayBound, 10))
+	case f.Array == ir.ArrayCounted:
+		// the count was refused past its bound before the record landed;
+		// min keeps the walk inside storage anyway
+		cnt := fmt.Sprintf("%s.%sCount", val, ir.GoExportName(f.Name))
+		loop(fmt.Sprintf("min(%s, %d)", cnt, f.ArrayBound))
+	default:
+		emitFixedFiniteElement(g, f, owner, val+"."+ir.GoExportName(f.Name), ind)
+	}
+}
+
+func emitFixedFiniteElement(g *lobster.Gen, f *ir.Field, owner, expr, ind string) {
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		g.Pf("%sif not schema_rt.finite_f32(%s):\n%s    return %s\n", ind, expr, ind, lobster.StringLit([]byte(owner+"."+f.Name)))
+		return
+	case ir.TFloat64:
+		g.Pf("%sif not schema_rt.finite_f64(%s):\n%s    return %s\n", ind, expr, ind, lobster.StringLit([]byte(owner+"."+f.Name)))
+		return
+	case ir.TNamed:
+	default:
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedFiniteNeededStruct(r, map[string]bool{}) {
+			requireHome(g, r.Name)
+			iv := fmt.Sprintf("nf_%s", ir.GoExportName(f.Name))
+			g.Pf("%slet %s = %sFixedFiniteBody(%s)\n", ind, iv, r.Name, expr)
+			g.Pf("%sif %s != \"\":\n%s    return %s\n", ind, iv, ind, iv)
+		}
+	case *ir.Union:
+		for i, v := range r.Variants {
+			if v.F == nil || !fixedFiniteNeededField(v.F, map[string]bool{}) {
+				continue
+			}
+			arm := *v.F
+			arm.Name = v.Name
+			g.Pf("%sif int(%s.Type) == %d:\n", ind, expr, i+1)
+			emitFixedFiniteField(g, &arm, r.Name, expr, ind+"    ")
+		}
+	}
 }

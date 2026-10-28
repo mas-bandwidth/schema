@@ -88,14 +88,23 @@ func emitFixedTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("    return v\n\n")
 
 	g.Pf("// %sSave writes values as a form-3 file: the header (%s, §2) once,\n", name, st.Name)
-	g.Pf("// then one hash-and-body record per value.\n")
+	g.Pf("// then one hash-and-body record per value. A NaN or an infinity in any\n")
+	g.Pf("// float refuses the batch: the answer is \"\" (docs/SPEC-TABLES.md §3.3).\n")
 	g.Pf("def %sSave(values:[%s]) -> string:\n", name, st.Name)
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		g.Pf("    for(values) v:\n")
+		g.Pf("        if %sFixedFiniteBody(v) != \"\":\n", st.Name)
+		g.Pf("            return \"\"\n")
+	}
 	g.Pf("    var body = \"\"\n")
 	g.Pf("    for(values) v: body += schema_rt.fixed_record(%sHash, %sPut(schema_rt.zeros(%d), 0, v))\n", name, name, size)
 	g.Pf("    return schema_rt.fixed_file(%sLayoutBytes(), %sHash, body, length(values))\n\n", name, name)
 
-	g.Pf("// %sLoad reads a form-3 file of %s records (%s, §2).\n", name, st.Name, st.Name)
-	g.Pf("def %sLoad(data:string) -> [%s]:\n", name, st.Name)
+	g.Pf("// %sDecode reads a TRUSTED form-3 file of %s records written by this\n", name, st.Name)
+	g.Pf("// build's own layout (%s, §2), asserting the header and every record\n", st.Name)
+	g.Pf("// hash. It is not a read of untrusted data: %sLoad is the strict\n", name)
+	g.Pf("// read and %sLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).\n", name)
+	g.Pf("def %sDecode(data:string) -> [%s]:\n", name, st.Name)
 	g.Pf("    let layout = %sLayoutBytes()\n", name)
 	g.Pf("    assert read_uint8_le(data, 0) == 3\n")
 	g.Pf("    assert read_uint64_le(data, 8) == %sHash\n", name)
@@ -262,7 +271,7 @@ func putElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride int6
 		g.Pf("%sb = write_int8_le(b, %s, if %s: 1 else: 0)\n", ind, at, expr)
 		return
 	case ir.TFloat32:
-		g.Pf("%sb = write_int32_le(b, %s, schema_rt.fixed_f32bits(%s))\n", ind, at, expr)
+		g.Pf("%sb = write_float32_le(b, %s, %s)\n", ind, at, expr)
 		return
 	case ir.TFloat64:
 		g.Pf("%sb = write_float64_le(b, %s, %s)\n", ind, at, expr)
@@ -393,7 +402,7 @@ func getElementIndented(g *lobster.Gen, f *ir.Field, expr, base string, off, str
 		g.Pf("%s%s = read_uint8_le(data, %s) != 0\n", ind, expr, at)
 		return
 	case ir.TFloat32:
-		g.Pf("%s%s = schema_rt.fixed_f32frombits(read_uint32_le(data, %s))\n", ind, expr, at)
+		g.Pf("%s%s = read_float32_le(data, %s)\n", ind, expr, at)
 		return
 	case ir.TFloat64:
 		g.Pf("%s%s = read_float64_le(data, %s)\n", ind, expr, at)

@@ -128,6 +128,33 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				if field, ok := corpusNonFinite(t, corpus, "old_"+r.row+".bin"); ok {
+					// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): an oracle
+					// file that still carries a NaN or an infinity (the C++
+					// corpus before finite-tables #2232 regenerates it) is
+					// refused by the strict and the tolerant read alike, named
+					body := fmt.Sprintf(`
+    let data = read_in("in.bin")
+    let back:[%s.%s] = []
+    for(8): push(back, %s.New%s())
+    let r = schema_rt.TableReport {}
+    let plan = %s.make_plan(4096)
+    let n = %s.%sFixedLoad(back, data, plan, r)
+    assert_eq(n, -1, "a non-finite float refuses the strict read")
+    assert_true(r.reason == "non_finite_float: %s.%s" and r.non_finite_float == "%s.%s", "named: " + r.reason)
+    let t = schema_rt.TableReport {}
+    let m = %s.%sFixedLoadTolerant(back, data, plan, t)
+    assert_eq(m, -1, "a non-finite float refuses the tolerant read")
+    assert_true(schema_rt.fixed_report_err(t) == "non_finite_float", "err: " + schema_rt.fixed_report_err(t))
+    print "PASS"
+`, pkg, table, pkg, table, pkg, pkg, table, table, field, table, field, pkg, table)
+					out := runLobsterVersionProbe(t, newer, []string{older}, 0, body, map[string][]byte{"in.bin": inBytes})
+					if strings.TrimSpace(out) != "PASS" {
+						t.Fatalf("NEW-READS-OLD %s (non-finite oracle): got %q", r.row, out)
+					}
+					compared.Add(1)
+					return
+				}
 				body := fmt.Sprintf(`
     let data = read_in("in.bin")
     let back:[%s.%s] = []
@@ -1211,4 +1238,33 @@ run()
 		t.Fatal(err)
 	}
 	return string(lobsterrun.Run(t, dir, "main.lobster", inputs))
+}
+
+// corpusNonFinite reports whether the oracle's manifest says file carries a
+// NaN or an infinity, and names the first such field (its last path
+// component): the C++ dump spells one `nan|0x…` or `inf|0x…`
+// (docs/FIXED-FORM-ALGORITHM.md §5.7). A finite-only corpus answers false and
+// the row is compared byte for byte.
+func corpusNonFinite(t *testing.T, corpus, file string) (string, bool) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "file="+file+" ") {
+			continue
+		}
+		_, values, _ := strings.Cut(line, " values=")
+		for _, kv := range strings.Split(values, ",") {
+			k, v, _ := strings.Cut(kv, "=")
+			if strings.HasPrefix(v, "nan|") || strings.HasPrefix(v, "inf|") || strings.HasPrefix(v, "-inf|") || strings.HasPrefix(v, "+inf|") {
+				if i := strings.LastIndex(k, "."); i >= 0 {
+					k = k[i+1:]
+				}
+				return k, true
+			}
+		}
+	}
+	return "", false
 }
