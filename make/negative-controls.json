@@ -606,6 +606,7 @@
         "cards-dart-conformance-upgrade-negative-control",
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
+        "packet-finite-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
         "tables-dart-alloc-negative-control",

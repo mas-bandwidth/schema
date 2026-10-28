@@ -2635,17 +2635,9 @@ int writeTestData(TestData value, ByteData view) {
       }
     }
   }
-  if (!value.floatValue.isNaN) {
-    Schema.f32[0] = value.floatValue;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.floatValue;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.floatValue;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -2674,6 +2666,7 @@ int writeTestData(TestData value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (10 - scratchBits);
   }
+  assert(value.doubleValue.isFinite);
   v = Schema.float64BitsFromDouble(value.doubleValue);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -2948,14 +2941,11 @@ bool readTestData(TestData value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.floatValue = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.floatValue = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.floatValue = Schema.f32[0];
   v = (window >>> 32) & 0x3ff;
   bitsRead += 10;
   if (v > 1000) {
@@ -2981,6 +2971,9 @@ bool readTestData(TestData value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.doubleValue = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0xff;
   bitsRead += 8;

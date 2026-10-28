@@ -43,6 +43,8 @@ int writeVec2(Vec2 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.x.isFinite);
+  assert(value.y.isFinite);
   v = Schema.float64BitsFromDouble(value.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -109,6 +111,9 @@ bool readVec2(Vec2 value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -126,6 +131,9 @@ bool readVec2(Vec2 value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.y = Schema.doubleFromFloat64Bits(lo);
   return true;
 }
@@ -162,6 +170,7 @@ int writeSpanF64(SpanF64 value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
+    assert(value.values[i0].isFinite);
     v = Schema.float64BitsFromDouble(value.values[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
@@ -221,6 +230,9 @@ bool readSpanF64(SpanF64 value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
     value.values[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   return true;
@@ -635,6 +647,7 @@ int writeSpanTail(SpanTail value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
+    assert(value.values[i0].isFinite);
     v = Schema.float64BitsFromDouble(value.values[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
@@ -703,6 +716,9 @@ bool readSpanTail(SpanTail value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
     value.values[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   if (bitsRead >>> 3 < tailBase) {
@@ -751,6 +767,7 @@ int writeSpanTwice(SpanTwice value, ByteData view) {
   var wordIndex = 0;
   var v = 0;
   for (var i0 = 0; i0 < 2; i0++) {
+    assert(value.a[i0].isFinite);
     v = Schema.float64BitsFromDouble(value.a[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
@@ -762,6 +779,7 @@ int writeSpanTwice(SpanTwice value, ByteData view) {
     }
   }
   for (var i0 = 0; i0 < 2; i0++) {
+    assert(value.b[i0].isFinite);
     v = Schema.float64BitsFromDouble(value.b[i0]);
     scratch |= v << scratchBits;
     scratchBits += 64;
@@ -821,6 +839,9 @@ bool readSpanTwice(SpanTwice value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
     value.a[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   for (var i0 = 0; i0 < 2; i0++) {
@@ -840,6 +861,9 @@ bool readSpanTwice(SpanTwice value, ByteData view, int numBits) {
     v = window & 0xffffffff;
     bitsRead += 32;
     lo |= v << 32;
+    if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+    }
     value.b[i0] = Schema.doubleFromFloat64Bits(lo);
   }
   return true;
@@ -1074,6 +1098,8 @@ int writeVec3Sole(Vec3Sole value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  assert(value.v.x.isFinite);
+  assert(value.v.y.isFinite);
   v = Schema.float64BitsFromDouble(value.v.x);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -1083,6 +1109,7 @@ int writeVec3Sole(Vec3Sole value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
+  assert(value.v.z.isFinite);
   v = Schema.float64BitsFromDouble(value.v.y);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -1149,6 +1176,9 @@ bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.v.x = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1166,6 +1196,9 @@ bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.v.y = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1183,6 +1216,9 @@ bool readVec3Sole(Vec3Sole value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.v.z = Schema.doubleFromFloat64Bits(lo);
   return true;
 }

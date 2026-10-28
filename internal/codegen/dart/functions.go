@@ -802,6 +802,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteFloat32Bits(name, ind)
 	case ir.TFloat64:
 		g.useRuntime()
+		// finite only (SPEC §4.3): NaN and the infinities are writer misuse
+		g.pf("%sassert(%s.isFinite);\n", ind, name)
 		g.chunkAdd(fmt.Sprintf("Schema.float64BitsFromDouble(%s)", name), 64, ind)
 	case ir.TWString:
 		g.emitWriteWString(f, name, ind)
@@ -826,43 +828,34 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 // PORTING M3): under the JIT a double crossing an out-of-line conversion
 // call is boxed, and whether the call is inlined is the inliner's budget,
 // not the codec's — make tables-dart-float-jit measured the helper form
-// boxing on the pinned SDK. Non-NaN goes through the hardware conversion; a
-// NaN narrows in software — sign kept, top 23 mantissa bits kept, the quiet
-// bit forced only for the all-low-payload case — so every pattern the read
-// half produces round trips (SPEC-TABLES §3; float32_cells_test.go). A
-// statement-form merge: v is computed in a branch.
+// boxing on the pinned SDK. A packet float32 is FINITE (SPEC §4.3, serialize
+// format 2.0): the write contract asserts the staged bits are not an
+// all-ones exponent, the exact test the reader refuses on, so a NaN, an
+// infinity and a double too large for float32 are all writer misuse, and
+// -0 and the subnormals ride bit exact through the hardware conversion. A
+// statement-form merge: v is computed in statements.
 func (g *gen) emitWriteFloat32Bits(name, ind string) {
 	g.chunkFlush(ind)
 	g.useRuntime()
 	g.needV = true
-	g.pf("%sif (!%s.isNaN) {\n", ind, name)
-	g.pf("%s  Schema.f32[0] = %s;\n", ind, name)
-	g.pf("%s  v = Schema.u32[0];\n", ind)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  Schema.f64[0] = %s;\n", ind, name)
-	g.pf("%s  v = (Schema.u64[0] >>> 29) & 0x7fffff;\n", ind)
-	g.pf("%s  if (v == 0) {\n", ind)
-	g.pf("%s    v = 0x400000;\n", ind)
-	g.pf("%s  }\n", ind)
-	g.pf("%s  v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;\n", ind)
-	g.pf("%s}\n", ind)
+	g.pf("%sSchema.f32[0] = %s;\n", ind, name)
+	g.pf("%sv = Schema.u32[0];\n", ind)
+	g.pf("%sassert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)\n", ind)
 	g.mergeW(32, ind)
 }
 
 // emitReadFloat32Bits assigns the double whose IEEE-754 single
-// representation is v, the conversion at the assignment (issue 404). A NaN
-// pattern widens in software (the hardware conversion quiets a signalling
-// NaN); the reader reproduces the transmitted pattern exactly. The bits are
-// a NaN exactly when their magnitude exceeds infinity's 0x7f800000.
+// representation is v, the conversion at the assignment (issue 404). An
+// all-ones exponent is a NaN or an infinity, which a packet float32 never
+// holds (SPEC §4.3): the read refuses it as non_finite_float on the raw bits,
+// before the field is written. Every finite pattern widens exactly, -0 and
+// the subnormals included.
 func (g *gen) emitReadFloat32Bits(name, ind string) {
-	g.pf("%sif ((v & 0x7fffffff) <= 0x7f800000) {\n", ind)
-	g.pf("%s  Schema.u32[0] = v;\n", ind)
-	g.pf("%s  %s = Schema.f32[0];\n", ind, name)
-	g.pf("%s} else {\n", ind)
-	g.pf("%s  Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);\n", ind)
-	g.pf("%s  Schema.u64[0] |= 0x7ff0000000000000;\n", ind)
-	g.pf("%s  %s = Schema.f64[0];\n", ind, name)
+	g.pf("%sif ((v & 0x7f800000) == 0x7f800000) {\n", ind)
+	g.pf("%s  return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)\n", ind)
 	g.pf("%s}\n", ind)
+	g.pf("%sSchema.u32[0] = v;\n", ind)
+	g.pf("%s%s = Schema.f32[0];\n", ind, name)
 }
 
 // f32lit renders the float32 rounding of v as a Dart double literal (exact —
@@ -1586,6 +1579,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 	case ir.TFloat64:
 		g.useRuntime()
 		g.emitReadWide64(64, ind)
+		// an all-ones exponent is a NaN or an infinity: refused on the raw
+		// bits, before the field is written (SPEC §4.3)
+		g.pf("%sif ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {\n", ind)
+		g.pf("%s  return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)\n", ind)
+		g.pf("%s}\n", ind)
 		g.pf("%s%s = Schema.doubleFromFloat64Bits(lo);\n", ind, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

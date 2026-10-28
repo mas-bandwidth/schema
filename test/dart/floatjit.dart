@@ -221,9 +221,9 @@ int passInlined(int n, int salt) {
   return check;
 }
 
-// The hand-inlined control. Non-NaN float32 only (the loop's values are
-// finite); the NaN branch the generated helper carries is the emitter's
-// business, not this instrument's.
+// The hand-inlined control. Finite float32 only, as the packet wire is
+// (SPEC §4.3); the generated codec's finite assert is compiled out under the
+// release twin and is the emitter's business, not this instrument's.
 int writeInputInlined(Input value, ByteData view) {
   _f32[0] = value.stickX;
   final a = _u32[0];
