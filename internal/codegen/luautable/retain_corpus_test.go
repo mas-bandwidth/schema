@@ -36,8 +36,8 @@ type retainRow struct {
 	name, root, wire, capacity, ids, counters, save string
 }
 
-// retainRows reads the manifest's tblrt1 `retain` rows:
-// retain <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save|->
+// retainRows reads the manifest's tblrt1 `retain` rows, each
+// `retain <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save|->`.
 func retainRows(t *testing.T) []retainRow {
 	t.Helper()
 	f, err := os.Open(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
