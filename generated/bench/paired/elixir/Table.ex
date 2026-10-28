@@ -443,6 +443,7 @@ defmodule Bench.Table do
           width: 4,
           min: -1.0,
           max: 1.0,
+          non_finite: "BenchMixed.aim_x",
           cook_off: 1288,
           count_off: -1,
           present_off: -1,
@@ -463,6 +464,7 @@ defmodule Bench.Table do
           width: 4,
           min: -1.0,
           max: 1.0,
+          non_finite: "BenchMixed.aim_y",
           cook_off: 1292,
           count_off: -1,
           present_off: -1,
@@ -483,6 +485,7 @@ defmodule Bench.Table do
           width: 4,
           min: -1.0,
           max: 1.0,
+          non_finite: "BenchMixed.aim_z",
           cook_off: 1296,
           count_off: -1,
           present_off: -1,
@@ -501,6 +504,7 @@ defmodule Bench.Table do
           ordinal: 18,
           t: :float,
           width: 4,
+          non_finite: "BenchMixed.recoil",
           cook_off: 1300,
           count_off: -1,
           present_off: -1,
@@ -519,6 +523,7 @@ defmodule Bench.Table do
           ordinal: 19,
           t: :float,
           width: 8,
+          non_finite: "BenchMixed.drift",
           cook_off: 1304,
           count_off: -1,
           present_off: -1,
@@ -1437,6 +1442,9 @@ defmodule Bench.Table do
     ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
     {:ok, IO.iodata_to_binary([<<1>>, body, <<0>>, ids_bytes, <<length(order)::little-64>>])}
+  catch
+    # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   # collect_nodes is the declaration-order DFS walk of every node this value
@@ -1787,7 +1795,15 @@ defmodule Bench.Table do
   # SPEC-TABLES §2.3: absence is the lack of a field line. A present optional
   # must write even its zero/default value, while nil never becomes a payload.
   defp emit_scalar?(%{optional: true}, v), do: v != nil
-  defp emit_scalar?(f, v), do: v != f.default
+  defp emit_scalar?(f, v), do: not same?(v, f.default)
+
+  # ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
+  # -0.0 == 0.0 on the BEAM, so a -0 under a +0 default would be dropped and
+  # read back as +0. Every other value compares as a value.
+  # Exact equality (=:=) tells -0.0 from 0.0 since OTP 27, and a BEAM float is
+  # never a NaN, so on two floats it is the bit compare, with nothing built.
+  defp same?(a, b) when is_float(a) and is_float(b), do: a === b
+  defp same?(a, b), do: a == b
 
   # SPEC-TABLES §2.3, §3: a present optional array always writes; a [N]T of
   # tables always writes; any other [N]T elides when every element is the
@@ -1796,7 +1812,7 @@ defmodule Bench.Table do
     cond do
       Map.get(f, :optional, false) -> false
       Map.has_key?(f, :fixed_array) and f.elem_kind == 13 -> false
-      Map.has_key?(f, :fixed_array) -> Enum.all?(elements, &(&1 == f.elem_default))
+      Map.has_key?(f, :fixed_array) -> Enum.all?(elements, &same?(&1, f.elem_default))
       true -> elements == []
     end
   end
@@ -1820,7 +1836,7 @@ defmodule Bench.Table do
   end
 
   defp keyed_elem(item, v, idx_map, ids, order) do
-    if v == item.default, do: :elide, else: emit_element(item, v, idx_map, ids, order)
+    if same?(v, item.default), do: :elide, else: emit_element(item, v, idx_map, ids, order)
   end
 
   # one arm header (docs/SPEC-TABLES.md §2.6, §3): the arm id's reference, the
@@ -1966,6 +1982,12 @@ defmodule Bench.Table do
             {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
         end
     end
+  catch
+    # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
+    # tolerant one too, and outranks any damage the walk would have met after
+    # it: nothing lands, and the reason names the first such field.
+    {:non_finite_float, name} ->
+      {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
   end
 
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
@@ -1984,6 +2006,9 @@ defmodule Bench.Table do
     do: Map.put(report, :reason, if(report.malformed, do: "wire_damaged", else: ""))
 
   defp reasoned(report, :newer_form), do: Map.put(report, :reason, "unknown_form")
+
+  defp reasoned(report, {:non_finite_float, name}),
+    do: Map.put(report, :reason, "non_finite_float: " <> name)
 
   defp reasoned(report, _damage),
     do: Map.put(%{report | malformed: true}, :reason, "wire_damaged")
@@ -2439,7 +2464,7 @@ defmodule Bench.Table do
   end
 
   defp read_payload(%{t: :float} = f, payload, _nodes, _ids, report) do
-    {:cont, float_of(payload, f.width), report}
+    {:cont, float_of(payload, f.width, f.non_finite), report}
   end
 
   defp read_payload(%{t: :map} = f, payload, nodes, ids, report) do
@@ -2806,7 +2831,8 @@ defmodule Bench.Table do
 
     if byte_size(rest) >= w do
       <<raw::binary-size(^w), after_sub::binary>> = rest
-      read_list_elements(f, after_sub, n - 1, nodes, ids, [float_of(raw, w) | acc], report)
+      v = float_of(raw, w, f.non_finite)
+      read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
     else
       {Enum.reverse(acc), %{report | malformed: true}}
     end
@@ -3031,12 +3057,33 @@ defmodule Bench.Table do
   defp int_bytes(v, 8, false), do: <<v::little-unsigned-64>>
   defp int_bytes(v, 16, false), do: <<v::little-unsigned-128>>
 
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as the packet
+  # wire's). A BEAM float holds no NaN and no
+  # infinity, so the one non-finite value a writer can be handed is a float64
+  # past float32's range, which would narrow to an infinity, and the write
+  # refuses it. The bound is float32's largest finite value plus half its last
+  # place, the least magnitude that rounds to infinity, so the test is a
+  # comparison and builds nothing.
+  defp float_bytes(v, 4) when v >= 3.4028235677973366e38 or v <= -3.4028235677973366e38,
+    do: throw(:non_finite_float)
+
   defp float_bytes(v, 4), do: <<v::little-float-32>>
   defp float_bytes(v, 8), do: <<v::little-float-64>>
 
-  defp float_of(<<v::little-float-32>>, 4), do: v
-  defp float_of(<<v::little-float-64>>, 8), do: v
-  defp float_of(_payload, _w), do: 0.0
+  # EVERY READ REFUSES A NaN OR AN INFINITY ON ITS RAW BITS (§3.3), before the
+  # bits become a float and before the field is assigned: an all-ones exponent
+  # throws the field's name, and the load that catches it refuses whole as
+  # non_finite_float, the tolerant read included, with nothing landed. The test
+  # reads the top sixteen bits, where the exponent sits at either width, so it
+  # builds no bignum on the way.
+  defp float_of(<<_::16, hi::little-16>>, 4, name) when (hi &&& 0x7F80) == 0x7F80,
+    do: throw({:non_finite_float, name})
+
+  defp float_of(<<_::48, hi::little-16>>, 8, name) when (hi &&& 0x7FF0) == 0x7FF0,
+    do: throw({:non_finite_float, name})
+
+  defp float_of(<<v::little-float-32>>, 4, _name), do: v
+  defp float_of(<<v::little-float-64>>, 8, _name), do: v
 
   defp int_of(<<v::little-signed-8>>, 1, true), do: v
   defp int_of(<<v::little-signed-16>>, 2, true), do: v
@@ -3101,6 +3148,8 @@ defmodule Bench.Table do
         else
           {:ok, text}
         end
+      catch
+        :non_finite_float -> {:error, :non_finite_float}
       after
         Process.delete(:elixir_json_refs)
         Process.delete(:elixir_json_labels)
@@ -3456,6 +3505,12 @@ defmodule Bench.Table do
   # widened double, so a float32 spelled up to seventeen digits, its exponent
   # was "e19" where %g writes "e+19", and a trailing-zero trim ate an exponent's
   # zero ("e-20" written "e-2") (I13, docs/PORTING.md).
+  # THE TEXT WRITER REFUSES A FLOAT THAT IS NOT FINITE (docs/SPEC-TABLES.md
+  # §3.3, §16.3): a float32 field's float64 past float32's range narrows to an
+  # infinity, which has no spelling (float_bytes/2 holds the same bound).
+  defp json_float(v, 4) when v >= 3.4028235677973366e38 or v <= -3.4028235677973366e38,
+    do: throw(:non_finite_float)
+
   defp json_float(v, width) do
     if json_float_plain_integer?(v) do
       Integer.to_string(trunc(v))
@@ -4021,6 +4076,11 @@ defmodule Bench.Table do
 
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
+  # an integer element reads -0 as the 0 it is (json_number keeps the token)
+  defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
+       do: {0, report}
+
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
     do: json_read_list_elem(f, json_decimal_float(e), report)
 
@@ -4395,15 +4455,23 @@ defmodule Bench.Table do
          :ok <- json_num_tail(r4) do
       sign_str = if neg, do: "-", else: ""
 
-      if frac_digits == "" and exp_str == "" do
-        {:ok, if(neg, do: -int_value, else: int_value), r4}
-      else
-        token =
-          sign_str <>
-            Integer.to_string(int_value) <>
-            if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
+      cond do
+        neg and int_value == 0 and frac_digits == "" and exp_str == "" ->
+          # -0 KEEPS ITS SIGN (docs/SPEC-TABLES.md §3.3, §16.2): an integer
+          # has no -0, so the token rides as its decimal text and a float
+          # field reads -0.0 from it, where an integer field still reads 0
+          {:ok, {:decimal, "-0"}, r4}
 
-        {:ok, {:decimal, token}, r4}
+        frac_digits == "" and exp_str == "" ->
+          {:ok, if(neg, do: -int_value, else: int_value), r4}
+
+        true ->
+          token =
+            sign_str <>
+              Integer.to_string(int_value) <>
+              if(frac_digits == "", do: ".0", else: "." <> frac_digits) <> exp_str
+
+          {:ok, {:decimal, token}, r4}
       end
     end
   end
@@ -5265,16 +5333,27 @@ defmodule Bench.Table do
             {:error, :malformed, reasoned(report, :malformed), retain}
         end
     end
+  catch
+    # a NaN or an infinity refuses the retaining read as it does the plain one
+    # (docs/SPEC-TABLES.md §3.3): nothing lands and nothing is retained
+    {:non_finite_float, name} ->
+      {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
+       %{retain | records: [], used: 0, ids: []}}
   end
 
   def measure_retain(table, value, retain) when is_map(value) do
     {:ok, bytes, _retain, _report} = save_retain_internal(table, value, retain, empty_report())
     byte_size(bytes)
+  catch
+    :non_finite_float -> -1
   end
 
   def save_retain(table, value, retain, report) when is_map(value) do
     {:ok, bytes, retain, report} = save_retain_internal(table, value, retain, report)
     {:ok, bytes, report, retain}
+  catch
+    # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
+    :non_finite_float -> {:error, :non_finite_float, report, retain}
   end
 
   defp save_retain_internal(table, value, retain, report) do
@@ -5434,6 +5513,13 @@ defmodule Bench.Table do
             # and the enclosing read's malformed does (§3, §4).
             {:cont, {value, %{report | unknown: report.unknown + 1}, retain}}
           else
+            # A RETAINED FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+            # §3.3, §6.6): a kind-10 or kind-11 entry whose raw bits are a NaN
+            # or an infinity refuses the read, named <owner>.0x<id>.
+            if kind in [10, 11] do
+              _ = float_of(payload, kind_width(kind), retained_float_name(desc, id))
+            end
+
             case retain_capture(ids, kind, payload) do
               {:ok, resolved} ->
                 if retain_room(retain, path, resolved) do
@@ -5474,6 +5560,13 @@ defmodule Bench.Table do
           end
       end
     end)
+  end
+
+  # a retained unknown float's name: the body's table and the id it cannot
+  # name, as the reference leg's tableRetainedFloatName spells it
+  defp retained_float_name(desc, id) do
+    hex = id |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(16, "0")
+    desc.name <> ".0x" <> hex
   end
 
   defp read_payload_retain(%{t: :list} = f, payload, nodes, ids, report, retain, path) do

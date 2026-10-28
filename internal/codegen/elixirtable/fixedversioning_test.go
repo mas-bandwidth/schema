@@ -202,9 +202,30 @@ var versionRows = []versionRow{
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
+	nonFinite := manifestNonFinite(t, corpus)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
+			if nonFinite["old_"+r.row+".bin"] {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 the newer reader
+				// refuses it by name (docs/SPEC-TABLES.md §3.3): a must-refuse
+				// vector until the finite-tables plan's C++ card
+				// (tables-finite/cpp) regenerates the corpus, and an ordinary row
+				// after, because the manifest decides.
+				body := `  data = File.read!(file())
+  {tag, why, report} = load(data)
+  check(
+    tag == :error and why == :non_finite_float,
+    "the non-finite float the older writer wrote was not refused by name: #{inspect({tag, why})} #{why(report)}"
+  )`
+				out, err := runVersionProbe(t, elixirBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
+					filepath.Join(corpus, "old_"+r.row+".bin"), body)
+				if err != nil {
+					t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+				}
+				return
+			}
 			counters := `check(report.widened == 0, "widened #{report.widened}, and an append is not an event")`
 			if r.widens {
 				counters = `check(report.widened != 0, "a widening row moved no widened counter")`
@@ -259,6 +280,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
+	nonFinite := manifestNonFinite(t, corpus)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -318,6 +340,22 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
     is_list(ok_values) and ok_values != [],
     "the control built no value, so the refusal above withholds nothing: #{inspect(ok_values)}"
   )`, elixirString(filepath.Join(corpus, "old_"+r.row+".bin")))
+				if nonFinite["old_"+r.row+".bin"] {
+					// THE CONTROL'S OWN GENERATION HOLDS A NaN the reference
+					// still writes (tables-finite/cpp owes the finite corpus):
+					// under the finite rule the same reader refuses it by name
+					// (docs/SPEC-TABLES.md §3.3), which still shows it decodes
+					// that file; the identity control comes back by itself
+					// when the corpus turns finite.
+					body = strings.Replace(body, `  check(ok_tag == :ok, "the control read of this reader's OWN generation refuses: #{inspect(ok_tag)} #{why(ok_report)}")
+  check(
+    is_list(ok_values) and ok_values != [],
+    "the control built no value, so the refusal above withholds nothing: #{inspect(ok_values)}"
+  )`, `  check(
+    ok_tag == :error and ok_values == :non_finite_float,
+    "the control read of a NaN the older writer wrote was not refused by name: #{inspect({ok_tag, ok_values})} #{why(ok_report)}"
+  )`, 1)
+				}
 			}
 			out, err := runVersionProbe(t, elixirBin, "VOLD_"+r.row, nil, 0,
 				filepath.Join(corpus, "new_"+r.row+".bin"), body)
@@ -713,6 +751,52 @@ func manifestFloatBits(t *testing.T, corpus, file, section, path string) uint32 
 	}
 	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
 	return 0
+}
+
+// manifestNonFinite is, per corpus file, whether the reference wrote a NaN or
+// an infinity among its values (a `|0x<bits>` half whose exponent is all
+// ones). Under the finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3) such a
+// file is a MUST-REFUSE vector for this leg until the finite-tables plan's C++
+// card (tables-finite/cpp) regenerates the corpus with finite values; the
+// manifest decides, so the identity rows come back by themselves then. No
+// manifest is no oracle: the caller's own reads decide.
+func manifestNonFinite(t *testing.T, corpus string) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if os.IsNotExist(err) {
+		return out
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		file, values := "", ""
+		for field := range strings.FieldsSeq(line) {
+			if k, v, ok := strings.Cut(field, "="); ok {
+				switch k {
+				case "file":
+					file = v
+				case "values":
+					values = v
+				}
+			}
+		}
+		for pair := range strings.SplitSeq(values, ",") {
+			_, hexPart, ok := strings.Cut(pair, "|0x")
+			if !ok {
+				continue
+			}
+			bits, err := strconv.ParseUint(hexPart, 16, 64)
+			if err != nil {
+				continue
+			}
+			if len(hexPart) == 8 && bits&0x7F800000 == 0x7F800000 || len(hexPart) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000 {
+				out[file] = true
+			}
+		}
+	}
+	return out
 }
 
 func manifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {

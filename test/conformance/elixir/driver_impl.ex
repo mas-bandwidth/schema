@@ -1283,9 +1283,17 @@ defmodule WireFuzz do
 
           vocab ->
             case mod.load_messages(vocab, wire) do
-              {:ok, bodies} -> message_reply(mod, vocab, bodies, false)
-              {:malformed, _count, bodies} -> message_reply(mod, vocab, bodies, true)
-              _ -> stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+              {:ok, bodies} ->
+                message_reply(mod, vocab, bodies, false)
+
+              {:malformed, _count, bodies} ->
+                message_reply(mod, vocab, bodies, true)
+
+              {:error, :non_finite_float} ->
+                stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+
+              _ ->
+                stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
             end
         end
     end
@@ -1358,6 +1366,11 @@ defmodule WireFuzz do
               stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
           end
 
+        {:error, :non_finite_float, _report} ->
+          # A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
+          # §3.3), and the refusal is the answer the oracle compares
+          stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
+
         _ ->
           stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
       end
@@ -1389,6 +1402,9 @@ defmodule WireFuzz do
             _ ->
               stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
           end
+
+        {:error, :non_finite_float, _report, _retain} ->
+          stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
         _ ->
           stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
