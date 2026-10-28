@@ -86,9 +86,9 @@ func TestLuauOptionalVariableClosureTable(t *testing.T) {
 
 	g := generateFiles(t, map[string]string{"Probe.schema": src})
 	main := jsonModules(g) + `
-local json = require("./json")
-local save = require("./save")
-local load = require("./load")
+local json = require("./schema_json")
+local save = require("./schema_save")
+local load = require("./schema_load")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local d = St.lookup("Outer")

@@ -91,7 +91,7 @@ func TestLuauBlockReadAgreesWithGo(t *testing.T) {
 	}
 
 	// the Luau leg: the generated unit's modules, the package runtime's
-	// blockread.luau, and a descriptor graph computed from the same IR
+	// schema_blockread.luau, and a descriptor graph computed from the same IR
 	luDir := filepath.Join(dir, "luau")
 	if err := os.MkdirAll(luDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -100,11 +100,11 @@ func TestLuauBlockReadAgreesWithGo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blockread, ok := luautable.Runtime()["blockread.luau"]
+	blockread, ok := luautable.Runtime()["schema_blockread.luau"]
 	if !ok {
-		t.Fatal("the Luau table runtime emits no blockread.luau")
+		t.Fatal("the Luau table runtime emits no schema_blockread.luau")
 	}
-	files["blockread.luau"] = blockread
+	files["schema_blockread.luau"] = blockread
 	files["descriptor.luau"] = []byte(luauBlockDescriptor(u, blocks))
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(luDir, name), data, 0o644); err != nil {
@@ -112,7 +112,7 @@ func TestLuauBlockReadAgreesWithGo(t *testing.T) {
 		}
 	}
 	main := `--!strict
-local B = require("./blockread")
+local B = require("./schema_blockread")
 local D = require("./descriptor")
 local I = require("./inputs")
 local blk, reason = B.BlockOpen(D.root, I.block, 0, buffer.len(I.block))
@@ -274,13 +274,13 @@ func TestBuild(t *testing.T) {
 	block.Projection.Stamp = 1234567890123
 	for i := int32(0); i < 4; i++ {
 		r := block.Ships().At(i)
-		r.Id = uint64(1000 + i)
+		r.ID = uint64(1000 + i)
 		r.X = int32(-7*i + 11)
 		r.Flag = i%%2 == 0
 	}
 	for i := int32(0); i < 2; i++ {
 		r := block.Others().At(i)
-		r.Id = uint64(500 + i)
+		r.ID = uint64(500 + i)
 		r.X = int32(i + 3)
 		r.Flag = true
 	}
@@ -296,11 +296,11 @@ func TestBuild(t *testing.T) {
 	fmt.Fprintf(&out, "stamp %%d\n", got.Projection.Stamp)
 	for i := int32(0); i < got.Ships().Len(); i++ {
 		r := got.Ships().At(i)
-		fmt.Fprintf(&out, "ships %%d %%d %%d %%d\n", i, r.Id, r.X, boolInt(r.Flag))
+		fmt.Fprintf(&out, "ships %%d %%d %%d %%d\n", i, r.ID, r.X, boolInt(r.Flag))
 	}
 	for i := int32(0); i < got.Others().Len(); i++ {
 		r := got.Others().At(i)
-		fmt.Fprintf(&out, "others %%d %%d %%d %%d\n", i, r.Id, r.X, boolInt(r.Flag))
+		fmt.Fprintf(&out, "others %%d %%d %%d %%d\n", i, r.ID, r.X, boolInt(r.Flag))
 	}
 	if err := os.WriteFile(filepath.Join(outDir, "expected.txt"), []byte(out.String()), 0o644); err != nil {
 		t.Fatal(err)

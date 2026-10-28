@@ -84,7 +84,7 @@ func TestFixedOracle(t *testing.T) {
 
 const luauFixedIntegrityProbe = `--!strict
 local T = require("./ProbeTable")
-local F = require("./fixed")
+local F = require("./schema_fixed")
 
 local function hex(b: buffer): string
 	local parts = table.create(buffer.len(b))

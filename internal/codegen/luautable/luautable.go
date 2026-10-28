@@ -133,19 +133,19 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		cookCarried = cookCarried || t.CarriesForm("cook")
 	}
 	for name, data := range Runtime() {
-		if name == "view.luau" {
+		if name == "schema_view.luau" {
 			data = views[name]
 		}
 		// Text form resolves through JSON and must not outlive that runtime.
-		if (name == "json.luau" || name == "textform.luau") && !jsonCarried {
+		if (name == "schema_json.luau" || name == "schema_textform.luau") && !jsonCarried {
 			continue
 		}
 		// §2.12: a unit without a block-carrying table has no block runtime.
-		if (name == "block.luau" || name == "blockread.luau") && !blockCarried {
+		if (name == "schema_block.luau" || name == "schema_blockread.luau") && !blockCarried {
 			continue
 		}
 		// §2.12: a unit without a cook-carrying table has no cook runtime.
-		if (name == "cook.luau" || name == "cookread.luau") && !cookCarried {
+		if (name == "schema_cook.luau" || name == "schema_cookread.luau") && !cookCarried {
 			continue
 		}
 		if declared {
@@ -156,7 +156,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// GenerateView emits view.luau (UnitView), the per-file <Base>View.luau leaf
+// GenerateView emits schema_view.luau (UnitView), the per-file <Base>View.luau leaf
 // modules for declarations outside the table closure, and the descriptor
 // runtime they read, for any unit — including a table-free unit that declares
 // only constants, enums, flags, unions or packet types (docs/SPEC-TABLES.md
@@ -182,7 +182,7 @@ func GenerateView(u *ir.Unit) (map[string][]byte, error) {
 	}
 	rt := Runtime()
 	out[RuntimeModule+".luau"] = rt[RuntimeModule+".luau"]
-	out["view.luau"] = emitUnitView(rt["view.luau"], u)
+	out["schema_view.luau"] = emitUnitView(rt["schema_view.luau"], u)
 	return out, nil
 }
 
@@ -668,7 +668,7 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 		g.Pf("\tjsonArray = true,\n")
 	}
 	// the table line's `integrity` key (docs/SPEC-TABLES.md §2.14): a
-	// declaring table's file carries the trailer, and refusal.luau's strict
+	// declaring table's file carries the trailer, and schema_refusal.luau's strict
 	// read checks it before any field, by this entry
 	if t.Integrity != "" {
 		g.Pf("\tintegrity = %q,\n", t.Integrity)
@@ -1069,12 +1069,12 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 			"\ttable.freeze(d.fields :: any)",
 			"\tif d.forms ~= nil then table.freeze(d.forms :: any) end\n\ttable.freeze(d.fields :: any)",
 		)
-	case "json.luau":
+	case "schema_json.luau":
 		replaceOnce(
 			"local function adapted(root: string): (any, any, any)\n  local desc = St.lookup(root)",
 			"local function adapted(root: string): (any, any, any)\n  local desc = St.lookup(root)\n  if desc ~= nil and desc.table and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"schema: table \" .. root .. \" does not carry json (forms declaration)\")\n  end",
 		)
-	case "blockread.luau":
+	case "schema_blockread.luau":
 		replaceOnce(
 			"export type Info = {\n\tname: string,",
 			"export type Info = {\n\tname: string,\n\tforms: { [string]: boolean }?,",
@@ -1083,12 +1083,12 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 			"function B.BlockOpen(info: Info, data: buffer?, base: number?, extent: number?): (Block?, string?)\n\tif data == nil then",
 			"function B.BlockOpen(info: Info, data: buffer?, base: number?, extent: number?): (Block?, string?)\n\tif info.forms ~= nil and info.forms.block ~= true then\n\t\terror(\"schema: table \" .. info.name .. \" does not carry block (forms declaration)\")\n\tend\n\tif data == nil then",
 		)
-	case "cookread.luau":
+	case "schema_cookread.luau":
 		replaceOnce(
 			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
 			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tlocal d0 = S.lookup(root)\n\tif d0 ~= nil and d0.table and d0.forms ~= nil and d0.forms.cook ~= true then\n\t\terror(\"schema: table \" .. root .. \" does not carry cook (forms declaration)\")\n\tend\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
 		)
-	case "cook.luau":
+	case "schema_cook.luau":
 		replaceOnce(
 			"local function refused_layout(d: any, root: any): any\n\tif d == nil then return nil end",
 			"local function refused_layout(d: any, root: any): any\n\tif d == nil then return nil end\n\tif d.table and d.forms ~= nil and d.forms.cook ~= true then\n\t\terror(\"schema: table \" .. tostring(d.name) .. \" does not carry cook (forms declaration)\")\n\tend",

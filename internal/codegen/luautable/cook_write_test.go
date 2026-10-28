@@ -110,8 +110,8 @@ func TestLuauCookMatchesTheGoCook(t *testing.T) {
 	}
 	probe := `--!strict
 local T = require("./cookprobeTable")
-local L = require("./load")
-local C = require("./cook")
+local L = require("./schema_load")
+local C = require("./schema_cook")
 local inputs = require("./inputs")
 local function hex(b: buffer): string
 	local parts = table.create(buffer.len(b))
@@ -134,8 +134,8 @@ end
 `
 	probeInvalidUnion := `--!strict
 local T = require("./cookprobeTable")
-local L = require("./load")
-local C = require("./cook")
+local L = require("./schema_load")
+local C = require("./schema_cook")
 local inputs = require("./inputs")
 C.BuildVersion = buffer.readinteger(inputs.build, 0)
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
@@ -147,8 +147,8 @@ end
 `
 	probeCycle := `--!strict
 local T = require("./cookprobeTable")
-local L = require("./load")
-local C = require("./cook")
+local L = require("./schema_load")
+local C = require("./schema_cook")
 local inputs = require("./inputs")
 C.BuildVersion = buffer.readinteger(inputs.build, 0)
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }

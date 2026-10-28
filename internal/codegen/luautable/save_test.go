@@ -15,7 +15,7 @@ import (
 
 // saveProbe is the Luau main for one instance: it loads every table module
 // (which registers the descriptors), loads the wire at the root through
-// load.luau, saves the value through save.luau, and prints the saved bytes as
+// schema_load.luau, saves the value through schema_save.luau, and prints the saved bytes as
 // one hex line, then the measure (docs/PORT-LUAU.md, THE HARNESS).
 func saveProbe(g *generatedUnit, rootName string) string {
 	var b strings.Builder
@@ -48,7 +48,7 @@ func saveProbe(g *generatedUnit, rootName string) string {
 }
 
 // saveRoot loads one instance's wire file into a Luau value and saves it
-// through the emitted save.luau under the pinned interpreter, returning the
+// through the emitted schema_save.luau under the pinned interpreter, returning the
 // saved bytes and the measure.
 func saveRoot(t *testing.T, g *generatedUnit, wire []byte, root string) ([]byte, int, error) {
 	t.Helper()
@@ -112,7 +112,7 @@ func rowWire(t *testing.T, row reportRow) []byte {
 // TestLuauTableSaveRoundTripsEveryInstance is the variable table wire's SAVE
 // conformance gate (docs/SPEC-TABLES.md §3, §3.1): for every instance row of
 // the tables manifest whose unit the Luau target generates, load the wire
-// file, save the value through the emitted save.luau walk, and byte-compare
+// file, save the value through the emitted schema_save.luau walk, and byte-compare
 // against the same file (the conformance wire surface). Measure equals the
 // saved length. A unit the target refuses is named with its reason, and its
 // instances are counted out.
@@ -176,7 +176,7 @@ func TestLuauTableSaveRoundTripsEveryInstance(t *testing.T) {
 	t.Logf("compared %d instances byte for byte (%d save refusals, %d in the manifest, %d of refused units)", compared, refusedSaves, total, refusedRows)
 }
 
-// TestLuauTableSaveNegativeControl patches the emitted save.luau in memory —
+// TestLuauTableSaveNegativeControl patches the emitted schema_save.luau in memory —
 // one anchor, matched exactly once — so a scalar field at its declared
 // default is written rather than elided, and requires the byte comparison to
 // go red on an instance that round-trips clean unpatched (docs/SPEC-TABLES.md
@@ -205,7 +205,7 @@ func TestLuauTableSaveNegativeControl(t *testing.T) {
 			if err != nil || string(saved) != string(wire) {
 				continue // the round-trip gate names it; the control needs a clean baseline
 			}
-			path := filepath.Join(g.dir, "save.luau")
+			path := filepath.Join(g.dir, "schema_save.luau")
 			src, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)

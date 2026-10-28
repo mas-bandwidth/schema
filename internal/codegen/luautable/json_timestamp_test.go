@@ -145,7 +145,7 @@ type jsonTimestampResult struct {
 // the read value (docs/SPEC-TABLES.md §16.1-§16.3).
 func runJsonTimestampProbe(t *testing.T, g *generatedUnit, text string) jsonTimestampResult {
 	t.Helper()
-	const probe = `local json = require("./json")
+	const probe = `local json = require("./schema_json")
 json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local function hex(b)

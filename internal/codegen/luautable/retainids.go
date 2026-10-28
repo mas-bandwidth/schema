@@ -4,7 +4,7 @@
 // takes an entry of the caller's bounded retained-id list. Which ids a build
 // names is a unit fact, ir.TableWireIds, the same list the Go writer's
 // tableRetainKnown holds; every table module registers it with the runtime so
-// retain.luau can tell the two apart.
+// schema_retain.luau can tell the two apart.
 package luautable
 
 import (

@@ -210,7 +210,7 @@ func fixedBoundsOracle(t *testing.T, schemaSrc string) ([]byte, string, map[stri
 	return valid, values, cases
 }
 
-// TestLuauFixedLayoutBounds holds fixed.luau's layout plan to the record and the
+// TestLuauFixedLayoutBounds holds schema_fixed.luau's layout plan to the record and the
 // layout it was handed: a child count past the last entry, a struct's children
 // summing past its size, and a leaf past the record are all layout_malformed
 // before any record byte is read, as schema-go's own fixed reader refuses the
@@ -294,12 +294,12 @@ print(string.format("valid|%d|%d|%d|%d", values[1].X, values[1].Inner.A, values[
 				continue
 			}
 			if g.reason != want.reason || g.malformed != want.malformed {
-				t.Errorf("%s %s: fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
+				t.Errorf("%s %s: schema_fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
 					mode, name, g.reason, g.malformed, want.reason, want.malformed)
 			}
 		}
 	}
 	if gotValues != wantValues {
-		t.Errorf("the valid file's records: fixed.luau landed %q, Go landed %q", gotValues, wantValues)
+		t.Errorf("the valid file's records: schema_fixed.luau landed %q, Go landed %q", gotValues, wantValues)
 	}
 }

@@ -1,5 +1,5 @@
 --!strict
--- load.luau — the Luau table runtime's VARIABLE FORM (form 1) tolerant load
+-- schema_load.luau — the Luau table runtime's VARIABLE FORM (form 1) tolerant load
 -- (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-LUAU.md, THE CARD MAP). A port
 -- of the JavaScript leg's TableVariableLoad walk
 -- (internal/codegen/jstable/variableruntime.go) and of the Go reference engine
@@ -1506,7 +1506,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
--- §6.5), each with its §11 name; load.luau spells kind_mismatch kindMismatch.
+-- §6.5), each with its §11 name; schema_load.luau spells kind_mismatch kindMismatch.
 -- blob_shared sits where Go's Err() checks BlobShared, between malformed and
 -- clamped (§2.5), so a wire that is both clamped and blob-shared refuses as
 -- blob_shared.
@@ -1520,7 +1520,7 @@ local NAMES: { [string]: string } = {
 	nonFinite = "non_finite",
 }
 
--- a report at rest, in load.luau's shape (docs/SPEC-TABLES.md §4)
+-- a report at rest, in schema_load.luau's shape (docs/SPEC-TABLES.md §4)
 local function fresh(): any
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, missingRequired = 0, nonFinite = 0, blobShared = 0 }
 end
@@ -1573,7 +1573,7 @@ end
 
 -- THE FRAMING WALK (docs/SPEC-TABLES.md §3): a field header is an id
 -- reference and a kind byte, and every kind's payload is stepped over by its
--- own framing, the rule load.luau's skip states. It reads no value.
+-- own framing, the rule schema_load.luau's skip states. It reads no value.
 local function leb(b: buffer, at: number, e: number): (number?, number)
 	local v = 0
 	local s = 0
@@ -1603,7 +1603,7 @@ local function lebBytes(n: number): string
 end
 
 -- the end of one payload of `kind` at `at`, or nil when it does not fit: the
--- payload table of docs/SPEC-TABLES.md §3, the rule load.luau's skip states
+-- payload table of docs/SPEC-TABLES.md §3, the rule schema_load.luau's skip states
 local function stepOver(b: buffer, at: number, e: number, kind: number): number?
 	local fixedWidth = 0
 	if kind == 1 or kind == 2 or kind == 6 or kind == 20 or kind == 25 then fixedWidth = 1
@@ -1658,7 +1658,7 @@ end
 
 -- the id table and the root body's span (docs/SPEC-TABLES.md §3: the id
 -- table's count is the file's last eight bytes and its ids precede it), as
--- load.luau's open reads them, except that a count that does not frame (a
+-- schema_load.luau's open reads them, except that a count that does not frame (a
 -- negative one included) is refused
 local function frame(b: buffer): any
 	local len = buffer.len(b)
@@ -1911,7 +1911,7 @@ end
 -- applies the file's own framing (integrity, the id table and the root body's
 -- terminator) and then the refusing counters in TableReport.Err()'s order, so a
 -- wire always answers one name. R.ReadStrict's fixed-form dispatch lives in
--- refusal.luau; this is the half a form-1 file reaches, including a declared
+-- schema_refusal.luau; this is the half a form-1 file reaches, including a declared
 -- fixed root handed its form-1 wire.
 function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	local rep: any = report or {}
@@ -1968,7 +1968,7 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	return v
 end
 
--- resetReport is the report at rest, shared with refusal.luau's fixed path.
+-- resetReport is the report at rest, shared with schema_refusal.luau's fixed path.
 function L.resetReport(report: any)
 	reset(report)
 end
@@ -1978,8 +1978,8 @@ end
 -- and hands back no recovered value, with the caller's report overwritten by
 -- this read's counters and report.reason the one name the strict read answers.
 -- The strict check lives HERE, beside the walk it judges, rather than calling
--- refusal.luau: the pinned Luau refuses a require cycle at load time, and
--- load.luau -> refusal.luau -> load.luau is exactly one. refusal.luau's
+-- schema_refusal.luau: the pinned Luau refuses a require cycle at load time, and
+-- schema_load.luau -> schema_refusal.luau -> schema_load.luau is exactly one. schema_refusal.luau's
 -- ReadStrict still owns the fixed-form dispatch and delegates form 1 here.
 function L.load(root: string, bytes: buffer, report: any): any
 	return L.ReadStrict(root, bytes, report)

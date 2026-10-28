@@ -192,7 +192,7 @@ func TestLuauFixedFormVersioning(t *testing.T) {
 	dir, mod, _ := build(t, "test/tables/FU2.schema")
 	main := hexProbe + fmt.Sprintf(`--!strict
 local T = require("./%s")
-local F = require("./fixed")
+local F = require("./schema_fixed")
 local inputs = require("./inputs")
 local foreign = %s
 local values = F.load(T.FuRootDescriptor, %s, inputs.old, foreign)
@@ -228,7 +228,7 @@ print(hex(out))
 	dir, mod, _ = build(t, "test/tables/FU1.schema")
 	main = fmt.Sprintf(`--!strict
 local T = require("./%s")
-local F = require("./fixed")
+local F = require("./schema_fixed")
 local inputs = require("./inputs")
 local ok, err = pcall(function()
 	return F.load(T.FuRootDescriptor, %s, inputs.new)
@@ -275,7 +275,7 @@ func TestLuauFixedFormRefusals(t *testing.T) {
 			dir, mod, _ := build(t, "test/tables/FX1.schema")
 			main := fmt.Sprintf(`--!strict
 local T = require("./%s")
-local F = require("./fixed")
+local F = require("./schema_fixed")
 local inputs = require("./inputs")
 local forged = %s
 local ok, err = pcall(function()
@@ -320,18 +320,18 @@ func TestLuauFixedFormNegativeControl(t *testing.T) {
 	}
 	dir, mod, files := build(t, "test/tables/FX1.schema")
 	anchor := "-- FIXED-WRITE-ANCHOR\n\tfor _, f in d.fields do\n\t\tlocal c = childById(n, f.id)"
-	runtime := string(files["fixed.luau"])
+	runtime := string(files["schema_fixed.luau"])
 	if strings.Count(runtime, anchor) != 1 {
 		t.Fatalf("the negative control's anchor appears %d times, want exactly once", strings.Count(runtime, anchor))
 	}
 	patched := strings.Replace(runtime, anchor,
 		"-- FIXED-WRITE-ANCHOR\n\tfor i, f in d.fields do\n\t\tif i == #d.fields then continue end\n\t\tlocal c = childById(n, f.id)", 1)
-	if err := os.WriteFile(filepath.Join(dir, "fixed.luau"), []byte(patched), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "schema_fixed.luau"), []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	main := hexProbe + fmt.Sprintf(`--!strict
 local T = require("./%s")
-local F = require("./fixed")
+local F = require("./schema_fixed")
 local inputs = require("./inputs")
 local fixed = %s
 local values = F.load(T.FxRootDescriptor, fixed, inputs.oracle)

@@ -28,8 +28,8 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 		t.Fatal("table module missing")
 	}
 	write := `local S = require("./schema_tables")
-local Save = require("./save")
-local Fixed = require("./fixed")
+local Save = require("./schema_save")
+local Fixed = require("./schema_fixed")
 local T = require("./MOD")
 local d = T.RootDescriptor
 local v = d.new()
@@ -70,7 +70,7 @@ print(hex(wire)); print(hex(fw))
 		}
 	}
 	read := `local S = require("./schema_tables"); local inputs = require("./inputs")
-local Load = require("./load"); local Save = require("./save"); local Text = require("./text"); local Fixed = require("./fixed")
+local Load = require("./schema_load"); local Save = require("./schema_save"); local Text = require("./schema_text"); local Fixed = require("./schema_fixed")
 local T = require("./MOD")
 local d = T.RootDescriptor; local rep = { malformed=false, refused=0, unknown=0, kindMismatch=0, clamped=0, widened=0, duplicate=0 }
 local v = Load.load(d.name, inputs.wire, rep)
@@ -124,7 +124,7 @@ print("fixedarray " .. tostring(not ok2) .. " " .. tostring(type(err2) == "table
 	// the message writers refuse a body that still holds one (§2.15).
 	msgBatch := goVariantBatch(t, "internal/codegen/luautable/testdata/variantdeprecated_live.schema", `{"ship":"Bomber","fleet":["Bomber"]}`)
 	arrayBatch := goVariantBatch(t, "internal/codegen/luautable/testdata/variantdeprecated_live.schema", `{"ship":"Fighter","fleet":["Bomber"]}`)
-	msgScript := `local M = require("./message")
+	msgScript := `local M = require("./schema_message")
 local T = require("./MOD")
 local inputs = require("./inputs")
 local function bits(n) local b=0; while n~=0 do b=b+1; n=math.floor(n/2) end; return b end

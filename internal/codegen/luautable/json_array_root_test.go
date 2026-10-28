@@ -47,8 +47,8 @@ table GoalList | json = "array"
 		t.Fatal("Go oracle has no GoalList")
 	}
 
-	probe := jsonModules(g) + `local json = require("./json")
-local save = require("./save")
+	probe := jsonModules(g) + `local json = require("./schema_json")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local function hex(b)

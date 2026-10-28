@@ -32,7 +32,7 @@ func unitFromSchemas(t *testing.T, schemas map[string]string) *ir.Unit {
 // rule that two emitted file names equal ignoring case are refused by name,
 // runtime modules included, and that a table-only schema file's module is
 // <Base>Table.luau rather than an empty type-surface module (so tables/maps'
-// Text.schema no longer claims text.luau). The control at the end runs the
+// Text.schema no longer claims schema_text.luau). The control at the end runs the
 // same check with an exact comparison: that comparison does not see Text/text,
 // which is what makes the positive assertions red if the production check is
 // ever narrowed to exact case.
@@ -47,12 +47,12 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 	t.Run("Text beside the runtime's text", func(t *testing.T) {
 		t.Parallel()
 		u := unitFromSchemas(t, map[string]string{"Text.schema": withType("TextProbe")})
-		runtime := map[string][]byte{"text.luau": []byte("-- runtime\n")}
+		runtime := map[string][]byte{"schema_text.luau": []byte("-- runtime\n")}
 		err := CheckBases(u, runtime)
 		if err == nil {
-			t.Fatal("Text.luau beside text.luau was accepted")
+			t.Fatal("Text.luau beside schema_text.luau was accepted")
 		}
-		for _, want := range []string{"Text.luau", "text.luau", "Text.schema"} {
+		for _, want := range []string{"Text.luau", "schema_text.luau", "Text.schema"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("refusal does not name %s: %v", want, err)
 			}
@@ -103,9 +103,9 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 	t.Run("a table-only Text claims TextTable, not text", func(t *testing.T) {
 		t.Parallel()
 		u := unitFromSchemas(t, map[string]string{"Text.schema": tableOnly})
-		runtime := map[string][]byte{"text.luau": []byte("-- runtime\n")}
+		runtime := map[string][]byte{"schema_text.luau": []byte("-- runtime\n")}
 		if err := CheckBases(u, runtime); err != nil {
-			t.Fatalf("a table-only Text.schema collides with text.luau: %v", err)
+			t.Fatalf("a table-only Text.schema collides with schema_text.luau: %v", err)
 		}
 		files, err := Generate(u)
 		if err != nil {
@@ -122,7 +122,7 @@ func TestLuauGeneratedNamesAreCaseInsensitiveUnique(t *testing.T) {
 	t.Run("exact comparison does not catch the case pair", func(t *testing.T) {
 		t.Parallel()
 		u := unitFromSchemas(t, map[string]string{"Text.schema": withType("TextProbe")})
-		runtime := map[string][]byte{"text.luau": []byte("-- runtime\n")}
+		runtime := map[string][]byte{"schema_text.luau": []byte("-- runtime\n")}
 		if _, _, collides := collidingNames(u, runtime, func(a, b string) bool { return a == b }); collides {
 			t.Fatal("the exact-comparison control caught Text/text, so it is not a control")
 		}

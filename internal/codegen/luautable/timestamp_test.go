@@ -62,7 +62,7 @@ func TestOracle(t *testing.T) {
 	var b0 EventBuilder
 	if !b0.Init() { t.Fatal("b0 init") }
 	defer b0.Shutdown()
-	b0.GetRoot().Id = 7
+	b0.GetRoot().ID = 7
 	if !b0.Lock() { t.Fatal("b0 lock") }
 	v0 := b0.AsConst()
 	w0 := make([]byte, EventMeasure(v0))
@@ -73,7 +73,7 @@ func TestOracle(t *testing.T) {
 	if !b1.Init() { t.Fatal("b1 init") }
 	defer b1.Shutdown()
 	r1 := b1.GetRoot()
-	r1.Id = 42
+	r1.ID = 42
 	r1.OpenedAt = 1729296000123456789
 	r1.ClosedAt = -86400000000000
 	r1.MinAt = -9223372036854775808
@@ -107,10 +107,10 @@ func TestOracle(t *testing.T) {
 
 const luauTimestampProbe = `--!strict
 local T = require("./ProbeTable")
-local S = require("./save")
-local L = require("./load")
-local R = require("./refusal")
-local F = require("./fixed")
+local S = require("./schema_save")
+local L = require("./schema_load")
+local R = require("./schema_refusal")
+local F = require("./schema_fixed")
 
 local function hex(b: buffer): string
 	local parts = table.create(buffer.len(b))

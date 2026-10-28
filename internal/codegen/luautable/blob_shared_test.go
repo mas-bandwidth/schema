@@ -125,9 +125,9 @@ func blobSharedWire(titleText string) []byte {
 
 // blobProbeMain is the Luau probe: it loads the shared wire, the
 // two-distinct-blobs wire and the clamped wire through the emitted
-// load.luau, prints the reports' blobShared (and clamped) and the two
-// buffers' identity and bytes, asks refusal.luau's ReadStrict for its name
-// and witness, and saves the shared and distinct values through save.luau
+// schema_load.luau, prints the reports' blobShared (and clamped) and the two
+// buffers' identity and bytes, asks schema_refusal.luau's ReadStrict for its name
+// and witness, and saves the shared and distinct values through schema_save.luau
 // (docs/SPEC-TABLES.md §2.5, §6.5).
 func blobProbeMain(g *generatedUnit) string {
 	var b strings.Builder

@@ -28,9 +28,9 @@ table Box {
 // back, then saves, loads and writes that again (docs/SPEC-TABLES.md §16.2,
 // §16.5). Every call's result is checked in Luau before it is printed.
 const nullElemProbe = `require("./BoxTable")
-local json = require("./json")
-local load = require("./load")
-local save = require("./save")
+local json = require("./schema_json")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local function hex(b)
@@ -62,7 +62,7 @@ print(hex(again))
 // nullElemReadOnlyProbe is the reversed witness's probe: it never saves, so a
 // planted reader defect is the only thing that can move its answer.
 const nullElemReadOnlyProbe = `require("./BoxTable")
-local json = require("./json")
+local json = require("./schema_json")
 local inputs = require("./inputs")
 local function hex(b)
 	if b == nil then return "nil" end
@@ -256,7 +256,7 @@ func TestLuauJsonNullElementsInArraysAndMaps(t *testing.T) {
 	// cannot pass for red. The genuine runtime is the subtests' run.
 	m := nullElemUnit(t)
 	wg := generateFiles(t, map[string]string{"Box.schema": nullElemSchema})
-	src, err := os.ReadFile(filepath.Join("runtime", "json.luau"))
+	src, err := os.ReadFile(filepath.Join("runtime", "schema_json.luau"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestLuauJsonNullElementsInArraysAndMaps(t *testing.T) {
 		}
 		bad = strings.Replace(bad, r.old, r.new, 1)
 	}
-	if err := os.WriteFile(filepath.Join(wg.dir, "json.luau"), []byte(bad), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wg.dir, "schema_json.luau"), []byte(bad), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(wg.dir, "main.luau"), []byte(nullElemReadOnlyProbe), 0o644); err != nil {

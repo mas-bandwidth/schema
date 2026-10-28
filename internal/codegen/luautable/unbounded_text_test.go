@@ -154,7 +154,7 @@ func luauUnboundedTextGenerated(t *testing.T, u *ir.Unit) *generatedUnit {
 }
 
 // luauUnboundedTextProbe loads each input wire, saves the value through
-// save.luau and prints the root, the load report's duplicate and malformed
+// schema_save.luau and prints the root, the load report's duplicate and malformed
 // counters and the saved bytes. A refused or unsaveable value prints a
 // recognizable failure instead.
 func luauUnboundedTextProbe(g *generatedUnit) string {

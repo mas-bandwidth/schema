@@ -1,5 +1,5 @@
 --!strict
--- message.luau — the Luau table runtime's MESSAGE FORM (docs/SPEC-TABLES.md
+-- schema_message.luau — the Luau table runtime's MESSAGE FORM (docs/SPEC-TABLES.md
 -- §3.3), form byte 2: a batch of bitpacked bodies under one announced
 -- vocabulary. The announcement is an ordinary form-1 file whose body carries
 -- the build version and the vocabulary; the batch is the form byte, the
@@ -22,9 +22,9 @@ local BYTES_ID: integer = 0x2f2ec0474f1c4fe4i
 local STRING_ID: integer = 0x704be0d8faaffc58i
 
 -- CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
--- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14). refusal.luau keeps the same routine
+-- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14). schema_refusal.luau keeps the same routine
 -- local to itself; requiring it here would not cycle, but it exports no CRC
--- and this card's PATHS do not include refusal.luau, so the routine is copied
+-- and this card's PATHS do not include schema_refusal.luau, so the routine is copied
 -- rather than moved.
 local function crc32c(b: buffer, n: number): number
 	local crc = 0xFFFFFFFF

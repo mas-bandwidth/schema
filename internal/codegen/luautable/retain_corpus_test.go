@@ -100,7 +100,7 @@ func TestLuauRetainAgreesWithTheCorpus(t *testing.T) {
 		}
 		probe := fmt.Sprintf(`--!strict
 require("./RT1Table")
-local R = require("./retain")
+local R = require("./schema_retain")
 local inputs = require("./inputs")
 local function report(): any
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
@@ -243,7 +243,7 @@ func TestLuauRetainSaveRenumbersInWriteOrder(t *testing.T) {
 	}
 	probe := `--!strict
 require("./orderTable")
-local R = require("./retain")
+local R = require("./schema_retain")
 local inputs = require("./inputs")
 local r: any = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
 local v, store = R.LoadRetain("Root", inputs.wire, r, 65536)

@@ -1,5 +1,5 @@
 --!strict
--- text.luau — THE BASE64 TEXT CARRIER (docs/SPEC-TABLES.md §16.8; docs/PORT-
+-- schema_text.luau — THE BASE64 TEXT CARRIER (docs/SPEC-TABLES.md §16.8; docs/PORT-
 -- LUAU.md, THE CARD MAP). A text channel carries a table as the padded
 -- standard base64 of its whole binary wire: form byte, framing check and
 -- every versioning guarantee ride inside, and the text is opaque. A body that
@@ -7,16 +7,16 @@
 -- refuses keeps the binary reader's own name (a form this build does not
 -- carry, wire_damaged, truncated, or the report's reason).
 --
--- It is a WRAPPER over save.luau and refusal.luau and edits nothing in them:
+-- It is a WRAPPER over schema_save.luau and schema_refusal.luau and edits nothing in them:
 -- SaveText is the base64 of Save's bytes, and LoadText is ReadStrict (§6.5)
 -- over the decoded wire, so a tolerant load's recovered value never comes
 -- back with a nil verdict.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
-local Save = require("./save")
-local Load = require("./load")
-local Refusal = require("./refusal")
+local Save = require("./schema_save")
+local Load = require("./schema_load")
+local Refusal = require("./schema_refusal")
 
 local T = {}
 
@@ -25,7 +25,7 @@ local ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 local VALUE: { [string]: number } = {}
 for i = 1, #ALPHABET do VALUE[string.sub(ALPHABET, i, i)] = i - 1 end
 
--- the report at rest, as refusal.luau resets it (§4)
+-- the report at rest, as schema_refusal.luau resets it (§4)
 local function reset(report: any)
 	report.malformed = false
 	report.refused = 0

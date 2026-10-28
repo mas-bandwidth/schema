@@ -1,8 +1,8 @@
 --!strict
--- blockread.luau — THE BLOCK FORM'S REFLECTIVE READ (docs/SPEC-TABLES.md §19.2,
+-- schema_blockread.luau — THE BLOCK FORM'S REFLECTIVE READ (docs/SPEC-TABLES.md §19.2,
 -- §19.4). Emitted beside the unit's <Base>Table.luau modules by
 -- internal/codegen/luautable, which embeds runtime/*.luau by glob, and
--- required as require("./blockread").
+-- required as require("./schema_blockread").
 --
 -- A block is memory another build wrote. BlockOpen checks it ONCE — the magic,
 -- the byte order the prologue carries, the build version, each out-of-line

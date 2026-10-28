@@ -295,13 +295,13 @@ func TestLuauRequiredSave(t *testing.T) {
 	}
 }
 
-// requiredLuauSave runs the same save cases through save.luau and prints the
+// requiredLuauSave runs the same save cases through schema_save.luau and prints the
 // "@save-<name>|<hex or REFUSED>" lines; measure is compared with the saved
 // length inside the probe.
 func requiredLuauSave(t *testing.T, g *generatedUnit) map[string]string {
 	t.Helper()
-	main := `local save = require("./save")
-local load = require("./load")
+	main := `local save = require("./schema_save")
+local load = require("./schema_load")
 local St = require("./schema_tables")
 require("./ReqTable")
 local function emit(name: string, d: any, v: any)
@@ -342,7 +342,7 @@ end
 		}
 	}
 	if got["save-exact-roundtrip"] != "ok" {
-		t.Errorf("the set required value did not round-trip through load.luau: %q", got["save-exact-roundtrip"])
+		t.Errorf("the set required value did not round-trip through schema_load.luau: %q", got["save-exact-roundtrip"])
 	}
 	return got
 }

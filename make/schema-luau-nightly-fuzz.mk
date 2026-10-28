@@ -673,7 +673,7 @@ luau-nightly-fuzz-replay: luau-nightly-fuzz-toolchain build/schema-luau-nightly 
 
 # THE NEGATIVE CONTROL (make/negative-controls.json, tools/negativecontrols):
 # a scratch copy of the generated readers has the id-table count's sign check
-# removed from load.luau's open() (the bug luau-load-negative-id-count fixed:
+# removed from schema_load.luau's open() (the bug luau-load-negative-id-count fixed:
 # a high-bit count passes the upper bound and walks past the buffer), and the
 # coverage-guided fuzzer must find it inside LUAU_NF_NC_TIME; the found input
 # must then FAIL the replay on the same sabotaged copy. The unplanted copy
@@ -694,7 +694,7 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f"; \
 			planted=$$((planted + 1)); fi; done; \
 	if [ $$planted -lt 1 ]; then echo "negative control: no id-table count sign check was planted" >&2; exit 1; fi; \
-	echo "negative control: planted in $$planted generated load.luau copies"
+	echo "negative control: planted in $$planted generated schema_load.luau copies"
 	@set +e; \
 	$(LUAU_NF_HOST) $(LUAU_NF_NC)/fuzz.luau $(LUAU_NF_NC_TIME) $(LUAU_NF_NC_SEED) > $(LUAU_NF_NC)/fuzz.log 2>&1; \
 	status=$$?; cat $(LUAU_NF_NC)/fuzz.log; \

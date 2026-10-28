@@ -133,9 +133,9 @@ func joinMapKeys(f *tabletext.Field) string {
 // unknown counts, the kept list lengths and map keys, then the wire Save writes
 // and the text ToJson writes from the read value (docs/SPEC-TABLES.md §16.2,
 // §16.5).
-const jsonElemReadsProbe = `local json = require("./json")
+const jsonElemReadsProbe = `local json = require("./schema_json")
 json.SetFlags(SCHEMA_JSON_FLAGS)
-local save = require("./save")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local function hex(b)

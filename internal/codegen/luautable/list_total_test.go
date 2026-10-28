@@ -124,8 +124,8 @@ func listTotalWire(t *testing.T, m *tabletext.Model, field string, elems int) []
 // bytes and the clamped counter, then loads the at-total wire, lengthens its
 // first element by one byte and saves: an over-total list must refuse.
 const listTotalProbe = `local inputs = require("./inputs")
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 require("./ProbeTable")
 

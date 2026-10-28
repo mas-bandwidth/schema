@@ -49,7 +49,7 @@ func TestLuauUnitViewListsTheUnit(t *testing.T) {
 		}
 	}
 	main := `--!strict
-local view = require("./view")
+local view = require("./schema_view")
 local u = view.UnitView()
 assert(table.isfrozen(u) and u.package ~= "" and #u.protocol_id == 16)
 for _, key in {"constants", "types", "tables", "enums", "flags", "unions"} do
@@ -129,7 +129,7 @@ func TestLuauUnitViewTableFree(t *testing.T) {
 		}
 	}
 	main := `--!strict
-local view = require("./view")
+local view = require("./schema_view")
 local u = view.UnitView()
 assert(table.isfrozen(u) and u.package ~= "" and #u.protocol_id == 16)
 assert(#u.tables == 0 and #u.constants > 0 and #u.types > 0 and #u.enums > 0 and #u.flags > 0 and #u.unions > 0)

@@ -41,9 +41,9 @@ table Var
 // floatProbe loads the wire through the tolerant load and the strict read,
 // prints the report's counters, the loaded bits and the save's bytes.
 const floatProbe = `local inputs = require("./inputs")
-local load = require("./load")
-local save = require("./save")
-local R = require("./refusal")
+local load = require("./schema_load")
+local save = require("./schema_save")
+local R = require("./schema_refusal")
 local St = require("./schema_tables")
 local s = buffer.create(8)
 local function hex(b: buffer?): string
@@ -54,7 +54,7 @@ local function hex(b: buffer?): string
 	end
 	return table.concat(parts)
 end
--- the float32 a float64 cell rides as, by the same bit surgery save.luau uses
+-- the float32 a float64 cell rides as, by the same bit surgery schema_save.luau uses
 local function narrow32(x: number): number
 	buffer.writef64(s, 0, x)
 	local hi = buffer.readu32(s, 4)

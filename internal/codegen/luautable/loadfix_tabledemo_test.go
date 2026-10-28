@@ -73,8 +73,8 @@ var loadFixHCases = []loadFixHCase{
 }
 
 const loadFixHProbe = `local S = require("./schema_tables")
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local inputs = require("./inputs")
 
 local root = ROOTNAME
