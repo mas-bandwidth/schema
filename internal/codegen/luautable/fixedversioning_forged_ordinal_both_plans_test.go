@@ -24,9 +24,11 @@ func TestLuauFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 	forged := append([]byte(nil), data...)
 	forged[at] = 4
 	body := `local report: any = {}
-local values = LOAD("file", report)
+local values = LOADT("file", report)
 check(values ~= nil and #values == 1, "the forged file carries one record: " .. why(report))
 if values == nil then return end
+local strict: any = {}
+check(LOAD("file", strict) == nil and strict.reason == "clamped", "the plain read is STRICT and refuses the clamp by name (§6.5): " .. why(strict))
 check(report.reason == nil and not report.malformed, "a forged ordinal is not a refusal and not malformed: " .. why(report))
 check(num(values[1].Tier) == 0, "a forged ordinal lands None, never Platinum: " .. tostring(values[1].Tier))
 check(num(values[1].Seq) == 9, "the forged ordinal moved its neighbour")

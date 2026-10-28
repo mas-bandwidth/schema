@@ -645,7 +645,9 @@ local function refuseNonFinite(report: any, field: string, read: boolean)
 	report.field = field
 end
 
-function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
+-- LoadMessagesTolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5,
+-- §3.3): every body it recovered, with the damage on the report.
+function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	if report == nil then report = {} end
 	reset(report)
 	local len = buffer.len(data)
@@ -695,6 +697,25 @@ function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, re
 		return got2, bodies2
 	end
 	return got, bodies
+end
+
+-- LoadMessages is the PLAIN batch read, and it is STRICT (docs/SPEC-TABLES.md
+-- §6.5, Go's <T>LoadMessages over <T>LoadMessagesTolerant): a batch the
+-- tolerant read found damaged, or whose report counts a clamp or a kind that
+-- moved, answers -1 with no body handed back and report.reason the one name
+-- (wire_damaged, clamped, kind_mismatch), and a refusal keeps its own name.
+-- unknown and widened alone never refuse.
+function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
+	local rep: any = report or {}
+	local count, bodies = M.LoadMessagesTolerant(v, root, data, capacity, rep)
+	if count < 0 then return count, bodies end
+	-- a refusal the tolerant read already named answers as it did (batch_too_large
+	-- keeps the count the caller needs)
+	if rep.reason ~= nil and rep.reason ~= "" then return count, bodies end
+	if rep.malformed then rep.reason = "wire_damaged"; return -1, {} end
+	if (rep.clamped or 0) > 0 then rep.reason = "clamped"; return -1, {} end
+	if (rep.kindMismatch or 0) > 0 then rep.reason = "kind_mismatch"; return -1, {} end
+	return count, bodies
 end
 
 local function bodyBits(bodies: any): number
