@@ -209,7 +209,7 @@ tables-js-leg: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 .PHONY: tables-js-accessor-negative-control
 tables-js-accessor-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	@rm -rf build/js-accessor-sabotage && mkdir -p build/js-accessor-sabotage
-	@sed 's|at + %d + i \* %d", fl.Offset, elem)))|at + %d + i * %d", fl.Offset+4, elem))) // SABOTAGED|' \
+	@sed 's|at + %d + i \* %d", fl.Offset, elem)\(.*\)$$|at + %d + i * %d", fl.Offset+4, elem)\1 // SABOTAGED|' \
 		internal/codegen/jstable/record.go > build/js-accessor-sabotage/record.go.txt
 	@grep -q SABOTAGED build/js-accessor-sabotage/record.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
