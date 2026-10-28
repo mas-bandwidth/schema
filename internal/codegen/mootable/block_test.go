@@ -225,11 +225,11 @@ func firstLineDiff(got, want string) string {
 // forgery is one `forgery` row of the manifest.
 type forgery struct {
 	name, kind, subject, base string
-	pointer                    string
-	offsets, widths            []int64
-	values                     []uint64
-	extent                     int64
-	verdict                    string
+	pointer                   string
+	offsets, widths           []int64
+	values                    []uint64
+	extent                    int64
+	verdict                   string
 }
 
 func forgeries(t *testing.T, kind string) []forgery {
@@ -378,4 +378,3 @@ func TestMooBlockNegativeControls(t *testing.T) {
 		}
 	}
 }
-
