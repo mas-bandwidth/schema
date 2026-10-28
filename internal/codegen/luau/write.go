@@ -69,6 +69,13 @@ func (g *Gen) writeRef(name string) string {
 // wire tree so branches, const, reserved and align keep their places
 // (ir.Struct.Items; SPEC §4.3, §4.5).
 func emitWriteStruct(g *Gen, st *ir.Struct) {
+	maxBits := ir.MaxBitsStruct(st)
+	g.Pf("-- %sMaxBits is the longest wire path, align padding at its worst case;\n", st.Name)
+	g.Pf("-- %sMaxBytes sizes a write buffer, rounded up to 8 bytes (SPEC §6.1).\n", st.Name)
+	g.Pf("%s.%sMaxBits = %d\n", g.Self, st.Name, maxBits)
+	g.Pf("%s.%sMaxBytes = %d\n\n", g.Self, st.Name, ir.MaxBytes(maxBits))
+	g.BulkBytes = ir.AlignedFixedByteArrays(st)
+	defer func() { g.BulkBytes = nil }()
 	g.Pf("-- Write%s writes the type wire (SPEC §6.1: the wire order is the declared\n", st.Name)
 	g.Pf("-- order); false refuses a value that breaks the writer contract (SPEC §5).\n")
 	g.Pf("function %s.Write%s(stream: any, v: any): boolean\n", g.Self, st.Name)
@@ -132,11 +139,16 @@ func emitWriteField(g *Gen, val string, f *ir.Field, indent string) {
 		g.Pf("%send\n", indent)
 		return
 	}
-	if isByteElem(f.Type) && !f.HasIntRange {
+	if isByteElem(f.Type) && !f.HasIntRange && g.BulkBytes[f] {
+		// byte aligned by construction (ir.AlignedFixedByteArrays), so the
+		// bulk copy's align adds no bits: the wire is the per-byte loop's
 		g.Pf("%sif type(%s) ~= \"buffer\" or buffer.len(%s) ~= %s then return false end\n", indent, val, val, bound)
-		g.Pf("%sif not stream:serializeBytes(%s) then return false end -- [N]uint8 bulk copy (SPEC §4.7)\n",
+		g.Pf("%sif not stream:serializeBytes(%s) then return false end -- [N]uint8 on a byte boundary: one bulk copy\n",
 			indent, val)
 		return
+	}
+	if isByteElem(f.Type) {
+		g.Pf("%sif type(%s) ~= \"buffer\" or buffer.len(%s) ~= %s then return false end\n", indent, val, val, bound)
 	}
 	g.Pf("%sfor _i = 1, %s do\n", indent, bound)
 	emitWriteElem(g, val, f, indent+"  ")
@@ -382,6 +394,11 @@ func emitBits64OrSkip(g *Gen, indent, expr string, bits int64, what string) {
 // emitWriteUnion emits Write<Name>(stream, v): the tag in minimal bits for
 // [0, Max], validated BEFORE it rides, then the selected arm only (SPEC §4.8).
 func emitWriteUnion(g *Gen, un *ir.Union) {
+	maxBits := ir.MaxBitsUnion(un)
+	g.Pf("-- %sMaxBits is the tag plus the largest arm, None the tag alone (SPEC §4.8);\n", un.Name)
+	g.Pf("-- %sMaxBytes sizes a write buffer, rounded up to 8 bytes (SPEC §6.1).\n", un.Name)
+	g.Pf("%s.%sMaxBits = %d\n", g.Self, un.Name, maxBits)
+	g.Pf("%s.%sMaxBytes = %d\n\n", g.Self, un.Name, ir.MaxBytes(maxBits))
 	g.Pf("-- Write%s writes union %s (SPEC §4.8: None = 0, then each declared arm)\n", un.Name, un.Name)
 	g.Pf("function %s.Write%s(stream: any, v: any): boolean\n", g.Self, un.Name)
 	guardNum(g, "  ", "v.Type", big.NewInt(0), big.NewInt(un.Max), "a tag that names no arm cannot ride")

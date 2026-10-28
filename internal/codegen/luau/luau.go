@@ -287,6 +287,11 @@ type Gen struct {
 	// Kind names the module family in its header ("type surface",
 	// "table surface").
 	Kind string
+	// BulkBytes is the [N]uint8 fields of the struct being emitted whose
+	// bytes provably start on a byte boundary (ir.AlignedFixedByteArrays):
+	// only those may ride serializeBytes, whose align would otherwise insert
+	// padding the wire does not have. The codec sets it per struct.
+	BulkBytes map[*ir.Field]bool
 	// Suffix is the module's basename suffix: "" for the type modules,
 	// "Table" for luautable's. A require of a declaration in another file
 	// names that file's module with the suffix of the declaration's family.
@@ -474,15 +479,18 @@ func (g *Gen) emitEnum(d *ir.Enum) {
 // emitEnumName is the debug/log name of any wire value of an enum or a tag
 // set; out-of-set values (wire-legal up to the declared max) name as "???".
 func (g *Gen) emitEnumName(name string, members []string) {
-	g.Pf("-- EnumName%s: debug/log/tooling name for any %s wire value\n", name, name)
-	g.Pf("local _names%s = table.freeze({ [0] = \"None\"", name)
+	g.Pf("-- EnumName%s: debug/log/tooling name for any %s wire value; the names\n", name, name)
+	g.Pf("-- table is the function's own upvalue, built once.\n")
+	g.Pf("%s.EnumName%s = (function()\n", g.Self, name)
+	g.Pf("\tlocal names = table.freeze({ [0] = \"None\"")
 	for i, m := range members {
 		g.Pf(", [%d] = %q", i+1, m)
 	}
 	g.Pf(" })\n")
-	g.Pf("function %s.EnumName%s(value: number): string\n", g.Self, name)
-	g.Pf("\treturn _names%s[value] or \"???\"\n", name)
-	g.Pf("end\n\n")
+	g.Pf("\treturn function(value: number): string\n")
+	g.Pf("\t\treturn names[value] or \"???\"\n")
+	g.Pf("\tend\n")
+	g.Pf("end)()\n\n")
 }
 
 func (g *Gen) emitFlags(d *ir.Flags) {
@@ -496,8 +504,10 @@ func (g *Gen) emitFlags(d *ir.Flags) {
 		g.Pf("%s.%s%s = %s\n", g.Self, d.Name, v, IntegerLit(new(big.Int).Lsh(big.NewInt(1), uint(i))))
 	}
 	g.Pf("%s.%sCount = %d -- the declared variant count (SPEC §4.2)\n\n", g.Self, d.Name, len(d.Variants))
-	g.Pf("-- FlagName%s: debug/log/tooling name for bit i of %s\n", d.Name, d.Name)
-	g.Pf("local _flags%s = table.freeze({", d.Name)
+	g.Pf("-- FlagName%s: debug/log/tooling name for bit i of %s; the names table is\n", d.Name, d.Name)
+	g.Pf("-- the function's own upvalue, built once.\n")
+	g.Pf("%s.FlagName%s = (function()\n", g.Self, d.Name)
+	g.Pf("\tlocal names = table.freeze({")
 	for i, v := range d.Variants {
 		if i > 0 {
 			g.Pf(",")
@@ -505,9 +515,10 @@ func (g *Gen) emitFlags(d *ir.Flags) {
 		g.Pf(" [%d] = %q", i, v)
 	}
 	g.Pf(" })\n")
-	g.Pf("function %s.FlagName%s(bit: number): string\n", g.Self, d.Name)
-	g.Pf("\treturn _flags%s[bit] or \"???\"\n", d.Name)
-	g.Pf("end\n\n")
+	g.Pf("\treturn function(bit: number): string\n")
+	g.Pf("\t\treturn names[bit] or \"???\"\n")
+	g.Pf("\tend\n")
+	g.Pf("end)()\n\n")
 }
 
 // EmitStruct emits a `type` (or, from luautable, a `table`): its exported
@@ -518,8 +529,13 @@ func (g *Gen) EmitStruct(d *ir.Struct) {
 	g.Pf("-- %s %s\n", map[bool]string{false: "type", true: "table"}[d.IsTable], d.Name)
 	g.Pf("export type %s = {\n", d.Name)
 	for _, f := range d.Fields {
+		guard := ""
+		if f.Guard != "" && !d.IsTable {
+			// the guard in the descriptors' own spelling (SPEC §4.5)
+			guard = " -- " + f.Guard + " — wire branch; storage holds both sides, a read zeroes the untaken one"
+		}
 		for _, s := range g.Slots(f) {
-			g.Pf("\t%s: %s,\n", s.Name, s.Type)
+			g.Pf("\t%s: %s,%s\n", s.Name, s.Type, guard)
 		}
 	}
 	g.Pf("}\n")
