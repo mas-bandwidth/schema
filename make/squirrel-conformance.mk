@@ -69,7 +69,7 @@ build/conformance-squirrel: $(wildcard internal/codegen/squirreltable/runtime/*.
 # fall below SQUIRREL_WIRE_PIN — the count at the head this gate landed on.
 # Setting it lower is how a regression becomes a new baseline, so it is raised
 # only when a card adds wire cases (docs/SPEC-TABLES.md §3).
-SQUIRREL_WIRE_PIN ?= 79
+SQUIRREL_WIRE_PIN ?= 97
 
 .PHONY: conformance-squirrel-wire-pin
 conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel

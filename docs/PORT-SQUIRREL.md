@@ -365,8 +365,7 @@ a `—` cell states why the platform cannot carry the method. In summary:
 
 What is on the branch, by component. Every codec lifts the target's refusals
 for exactly what it carries; what no component carries stays refused by name
-(today: wide text in a table, `wstring(N)`, which tables-widetext/squirrel
-carries).
+(no corpus unit is refused today).
 
 | component | carries | files |
 |---|---|---|
@@ -380,6 +379,7 @@ carries).
 | reflection | the unit view (§8.3) | `view.go` |
 | conformance leg | every surface the harness asks, four negative controls, the release tier | `test/conformance/squirrel/main.nut`, `driver`, `negative-control`, `make/squirrel-conformance.mk` |
 | fuzz differential | the tolerant wire's fuzzer against the Go engine, plain and builder arms | `test/conformance/squirrel/wirefuzz.nut`, `make/squirrel-fuzz.mk` |
+| packet wide text | the shared wstring corpus and its bit flips against C++, the composition contracts, the pairing control | `test/packet-wide/squirrel/main.nut`, `make/squirrel-packet-wide.mk` |
 
 ## DEEPEN
 
