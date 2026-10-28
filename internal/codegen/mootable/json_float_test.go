@@ -91,7 +91,7 @@ func TestMooJsonFloatWriteMatchesEngine(t *testing.T) {
 func TestMooJsonFloatWriteNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
-	src := string(jsonRuntime)
+	src := string(Runtime()["json.moo"])
 	const tie = "if nextDigit > 5 or (nextDigit == 5 and (rest or lastOdd)) then"
 	if !strings.Contains(src, tie) {
 		t.Fatal("the control's site moved: json.moo no longer rounds at " + tie)
@@ -311,7 +311,7 @@ end
 func TestMooJsonFloatReadNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
-	src := string(jsonRuntime)
+	src := string(Runtime()["json.moo"])
 	const tie = "up = c > 0 or (c == 0 and ql % 2 == 1)"
 	if !strings.Contains(src, tie) {
 		t.Fatal("the control's site moved: json.moo no longer rounds at " + tie)
