@@ -750,10 +750,16 @@ func init() {
 // surfaceForm maps a registered surface to the form a table must carry to
 // emit it (docs/SPEC-TABLES.md §2.12). The cookwrite surface is the write half
 // of the `cook` form (§7.6: "CookMeasure and Cook write the cooked file"), so
-// it is gated by `cook`; every other form surface shares its name.
+// it is gated by `cook`; retain is the wire read's opt-in (§6.6), gated by
+// `wire`; every other form surface shares its name.
 func surfaceForm(surface string) string {
-	if surface == "cookwrite" {
+	switch surface {
+	case "cookwrite":
 		return "cook"
+	case "retain":
+		// retention is the wire read's opt-in (§6.6): a table without the
+		// wire form has nothing to retain from
+		return "wire"
 	}
 	return surface
 }

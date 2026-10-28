@@ -662,6 +662,9 @@ readField = function(fd, r, T, table, v, report, st, nested) {
       }
       if (name == null) {
         report.unknown = report.unknown + 1;
+        // AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS (§6.6): the field is the
+        // reader's, so a retained copy would write its id a second time
+        if (st.retain != null) report.retainLost = report.retainLost + 1;
         v[fd.member] = null;
       } else if (dep) {
         // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, never
@@ -980,6 +983,9 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
         // a slot this reader cannot name is counted once and skipped by its
         // length, never decoded (docs/SPEC-TABLES.md §2.4, §4)
         report.unknown = report.unknown + 1;
+        // AN UNKNOWN KEYED-ARRAY SLOT IS AN EXCLUDED CLASS (§6.6): a slot is not a
+        // field and the reader rewrites the array body whole
+        if (st.retain != null) report.retainLost = report.retainLost + 1;
         r.at += elen;
         continue;
       }
@@ -1032,7 +1038,12 @@ readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
     foreach (pair in e.variants) {
       if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
     }
-    if (name == null) report.unknown = report.unknown + 1;
+    if (name == null) {
+      report.unknown = report.unknown + 1;
+      // AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS (§6.6): the field is the
+      // reader's, so a retained copy would write its id a second time
+      if (st.retain != null) report.retainLost = report.retainLost + 1;
+    }
     // a DEPRECATED VARIANT READS AS THE ELEMENT'S DEFAULT
     // (docs/SPEC-TABLES.md §2.15)
     return [dep ? e.def : name, true];
@@ -1071,7 +1082,12 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     foreach (pair in e.variants) {
       if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
     }
-    if (name == null) report.unknown = report.unknown + 1;
+    if (name == null) {
+      report.unknown = report.unknown + 1;
+      // AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS (§6.6): the field is the
+      // reader's, so a retained copy would write its id a second time
+      if (st.retain != null) report.retainLost = report.retainLost + 1;
+    }
     // an ELEMENT reads the element default when the variant is deprecated
     // (docs/SPEC-TABLES.md §2.15)
     out.append(dep ? e.def : name);
@@ -1124,6 +1140,9 @@ readUnionInto = function(r, T, table, u, inst, report, st) {
   foreach (a in u.arms) { if (a.id == armID) { arm = a; break; } }
   if (arm == null) {
     report.unknown = report.unknown + 1;
+    // AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS (§6.6), one level in from an
+    // unknown enum variant: the union field is the reader's
+    if (st.retain != null) report.retainLost = report.retainLost + 1;
     inst.Type = 0;
     r.at = bodyEnd;
     return true;
@@ -1215,7 +1234,12 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     foreach (pair in p.variants) {
       if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
     }
-    if (name == null) report.unknown = report.unknown + 1;
+    if (name == null) {
+      report.unknown = report.unknown + 1;
+      // AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS (§6.6): the field is the
+      // reader's, so a retained copy would write its id a second time
+      if (st.retain != null) report.retainLost = report.retainLost + 1;
+    }
     // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
     // (docs/SPEC-TABLES.md §2.15)
     inst[p.member] = dep ? p.def : name;

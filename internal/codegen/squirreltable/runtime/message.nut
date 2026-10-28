@@ -251,6 +251,11 @@ local bitCount = function(n) {
 };
 local skipRemoteEntry;
 local skipRemoteBody;
+// THE UNKNOWN SKIP WALK IS BOUNDED AT DEPTH 128 (docs/SPEC-TABLES.md §3.3,
+// message_skip_depth): every reader-side skip starts at 0, a body's fields are
+// skipped at the body's own depth, and a nested body, a union arm or a walked
+// element is one level down; past 128 the batch is malformed, and 128 itself
+// still skips (internal/codegen/darttable/messageform_batch.go, skipEntry).
 skipRemoteEntry = function(T,v,r,e,depth) {
   if(depth>128){r.bad=true;return;}
   local sh=e.Shape,k=sh.Kind;
@@ -266,7 +271,7 @@ skipRemoteEntry = function(T,v,r,e,depth) {
 };
 skipRemoteBody = function(T,v,r,depth) {
   if(depth>128){r.bad=true;return;}
-  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}local entry=v.Entries[ref-1];if(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff){r.bad=true;return;}skipRemoteEntry(T,v,r,entry,depth+1);if(r.bad)return;}
+  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}local entry=v.Entries[ref-1];if(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff){r.bad=true;return;}skipRemoteEntry(T,v,r,entry,depth);if(r.bad)return;}
 };
 local findSlot = function(T, id) {
   for (local i = 0; i < T.TableMessageIds.len(); i++) if (T.TableMessageIds[i] == id) return i + 1;
@@ -529,7 +534,7 @@ skipPayload = function(T, v, r, fd, depth) {
 
 readPayload = function(T, v, r, fd, owner, member, depth, entry) {
   if (depth > 128) { r.bad = true; return; }
-  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,depth);return;}
+  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,0);return;}
   if(entry.Kind!=fd.kind)r.widened++;
   if (fd.shape == "str") {
     local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max){r.bad=true;return;}
@@ -558,7 +563,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     if(ref!=0&&id==null){r.bad=true;return;}
     if(ref!=0){local entry=v.Entries[ref-1];if(entry.Shape.Kind==0||(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff)){r.bad=true;return;}}
     foreach(a in ud.arms)if(a.id==id)arm=a;
-    if(arm==null&&ref!=0){if(ref>v.Count){r.bad=true;return;}r.unknown++;skipRemoteEntry(T,v,r,v.Entries[ref-1],depth+1);owner[member]=u;return;}
+    if(arm==null&&ref!=0){if(ref>v.Count){r.bad=true;return;}r.unknown++;skipRemoteEntry(T,v,r,v.Entries[ref-1],0);owner[member]=u;return;}
     if(arm!=null){u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1,v.Entries[ref-1]);}
     owner[member]=u;return;
   }
@@ -571,8 +576,8 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local keyed=(fd.keyvariants != null),a=keyed?owner[member]:[];if(!keyed){local size=((fd.list||fd.counted)?kept:fd.bound);for(local j=0;j<size;j++)a.append(fd.elem.def);}
     for(local i=0;i<n;i++){
       local index=i;
-      if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipRemoteEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}}
-      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}
+      if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipRemoteEntry(T,v,r,entry.Element,0);if(r.bad)return;continue;}}
+      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry.Element,0);if(r.bad)return;continue;}
       local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(index<kept)a[index]=holder.value;if(r.bad)return;
     }
     owner[member]=a;return;
@@ -612,8 +617,8 @@ readBody = function(T, v, r, d, value, depth) {
     local id=idAt(v,ref);if(id==null||ref>v.Entries.len()){r.bad=true;return;}
     if(id==0xfffffffffffffffd||id==0xfffffffffffffffe||id==0xffffffffffffffff){r.bad=true;return;}
     local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
-    if(fd==null){r.unknown++;skipRemoteEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
-    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
+    if(fd==null){r.unknown++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
+    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
     if(fd.optional)value[fd.member + "Present"] = true;
     readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
     if(r.bad)return;
@@ -650,7 +655,11 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   if(storage.len()<count)return refuse(report,"batch_too_large");
-  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0,widened=0,clamped=0,nonFinite=null};
+  // THE BATCH AS AN ARRAY OF BYTES: indexing a blob is a native metamethod,
+  // and the interpreter cannot grow its stack inside one, so a deep but legal
+  // nesting would die in the bit reader rather than at the depth bound.
+  local raw=array(bytes.len());for(local i=0;i<raw.len();i++)raw[i]=bytes[i]&0xff;
+  local r={b=raw,bits=16,bad=false,unknown=0,kindMismatch=0,widened=0,clamped=0,nonFinite=null};
   local walked=readBatch(T,v,r,d,storage,count,bytes,report);
   // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
   // §3.3), outranking every other verdict: no body of it is delivered
