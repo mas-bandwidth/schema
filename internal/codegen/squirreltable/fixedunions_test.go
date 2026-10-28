@@ -35,6 +35,7 @@ func TestSquirrelFixedFormUnionsAndKeyedArrays(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	records := fixedRecords(t, corpus)
+	nonFinite := fixedNonFinite(t, corpus)
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +65,7 @@ func TestSquirrelFixedFormUnionsAndKeyedArrays(t *testing.T) {
 		fmt.Fprintf(&p, "  local b = inputs[%q]; local back = []; for (local k = 0; k < %d; k++) back.append(T.%s());\n", v.key, n, v.root)
 		fmt.Fprintf(&p, "  local got = T.%sFixedLoadTolerant(b, back, null);\n", v.root)
 		fmt.Fprintf(&p, "  if (got != %d) { print(\"LOAD:%s:\" + got + \":\" + T.FixedReason + \"\\n\"); }\n", n, v.key)
-		fmt.Fprintf(&p, "  else { local out = blob(b.len()); T.%sFixedSave(out, back); ::hexlineN(out, b.len()); }\n", v.root)
+		fmt.Fprintf(&p, "  else { local out = blob(b.len()); T.%sFixedSave(out, back); print(%q + \" \"); ::hexlineN(out, b.len()); }\n", v.root, v.key)
 		p.WriteString("}\n")
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(p.String()), 0o644); err != nil {
@@ -73,25 +74,42 @@ func TestSquirrelFixedFormUnionsAndKeyedArrays(t *testing.T) {
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	got := map[string][]byte{}
-	idx := 0
+	refused := map[string]string{}
 	for _, line := range lines {
-		if line == "" || strings.HasPrefix(line, "LOAD:") {
-			if strings.HasPrefix(line, "LOAD:") {
-				t.Errorf("the oracle file did not read clean: %s", line)
-			}
+		if line == "" {
 			continue
 		}
-		b, err := decodeHex(line)
+		if rest, ok := strings.CutPrefix(line, "LOAD:"); ok {
+			key, why, _ := strings.Cut(rest, ":")
+			refused[key] = why
+			continue
+		}
+		key, text, ok := strings.Cut(line, " ")
+		if !ok {
+			t.Fatalf("probe line %q is not a key and hex", line)
+		}
+		b, err := decodeHex(text)
 		if err != nil {
 			t.Fatalf("probe line %q: %v", line, err)
 		}
-		if idx < len(unionKeyedVectors) {
-			got[unionKeyedVectors[idx].key] = b
-		}
-		idx++
+		got[key] = b
 	}
 	fixed := 0
 	for _, v := range unionKeyedVectors {
+		// A FILE THE REFERENCE WROTE WITH A NaN OR AN INFINITY is a
+		// MUST-REFUSE vector under the finite rule (docs/SPEC-TABLES.md §3.3):
+		// the manifest decides, so the identity row comes back by itself the
+		// day the corpus turns finite
+		if field := nonFinite[v.file]; field != "" {
+			if refused[v.key] != "-1:non_finite_float" {
+				t.Errorf("%s: the reference wrote a non-finite %s; the load answered %q, want -1:non_finite_float", v.key, field, refused[v.key])
+			}
+			fixed++
+			continue
+		}
+		if why, ok := refused[v.key]; ok {
+			t.Errorf("the oracle file did not read clean: %s: %s", v.key, why)
+		}
 		want := inputs[v.key]
 		if !strings.EqualFold(fmt.Sprintf("%x", got[v.key]), fmt.Sprintf("%x", want)) {
 			diff := -1
