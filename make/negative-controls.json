@@ -847,10 +847,11 @@
     {
       "name": "luau",
       "when": "pull-request",
-      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row. Luau and the host C++ compiler, nothing else.",
+      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row. The packet FINITE-FLOAT controls (SPEC.md §4.3) ride here too: each removes one direction of the vendored serialize.luau v2.1.1 float check at both widths, in the copy the generator emitted (tools/sabotage/packet_finite_luau.go), and test/packet-finite/luau/main.luau must fail exactly the 36 read or the 37 write vectors its .expected names; one schema build and two interpreter runs, a few seconds. Luau and the host C++ compiler, nothing else.",
       "targets": [
         "conformance-negative-control-luau",
-        "luau-nightly-fuzz-negative-control"
+        "luau-nightly-fuzz-negative-control",
+        "packet-finite-luau-negative-control"
       ],
       "luau": "0.741"
     }

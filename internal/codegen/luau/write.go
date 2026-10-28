@@ -182,15 +182,27 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 				indent, val, val, val, lo, val, hi)
 			emitBitsOrSkip(g, indent, val+" - ("+lo+")", ir.BitsRequired(f.IntMin, f.IntMax), "the offset from min")
 		default:
-			g.Pf("%sif type(%s) ~= \"number\" or %s %% 1 ~= 0 then return false end\n", indent, val, val)
-			emitBitsOrSkip(g, indent, val, int64(t.Width), "the storage width")
+			// The storage's domain is checked before the bits ride: the
+			// runtime traps a value that does not fit its bits (serialize
+			// format 2.0, IMPLEMENTING.md U9), so a value the storage cannot
+			// hold refuses here instead. A signed storage rides its
+			// same-width unsigned pattern (the C++ target's cast; SPEC §4.3).
+			lo, hi := intStorageBounds(t.Signed, t.Width)
+			g.Pf("%sif type(%s) ~= \"number\" or %s %% 1 ~= 0 or %s < %s or %s > %s then return false end\n",
+				indent, val, val, val, lo, val, hi)
+			expr := val
+			if t.Signed {
+				expr = fmt.Sprintf("%s %% %s", val, IntLiteral(new(big.Int).Lsh(big.NewInt(1), uint(t.Width))))
+			}
+			emitBitsOrSkip(g, indent, expr, int64(t.Width), "the storage width")
 		}
 	case ir.TBits:
 		if t.Width > 32 {
 			g.Pf("%sif typeof(%s) ~= \"integer\" then return false end\n", indent, val)
 			emitBits64OrSkip(g, indent, val, int64(t.Width), "the declared bit width")
 		} else {
-			g.Pf("%sif type(%s) ~= \"number\" or %s %% 1 ~= 0 then return false end\n", indent, val, val)
+			g.Pf("%sif type(%s) ~= \"number\" or %s %% 1 ~= 0 or %s < 0 or %s > %s then return false end\n",
+				indent, val, val, val, val, IntLiteral(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))))
 			emitBitsOrSkip(g, indent, val, int64(t.Width), "the declared bit width")
 		}
 	case ir.TFixed:
@@ -253,6 +265,17 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 			call(fmt.Sprintf("%s(stream, %s)", g.writeRef(t.Name), val), "")
 		}
 	}
+}
+
+// intStorageBounds is a bare integer storage's domain, [-2^(w-1), 2^(w-1))
+// or [0, 2^w), as Luau literals.
+func intStorageBounds(signed bool, width int) (string, string) {
+	one := big.NewInt(1)
+	if signed {
+		half := new(big.Int).Lsh(one, uint(width-1))
+		return IntLiteral(new(big.Int).Neg(half)), IntLiteral(new(big.Int).Sub(half, one))
+	}
+	return "0", IntLiteral(new(big.Int).Sub(new(big.Int).Lsh(one, uint(width)), one))
 }
 
 // emitBitsOrSkip writes expr as bits raw bits, or nothing when the range is

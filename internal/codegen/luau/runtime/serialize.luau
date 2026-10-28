@@ -2,7 +2,7 @@
 -- serialize.luau — the entry: returns the API table (DESIGN.md (a)).
 --
 -- serialize.luau is a bitpacking serializer for Luau, wire compatible with
--- serialize (C++, STANDARD.md, format version 1.1) and serialize.go v1.15.1:
+-- serialize (C++, STANDARD.md, format version 2.0) and serialize.go v2.0.0:
 -- the same values produce the same bytes. Load it as require("./serialize")
 -- from a file in the same directory; every module it loads is required as
 -- "./serialize_<name>" from this directory alone (DESIGN.md (f)).
@@ -34,7 +34,7 @@ end
 local S = {}
 
 -- The wire format version this library implements (STANDARD.md, Format version).
-S.FORMAT_VERSION = "1.1"
+S.FORMAT_VERSION = "2.0"
 
 S.SerializeError = Stream.SerializeError
 S.WriteStream = Stream.WriteStream
@@ -42,6 +42,17 @@ S.ReadStream = Stream.ReadStream
 S.MeasureStream = Stream.MeasureStream
 S.Continue = Stream.Continue
 S.Until = Stream.Until
+
+-- refusalName(reason) is the refusal-name function (IMPLEMENTING.md U14): the
+-- reason's name, "none" for nil.
+S.refusalName = Stream.refusalName
+
+-- copyString(source, destSize) is serialize_copy_string (IMPLEMENTING.md
+-- U15): at most destSize - 1 bytes of source, stopping at a NUL, cut back to
+-- a UTF-8 character boundary.
+function S.copyString(source: string, destSize: number): string
+	return family("bytes").copyString(source, destSize)
+end
 
 -- serialize_bitpacker.luau
 S.BitWriter = lazyClass("bitpacker", "BitWriter")
@@ -78,9 +89,5 @@ end
 function S.compressedFloatParams(min: number, max: number, resolution: number): (number, number, number)
 	return family("compressed_float").compressedFloatParams(min, max, resolution)
 end
-
--- _family is the lazy loader, exposed for the skeleton's own test
--- (test/smoke) and for nothing else.
-S._family = family
 
 return table.freeze(S)

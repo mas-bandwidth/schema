@@ -51,6 +51,7 @@ toolchain-luau:
 # resolved.
 .PHONY: test-luau update-goldens-luau
 test-luau: toolchain-luau tables-fixedform-corpus \
+	packet-finite-luau packet-finite-luau-negative-control \
 	$(LUAU_CONFORMANCE_DRIVER)/inputs.luau \
 	$(LUAU_CONFORMANCE_DRIVER)/units.luau \
 	$(SERIALIZE_GO_RUNTIME)/go.mod
@@ -82,6 +83,46 @@ build/conformance-luau: $(LUAU_MANIFEST) make/luau.mk \
 		fi; \
 	done
 generated/bench/tables/luau/.stamp: ;
+
+# PACKET FINITE FLOATS (SPEC §4.3, serialize format 2.0). The Luau packet target
+# enforces the rule through its vendored serialize.luau runtime (v2.1.1): a NaN
+# or an infinity traps on write (IMPLEMENTING.md U9, "must be finite"), refuses
+# on read on its raw bits as non_finite_float, and -0 and the subnormals ride
+# bit exact. test/packet-finite/luau/main.luau runs every bare-float position
+# of Finite.schema at both widths, plus the quantized float's write refusal.
+# The generator emits the runtime beside the module, so each control sabotages
+# that emitted copy (tools/sabotage, one direction at a time) and must fail
+# exactly the vectors its .expected names.
+build/packet-finite/luau/.stamp: $(GO_SOURCES) $(wildcard internal/codegen/luau/runtime/*) \
+	test/packet-finite/luau/Finite.schema test/packet-finite/luau/main.luau
+	@rm -rf build/packet-finite/luau && mkdir -p build/packet-finite/luau
+	go build -tags schema_leg_luau -o build/packet-finite/luau/schema ./cmd/schema
+	./build/packet-finite/luau/schema generate --lang luau --out build/packet-finite/luau/generated test/packet-finite/luau/Finite.schema
+	@cp test/packet-finite/luau/main.luau build/packet-finite/luau/generated/main.luau
+	@touch $@
+
+.PHONY: packet-finite-luau packet-finite-luau-negative-control
+packet-finite-luau: toolchain-luau build/packet-finite/luau/.stamp
+	cd build/packet-finite/luau/generated && $(LUAU_ANALYZE) main.luau Finite.luau
+	cd build/packet-finite/luau/generated && $(LUAU) main.luau
+
+# $(1) is the direction: read or write.
+define packet-finite-luau-control
+	@rm -rf build/packet-finite/luau-negative-$(1) && mkdir -p build/packet-finite/luau-negative-$(1)
+	@cp -R build/packet-finite/luau/generated build/packet-finite/luau-negative-$(1)/generated
+	go run ./tools/sabotage -name packet-finite-luau-$(1) \
+		-out build/packet-finite/luau-negative-$(1)/generated/serialize_float.luau build/packet-finite/luau/generated/serialize_float.luau
+	@if (cd build/packet-finite/luau-negative-$(1)/generated && $(LUAU) main.luau) > build/packet-finite/luau-negative-$(1)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the Luau runtime float $(1) check was removed and the finite gate stayed green'; exit 1; fi
+	@sed -n 's|^FAILED: \([^:]*\):.*|\1|p' build/packet-finite/luau-negative-$(1)/log | LC_ALL=C sort > build/packet-finite/luau-negative-$(1)/failed
+	@diff -u test/packet-finite/luau/$(1).expected build/packet-finite/luau-negative-$(1)/failed || \
+		{ echo 'NEGATIVE CONTROL FAILED: the Luau float $(1) sabotage did not fail exactly its vectors'; cat build/packet-finite/luau-negative-$(1)/log; exit 1; }
+	@echo "packet finite Luau negative control ($(1)): the removed runtime check fails exactly $$(wc -l < build/packet-finite/luau-negative-$(1)/failed | tr -d ' ') vectors"
+endef
+
+packet-finite-luau-negative-control: packet-finite-luau
+	$(call packet-finite-luau-control,read)
+	$(call packet-finite-luau-control,write)
 
 TEST_LEGS         += test-luau
 TOOLCHAIN_LEGS    += luau
