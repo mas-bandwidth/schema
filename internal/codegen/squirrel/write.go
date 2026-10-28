@@ -175,7 +175,10 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 	case ir.TWString:
 		size := t.Size
 		length := val + "Length"
-		m.Printf("%sif (typeof %s != \"array\" || %s > %d) return false;\n", indent, val, length, size)
+		// the used length is refused outside [0, N] and past the array's own
+		// length, exactly as the narrow string's (SPEC §4.12)
+		m.Printf("%sif (typeof %s != \"array\" || typeof %s != \"integer\" || %s < 0 || %s > %d || %s > %s.len()) return false;\n",
+			indent, val, length, length, length, size, length, val)
 		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "")
 		m.Printf("%sfor (local _j = 0; _j < %s; _j++) {\n", indent, length)
 		// a zero unit among the used units is refused, as §4.7 refuses the

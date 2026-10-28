@@ -86,7 +86,7 @@ _M.ReadWideSeven <- function(stream, value) {
 
 // WriteWideSeven writes value in declared order; false on a refused value.
 _M.WriteWideSeven <- function(stream, value) {
-  if (typeof value.Text != "array" || value.TextLength > 7) return false;
+  if (typeof value.Text != "array" || typeof value.TextLength != "integer" || value.TextLength < 0 || value.TextLength > 7 || value.TextLength > value.Text.len()) return false;
   _h.value = value.TextLength;
   if (!stream.serializeBits(_h, 3)) return false;
   for (local _j = 0; _j < value.TextLength; _j++) {
@@ -135,7 +135,7 @@ _M.ReadWideFour <- function(stream, value) {
 
 // WriteWideFour writes value in declared order; false on a refused value.
 _M.WriteWideFour <- function(stream, value) {
-  if (typeof value.Text != "array" || value.TextLength > 4) return false;
+  if (typeof value.Text != "array" || typeof value.TextLength != "integer" || value.TextLength < 0 || value.TextLength > 4 || value.TextLength > value.Text.len()) return false;
   _h.value = value.TextLength;
   if (!stream.serializeBits(_h, 3)) return false;
   for (local _j = 0; _j < value.TextLength; _j++) {
@@ -222,7 +222,7 @@ _M.ReadWideInterop <- function(stream, value) {
 
 // WriteWideInterop writes value in declared order; false on a refused value.
 _M.WriteWideInterop <- function(stream, value) {
-  if (typeof value.Caption != "array" || value.CaptionLength > 7) return false;
+  if (typeof value.Caption != "array" || typeof value.CaptionLength != "integer" || value.CaptionLength < 0 || value.CaptionLength > 7 || value.CaptionLength > value.Caption.len()) return false;
   _h.value = value.CaptionLength;
   if (!stream.serializeBits(_h, 3)) return false;
   for (local _j = 0; _j < value.CaptionLength; _j++) {

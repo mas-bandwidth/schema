@@ -2083,9 +2083,9 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status.** All nine packet targets carry the storage, groups and
-read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart and Elixir.
-C++ also carries table kind `33`. The other eight targets refuse wide text
+**Backend status.** All ten packet targets carry the storage, groups and
+read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart, Elixir and
+Squirrel. C++ and Squirrel also carry table kind `33` in every table form. The other eight targets refuse wide text
 reachable from a table by name (SPEC-TABLES.md §3); an unrelated table in the
 same unit does not prevent a packet type from carrying wide text. `*wstring`,
 the unbounded twin, is specified ahead of implementation and no backend emits
