@@ -28,3 +28,7 @@ tables-lua-wire-fuzz: build/conformance-harness build/conformance-lua
 	@grep -q '0 divergences' build/tables-lua-wire-fuzz.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-lua-wire-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-lua-wire-fuzz.log
+
+# The harness-driven differential is part of the leg's certification run, as
+# the Go, JavaScript, Java and Dart card wire-fuzz gates are part of theirs.
+test-lua: tables-lua-wire-fuzz

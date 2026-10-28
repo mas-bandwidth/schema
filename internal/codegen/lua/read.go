@@ -108,7 +108,7 @@ func (m *Module) call(ind, expr, comment string) {
 
 func emitReadStruct(m *Module, d *ir.Struct) {
 	m.Printf("-- Zero%s resets the §5 ZERO form: all-zero storage, without declared defaults.\n", d.Name)
-	m.Printf("function _M.Zero%s(value)\n", d.Name)
+	m.Printf("function _M.Zero%s(%s)\n", d.Name, unusedIf(len(d.Fields) == 0, "value"))
 	if len(d.Fields) == 0 {
 		m.Printf("  -- empty body — nothing to reset (SPEC §4.6)\n")
 	}
@@ -119,7 +119,7 @@ func emitReadStruct(m *Module, d *ir.Struct) {
 
 	m.Printf("-- Read%s reads the type wire (SPEC §4.3, §6.1); false refuses without a latch\n", d.Name)
 	m.Printf("-- (a stream overflow rides stream:error()).\n")
-	m.Printf("function _M.Read%s(stream, value)\n", d.Name)
+	m.Printf("function _M.Read%s(%s, %s)\n", d.Name, unusedIf(len(d.Items) == 0, "stream"), unusedIf(!itemsTouchValue(d.Items), "value"))
 	if len(d.Items) == 0 {
 		m.Printf("  -- empty body — presence is the payload (SPEC §4.6)\n")
 	}
@@ -130,7 +130,7 @@ func emitReadStruct(m *Module, d *ir.Struct) {
 func emitReadUnion(m *Module, d *ir.Union) {
 	m.Printf("-- Zero%s resets the union to None; unselected arms are unspecified (SPEC §4.8).\n", d.Name)
 	m.Printf("function _M.Zero%s(value)\n  value.Type = 0\nend\n\n", d.Name)
-	m.Printf("function _M.Read%s(stream, value)\n", d.Name)
+	m.Printf("function _M.Read%s(%s, value)\n", d.Name, unusedIf(d.Max == 0, "stream"))
 	if d.Max == 0 {
 		m.Printf("  value.Type = 0 -- zero wire bits — only None exists (SPEC §4.8)\n")
 		m.Printf("  return true\nend\n\n")
@@ -477,4 +477,28 @@ func intRangePath(min, max *big.Int) string {
 		return "int64"
 	}
 	return "bits64"
+}
+
+// unusedIf spells a parameter the function body never reads with luacheck's
+// "deliberately unread" prefix (an underscore), so the generated Lua is clean
+// under the strict lint (make/schema-lua-generated-luacheck-gate.mk) without
+// an ignore: every reader, writer and reset keeps its one fixed signature.
+func unusedIf(unused bool, name string) string {
+	if unused {
+		return "_" + name
+	}
+	return name
+}
+
+// itemsTouchValue reports whether a wire tree reads or writes the value: any
+// field does, and any branch does (its condition is a field of the value).
+// A tree of const, reserved and align items alone moves only the stream.
+func itemsTouchValue(items []ir.Item) bool {
+	for _, item := range items {
+		switch item.(type) {
+		case *ir.FieldItem, *ir.Branch:
+			return true
+		}
+	}
+	return false
 }

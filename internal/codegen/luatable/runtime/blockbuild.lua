@@ -201,7 +201,8 @@ function B.Begin(T, root, counts)
   local desc = T.Tables[root]
   if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
   if T.BuildVersion == nil then
-    return nil, "blockbuild: T.BuildVersion is nil; the block prologue carries the unit's build version (docs/SPEC-TABLES.md §19.1)"
+    return nil, "blockbuild: T.BuildVersion is nil; the block prologue carries the unit's build version"
+      .. " (docs/SPEC-TABLES.md §19.1)"
   end
   counts = counts or {}
   local size, _, _, arrays = projection(T, desc)

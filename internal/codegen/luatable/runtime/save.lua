@@ -478,7 +478,9 @@ write_field = function(T, ids, nodes, fd, v, w)
     -- node's own box, never its content and never the slot that names it.
     -- A required blob rides even at nil, as the null node (§2.3, gotable
     -- write.go's pointer case).
-    if (x ~= nil and x ~= false) or fd.required then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
+    if (x ~= nil and x ~= false) or fd.required then
+      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0)
+    end
   elseif s == "union" then
     local tag = x and x.tag or 0
     if tag ~= 0 or fd.required then
@@ -600,7 +602,11 @@ write_element = function(T, ids, nodes, e, val, body)
   elseif s == "float" then if not w_float(body, e.f32, val or 0.0) then return false end
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(e.variants) do
+        if var[1] == val then vref = id_ref(ids, var[2]); break end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
   elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
@@ -676,7 +682,11 @@ write_union_at = function(T, ids, nodes, f, val, body)
     w_u8(body, 6); w_leb(body, #val); w_raw(body, val)
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(f.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(f.variants) do
+        if var[1] == val then vref = id_ref(ids, var[2]); break end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
   elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))

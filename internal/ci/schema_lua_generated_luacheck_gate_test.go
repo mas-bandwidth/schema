@@ -34,6 +34,15 @@ func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 		}
 	}
 
+	// ZERO WARNINGS, NO ALLOWANCE: the generated code and the table runtime
+	// are held to luacheck's default set. A global ignore list or a
+	// line-length allowance would hide warnings rather than fix the generator.
+	for _, banned := range []string{"max_line_length", "'ignore = {", "--no-max-line-length", "ratchet"} {
+		if strings.Contains(mk, banned) {
+			t.Errorf("makefile carries %q: the luacheck gate admits no allowance (fix the generator)", banned)
+		}
+	}
+
 	workflow := read(".github", "workflows", "schema-lua-generated-luacheck-gate.yml")
 	for _, want := range []string{
 		"run: make tables-lua-luacheck",

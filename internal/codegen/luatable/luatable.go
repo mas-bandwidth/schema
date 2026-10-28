@@ -104,7 +104,7 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 	}
 	m.Body.WriteString("return _M\n")
-	out := map[string][]byte{name + ".lua": []byte(m.Body.String())}
+	out := map[string][]byte{name + ".lua": lua.Wrap([]byte(m.Body.String()))}
 	names, err := fs.Glob(runtime, "runtime/*.lua")
 	if err != nil {
 		return nil, err
@@ -200,7 +200,7 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 	switch name {
 	case "json.lua":
 		replaceOnce(
-			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n",
+			"function J.FromJson(T, name, text, report)\n",
 			"function J.FromJson(T, name, text, report)\n  local desc = T.Tables[name]\n  if desc ~= nil and desc.forms ~= nil and desc.forms.json ~= true then\n    error(\"json: table \" .. tostring(name) .. \" does not carry json (docs/SPEC-TABLES.md §2.12)\", 0)\n  end\n",
 		)
 		replaceOnce(

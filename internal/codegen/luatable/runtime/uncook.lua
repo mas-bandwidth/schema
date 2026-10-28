@@ -172,10 +172,14 @@ read_field = function(ctx, f, base)
     -- §3.3), the uncook included: the scan Read runs first refuses one, and
     -- this test holds the rule for a handle a caller checked itself
     if f.f32 then
-      if string.unpack("<I4", ctx.data, at + 1) & 0x7f800000 == 0x7f800000 then ctx.nonFinite = true; return nil, false end
+      if string.unpack("<I4", ctx.data, at + 1) & 0x7f800000 == 0x7f800000 then
+        ctx.nonFinite = true; return nil, false
+      end
       v = string.unpack("<f", ctx.data, at + 1)
     else
-      if string.unpack("<i8", ctx.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000 then ctx.nonFinite = true; return nil, false end
+      if string.unpack("<i8", ctx.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000 then
+        ctx.nonFinite = true; return nil, false
+      end
       v = string.unpack("<d", ctx.data, at + 1)
     end
   elseif s == "string" or s == "bytes" then

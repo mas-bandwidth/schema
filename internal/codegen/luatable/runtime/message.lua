@@ -212,7 +212,7 @@ local function table_by_type(T, id)
   return nil
 end
 
-local function field_by_id(T, desc, id)
+local function field_by_id(_T, desc, id)
   for _, f in ipairs(desc.fields) do
     if f.id == id then return f end
   end
@@ -221,7 +221,7 @@ end
 
 -- a retired variant reads the declared default, an element's None
 -- (docs/SPEC-TABLES.md §2.15, READ)
-local function variant_name(T, f, id)
+local function variant_name(_T, f, id)
   for _, v in ipairs(f.variants) do
     if v[2] == id then
       if v.deprecated then return f.default end
@@ -231,7 +231,7 @@ local function variant_name(T, f, id)
   return nil
 end
 
-local function variant_id(T, f, name)
+local function variant_id(_T, f, name)
   for _, v in ipairs(f.variants) do
     if v[1] == name then return v[2] end
   end
@@ -515,7 +515,7 @@ read_value = function(R, T, f, holder, key, ctx)
     end
     local out = {}
     if d.keyed then
-      for i = 1, n do
+      for _ = 1, n do
         local kref, kok = R:get(ctx.refBits)
         if not kok then return false end
         local ke = ctx.vocab[kref]
@@ -903,8 +903,8 @@ end
 -- skip_shape steps over one announced shape, which is what makes the entry
 -- count readable before an entry is resolved (docs/SPEC-TABLES.md §3.3).
 local function skip_shape(kind, s, at)
-  local function leb(at)
-    local _, nextAt = read_leb(s, at)
+  local function leb(from)
+    local _, nextAt = read_leb(s, from)
     return nextAt
   end
   if kind == 0 or kind == 1 or kind == 11 or kind == 13 or kind == 15

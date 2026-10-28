@@ -44,43 +44,43 @@ toolchain-luacheck:
 		exit 1; \
 	fi
 
-# THE CONFIG, AND EVERY IGNORE IN IT. Strict means luacheck's own default set,
-# not a hand-picked subset. The four below are the only suppressions, each one
-# a shape the emitter produces on purpose rather than a defect:
+# THE CONFIG IS LUACHECK'S DEFAULT SET, WHOLE, AT ZERO WARNINGS. std = "lua54"
+# names the pinned interpreter's globals; nothing else is set for the emitted
+# code or the table runtime: no ignore list, no line-length allowance, no
+# pinned count of tolerated findings. A finding is fixed in the generator
+# (internal/codegen/lua, internal/codegen/luatable) or in the runtime it
+# emits, never here: a
+# parameter a fixed signature never reads is spelled with luacheck's own
+# "deliberately unread" underscore, and lua.Wrap reflows every emitted line to
+# luacheck's 120 (W631).
 #
-#   max_line_length = false   a descriptor row is one declaration per line;
-#                             wrapping it would make the data unreadable.
-#   212 unused argument       every emitted reader/writer keeps its fixed
-#                             (stream, value) signature even in an arm that
-#                             reads neither; the caller shape is the contract.
-#   213 unused loop variable  generated positional loops spell the index even
-#                             when the body does not read it.
-#   581 negated condition     generated guards are written `if not x then`.
+# THE VENDORED serialize.lua RUNTIME (internal/codegen/lua/runtime/serialize*.lua,
+# pinned by SERIALIZE_PIN) is held to its own repository's zero-warning lint,
+# the .luacheckrc that serialize.lua's `make lint` gates on, and to nothing
+# looser. Its two settings, verbatim in substance and scoped to those files:
 #
-# Real defects are NOT in this list. W111/W113 (an undefined global), W211
-# (dead local), W311/W412 (a value or argument silently replaced) and W542 (an
-# empty branch) stay visible, which is why the gate can go red on this corpus.
+#   self = false   WriteStream:isWriting() and its siblings answer for the
+#                  type and never read self: the shape of the stream
+#                  interface (serialize_stream.lua).
+#   581            serialize_compressed_float.lua compares as `not (x >= y)`
+#                  on purpose: the negated form is true for NaN and luacheck's
+#                  suggested rewrite is not, so the rewrite would change
+#                  behaviour.
 #
-# THE TRIAGE LEDGER. The prior attempt reported 977 diagnostics. The first
-# exact 415a0637 Linux run reported 50 warnings over 326 distinct files:
-# W211(19), W311(7), W113(7), W542(6), W411(5), W111(3), W431(2),
-# W412(1). The permitted source repair follows those 50 lines. A fresh gate at
-# this tip (the attempt's commits re-carried onto base 6dbb9ef6f) is green:
-# 0 warnings / 0 errors over 324 distinct files (131 units generated, 9 refused
-# by name), and the negative control names the planted dead local. Measured on
-# the Linux bench: cold corpus build + check 30 s, warm 2 s; luacheck itself is
-# seconds-scale.
-# The serialize*.lua files are pinned
-# vendored runtime: any warning there needs a justified per-file override and
-# a named follow-up FIX-CARD, never an edit to the vendored bytes. None is
-# open: serialize.lua v2.1.1 (SERIALIZE_PIN) fixed the three the 1.x vendor
-# carried upstream, and lints clean there under a stricter .luacheckrc.
+# A warning in the vendored bytes is fixed upstream in serialize.lua and
+# re-vendored (make vendor-serialize-lua), never edited here or ignored here.
+#
+# MEASURED (2026-10-28, luacheck 1.2.0 on Lua 5.4.8, macOS): 139 units
+# generated, 339 distinct files, 0 warnings in the emitted code and the table
+# runtime. The serialize.lua v2.1.1 runtime is 0 warnings under the two
+# settings above; an older pin carries the unused locals 2.1 removed upstream.
 $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 	@mkdir -p $(dir $@)
 	@printf '%s\n' \
 		'std = "lua54"' \
-		'max_line_length = false' \
-		'ignore = { "212", "213", "581" }' \
+		'-- The vendored serialize.lua runtime, under its own .luacheckrc (see make/schema-lua-generated-luacheck-gate.mk).' \
+		'files["$(LUA_LUACHECK_CORPUS)/unique/*-serialize_stream.lua"] = { self = false }' \
+		'files["$(LUA_LUACHECK_CORPUS)/unique/*-serialize_compressed_float.lua"] = { ignore = { "581" } }' \
 		> $@
 
 # generate the corpus exactly as the other legs generate theirs: one directory

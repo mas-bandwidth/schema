@@ -122,7 +122,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 		}
 		m.Body.WriteString("return _M\n")
-		out[f.Base+"."+ext] = assemble(m, f.Base == home)
+		out[f.Base+"."+ext] = Wrap(assemble(m, f.Base == home))
 	}
 	maps.Copy(out, rt)
 	return out, nil

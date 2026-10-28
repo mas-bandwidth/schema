@@ -1022,7 +1022,8 @@ local function read_keys(T, desc, inp, v, depth, first_key, graph, report)
           report.kindMismatch = report.kindMismatch + 1
           if not skip_value(inp, depth + 1, graph) then return false end
         else
-          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false, desc.name, fd.name) then return false end
+          if not read_value(T, fd, inp, v, fd.name, depth, graph, report, false, desc.name,
+              fd.name) then return false end
         end
         if fd.optional then v[fd.name .. "_present"] = true end
       end
@@ -1167,7 +1168,7 @@ end
 -- ONE text list's JSON array (§16.2): strings in INDEX order, `null` for an
 -- absent ?string element. A plain null, any other JSON type, an element past a
 -- [..N] count and an element past `| total = N` are the rows' own verdicts.
-local function read_text_list(T, fd, d, vf, inp, holder, key, depth, graph, report, table_name, field_name)
+local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, report, table_name, field_name)
   local out = {}
   local bound = fd.list and 0x7fffffff or (fd.bound or 0)
   local cap = vf.bound or -1
@@ -1279,10 +1280,12 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
       if vf then
         -- a text list element is the record's value, read alone into it
-        if not read_value(T, vf, inp, out[placed], "value", depth + 1, graph, report, true, table_name, field_name) then
+        if not read_value(T, vf, inp, out[placed], "value", depth + 1, graph, report, true, table_name,
+            field_name) then
           return false
         end
-      elseif not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true, table_name, field_name) then
+      elseif not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true, table_name,
+          field_name) then
         return false
       end
     end
@@ -1377,7 +1380,8 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
       local tmp = {}
-      if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true, table_name, field_name) then
+      if not read_value(T, fd.value_field, inp, tmp, "v", depth + 1, graph, report, true, table_name,
+          field_name) then
         return false
       end
       out[kval] = tmp.v
@@ -1481,7 +1485,8 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
     out.tag = tag
-    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false, table_name, field_name) then
+    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false, table_name,
+        field_name) then
       return nil
     end
   end
@@ -1555,7 +1560,8 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     else holder[key] = { value = out == false and "" or out } end
     return true
   elseif s == "array" then
-    if d.keyed ~= nil then return read_keyed(T, d, inp, holder, key, depth, graph, report, table_name, field_name) end
+    if d.keyed ~= nil then return read_keyed(T, d, inp, holder, key, depth, graph, report, table_name,
+        field_name) end
     return read_array(T, d, inp, holder, key, depth, graph, report, table_name, field_name)
   elseif s == "map" then
     return read_map(T, d, inp, holder, key, depth, graph, report, table_name, field_name)
@@ -1719,7 +1725,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     end
     local token = scan_number(inp)
     if token == nil then inp.bad = true; return false end
-    local integral = not (token:find("[%.eE]") ~= nil)
+    local integral = token:find("[%.eE]") == nil
     local n = interpret_integer(token, integral)
     local v = place_integer(d, n, report)
     if v ~= nil then holder[key] = v end
@@ -1893,7 +1899,6 @@ end
 -- (internal/codegen/gotable/refusal.go): missing_required once carried, then
 -- malformed, blob_shared, clamped and kind_mismatch.
 function J.FromJson(T, name, text, report)
-  local desc = T.Tables[name]
   local v = J.FromJsonTolerant(T, name, text, report)
   local reason = nil
   if report.MissingRequired ~= nil and report.MissingRequired > 0 then
@@ -2166,7 +2171,7 @@ end
 -- THE NUMBERING PASS (§16.7): how many slots name each node, and whether the
 -- graph has a cycle, which the text refuses as the wire does (§3.1).
 local edge_value, edge_union, edges
-edge_value = function(T, fd, val, holder, name, out, cache)
+edge_value = function(T, fd, val, _holder, _name, out, cache)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
     -- a blob is a node too (§3.1): counted by its box, never descended
@@ -2328,7 +2333,7 @@ end
 -- string, or `null` for an absent ?string element. The write-side bounds are
 -- §2.13's: the element past M, a zero byte or ill-formed UTF-8, and a sum past
 -- `| total = N` refuse the value (nil from ToJson), as the generated Go does.
-local function write_text_list(T, fd, d, vf, val, depth, g, w)
+local function write_text_list(T, fd, _d, vf, val, depth, _g, w)
   local n = count_of(fd, val)
   local total = fd.total or 0
   local spent = 0
@@ -2432,7 +2437,7 @@ local function write_map(T, fd, val, depth, g, w)
   return true
 end
 
-write_value = function(T, d, val, depth, g, w, elem)
+write_value = function(T, d, val, depth, g, w, _elem)
   local s = d.shape
   if s == "pointer" then
     return write_pointer(T, d.target, val, depth, g, w)
