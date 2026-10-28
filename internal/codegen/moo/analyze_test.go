@@ -89,6 +89,13 @@ func TestMooAnalyzerGateNegativeControl(t *testing.T) {
 	if !strings.Contains(out, "LocalUnused") || !strings.Contains(out, "plantedUnused") {
 		t.Fatalf("the analyzer gate did not flag the planted unused local:\n%s", out)
 	}
+	// Exactly its row: every diagnostic is the plant (the analyzer may name a
+	// module once per path it reaches it by, never anything else).
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if !strings.Contains(line, "Wire.moo") || !strings.Contains(line, "LocalUnused") || !strings.Contains(line, "plantedUnused") {
+			t.Fatalf("the analyzer reported something other than the plant:\n%s", out)
+		}
+	}
 }
 
 // TestMooRuntimeIsTheVendoredPin holds runtime/*.moo to SERIALIZE_PIN's

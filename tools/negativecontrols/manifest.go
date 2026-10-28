@@ -58,6 +58,11 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
+	// Moo says the row needs the moo pin (make/moo.mk's MOO_PIN, a commit of
+	// mas-bandwidth/moo), which .github/actions/moo restores or builds into
+	// dist/moo. Like dotnet it is a marker, "pin", and never a version: the
+	// commit lives in make/moo.mk alone.
+	Moo string `json:"moo,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -184,6 +189,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		Java   string `json:"java"`
 		OTP    string `json:"otp"`
 		Elixir string `json:"elixir"`
+		Moo    string `json:"moo"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -202,6 +208,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			Java:   g.Java,
 			OTP:    g.OTP,
 			Elixir: g.Elixir,
+			Moo:    g.Moo,
 		})
 	}
 	return json.Marshal(struct {
