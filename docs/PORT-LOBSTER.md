@@ -13,8 +13,8 @@ surface, a table surface of descriptors as data, a test helper, a driver that
 answers ABSENT, a bench leg that answers ABSENT.
 
 This page fixes the design. The skeleton it describes is in the tree:
-`compiler/target_lobster.go` and `compiler/carries_lobster.go` (behind the
-`schema_leg_lobster` build tag), `internal/codegen/lobster` (the type
+`compiler/target_lobster.go` and `compiler/carries_lobster.go` (a builtin
+target since the port came onto main, 2026-10-28: no build tag), `internal/codegen/lobster` (the type
 surface), `internal/codegen/lobstertable` (the table surface),
 `internal/codegen/lobster/lobsterrun` (the test helper), `make/lobster.mk`,
 `test/conformance/lobster/driver` and `bench/tables/lobster/leg`. The skeleton
@@ -201,7 +201,7 @@ Fixed now for the pro cards; never renamed.
 
 | file | what it is | who writes it |
 |---|---|---|
-| `compiler/target_lobster.go` | the target: the shared refusals of the constructs no codec has met, then the type surface, then the table surface, behind the `schema_leg_lobster` tag | this card; the tag is dropped when the port joins the builtins |
+| `compiler/target_lobster.go` | the target: the shared refusals of the constructs no codec has met, then the type surface, then the table surface; a builtin (the `schema_leg_lobster` tag was dropped when the port joined the builtins on main) | this card |
 | `compiler/carries_lobster.go` | the carried-construct registration, ONCE in its `init()`, from the package-level slice `lobsterCarried` | this card only; a later card adds `var _ = carryLobster(<construct>)` in its own new file (package-level variables initialise before any `init()`) |
 | `internal/codegen/lobster/lobster.go` | the TYPE emitter (`Gen`, `Slots`, `TypeRef`, the literal renderers) and `Register`, the hook a later file joins from its own `init()` | this card only |
 | `internal/codegen/lobster/read.go`, `write.go` | the type wire, joined through `lobster.Register` | type-wire-read, type-wire-write |
@@ -389,26 +389,49 @@ as lines (lowercase hex for bytes).**
 ## THE REGISTER
 
 The `lobster` column of docs/PORTING.md is filled, every cell with its
-reason:
+reason, and `compiler/porting_test.go` holds it to the tree:
 
-- **✅ carried now:** I4 (per-case absent, in the driver's line grammar), I10
-  (the zero-cost gate, `TestLobsterTableFreeUnitAddsNothing`), M13 (constant
-  descriptors: the emitted `<Name>Descriptor` is a `let` global built once at
-  load; `TestLobsterDescriptors` pins it, and its `constant_descriptor`
-  planted bug turns the test red) and J1 (accessor/descriptor agreement:
-  `TestLobsterDescriptors` reads a fresh row through the generated accessor
-  and through the descriptor's defaults, and its `accessor_descriptor`
-  planted bug turns the agreement red).
-- **— the platform cannot:** M3 (a `float` is an unboxed 64-bit slot, so a
-  float crossing a call allocates nothing), M4 (no inlining directive or
-  aliasing qualifier; M4b is the shape), M10 (memory is the VM's compile-time
-  reference counting over its own allocator), M11 (a Lobster class has no
-  layout to assert).
-- **❌ not yet:** every other technique, each naming the card of THE CARD MAP
-  that carries it. Each cites #381, the request for
-  languages beyond the nine: no Lobster carry-across issue exists yet, and
-  filing one is a public act this card does not take. When it is filed, its
-  number replaces #381 in the column.
+- **✅ carried now:** M4b (`TestLobsterImportsResolveInsideTheUnitOnly`),
+  M6 and M18 (`TestLobsterVariableClass` and its control), M12 (the
+  `read_*_le` / `write_*_le` builtins; `block_read` refuses on the magic and
+  then the order word), M13 and J1 (`TestLobsterDescriptors`: the
+  `constant_descriptor` and `accessor_descriptor` planted bugs turn it red),
+  M16 and M20 (the variable-wire load and save, every manifest instance byte
+  for byte and report for report against the Go engine), I4 (per-case absent,
+  in the driver's line grammar), I10 (`TestLobsterTableFreeUnitAddsNothing`)
+  and J4 (`tables-lobster-clean`, the strict gate below).
+- **— the platform cannot:** M2 (an `int` is an unboxed 64-bit word), M3 (a
+  `float` is an unboxed 64-bit slot), M4 (no inlining directive or aliasing
+  qualifier; M4b is the shape), M10 (memory is the VM's compile-time reference
+  counting over its own allocator), M11 (a Lobster class has no layout to
+  assert), M17 (no caller-visible arena: a blob is one VM string at its exact
+  size).
+- **❌ not yet:** every other technique, each citing its own carry-across
+  issue, titled `<technique>: carry to lobster` (#2246 to #2272, filed
+  2026-10-28), and saying what the port has today.
+
+**THE STRICT GATE** (`make/schema-lobster-generated-strict-gate.mk`, J4).
+Lobster has no separate linter: its compiler type-checks every function of
+every imported module and warns on stdout with exit status 0. So
+`make tables-lobster-clean` generates examples/, examples128/,
+examples-wide/ and every unit of the conformance manifest, compiles each unit
+under the pin with `--pak` through a main that imports every module, and fails
+on ANY output. `schema-lobster-generated-strict-gate-negative-control` (in the
+`lobster` group of make/negative-controls.json) requires a clean baseline,
+plants a never-reassigned `var` in a copy of the generated `Types.lobster` and
+requires exactly that one warning. The vendored serialize.lobster before
+v2.1.1 carries three warnings (`serialize_compressed_float.lobster` 118,
+`serialize_bytes.lobster` 264), so the gate is red until the 2.1.1 re-vendor
+lands; v2.1.1 compiles clean.
+
+**CI.** `make dist-lobster` installs the pin (the linux archive, or the macOS
+arm or x64 one, each refused on any sha256 but the release's own) wherever a
+job runs the Lobster packages: ci-fast's go-test-touched and the `lobster`
+leg-gate row (`test-lobster`, `tables-lobster-clean`), ci-full's unit-codegen
+row (plus `test-lobster` against the byte oracle), the pins job, the
+conformance and negative-control rows keyed on a row's `lobster` field,
+certify's `make test` jobs and leg.yml. A hosted ubuntu runner first installs
+`libopengl0` and `libglx0`, which the linux release binary links.
 
 ## THE CARD MAP
 
@@ -446,8 +469,8 @@ gate; the card adds it or the register cell moves.
 | schema-lobster-conformance-leg | `main.lobster`, `make conformance` and the CI matrix row (M4b, I2, I11, I12*, J2) | `test/conformance/lobster/main.lobster`, `make/lobster-conformance.mk`, the CI step keyed on ci.json's `lobster` field |
 | schema-lobster-fuzz-differential | the wire fuzzer against the Go engine (I3, I15) | `test/conformance/lobster/wirefuzz.lobster`, `test/conformance/lobster/wirefuzz-driver`, `make/lobster-fuzz.mk` |
 | schema-lobster-bench | the packet and table bench legs, JIT and `--cpp` (I8, J5, I1*, I9*, I14*) | `bench/lobster/`, `bench/tables/lobster/` |
-| schema-lobster-ci-on-fleet | the schema-lobster workflow on the fleet runners (J3*, J4*) | `.github/workflows/schema-lobster.yml` |
-| schema-lobster-roadmap-column | the lobster column of ROADMAP.md from recorded evidence | `docs/roadmap.sexp`, `docs/roadmap-evidence/port-lobster.sexp` |
+| schema-lobster-ci-on-fleet | the leg in main's workflows (landed 2026-10-28, THE REGISTER's CI paragraph) and the release tier (J3) | `.github/workflows/*`, `make/schema-lobster-generated-strict-gate.mk` |
+| schema-lobster-roadmap-column | the lobster column of ROADMAP.md (the column and its `port/lobster/*` tasks landed 2026-10-28; acceptance from recorded evidence is owed) | `docs/roadmap.sexp`, `docs/roadmap-evidence/port-lobster.sexp` |
 
 Each carry-across construct of compiler/carries.go joins with its own
 `var _ = carryLobster(...)` file when its card lands.
