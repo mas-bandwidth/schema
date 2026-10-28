@@ -10,13 +10,16 @@ import (
 // nonGoCarriers lists the constructs the non-Go targets carry: C, C#, C++ and
 // Dart carry optional-variable-closure alongside Go (docs/SPEC-TABLES.md §2.3);
 // C++ also carries the timestamp kind (§2.11), the JSON array root (§16.10),
-// the one-sided integer range (§4.3) and ?map[K]V (§2.8); every other target
+// the one-sided integer range (§4.3) and ?map[K]V (§2.8); Lobster carries
+// optional-variable-closure, the timestamp kind, the one-sided integer range
+// and the text lists (docs/PORT-LOBSTER.md); every other target
 // carries none at this stage.
 var nonGoCarriers = map[string][]string{
-	"c":    {carryOptionalVariableClosure},
-	"cs":   {carryOptionalVariableClosure},
-	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
-	"dart": {carryOptionalVariableClosure},
+	"c":       {carryOptionalVariableClosure},
+	"cs":      {carryOptionalVariableClosure},
+	"cpp":     {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
+	"dart":    {carryOptionalVariableClosure},
+	"lobster": {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {

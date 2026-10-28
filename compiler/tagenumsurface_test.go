@@ -107,6 +107,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "export const WeaponFireTypeMax = 2; // the exported extent (SPEC §4.2)",
 		nameFunc: "export function EnumNameWeaponFireType(value) {",
 	},
+	"lobster": {
+		noCount:  "WeaponFireTypeCount",
+		max:      "let WeaponFireTypeMax = 2 // the exported extent (SPEC §4.2)",
+		nameFunc: "def EnumNameWeaponFireType(value:int) -> string:",
+	},
 	"rust": {
 		noCount:  "    pub const COUNT: ",
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
