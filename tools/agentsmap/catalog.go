@@ -192,6 +192,7 @@ var catalog = []Entry{
 	e("test/guard", "C++ include-guard test", "./build/schema_test_guard", "./build/schema_test_guard"),
 	e("test/java", "Java packet tests", "make test-java", "make test-java"),
 	e("test/java-fixedform", "Java fixed-form tests", "make test-java", "make test-java"),
+	e("test/java-hostile", "Java hostile-corpus runner", "make schema-java-runs-hostile-corpus", "make schema-java-runs-hostile-corpus"),
 	e("test/java-ludicrous", "Java int128 tests", "make test-java", "make test-java"),
 	e("test/java-tables", "Java table tests", "make test-java", "make test-java"),
 	e("test/java-view", "Java unit-view listing", "make tables-java-view", "make tables-java-view"),

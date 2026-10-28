@@ -84,6 +84,12 @@ case and fails if any verdict differs from the committed manifest. A per-port
 card (`schema-<port>-runs-hostile-corpus`) follows the same shape with that
 port's decoder and the same manifest.
 
+The Java port's card is `make schema-java-runs-hostile-corpus`: it generates the
+units the manifest names, compiles them with `javac --release 17 -Xlint:all
+-Werror`, and runs `test/java-hostile/Runner.java`. A disagreement the port owes
+is carried by name in `test/java-hostile/known-findings.tsv` and printed as a
+`FIX-CARD`; an unnamed disagreement, or a FIX-CARD gone green, fails.
+
 ## Reasons
 
 `damaged` is a read that reports a malformed/kind-mismatch event without naming

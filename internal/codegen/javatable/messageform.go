@@ -327,14 +327,18 @@ public final class TableVocabulary {
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
-        // The ENTRY bound is the caller's capacity, and an announcement above it
-        // is refused by name as vocabulary_too_large before an entry is touched
-        // (§3.3).
+        // The ENTRY bound is the caller's capacity, narrowed by maxEntries when
+        // the receiver sets one, and an announcement above it is refused by
+        // name as vocabulary_too_large before an entry is touched (§3.3).
+        int entryBound = v.entries.length;
+        if (v.maxEntries > 0 && v.maxEntries < entryBound) {
+            entryBound = v.maxEntries;
+        }
         Reader src = new Reader(vocab, 0);
         int count = 0;
         boolean nodeSeen = false;
         while (src.at < vocab.length) {
-            if (count >= v.entries.length) {
+            if (count >= entryBound) {
                 report.refused = true;
                 report.reason = "vocabulary_too_large";
                 return false;
