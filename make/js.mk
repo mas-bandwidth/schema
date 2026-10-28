@@ -661,6 +661,20 @@ tables-js-text-differential-negative-control:
 
 test-js: tables-js-text-differential
 
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# finite-only too, same rule as packets"): every JavaScript read refuses a NaN
+# or an infinity on its raw bits as non_finite_float (variable, retained,
+# message, fixed, and the block and record accessors latched on the view),
+# every writer refuses one, and -0 and the subnormals ride exact. The gate is
+# TestJsFloat32CellsAreBitTransparent; its reversed witness turns each read's
+# raw-bits test off in turn and the probe must red on exactly that read's rows.
+.PHONY: tables-js-finite-float tables-js-finite-float-negative-control
+tables-js-finite-float:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFloat32CellsAreBitTransparent$$'
+tables-js-finite-float-negative-control:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFiniteFloatNegativeControl$$'
+test-js: tables-js-finite-float
+
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
 # §3.4: "A second layout for a hash already held is refused by name"). The test
@@ -981,7 +995,7 @@ build/tables-generated-js/cards/.stamp: bin/schema tables/cards/Card.schema tabl
 # vectors out of this Card-only manifest; the greps below hold the nonzero
 # seed/mutant claim, so a zero-coverage roster fails rather than passing.
 cards-js-wire-fuzz: build/conformance-harness cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-js-wire-fuzz.log 2>&1; \
@@ -996,7 +1010,7 @@ cards-js-wire-fuzz: build/conformance-harness cards-js-generate
 # JavaScript Card codec's retaining Load and Save are held to the identical
 # byte-for-byte contract the C and C# drivers' retain fuzzers reproduce.
 cards-js-retain-fuzz: build/conformance-harness cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
@@ -1023,7 +1037,7 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # rather than shrinking the run unseen; it does not depend on SEED or N.
 TABLES_JS_WIRE_FUZZ_ABSENT := 23
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all.log; \
@@ -1033,7 +1047,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
 	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-all.log || { \
 		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) message-form seeds pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js --retain \
+	@./build/conformance-harness wire-fuzz --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all-retain.log; \

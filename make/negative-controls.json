@@ -629,7 +629,8 @@
         "tables-js-union-arm-text-negative-control",
         "tables-js-versioning-negative-control",
         "tables-js-clean-negative-control",
-        "tables-js-text-differential-negative-control"
+        "tables-js-text-differential-negative-control",
+        "tables-js-finite-float-negative-control"
       ],
       "node": "26"
     },

@@ -56,6 +56,9 @@ export class TableVariableReport {
     this.duplicate = 0;
     this.retained = 0;
     this.retainLost = 0;
+    // the first float a read found to be a NaN or an infinity, <Table>.<field>
+    // (docs/SPEC-TABLES.md §3.3): the read refuses, reason non_finite_float
+    this.nonFiniteFloat = "";
   }
 }
 
@@ -102,6 +105,11 @@ class TableVariableWriter {
   i32(v) { this.u32(v | 0); }
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
   u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  f32(v) {
+    const d = TableVariableScratch;
+    d.setFloat32(0, v, true);
+    this.u32(d.getUint32(0, true));
+  }
   f64(v) {
     const d = TableVariableScratch;
     d.setFloat64(0, v, true);
@@ -764,33 +772,54 @@ function TableVariableRetainCountLost(retain, report) {
 
 const TableVariableScratch = new DataView(new ArrayBuffer(8));
 
-// A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN (§3, internal/tablewire NarrowF32
-// and WidenF32): a float32 NaN's payload rides in the top of the double's
-// mantissa, by bit surgery rather than through a conversion that would set the
-// quiet bit.
-function TableVariableNarrowF32(v) {
-  const d = TableVariableScratch;
-  if (v !== v) {
-    d.setFloat64(0, v, true);
-    const lo = d.getUint32(0, true), hi = d.getUint32(4, true);
-    let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
-    if (payload === 0) { payload = 0x400000; }
-    return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
-  }
-  d.setFloat32(0, v, true);
-  return d.getUint32(0, true);
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the finite rule of
+// 2026-10-27, the packet wire's rule): every writer refuses a NaN or an
+// infinity, and every read refuses one on its RAW BITS, before the
+// bits become a number, as non_finite_float naming <Table>.<field>. A finite
+// value rides as its bit pattern, -0 and the subnormals exact, so the float32
+// widens and narrows by the ordinary conversion.
+//
+// TableVariableFiniteFloat is the writers' test: a float32 field's value must
+// stay finite at float32 too, so a double past the float32 range is refused
+// rather than written as an infinity.
+function TableVariableFiniteFloat(f32, v) {
+  return f32 ? Number.isFinite(Math.fround(v)) : Number.isFinite(v);
 }
 
-function TableVariableWidenF32(bits) {
-  const d = TableVariableScratch;
-  if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
-    const payload = bits & 0x007fffff;
-    d.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
-    d.setUint32(0, ((payload & 7) << 29) >>> 0, true);
-    return d.getFloat64(0, true);
-  }
-  d.setUint32(0, bits >>> 0, true);
-  return d.getFloat32(0, true);
+// TableVariableSameFloat is ELISION'S compare (§3, the 10-15 rule): the bit
+// patterns, so a -0 under a +0 default rides. For two finite values Object.is
+// is exactly the bit compare, at float32 once both are rounded to it.
+function TableVariableSameFloat(f32, a, b) {
+  return f32 ? Object.is(Math.fround(a), Math.fround(b)) : Object.is(a, b);
+}
+
+// the write that meets a non-finite float refuses the save, and names the
+// reason to a MeasureReason walk (TableVariableSaveWhy) when one is asking
+let TableVariableSaveWhy = null;
+function TableVariableRefuseNonFinite() {
+  if (TableVariableSaveWhy !== null && TableVariableSaveWhy.reason === null) { TableVariableSaveWhy.reason = "non_finite_float"; }
+  return false;
+}
+
+// a float's payload at its kind's width; false (refused) for a non-finite one
+function TableVariableWriteFloat(w, f32, v) {
+  if (!TableVariableFiniteFloat(f32, v)) { return TableVariableRefuseNonFinite(); }
+  if (f32) { w.f32(v); } else { w.f64(v); }
+  return true;
+}
+
+// the raw-bits test on an unknown entry a read is retaining (§3.3, §6.6): kind
+// 10's four bytes and kind 11's eight, little-endian; true for any other kind
+function TableVariableRetainedFinite(b, from, to, kind) {
+  if (kind === 10 && to - from === 4) { return ((b[from + 3] << 24 | b[from + 2] << 16) & 0x7f800000) !== 0x7f800000; }
+  if (kind === 11 && to - from === 8) { return ((b[from + 7] << 24 | b[from + 6] << 16) & 0x7ff00000) !== 0x7ff00000; }
+  return true;
+}
+
+// a read's non-finite float, refused on its raw bits: the first name wins, and
+// the load that met it refuses whole (TableVariableLoad)
+function TableVariableNonFinite(report, d) {
+  if (!report.nonFiniteFloat) { report.nonFiniteFloat = d.nf; }
 }
 
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, and f32
@@ -1040,9 +1069,10 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); }
       return true;
     case "float":
-      if (fd.f32 ? Math.fround(val) !== Math.fround(fd.def) : val !== fd.def) {
+      if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
+      if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
-        if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
+        TableVariableWriteFloat(w, fd.f32, val);
       }
       return true;
     case "str":
@@ -1143,9 +1173,7 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
   switch (e.s) {
     case "bool": w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableWriteInt(w, e.kw, val); return true;
-    case "float":
-      if (e.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
-      return true;
+    case "float": return TableVariableWriteFloat(w, e.f32, val);
     case "enum": {
       const vref = TableVariableEnumRef(e, ids, val);
       if (vref < 0) { return false; }
@@ -1183,18 +1211,21 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // or a value with no wire identity refuses the save (null), and so does one
 // blob two slots name, blob_shared (§2.5): every writer refuses it.
 function TableVariableSave(c, v, retain, why) {
-  const outer = TableVariableEntryCache;
+  const outer = TableVariableEntryCache, outerWhy = TableVariableSaveWhy;
   TableVariableEntryCache = new Map();
+  TableVariableSaveWhy = why === undefined ? null : why;
   try {
     return TableVariableSaveWalk(c, v, retain, why);
   } finally {
     TableVariableEntryCache = outer;
+    TableVariableSaveWhy = outerWhy;
   }
 }
 
 // THE MEASURE'S REASON TWIN (Go's MeasureReason): [size, null] for a value
 // the wire carries, [-1, reason] for one it refuses — blob_shared for a blob
-// two slots name (§2.5), invalid_value for any other value outside the
+// two slots name (§2.5), non_finite_float for a NaN or an infinity (§3.3),
+// invalid_value for any other value outside the
 // writer's contract (a data cycle, §3.1; an enum value no variant names, §5).
 function TableVariableMeasureReason(c, v) {
   const why = { reason: null };
@@ -1289,6 +1320,10 @@ function TableVariableOpen(bytes, report) {
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
 function TableVariableLoad(c, bytes, report, retain) {
+  // a caller that passed no report still gets the refusal: the read keeps one
+  if (report === undefined || report === null) { report = new TableVariableReport(); }
+  // this read's own non-finite refusal (§3.3)
+  report.nonFiniteFloat = "";
   const open = TableVariableOpen(bytes, report);
   // A non-variable root starts at its declared defaults and keeps them when
   // the file framing is damaged or refused before any field decodes
@@ -1331,6 +1366,13 @@ function TableVariableLoad(c, bytes, report, retain) {
     }
   }
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
+  // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+  // any damage the walk met after it (§3.3): nothing lands.
+  if (report.nonFiniteFloat) {
+    report.refused = 1;
+    report.reason = "non_finite_float: " + report.nonFiniteFloat;
+    return null;
+  }
   TableVariableResolve(st, report);
   return v;
 }
@@ -1429,6 +1471,13 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       const from = r.at;
       if (!TableVariableSkip(r, kind)) { report.malformed = true; return false; }
       if (retain !== null) {
+        // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
+        // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
+        // read, named <Table>.0x<id>
+        if (!TableVariableRetainedFinite(r.b, from, r.at, kind)) {
+          if (!report.nonFiniteFloat) { report.nonFiniteFloat = c.name + ".0x" + id.toString(16).padStart(16, "0"); }
+          continue;
+        }
         if (path === null) { report.retainLost++; }
         else { TableVariableRetainCapture(r.b, from, r.at, id, kind, table, retain, path, report); }
       }
@@ -1465,14 +1514,27 @@ function TableVariableScalar(r, d, kind, report) {
   switch (kind) {
     case 1: return r.u8() !== 0;
     case 10: {
-      let v = TableVariableWidenF32(r.u32());
-      if (v === v && d.f32 && d.lo !== null) {
+      // A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (§3.3), before the
+      // bits become a number and before the field is written; a compressed
+      // float takes the test before its bounds. Every finite float32 widens
+      // exactly, so the float rung is the ordinary conversion.
+      const b = r.u32();
+      if ((b & 0x7f800000) === 0x7f800000) { TableVariableNonFinite(report, d); return undefined; }
+      const s = TableVariableScratch;
+      s.setUint32(0, b, true);
+      let v = s.getFloat32(0, true);
+      if (d.f32 && d.lo !== null) {
         if (v < d.lo) { v = Math.fround(d.lo); report.clamped++; }
         else if (v > d.hi) { v = Math.fround(d.hi); report.clamped++; }
       }
       return v;
     }
-    case 11: return r.f64();
+    case 11: {
+      // the exponent is the high word's bits 20..30
+      const hi = (r.b[r.at + 4] | (r.b[r.at + 5] << 8) | (r.b[r.at + 6] << 16) | (r.b[r.at + 7] << 24)) >>> 0;
+      if ((hi & 0x7ff00000) === 0x7ff00000) { r.at += 8; TableVariableNonFinite(report, d); return undefined; }
+      return r.f64();
+    }
     case 2: case 20: x = r.i8(); break;
     case 3: case 21: x = r.i16(); break;
     case 4: case 22: x = r.i32(); break;
@@ -2009,7 +2071,8 @@ function TableVariableElemDefault(e) {
 }
 
 function TableVariableElemIsDefault(e, x) {
-  if (e.s === "float" && e.f32) { return Math.fround(x) === Math.fround(e.def); }
+  // a float compares its bit pattern (§3): a -0 under a +0 default rides
+  if (e.s === "float") { return TableVariableSameFloat(e.f32, x, e.def); }
   return x === e.def;
 }
 
@@ -2033,9 +2096,9 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
+      if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       TableVariableHeader(w, ids, fd, fd.k);
-      if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
-      return true;
+      return TableVariableWriteFloat(w, fd.f32, val);
     case "str": {
       const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
@@ -2182,9 +2245,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   switch (f.s) {
     case "bool": w.u8(x ? 1 : 0); return true;
     case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
-    case "float":
-      if (f.f32) { w.u32(TableVariableNarrowF32(x)); } else { w.f64(x); }
-      return true;
+    case "float": return TableVariableWriteFloat(w, f.f32, x);
     case "str": w.raw(TableVariableUtf8Encode(x)); return true;
     // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table): the
     // units ride under it with no length of their own; past N units refuses
@@ -3990,11 +4051,11 @@ const TableVariableCodecs = {
       { n: "loadout", key: "loadout", id: 0x5759ce7586bbb5a3n, o: 12, k: 14, s: "arr", js: "a", list: false, fixed: true, bound: 4, ek: 6, esz: 1, eal: 1, e: { s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 255n, def: 0 } },
       { n: "player_name", key: "player_name", id: 0x13a62f542cf8e86en, o: 13, k: 12, s: "str", js: "s", bound: 15, def: "" },
       { n: "payload", key: "payload", id: 0xcfb8a9d063b5e9e5n, o: 14, k: 14, s: "bytes", js: "s", list: false, bound: 16, ek: 6, def: new Uint8Array([]) },
-      { n: "aim_x", key: "aim_x", id: 0xdbaf7be5e24296c9n, o: 15, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
-      { n: "aim_y", key: "aim_y", id: 0xdbaf7ae5e2429516n, o: 16, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
-      { n: "aim_z", key: "aim_z", id: 0xdbaf79e5e2429363n, o: 17, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
-      { n: "recoil", key: "recoil", id: 0x9cef31fff7e2e457n, o: 18, k: 10, s: "float", js: "n", f32: true, lo: null, hi: null, def: 0 },
-      { n: "drift", key: "drift", id: 0x5ab3f9c9341f6c04n, o: 19, k: 11, s: "float", js: "n", f32: false, lo: null, hi: null, def: 0 },
+      { n: "aim_x", key: "aim_x", id: 0xdbaf7be5e24296c9n, o: 15, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_x", def: 0 },
+      { n: "aim_y", key: "aim_y", id: 0xdbaf7ae5e2429516n, o: 16, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_y", def: 0 },
+      { n: "aim_z", key: "aim_z", id: 0xdbaf79e5e2429363n, o: 17, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_z", def: 0 },
+      { n: "recoil", key: "recoil", id: 0x9cef31fff7e2e457n, o: 18, k: 10, s: "float", js: "n", f32: true, lo: null, hi: null, nf: "BenchMixed.recoil", def: 0 },
+      { n: "drift", key: "drift", id: 0x5ab3f9c9341f6c04n, o: 19, k: 11, s: "float", js: "n", f32: false, lo: null, hi: null, nf: "BenchMixed.drift", def: 0 },
       { n: "wide_key", key: "wide_key", id: 0xa3348580461faf16n, o: 20, s: "int", js: "n", k: 19, big: true, kw: 16, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 340282366920938463463374607431768211455n, def: 0n },
       { n: "flux", key: "flux", id: 0xd61bdd7908af2642n, o: 21, s: "int", js: "n", k: 18, big: true, kw: 16, lo: -1267650600228229401496703205376n, hi: 1267650600228229401496703205376n, bits: 0, bmax: 0, frac: 0, tlo: -1267650600228229401496703205376n, thi: 1267650600228229401496703205376n, dlo: -170141183460469231731687303715884105728n, dhi: 170141183460469231731687303715884105727n, def: 0n },
       { n: "ping", key: "ping", id: 0xbf30e00dc53307a9n, o: 22, s: "int", js: "n", k: 26, big: false, kw: 2, lo: 0, hi: 64000, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 64000n, dlo: 0n, dhi: 65535n, def: 0 },
@@ -4112,17 +4173,12 @@ export const TableCookWrite = (() => {
       ],
     },
   };
-  const f32Scratch = new DataView(new ArrayBuffer(8));
-  function narrowF32(v) {
-    if (v !== v) {
-      f32Scratch.setFloat64(0, v, true);
-      const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
-      let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
-      if (payload === 0) { payload = 0x400000; }
-      return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
-    }
-    f32Scratch.setFloat32(0, v, true);
-    return f32Scratch.getUint32(0, true);
+  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the cook writer
+  // refuses a NaN or an infinity, a float32 one past the float32 range
+  // included, and names it to the measure's reason as non_finite_float
+  function refuseFloat(ctx) {
+    if (ctx !== null) { ctx.nonFinite = true; }
+    return false;
   }
   function fit(v, width, signed) {
     let b;
@@ -4217,10 +4273,12 @@ export const TableCookWrite = (() => {
         return true;
       case "f32":
         if (typeof value !== "number") { return false; }
-        if (view !== null) { view.setUint32(at, narrowF32(value), le); }
+        if (!Number.isFinite(Math.fround(value))) { return refuseFloat(ctx); }
+        if (view !== null) { view.setFloat32(at, value, le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
+        if (!Number.isFinite(value)) { return refuseFloat(ctx); }
         if (view !== null) { view.setFloat64(at, value, le); }
         return true;
       case "int":
@@ -4392,10 +4450,10 @@ export const TableCookWrite = (() => {
       data += size;
     }
     data = alignUp(data, align);
-    const ctx = { entries, nodes };
+    const ctx = { entries, nodes, nonFinite: false };
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: "invalid_value" }; }
+      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: ctx.nonFinite ? "non_finite_float" : "invalid_value" }; }
     }
     return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
   }
