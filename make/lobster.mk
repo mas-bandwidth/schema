@@ -80,7 +80,23 @@ build/conformance-lobster: $(LOBSTER_MANIFEST) make/lobster.mk
 			echo "lobster refuses $$key: $$(head -1 $@/$$key.log)"; mv $@/$$key.log $@/$$key.refused; \
 		fi; \
 	done
-generated/bench/tables/lobster/.stamp: ;
+# THE BENCH UNITS (bench/README.md, bench/tables/README.md; docs/PORT-LOBSTER.md,
+# THE HARNESS). The packet leg (bench/lobster/run) measures BenchMixed through
+# generated/bench/lobster; the tables leg (bench/tables/lobster/leg) measures
+# TableMixed on the tolerant wire through generated/bench/tables/lobster. Each
+# unit is self-contained: the runtime modules are emitted beside it. The trees
+# are committed, like every port's, and test/generated-tree/verify holds them to
+# the compiler.
+generated/bench/lobster/.stamp: bin/schema $(SCHEMAS_BENCH)
+	@mkdir -p generated/bench/lobster
+	./bin/schema generate --lang lobster --out generated/bench/lobster bench/corpus/Bench.schema
+	@touch $@
+
+generated/bench/tables/lobster/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/lobster
+	./bin/schema generate --lang lobster --out generated/bench/tables/lobster bench/corpus/BenchTable.schema
+	@touch $@
+
 
 TEST_LEGS         += test-lobster
 TOOLCHAIN_LEGS    += lobster

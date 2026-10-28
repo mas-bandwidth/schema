@@ -244,7 +244,7 @@ jobs:
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
             esac
             case "$f" in
-              internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk) add_leg lobster ;;
+              internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
             esac
           done <<EOF
           $files
@@ -701,7 +701,8 @@ jobs:
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
             # test-lobster holds the fixed form to the reference's byte oracle
             # (SCHEMA_REQUIRE_CORPUS=1) beside both packages' suites; the strict
-            # gate compiles every generated unit with zero warnings
-            lobster) make test-lobster tables-lobster-clean ;;
+            # gate compiles every generated unit with zero warnings; the bench
+            # legs' gate runs both runners over their corpus, no clock
+            lobster) make test-lobster tables-lobster-clean bench-lobster-gate ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac
