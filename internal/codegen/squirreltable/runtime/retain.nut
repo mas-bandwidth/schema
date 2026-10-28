@@ -125,7 +125,7 @@ resolveContent = function(c, kind, table, out, depth) {
   if (depth > RETAIN_DEPTH_CAP) { c.bad = true; return; }
   switch (kind) {
     case 17: { c.bad = true; return; }
-    case 13: { resolveBody(c, table, out, depth); }
+    case 13: { resolveBody(c, table, out, depth); break; }
     case 14: case 16: {
       local ek = cu8(c);
       if (c.bad) return;
@@ -148,7 +148,7 @@ resolveContent = function(c, kind, table, out, depth) {
           local mark = out.len();
           outU64(out, 0);
           resolveContent(sub, ek, table, out, depth + 1);
-          if (sub.at != sub.end) c.bad = true;
+          if (sub.bad || sub.at != sub.end) c.bad = true;
           if (c.bad) return;
           local len = out.len() - mark - 8;
           for (local k = 0; k < 8; k++) out[mark + k] = (len >>> (8 * k)) & 0xff;
@@ -195,7 +195,7 @@ resolvePayload = function(c, kind, table, out, depth) {
       local mark = out.len();
       outU64(out, 0);
       resolveContent(sub, armKind, table, out, depth + 1);
-      if (!c.bad && sub.at != sub.end) c.bad = true;
+      if (sub.bad || sub.at != sub.end) c.bad = true;
       if (c.bad) return;
       local len = out.len() - mark - 8;
       for (local k = 0; k < 8; k++) out[mark + k] = (len >>> (8 * k)) & 0xff;
@@ -209,7 +209,7 @@ resolvePayload = function(c, kind, table, out, depth) {
       local mark = out.len();
       outU64(out, 0);
       resolveContent(sub, kind, table, out, depth + 1);
-      if (!c.bad && sub.at != sub.end) c.bad = true;
+      if (sub.bad || sub.at != sub.end) c.bad = true;
       if (c.bad) return;
       local len = out.len() - mark - 8;
       for (local k = 0; k < 8; k++) out[mark + k] = (len >>> (8 * k)) & 0xff;
@@ -280,7 +280,28 @@ local emitLeb = function(w, v) {
   w.b.append(v & 0x7f);
 };
 
-local emitRef = function(w, ids, id) { emitLeb(w, ids.ref(id)); };
+// THE EMIT IN FLIGHT: the store, the unit's known ids, and whether the record
+// being emitted went bad. ONE FILE STILL CARRIES ONE ID TABLE (§6.6): an id this
+// build can name takes its entry from the generated table, a retained id takes
+// one from the caller's list, and a retained id past the list's capacity drops
+// its record with one retain_lost; the save is never refused.
+local EMIT = null;
+
+local intern = function(store, id) {
+  foreach (x in store.ids) if (x == id) return true;
+  if (store.ids.len() >= store.idCapacity) return false;
+  store.ids.append(id);
+  return true;
+};
+
+local emitRef = function(w, ids, id) {
+  if (EMIT != null && !(id in EMIT.known) && !intern(EMIT.store, id)) {
+    EMIT.bad = true;
+    emitLeb(w, 0);
+    return;
+  }
+  emitLeb(w, ids.ref(id));
+};
 
 emitContent = function(w, c, kind, ids) {
   switch (kind) {
@@ -386,25 +407,45 @@ emitBody = function(w, c, ids) {
   }
 };
 
+// ONE MARK, BOTH STORES: a record's ids are appended to the file's table and to
+// the caller's list as the emit reaches them, so a record that goes bad partway
+// is undone in both, and counts one retain_lost (§6.6; internal/tablewire/
+// retain.go, `emitRetained`).
 local emit = function(store, inst, w, ids) {
   foreach (rec in store.recs) {
     if (rec.body != inst) continue;
+    local mark = ids.list.len();
+    local idMark = store.ids.len();
+    EMIT = { store = store, known = store.known, bad = false };
     local c = cursor(rec.payload, 0, rec.payload.len());
     local inner = { b = [] };
     emitRef(inner, ids, rec.id);
     inner.b.append(rec.kind & 0xff);
     emitPayload(inner, c, rec.kind, ids);
-    rec.placed = true;
-    if (!c.bad && c.at == c.end) {
-      foreach (x in inner.b) w.b.append(x);
+    local bad = EMIT.bad || c.bad || c.at != c.end;
+    EMIT = null;
+    rec.placed = true; // the walk REACHED it, whatever came of the emit
+    if (bad) {
+      while (ids.list.len() > mark) delete ids.index[ids.list.pop()];
+      while (store.ids.len() > idMark) store.ids.pop();
+      store.emitLost = store.emitLost + 1;
+      continue;
     }
+    foreach (x in inner.b) w.b.append(x);
   }
 };
 
 // ---- the surface ----------------------------------------------------------
 
-local resetPlaced = function(store) {
+// Each save starts from a clean interner and an unplaced record set: a second
+// save of the same region reaches the same ids in the same order, which is what
+// makes it byte-identical (§6.6).
+local resetPlaced = function(T, store) {
   foreach (rec in store.recs) rec.placed = false;
+  store.ids <- [];
+  store.emitLost <- 0;
+  store.known <- ("TableRetainKnown" in T) ? T.TableRetainKnown : {};
+  if (!("idCapacity" in store)) store.idCapacity <- 0;
 };
 
 _M.LoadRetain <- function(T, rootName, bytes, store, report) {
@@ -412,7 +453,7 @@ _M.LoadRetain <- function(T, rootName, bytes, store, report) {
   store.used <- 0;
   if (!("capacity" in store)) store.capacity <- 0;
   store.ids <- [];
-  store.idUsed <- 0;
+  if (!("idCapacity" in store)) store.idCapacity <- 0;
   if (!("retained" in report)) report.retained <- 0;
   if (!("retainLost" in report)) report.retainLost <- 0;
   report.retained = 0;
@@ -431,18 +472,18 @@ _M.LoadRetain <- function(T, rootName, bytes, store, report) {
 };
 
 _M.MeasureRetain <- function(T, rootName, value, store) {
-  resetPlaced(store);
+  resetPlaced(T, store);
   local b = S.save(T, rootName, value, store);
   return b == null ? -1 : b.len();
 };
 
 _M.SaveRetain <- function(T, rootName, value, store, out, report) {
   if (report == null) return -1;
-  resetPlaced(store);
+  resetPlaced(T, store);
   if (!("retainLost" in report)) report.retainLost <- 0;
   local b = S.save(T, rootName, value, store);
   if (b == null) return -1;
-  local lost = 0;
+  local lost = store.emitLost;
   foreach (rec in store.recs) if (!rec.placed) lost++;
   report.retainLost = report.retainLost + lost;
   if (out != null) {

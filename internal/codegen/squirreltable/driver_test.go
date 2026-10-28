@@ -25,8 +25,8 @@ var knownSurfaces = map[string]bool{
 }
 
 // TestSquirrelDriverListsItsSurfaces runs the conformance driver's `list` from
-// the repository root and requires wire and report among its lines, and every
-// listed surface to be one test/conformance/README.md names.
+// the repository root and requires every surface test/conformance/README.md
+// names, and nothing else.
 func TestSquirrelDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Squirrel interpreter")
@@ -56,10 +56,12 @@ func TestSquirrelDriverListsItsSurfaces(t *testing.T) {
 		}
 		seen[s] = true
 	}
-	if !seen["wire"] {
-		t.Errorf("the driver's `list` does not name the wire surface:\n%s", stdout.String())
-	}
-	if !seen["report"] {
-		t.Errorf("the driver's `list` does not name the report surface:\n%s", stdout.String())
+	// PARITY: the nine main legs answer every surface (test/conformance/
+	// README.md), so the Squirrel leg lists every one; a case it cannot reach
+	// is a per-case absence, never a surface left out.
+	for s := range knownSurfaces {
+		if !seen[s] {
+			t.Errorf("the driver's `list` does not name the %s surface:\n%s", s, stdout.String())
+		}
 	}
 }
