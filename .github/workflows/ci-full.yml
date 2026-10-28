@@ -1875,6 +1875,12 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # THE LUAU PIN, as make/luau.mk's dist-luau installs it (sha256 refused
+      # before unpacking), at the version the group's field names.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and
       # building them here keeps the build cost out of the first control's

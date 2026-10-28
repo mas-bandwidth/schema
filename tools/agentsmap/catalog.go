@@ -118,6 +118,8 @@ var catalog = []Entry{
 	e("internal/codegen/javatable", "Java table emitter", "go test ./internal/codegen/javatable", "go test ./internal/codegen/javatable"),
 	e("internal/codegen/js", "JS packet emitter", "go test ./internal/codegen/js", "go test ./internal/codegen/js"),
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
+	e("internal/codegen/luau", "Luau type emitter (docs/PORT-LUAU.md)", "go test ./internal/codegen/luau", "go test ./internal/codegen/luau/..."),
+	e("internal/codegen/luautable", "Luau table emitter (docs/PORT-LUAU.md)", "go test ./internal/codegen/luautable", "go test ./internal/codegen/luautable"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
 
@@ -144,12 +146,14 @@ var catalog = []Entry{
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
+	e("testdata/luau-nightly-fuzz", "Luau nightly fuzz repros", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("testdata/wire", "pinned wire bytes", "go test ./internal/goldens", "make update-goldens"),
 
 	// tools/
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
+	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/matrix", "language matrix page", "make matrix-check", "make matrix"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
