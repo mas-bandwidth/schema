@@ -4,9 +4,13 @@
 // (internal/codegen/squirrel/serialize/, schema-squirrel-serialize-vendor).
 // There is no private bit writer here; every bit on the wire is the port's.
 // The bytes are SPEC.md §4.3 and §6.1, the same ones the C++ target pins in
-// testdata/wire/*.bin. A value past its declared bound is refused on write
-// (docs/PORT-SQUIRREL.md, THE NAMED REFUSALS): the write functions return
-// false, leaving the stream's latched error (SPEC §4.3).
+// testdata/wire/*.bin. A value the runtime is handed outside its declared
+// range, bit width or finite domain is write misuse under serialize.nut
+// v2.1.1 (IMPLEMENTING.md U9): the runtime TRAPS, throwing a string that
+// starts "serialize: write misuse:" at the call, before any bit moves, and
+// latches nothing on the stream. The emitted guards that run before a runtime
+// call (a value that is not an integer, a uint64 outside its range, an enum
+// or flags value past its wire width) return false instead (SPEC §4.3).
 package squirrel
 
 import (

@@ -5,20 +5,32 @@
 //
 // STANDARD.md float: the 32 bits of the IEEE-754 single-precision
 // representation, no conversion; STANDARD.md double: the 64 bits, the low
-// 32-bit group first. Both are bit-transparent in both directions: every NaN
-// payload, signaling NaN, infinity, negative zero and denormal is reproduced
-// exactly, and a reader never canonicalizes or refuses a pattern (STANDARD.md
-// float and double, "Bit transparency — both directions").
+// 32-bit group first. STANDARD.md, "Finite values only, every one bit exact":
+// both carry FINITE values. A pattern whose exponent field is all ones (NaN
+// with any payload, either sign, and both infinities) is refused on read as
+// non_finite_float, tested on the RAW BITS before the holder is written, and
+// a write or a measure of one is write misuse: it traps and writes nothing
+// (IMPLEMENTING.md U6, U9). Every finite pattern, negative zero
+// and the subnormals included, travels bit for bit.
 //
 // fround(x) (DESIGN.md (e)) narrows a double to the float32 Go's float32()
 // gives: round to nearest, ties to even, the subnormal rounding, a finite
 // double past float32's range to the signed infinity, infinities to
-// themselves, and a NaN to the float32 NaN holding the same sign and the top
-// 23 bits of its payload. All of it is integer surgery on the bits of
+// themselves, and a NaN to the quiet float32 NaN of the same sign. The float
+// write checks finiteness AFTER that narrowing, so a finite double above float32's range, which narrows to an
+// infinity, is refused too. All of it is integer surgery on the bits of
 // castf2i(x): the blob library's castf2i/casti2f reinterpret without
 // conversion, and the 'f' view of a blob is never used (DESIGN.md (e)).
 local _M = vargv[0];
 local require = vargv[1];
+
+local SerializeError = require("serialize_stream").SerializeError;
+
+// floatBitsAreFinite(p) / doubleBitsAreFinite(b): the exponent field is not
+// all ones (STANDARD.md, Finite values only), on the raw bits, never on a
+// converted value
+local floatBitsAreFinite = function(p) { return (p & 0x7F800000) != 0x7F800000; };
+local doubleBitsAreFinite = function(b) { return (b & 0x7FF0000000000000) != 0x7FF0000000000000; };
 
 // froundPattern(v): the 32-bit float32 pattern fround(v) narrows v to, as an
 // unsigned 32-bit value. The narrowing is IEEE-754 round-to-nearest,
@@ -30,11 +42,11 @@ local froundPattern = function(v) {
   local frac = bits & 0xFFFFFFFFFFFFF;
   local p;
   if (exp == 0x7FF) {
-    // infinity or NaN: infinities to themselves; a NaN keeps the sign and the
-    // top 23 bits of its payload, so a signaling NaN and its payload survive
-    // a round trip (STANDARD.md float and double, bit transparency)
+    // infinity or NaN: infinities to themselves, a NaN to the quiet float32
+    // NaN of the same sign. Neither is a value the format carries (STANDARD.md,
+    // Finite values only): the float write refuses both, so no payload is kept.
     if (frac == 0) p = sign >>> 32 | 0x7F800000;
-    else p = sign >>> 32 | 0x7F800000 | ((frac >>> 29) & 0x7FFFFF);
+    else p = sign >>> 32 | 0x7FC00000;
   } else if (exp == 0) {
     // a double subnormal is below 2^-149, so it rounds to the signed zero
     p = sign >>> 32;
@@ -80,17 +92,19 @@ local froundPattern = function(v) {
 };
 
 // float32FromBits(i): the double holding the float32 pattern i, widened by bit
-// surgery (DESIGN.md (e), "A float32 read widens the 32 bits exactly"). The
-// 23 payload bits land in the top 23 of the double's 52, so every bit of the
-// pattern is preserved for a later fround to reproduce.
+// surgery (DESIGN.md (e), "A float32 read widens the 32 bits exactly"). Every
+// finite pattern, negative zero and the subnormals included, is preserved for
+// a later fround to reproduce.
 local float32FromBits = function(i) {
   local sign = (i & 0x80000000) << 32;
   local e = (i >>> 23) & 0xFF;
   local m = i & 0x7FFFFF;
   local db;
   if (e == 0xFF) {
+    // never reached from a read, which refuses the pattern first; an
+    // infinity widens to itself and a NaN to the quiet double NaN
     if (m == 0) db = sign | 0x7FF0000000000000;
-    else db = sign | 0x7FF0000000000000 | (m << 29);
+    else db = sign | 0x7FF8000000000000;
   } else if (e == 0) {
     if (m == 0) db = sign;
     else {
@@ -109,22 +123,28 @@ local float32FromBits = function(i) {
 _M.fround <- function(x) { return float32FromBits(froundPattern(x)); };
 _M.float32Bits <- froundPattern;
 _M.float32FromBits <- float32FromBits;
+_M.floatBitsAreFinite <- floatBitsAreFinite;
 
 // the arms (DESIGN.md (h)): function(stream, ...) with the stream method's own
 // arguments after the stream. Shape (DESIGN.md (g)): room for the whole width
 // before any bit moves; a read assigns the holder only after every move.
 local write = {
-  // serializeFloat(s, h): fround(h.value) as a 32-bit group (STANDARD.md float)
+  // serializeFloat(s, h): fround(h.value) as a 32-bit group (STANDARD.md
+  // float); a non-finite pattern after the narrowing traps before any bit
+  // moves (IMPLEMENTING.md U9)
   serializeFloat = function(s, h) {
+    local p = froundPattern(h.value);
+    if (!floatBitsAreFinite(p)) return s._fail(SerializeError.NonFiniteFloat);
     if (!s._room(32)) return false;
-    s._put(froundPattern(h.value), 32);
+    s._put(p, 32);
     return true;
   },
   // serializeDouble(s, h): the 64 bits, the low 32-bit group first
-  // (STANDARD.md double)
+  // (STANDARD.md double); finite only, as serializeFloat
   serializeDouble = function(s, h) {
-    if (!s._room(64)) return false;
     local bits = castf2i(h.value);
+    if (!doubleBitsAreFinite(bits)) return s._fail(SerializeError.NonFiniteFloat);
+    if (!s._room(64)) return false;
     local lo = bits & 0xFFFFFFFF;
     local hi = (bits >>> 32) & 0xFFFFFFFF;
     s._put(lo, 32);
@@ -133,10 +153,13 @@ local write = {
   },
 };
 
+// a read refuses a non-finite pattern on its raw bits, before the holder is
+// written (STANDARD.md, Finite values only; Reader Obligations)
 local read = {
   serializeFloat = function(s, h) {
     if (!s._room(32)) return false;
     local bits = s._take(32);
+    if (!floatBitsAreFinite(bits)) return s._fail(SerializeError.NonFiniteFloat);
     h.value <- float32FromBits(bits);
     return true;
   },
@@ -144,15 +167,26 @@ local read = {
     if (!s._room(64)) return false;
     local lo = s._take(32);
     local hi = s._take(32);
-    h.value <- casti2f(lo | (hi << 32));
+    local bits = lo | (hi << 32);
+    if (!doubleBitsAreFinite(bits)) return s._fail(SerializeError.NonFiniteFloat);
+    h.value <- casti2f(bits);
     return true;
   },
 };
 
-// the measure stream charges the exact width and refuses nothing
+// the measure stream charges the exact width; like a write it is handed
+// finite values only, and traps on any other (IMPLEMENTING.md U6, U9)
 local measure = {
-  serializeFloat = function(s, h) { s._put(0, 32); return true; },
-  serializeDouble = function(s, h) { s._put(0, 64); return true; },
+  serializeFloat = function(s, h) {
+    if (!floatBitsAreFinite(froundPattern(h.value))) return s._fail(SerializeError.NonFiniteFloat);
+    s._put(0, 32);
+    return true;
+  },
+  serializeDouble = function(s, h) {
+    if (!doubleBitsAreFinite(castf2i(h.value))) return s._fail(SerializeError.NonFiniteFloat);
+    s._put(0, 64);
+    return true;
+  },
 };
 
 _M.write <- write;

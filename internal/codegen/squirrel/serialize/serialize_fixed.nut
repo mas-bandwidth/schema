@@ -30,7 +30,7 @@ local streams = require("serialize_stream");
 local int128 = require("serialize_int128");
 local SerializeError = streams.SerializeError;
 
-// serialize.go v1.15.1's panic texts, verbatim (DESIGN.md (g): API misuse
+// serialize.go v2.0.0's panic texts, verbatim (DESIGN.md (g): API misuse
 // raises naming the same rule)
 local PANIC_PARAMS = "serialize: fixed point requires integer bits >= 1, fraction bits >= 0, a Q format that fits the storage width, and min <= max";
 local PANIC_BOUNDS = "serialize: fixed point bounds in whole units do not fit the Q format";
@@ -66,49 +66,13 @@ local bitlen64 = function(x) {
   return n;
 };
 
-// sub64(a, b): a - b, wrapping modulo 2^64, composed from the 32-bit lanes
-// with an explicit borrow (DESIGN.md (c): a difference that can overflow is
-// never left to signed arithmetic)
-local sub64 = function(a, b) {
-  local alo = a & MASK32;
-  local blo = b & MASK32;
-  local lo = alo - blo;
-  local borrow = alo < blo ? 1 : 0;
-  local ahi = (a >>> 32) & MASK32;
-  local bhi = (b >>> 32) & MASK32;
-  local hi = ahi - bhi - borrow;
-  return ((hi & MASK32) << 32) | (lo & MASK32);
-};
-
-// add64(a, b): a + b, wrapping modulo 2^64 (DESIGN.md (c))
-local add64 = function(a, b) {
-  local alo = a & MASK32;
-  local blo = b & MASK32;
-  local lo = alo + blo;
-  local carry = ucmp64(alo, lo & MASK32) > 0 ? 1 : 0;
-  local hi = ((a >>> 32) & MASK32) + ((b >>> 32) & MASK32) + carry;
-  return ((hi & MASK32) << 32) | (lo & MASK32);
-};
-
-// add128(a, b): a + b, wrapping modulo 2^128 (DESIGN.md (c))
-local add128 = function(a, b) {
-  local lo = a[0] + b[0];
-  local carry = ucmp64(a[0], lo) > 0 ? 1 : 0;
-  local hi = a[1] + b[1] + carry;
-  return [lo, hi];
-};
-
-// shl64(x, n): x << n for n in [0,63], composed from the lanes so the shift
-// count never leaves [0,63] (DESIGN.md (c))
-local shl64 = function(x, n) {
-  if (n == 0) return x;
-  local alo = x & MASK32;
-  local ahi = (x >>> 32) & MASK32;
-  if (n >= 32) return (((alo << (n - 32)) & MASK32) << 32);
-  local lo = (alo << n) & MASK32;
-  local hi = ((ahi << n) | (alo >>> (32 - n))) & MASK32;
-  return (hi << 32) | lo;
-};
+// the 64-bit lanes and the 128-bit sum, from serialize_int128.nut (DESIGN.md
+// (c): a sum, a difference or a shift that can wrap is never left to signed
+// arithmetic, which is C++ undefined behaviour in the VM)
+local sub64 = int128.sub64;
+local add64 = int128.add64;
+local shl64 = int128.shl64;
+local add128 = int128.add;
 
 // fixedPointCapacity(integerBits, signed): the whole-unit bounds a Q format
 // can represent, clamped to the int64 domain the bounds live in; the
@@ -125,19 +89,22 @@ local fixedPointCapacity = function(integerBits, signed) {
   return [0, (1 << integerBits) - 1];
 };
 
-// fixedPointParams64(integerBits, fractionBits, min, max): serialize.go v1.15.1's
-// fixedPointParams64 (DESIGN.md (g); STANDARD.md, fixed). It raises
-// panicFixedParams when the Q format or the bounds are misuse, and
-// panicFixedBounds when a whole-unit bound does not fit the format. The raw
+// fixedPointParams64(integerBits, fractionBits, min, max): serialize.go v2.0.0's
+// fixedPointParams64 (DESIGN.md (g); STANDARD.md, fixed). It returns
+// panicFixedParams's text when the Q format or the bounds are misuse, and
+// panicFixedBounds's when a whole-unit bound does not fit the format: a bad
+// declaration, which write and measure raise and a read refuses as
+// ValueOutOfRange, never a raise (IMPLEMENTING.md U7, U16). The raw
 // bounds are whole-unit bounds shifted left by fractionBits in the unsigned
 // domain, where a negative bound wraps two's complement, and the width is the
 // bit length of the raw range (zero for a degenerate range, on every width).
 local fixedPointParams64 = function(integerBits, fractionBits, min, max) {
-  if (integerBits < 1 || fractionBits < 0 || integerBits + fractionBits > 64 || min > max) {
-    throw PANIC_PARAMS;
+  if (typeof integerBits != "integer" || typeof fractionBits != "integer" ||
+      integerBits < 1 || fractionBits < 0 || integerBits + fractionBits > 64 || min > max) {
+    return PANIC_PARAMS;
   }
   local cap = fixedPointCapacity(integerBits, min < 0);
-  if (min < cap[0] || max > cap[1]) throw PANIC_BOUNDS;
+  if (min < cap[0] || max > cap[1]) return PANIC_BOUNDS;
   local rawMin = shl64(min, fractionBits);
   local rawMax = shl64(max, fractionBits);
   local rawRange = sub64(rawMax, rawMin);
@@ -146,18 +113,19 @@ local fixedPointParams64 = function(integerBits, fractionBits, min, max) {
 };
 
 // fixedPointParams128(integerBits, fractionBits, min, max): serialize.go
-// v1.15.1's fixedPointParams128 (DESIGN.md (g); STANDARD.md, fixed). Storage is
+// v2.0.0's fixedPointParams128 (DESIGN.md (g); STANDARD.md, fixed). Storage is
 // exactly 128 bits, so integerBits + fractionBits must equal 128. The raw
 // offset math runs in the unsigned 128-bit domain; the width is the whole-unit
 // range's bit length plus fractionBits (shifting a range left adds exactly
 // that many bits), except a degenerate range, which costs zero bits on every
 // storage width (serialize.go's serialize#54 note; STANDARD.md, fixed).
 local fixedPointParams128 = function(integerBits, fractionBits, min, max) {
-  if (integerBits < 1 || fractionBits < 0 || integerBits + fractionBits != 128 || min > max) {
-    throw PANIC_PARAMS;
+  if (typeof integerBits != "integer" || typeof fractionBits != "integer" ||
+      integerBits < 1 || fractionBits < 0 || integerBits + fractionBits != 128 || min > max) {
+    return PANIC_PARAMS;
   }
   local cap = fixedPointCapacity(integerBits, min < 0);
-  if (min < cap[0] || max > cap[1]) throw PANIC_BOUNDS;
+  if (min < cap[0] || max > cap[1]) return PANIC_BOUNDS;
   local rawMin = int128.lsh(int128.int128From64(min), fractionBits);
   local rawMax = int128.lsh(int128.int128From64(max), fractionBits);
   local rawRange = int128.sub(rawMax, rawMin);
@@ -242,11 +210,11 @@ local measure = {};
 
 // serializeFixed64(s, h, integerBits, fractionBits, min, max): the 64-bit
 // fixed point write (STANDARD.md, fixed; serialize.go SerializeFixed64).
-// Misuse raises; a raw value outside the raw bounds latches ValueOutOfRange
-// and writes nothing (DESIGN.md (g)).
+// A bad declaration, or a raw value outside the raw bounds, is write misuse:
+// it traps and writes nothing (IMPLEMENTING.md U9; DESIGN.md (g)).
 write.serializeFixed64 <- function(s, h, integerBits, fractionBits, min, max) {
   local p = fixedPointParams64(integerBits, fractionBits, min, max);
-  if (s._error != null) return false;
+  if (typeof p == "string") throw p;
   local off = sub64(h.value, p.rawMin);
   if (ucmp64(off, p.rawRange) > 0) return s._fail(SerializeError.ValueOutOfRange);
   if (!s._room(p.numBits)) return false;
@@ -255,11 +223,12 @@ write.serializeFixed64 <- function(s, h, integerBits, fractionBits, min, max) {
 };
 
 // read.serializeFixed64: reject, never clamp: the decoded offset must be at
-// most raw_max - raw_min, and a read past the end fails with Overflow before
+// most raw_max - raw_min, and a read past the end fails with PastEnd before
 // it reads (STANDARD.md, fixed; Reader Obligations). A refusal leaves the
 // holder untouched and the stream terminal (DESIGN.md (g)).
 read.serializeFixed64 <- function(s, h, integerBits, fractionBits, min, max) {
   local p = fixedPointParams64(integerBits, fractionBits, min, max);
+  if (typeof p == "string") return s._fail(SerializeError.ValueOutOfRange);
   if (s._error != null) return false;
   if (p.numBits == 0) { h.value = p.rawMin; return true; }
   if (!s._room(p.numBits)) return false;
@@ -274,7 +243,7 @@ read.serializeFixed64 <- function(s, h, integerBits, fractionBits, min, max) {
 // serialize.go MeasureStream.SerializeFixed64)
 measure.serializeFixed64 <- function(s, h, integerBits, fractionBits, min, max) {
   local p = fixedPointParams64(integerBits, fractionBits, min, max);
-  if (s._error != null) return false;
+  if (typeof p == "string") throw p;
   local off = sub64(h.value, p.rawMin);
   if (ucmp64(off, p.rawRange) > 0) return s._fail(SerializeError.ValueOutOfRange);
   if (!s._room(p.numBits)) return false;
@@ -285,11 +254,11 @@ measure.serializeFixed64 <- function(s, h, integerBits, fractionBits, min, max) 
 // serializeFixed128(s, h, integerBits, fractionBits, min, max): the wide fixed
 // point write, storage exactly 128 bits (STANDARD.md, fixed; serialize.go
 // SerializeFixed128). A value is [lo, hi]; the raw offset and range run in the
-// unsigned 128-bit domain, and a raw value outside the raw bounds latches
-// ValueOutOfRange (DESIGN.md (g)).
+// unsigned 128-bit domain, and a raw value outside the raw bounds traps
+// (IMPLEMENTING.md U9; DESIGN.md (g)).
 write.serializeFixed128 <- function(s, h, integerBits, fractionBits, min, max) {
   local p = fixedPointParams128(integerBits, fractionBits, min, max);
-  if (s._error != null) return false;
+  if (typeof p == "string") throw p;
   local off = int128.sub(h.value, p.rawMin);
   if (int128.cmp(off, p.rawRange) > 0) return s._fail(SerializeError.ValueOutOfRange);
   if (!s._room(p.numBits)) return false;
@@ -298,10 +267,11 @@ write.serializeFixed128 <- function(s, h, integerBits, fractionBits, min, max) {
 };
 
 // read.serializeFixed128: the decoded offset must be at most the raw range,
-// rejected rather than clamped, and a read past the end is Overflow before it
+// rejected rather than clamped, and a read past the end is PastEnd before it
 // reads (STANDARD.md, fixed; Reader Obligations; DESIGN.md (g))
 read.serializeFixed128 <- function(s, h, integerBits, fractionBits, min, max) {
   local p = fixedPointParams128(integerBits, fractionBits, min, max);
+  if (typeof p == "string") return s._fail(SerializeError.ValueOutOfRange);
   if (s._error != null) return false;
   if (p.numBits == 0) { h.value = [p.rawMin[0], p.rawMin[1]]; return true; }
   if (!s._room(p.numBits)) return false;
@@ -316,7 +286,7 @@ read.serializeFixed128 <- function(s, h, integerBits, fractionBits, min, max) {
 // MeasureStream.SerializeFixed128)
 measure.serializeFixed128 <- function(s, h, integerBits, fractionBits, min, max) {
   local p = fixedPointParams128(integerBits, fractionBits, min, max);
-  if (s._error != null) return false;
+  if (typeof p == "string") throw p;
   local off = int128.sub(h.value, p.rawMin);
   if (int128.cmp(off, p.rawRange) > 0) return s._fail(SerializeError.ValueOutOfRange);
   if (!s._room(p.numBits)) return false;
