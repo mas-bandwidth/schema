@@ -341,50 +341,45 @@ house pattern. `make dist-squirrel` is setup, run once, never from a test.
 
 ## THE REGISTER
 
-The Squirrel column of [PORTING.md](PORTING.md) is written cell by cell. A
-`—` cell either says why the platform cannot carry the method, or, for a
-method a codec card will carry, names that card: no carry-across issue has
-been filed for this port, so a not-yet cell cites the stream's card where the
-register's rule wants `❌ #NNN`, and becomes one when the issue exists. In
-summary:
+The Squirrel column of [PORTING.md](PORTING.md) is written cell by cell and
+held to the tree by `go test ./compiler -run Porting`: a `✅` cell names a test
+or a target the tree runs, a `❌` cell cites the carry-across issue its row
+already uses for the other ports (#366 where the row has none that fits), and
+a `—` cell states why the platform cannot carry the method. In summary:
 
-- **Carried by the platform:** M2 (the 64-bit integer is an unboxed value in
-  the object slot), M3 (so is the double).
-- **Cannot:** M4 (an interpreter with no inlining directive and no aliasing
-  qualifier), M10 (the VM allocates inside itself and offers a script no
-  allocator), M13 in part (Squirrel has no immutable table; the descriptors
-  are built once at module load, never lazily), I1, I9 and I14 (no
-  allocation count a script can read), I8 and J5 (no table-wire bench yet).
-- **A card carries it:** every wire, text and form method (M1, M5, M6,
-  M9, M12, M14–M16, M18, M20–M22, I2–I4, I6, I7, I11, I13, I15), per THE CARD
-  MAP.
-- **Not carded in this stream:** the two accelerators' readers (M7, M8, M11,
-  I5, J1), maps (M19), the cook's large-node span (M17), the documented
-  surface (I12), the release tier (J3), the format gate (J4) and the
-  zero-cost gate's test (I10). Each is a follow-on the register names.
+- **Carried:** M4b, M5, M6, M7, M8, M9, M12, M14, M15, M16, M18, M19, M20,
+  I2, I4, I5, I10, I11, I15, J3; M2 and M3 by the platform (the 64-bit integer
+  and the double are unboxed values in the object slot).
+- **Cannot:** M1 (a load answers class instances and VM strings), M4 (no
+  inlining directive and no aliasing qualifier), M10 (no allocator a script
+  can hook), M11 (the descriptor offsets ARE the layout), M13 (no immutable
+  table; the descriptors are built once at module load), M17 (no arena: every
+  blob is its own), I1, I9 and I14 (no allocation count a script can read),
+  I7 (the host's order is never consulted), I8 and J5 (no table-wire bench).
+- **Not yet:** M21 (retired by the finite rule, tables-finite/squirrel), M22
+  (a typed save), I3 (a forgery fuzzer), I6 (the claimed-name scan), I12
+  (USAGE), I13 (a third-implementation text differential), J1, J2, J4, J6.
+  Each has a `port/squirrel/...` entry in docs/roadmap.sexp.
 
 ## THE CARD MAP
 
-The stream `schema-squirrel` is twelve cards: this one and eleven pro cards,
-each of which adds files and edits none of the skeleton's.
+What is on the branch, by component. Every codec lifts the target's refusals
+for exactly what it carries; what no component carries stays refused by name
+(today: wide text in a table, `wstring(N)`, which tables-widetext/squirrel
+carries).
 
-| card | fills | adds |
+| component | carries | files |
 |---|---|---|
-| schema-squirrel-port-design | this page, the skeleton, the type and table surfaces without a codec | the files above |
-| schema-squirrel-type-wire-read | the type wire's read: the C++-pinned goldens read back (SPEC §5) | `squirrel/read.go`, `runtime/bitreader.nut` |
-| schema-squirrel-type-wire-write | the type wire's write, byte for byte against the goldens | `squirrel/write.go`, `runtime/bitwriter.nut` |
-| schema-squirrel-table-wire-load | the variable table wire's load and its report (docs/SPEC-TABLES.md §3, §4) | `squirreltable/runtime/load.nut` |
-| schema-squirrel-table-wire-save | the variable wire's save, every instance byte for byte (§3.1) | `runtime/save.nut` |
-| schema-squirrel-base64-text | base64 text over a text channel | `runtime/text.nut` |
-| schema-squirrel-json-text-form | the JSON text form both ways (§16), including the shortest float spelling, which Squirrel's `%g` does not give and the card writes | `runtime/json.nut` |
-| schema-squirrel-fixed-form | form 3 against the byte oracle (§3.4, docs/FIXED-FORM-ALGORITHM.md) | `squirreltable/fixedform.go`, `runtime/fixed.nut` |
-| schema-squirrel-message-form | form 2 against its goldens (§3.3) | `squirreltable/messageform.go`, `runtime/message.nut` |
-| schema-squirrel-refusals-by-name | the refusals at compile time and at read time (§11) and the claimed names | `runtime/refusal.nut`, `internal/tablenames/squirrel.go`, `compiler/tablessquirrel_test.go` |
-| schema-squirrel-conformance-leg | the driver's script, `make conformance` and the CI step | `test/conformance/squirrel/main.nut`, `make/squirrel-conformance.mk`, the `ci-full.yml` step |
-| schema-squirrel-fuzz-differential | the wire fuzzer driving the Squirrel load against the Go engine | `test/conformance/squirrel/wirefuzz.nut`, `make/squirrel-fuzz.mk` |
-
-Each codec card lifts the target's refusals for exactly what it carries, and
-what no card carries stays refused by name.
+| type wire | the packet wire's read and write, byte for byte against the C++ goldens (SPEC §5) | `internal/codegen/squirrel/read.go`, `write.go`, `runtime/` |
+| table wire | the variable and fixed classes' load, report and save (docs/SPEC-TABLES.md §3, §4), the strict read and its refusals by name (§6.5, §11) | `internal/codegen/squirreltable/runtime/load.nut`, `save.nut`, `refusal.nut` |
+| retain-unknown | LoadRetain / MeasureRetain / SaveRetain with both capacities and the §6.6 exclusions | `retainform.go`, `runtime/retain.nut` |
+| text forms | JSON both ways (§16), base64 text, the hand-editable document (§16.9) | `json.go`, `textform.go`, `runtime/json.nut`, `text.nut`, `document.nut` |
+| fixed form | form 3 against the byte oracle (§3.4) | `fixedform.go`, `fixedlineage.go`, `runtime/fixed.nut` |
+| message form | form 2: the announcement and the batch verbs, the unknown skip bounded at depth 128 (§3.3) | `messageform.go`, `runtime/message.nut` |
+| accelerators | the block read and build (§19), the cook read and write (§7) | `block.go`, `blockbuild.go`, `cook.go`, `cookwrite.go`, `runtime/block.nut`, `blockbuild.nut`, `cook.nut`, `cookwrite.nut` |
+| reflection | the unit view (§8.3) | `view.go` |
+| conformance leg | every surface the harness asks, four negative controls, the release tier | `test/conformance/squirrel/main.nut`, `driver`, `negative-control`, `make/squirrel-conformance.mk` |
+| fuzz differential | the tolerant wire's fuzzer against the Go engine, plain and builder arms | `test/conformance/squirrel/wirefuzz.nut`, `make/squirrel-fuzz.mk` |
 
 ## DEEPEN
 
