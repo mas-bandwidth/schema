@@ -198,13 +198,13 @@ func expectModule(u *ir.Unit, f *ir.File) string {
 				named[d.Name] = luarun.DumpInt(bits64(d.Int))
 			}
 		case *ir.Enum:
-			named[d.Name] = expectTag(d.Variants, int64(len(d.Variants)), d.Max)
+			named[d.Name] = expectTag(d.Variants, d.Max)
 		case *ir.Union:
 			arms := make([]string, len(d.Variants))
 			for i, v := range d.Variants {
 				arms[i] = ir.GoExportName(v.Name)
 			}
-			named[d.Name+"Type"] = expectTag(arms, int64(len(arms)), int64(len(arms)))
+			named[d.Name+"Type"] = expectTag(arms, int64(len(arms)))
 		case *ir.Flags:
 			for i, v := range d.Variants {
 				named[d.Name+v] = luarun.DumpInt(uint64(1) << i)
@@ -215,8 +215,9 @@ func expectModule(u *ir.Unit, f *ir.File) string {
 	return luarun.DumpTable(nil, named)
 }
 
-func expectTag(members []string, count, max int64) string {
-	named := map[string]string{"None": luarun.DumpInt(0), "Count": luarun.DumpInt(uint64(count)), "Max": luarun.DumpInt(uint64(max))}
+func expectTag(members []string, max int64) string {
+	// an enum and a union tag export None, the variants and Max; never a Count (SPEC §4.2)
+	named := map[string]string{"None": luarun.DumpInt(0), "Max": luarun.DumpInt(uint64(max))}
 	for i, m := range members {
 		named[m] = luarun.DumpInt(uint64(i + 1))
 	}

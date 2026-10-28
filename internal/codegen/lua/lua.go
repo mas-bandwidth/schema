@@ -5,7 +5,7 @@
 //
 // A module is a Lua chunk that returns one table, `_M`: the unit's protocol
 // id (home file only), every constant, every enum and union tag table (None,
-// the variants, Count, Max), every flags mask, and a constructor New<Name>()
+// the variants, Max; an enum exports no Count, SPEC §4.2), every flags mask, and a constructor New<Name>()
 // per type and union that builds the value at its declared defaults. A module
 // requires the modules it references by basename (require("Enums")), so the
 // directory a unit is generated into goes on package.path; nothing is global.
@@ -252,19 +252,18 @@ func emitConst(m *Module, d *ir.Const) {
 func emitEnum(m *Module, d *ir.Enum) {
 	m.Printf("%s", ir.DocComment(d.Doc, "", "--"))
 	m.Printf("-- %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2)\n", d.Name, d.Max)
-	emitTagTable(m, d.Name, d.Variants, d.VariantDocs, int64(len(d.Variants)), d.Max)
+	emitTagTable(m, d.Name, d.Variants, d.VariantDocs, d.Max)
 }
 
 // emitTagTable emits an enum's or a union tag's value table and its
 // EnumName<Name> debug namer (SPEC §4.2). Values are Lua integers.
-func emitTagTable(m *Module, name string, members, docs []string, count, max int64) {
+func emitTagTable(m *Module, name string, members, docs []string, max int64) {
 	m.Printf("_M.%s = {\n", name)
 	m.Printf("  None = 0,\n")
 	for i, v := range members {
 		m.Printf("%s", ir.DocComment(docs[i], "  ", "--"))
 		m.Printf("  %s = %d,\n", tableKey(v), i+1)
 	}
-	m.Printf("  Count = %d, -- the declared variant count (SPEC §4.2)\n", count)
 	m.Printf("  Max = %d, -- the exported extent (SPEC §4.2)\n", max)
 	m.Printf("}\n\n")
 	m.Printf("-- EnumName%s: debug/log/tooling name for any %s wire value;\n", name, name)
@@ -385,7 +384,7 @@ func emitUnion(m *Module, d *ir.Union) {
 		docs[i] = v.Doc
 	}
 	m.Printf("-- %sType: union %s's tag — None = 0, then each variant in declared order (SPEC §4.8)\n", d.Name, d.Name)
-	emitTagTable(m, d.Name+"Type", members, docs, int64(len(members)), int64(len(members)))
+	emitTagTable(m, d.Name+"Type", members, docs, int64(len(members)))
 	m.Printf("%s", ir.DocComment(d.Doc, "", "--"))
 	m.Printf("-- %s — at most one of the arms; Type says which. Construction is the empty\n", d.Name)
 	m.Printf("-- union (None), with one pre-built arm per payload-carrying variant.\n")

@@ -47,7 +47,7 @@ func fixedMessageStrictGoOracle(t *testing.T, src string) map[string]string {
 		t.Fatalf("generate Go tables: %v", err)
 	}
 	maps.Copy(goFiles, tables)
-	goFiles["go.mod"] = []byte("module strictprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v1.15.1\n")
+	goFiles["go.mod"] = []byte("module strictprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.1\n")
 	goFiles["strictprobe_test.go"] = []byte(fixedMessageStrictGoProbe)
 	probeDir := t.TempDir()
 	for name, data := range goFiles {

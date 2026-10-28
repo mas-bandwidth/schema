@@ -140,7 +140,7 @@ func TestGoRetainSave(t *testing.T){
  wire,err:=os.ReadFile(%q);if err!=nil{t.Fatal(err)}
  n:=NodeLoadMeasure(wire);if n<0{t.Fatal("measure")}
  raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
- retain:=TableRetain{Bytes:make([]byte,1<<20),Ids:make([]TableRetainId,1024)};var report TableReport
+ retain:=TableRetain{Bytes:make([]byte,1<<20),Ids:make([]TableRetainID,1024)};var report TableReport
  v:=NodeLoadRetain(region,wire,&retain,&report);if v==nil||report.Malformed{t.Fatalf("load %%+v",report)}
  size:=NodeMeasureRetain(v,&retain);out:=make([]byte,size)
  if NodeSaveRetain(v,&retain,out,&report)!=size{t.Fatalf("save %%+v",report)}

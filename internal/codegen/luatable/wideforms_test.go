@@ -92,8 +92,8 @@ hexline(saved)
 		t.Fatalf("generate the Go table surface: %v", err)
 	}
 	maps.Copy(goFiles, tables)
-	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", mustAbs(t, repo)) + "\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => ./serialize\n")
-	goFiles["serialize/go.mod"] = []byte("module github.com/mas-bandwidth/serialize.go\n\ngo 1.26\n")
+	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", mustAbs(t, repo)) + "\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ./serialize\n")
+	goFiles["serialize/go.mod"] = []byte("module github.com/mas-bandwidth/serialize.go/v2\n\ngo 1.26\n")
 	goFiles["serialize/serialize.go"] = []byte(serializeStub)
 	goFiles["wide_test.go"] = []byte(wideFormsGoProbe)
 	for name, data := range goFiles {
@@ -232,7 +232,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 func TestGoWideForms(t *testing.T) {

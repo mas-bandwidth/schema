@@ -114,9 +114,9 @@ func strictGoProbe(pkg string, rows []strictJSONRow, texts map[string][]byte, fi
 	for i, row := range rows {
 		text := texts[fmt.Sprintf("row%d", i)]
 		if fixed[row.root] {
-			fmt.Fprintf(&b, "\t{\n\t\tvar v %s\n\t\tvar r TableReport\n\t\tok := %sFromJson(&v, []byte(%q), &r)\n", row.root, row.root, text)
+			fmt.Fprintf(&b, "\t{\n\t\tvar v %s\n\t\tvar r TableReport\n\t\tok := %sFromJSON(&v, []byte(%q), &r)\n", row.root, row.root, text)
 		} else {
-			fmt.Fprintf(&b, "\t{\n\t\tvar v %sBuilder\n\t\tv.Init()\n\t\tvar r TableReport\n\t\tok := %sFromJson(&v, []byte(%q), &r)\n", row.root, row.root, text)
+			fmt.Fprintf(&b, "\t{\n\t\tvar v %sBuilder\n\t\tv.Init()\n\t\tvar r TableReport\n\t\tok := %sFromJSON(&v, []byte(%q), &r)\n", row.root, row.root, text)
 		}
 		fmt.Fprintf(&b, "\t\tverdict := \"ok\"\n\t\tif !ok {\n\t\t\tif err := r.Err(); err != nil { verdict = err.Error() } else { verdict = \"refused\" }\n\t\t}\n")
 		fmt.Fprintf(&b, "\t\tif _, err := f.WriteString(%q + \"|\" + verdict + \"\\n\"); err != nil { t.Fatal(err) }\n", fmt.Sprintf("row%d", i))
@@ -217,7 +217,7 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 			st := u.Tables[row.root]
 			fixed[row.root] = st != nil && st.FixedDeclared
 		}
-		goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", serializeGo))
+		goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", serializeGo))
 		goFiles["strict_oracle_test.go"] = []byte(strictGoProbe(u.Package, rows, texts, fixed))
 		goDir := t.TempDir()
 		for name, data := range goFiles {

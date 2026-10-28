@@ -96,7 +96,7 @@ hexline(tostring(refusal.array) .. "|" .. tostring(refusal.count) .. "|" .. tost
 	}
 	maps.Copy(goFiles, tables)
 	serialize := slowtest.SerializeGo(t, "../../../")
-	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", serialize))
+	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", serialize))
 	goFiles["block_test.go"] = []byte(blockOpenProbe)
 	for name, data := range goFiles {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

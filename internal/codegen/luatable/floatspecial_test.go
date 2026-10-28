@@ -170,9 +170,9 @@ func TestFSGo(t *testing.T) {
 		if err := os.WriteFile("go_msg_"+c.name+".hex", []byte(hex.EncodeToString(buf)), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if jn := RootToJsonMeasure(&v); jn >= 0 {
+		if jn := RootToJSONMeasure(&v); jn >= 0 {
 			js := make([]byte, jn)
-			if RootToJson(&v, js) != jn {
+			if RootToJSON(&v, js) != jn {
 				t.Fatalf("%s: json write", c.name)
 			}
 			if err := os.WriteFile("go_json_"+c.name+".hex", []byte(hex.EncodeToString(js)), 0o644); err != nil {

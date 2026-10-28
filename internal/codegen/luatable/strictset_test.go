@@ -191,7 +191,7 @@ func strictGoOracle(t *testing.T, u *ir.Unit, cases []strictCase) map[string]str
 	}
 	maps.Copy(goFiles, tables)
 	dir := t.TempDir()
-	goFiles["go.mod"] = []byte("module strictprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v1.15.1\n")
+	goFiles["go.mod"] = []byte("module strictprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.1\n")
 	var roots []string
 	seen := map[string]bool{}
 	var body strings.Builder

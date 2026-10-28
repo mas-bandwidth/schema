@@ -251,12 +251,12 @@ func oracleTotal() (bool, bool) {
 	defer b.Shutdown()
 	v := b.GetRoot()
 	if !TNamesAppend(v, "abcd") || !TNamesAppend(v, "efgh") || !TNamesAppend(v, "ijkl") { panic("append") }
-	within := TToJsonMeasure(v) < 0
+	within := TToJSONMeasure(v) < 0
 	at := v.NamesCount
 	copy(v.Names[at].Value[:], "m")
 	v.Names[at].ValueLength = 1
 	v.NamesCount++
-	over := TToJsonMeasure(v) < 0
+	over := TToJSONMeasure(v) < 0
 	return within, over
 }
 
@@ -346,13 +346,13 @@ func oracle(root string, text []byte) (bool, TableReport, []byte, bool) {
 		if !b.Init() { panic("init") }
 		defer b.Shutdown()
 		var r TableReport
-		if !%sFromJsonTolerant(&b, text, &r) { return false, r, nil, false }
+		if !%sFromJSONTolerant(&b, text, &r) { return false, r, nil, false }
 		if !b.Lock() { panic("lock") }
 		v := b.AsConst()
-		n := %sToJsonMeasure(v)
+		n := %sToJSONMeasure(v)
 		if n < 0 { return true, r, nil, true }
 		out := make([]byte, n)
-		if %sToJson(v, out) != n { panic("tojson") }
+		if %sToJSON(v, out) != n { panic("tojson") }
 		return true, r, out, false
 `, root, root, root, root, root)
 	}
