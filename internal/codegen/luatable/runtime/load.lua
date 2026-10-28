@@ -391,20 +391,30 @@ local function less_than(d, a, b)
   return math.ult(a, b)
 end
 
--- A PLAIN FLOAT'S SPECIAL VALUES (docs/SPEC-TABLES.md §3.3): a NaN or an
--- infinity RIDES the binary forms; the tolerant read lands it exactly as
--- written and counts nothing, naming the field in the report's Reason. The
--- first name a read records wins, as for clamped.
-local function note_non_finite(report, d)
-  if d.shape ~= "float" then return end
-  if report.reason ~= nil and report.reason ~= "" then return end
-  report.reason = "non_finite: " .. (report.nonFiniteTable or "?") .. "." .. tostring(d.name)
+-- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3;
+-- Glenn, 2026-10-27, "tables go finite-only too, same rule as packets"): the
+-- test runs on the wire's bits before they become a Lua number and before the
+-- field is written. The read names the float <Owner>.<field> (the first name
+-- wins) and the load, the tolerant one included, refuses as non_finite_float
+-- and lands nothing. ctx.owner and ctx.field are the body and the field the
+-- walk is in; an element is named by its array field.
+local F32_EXP = 0x7f800000
+local F64_EXP = 0x7ff0000000000000
+
+local function non_finite(report, ctx, d)
+  if report.nonFiniteFloat ~= nil then return end
+  local owner, field = "?", d.name
+  if ctx ~= nil then
+    owner = ctx.owner or owner
+    if ctx.field ~= nil then field = ctx.field end
+  end
+  report.nonFiniteFloat = owner .. "." .. tostring(field)
 end
 
 -- a scalar decoded at the WIRE kind (the declared kind or one it widens),
 -- sign-extended where the kind is signed, then the declared range and the
 -- bits(N) clamp (§4, decode.go scalarAt).
-local function scalar_at(r, d, kind, report)
+local function scalar_at(r, d, kind, report, ctx)
   local w = width_of(kind)
   if w == 0 or r.at + w > r.lim then report.malformed = true; return nil end
   local x
@@ -415,8 +425,12 @@ local function scalar_at(r, d, kind, report)
     if b > 1 then report.malformed = true end
     x = b ~= 0
   elseif kind == 10 then
+    local b = string.unpack("<I4", r.b, r.at + 1)
+    if b & F32_EXP == F32_EXP then r.at = r.at + 4; non_finite(report, ctx, d); return nil end
     x = r_f32(r)
   elseif kind == 11 then
+    local b = string.unpack("<i8", r.b, r.at + 1)
+    if b & F64_EXP == F64_EXP then r.at = r.at + 8; non_finite(report, ctx, d); return nil end
     x = r_f64(r)
   elseif kind == 2 or kind == 20 then
     x = r_i8(r)
@@ -444,9 +458,6 @@ local function scalar_at(r, d, kind, report)
     report.malformed = true; return nil
   end
   if r.bad then report.malformed = true; return nil end
-  if type(x) == "number" and (x ~= x or x == math.huge or x == -math.huge) then
-    note_non_finite(report, d)
-  end
   if d.shape == "wide" and type(x) ~= "table" then
     -- a narrower signed kind widens by SIGN-EXTENDING into the high half; an
     -- unsigned one zero-extends (docs/SPEC-TABLES.md §4; gotable wide.go).
@@ -607,7 +618,7 @@ read_element = function(T, ctx, e, ek, sub, out, index)
     end
     return units, true
   end
-  local x = scalar_at(sub, e, ek, ctx.report)
+  local x = scalar_at(sub, e, ek, ctx.report, ctx)
   if x == nil then return false, false end
   return x, true
 end
@@ -885,7 +896,7 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
           local ok, units = wstring_ok(raw)
           if not ok then report.malformed = true else out[slot] = units end
         else
-          local x = scalar_at(body, e, ek, report)
+          local x = scalar_at(body, e, ek, report, ctx)
           if x ~= nil then out[slot] = x end
         end
       end
@@ -949,9 +960,21 @@ end
 -- name skipped by its kind and counted unknown, a kind that widens decoded at
 -- its own width and counted widened, any other kind a kind mismatch skipped
 -- whole. Damage stops the body.
+local read_body_fields
+
+-- read_body keeps the walk's float naming (ctx.owner, ctx.field) across a
+-- nested body: the body's own fields are named by it, and the holder's name
+-- comes back when it returns.
 read_body = function(T, ctx, desc, r, v, nested, mapkey)
+  local owner, field = ctx.owner, ctx.field
+  ctx.owner, ctx.field = desc.name, nil
+  local ok = read_body_fields(T, ctx, desc, r, v, nested, mapkey)
+  ctx.owner, ctx.field = owner, field
+  return ok
+end
+
+read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
   local report = ctx.report
-  report.nonFiniteTable = desc.name
   -- `| required` fields (docs/SPEC-TABLES.md §2.3): each gets a seen flag,
   -- set when its id rides, and a record that ends without one is refused with
   -- missing_required naming the field. A required field inside an `if` guard
@@ -1006,12 +1029,13 @@ read_body = function(T, ctx, desc, r, v, nested, mapkey)
     else
       local fd = nil
       for _, f in ipairs(desc.fields) do if f.id == id then fd = f; break end end
+      if fd ~= nil then ctx.field = fd.name end
       if fd == nil then
         report.unknown = report.unknown + 1
         if not skip(r, kind) then report.malformed = true; return false end
       elseif kind ~= fd.kind then
         if widens(kind, fd.kind) then
-          local x = scalar_at(r, fd, kind, report)
+          local x = scalar_at(r, fd, kind, report, ctx)
           if x == nil then return false end
           v[fd.name] = x
           arrived[fd.id] = true
@@ -1037,7 +1061,7 @@ read_field = function(T, ctx, fd, r, v)
   local report = ctx.report
   local s = fd.shape
   if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
-    local x = scalar_at(r, fd, fd.kind, report)
+    local x = scalar_at(r, fd, fd.kind, report, ctx)
     if x == nil then return false end
     v[fd.name] = x
     if fd.optional then v[fd.name .. "_present"] = true end
@@ -1133,7 +1157,18 @@ end
 -- AN ARM HEADER is a field header (§3): the arm id reference, its kind, L,
 -- then L bytes of arm payload. A retyped arm is an ordinary kind mismatch,
 -- and damage inside L reads the union None and the parent reads on.
+local read_arm
+
+-- read_union names a float arm <Union>.<arm> (docs/SPEC-TABLES.md §3.3), and
+-- gives the holder's name back when it returns.
 read_union = function(T, ctx, u, r)
+  local owner, field = ctx.owner, ctx.field
+  local x = read_arm(T, ctx, u, r)
+  ctx.owner, ctx.field = owner, field
+  return x
+end
+
+read_arm = function(T, ctx, u, r)
   local report = ctx.report
   local armref = r_leb(r)
   if r.bad then report.malformed = true; return nil end
@@ -1153,6 +1188,7 @@ read_union = function(T, ctx, u, r)
     return { tag = 0 }
   end
   local f = arm.field
+  ctx.owner, ctx.field = u.name, arm.name
   local none = { tag = 0 }
   if f == nil then
     if armkind ~= 32 then report.kindMismatch = report.kindMismatch + 1; return none end
@@ -1161,7 +1197,7 @@ read_union = function(T, ctx, u, r)
   end
   if armkind ~= f.kind then
     if widens(armkind, f.kind) then
-      local x = scalar_at(sub, f, armkind, report)
+      local x = scalar_at(sub, f, armkind, report, ctx)
       if x == nil then return none end
       if sub.at ~= sub.lim then report.malformed = true; return none end
       report.widened = report.widened + 1
@@ -1177,7 +1213,7 @@ read_union = function(T, ctx, u, r)
   if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
     local w = width_of(armkind)
     if w == 0 or n ~= w then report.malformed = true; return none end
-    local x = scalar_at(sub, f, armkind, report)
+    local x = scalar_at(sub, f, armkind, report, ctx)
     if x == nil then return none end
     out[arm.name] = x
     return out
@@ -1315,6 +1351,7 @@ end
 -- the strict read.
 function L.LoadTolerant(T, name, bytes, report)
   local desc = T.Tables[name]
+  report.nonFiniteFloat = nil
   -- THE INTEGRITY TRAILER (§2.14, §3.4): a declaring root's form-1 file ends
   -- with the little-endian CRC-32C of every byte before it. The form byte is
   -- read first, so a file of another form passes through to the open that
@@ -1387,6 +1424,13 @@ function L.LoadTolerant(T, name, bytes, report)
   local root = fresh(T, desc)
   local missingBefore = report.missingRequired or 0
   read_body(T, ctx, desc, new_reader(bytes, 1, o.lim), root, false)
+  -- A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+  -- any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing
+  -- lands, and Reason names the float.
+  if report.nonFiniteFloat ~= nil then
+    report.reason = "non_finite_float: " .. report.nonFiniteFloat
+    return nil
+  end
   if report.missingRequired and report.missingRequired > missingBefore then return nil end
   resolve(ctx, root, desc)
   return root
@@ -1397,8 +1441,8 @@ end
 -- in refusal.lua's order (§2.14, §6.5), then the report the tolerant walk just
 -- filled: a refused form, integrity_mismatch, a count_refusal (the engine's
 -- CountRefusal, §2.9), wire_damaged, missing_required, malformed, then the
--- counters blob_shared, clamped and kind_mismatch, and
--- last a non-finite plain float. The set is the one refusal.lua's ReadStrict
+-- counters blob_shared, clamped and kind_mismatch; a non-finite float
+-- (§3.3) outranks every one the walk reaches. The set is the one refusal.lua's ReadStrict
 -- owns; unknown, widened and duplicate ALONE are evolution, exact decoding and
 -- data identity, not loss (§6.5), so they read clean. This entry reads the
 -- variable form, so every form byte but 1 is the one reason unknown_form:
@@ -1410,6 +1454,9 @@ local function strict_refusal(bytes, report, root)
   if form ~= nil and form ~= 1 then return "unknown_form" end
   if report.refused ~= 0 then return "unknown_form" end
   if report.reason == "integrity_mismatch" then return "integrity_mismatch" end
+  -- A NON-FINITE FLOAT outranks every verdict the walk could reach after it
+  -- (§3.3): no read keeps one.
+  if report.nonFiniteFloat ~= nil then return "non_finite_float" end
   -- THE WALK'S CountRefusal (§2.9): the builder-path storage refusal is the
   -- load's own result, so it refuses by name before any damage class does.
   if report.reason == "count_refusal" then return "count_refusal" end
@@ -1419,9 +1466,6 @@ local function strict_refusal(bytes, report, root)
   if (report.blobShared or 0) > 0 then return "blob_shared" end
   if report.clamped > 0 then return "clamped" end
   if report.kindMismatch > 0 then return "kind_mismatch" end
-  if report.reason ~= nil and string.sub(report.reason, 1, 11) == "non_finite:" then
-    return "non_finite"
-  end
   if root == nil then return "wire_damaged" end
   return nil
 end

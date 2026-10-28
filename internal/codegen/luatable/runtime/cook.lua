@@ -307,9 +307,23 @@ local function union(s, at, f)
 end
 
 -- one ELEMENT of an array (§7.4): a pointer's slot, a record, or a union's
--- storage; a scalar steers nothing.
+-- storage; a float is tested for finiteness and any other scalar steers
+-- nothing.
 element = function(s, at, elem)
   if elem == nil then
+    return true
+  end
+  if elem.shape == "float" then
+    -- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the check is the cook's
+    -- strict validator (§7), and it refuses a NaN or an infinity on its raw
+    -- bits as non_finite_float, as every read does.
+    local bad
+    if elem.f32 then
+      bad = string.unpack("<I4", s.data, at + 1) & 0x7f800000 == 0x7f800000
+    else
+      bad = string.unpack("<i8", s.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000
+    end
+    if bad then s.nonFinite = true; return false end
     return true
   end
   if elem.shape == "pointer" or elem.shape == "string_blob" or elem.shape == "bytes_blob" then
@@ -506,6 +520,7 @@ local function scan(h, dir)
       extent = dir[i + 1].offset - e.offset
     end
     if not node(s, e.offset, extent, e.type_id, by_id[e.type_id]) then
+      if s.nonFinite then return "non_finite_float" end
       return "bad_layout"
     end
   end

@@ -133,6 +133,9 @@ stdout:flush()
 -- it does, a variable no-root reply reads to the harness as a LoadMeasure
 -- refusal, whose branch compares no counters: the strict no-root check is the
 -- in-package differential's (luatable TestLuaWireFuzzAgreesWithTheGoEngine).
+-- A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md §3.3):
+-- the tolerant load lands nothing and names the float in the report, and the
+-- reply says so with the refusal verdict, as every leg's does.
 local function answer(entry, wire)
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
                    clamped = 0, widened = 0, duplicate = 0 }
@@ -179,7 +182,7 @@ while true do
   stdout:write(string.pack("<Bi4i4i4i4i4BBi8i4i4i8",
     loaded and 1 or 0,
     report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate,
-    report.malformed and 1 or 0, (report.refused or 0) > 0 and 1 or 0,
+    report.malformed and 1 or 0, ((report.refused or 0) > 0 or report.nonFiniteFloat ~= nil) and 1 or 0,
     measure, 0, 0, saved and #saved or -1))
   if saved ~= nil and #saved > 0 then stdout:write(saved) end
   stdout:flush()

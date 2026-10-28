@@ -60,11 +60,22 @@ local function w_int(w, width, signed, v)
   else w_u64(w, v) end
 end
 
--- A FLOAT32 RIDES AS ITS IEEE-754 BIT PATTERN (§3): a NaN carries its payload
--- in the top of the double's mantissa. Lua has no NaN payload plumbing, so a
--- float32 field is written with the standard pack, which preserves the value.
-local function narrow_f32(v)
-  return string.pack("<f", v)
+-- A FLOAT RIDES AS THE BIT PATTERN OF A FINITE VALUE (docs/SPEC-TABLES.md
+-- §3, §3.3): -0 and the subnormals exactly, and a NaN or an infinity is
+-- refused by the writer (false), never written. A float32 is narrowed by the
+-- standard pack, exact for every value a float32 holds, and its PACKED bits
+-- are what is tested, so a double past the float32 range (which would narrow
+-- to an infinity) is refused too.
+local function w_float(w, f32, v)
+  if f32 then
+    local p = string.pack("<f", v)
+    if string.unpack("<I4", p) & D.F32_EXP == D.F32_EXP then return false end
+    w_raw(w, p)
+    return true
+  end
+  if v - v ~= 0 then return false end
+  w_f64(w, v)
+  return true
 end
 
 -- WELL-FORMED UTF-8 with no zero byte is a text list element's write bound
@@ -366,7 +377,7 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     if val == nil then val = 0.0 end
     -- A KEYED SLOT ELIDES BY THE SAME BIT COMPARE (§3.3): a -0 slot rides.
     if same_float(e.f32, val, 0.0) then return true, false end
-    if e.f32 then w_raw(w, narrow_f32(val)) else w_f64(w, val) end
+    if not w_float(w, e.f32, val) then return false end
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
     w_raw(w, val)
@@ -428,7 +439,7 @@ write_field = function(T, ids, nodes, fd, v, w)
   elseif s == "float" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
-      if fd.f32 then w_raw(w, narrow_f32(x)) else w_f64(w, x) end
+      if not w_float(w, fd.f32, x) then return false end
     end
   elseif s == "string" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
@@ -586,7 +597,7 @@ write_element = function(T, ids, nodes, e, val, body)
   elseif s == "wide" then
     local q = val or { lo = 0, hi = 0 }
     w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
-  elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val or 0.0)) else w_f64(body, val or 0.0) end
+  elseif s == "float" then if not w_float(body, e.f32, val or 0.0) then return false end
   elseif s == "enum" then
     local vref = 0
     if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
@@ -657,7 +668,7 @@ write_union_at = function(T, ids, nodes, f, val, body)
   elseif s == "wide" then
     local q = val or { lo = 0, hi = 0 }
     w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
-  elseif s == "float" then if f.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
+  elseif s == "float" then if not w_float(body, f.f32, val) then return false end
   elseif s == "string" then w_raw(body, val)
   elseif s == "wstring" then
     for i = 1, #val do w_raw(body, string.pack("<I2", val[i])) end
@@ -706,7 +717,7 @@ function S.Save(T, name, v)
   local ids = { list = {} }
   w_u8(idx, 1)
   for _, fd in ipairs(desc.fields) do
-    if not write_field(T, ids, nodes, fd, v, idx) then return nil end
+    if not write_field(T, ids, nodes, fd, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
   end
   if #nodes.list > 0 then
     w_leb(idx, id_ref(ids, NODE_TABLE_ID))
@@ -719,7 +730,7 @@ function S.Save(T, name, v)
         w_leb(sub, #n.body); w_raw(sub, n.body)
       else
         local body = W()
-        if not write_body(T, ids, nodes, n.codec, n.v, body) then return nil end
+        if not write_body(T, ids, nodes, n.codec, n.v, body) then return nil, D.refuse_non_finite(T, name, v) end
         w_leb(sub, body.n); w_raw(sub, table.concat(body.parts))
       end
     end

@@ -94,11 +94,28 @@ local function w_int(w, width, signed, v)
   else w_u64(w, v) end
 end
 
--- A FLOAT32 RIDES AS ITS IEEE-754 BIT PATTERN (§3): a NaN carries its payload
--- in the top of the double's mantissa. Lua has no NaN payload plumbing, so a
--- float32 field is written with the standard pack, which preserves the value.
-local function narrow_f32(v)
-  return string.pack("<f", v)
+-- A FLOAT RIDES AS THE BIT PATTERN OF A FINITE VALUE (docs/SPEC-TABLES.md
+-- §3, §3.3), save.lua's w_float: -0 and the subnormals exactly, and a NaN or
+-- an infinity (or a double past the float32 range in a float32 field) is
+-- refused by the writer (false), never written.
+local function w_float(w, f32, v)
+  if f32 then
+    local p = string.pack("<f", v)
+    if string.unpack("<I4", p) & D.F32_EXP == D.F32_EXP then return false end
+    w_raw(w, p)
+    return true
+  end
+  if v - v ~= 0 then return false end
+  w_f64(w, v)
+  return true
+end
+
+-- A PLAIN FLOAT COMPARES BY ITS BIT PATTERN (§3.3, "-0 IS A VALUE, AND IT
+-- RIDES"), at its own width: -0 under a +0 default rides.
+local function same_float(f32, a, b)
+  if type(a) ~= "number" or type(b) ~= "number" then return a == b end
+  if f32 then return string.pack("<f", a) == string.pack("<f", b) end
+  return string.pack("<d", a) == string.pack("<d", b)
 end
 
 -- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go): first-visit order of
@@ -297,7 +314,9 @@ local function at_default(fd, v)
         if type(e1) == "table" and (e1.tag or 0) ~= 0 then return false end
       else
         if e1 == nil then e1 = def end
-        if e1 ~= def then return false end
+        if es == "float" then
+          if not same_float(e.f32, e1, def) then return false end
+        elseif e1 ~= def then return false end
       end
     end
     return true
@@ -308,8 +327,7 @@ local function at_default(fd, v)
     return n == 0
   end
   if s == "wstring" then return x == nil or #x == 0 end
-  -- a float32 is compared at float32 (§3; jstable Math.fround)
-  if s == "float" and fd.f32 and type(x) == "number" then x = string.unpack("<f", narrow_f32(x)) end
+  if s == "float" then return same_float(fd.f32, x, fd.default) end
   return x == fd.default
 end
 
@@ -359,8 +377,10 @@ local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, repo
     if (val or 0) == 0 then return true, false end
     w_int(w, e.width, e.signed, val or 0)
   elseif s == "float" then
-    if (val or 0) == 0 then return true, false end
-    if e.f32 then w_raw(w, narrow_f32(val)) else w_f64(w, val) end
+    -- A KEYED SLOT ELIDES BY THE SAME BIT COMPARE (§3.3): a -0 slot rides.
+    if val == nil then val = 0.0 end
+    if same_float(e.f32, val, 0.0) then return true, false end
+    if not w_float(w, e.f32, val) then return false end
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
     w_raw(w, val)
@@ -412,7 +432,7 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
   elseif s == "float" then
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
-      if fd.f32 then w_raw(w, narrow_f32(x)) else w_f64(w, x) end
+      if not w_float(w, fd.f32, x) then return false end
     end
   elseif s == "string" then
     if fd.optional or not at_default(fd, v) then
@@ -532,7 +552,7 @@ write_element = function(T, ids, nodes, e, val, body, path, ord, retain, report)
   local s = e.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, e.width, e.signed, val or 0)
-  elseif s == "float" then if e.f32 then w_raw(body, narrow_f32(val or 0.0)) else w_f64(body, val or 0.0) end
+  elseif s == "float" then if not w_float(body, e.f32, val or 0.0) then return false end
   elseif s == "enum" then
     local vref = 0
     if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
@@ -919,7 +939,7 @@ write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report
   local s = f.shape
   if s == "bool" then w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
-  elseif s == "float" then if f.f32 then w_raw(body, narrow_f32(val)) else w_f64(body, val) end
+  elseif s == "float" then if not w_float(body, f.f32, val) then return false end
   elseif s == "string" then w_raw(body, val)
   elseif s == "wstring" then
     for i = 1, #val do w_raw(body, string.pack("<I2", val[i])) end
@@ -1155,6 +1175,17 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
         local endr = tr_reader(b, start, r.lim)
         if not wire_skip(endr, kind) then return end
         local finish = endr.at
+        -- A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE
+        -- (docs/SPEC-TABLES.md §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's
+        -- or 11's raw bits, and a NaN or an infinity refuses the read as
+        -- non_finite_float, named <Owner>.0x<id>.
+        if kind == 10 and string.unpack("<I4", b, start + 1) & D.F32_EXP == D.F32_EXP
+          or kind == 11 and string.unpack("<i8", b, start + 1) & D.F64_EXP == D.F64_EXP then
+          if report.nonFiniteFloat == nil then
+            report.nonFiniteFloat = desc.name .. string.format(".0x%016x", id)
+          end
+          return
+        end
         local w = W()
         local rr = tr_reader(b, start, finish)
         local ok = kind ~= 17 and tr_payload(rr, atable, kind, 0, w) and rr.at == finish
@@ -1276,7 +1307,16 @@ function S.LoadRetain(T, name, bytes, retain, report)
   rep.retained = rep.retained or 0
   rep.retainLost = rep.retainLost or 0
   local v = load.Load(T, name, bytes, rep)
+  local retainedBefore, lostBefore = rep.retained, rep.retainLost
   capture(T, name, bytes, retain, rep)
+  -- a retained unknown float that is not finite refuses the whole read, and
+  -- nothing it captured stays (§3.3, ruling 3)
+  if rep.nonFiniteFloat ~= nil then
+    rep.reason = "non_finite_float"
+    if retain ~= nil then retain.list = {}; retain.used = 0 end
+    rep.retained, rep.retainLost = retainedBefore, lostBefore
+    return nil
+  end
   return v
 end
 
@@ -1293,7 +1333,7 @@ function S.MeasureRetain(T, name, v, retain)
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, nil)
-  if saved == nil then return nil end
+  if saved == nil then return nil, D.refuse_non_finite(T, name, v) end
   return #saved
 end
 
@@ -1310,7 +1350,7 @@ function S.SaveRetain(T, name, v, retain, report)
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, report)
-  if saved == nil then return nil end
+  if saved == nil then return nil, D.refuse_non_finite(T, name, v) end
   count_lost(retain, report)
   return saved
 end

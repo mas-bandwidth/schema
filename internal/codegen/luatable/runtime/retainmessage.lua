@@ -19,6 +19,8 @@ local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 local MAX64 = 0xffffffffffffffff
 local MAXUINT32 = 0xffffffff
+local F32_EXP = 0x7f800000
+local F64_EXP = 0x7ff0000000000000
 local DEPTH_MAX = 64
 
 -- ---- a bit reader over a byte string, low bit first (docs/PORT-LUA.md) ----
@@ -393,9 +395,25 @@ end
 -- capture one unknown field at a path into the store (the Go capture). It
 -- first skips the field on the real reader, then re-walks it into resolved
 -- form; on success the record joins the store.
-local function capture(T, vocab, reader, indexBits, e, path, store, report)
+local function capture(T, vocab, reader, indexBits, e, path, store, report, owner)
   local start = reader.off
   if not message_skip(reader, vocab, indexBits, e, 0) then return false end
+  -- A RETAINED UNKNOWN FLOAT IS TESTED ON ITS RAW BITS LIKE A KNOWN ONE
+  -- (docs/SPEC-TABLES.md §3.3, §6.6, ruling 3 of 2026-10-27): a plain kind 10
+  -- or 11 entry holding a NaN or an infinity refuses the batch as
+  -- non_finite_float, named <Owner>.0x<id>.
+  if (e.kind == 10 or e.kind == 11) and (e.packing or 0) == 0 then
+    local probe = new_reader(reader.data, start)
+    local width = e.kind == 10 and 32 or 64
+    local b = probe:get(width)
+    local mask = e.kind == 10 and F32_EXP or F64_EXP
+    if b ~= nil and b & mask == mask then
+      if report.nonFiniteFloat == nil then
+        report.nonFiniteFloat = owner .. string.format(".0x%016x", e.id)
+      end
+      return true
+    end
+  end
   if store == nil then return true end
   if not store.list then store.list = {} end
   local probe = new_in(new_reader(reader.data, start), vocab, W(), math.huge)
@@ -433,10 +451,18 @@ local function decode_scalar(R, d)
     end
     return v, true
   elseif s == "float" then
+    -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+    -- §3.3): the third answer says so, and the batch refuses as
+    -- non_finite_float and lands nothing.
     local w = d.f32 and 32 or 64
     local v, ok = R:get(w)
     if not ok then return 0.0, false end
-    if w == 32 then return string.unpack("<f", string.pack("<I4", v & MAXUINT32)), true end
+    if w == 32 then
+      v = v & MAXUINT32
+      if v & F32_EXP == F32_EXP then return 0.0, false, true end
+      return string.unpack("<f", string.pack("<I4", v)), true
+    end
+    if v & F64_EXP == F64_EXP then return 0.0, false, true end
     return string.unpack("<d", string.pack("<I8", v)), true
   end
   return 0, false
@@ -503,7 +529,11 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
         local o = ord or (f.ordinal - 1)
         local p = path_step(path, o, arm.tag)
         if arm.field ~= nil then
-          if not decode_value(T, vocab, reader, indexBits, arm.field, uv, arm.name, p, store, report, o, true) then return false end
+          local owner, field = reader.owner, reader.field
+          reader.owner, reader.field = un.name, arm.name
+          local aok = decode_value(T, vocab, reader, indexBits, arm.field, uv, arm.name, p, store, report, o, true)
+          reader.owner, reader.field = owner, field
+          if not aok then return false end
         end
         holder[key] = uv
         return true
@@ -584,14 +614,29 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
     holder[key] = out
     return true
   else
-    local v, ok = decode_scalar(reader, f)
+    local v, ok, nonfinite = decode_scalar(reader, f)
+    if nonfinite and report.nonFiniteFloat == nil then
+      report.nonFiniteFloat = (reader.owner or "?") .. "." .. tostring(reader.field or f.name)
+    end
     if ok then holder[key] = v end
     return ok
   end
 end
 
+local decode_fields
+
+-- decode_body names a float <Table>.<field> for the non_finite_float refusal
+-- (docs/SPEC-TABLES.md §3.3), and gives the holder's name back on return.
 decode_body = function(T, vocab, reader, indexBits, desc, value, path, store, report)
   if desc == nil then return false end
+  local owner, field = reader.owner, reader.field
+  reader.owner, reader.field = desc.name, nil
+  local ok = decode_fields(T, vocab, reader, indexBits, desc, value, path, store, report)
+  reader.owner, reader.field = owner, field
+  return ok
+end
+
+decode_fields = function(T, vocab, reader, indexBits, desc, value, path, store, report)
   while true do
     local ref, ok = reader:get(vocab.refBits)
     if not ok then return false end
@@ -603,8 +648,10 @@ decode_body = function(T, vocab, reader, indexBits, desc, value, path, store, re
     else
       local fd = field_by_id(desc, e.id)
       if fd == nil then
-        if not capture(T, vocab, reader, indexBits, e, path, store, report) then return false end
+        if not capture(T, vocab, reader, indexBits, e, path, store, report, desc.name) then return false end
+        if report.nonFiniteFloat ~= nil then return false end
       else
+        reader.field = fd.name
         if not decode_value(T, vocab, reader, indexBits, fd, value, fd.name, path, store, report) then return false end
       end
     end
@@ -668,6 +715,7 @@ end
 function S.LoadRetainMessages(T, root, vocab, data, stores, report)
   report = report or {}
   report.malformed = false; report.refused = 0; report.reason = ""
+  report.nonFiniteFloat = nil
   report.retained = report.retained or 0
   report.retainLost = report.retainLost or 0
   if #data == 0 then report.malformed = true; return nil end
@@ -684,6 +732,15 @@ function S.LoadRetainMessages(T, root, vocab, data, stores, report)
   for i = 1, count do
     local store = stores and stores[i] or nil
     local v = load_one_retain(T, root, vocab, reader, store, report)
+    if report.nonFiniteFloat ~= nil then
+      -- A NON-FINITE FLOAT REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3): no
+      -- record lands and nothing captured stays.
+      report.reason = "non_finite_float: " .. report.nonFiniteFloat
+      if stores ~= nil then
+        for j = 1, i do if stores[j] ~= nil then stores[j].list = {} end end
+      end
+      return {}
+    end
     if v == nil then report.malformed = true; return values end
     values[i] = v
   end

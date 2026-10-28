@@ -60,7 +60,7 @@ check_value = function(T, where, d, v, elem)
   elseif s == "int" or s == "flags" then
     if math.type(v) ~= "integer" or not (elem or v == d.default) then return fail(where, "integer at its default") end
   elseif s == "float" then
-    if math.type(v) ~= "float" or not (elem or v == d.default or (v ~= v and d.default ~= d.default)) then
+    if math.type(v) ~= "float" or not (elem or v == d.default) then
       return fail(where, "float at its default")
     end
   elseif s == "string" or s == "bytes" then
@@ -273,6 +273,80 @@ function D.refuse_deprecated(T, name, v)
   local hit = D.deprecated_variant(T, name, v)
   if hit == nil then return nil end
   return "invalid_value: " .. hit .. " holds a deprecated enum variant"
+end
+
+-- THE FINITE RULE ON WRITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+-- "tables go finite-only too, same rule as packets"): every writer refuses a
+-- float holding a NaN or an infinity, and the encoders test each float as they
+-- write it (x - x is NaN for both and zero for every finite x). This walk is
+-- the cold path that NAMES the refusal once an encoder has refused: the first
+-- "<Owner>.<field>" in v that holds one — a scalar, an array or map element,
+-- a union arm, and every table, pointer target and node v reaches — or nil.
+D.F32_EXP = 0x7f800000
+D.F64_EXP = 0x7ff0000000000000
+
+-- D.finite answers whether a writer carries v in a float field: a float32
+-- field tests the PACKED bits, so a double past the float32 range (which
+-- would narrow to an infinity) is not finite there.
+function D.finite(v, f32)
+  if type(v) ~= "number" then return true end
+  if f32 then return string.unpack("<I4", string.pack("<f", v)) & D.F32_EXP ~= D.F32_EXP end
+  return v - v == 0
+end
+
+local non_finite_in
+
+local function non_finite_value(T, d, val, where, seen)
+  if val == nil or val == false or d == nil then return nil end
+  local s = d.shape
+  if s == "float" then
+    if not D.finite(val, d.f32) then return where end
+  elseif s == "array" then
+    if type(val) ~= "table" then return nil end
+    for _, x in pairs(val) do
+      local hit = non_finite_value(T, d.elem, x, where, seen)
+      if hit then return hit end
+    end
+  elseif s == "map" then
+    if type(val) ~= "table" then return nil end
+    for _, x in pairs(val) do
+      local hit = non_finite_value(T, d.value_field, x, where, seen)
+      if hit then return hit end
+    end
+  elseif s == "table" or s == "pointer" then
+    local desc = T.Tables[d.target]
+    if desc ~= nil and type(val) == "table" then return non_finite_in(T, desc, val, seen) end
+  elseif s == "union" then
+    local u = T.Unions[d.target]
+    if u ~= nil and type(val) == "table" then
+      local arm = u.arms[val.tag or 0]
+      if arm ~= nil and arm.field ~= nil then
+        return non_finite_value(T, arm.field, val[arm.name], u.name .. "." .. arm.name, seen)
+      end
+    end
+  end
+  return nil
+end
+
+non_finite_in = function(T, desc, v, seen)
+  if seen[v] then return nil end
+  seen[v] = true
+  for _, fd in ipairs(desc.fields) do
+    local hit = non_finite_value(T, fd, v[fd.name], desc.name .. "." .. fd.name, seen)
+    if hit then return hit end
+  end
+  return nil
+end
+
+-- D.refuse_non_finite is a writer's refusal text once its encoder refused,
+-- "non_finite_float: <Owner>.<field>", or nil when v holds no NaN or infinity
+-- (the encoder refused for another reason).
+function D.refuse_non_finite(T, name, v)
+  local desc = T.Tables[name]
+  if desc == nil or type(v) ~= "table" then return nil end
+  local hit = non_finite_in(T, desc, v, {})
+  if hit == nil then return nil end
+  return "non_finite_float: " .. hit
 end
 
 return D

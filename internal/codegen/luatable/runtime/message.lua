@@ -277,7 +277,6 @@ local function same_scalar(d, v)
     return v.lo == def.lo and v.hi == def.hi
   end
   if d.shape == "float" then
-    if v ~= v and def ~= def then return true end
     return same_float(d.f32, v, def)
   end
   return v == def
@@ -326,7 +325,7 @@ local function elem_rides(T, d, v)
     return v ~= 0 and v ~= false
   elseif s == "float" then
     -- AN ELEMENT'S ZERO IS +0, AND THE COMPARE IS BY BITS (§3.3): a -0 element
-    -- rides, and so does a NaN or an infinity.
+    -- rides (and a NaN or an infinity reaches the writer, which refuses it).
     return not same_float(d.f32, v, 0.0)
   elseif s == "string" or s == "bytes" then
     return #v > 0
@@ -403,12 +402,18 @@ local function read_scalar(R, d)
     end
     return { lo = lo, hi = hi }, true
   elseif s == "float" then
+    -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+    -- §3.3), before they become a number: the third answer says so, and the
+    -- batch refuses as non_finite_float and lands nothing.
     local width = d.f32 and 32 or 64
     local v, ok = R:get(width)
     if not ok then return 0.0, false end
     if width == 32 then
-      return string.unpack("<f", string.pack("<I4", v & 0xffffffff)), true
+      v = v & 0xffffffff
+      if v & D.F32_EXP == D.F32_EXP then return 0.0, false, true end
+      return string.unpack("<f", string.pack("<I4", v)), true
     end
+    if v & D.F64_EXP == D.F64_EXP then return 0.0, false, true end
     return string.unpack("<d", string.pack("<I8", v)), true
   end
   return 0, false
@@ -470,7 +475,11 @@ read_value = function(R, T, f, holder, key, ctx)
       if arm.id == e.id then
         local uv = { tag = i }
         if arm.field ~= nil then
-          if not read_value(R, T, arm.field, uv, arm.name, ctx) then return false end
+          local owner, field = ctx.owner, ctx.field
+          ctx.owner, ctx.field = un.name, arm.name
+          local aok = read_value(R, T, arm.field, uv, arm.name, ctx)
+          ctx.owner, ctx.field = owner, field
+          if not aok then return false end
         end
         holder[key] = uv
         return true
@@ -526,13 +535,28 @@ read_value = function(R, T, f, holder, key, ctx)
     holder[key] = out
     return true
   else
-    local v, ok = read_scalar(R, f)
+    local v, ok, nonfinite = read_scalar(R, f)
+    if nonfinite and ctx.nonFinite == nil then
+      ctx.nonFinite = (ctx.owner or "?") .. "." .. tostring(ctx.field or f.name)
+    end
     if ok then holder[key] = v end
     return ok
   end
 end
 
+local load_fields
+
+-- load_body names a float <Table>.<field> for the non_finite_float refusal
+-- (docs/SPEC-TABLES.md §3.3), and gives the holder's name back on return.
 load_body = function(R, T, name, value, ctx)
+  local owner, field = ctx.owner, ctx.field
+  ctx.owner, ctx.field = name, nil
+  local ok = load_fields(R, T, name, value, ctx)
+  ctx.owner, ctx.field = owner, field
+  return ok
+end
+
+load_fields = function(R, T, name, value, ctx)
   local desc = T.Tables[name]
   if desc == nil then return false end
   while true do
@@ -545,6 +569,7 @@ load_body = function(R, T, name, value, ctx)
     end
     local f = field_by_id(T, desc, e.id)
     if f == nil then return false end
+    ctx.field = f.name
     if not read_value(R, T, f, value, f.name, ctx) then return false end
   end
 end
@@ -578,12 +603,19 @@ local function write_scalar(W, d, v)
     W:put(lo, bits < 64 and bits or 64)
     if bits > 64 then W:put(hi, bits - 64) end
   elseif s == "float" then
+    -- A NaN OR AN INFINITY IS REFUSED, never written (docs/SPEC-TABLES.md
+    -- §3.3): measure and save both answer the refusal. A float32's PACKED bits
+    -- are tested, so a double past the float32 range is refused too.
     if d.f32 then
-      W:put(string.unpack("<I4", string.pack("<f", v)), 32)
+      local b = string.unpack("<I4", string.pack("<f", v))
+      if b & D.F32_EXP == D.F32_EXP then return false end
+      W:put(b, 32)
     else
+      if v - v ~= 0 then return false end
       W:put(string.unpack("<I8", string.pack("<d", v)), 64)
     end
   end
+  return true
 end
 
 write_value = function(W, T, f, holder, key, ctx)
@@ -608,10 +640,10 @@ write_value = function(W, T, f, holder, key, ctx)
       local un = T.Unions[f.target]
       local arm = un.arms[tag]
       W:put(slot(T, arm.id), ctx.refBits)
-      if arm.field ~= nil then write_value(W, T, arm.field, v, arm.name, ctx) end
+      if arm.field ~= nil and not write_value(W, T, arm.field, v, arm.name, ctx) then return false end
     end
   elseif s == "table" then
-    write_body(W, T, f.target, v, ctx)
+    if not write_body(W, T, f.target, v, ctx) then return false end
   elseif s == "array" then
     local d = f
     local n
@@ -635,17 +667,17 @@ write_value = function(W, T, f, holder, key, ctx)
         if elem_rides(T, d.elem, v[i]) then
           W:put(slot(T, keys[i][2]), ctx.refBits)
           local ev = { v = v[i] }
-          write_value(W, T, d.elem, ev, "v", ctx)
+          if not write_value(W, T, d.elem, ev, "v", ctx) then return false end
         end
       end
     else
       for i = 1, n do
         local ev = { v = v[i] }
-        write_value(W, T, d.elem, ev, "v", ctx)
+        if not write_value(W, T, d.elem, ev, "v", ctx) then return false end
       end
     end
-  else
-    write_scalar(W, f, v)
+  elseif not write_scalar(W, f, v) then
+    return false
   end
   return true
 end
@@ -797,13 +829,13 @@ local function load_one(R, T, root, vocab)
         if tname == nil then return nil end
         local def = T["New" .. tname]()
         for key, v in pairs(def) do node[key] = v end
-        if not load_body(R, T, tname, node, ctx) then return nil end
+        if not load_body(R, T, tname, node, ctx) then return nil, ctx.nonFinite end
       end
     end
   else
     R.off = save
   end
-  if not load_body(R, T, root, rootval, ctx) then return nil end
+  if not load_body(R, T, root, rootval, ctx) then return nil, ctx.nonFinite end
   return rootval
 end
 
@@ -1084,6 +1116,7 @@ function M.loadMessages(T, root, vocab, data, report, strict)
     report.widened = 0; report.duplicate = 0; report.blobShared = 0
   end
   report.malformed = false; report.refused = 0; report.reason = ""
+  report.nonFiniteFloat = nil
   if #data == 0 then report.malformed = true; return nil end
   if string.byte(data, 1) ~= 2 then
     report.refused = 1; report.reason = "newer_form"; return nil
@@ -1096,7 +1129,14 @@ function M.loadMessages(T, root, vocab, data, report, strict)
   local R = new_reader(data, 16)
   local values = {}
   for i = 1, count do
-    local v = load_one(R, T, root, vocab)
+    local v, nonfinite = load_one(R, T, root, vocab)
+    if nonfinite ~= nil then
+      -- A NON-FINITE FLOAT REFUSES THE BATCH, the tolerant read too
+      -- (docs/SPEC-TABLES.md §3.3): no record lands, and Reason names it.
+      report.nonFiniteFloat = nonfinite
+      report.reason = "non_finite_float: " .. nonfinite
+      return {}
+    end
     if v == nil then report.malformed = true; return values end
     values[i] = v
   end
@@ -1134,7 +1174,7 @@ function M.measureMessages(T, root, vocab, values)
   W:put(2, 8); W:put(#values - 1, 8)
   for i = 1, #values do
     local ok, why = save_one(W, T, root, values[i], vocab)
-    if not ok then return -1, why end
+    if not ok then return -1, why or D.refuse_non_finite(T, root, values[i]) end
   end
   W:align()
   return (W.bits + 7) >> 3
@@ -1149,7 +1189,7 @@ function M.saveMessages(T, root, vocab, values)
   W:put(2, 8); W:put(#values - 1, 8)
   for i = 1, #values do
     local ok, why = save_one(W, T, root, values[i], vocab)
-    if not ok then return nil, why end
+    if not ok then return nil, why or D.refuse_non_finite(T, root, values[i]) end
   end
   W:align()
   return W:result()

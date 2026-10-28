@@ -941,6 +941,10 @@
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
     },
     {
+      "target": "tables-lua-finite-float-negative-control",
+      "reason": "the Lua leg's finite-float reversed witness (docs/SPEC-TABLES.md §3.3) is the Go test TestLuaFiniteFloatNegativeControl in internal/codegen/luatable, which ci-full.yml's go-test job runs under the pinned Lua 5.4.8 (make dist-lua) on every pull request, as part of go test ./...; the shared negative-control leg has no Lua toolchain to run it a second time."
+    },
+    {
       "target": "schema-lua-fuzz-negative-control",
       "reason": "the planted-bad-pattern control for the Lua port's nightly fuzz lane. It runs on the lane's own fast job (push and pull request) in .github/workflows/schema-lua-nightly-fuzz.yml (make schema-lua-fuzz-negative-control), and that job builds the port's pinned Lua 5.4.8 with make dist-lua from www.lua.org at the sha256 make/lua.mk names; the shared negative-control leg has no Lua toolchain to run it. The friction target's oracle needs the generated Lua readers and the seeded mutation run, so it stays on the lane's own bench rather than the base row."
     },

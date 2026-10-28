@@ -322,17 +322,24 @@ local function cook_text(bytes, at, used)
   return table.concat(out)
 end
 
--- dump_scalar spells one value as the canonical ROW DUMP does: a FLOAT is its
--- IEEE-754 bit pattern (a block row is a byte-identical projection), an enum
--- its ordinal at elem_size, and every integer its signed or unsigned width.
+-- dump_scalar spells one value as the canonical ROW DUMP does: a FLOAT is the
+-- IEEE-754 bit pattern of a finite value (a block row is a byte-identical
+-- projection; FORMAT.md), an enum its ordinal at elem_size, and every integer
+-- its signed or unsigned width. A float whose bits are a NaN or an infinity
+-- is never spelled (docs/SPEC-TABLES.md §3.3, ruling 2 of 2026-10-27): nil,
+-- and the caller refuses it by name.
 local function dump_scalar(bytes, at, kind, width)
   local p = at + 1
   if kind == 1 then
     return bytes:byte(p) ~= 0 and "true" or "false"
   elseif kind == 10 then
-    return string.format("0x%08x", string.unpack("=I4", bytes, p))
+    local b = string.unpack("=I4", bytes, p)
+    if b & 0x7f800000 == 0x7f800000 then return nil end
+    return string.format("0x%08x", b)
   elseif kind == 11 then
-    return string.format("0x%016x", string.unpack("=I8", bytes, p))
+    local b = string.unpack("=i8", bytes, p)
+    if b & 0x7ff0000000000000 == 0x7ff0000000000000 then return nil end
+    return string.format("0x%016x", b)
   elseif kind >= 2 and kind <= 5 then
     local v
     if width == 1 then v = string.unpack("=i1", bytes, p)
@@ -375,7 +382,14 @@ local function dump_record(out, bytes, base, layout, prefix)
           if fl.element ~= nil then
             dump_record(out, bytes, at, fl.element, slot)
           else
-            out[#out + 1] = "  " .. slot .. " = " .. dump_scalar(bytes, at, fl.f.kind, fl.elemSize)
+            -- an array slot is spelled by its ELEMENT's kind: a float
+            -- array's slot is a float's bit pattern, never an integer
+            local kind = fl.isArray and (fl.f.elem_kind or fl.f.kind) or fl.f.kind
+            local text = dump_scalar(bytes, at, kind, fl.elemSize)
+            if text == nil then
+              error("non_finite_float: " .. layout.name .. "." .. fl.f.name, 0)
+            end
+            out[#out + 1] = "  " .. slot .. " = " .. text
           end
         end
       end

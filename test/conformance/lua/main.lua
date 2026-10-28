@@ -162,7 +162,8 @@ local function newReport()
 end
 
 local function reportLine(r)
-  local verdict = r.refused > 0 and "refused" or "read"
+  -- a non-finite float is refused by every read (docs/SPEC-TABLES.md §3.3)
+  local verdict = (r.refused > 0 or r.nonFiniteFloat ~= nil) and "refused" or "read"
   return string.format("%d,%d,%d,%d,%d,%s,%s\n",
     r.unknown, r.kindMismatch, r.widened, r.clamped,
     r.duplicate, tostring(r.malformed), verdict)

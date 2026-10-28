@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"os"
@@ -134,7 +135,7 @@ local function work(wire)
   end
   return table.concat({ loaded, report.unknown, report.kindMismatch,
     report.widened, report.clamped, report.duplicate,
-    tostring(report.malformed), report.refused, savedHex }, "|")
+    tostring(report.malformed), report.nonFiniteFloat ~= nil and 1 or report.refused, savedHex }, "|")
 end
 for i = 1, #wires do
   local ok, res = pcall(work, wires[i])
@@ -188,8 +189,12 @@ type luaFuzzOracle struct {
 	readNothing    bool // the engine's whole answer is one malformed event and the defaults (§3: an unreadable trailer, bytes after the root)
 	counts         luaFuzzCounts
 	refused        bool
-	encoded        []byte
-	encFail        bool
+	// nonFinite is the engine's REFUSAL of a float whose bits are a NaN or an
+	// infinity (docs/SPEC-TABLES.md §3.3): every read refuses it, the
+	// tolerant one too, so the whole of what the leg owes is the refusal.
+	nonFinite bool
+	encoded   []byte
+	encFail   bool
 }
 
 // luaFuzzEngine reads one mutant with the compiler's engine. A variable root's
@@ -208,6 +213,10 @@ func luaFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luaFuzzOracl
 	inst := m.New(def)
 	var rep tabletext.Report
 	ok, derr := decode(m, inst, data, &rep)
+	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](derr); refused {
+		o.nonFinite = true
+		return o
+	}
 	switch {
 	case tablewire.Refused(derr):
 		o.refused = true
@@ -258,6 +267,15 @@ func luaFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luaFuzzOracl
 func luaFuzzVerdict(a luaFuzzAnswer, o luaFuzzOracle) string {
 	if a.raised != "" {
 		return "the Lua leg RAISED: " + a.raised
+	}
+	if o.nonFinite {
+		// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
+		// §3.3): the leg lands nothing and says so; nothing it counted on the
+		// way is compared, because nothing of it lands.
+		if a.loaded || !a.refused {
+			return "the engine refuses a non-finite float (non_finite_float); the Lua load did not"
+		}
+		return ""
 	}
 	if o.noRoot {
 		return "the engine refused the root itself"

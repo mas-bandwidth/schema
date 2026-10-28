@@ -335,9 +335,18 @@ write_field_value = function(T, f, x, at, w, index)
     put_uint(w, at, x or 0, 8)
     return true
   elseif s == "float" then
+    -- A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an
+    -- infinity (or a double past the float32 range in a float32 slot) is
+    -- refused, never written; -0 and the subnormals ride exactly.
     local v = x
     if v == nil then v = f.default or 0.0 end
-    if f.f32 then put_f32(w, at, v) else put_f64(w, at, v) end
+    if f.f32 then
+      if string.unpack("<I4", string.pack("<f", v)) & D.F32_EXP == D.F32_EXP then return nil end
+      put_f32(w, at, v)
+    else
+      if v - v ~= 0 then return nil end
+      put_f64(w, at, v)
+    end
     return true
   elseif s == "enum" then
     local v = 0
@@ -636,6 +645,10 @@ function C.CookMeasure(T, name, v)
   -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return -1, refused end
+  -- the measure refuses what the write refuses: a float that is not finite
+  -- (§3.3), named
+  local nonfinite = D.refuse_non_finite(T, name, v)
+  if nonfinite ~= nil then return -1, nonfinite end
   local l = layout(T, name, v)
   if l == nil then return -1 end
   return l.total
@@ -648,16 +661,16 @@ local function cook(T, name, v, capacity, order)
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
   local l = layout(T, name, v)
-  if l == nil then return nil end
+  if l == nil then return nil, D.refuse_non_finite(T, name, v) end
   if capacity ~= nil and capacity < l.total then return nil end
   local w = W()
   for _, e in ipairs(l.entries) do
     if e.desc ~= nil then
       local base = HEADER_BYTES + e.offset
-      if not write_record(T, e.desc, e.v, base, w, l.index) then return nil end
+      if not write_record(T, e.desc, e.v, base, w, l.index) then return nil, D.refuse_non_finite(T, name, v) end
       if e.extent > 0 then
         local cursor = { at = 0, index = l.index }
-        if not carve_extent(T, e.desc, e.v, base, base + e.record, cursor, w) then return nil end
+        if not carve_extent(T, e.desc, e.v, base, base + e.record, cursor, w) then return nil, D.refuse_non_finite(T, name, v) end
         if cursor.at ~= e.extent then return nil end
       end
     else

@@ -1911,8 +1911,6 @@ function J.FromJson(T, name, text, report)
     end
   elseif report.kindMismatch ~= nil and report.kindMismatch > 0 then
     reason = "kind_mismatch"
-  elseif report.Reason ~= nil and report.Reason:sub(1, 12) == "non_finite: " then
-    reason = "non_finite"
   end
   if reason ~= nil then
     report.Reason = reason
@@ -2536,7 +2534,9 @@ function J.ToJson(T, name, v)
   local g = count_nodes(T, desc, v)
   if g == nil then return nil end
   local w = W()
-  if not write_table(T, desc, v, 0, g, w) then return nil end
+  -- a float the text has no spelling for (a NaN or an infinity, §3.3, §16.3)
+  -- refuses the write, named
+  if not write_table(T, desc, v, 0, g, w) then return nil, D.refuse_non_finite(T, name, v) end
   w.parts[#w.parts + 1] = "\n"
   return table.concat(w.parts)
 end

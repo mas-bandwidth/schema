@@ -54,6 +54,22 @@ tables-lua-wire-fuzz-differential:
 		'TestLuaWireFuzzAgreesWithTheGoEngine TestLuaWireFuzzNegativeControl' \
 		./internal/codegen/luatable -run '^TestLuaWireFuzz' -count=1 -timeout 600s
 
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# finite-only too, same rule as packets"): every Lua read refuses a NaN or an
+# infinity on its raw bits as non_finite_float (variable, retained, message,
+# retaining message, fixed, cook check, uncook and block dump), every writer
+# refuses one, and -0 and the subnormals ride exact. The gate is
+# TestLuaPlainFloatSpecialValuesAgreeAcrossForms; its reversed witness turns
+# each read's raw-bits test off in turn and the probe must red on exactly that
+# read's rows.
+.PHONY: tables-lua-finite-float tables-lua-finite-float-negative-control
+tables-lua-finite-float: toolchain-lua
+	sh test/slowgate/proof tables-lua-finite-float \
+		'TestLuaPlainFloatSpecialValuesAgreeAcrossForms' \
+		./internal/codegen/luatable -run '^TestLuaPlainFloatSpecialValuesAgreeAcrossForms$$' -count=1 -timeout 600s
+tables-lua-finite-float-negative-control: toolchain-lua
+	go test -count=1 -timeout 600s ./internal/codegen/luatable/ -run '^TestLuaFiniteFloatNegativeControl$$'
+
 .PHONY: test-lua update-goldens-lua
 # The fixed-form tests read the shared byte-oracle corpus, so it is built first,
 # and SCHEMA_REQUIRE_CORPUS=1 makes its absence a FAILURE rather than a skip.

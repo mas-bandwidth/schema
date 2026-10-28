@@ -242,6 +242,9 @@ local function caseResult(c)
     -- otherwise reads. The strict read's other reasons (wire_damaged,
     -- malformed, integrity_mismatch) stay the manifest's generic damaged.
     if r.reason == "count_refusal" then return "refuse", r.reason, nil end
+    -- A NaN OR AN INFINITY is refused by every read, by name (docs/SPEC-TABLES.md
+    -- §3.3): the strict load's reason is the corpus's non_finite_float.
+    if r.reason == "non_finite_float" then return "refuse", r.reason, nil end
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "announce" then
     local vocab = {}
@@ -277,6 +280,7 @@ local function caseResult(c)
       end
     end
     local values = M.loadMessages(T, c[4], vocab, payload, r)
+    if r.nonFiniteFloat ~= nil then return "refuse", "non_finite_float", nil end
     if r.reason ~= "" then return "refuse", r.reason, nil end
     if r.refused > 0 then return "refuse", "damaged", nil end
     if r.malformed or values == nil or values[1] == nil then return "refuse", "damaged", nil end

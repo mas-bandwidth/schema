@@ -5,7 +5,7 @@ package luatable
 // report and refusal rows and over one forged wire per strict-only name
 // (docs/SPEC-TABLES.md §6.5, §11): unknown_form for a form byte, integrity_
 // mismatch, wire_damaged where the framing is damaged, malformed, blob_shared,
-// clamped, kind_mismatch and non_finite, while unknown, widened and duplicate
+// clamped, kind_mismatch and non_finite_float, while unknown, widened and duplicate
 // ALONE read clean. internal/codegen/gotable/refusal.go (TableReport.Err) is
 // the oracle.
 
@@ -113,7 +113,7 @@ func strictForgeFloat(t *testing.T, u *ir.Unit) []strictCase {
 	frameWire := strictWire(frameBody, id)
 	return []strictCase{
 		{label: "forged_unknown", root: "Root", wire: unknownWire, want: ""},
-		{label: "forged_nan", root: "Root", wire: nanWire, want: "non_finite"},
+		{label: "forged_nan", root: "Root", wire: nanWire, want: "non_finite_float"},
 		{label: "forged_frame_past_body", root: "Root", wire: frameWire, want: "wire_damaged"},
 	}
 }

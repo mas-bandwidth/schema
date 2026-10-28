@@ -16,6 +16,33 @@ local formByte = 3
 local maxRecordBytes = 65536
 local maxRecords = 4096
 
+-- A FLOAT IN THE FIXED FORM IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4): the
+-- record carries the bit pattern of a finite value, -0 and the subnormals
+-- exactly. A NaN or an infinity is refused on write and refused on read from
+-- the record's raw bits, before they become a number, as the named refusal
+-- non_finite_float.
+local F32_EXP = 0x7f800000
+local F64_EXP = 0x7ff0000000000000
+
+local function pack_float(f32, v)
+  if f32 then
+    local p = string.pack("<f", v)
+    if string.unpack("<I4", p) & F32_EXP == F32_EXP then error("non_finite_float", 0) end
+    return p
+  end
+  if v - v ~= 0 then error("non_finite_float", 0) end
+  return string.pack("<d", v)
+end
+
+local function unpack_float(f32, buf, pos)
+  if f32 then
+    if string.unpack("<I4", buf, pos) & F32_EXP == F32_EXP then error("non_finite_float", 0) end
+    return string.unpack("<f", buf, pos)
+  end
+  if string.unpack("<i8", buf, pos) & F64_EXP == F64_EXP then error("non_finite_float", 0) end
+  return string.unpack("<d", buf, pos)
+end
+
 local function zeros(n)
   if n <= 0 then return "" end
   return string.rep("\0", n)
@@ -140,8 +167,7 @@ encode_value = function(T, d, v, size, elemSize)
   elseif s == "bool" then
     return string.char((v and 1 or 0))
   elseif s == "float" then
-    if d.f32 then return string.pack("<f", v or 0.0) end
-    return string.pack("<d", v or 0.0)
+    return pack_float(d.f32, v or 0.0)
   elseif s == "string" or s == "bytes" then
     local n = #v
     local cap = size - 4
@@ -211,8 +237,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
   elseif s == "bool" then
     return buf:byte(pos) ~= 0, pos + size
   elseif s == "float" then
-    if d.f32 then return string.unpack("<f", buf, pos) end
-    return string.unpack("<d", buf, pos)
+    return unpack_float(d.f32, buf, pos)
   elseif s == "string" or s == "bytes" then
     local n = string.unpack("<i4", buf, pos)
     local cap = size - 4
@@ -373,8 +398,9 @@ decode_old_value = function(T, d, node, buf, pos)
   elseif s == "bool" then
     return buf:byte(pos) ~= 0
   elseif s == "float" then
-    if node.size == 4 or node.kind == 10 then return string.unpack("<f", buf, pos) end
-    return string.unpack("<d", buf, pos)
+    -- an older writer's float32 widens into a float64 field by the ordinary
+    -- conversion, exact for every finite float32 (§3.3)
+    return (unpack_float(node.size == 4 or node.kind == 10, buf, pos))
   elseif s == "string" or s == "bytes" then
     local n = string.unpack("<i4", buf, pos)
     local cap = node.size - 4
