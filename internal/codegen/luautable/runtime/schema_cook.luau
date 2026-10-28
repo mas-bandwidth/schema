@@ -431,6 +431,23 @@ local function put(w: any, at: number, v: any, width: number)
 	end
 end
 
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
+-- as packets"): a NaN or an infinity is not a value of the type.
+-- The cook refuses one, non_finite_float naming <Owner>.<field>: CookMeasure
+-- answers -1 and Cook nil, each with the reason beside it. A float32 slot
+-- tests its NARROWED bits, so a double past the float32 range is refused too.
+local _refusal: string? = nil
+local _owner = "?"
+local _field = "?"
+local finiteScratch = buffer.create(4)
+local function finite(v: number, f32: boolean): boolean
+	if f32 then
+		buffer.writef32(finiteScratch, 0, v)
+		return bit32.band(buffer.readu32(finiteScratch, 0), 0x7F800000) ~= 0x7F800000
+	end
+	return v == v and v ~= math.huge and v ~= -math.huge
+end
+
 local function put_float(w: any, at: number, v: number, f32: boolean)
 	if w.b == nil then return end
 	if f32 then
@@ -677,7 +694,15 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 		end
 		return true
 	end
-	if s == "float" then put_float(w, at, x or 0, e.f32 == true); return true end
+	if s == "float" then
+		local f = x or 0
+		if not finite(f, e.f32 == true) then
+			if _refusal == nil then _refusal = _owner .. "." .. (e.name or _field) end
+			return false
+		end
+		put_float(w, at, f, e.f32 == true)
+		return true
+	end
 	if s == "enum" then put(w, at, x or 0, storage_width(#(e.vs or {}))); return true end
 	if s == "str" or s == "bytes" then
 		local b, nbytes, count = used_bytes(holder, e, x, e.slot)
@@ -699,6 +724,7 @@ write_record = function(d: any, v: any, base: number, w: any, index: any): boole
 	for _, fl in l.fields do
 		local fd = fl.fd
 		local at = base + fl.at
+		_owner, _field = d.name, fd.name
 		local x = field_value(d, fd, v)
 		if fd.present ~= nil then
 			local present = v[fd.present] == true
@@ -790,28 +816,36 @@ local function refused_layout(d: any, root: any): any
 end
 
 -- CookMeasure answers the whole file's length (§7.6), -1 when the cook refuses.
-function C.CookMeasure(root: any, value: any): number
+function C.CookMeasure(root: any, value: any): (number, string?)
+	_refusal = nil
 	local l = refused_layout(root, value)
-	if l == nil then return -1 end
-	return l.total
+	if l == nil then
+		if _refusal ~= nil then return -1, "non_finite_float: " .. _refusal end
+		return -1, nil
+	end
+	return l.total, nil
 end
 
 -- Cook writes the cook (§7.6): header, data part, attribution part, or nil
 -- when the value is refused or the order is not little/big.
-function C.Cook(root: any, value: any, order: any): buffer?
+function C.Cook(root: any, value: any, order: any): (buffer?, string?)
 	local big = order_of(order)
-	if big == nil then return nil end
+	if big == nil then return nil, nil end
+	_refusal = nil
 	local l = refused_layout(root, value)
-	if l == nil then return nil end
+	if l == nil then
+		if _refusal ~= nil then return nil, "non_finite_float: " .. _refusal end
+		return nil, nil
+	end
 	local w = new_writer(l.total, big)
 	for _, e in l.entries do
 		local base = HEADER_BYTES + e.offset
 		if e.d ~= nil then
-			if not write_record(e.d, e.v, base, w, l.index) then return nil end
+			if not write_record(e.d, e.v, base, w, l.index) then return nil, nil end
 			if e.extent > 0 then
 				local cursor = { at = 0 }
-				if not carve_record(e.d, e.v, base, base + e.record, cursor, w, l.index) then return nil end
-				if cursor.at ~= e.extent then return nil end
+				if not carve_record(e.d, e.v, base, base + e.record, cursor, w, l.index) then return nil, nil end
+				if cursor.at ~= e.extent then return nil, nil end
 			end
 		else
 			put(w, base, buffer.len(e.blob), 4)

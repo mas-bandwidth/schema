@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"maps"
@@ -153,11 +154,16 @@ type luauFuzzOracle struct {
 	variable       bool // the root is variable-class (§3.1)
 	framingRefused bool // FileRegionMeasure refuses to size a region (§6.5)
 	noRoot         bool // the engine refused the root itself
-	readNothing    bool // the engine's whole answer is one malformed event and the defaults (§3: an unreadable trailer, bytes after the root)
-	counts         luauFuzzCounts
-	refused        bool
-	encoded        []byte
-	encFail        bool
+	// nonFinite is the engine's REFUSAL of a float whose bits are a NaN or an
+	// infinity (docs/SPEC-TABLES.md §3.3): every read refuses it, tolerant and
+	// strict, so the whole of what the leg owes is the refusal itself (the
+	// harness's oracleAnswer.nonFinite).
+	nonFinite   bool
+	readNothing bool // the engine's whole answer is one malformed event and the defaults (§3: an unreadable trailer, bytes after the root)
+	counts      luauFuzzCounts
+	refused     bool
+	encoded     []byte
+	encFail     bool
 }
 
 // luauFuzzEngine reads one mutant with the compiler's engine. A variable
@@ -176,6 +182,10 @@ func luauFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luauFuzzOra
 	inst := m.New(def)
 	var rep tabletext.Report
 	ok, derr := decode(m, inst, data, &rep)
+	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](derr); refused {
+		o.nonFinite = true
+		return o
+	}
 	switch {
 	case tablewire.Refused(derr):
 		o.refused = true
@@ -220,6 +230,15 @@ func luauFuzzEngine(m *tabletext.Model, def *ir.Struct, data []byte) luauFuzzOra
 func luauFuzzVerdict(a luauFuzzAnswer, o luauFuzzOracle) string {
 	if a.raised != "" {
 		return "the Luau leg RAISED: " + a.raised
+	}
+	if o.nonFinite {
+		// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
+		// §3.3), and the refusal is the answer: nothing the leg decoded or
+		// counted on the way is compared, because nothing of it lands.
+		if !a.refused {
+			return "the engine refuses a non-finite float (non_finite_float); the Luau load did not refuse the wire"
+		}
+		return ""
 	}
 	if o.noRoot {
 		return "the engine refused the root itself"

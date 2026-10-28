@@ -39,6 +39,8 @@ local function readFixed(T: any, root: string, bytes: buffer, report: any): any
 	if not ok then
 		if type(out) == "table" and (out :: any).name ~= nil then
 			report.reason = (out :: any).name
+			-- non_finite_float names its field (docs/SPEC-TABLES.md §3.3)
+			if (out :: any).field ~= nil then report.field = (out :: any).field end
 			-- truncated and reserved_not_zero keep report.malformed set beside
 			-- the name, as Go's fixed load keeps Malformed (§5.3)
 			if (out :: any).malformed == true then report.malformed = true end
@@ -103,7 +105,7 @@ end
 R.ReadStrictNames = table.freeze({
 	message_form_as_file = true, newer_form = true, previous_form = true, unknown_form = true,
 	integrity_mismatch = true, wire_damaged = true,
-	missing_required = true, malformed = true, clamped = true, kind_mismatch = true, non_finite = true, blob_shared = true,
+	missing_required = true, malformed = true, clamped = true, kind_mismatch = true, non_finite_float = true, blob_shared = true,
 	-- the builder-path storage refusal (Go tablewire.CountRefusal, §2.9): a
 	-- collection count past the int32 cap, answered by schema_load.luau
 	count_refusal = true,

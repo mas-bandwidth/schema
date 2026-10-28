@@ -129,29 +129,33 @@ local function rollback(ids: any, m: number)
 	end
 end
 
--- ---- FLOATS RIDE AS THEIR BITS (§3; internal/tablewire NarrowF32) --------
+-- ---- A FLOAT IS FINITE, AND RIDES AS ITS BITS (§3, §3.3) ----------------
 
 local scratch = buffer.create(8)
 
--- a float32 NaN's payload rides in the top of the double's mantissa, by bit
--- surgery rather than through a conversion that would set the quiet bit; any
--- other double converts as Go's float32(v) does (docs/PORT-LUAU.md, BYTE BUFFERS)
+-- a float32 field's bits: the double narrowed as Go's float32(v) narrows it
+-- (docs/PORT-LUAU.md, BYTE BUFFERS). Every finite float32 is exact in a
+-- double, so no bit surgery is owed (docs/SPEC-TABLES.md §3.3).
 local function narrow_f32(v: number): number
-	if v ~= v then
-		buffer.writef64(scratch, 0, v)
-		local lo = buffer.readu32(scratch, 0)
-		local hi = buffer.readu32(scratch, 4)
-		local payload = bit32.band(bit32.bor(bit32.lshift(bit32.band(hi, 0xfffff), 3), bit32.rshift(lo, 29)), 0x7fffff)
-		if payload == 0 then payload = 0x400000 end
-		return bit32.bor(bit32.band(hi, 0x80000000), 0x7f800000, payload)
-	end
 	buffer.writef32(scratch, 0, v)
 	return buffer.readu32(scratch, 0)
 end
 
+-- A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md §3.3;
+-- Glenn, 2026-10-27, "same rule as packets"): the save and the measure answer
+-- nil and the refusal non_finite_float naming <Owner>.<field>. A float32 field
+-- tests its NARROWED bits, so a finite double past the float32 range, which
+-- narrows to an infinity, is refused too and never written.
+local function refuse_non_finite(c: any, e: any): boolean
+	if c.why == nil then
+		c.why = { name = "non_finite_float", field = (c.owner or "?") .. "." .. (e.name or c.field or "?") }
+	end
+	return false
+end
+
 -- whether two floats are the SAME BIT PATTERN, which is what a plain float's
 -- elision compares (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
--- VALUES"): -0 and +0 differ, and a NaN is equal only to its own pattern.
+-- VALUES"): -0 and +0 differ.
 local function same_float(a: any, b: any, f32: boolean): boolean
 	if typeof(a) == "integer" then a = integer.tonumber(a) end
 	if typeof(b) == "integer" then b = integer.tonumber(b) end
@@ -487,7 +491,14 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 	elseif s == "int" then
 		write_int(w, e, val)
 	elseif s == "float" then
-		if e.f32 then w_small(w, 4, false, narrow_f32(val)) else w_f64(w, val) end
+		if e.f32 then
+			local bits = narrow_f32(val)
+			if bit32.band(bits, 0x7F800000) == 0x7F800000 then return refuse_non_finite(c, e) end
+			w_small(w, 4, false, bits)
+		else
+			if val ~= val or val == math.huge or val == -math.huge then return refuse_non_finite(c, e) end
+			w_f64(w, val)
+		end
 	elseif s == "enum" then
 		local vref = enum_ref(c, e, val)
 		if vref < 0 then return false end
@@ -685,6 +696,7 @@ end
 write_arm_header = function(c: any, un: any, w: any, u: any): boolean
 	local arm = un.arms[u.Type]
 	if arm == nil then return false end
+	c.owner, c.field = un.name, arm.name
 	w_leb(w, ref(c.ids, arm.id))
 	if arm.s == "void" then
 		w_u8(w, 32)
@@ -891,6 +903,7 @@ end
 -- follows the write order
 write_fields = function(c: any, d: any, w: any, v: any): boolean
 	for _, fd in d.fields do
+		c.owner, c.field = d.name, fd.name
 		if not write_field(c, fd, w, v) then return false end
 	end
 	return true
@@ -922,10 +935,10 @@ end
 local function walk(d: any, v: any, count: boolean): (any, any?)
 	local nodes, why = number(d, v)
 	if nodes == nil then return nil, why end
-	local c = { ids = new_ids(), nodes = nodes, count = count }
+	local c: any = { ids = new_ids(), nodes = nodes, count = count, why = nil }
 	local w = new_writer(count)
 	w_u8(w, Form)
-	if not write_fields(c, d, w, v) then return nil end
+	if not write_fields(c, d, w, v) then return nil, c.why end
 	if #nodes.list > 0 then
 		w_leb(w, ref(c.ids, NodeTableId))
 		w_u8(w, 12)
@@ -939,7 +952,7 @@ local function walk(d: any, v: any, count: boolean): (any, any?)
 				w_raw(p, n.blob, 0, buffer.len(n.blob))
 			else
 				local b = body_of(c, n.d, n.v)
-				if b == nil then return nil end
+				if b == nil then return nil, c.why end
 				w_leb(p, b.n)
 				w_sub(p, b)
 			end
