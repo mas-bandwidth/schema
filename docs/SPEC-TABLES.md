@@ -6977,7 +6977,12 @@ refusal, in all three binary forms. The Go leg and the tool's engines
 `internal/codegen/gotable/floatspecial_test.go`
 (`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) and
 `internal/tablewire/floatnan_test.go`, which reads the reference's NaN pin
-(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. Until a leg
+(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. The Squirrel leg keeps it too (tables-finite/squirrel), in the variable,
+message and fixed forms, the retained unknown entry and the block and cook
+writers, held against the Go engine by
+`internal/codegen/squirreltable/nonfinite_test.go`
+(`TestSquirrelTableFloatsAreFinite`) and `nonfinite_forms_test.go`
+(`TestSquirrelTableFiniteFloatForms`). Until a leg
 lands the rule it keeps the 2026-10-18/19 behaviour (a NaN or an infinity
 rides, and only a strict read, where the leg has one, refuses it as
 `non_finite`); each leg's work is its card in docs/roadmap.sexp
