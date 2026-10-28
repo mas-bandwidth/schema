@@ -70,7 +70,18 @@ func refusalSites(t *testing.T, path, pkg string) []string {
 // targetCalls is every call the target's Generate makes, as pkg.Func.
 func targetCalls(t *testing.T) []string {
 	t.Helper()
-	fn := funcDeclOf(t, "target_luau.go", "luauTarget", "Generate")
+	out := methodCalls(t, "Generate")
+	// Generate hands a nil lineage to GenerateLineage (docs/FIXED-FORM-ALGORITHM.md
+	// §5.9 #1), so the chain is that method's calls too
+	if slices.Contains(out, "t.GenerateLineage") {
+		out = append(out, methodCalls(t, "GenerateLineage")...)
+	}
+	return out
+}
+
+func methodCalls(t *testing.T, name string) []string {
+	t.Helper()
+	fn := funcDeclOf(t, "target_luau.go", "luauTarget", name)
 	var out []string
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -142,12 +153,13 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 	calls := targetCalls(t)
 	for _, c := range calls {
 		switch c {
-		case "luau.Generate", "luautable.Generate", "maps.Copy", "registerBuiltin":
+		case "luau.Generate", "luautable.Generate", "luautable.GenerateLineage", "luauTableLineage",
+			"t.GenerateLineage", "maps.Copy", "registerBuiltin":
 		default:
 			t.Fatalf("compiler/target_luau.go's Generate calls %s, which this test has no case for: add one", c)
 		}
 	}
-	if !slices.Contains(calls, "luau.Generate") || !slices.Contains(calls, "luautable.Generate") {
+	if !slices.Contains(calls, "luau.Generate") || (!slices.Contains(calls, "luautable.Generate") && !slices.Contains(calls, "luautable.GenerateLineage")) {
 		t.Fatalf("the luau chain did not parse: %v", calls)
 	}
 	sites := append(refusalSites(t, "../internal/codegen/luau/luau.go", "luau"),
