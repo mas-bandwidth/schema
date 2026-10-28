@@ -143,8 +143,10 @@ func TestRowFloat32ValuesNonFiniteRefused(t *testing.T) {
 				report.Reason != "non_finite_float: "+site.name || report.Err() != tblv1.TableRefuseNonFiniteFloat {
 				t.Errorf("%s %08x: n=%d reason=%q err=%v, want the non_finite_float refusal", site.name, bits, n, report.Reason, report.Err())
 			}
-			if scratch[0].B != 0 || scratch[1].B != 0 {
-				t.Errorf("%s %08x: the refused batch landed %v %v", site.name, bits, scratch[0].B, scratch[1].B)
+			var reset tblv1.Cfg
+			tblv1.CfgReset(&reset)
+			if scratch[0].B != reset.B || scratch[1].B != reset.B || scratch[1].Inner.Factor != reset.Inner.Factor {
+				t.Errorf("%s %08x: the refused batch kept %v %v %v, want the defaults", site.name, bits, scratch[0].B, scratch[1].B, scratch[1].Inner.Factor)
 			}
 		}
 	}

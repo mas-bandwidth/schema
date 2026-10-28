@@ -37,7 +37,7 @@ func TestWireFuzzAllTargetElixir(t *testing.T) {
 	recipe := makeTargetRecipe(t, text, target)
 	run := regexp.MustCompile(`\s+`).ReplaceAllString(recipe, " ")
 
-	const command = "ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
+	const command = "ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
 	if !strings.Contains(run, command) {
 		t.Errorf("the %s recipe does not run %q:\n%s", target, command, recipe)
 	}

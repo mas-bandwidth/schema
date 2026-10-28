@@ -196,7 +196,7 @@ func fixedOracleManifestNonFinite(t *testing.T, path string) map[string]string {
 				file = v
 			}
 		}
-		for _, value := range strings.Split(values, ",") {
+		for value := range strings.SplitSeq(values, ",") {
 			m := fixedOracleNonFiniteValue.FindStringSubmatch(value)
 			if m == nil {
 				continue
