@@ -933,7 +933,7 @@ func packagesOf(cmd string, gated map[string]bool) []string {
 		default:
 			continue
 		}
-		if spelled != "./..." && !gated[spelled] {
+		if spelled != "./..." && !gated[spelled] && !gatedUnder(spelled, gated) {
 			continue
 		}
 		if !seen[spelled] {
@@ -942,6 +942,21 @@ func packagesOf(cmd string, gated map[string]bool) []string {
 		}
 	}
 	return found
+}
+
+// gatedUnder reports whether a `./dir/...` pattern names at least one gated
+// package, so a recipe over a subtree is held to the rule like one over ./...
+func gatedUnder(spelled string, gated map[string]bool) bool {
+	base, ok := strings.CutSuffix(spelled, "/...")
+	if !ok {
+		return false
+	}
+	for pkg := range gated {
+		if pkg == base || strings.HasPrefix(pkg, base+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 var runFlag = regexp.MustCompile(`-run[= ]+'?"?([^'"\s]+)'?"?`)

@@ -222,3 +222,17 @@ func moduleTests(root string) ([]gatedTest, error) {
 	})
 	return tests, err
 }
+
+// TestSubtreeRecipeIsAudited holds a `go test ./dir/...` recipe line to the
+// static audit when the subtree holds a gated package, and leaves it alone when
+// it holds none.
+func TestSubtreeRecipeIsAudited(t *testing.T) {
+	t.Parallel()
+	gated := map[string]bool{"./internal/codegen/gotable": true}
+	if got := packagesOf("go test -json ./internal/codegen/...", gated); len(got) != 1 || got[0] != "./internal/codegen/..." {
+		t.Errorf("a subtree holding a gated package: packagesOf = %v, want [./internal/codegen/...]", got)
+	}
+	if got := packagesOf("go test ./tools/...", gated); len(got) != 0 {
+		t.Errorf("a subtree holding no gated package: packagesOf = %v, want none", got)
+	}
+}

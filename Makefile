@@ -6930,6 +6930,21 @@ slow-gate-coverage: deps
 	@mkdir -p build/slowgate
 	go test -json ./... > build/slowgate/all-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/all-plain.log
+
+# THE SAME ACCOUNTING IN TWO HALVES, for ci-full.yml's two slow-gate rows. The
+# verdict is per skip, so the emitter packages and every other package, each
+# read on its own, reach the verdict one plain `go test ./...` reaches, at about
+# half the wall time each. The package lists are spelled out rather than passed
+# in a variable so `slowgatescan`'s static audit still reads them.
+.PHONY: slow-gate-coverage-codegen slow-gate-coverage-rest
+slow-gate-coverage-codegen: deps
+	@mkdir -p build/slowgate
+	go test -json ./internal/codegen/... > build/slowgate/codegen-plain.log 2>&1 || true
+	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log
+slow-gate-coverage-rest: deps
+	@mkdir -p build/slowgate
+	go test -json $$(go list ./... | grep -v '/internal/codegen/') > build/slowgate/rest-plain.log 2>&1 || true
+	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log
 # THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
 # run are targets here: `vuln` runs the scanner pinned and direct, and the
 # retry-and-classify logic behind the nightly is a committed script

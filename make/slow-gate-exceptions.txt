@@ -27,6 +27,8 @@
 test	./...	the fast half by design (the 1-2 minute rule); the slow half runs in the fourteen positive gate targets `test`/`test-go` depend on, each through test/slowgate/proof, and `make slow-gate-coverage` proves test by test that no gated test is left to nobody
 update-goldens	./...	regenerates goldens with -update; it is the pure-Go golden half, and the toolchain gates it cannot regenerate are run by the fourteen positive gate targets (same accounting as `test`)
 slow-gate-coverage	./...	it MUST run plain: the accounting reads which tests skip at the gate under a DEFAULT `go test ./...`, so setting the variable here would erase the very thing being counted
+slow-gate-coverage-codegen	./internal/codegen/...	the emitter half of slow-gate-coverage, plain for the same reason: it reads which tests skip at the gate
+slow-gate-coverage-rest	./...	the other half of slow-gate-coverage (every package but the emitters, via go list), plain for the same reason
 
 # --- lines whose selected tests are NOT gated (measured, not assumed)
 #
