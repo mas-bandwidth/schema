@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The Squirrel target carries the fixed-point and 128-bit table-wire kinds on
 // the variable wire and JSON (docs/SPEC-TABLES.md §3, §15, §16.2).
 // ir.WideTableKindScope (ir/tablekind.go) scopes §15's refusal to the form-1

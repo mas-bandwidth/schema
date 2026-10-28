@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // Squirrel CARRIES the byte and string buffers (docs/SPEC-TABLES.md §2.5): a
 // `*bytes` and a `*string` table field are pointers to a blob node, and the
 // card record's blob is §3.1's. This test takes the refusal test's two probe

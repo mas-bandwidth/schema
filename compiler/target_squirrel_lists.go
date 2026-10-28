@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // Squirrel carries the UNBOUNDED ARRAY in a table closure (docs/SPEC-TABLES.md
 // §2.9, §3, §16.2). The target registers through [registerListCarrier], so its
 // Generate stops refusing the construct and the table runtime

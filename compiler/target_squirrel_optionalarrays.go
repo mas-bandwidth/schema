@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The Squirrel carrier of the OPTIONAL ARRAY form (docs/SPEC-TABLES.md §2.3):
 // `?[N]T` and `?[..N]T` ride as the plain array's framing plus the one-byte
 // presence companion, which squirreltable.Generate already walks, so the

@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The ONE-SIDED INTEGER RANGE on the Squirrel table surface
 // (docs/SPEC-TABLES.md §4.3, SPEC §4.6): `a int64 | min = 0` bounds only the
 // low side, the checker fills the high side from the kind's own limit, and the

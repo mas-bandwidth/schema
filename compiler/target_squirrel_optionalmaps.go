@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 package compiler
 
 // The Squirrel leg carries the OPTIONAL MAP (docs/SPEC-TABLES.md §2.8):

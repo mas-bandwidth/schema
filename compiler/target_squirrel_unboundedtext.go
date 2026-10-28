@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The Squirrel target carries UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1):
 // the `[]string`, `[]?string`, `[..N]string` and `[..N]?string` element text
 // and the `map[string]V` key. The carrier decision lives in the shared

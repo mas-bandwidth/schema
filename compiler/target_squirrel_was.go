@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // Squirrel carries a `was` on an enum variant, on a union arm and on a field
 // of a type a table reaches (docs/SPEC-TABLES.md §5): each rides under the
 // OLD name's id, so a stored value or body written before the rename reads in

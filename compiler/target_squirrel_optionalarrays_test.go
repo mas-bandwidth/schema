@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The Squirrel target CARRIES the optional array (docs/SPEC-TABLES.md §2.3):
 // the probe unit of the refusal test generates, the emitted module saves and
 // loads an absent, a present-empty and a present-full `?[..4]int32`, the value

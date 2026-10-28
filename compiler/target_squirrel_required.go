@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 package compiler
 
 // The Squirrel table surface carries `| required` on the variable wire

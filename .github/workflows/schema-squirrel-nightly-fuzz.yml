@@ -40,7 +40,7 @@ jobs:
   # THE FAST HALF: the target, the corpus file and the control exist and the
   # planted patterns are refused. Pure Go, no sq, no corpus build.
   harness:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
     steps:

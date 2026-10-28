@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The Squirrel target carries the union a table closure holds
 // (docs/SPEC-TABLES.md §2.6): its arms are field lines of any type, a
 // payload-free arm rides as the arm id with L = 0 (§2.6), and an array of

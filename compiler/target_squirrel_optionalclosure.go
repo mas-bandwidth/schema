@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 package compiler
 
 // Squirrel carries the scalar `?T` over a variable closure: the table runtime

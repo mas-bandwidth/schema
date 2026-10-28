@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -76,7 +77,7 @@ func TestSquirrelViewPrint(t *testing.T) {
 	var b strings.Builder
 	writeInfo := func(unit, table string, isTable bool, info TableTypeInfo) {
 		fmt.Fprintf(&b, "INFO|%%s|%%s|%%016x|%%t|%%t|%%d|%%s|%%d|%%s\n", unit+"."+table, info.Name,
-			info.Id, isTable, info.Variable, info.NumFields, hex.EncodeToString([]byte(info.Doc)),
+			info.ID, isTable, info.Variable, info.NumFields, hex.EncodeToString([]byte(info.Doc)),
 			info.NumTags, tagsHex(info.Tags))
 	}
 	writeField := func(unit, table string, f TableFieldInfo) {
@@ -87,10 +88,10 @@ func TestSquirrelViewPrint(t *testing.T) {
 			return fmt.Sprintf("%%d", pair[i])
 		}
 		fmt.Fprintf(&b, "VIEW|%%s|%%s|%%s|%%s|%%s|%%s|%%016x|%%d|%%t|%%t|%%t|%%d|%%t|%%t|%%d|%%d|%%d|%%d|%%d|%%t|%%016x|%%t|%%s|%%s|%%s|%%s|%%d|%%s|%%d|%%s\n",
-			unit, table, f.Name, f.Json, f.TypeName, f.DeclaredTypeName, f.Id, f.Kind,
+			unit, table, f.Name, f.JSON, f.TypeName, f.DeclaredTypeName, f.ID, f.Kind,
 			f.IsArray, f.Counted, f.Optional, f.ArrayBound, f.UnboundedContainer, f.HasRange,
 			f.RangeIntMin, f.RangeIntMax, f.RangeUintMin, f.RangeUintMax, f.FracBits,
-			f.Pointer, f.TargetId, f.WideRange,
+			f.Pointer, f.TargetID, f.WideRange,
 			widePart(f.WideRange, f.WideMin, 0), widePart(f.WideRange, f.WideMin, 1),
 			widePart(f.WideRange, f.WideMax, 0), widePart(f.WideRange, f.WideMax, 1),
 			f.EnumMax, hex.EncodeToString([]byte(f.Doc)), f.NumTags, tagsHex(f.Tags))
@@ -285,22 +286,17 @@ func runGoView(t *testing.T, root string, gu viewUnit) []string {
 	}
 	needsSerialize := false
 	for name, data := range files {
-		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go"`) {
+		if strings.Contains(string(data), `"github.com/mas-bandwidth/serialize.go/v2"`) {
 			needsSerialize = true
 		}
 		writeFile(t, filepath.Join(dir, filepath.Base(name)), data)
 	}
 	goMod := "module probe\n\ngo 1.26\n"
 	if needsSerialize {
-		gomod, err := exec.Command("go", "env", "GOMODCACHE").Output()
-		if err != nil {
-			t.Fatalf("unit %s: go env GOMODCACHE failed: %v", gu.key, err)
-		}
-		runtime := filepath.Join(strings.TrimSpace(string(gomod)), "github.com", "mas-bandwidth", "serialize.go"+"@"+"v1.6.0")
-		if _, err := os.Stat(filepath.Join(runtime, "go.mod")); err != nil {
-			t.Fatalf("unit %s: the Go oracle needs serialize.go and %s is absent: %v", gu.key, runtime, err)
-		}
-		goMod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go v1.6.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+		// the Go oracle's runtime is the one the module pins (go.mod), found
+		// the way the gotable probes find it
+		runtime := slowtest.SerializeGo(t, "../../../")
+		goMod += fmt.Sprintf("\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
 	}
 	writeFile(t, filepath.Join(dir, "go.mod"), []byte(goMod))
 

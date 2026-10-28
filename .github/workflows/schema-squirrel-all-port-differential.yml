@@ -48,7 +48,7 @@ concurrency:
 jobs:
   fast:
     name: fast (comparison and planted control)
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     steps:
