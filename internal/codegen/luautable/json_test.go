@@ -159,7 +159,7 @@ func jsonHostileProbe(g *generatedUnit, rootName string) string {
 json.SetFlags(SCHEMA_JSON_FLAGS)
 local inputs = require("./inputs")
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = json.FromJson(%q, inputs.text, report)
+local v = json.FromJsonTolerant(%q, inputs.text, report)
 if v == nil then report.malformed = true end
 if report.malformed then
 	print("refused")
@@ -351,7 +351,7 @@ local function report()
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
 local r = report()
-local v = json.FromJson("Box", inputs.text, r)
+local v = json.FromJsonTolerant("Box", inputs.text, r)
 if v == nil then print("refused"); return end
 print(string.format("km=%d u=%d", r.kindMismatch, r.unknown))
 print(buffer.tostring(json.ToJson("Box", v)))

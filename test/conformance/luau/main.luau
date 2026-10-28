@@ -281,7 +281,7 @@ local function surfaceJsonHostile(lines: { { string } })
 			say(f[2], nil)
 		else
 			local r = report()
-			local v = u.json.FromJson(f[4], file(f[5] .. "/" .. f[4] .. ".json"), r)
+			local v = u.json.FromJsonTolerant(f[4], file(f[5] .. "/" .. f[4] .. ".json"), r)
 			if v == nil or r.malformed or (r.refused or 0) > 0 then
 				sayText(f[2], "refused\n")
 			else

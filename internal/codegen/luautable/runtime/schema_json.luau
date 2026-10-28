@@ -943,15 +943,46 @@ local read_value: (any, any, Input, any, any, number, any, any, boolean) -> bool
 local read_array: (any, any, Input, any, any, number, any, any) -> boolean
 local parse_timestamp: (text: string) -> integer?
 
+-- required_seen closes ONE object (docs/SPEC-TABLES.md §2.3, §6.5): every
+-- field marked `| required` whose guard holds must have been named, whatever
+-- its value, and an object that left one out counts missing_required once,
+-- naming the missing fields in declaration order, exactly as the binary read
+-- refuses a record that omitted it. A guard is a conjunction of (bool slot,
+-- value) pairs over the object's own storage; a field under a false guard is
+-- not demanded.
+local function required_seen(desc: any, v: any, seen: { [string]: boolean }, report: any): boolean
+  local missing: { string }? = nil
+  for _, fd in desc.fields do
+    local raw = fd.raw
+    if raw.required == true and not seen[fd.name] then
+      local holds = true
+      if raw.guard ~= nil then
+        for _, pair in raw.guard do
+          if v[pair[1]] ~= pair[2] then holds = false; break end
+        end
+      end
+      if holds then
+        if missing == nil then missing = {} end
+        local m = missing :: { string }
+        m[#m + 1] = raw.name or fd.key
+      end
+    end
+  end
+  if missing == nil then return true end
+  report.missingRequired = (report.missingRequired or 0) + 1
+  if report.reason == nil then report.reason = "missing_required: " .. table.concat(missing :: { string }, ", ") end
+  return false
+end
+
 local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, first_key: string?, graph: any, report: any): boolean
-  local seen = {}
+  local seen: { [string]: boolean } = {}
   while true do
     local key
     if first_key ~= nil then
       key, first_key = first_key, nil
     else
       local c = peek(inp)
-      if c == '}' then inp.p = inp.p + 1; return true end
+      if c == '}' then inp.p = inp.p + 1; return required_seen(desc, v, seen, report) end
       if c == nil then inp.bad = true; return false end
       local start = inp.p
       local _, _, ok = scan_string(inp, MAX_KEY)
@@ -1009,7 +1040,7 @@ local function read_keys(T: any, desc: any, inp: Input, v: any, depth: number, f
       inp.p = inp.p + 1
     elseif c == '}' then
       inp.p = inp.p + 1
-      return true
+      return required_seen(desc, v, seen, report)
     else
       inp.bad = true
       return false
@@ -1037,8 +1068,9 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   local c = peek(inp)
   if c == '}' then
     inp.p = inp.p + 1
-    holder[key] = walk_default(T, T.Tables[d.target])
-    return true
+    local node = walk_default(T, T.Tables[d.target])
+    holder[key] = node
+    return required_seen(T.Tables[d.target], node, {}, report)
   end
   if c == nil then inp.bad = true; return false end
   local start = inp.p
@@ -2978,7 +3010,12 @@ local function adapted(root: string): (any, any, any)
   return desc, A, t
 end
 
-function J.FromJson(root: string, text: buffer, report: any): any
+-- FromJsonTolerant is the TOLERANT text read (docs/SPEC-TABLES.md §6.5, §16):
+-- it keeps the recovered value with the counters counted onto the report, and
+-- answers no value only where the text does not say what the instance holds:
+-- a malformed text, a zero or ill-formed string placed in text (§16.3) and a
+-- missing required field (§2.3), each with the count and its reason.
+function J.FromJsonTolerant(root: string, text: buffer, report: any): any
   local _, A, adesc = adapted(root)
   local input = buffer.readstring(text, 0, buffer.len(text))
   local lua = core_from(A, root, input, report)
@@ -2987,6 +3024,42 @@ function J.FromJson(root: string, text: buffer, report: any): any
   if lua == nil or report.malformed then return nil end
   local memo = { l2u = {}, u2l = {}, len = {} }
   return from_lua(adesc, lua, A, memo)
+end
+
+-- the strict text read's refusals, in Go's TableReport.Err() order
+-- (docs/SPEC-TABLES.md §6.5): unknown, widened and duplicate alone never refuse
+local STRICT: { { string } } = {
+  { "blobShared", "blob_shared" },
+  { "clamped", "clamped" },
+  { "kindMismatch", "kind_mismatch" },
+  { "nonFinite", "non_finite" },
+}
+
+-- THE PLAIN NAME IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): FromJson
+-- overwrites the caller's report (optional, nil allowed) with this read's
+-- counters, and refuses with one named reason and no recovered value every
+-- read that crosses a security or meaning boundary — a malformed text, a
+-- missing required field, a blob named from two slots, a clamped value, a
+-- kind mismatch. A caller who needs the recovered value past one of those
+-- asks for it by name, through FromJsonTolerant.
+function J.FromJson(root: string, text: buffer, report: any): any
+  local rep: any = report or {}
+  rep.malformed = false
+  rep.unknown, rep.kindMismatch, rep.clamped, rep.widened, rep.duplicate = 0, 0, 0, 0, 0
+  rep.missingRequired, rep.nonFinite, rep.blobShared = 0, 0, 0
+  rep.reason = nil
+  local v = J.FromJsonTolerant(root, text, rep)
+  if v == nil then
+    if rep.reason == nil then rep.reason = "malformed" end
+    return nil
+  end
+  for _, k in STRICT do
+    if (rep[k[1]] or 0) > 0 then
+      rep.reason = k[2]
+      return nil
+    end
+  end
+  return v
 end
 
 -- ToJson writes the value's §16 text and refuses (returns nil and names the
