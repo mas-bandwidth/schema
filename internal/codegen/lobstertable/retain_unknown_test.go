@@ -103,7 +103,7 @@ def rrun(root:string, file:string, cap:int, idcap:int):
     print(rline(rep))
     print(hexs(saved))
     let rep2 = schema_rt.LoadReport {}
-    let rec2 = schema_rt.load(root, saved, rep2)
+    let rec2 = schema_rt.load_tolerant(root, saved, rep2)
     print(rline(rep2))
     labels = []
     var dump2 = "nil"

@@ -1226,7 +1226,7 @@ def mw_scalar(w:MessageWriter, d:FieldDescriptor, s:MessageShape, v:Value) -> bo
     var lo = 0
     var hi = 0
     if kind == 10:
-        lo = save_narrow32(v.f)
+        lo = f32bits(v.f)
     elif kind == 11:
         lo = f64bits(v.f)
     elif kind_wide(kind):
