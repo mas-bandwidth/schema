@@ -306,8 +306,10 @@ func TestLobsterCook(t *testing.T) {
 		if string(out.big) != string(wantBE) {
 			t.Errorf("%s: the big-endian cook is not the tool's: %s", r.name, divergence(string(out.big), string(wantBE)))
 		}
-		if out.open[0] != "ok" || out.open[1] != "ok" {
-			t.Errorf("%s: Open answered %q/%q over its own cooks, want ok/ok", r.name, out.open[0], out.open[1])
+		// Open reads in this build's order (§7.1): its own little-endian cook
+		// opens and the big-endian one is foreign and refuses at the magic
+		if out.open[0] != "ok" || out.open[1] != "no" {
+			t.Errorf("%s: Open answered %q/%q over its little- and big-endian cooks, want ok/no", r.name, out.open[0], out.open[1])
 		} else {
 			opened++
 		}
