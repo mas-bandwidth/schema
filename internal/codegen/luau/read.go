@@ -393,11 +393,14 @@ func emitReadBareInt(g *Gen, f *ir.Field, name, ind string) {
 		g.call(ind, fmt.Sprintf("stream:serializeBits(BITS, %d)", f.Type.Width), "")
 		// Lua's >> is logical; recover the sign through the same-width
 		// unsigned round trip (SPEC §4.3).
-		g.Pf("%slocal raw = BITS.value\n", ind)
-		g.Pf("%sif raw >= %s then raw = raw - %s end\n", ind,
+		// The scratch local lives in its own do-block, so two signed fields in
+		// one reader never redeclare it (luau-analyze LocalShadow).
+		g.Pf("%sdo\n", ind)
+		g.Pf("%s  local raw = BITS.value\n", ind)
+		g.Pf("%s  %s = if raw >= %s then raw - %s else raw\n", ind, name,
 			new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width-1)).String(),
 			new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)).String())
-		g.Pf("%s%s = raw\n", ind, name)
+		g.Pf("%send\n", ind)
 	default:
 		g.call(ind, fmt.Sprintf("stream:serializeBits(BITS, %d)", f.Type.Width), "")
 		g.Pf("%s%s = BITS.value\n", ind, name)
