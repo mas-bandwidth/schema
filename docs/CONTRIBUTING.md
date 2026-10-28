@@ -35,8 +35,8 @@ of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
 
 **Who this repo is for.** Schema is the data language for games: you declare
 constants, enums, flags, types and tables once, and the compiler generates
-bit-packed serialization code in **nine languages** — C, C++, C#, Dart, Elixir,
-Go, Java, JavaScript and Rust. The compiler is Go (`cmd/` + `internal/`, public
+bit-packed serialization code in **ten languages** — C, C++, C#, Dart, Elixir,
+Go, Java, JavaScript, Lua and Rust. The compiler is Go (`cmd/` + `internal/`, public
 API `compiler/` and `ir/`). The compiler is AGPL-3.0; **the code it generates is
 yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 
@@ -161,7 +161,7 @@ git clone https://github.com/mas-bandwidth/schema.git
 cd schema && make test
 ```
 
-`make test` builds the compiler, generates the corpus in all nine languages,
+`make test` builds the compiler, generates the corpus in every language,
 compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.
@@ -398,15 +398,16 @@ to somebody, so it needs to be worth it.
 
 ## Adding a language
 
-`schema new-leg lua` writes the skeleton: `compiler/target_lua.go` (behind
-the `schema_leg_lua` build tag, so the default nine stay the live `--lang`
-set), `internal/codegen/lua/` with one passing `go test` fixture,
-`make/lua.mk`, the conformance driver and the tables-bench `leg`. It is
-not a Lua emitter. `make test-lua` is the fixture; drop the build tag when
-the packet surface has claims and the port joins the builtins.
+`schema new-leg zig` writes the skeleton: `compiler/target_zig.go` (behind
+the `schema_leg_zig` build tag, so the builtin targets stay the live `--lang`
+set), `internal/codegen/zig/` with one passing `go test` fixture,
+`make/zig.mk`, the conformance driver and the tables-bench `leg`. It is
+not a Zig emitter. `make test-zig` is the fixture; drop the build tag when
+the packet surface has claims and the port joins the builtins (Lua was
+scaffolded this way and joined them).
 
 A backend is a Go package under `internal/codegen/` that walks the same IR the
-existing nine consume, plus one file in `compiler/` — `target_<lang>.go` —
+existing ten consume, plus one file in `compiler/` — `target_<lang>.go` —
 that registers it as a `compiler.Generator`, the public registration interface
 and the only way any target reaches the driver. The cross-language harness is
 what makes this tractable: generate the corpus in your language, encode the

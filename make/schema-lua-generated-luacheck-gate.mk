@@ -86,13 +86,13 @@ $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 # generate the corpus exactly as the other legs generate theirs: one directory
 # (or one schema file) per unit, a refusal kept by name in <unit>.refused, and
 # the count printed. A refused unit is not checked, and it says so.
-$(LUA_LUACHECK_CORPUS)/.stamp: build/schema-lua make/schema-lua-generated-luacheck-gate.mk $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_SOURCES)
+$(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gate.mk $(LUA_LUACHECK_UNITS) $(LUA_LUACHECK_SOURCES)
 	@rm -rf $(LUA_LUACHECK_CORPUS) && mkdir -p $(LUA_LUACHECK_CORPUS)
 	@set -e; ok=0; refused=0; \
 	for u in $(LUA_LUACHECK_UNITS); do \
 		key=$$(printf '%s' "$$u" | sed 's#[/.]#_#g'); \
 		log=$(LUA_LUACHECK_CORPUS)/$$key.log; \
-		if ./build/schema-lua generate --lang lua --out $(LUA_LUACHECK_CORPUS)/$$key $$u > $$log 2>&1; then \
+		if ./bin/schema generate --lang lua --out $(LUA_LUACHECK_CORPUS)/$$key $$u > $$log 2>&1; then \
 			rm -f $$log; ok=$$((ok + 1)); \
 		else \
 			rm -rf $(LUA_LUACHECK_CORPUS)/$$key; \

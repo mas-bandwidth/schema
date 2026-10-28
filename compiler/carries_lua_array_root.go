@@ -1,5 +1,3 @@
-//go:build schema_leg_lua
-
 package compiler
 
 // docs/SPEC-TABLES.md §16.10: the Lua target carries the JSON array root,

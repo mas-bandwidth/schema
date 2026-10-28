@@ -13,11 +13,12 @@ import (
 // rebuildEpoch is the fixed test clock: 1000.0 seconds, never the wall clock.
 var rebuildEpoch = time.Unix(1000, 0)
 
-// TestLuaBinaryRebuildsWhenRuntimeChanges pins build/schema-lua's input set:
+// TestLuaBinaryRebuildsWhenRuntimeChanges pins bin/schema's input set:
 // the binary embeds internal/codegen/luatable/runtime/*.lua and
 // internal/codegen/lua/runtime/*.lua by go:embed, so a change to either
 // directory must make make rebuild it. The test copies make/lua.mk into a
-// TempDir, replaces the Go build recipe with a touch (so no real build runs),
+// TempDir beside a stand-in for the root Makefile's bin/schema rule whose
+// recipe is a touch (so no real build runs),
 // and reads make's own verdict with -q and -n at a fixed clock.
 //
 // The reversed witness drops the table-runtime prerequisite from a second copy
@@ -30,10 +31,10 @@ func TestLuaBinaryRebuildsWhenRuntimeChanges(t *testing.T) {
 	}
 
 	tree := newLuaRebuildTree(t)
-	if out, err := runMakeIn(t, tree.dir, "build/schema-lua"); err != nil {
-		t.Fatalf("stub build/schema-lua: %v\n%s", err, out)
+	if out, err := runMakeIn(t, tree.dir, "bin/schema"); err != nil {
+		t.Fatalf("stub bin/schema: %v\n%s", err, out)
 	}
-	if _, err := os.Stat(filepath.Join(tree.dir, "build", "schema-lua")); err != nil {
+	if _, err := os.Stat(filepath.Join(tree.dir, "bin", "schema")); err != nil {
 		t.Fatalf("the stub recipe did not create the binary: %v", err)
 	}
 
@@ -49,26 +50,26 @@ func TestLuaBinaryRebuildsWhenRuntimeChanges(t *testing.T) {
 		t.Run(input.name, func(t *testing.T) {
 			tree.setTimes(t, rebuildEpoch.Add(time.Second), rebuildEpoch)
 			if !makeSaysUpToDate(t, tree.dir) {
-				t.Fatalf("build/schema-lua is out of date before any input moves")
+				t.Fatalf("bin/schema is out of date before any input moves")
 			}
-			out, err := runMakeIn(t, tree.dir, "-n", "build/schema-lua")
+			out, err := runMakeIn(t, tree.dir, "-n", "bin/schema")
 			if err != nil {
 				t.Fatalf("make -n with nothing touched: %v\n%s", err, out)
 			}
-			if strings.Contains(out, "touch build/schema-lua") {
+			if strings.Contains(out, "touch bin/schema") {
 				t.Fatalf("make -n ran the recipe while the binary was up to date:\n%s", out)
 			}
 
 			tree.setTimes(t, rebuildEpoch.Add(time.Second), rebuildEpoch)
 			tree.touch(t, input.rel, rebuildEpoch.Add(time.Hour))
 			if makeSaysUpToDate(t, tree.dir) {
-				t.Errorf("touching %s left build/schema-lua up to date: the rule does not list the embedded input", input.rel)
+				t.Errorf("touching %s left bin/schema up to date: the rule does not list the embedded input", input.rel)
 			}
-			out, err = runMakeIn(t, tree.dir, "-n", "build/schema-lua")
+			out, err = runMakeIn(t, tree.dir, "-n", "bin/schema")
 			if err != nil {
 				t.Fatalf("make -n after touching %s: %v\n%s", input.rel, err, out)
 			}
-			if !strings.Contains(out, "touch build/schema-lua") {
+			if !strings.Contains(out, "touch bin/schema") {
 				t.Errorf("make -n after touching %s shows no build recipe:\n%s", input.rel, out)
 			}
 		})
@@ -76,8 +77,8 @@ func TestLuaBinaryRebuildsWhenRuntimeChanges(t *testing.T) {
 
 	t.Run("reversed witness", func(t *testing.T) {
 		witness := newLuaRebuildTree(t)
-		if out, err := runMakeIn(t, witness.dir, "build/schema-lua"); err != nil {
-			t.Fatalf("stub build/schema-lua: %v\n%s", err, out)
+		if out, err := runMakeIn(t, witness.dir, "bin/schema"); err != nil {
+			t.Fatalf("stub bin/schema: %v\n%s", err, out)
 		}
 		makefile := filepath.Join(witness.dir, "Makefile")
 		data, err := os.ReadFile(makefile)
@@ -100,11 +101,11 @@ func TestLuaBinaryRebuildsWhenRuntimeChanges(t *testing.T) {
 		if !makeSaysUpToDate(t, witness.dir) {
 			t.Fatalf("the witness rebuilt with the table-runtime prerequisite dropped: the test is not reading that prerequisite")
 		}
-		out, err := runMakeIn(t, witness.dir, "-n", "build/schema-lua")
+		out, err := runMakeIn(t, witness.dir, "-n", "bin/schema")
 		if err != nil {
 			t.Fatalf("witness make -n: %v\n%s", err, out)
 		}
-		if strings.Contains(out, "touch build/schema-lua") {
+		if strings.Contains(out, "touch bin/schema") {
 			t.Fatalf("the witness ran the recipe after its prerequisite was dropped:\n%s", out)
 		}
 	})
@@ -154,32 +155,24 @@ func newLuaRebuildTree(t *testing.T) *luaRebuildTree {
 	return &luaRebuildTree{dir: dir, runtime: assets}
 }
 
-// luaRebuildMakefile replaces the build/schema-lua recipe with a touch of the
-// target: the test measures prerequisites, never a Go build. GO_SOURCES is a
-// fixture definition because the root Makefile normally owns it.
+// luaRebuildMakefile is the copied make/lua.mk with the root Makefile's
+// bin/schema rule stood in by a touch of the target: the test measures
+// prerequisites, never a Go build. lua.mk adds the embedded runtime directories
+// to bin/schema's prerequisites with a recipe-less rule; GO_SOURCES and the
+// recipe are fixture definitions because the root Makefile normally owns them.
 func luaRebuildMakefile(t *testing.T, source string) string {
 	t.Helper()
-	lines := strings.Split(source, "\n")
-	out := make([]string, 0, len(lines)+2)
-	replaced := false
-	for i := 0; i < len(lines); i++ {
-		out = append(out, lines[i])
-		if !strings.HasPrefix(lines[i], "build/schema-lua:") {
-			continue
+	n := 0
+	for _, line := range strings.Split(source, "\n") {
+		if strings.HasPrefix(line, "bin/schema:") {
+			n++
 		}
-		if replaced {
-			t.Fatal("make/lua.mk declares build/schema-lua more than once")
-		}
-		replaced = true
-		for i+1 < len(lines) && strings.HasPrefix(lines[i+1], "\t") {
-			i++
-		}
-		out = append(out, "\t@mkdir -p build", "\t@touch $@")
 	}
-	if !replaced {
-		t.Fatal("make/lua.mk has no build/schema-lua rule")
+	if n != 1 {
+		t.Fatalf("make/lua.mk declares bin/schema's prerequisites %d times, want once", n)
 	}
-	return "GO_SOURCES := go.mod cmd/schema/main.go\n" + strings.Join(out, "\n")
+	return "GO_SOURCES := go.mod cmd/schema/main.go\n" +
+		"bin/schema: $(GO_SOURCES)\n\t@mkdir -p bin\n\t@touch $@\n" + source
 }
 
 // setTimes puts the target one second after every prerequisite, so make -q
@@ -189,7 +182,7 @@ func (tree *luaRebuildTree) setTimes(t *testing.T, target, prereq time.Time) {
 	for _, rel := range append([]string{"go.mod", "cmd/schema/main.go"}, tree.runtime...) {
 		tree.touch(t, rel, prereq)
 	}
-	tree.touch(t, filepath.Join("build", "schema-lua"), target)
+	tree.touch(t, filepath.Join("bin", "schema"), target)
 }
 
 func (tree *luaRebuildTree) touch(t *testing.T, rel string, when time.Time) {
@@ -212,7 +205,7 @@ func runMakeIn(t *testing.T, dir string, args ...string) (string, error) {
 // date, anything else is an error the test must not mistake for a verdict.
 func makeSaysUpToDate(t *testing.T, dir string) bool {
 	t.Helper()
-	out, err := runMakeIn(t, dir, "-q", "build/schema-lua")
+	out, err := runMakeIn(t, dir, "-q", "bin/schema")
 	if err == nil {
 		return true
 	}
@@ -220,6 +213,6 @@ func makeSaysUpToDate(t *testing.T, dir string) bool {
 	if errors.As(err, &exit) && exit.ExitCode() == 1 {
 		return false
 	}
-	t.Fatalf("make -q build/schema-lua: %v\n%s", err, out)
+	t.Fatalf("make -q bin/schema: %v\n%s", err, out)
 	return false
 }

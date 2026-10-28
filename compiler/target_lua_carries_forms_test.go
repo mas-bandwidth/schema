@@ -1,5 +1,3 @@
-//go:build schema_leg_lua
-
 // docs/SPEC-TABLES.md §2.12: the Lua target carries a table's `forms`
 // declaration. The matching Go probe unit generates for lua (and go) and every
 // other non-go target still refuses it by the same name, centrally, at

@@ -1,5 +1,3 @@
-//go:build schema_leg_lua
-
 // The Lua target carries the array root (docs/SPEC-TABLES.md §16.10) once
 // the luatable backend writes and reads it: its Generate of the array-root
 // probe unit answers files and no error, while every other non-go target

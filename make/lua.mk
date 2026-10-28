@@ -4,9 +4,8 @@
 # file.
 #
 # Scaffolded by `schema new-leg lua`, then given its pinned interpreter and its
-# two packages (schema-lua-port-design). compiler/target_lua.go keeps its
-# schema_leg_lua build tag until the wire surfaces land, so `schema generate
-# --lang lua` is a binary built with that tag (build/schema-lua below).
+# two packages (schema-lua-port-design). Lua is a builtin target: the ordinary
+# bin/schema is `schema generate --lang lua` and `schema testgen --lang lua`.
 
 # THE PINNED INTERPRETER: PUC-Rio Lua 5.4.8, built from source into dist/
 # (gitignored). Vanilla Lua 5.4 because it has the native 64-bit integer the
@@ -72,6 +71,21 @@ tables-lua-finite-float-negative-control: toolchain-lua
 		'TestLuaFiniteFloatNegativeControl' \
 		./internal/codegen/luatable -run '^TestLuaFiniteFloatNegativeControl$$' -count=1 -timeout 600s
 
+# THE COMMITTED TREE LOADS: every module of generated/lua and
+# generated/lua-ludicrous, the serialize runtime beside them included, is
+# required under the pinned interpreter and returns its module table — the
+# Lua counterpart of the compiled legs building their generated/<lang> tree.
+.PHONY: lua-generated-loads
+lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/.stamp
+	@set -e; n=0; for d in generated/lua generated/lua-ludicrous; do \
+		for f in $$d/*.lua; do \
+			m=$$(basename $$f .lua); \
+			(cd $$d && $(LUA) -e "package.path = './?.lua;' .. package.path; assert(type(require('$$m')) == 'table', '$$m returned no module table')"); \
+			n=$$((n + 1)); \
+		done; \
+	done; \
+	echo "lua-generated-loads: $$n committed modules load under Lua $(LUA_VERSION)"
+
 .PHONY: test-lua update-goldens-lua
 # The fixed-form tests read the shared byte-oracle corpus, so it is built first,
 # and SCHEMA_REQUIRE_CORPUS=1 makes its absence a FAILURE rather than a skip.
@@ -80,27 +94,37 @@ tables-lua-finite-float-negative-control: toolchain-lua
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua conformance-negative-control-lua conformance-negative-control-lua-walk tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control
+test-lua: toolchain-lua lua-generated-loads conformance-negative-control-lua conformance-negative-control-lua-walk tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
-# build/schema-lua is the compiler WITH the lua target (its build tag), and
+# bin/schema embeds both Lua runtime directories by glob (//go:embed
+# runtime/*.lua in internal/codegen/lua and internal/codegen/luatable), which
+# GO_SOURCES (*.go only) does not see, so they are added to bin/schema's
+# prerequisites here: a changed runtime rebuilds the binary every gate then
+# measures, and the committed generated/lua tree with it.
+#
 # build/conformance-lua is the tables manifest's units generated for lua, one
 # directory per unit key. A unit the target refuses leaves its refusal, by
 # name, in <unit>.refused instead of a directory — listed, never dropped.
-# The binary embeds both runtime directories by glob (//go:embed
-# runtime/*.lua in internal/codegen/lua and internal/codegen/luatable), so a
-# new runtime file joins these prerequisites automatically: a changed runtime
-# must rebuild the binary every gate then measures.
-build/schema-lua: $(GO_SOURCES) $(wildcard internal/codegen/luatable/runtime/*.lua) $(wildcard internal/codegen/lua/runtime/*.lua)
-	@mkdir -p build
-	go build -tags schema_leg_lua -o $@ ./cmd/schema
+bin/schema: $(wildcard internal/codegen/luatable/runtime/*.lua) $(wildcard internal/codegen/lua/runtime/*.lua)
 
-build/conformance-lua: build/schema-lua testdata/conformance/tables/MANIFEST.txt make/lua.mk
+# the Lua target: the type surface of the examples units, with the serialize
+# runtime the emitter writes beside every unit (generated Lua is self-contained:
+# no rock, no wiring file). Committed and held by `make generated-current`.
+generated/lua/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang lua --out generated/lua examples
+	@touch $@
+
+generated/lua-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang lua --out generated/lua-ludicrous examples128
+	@touch $@
+
+build/conformance-lua: bin/schema testdata/conformance/tables/MANIFEST.txt make/lua.mk
 	@rm -rf $@ && mkdir -p $@
 	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
 	while read -r key paths; do \
-		if ./build/schema-lua generate --lang lua --out $@/$$key $$paths > $@/$$key.log 2>&1; then \
+		if ./bin/schema generate --lang lua --out $@/$$key $$paths > $@/$$key.log 2>&1; then \
 			rm -f $@/$$key.log; \
 		else \
 			rm -rf $@/$$key; mv $@/$$key.log $@/$$key.refused; \

@@ -1,5 +1,3 @@
-//go:build schema_leg_lua
-
 package compiler
 
 // docs/SPEC-TABLES.md §2.13, §2.13.1, §16.2: the Lua target carries a text

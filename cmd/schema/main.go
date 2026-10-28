@@ -41,12 +41,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// testgenLua is the Lua target's generated-test writer, registered by the
-// schema_leg_lua build (cmd/schema/testgen_lua.go). Nil in the default build,
-// where compiler.Testgen refuses --lang lua by name with every other non-Go
-// target (docs/SPEC-TABLES.md §16.11).
-var testgenLua func(*ir.Unit) (map[string][]byte, error)
-
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -342,20 +336,14 @@ func main() {
 		// The unit is loaded as generate loads it, so the tests are of the
 		// same tables.
 		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
-		lang := fs.String("lang", "go", "target language (go; lua in a schema_leg_lua build; every other target refuses testgen by name)")
+		lang := fs.String("lang", "go", "target language (go or lua; every other target refuses testgen by name)")
 		out := fs.String("out", "generated", "output directory: the directory generate wrote")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
-		var files map[string][]byte
-		var err error
-		if *lang == "lua" && testgenLua != nil {
-			files, err = testgenLua(unit)
-		} else {
-			files, err = c.Testgen(unit, *lang)
-		}
+		files, err := c.Testgen(unit, *lang)
 		if err != nil {
 			fail(err)
 		}
@@ -644,7 +632,7 @@ func main() {
 		// files, makefile, harness, one passing fixture. Not a codec. The
 		// writer is this command; fmt remains the only command that writes a
 		// .schema file. Flags may sit before or after the language name so
-		// `schema new-leg lua --verbose` is the same command as flags-first.
+		// `schema new-leg zig --verbose` is the same command as flags-first.
 		lang, root, verbose, err := parseNewLegArgs(os.Args[2:])
 		if err != nil {
 			fail(err)
@@ -813,7 +801,7 @@ not silent; --tolerate accepts it.
 
 testgen writes round-trip and damage tests beside the code generate wrote:
 Go emits one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
-§16.11), and a schema_leg_lua build writes and runs the Lua target's. Every other --lang is refused by name.
+§16.11), and Lua one <Base>Table_gen_test.lua. Every other --lang is refused by name.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes
@@ -1022,7 +1010,7 @@ func removeStaleGoFiles(dir string, files map[string][]byte, pkg string, schemaB
 }
 
 // parseNewLegArgs accepts flags before or after the language name, so
-// `schema new-leg lua --root .` is one command with `schema new-leg --root . lua`.
+// `schema new-leg zig --root .` is one command with `schema new-leg --root . zig`.
 func parseNewLegArgs(args []string) (lang, root string, verbose bool, err error) {
 	root = "."
 	var pos []string
@@ -1049,7 +1037,7 @@ func parseNewLegArgs(args []string) (lang, root string, verbose bool, err error)
 		}
 	}
 	if len(pos) != 1 {
-		return "", "", false, fmt.Errorf("new-leg needs the language name: schema new-leg lua")
+		return "", "", false, fmt.Errorf("new-leg needs the language name: schema new-leg zig")
 	}
 	return pos[0], root, verbose, nil
 }

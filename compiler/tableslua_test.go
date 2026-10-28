@@ -1,5 +1,3 @@
-//go:build schema_leg_lua
-
 // TestLuaGeneratesWideKinds: the lua target emits the fixed-point and 128-bit
 // table kinds instead of refusing them (docs/SPEC-TABLES.md §3, §15): the
 // fixed form names no kind, so the wide scalars are their declared storage

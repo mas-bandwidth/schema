@@ -8,7 +8,7 @@ It is written in the house order: the value model first, because every codec
 stands on it, then the files, then how the leg is held.
 
 What exists after the design card (schema-lua-port-design): the target
-(`compiler/target_lua.go`, behind the `schema_leg_lua` build tag), the TYPE
+(`compiler/target_lua.go`, a builtin target since 2026-10-28), the TYPE
 SURFACE (`internal/codegen/lua`: a module per schema file with constants,
 enums, flags, union tags and constructors), the TABLE SURFACE
 (`internal/codegen/luatable`: one descriptor per table and per table-side
@@ -137,7 +137,7 @@ Fixed now, for the pro cards. Never rename it.
 
 | path | what |
 |---|---|
-| `compiler/target_lua.go` | the target, behind `//go:build schema_leg_lua` until the wires have claims |
+| `compiler/target_lua.go` | the target, a builtin of the ordinary `bin/schema` |
 | `internal/codegen/lua/lua.go` | the TYPE emitter; `RegisterPass` (a later file's `init()` adds its emission step) and `RegisterRuntime` (its embedded `runtime/*.lua`), so no later card edits lua.go |
 | `internal/codegen/lua/read.go`, `write.go` | the type wire, later; each embeds `runtime/*.lua` by glob and registers it |
 | `internal/codegen/lua/runtime/*.lua` | the type-wire runtime (`bitreader.lua`, `bitwriter.lua`), emitted beside the modules |
@@ -147,7 +147,7 @@ Fixed now, for the pro cards. Never rename it.
 | `internal/codegen/luatable/runtime/*.lua` | the table runtime, one file per card; `descriptor.lua` (the shared descriptor walk) is the first |
 | `test/conformance/lua/driver` | hands every surface to `test/conformance/lua/main.lua`; ABSENT (empty list, exit 2) while that file is absent |
 | `test/conformance/lua/ci.json` | the conformance targets and the `lua` toolchain field |
-| `make/lua.mk` | `dist-lua`, `toolchain-lua`, `test-lua`, `build/schema-lua`, `build/conformance-lua` |
+| `make/lua.mk` | `dist-lua`, `toolchain-lua`, `test-lua`, `generated/lua` and `generated/lua-ludicrous`, `build/conformance-lua` |
 
 **How a module requires its runtime.** A unit is generated into one
 directory, and that directory goes on `package.path` (`<dir>/?.lua`). A

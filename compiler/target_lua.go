@@ -1,13 +1,8 @@
-//go:build schema_leg_lua
-
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
-// Scaffolded by `schema new-leg lua`; the design is docs/PORT-LUA.md. The
-// schema_leg_lua tag keeps this target out of the default nine until the
-// wire surfaces have claims in compiler/*_test.go; `go build -tags
-// schema_leg_lua` (make/lua.mk's build/schema-lua) is `schema generate --lang
-// lua`. Drop the tag when the port joins the builtins.
+// Scaffolded by `schema new-leg lua`; the design is docs/PORT-LUA.md. A
+// builtin target: the ordinary bin/schema is `schema generate --lang lua`.
 //
 // What it emits today is the TYPE SURFACE (internal/codegen/lua: constants,
 // enums, flags, unions, constructors) and the TABLE SURFACE
