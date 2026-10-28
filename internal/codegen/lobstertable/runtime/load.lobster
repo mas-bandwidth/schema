@@ -26,6 +26,8 @@ namespace schema_rt
 // blob_shared counter (§2.5), the reason a named rule gives and the verdict.
 // refused is the verdict, not an event (§3): a form byte this reader does not
 // carry, or a collection count past the storage cap on a variable root.
+// stopped is whether the read stopped short of the root body's terminator:
+// Go's Decode answering false (a mutable reader discards that value, §4.2).
 class LoadReport:
     unknown:int = 0
     kind_mismatch:int = 0
@@ -41,8 +43,13 @@ class LoadReport:
     // infinity, <Owner>.<field> (docs/SPEC-TABLES.md §3.3): every read, the
     // tolerant one too, refuses the wire and lands nothing.
     non_finite_float:string = ""
+    // RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the fields whose bytes a
+    // retaining load kept, and every unknown the load could not keep.
+    retained:int = 0
+    retain_lost:int = 0
     refused:bool = false
     reason:string = ""
+    stopped:bool = false
 
 class Record
 class Slot
@@ -94,9 +101,23 @@ class Slot:
     entries:[Value]
 
 // A Record is one table or packet type value, its slots in descriptor order.
+// RetainedField is ONE unknown field a retaining load kept, with every
+// reference replaced by the id it names (docs/SPEC-TABLES.md §6.6, RETENTION
+// FORM). It belongs to the body occurrence that carried it and dies with it.
+class RetainedField:
+    id:int
+    kind:int
+    payload:string
+    cost:int
+    placed:bool = false
+
 class Record:
     d:TableDescriptor
     fields:[Slot]
+    retained:[RetainedField] = []
+    // held marks a node record the root reaches, for the one pass at the end
+    // of a variable load that unlinks the records it does not (RELEASE)
+    held:bool = false
 
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
@@ -137,6 +158,26 @@ class Reader:
     off:int
     hi:int
     st:LoadState
+
+// RETAIN-UNKNOWN's per-kind hook (docs/SPEC-TABLES.md §6.6). A retaining load
+// registers one; `capture` sees one unknown field id with its payload already
+// delimited by the plain skip, and `lost` counts one excluded class the plain
+// walk met where the reader could name the field it
+class RetainCapture:
+    def capture(rec:Record, id:int, kind:int, payload:string, ids:[int]) -> void:
+        return
+    def lost() -> void:
+        return
+
+let retain_captures:[RetainCapture] = []
+
+def register_retain_capture(h:RetainCapture):
+    push(retain_captures, h)
+
+def active_retain_capture() -> RetainCapture?:
+    if length(retain_captures) == 0:
+        return nil
+    return retain_captures[length(retain_captures) - 1]
 
 def reader(st:LoadState, lo:int, hi:int) -> Reader:
     return Reader { b: st.data, lo: lo, off: lo, hi: hi, st: st }
@@ -564,7 +605,7 @@ def new_record(d:TableDescriptor) -> Record:
     let fields:[Slot] = []
     for(d.fields) f:
         push(fields, new_slot(f))
-    return Record { d: d, fields: fields }
+    return Record { d: d, fields: fields, retained: [] }
 
 def new_slot(f:FieldDescriptor) -> Slot:
     let sl = Slot { fd: f, present: false, count: 0, cell: Value {}, elems: [], entries: [] }
@@ -624,6 +665,7 @@ def field_default(f:FieldDescriptor) -> Value:
 // record it holds (Go's Model.Refill): a by-value body is a member of its
 // parent, reset rather than replaced.
 def refill(rec:Record) -> void:
+    rec.retained = []
     for(rec.fields) sl:
         let held = sl.cell.tab
         let elems:[Record?] = []
@@ -748,6 +790,9 @@ def enum_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
     if v < 0:
         cell.i = 0
         rep.unknown++
+        let retain = active_retain_capture()
+        if retain:
+            retain.lost()
         return true
     cell.i = v
     return true
@@ -932,13 +977,24 @@ let wide_shape = register_shape(WideShape { key: "wstr" })
 // nested_body decodes a by-value body framed by its own L into rec (§3): a
 // body whose terminator is not the last byte of its L is framing damage and
 // falls back on its declared defaults, staying the body it was.
-def nested_body(r:Reader, rec:Record) -> bool:
+def nested_body(r:Reader, sl:Slot, i:int) -> bool:
     let rep = r.st.report
     let missing_before = rep.missing_required
     let n, ok = leb(r)
     if not ok or not has(r, n):
         rep.malformed = true
         return false
+    // the body is RESET only once its L frames (Go's field and element): a
+    // payload whose L the wire cannot cover leaves the value standing
+    let held = if i < 0: sl.cell.tab else: sl.elems[i].tab
+    var rec = new_record(table_of(if i < 0: sl.fd.t else: elem_of(sl.fd).t))
+    if held:
+        refill(held)
+        rec = held
+    if i < 0:
+        sl.cell.tab = rec
+    else:
+        sl.elems[i].tab = rec
     let sr = sub(r, n)
     body_at(sr, rec, true, false)
     if r.st.count_refused:
@@ -956,21 +1012,9 @@ def nested_body(r:Reader, rec:Record) -> bool:
 
 class TableShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
-        let held = sl.cell.tab
-        var rec = new_record(table_of(sl.fd.t))
-        if held:
-            refill(held)
-            rec = held
-        sl.cell.tab = rec
-        return nested_body(r, rec)
+        return nested_body(r, sl, -1)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
-        let held = sl.elems[i].tab
-        var rec = new_record(table_of(elem_of(sl.fd).t))
-        if held:
-            refill(held)
-            rec = held
-        sl.elems[i].tab = rec
-        return nested_body(r, rec)
+        return nested_body(r, sl, i)
 
 let table_shape = register_shape(TableShape { key: "tab" })
 
@@ -1164,6 +1208,9 @@ class KeyedShape : Shape
             let v = enum_value(keys, key_id)
             if v < 1 or v > f.bound:
                 rep.unknown++
+                let retain = active_retain_capture()
+                if retain:
+                    retain.lost()
                 sr.off += elem_len
                 continue
             let slot = v - 1
@@ -1272,6 +1319,9 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
     if tag == 0:
         reset_union(cell)
         rep.unknown++
+        let retain = active_retain_capture()
+        if retain:
+            retain.lost()
     else:
         let a = un.arms[tag - 1]
         let want = arm_wire_kind(a)
@@ -1559,9 +1609,13 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
         let found = slot_by_id(rec, id)
         if not found:
             rep.unknown++
+            let at0 = r.off
             if not skip(r, kind):
                 rep.malformed = true
                 return false
+            let retain = active_retain_capture()
+            if retain:
+                retain.capture(rec, id, kind, substring(r.b, at0, r.off - at0), r.st.ids)
             continue
         let sl = found
         let f = sl.fd
@@ -1733,6 +1787,9 @@ def decode_variable(st:LoadState, root:Record, hi:int):
                 node = Node { kind: 1, rec: new_record(d), blob: nil }
             else:
                 rep.unknown++
+                let retain = active_retain_capture()
+                if retain:
+                    retain.lost()
         push(st.nodes, node)
     for(records) rec, i:
         let node = st.nodes[i]
@@ -1740,7 +1797,9 @@ def decode_variable(st:LoadState, root:Record, hi:int):
         if node.kind == 1 and nr and not st.count_refused:
             body_at(reader(st, rec.lo, rec.hi), nr, true, false)
     if not st.count_refused:
-        body_at(reader(st, 1, hi), root, false, false)
+        st.report.stopped = not body_at(reader(st, 1, hi), root, false, false)
+    if length(st.nodes) > 0:
+        unlink_unreached(st, root)
 
 // load_tolerant is THE TOLERANT READ, by its own name (docs/SPEC-TABLES.md
 // §6.5): it reads a form-1 wire at the root table named root into a fresh
@@ -1753,6 +1812,7 @@ def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
     let rec = load_walk(root, data, report)
     if report.non_finite_float != "":
         report.reason = "non_finite_float: " + report.non_finite_float
+        release(rec)
         return nil
     return rec
 
@@ -1787,38 +1847,125 @@ def strict_reason(rep:LoadReport) -> string:
 def load(root:string, data:string, report:LoadReport) -> Record?:
     let rec = load_tolerant(root, data, report)
     if strict_reason(report) != "":
+        release(rec)
         return nil
     return rec
+
+// RELEASE (docs/PORT-LOBSTER.md, THE LOAD). Lobster frees by reference
+// counting, and a pointer graph is legal with a cycle (§3.1): a tolerant load
+// places it, and a cycle of Records outlives every reference the caller
+// holds. Two rules keep a load from leaking:
+//
+// - THE LOAD OWNS WHAT THE ROOT DOES NOT REACH. At the end of a variable
+//   load, a node record no pointer path from the root reaches (an orphan,
+//   or a cycle among orphans) has its own pointer edges unlinked, so nothing
+//   holds it once the load returns. A reached record is untouched.
+// - THE CALLER OWNS WHAT THE ROOT REACHES, and release(root) is the
+//   owner-side end of it: every pointer edge reachable from the root is
+//   cleared, so each record's count falls to what the caller still holds.
+//   A load that answers nil after decoding (a refusal) releases its own
+//   record first. After release the graph's pointers read null.
+//
+// Both walks clear an edge before following it, so they end on any graph,
+// and both keep an explicit work list, so a long chain costs no stack.
+
+// rec_edges walks one record and the records it holds BY VALUE (bodies,
+// arms, elements, map entries), collecting the pointer targets into nodes,
+// and clearing each pointer edge when clear is set.
+def rec_edges(rec:Record, nodes:[Record], clear:bool) -> void:
+    let stack:[Record] = [rec]
+    while length(stack) > 0:
+        let r = pop(stack)
+        for(r.fields) sl:
+            slot_edges(stack, nodes, sl, clear)
+
+def slot_edges(stack:[Record], nodes:[Record], sl:Slot, clear:bool) -> void:
+    value_edges(stack, nodes, sl.cell, clear)
+    for(sl.elems) v:
+        value_edges(stack, nodes, v, clear)
+    for(sl.entries) v:
+        value_edges(stack, nodes, v, clear)
+
+def value_edges(stack:[Record], nodes:[Record], v:Value, clear:bool) -> void:
+    let n = v.node
+    if n:
+        push(nodes, n)
+        if clear:
+            v.node = nil
+    let t = v.tab
+    if t:
+        push(stack, t)
+    let a = v.arm
+    if a:
+        slot_edges(stack, nodes, a, clear)
+
+// unlink_unreached is the load's own pass: mark what the root reaches, unlink
+// every node record it does not, then clear the marks.
+def unlink_unreached(st:LoadState, root:Record) -> void:
+    let marked:[Record] = [root]
+    let work:[Record] = [root]
+    root.held = true
+    while length(work) > 0:
+        let found:[Record] = []
+        rec_edges(pop(work), found, false)
+        for(found) n:
+            if not n.held:
+                n.held = true
+                push(marked, n)
+                push(work, n)
+    for(st.nodes) node:
+        let nr = node.rec
+        if nr and not nr.held:
+            rec_edges(nr, [], true)
+    for(marked) r:
+        r.held = false
+
+// release is the owner-side end of a loaded graph (above).
+def release(root:Record?) -> void:
+    let work:[Record] = []
+    if root:
+        push(work, root)
+    while length(work) > 0:
+        let found:[Record] = []
+        rec_edges(pop(work), found, true)
+        for(found) n:
+            push(work, n)
 
 // load_walk is the framing walk both reads share (Go's decodeWalk).
 def load_walk(root:string, data:string, report:LoadReport) -> Record?:
     if length(data) < 1:
         report.malformed = true
+        report.stopped = true
         return nil
     let form = data[0]
     if form != 1:
         report.refused = true
+        report.stopped = true
         report.reason = if form == 2: "message_form_as_file" else: "form"
         return nil
     let rec = new_record(table_of(root))
     let ids, first, ok = trailer(data)
     if not ok:
         report.malformed = true
+        report.stopped = true
         return rec
     let st = LoadState { data: data, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
     let end, terminated = body_extent(st, first)
     if terminated and end != first:
         report.malformed = true
+        report.stopped = true
         return rec
     if not rec.d.variable:
-        body_at(reader(st, 1, first), rec, false, false)
+        report.stopped = not body_at(reader(st, 1, first), rec, false, false)
         if report.missing_required > 0:
             return nil
         return rec
     decode_variable(st, rec, first)
     if st.count_refused:
         report.refused = true
+        report.stopped = true
         return nil
     if report.missing_required > 0:
+        release(rec)
         return nil
     return rec

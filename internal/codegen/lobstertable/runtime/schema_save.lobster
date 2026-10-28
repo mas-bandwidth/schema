@@ -246,10 +246,33 @@ def sg_visit_union(g:SaveGraph, v:Value, d:FieldDescriptor) -> void:
         if sl:
             sg_visit_value(g, sl.cell, arm)
 
+// guard_holds is whether a guarded field rides (Go's Instance.GuardHolds):
+// every term of its guard names a bool field of this record holding the
+// value the branch wants, `!` before the name wanting false. A field under a
+// false guard is not written and is not an edge (§3.1, §4).
+def guard_holds(rec:Record, f:FieldDescriptor) -> bool:
+    for(f.when) term:
+        var name = term
+        var want = true
+        if length(term) > 0 and term[0] == '!':
+            name = substring(term, 1, length(term) - 1)
+            want = false
+        var found = false
+        for(rec.fields) other:
+            if not found and other.fd.name == name:
+                found = true
+                if other.cell.b != want:
+                    return false
+        if not found:
+            return false
+    return true
+
 def sg_visit_edges(g:SaveGraph, rec:Record) -> void:
     for(rec.fields) sl:
         let f = sl.fd
         if f.present != "" and not sl.present:
+            continue
+        if not guard_holds(rec, f):
             continue
         if f.s == "map":
             for(sg_map_order(f, sl)) at:
@@ -275,6 +298,24 @@ class SaveEncoder:
     // non_finite names the first NaN or infinity the writer met
     // (docs/SPEC-TABLES.md §3.3): the save refuses it as non_finite_float
     non_finite:string = ""
+
+// RETAIN-UNKNOWN's save-side hook (docs/SPEC-TABLES.md §6.6): a retaining save
+// registers one, and `tail` writes the fields the matching retaining load kept
+// at the END of the body they belong to, before its terminator (and, in the
+// root, before the node table).
+class RetainTail:
+    def tail(e:SaveEncoder, w:SaveOut, rec:Record) -> void:
+        return
+
+let retain_tails:[RetainTail] = []
+
+def register_retain_tail(h:RetainTail):
+    push(retain_tails, h)
+
+def active_retain_tail() -> RetainTail?:
+    if length(retain_tails) == 0:
+        return nil
+    return retain_tails[length(retain_tails) - 1]
 
 def save_wide_bytes(units:[int]) -> string:
     var out = zeros(length(units) * 2)
@@ -708,7 +749,11 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
 // one-byte zero reference that ends it (§3).
 def encode_body_fields(e:SaveEncoder, w:SaveOut, rec:Record) -> void:
     for(rec.fields) sl:
-        encode_field(e, w, sl)
+        if guard_holds(rec, sl.fd):
+            encode_field(e, w, sl)
+    let tail = active_retain_tail()
+    if tail:
+        tail.tail(e, w, rec)
 
 def encode_body(e:SaveEncoder, rec:Record) -> string:
     let w = SaveOut {}
