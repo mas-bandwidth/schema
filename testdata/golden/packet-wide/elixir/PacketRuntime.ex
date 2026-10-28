@@ -7,22 +7,20 @@
 defmodule Wide.PacketRuntime do
   @moduledoc """
   The shared support of the unit's packet codecs: the bit-window decodes,
-  the bit-transparent float conversions, the compressed-float arithmetic and
-  the wide-string loops. Every generated file module imports what it calls
-  from here; nothing here is called by application code.
+  the float conversions, the compressed-float arithmetic and the wide-string
+  loops. Every generated file module imports what it calls from here; nothing
+  here is called by application code.
 
-  Floats travel bit-transparently: a non-finite IEEE-754 pattern, which no
-  BEAM float can hold, reads back as `{:nonfinite, bits}` and writes from the
-  same form.
+  A packet float is FINITE (SPEC §4.3, serialize format 2.0): its pattern
+  rides bit exact, `-0.0` and the subnormals included. A write of anything
+  that is not a finite float of the width raises ArgumentError
+  `non_finite_float`, and a read refuses an all-ones exponent on the raw
+  bits, before any float is formed, by throwing `:invalid` to the reader's
+  surface. A BEAM float can hold no NaN or infinity, so every value a read
+  returns is a plain float.
   """
 
   import Bitwise
-
-  @typedoc "A float32 value: a float, or the pattern of a non-finite one."
-  @type float32 :: float() | {:nonfinite, 0..0xFFFFFFFF}
-
-  @typedoc "A float64 value: a float, or the pattern of a non-finite one."
-  @type float64 :: float() | {:nonfinite, 0..0xFFFFFFFFFFFFFFFF}
 
   @doc """
   Decodes `bits` (at most 33) bits of `data` at bit position `bits_read`,
@@ -66,107 +64,97 @@ defmodule Wide.PacketRuntime do
   end
 
   @doc """
-  The 32-bit IEEE-754 pattern of a float32 value, for the write path. A
-  finite float that overflows float32 raises ArgumentError, and so does a
-  `{:nonfinite, bits}` that carries a finite pattern.
+  The 32-bit IEEE-754 pattern of a float32 value, for the write path. Only a
+  float rides; a float that overflows float32, and any term that is not a
+  float (`:nan`, `:infinity`, an integer), raises ArgumentError
+  `non_finite_float`.
   """
-  @spec f32_bits(float32()) :: 0..0xFFFFFFFF
+  @spec f32_bits(float()) :: 0..0xFFFFFFFF
   def f32_bits(value) when is_float(value) do
     <<bits::little-32>> = <<value::float-32-little>>
 
     if (bits >>> 23 &&& 0xFF) == 0xFF do
-      raise ArgumentError, "float overflows float32; write {:nonfinite, bits} instead"
-    end
-
-    bits
-  end
-
-  def f32_bits({:nonfinite, bits}) when is_integer(bits) and bits >= 0 and bits <= 0xFFFFFFFF do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
+      raise ArgumentError, "non_finite_float: #{inspect(value)} overflows float32"
     end
 
     bits
   end
 
   def f32_bits(value) do
-    raise ArgumentError, "a float32 writes a float or {:nonfinite, bits}, got: #{inspect(value)}"
+    raise ArgumentError,
+          "non_finite_float: a float32 writes a finite float, got: #{inspect(value)}"
   end
 
   @doc """
-  The value of a 32-bit pattern, for the read path: the float for a finite
-  pattern, `{:nonfinite, bits}` otherwise. Never raises.
+  The value of a 32-bit pattern, for the read path: the float, or a thrown
+  `:invalid` (`non_finite_float`) when the raw exponent is all ones.
   """
-  @spec f32_value(0..0xFFFFFFFF) :: float32()
+  @spec f32_value(0..0xFFFFFFFF) :: float()
   def f32_value(bits) do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<value::float-32-little>> = <<bits::little-32>>
-      value
-    else
-      {:nonfinite, bits}
+    if (bits >>> 23 &&& 0xFF) == 0xFF do
+      throw(:invalid)
     end
+
+    <<value::float-32-little>> = <<bits::little-32>>
+    value
   end
 
   @doc """
-  Appends a float64 value to a byte-aligned binary: a float rides as a
-  native float segment, `{:nonfinite, bits}` as its pattern.
+  Appends a float64 value to a byte-aligned binary as a native float
+  segment; any term that is not a float raises ArgumentError
+  `non_finite_float`.
   """
-  @spec put_f64(binary(), float64()) :: binary()
+  @spec put_f64(binary(), float()) :: binary()
   def put_f64(data, value) when is_float(value), do: <<data::binary, value::little-float-64>>
-  def put_f64(data, value), do: <<data::binary, f64_bits(value)::little-64>>
+  def put_f64(_data, value), do: refuse_f64(value)
 
   @doc """
   Reads a float64 at a byte-aligned bit position the caller has already
-  bounded: a native float segment for a finite pattern, `{:nonfinite, bits}`
-  for the patterns a float segment refuses. Never raises inside the bound.
+  bounded. The raw exponent is tested first, on the two high bytes: all ones
+  throws `:invalid` (`non_finite_float`) before any float is formed, and
+  every other pattern is one native float segment.
   """
-  @spec get_f64(binary(), non_neg_integer()) :: float64()
+  @spec get_f64(binary(), non_neg_integer()) :: float()
   def get_f64(data, bits_read) do
     i = bits_read >>> 3
 
     case data do
+      <<_::binary-size(^i), _::48, 0xF::4, _::4, _::1, 0x7F::7, _::binary>> -> throw(:invalid)
       <<_::binary-size(^i), value::little-float-64, _::binary>> -> value
-      <<_::binary-size(^i), bits::little-64, _::binary>> -> {:nonfinite, bits}
     end
   end
 
   @doc """
   The 64-bit IEEE-754 pattern of a float64 value, for a write at a position
-  that is not byte-aligned. `{:nonfinite, bits}` carrying a finite pattern raises
-  ArgumentError.
+  that is not byte-aligned; any term that is not a float raises
+  ArgumentError `non_finite_float`.
   """
-  @spec f64_bits(float64()) :: 0..0xFFFFFFFFFFFFFFFF
+  @spec f64_bits(float()) :: 0..0xFFFFFFFFFFFFFFFF
   def f64_bits(value) when is_float(value) do
     <<bits::little-64>> = <<value::float-64-little>>
     bits
   end
 
-  def f64_bits({:nonfinite, bits})
-      when is_integer(bits) and bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
+  def f64_bits(value), do: refuse_f64(value)
 
-    bits
-  end
-
-  def f64_bits(value) do
-    raise ArgumentError, "a float64 writes a float or {:nonfinite, bits}, got: #{inspect(value)}"
+  defp refuse_f64(value) do
+    raise ArgumentError,
+          "non_finite_float: a float64 writes a finite float, got: #{inspect(value)}"
   end
 
   @doc """
   The value of a 64-bit pattern read at a position that is not
-  byte-aligned: the float for a finite pattern, `{:nonfinite, bits}`
-  otherwise. Never raises.
+  byte-aligned: the float, or a thrown `:invalid` (`non_finite_float`)
+  when the raw exponent is all ones.
   """
-  @spec f64_value(0..0xFFFFFFFFFFFFFFFF) :: float64()
+  @spec f64_value(0..0xFFFFFFFFFFFFFFFF) :: float()
   def f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
+    if (bits >>> 52 &&& 0x7FF) == 0x7FF do
+      throw(:invalid)
     end
+
+    <<value::float-64-little>> = <<bits::little-64>>
+    value
   end
 
   # A number rounded to its nearest float32 — one emulated float32 step
@@ -221,7 +209,7 @@ defmodule Wide.PacketRuntime do
   @spec cf_quantize(number(), float(), float(), non_neg_integer(), float()) :: non_neg_integer()
   def cf_quantize(value, min32, delta, miv, miv32) do
     if not is_number(value) do
-      raise ArgumentError, "a compressed float writes a finite number"
+      raise ArgumentError, "non_finite_float: a compressed float writes a finite number"
     end
 
     difference =
@@ -247,17 +235,17 @@ defmodule Wide.PacketRuntime do
   The reader's arithmetic, pinned the same way: the quotient rounds, the
   product rounds BEFORE min is added, and the sum rounds — float32
   throughout, never fused, never widened. The final add cannot overflow for
-  a conforming declaration; the non-finite mapping keeps the never-raise
-  reader obligation airtight.
+  a conforming declaration; were it to, the read refuses the value as
+  `non_finite_float` (a thrown `:invalid`) and never raises.
   """
-  @spec cf_decode(non_neg_integer(), float(), float(), float()) :: float32()
+  @spec cf_decode(non_neg_integer(), float(), float(), float()) :: float()
   def cf_decode(integer, miv32, delta, min32) do
     quotient = fr(fr(integer * 1.0) / miv32)
     scaled = fr(quotient * delta)
 
     case fr(scaled + min32) do
-      :pos_inf -> {:nonfinite, 0x7F800000}
-      :neg_inf -> {:nonfinite, 0xFF800000}
+      :pos_inf -> throw(:invalid)
+      :neg_inf -> throw(:invalid)
       value -> value
     end
   end

@@ -276,24 +276,24 @@ defmodule SchemaTestElixir do
       "offset reconstructs integer 142"
     )
 
-    # ---- {:nonfinite, bits}: the bit-transparent float convention ----
-    # BEAM floats cannot hold NaN or the infinities, so non-finite IEEE-754
-    # patterns travel as {:nonfinite, bits} — write accepts the form and the
-    # read reproduces the exact transmitted pattern.
-    nf = %{
-      test_data_instance()
-      | float_value: {:nonfinite, 0x7FC00001},
-        double_value: {:nonfinite, 0xFFF0000000000000}
-    }
-
-    nf_wire = Example.Wire.write_test_data!(nf)
-    {:ok, nf_out} = Example.Wire.read_test_data(nf_wire, byte_size(nf_wire) * 8)
-
-    check(
-      nf_out.float_value == {:nonfinite, 0x7FC00001} and
-        nf_out.double_value == {:nonfinite, 0xFFF0000000000000},
-      "non-finite patterns round-trip as {:nonfinite, bits}"
-    )
+    # ---- finite floats (SPEC §4.3): non_finite_float both ways ----
+    # BEAM floats cannot hold NaN or the infinities, and the packet wire
+    # carries neither: a write of any non-float refuses, and a read refuses
+    # an all-ones exponent on the raw bits. test/packet-finite holds the
+    # full vector set; this pins the rule on the main corpus's own fields.
+    for bad <- [{:nonfinite, 0x7FC00001}, :nan, :infinity] do
+      check(
+        match?(
+          {:error, "non_finite_float" <> _},
+          Example.Wire.write_test_data(%{test_data_instance() | float_value: bad})
+        ) and
+          match?(
+            {:error, "non_finite_float" <> _},
+            Example.Wire.write_test_data(%{test_data_instance() | double_value: bad})
+          ),
+        "a non-finite float write refuses as non_finite_float: #{inspect(bad)}"
+      )
+    end
 
     # ---- specified defaults: construction carries them; zero_* is the zero form ----
     check(%Example.ProbeSample{}.active, "ProbeSample.active defaults true")

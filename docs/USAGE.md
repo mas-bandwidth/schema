@@ -4642,9 +4642,11 @@ the wire binary, `read_<name>(data, num_bits)` returns the family verdict as
 packing intermediate stays under the BEAM's small-integer boundary (32-bit
 groups through a byte-granular scratch on the write side, the port's 40-bit
 windows on the read side), and loops are tail-recursive function heads.
-Integers of every width — 128-bit included — ride plain BEAM integers;
-non-finite float patterns, which no BEAM float term can hold, travel as
-`{:nonfinite, bits}`. Validation is always on: there is no compile-out
+Integers of every width — 128-bit included — ride plain BEAM integers.
+Floats are finite (SPEC §4.3): a write of anything but a float that fits the
+width raises `ArgumentError` with a `non_finite_float` message, a read refuses
+a NaN or an infinity on its raw bits, and `-0.0` and subnormals ride bit
+exact. Validation is always on: there is no compile-out
 assert on the BEAM, so writer contracts raise `ArgumentError` in every
 build (the O(1) checks only) and readers validate everything:
 

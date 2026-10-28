@@ -691,12 +691,13 @@
     {
       "name": "elixir",
       "when": "pull-request",
-      "why": "the Elixir port's small controls: the card driver's three (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface), its three packet families, the accessor offset, the allocation audit's refusal on a pin nothing runs, the I13 text differential, the keyed accessor's two ends, the runtime pin and the slot control. 2:02 of controls on the runner, plus 54 s for the slot control. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "why": "the Elixir port's small controls: the card driver's three (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface), its four packet families (the finite-float read check among them), the accessor offset, the allocation audit's refusal on a pin nothing runs, the I13 text differential, the keyed accessor's two ends, the runtime pin and the slot control. 2:02 of controls on the runner, plus 54 s for the slot control. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
       "targets": [
         "cards-elixir-conformance-negative-control",
         "cards-elixir-conformance-upgrade-negative-control",
         "cards-elixir-conformance-hash-negative-control",
         "packet-defaults-elixir-negative-control",
+        "packet-finite-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
         "tables-elixir-accessor-negative-control",

@@ -24,9 +24,9 @@
 #
 # zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the
 # specified defaults instead. Enum values are atoms, union values are nil,
-# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:
-# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads
-# back as {:nonfinite, bits} and writes from the same form.
+# {:arm, payload} or a payload-free :arm. Floats are finite (SPEC §4.3): a
+# write of a non-float raises non_finite_float, a read refuses a NaN or an
+# infinity on its raw bits, and -0.0 and subnormals ride bit exact.
 
 # DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
 defmodule Ludicrous.DriveMode do
