@@ -221,7 +221,13 @@ func elemDesc(g *Gen, f *ir.Field) string {
 	if isByteElem(f) && f.Array != ir.ArrayList {
 		byteElem = ", buf = true"
 	}
-	return "{ " + valueDesc(g, &e, false) + byteElem + " }"
+	// an element names its own wire kind too: the fixed form's plan compares
+	// it with the writer's layout entry (fixedform.go, table_fixed.moo)
+	kind := ""
+	if k := ir.TableWireScalarKind(&e); k != 0 {
+		kind = fmt.Sprintf(", k = %d", k)
+	}
+	return "{ " + valueDesc(g, &e, false) + byteElem + kind + " }"
 }
 
 // valueDesc is the shape of a non-array value and what it needs; def adds the
@@ -271,7 +277,7 @@ func valueDesc(g *Gen, f *ir.Field, def bool) string {
 		switch r := t.Ref.(type) {
 		case *ir.Enum:
 			_, init := g.scalar(f, def)
-			return fmt.Sprintf("s = \"enum\", t = %q, vs = %s, def = %s", r.Name, enumVariants(r), init)
+			return fmt.Sprintf("s = \"enum\", t = %q, vs = %s, fw = %d, def = %s", r.Name, enumVariants(r), r.StorageBits/8, init)
 		case *ir.Flags:
 			return intDesc(g, f, def)
 		case *ir.Union:
@@ -336,6 +342,11 @@ func intDesc(g *Gen, f *ir.Field, def bool) string {
 	kw := ir.TableKindWidth(kind)
 	signed := ir.TableKindSigned(kind)
 	parts := []string{"s = \"int\"", fmt.Sprintf("kw = %d", kw), fmt.Sprintf("signed = %v", signed), fmt.Sprintf("cls = %q", storageClass(f))}
+	// fw is the value's FIXED-FORM storage width (docs/SPEC-TABLES.md §3.4),
+	// which a bits(N) holds wider than its kind: the plan widens on it
+	if fw := ir.TableFixedStorageBytes(f.Type); fw > 0 {
+		parts = append(parts, fmt.Sprintf("fw = %d", fw))
+	}
 	if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
 		lo, hi := f.IntMin, f.IntMax
 		if f.Type.Kind == ir.TFixed {

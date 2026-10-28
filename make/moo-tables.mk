@@ -19,3 +19,16 @@ test-moo-tables: toolchain-moo
 # the table surface is part of the moo leg's `make test` half: test-moo (make/moo.mk)
 # takes it as a prerequisite, so the leg stays one leg (REGISTERED_LEGS)
 test-moo: test-moo-tables
+
+# THE FIXED FORM ON THE MOO LEG (docs/SPEC-TABLES.md §3.4,
+# docs/FIXED-FORM-ALGORITHM.md): internal/codegen/mootable/fixedform_test.go
+# reads the C++ reference's byte oracle out of build/fixedform-corpus — the nine
+# corpus files (§7 row 1), every versioning row's two columns, the floor, and
+# §5.3's refusals cut from fx1.bin. The harness SKIPS on a tree that never built
+# the oracle, so this target builds it first and SCHEMA_REQUIRE_CORPUS=1 makes
+# the skip a FAILURE.
+.PHONY: tables-moo-fixed
+tables-moo-fixed: toolchain-moo build/fixedform-corpus/.stamp
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooFixed|TestMooReadStrict'
+
+test-moo: tables-moo-fixed

@@ -34,7 +34,15 @@ func (mooTarget) Names() []string { return []string{"moo"} }
 // TestMooTableSaveRoundTripsEveryInstance and
 // TestMooTableLoadMatchesTheReports). What is not registered is refused here
 // or in compiler/generate.go by name.
-func (mooTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+func (t mooTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage is the second entry point of docs/FIXED-FORM-ALGORITHM.md
+// §5.9 #1: the driver read the unit's lock once (compiler/lineage.go) and
+// hands the fixed form's lineage down as DATA, so mootable opens no file and
+// a build ships a reader for every layout the lock records.
+func (mooTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	if err := refuseWideText(u, "moo"); err != nil {
 		return nil, err
 	}
@@ -54,7 +62,7 @@ func (mooTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	tables, err := mootable.Generate(u)
+	tables, err := mootable.GenerateLineage(u, mooTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
 	}
@@ -65,6 +73,27 @@ func (mooTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		files[name] = data
 	}
 	return files, nil
+}
+
+// mooTableLineage is the lock's lineage in the moo backend's own spelling.
+// Nil in, nil out: a unit with no lock hands nothing.
+func mooTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]mootable.FixedLineageEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := map[string][]mootable.FixedLineageEntry{}
+	for _, st := range ir.TableFixedFormRoots(u) {
+		for _, e := range lineage.Entries(st.Name) {
+			out[st.Name] = append(out[st.Name], mootable.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
 }
 
 func init() {
