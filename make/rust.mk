@@ -680,6 +680,46 @@ tables-rust-variable-fixed-class:
 
 test-rust: tables-rust-variable-fixed-class
 
+# THE COOK WRITE SIDE on the Rust leg (docs/SPEC-TABLES.md §7.6): every
+# manifest cook-write row the Rust writer reaches, loaded through the root's
+# form-1 reader and cooked in both byte orders by the generated
+# <t>_cook_write, byte for byte against the engine `schema cook` runs; the
+# reversed witnesses plant each layout rule's wrong answer into the oracle and
+# hold that the bytes this leg wrote tell it apart. SCHEMA_REQUIRE_CORPUS=1
+# turns the rustc skip into a failure, so the target never passes on a SKIP.
+.PHONY: tables-rust-cook-write
+tables-rust-cook-write:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteStandsDownOnTheExtent' -v
+	@echo 'tables Rust cook write: the storage value cooks to the bytes schema cook writes, in both byte orders'
+
+test-rust: tables-rust-cook-write
+
+# THE COOK WRITE's FINITE-FLOAT NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.3):
+# the generated put_f32/put_f64 refusal of a NaN or an infinity is sabotaged
+# away through a `go test -overlay` of internal/codegen/rusttable/cookwrite.go
+# (no tracked file is edited), and TestCookWriteRust must go red on its FINITE
+# probe and on nothing else.
+.PHONY: tables-rust-cook-write-negative-control
+tables-rust-cook-write-negative-control:
+	@rm -rf build/rust-cook-write-control && mkdir -p build/rust-cook-write-control
+	@sed 's|if !value.is_finite() {|if false \&\& !value.is_finite() {|' \
+		internal/codegen/rusttable/cookwrite.go > build/rust-cook-write-control/cookwrite.go.txt
+	@cmp -s internal/codegen/rusttable/cookwrite.go build/rust-cook-write-control/cookwrite.go.txt && \
+		{ echo "NEGATIVE CONTROL: the finite-float sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/cookwrite.go":"%s/build/rust-cook-write-control/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-cook-write-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-cook-write-control/overlay.json \
+			-run 'TestCookWriteRust$$' ./internal/codegen/rusttable/ > build/rust-cook-write-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the cook write stayed green with its finite-float refusal turned off"; \
+		exit 1; \
+	fi
+	@grep -q 'FINITE: ' build/rust-cook-write-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the finite probe"; \
+		  cat build/rust-cook-write-control/log; exit 1; }
+	@grep -m1 'FINITE: ' build/rust-cook-write-control/log
+	@echo "rust cook write negative control: a cook writer that lays a NaN down turns TestCookWriteRust RED on it"
+
 # THE MESSAGE FORM's BATCH on the Rust leg (docs/SPEC-TABLES.md §3.3):
 # MeasureMessages, SaveMessages and LoadMessages, byte for byte against the
 # manifest's message rows and the Go codec, beside the announcement.

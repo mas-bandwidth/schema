@@ -585,7 +585,7 @@
     {
       "name": "rust",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine. The tables soak's control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature: the allocator call count must go red while the live-heap drift line stays flat) rides here too: 6 s on the Linux bench, the fixed-form corpus and the generated Rust crates already built. The JSON-hostile control (the old reader planted through a go test overlay: exactly the fifteen \u00a716.3 refusal rows of TestJsonHostileTextRefusalsRust must red) rides here too: 2 s on the author's machine.",
+      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine. The tables soak's control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature: the allocator call count must go red while the live-heap drift line stays flat) rides here too: 6 s on the Linux bench, the fixed-form corpus and the generated Rust crates already built. The JSON-hostile control (the old reader planted through a go test overlay: exactly the fifteen \u00a716.3 refusal rows of TestJsonHostileTextRefusalsRust must red) rides here too: 2 s on the author's machine. The cook write's finite-float control (put_f32/put_f64's NaN and infinity refusal dropped through go test -overlay, so TestCookWriteRust must red on its FINITE probe alone) rides here too: 6 s on the author's machine.",
       "targets": [
         "cards-rust-conformance-negative-control",
         "cards-rust-conformance-upgrade-negative-control",
@@ -594,6 +594,7 @@
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
         "packet-wide-rust-negative-control",
+        "tables-rust-cook-write-negative-control",
         "tables-rust-json-hostile-negative-control",
         "tables-rust-names-negative-control",
         "tables-rust-runtime-home-negative-control",

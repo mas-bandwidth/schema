@@ -2177,3 +2177,209 @@ impl<'a> Jr<'a> {
         }
     }
 }
+
+// ---- the COOK WRITE side's region writer (docs/SPEC-TABLES.md §6.3, §7) ----
+
+/// One region being written: the DATA part, the byte order (1 little, 2 big),
+/// the numbering it lays out and each node's region offset, by index - 1 (the
+/// root is offset 0). A refusal clears ok and the cook writes nothing.
+#[cfg(feature = "cook")]
+pub struct TableRegionWriter<'a> {
+    pub data: Vec<u8>,
+    pub order: u64,
+    pub align: i64,
+    pub graph: &'a TableNodeGraph,
+    pub offsets: Vec<i64>,
+    pub ok: bool,
+}
+
+#[cfg(feature = "cook")]
+fn table_region_up(v: i64, a: i64) -> i64 {
+    (v + a - 1) / a * a
+}
+
+/// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base,
+/// then every node of the numbering in index order at its own alignment — a
+/// blob at eight, its u32 length, four zero bytes, its bytes and a *string
+/// blob's terminator — and the data part rounded to the region's alignment,
+/// the greatest record alignment, never below eight.
+#[cfg(feature = "cook")]
+pub fn table_region_layout(
+    g: &TableNodeGraph,
+    root_size: i64,
+    root_align: i64,
+    layout: fn(u64) -> Option<(i64, i64)>,
+    order: u64,
+) -> Result<TableRegionWriter<'_>, String> {
+    let mut align = root_align.max(8);
+    let mut offset = root_size;
+    let mut offsets = Vec::with_capacity(g.records.len() + 1);
+    offsets.push(0);
+    for rec in g.records.iter() {
+        match rec {
+            TableNodeRecord::Blob(type_id, blob) => {
+                if blob.len() as u64 > u32::MAX as u64 {
+                    return Err(String::from("invalid_value"));
+                }
+                offset = table_region_up(offset, 8);
+                offsets.push(offset);
+                offset += 8 + blob.len() as i64 + if *type_id == STRING_TYPE_ID { 1 } else { 0 };
+            }
+            TableNodeRecord::Table(type_id, _) => {
+                let Some((size, a)) = layout(*type_id) else {
+                    return Err(String::from("invalid_value"));
+                };
+                align = align.max(a);
+                offset = table_region_up(offset, a);
+                offsets.push(offset);
+                offset += size;
+            }
+        }
+    }
+    let bytes = table_region_up(offset, align);
+    Ok(TableRegionWriter { data: vec![0u8; bytes as usize], order, align, graph: g, offsets, ok: true })
+}
+
+#[cfg(feature = "cook")]
+impl TableRegionWriter<'_> {
+    pub fn fail(&mut self) {
+        self.ok = false;
+    }
+
+    /// One scalar of width bytes at a region offset, in the cook's byte order.
+    pub fn put(&mut self, at: i64, value: u64, width: u32) {
+        let at = at as usize;
+        for i in 0..width as usize {
+            let shift = if self.order == 2 { width as usize - 1 - i } else { i };
+            self.data[at + i] = (value >> (shift * 8)) as u8;
+        }
+    }
+
+    /// A float32 as its bit pattern; a NaN or an infinity refuses (§3.3).
+    pub fn put_f32(&mut self, at: i64, value: f32) {
+        if !value.is_finite() {
+            self.ok = false;
+            return;
+        }
+        self.put(at, value.to_bits() as u64, 4);
+    }
+
+    /// A float64 as its bit pattern; a NaN or an infinity refuses (§3.3).
+    pub fn put_f64(&mut self, at: i64, value: f64) {
+        if !value.is_finite() {
+            self.ok = false;
+            return;
+        }
+        self.put(at, value.to_bits(), 8);
+    }
+
+    /// A 128-bit integer: a big-endian region holds its high half first, as
+    /// it holds a u64 with its high byte first (§7.2).
+    pub fn put_wide(&mut self, at: i64, value: u128) {
+        let bytes = if self.order == 2 { value.to_be_bytes() } else { value.to_le_bytes() };
+        self.data[at as usize..at as usize + 16].copy_from_slice(&bytes);
+    }
+
+    /// string(N) or bytes(N): the used bytes, a zero tail, and the int32 used
+    /// length at its own piece; a value over its declared bound refuses.
+    pub fn put_text(&mut self, at: i64, bytes: &[u8], bound: usize, length_at: i64) {
+        if bytes.len() > bound {
+            self.ok = false;
+            return;
+        }
+        self.data[at as usize..at as usize + bytes.len()].copy_from_slice(bytes);
+        self.put(length_at, bytes.len() as u64, 4);
+    }
+
+    /// wstring(N): the used CODE UNITS, each a two-byte scalar in the cook's
+    /// byte order, and the int32 used length in units (§7.2).
+    pub fn put_units(&mut self, at: i64, units: &[u16], bound: usize, length_at: i64) {
+        if units.len() > bound {
+            self.ok = false;
+            return;
+        }
+        for (i, u) in units.iter().enumerate() {
+            self.put(at + 2 * i as i64, *u as u64, 2);
+        }
+        self.put(length_at, units.len() as u64, 4);
+    }
+
+    /// A reference slot to a table node: the SELF-RELATIVE delta from the
+    /// slot's own address to the node's start, and zero for null (§6.3).
+    pub fn ref_node<T>(&mut self, at: i64, node: &Option<Rc<T>>) {
+        match node {
+            None => self.put(at, 0, 8),
+            Some(n) => {
+                let index = self.graph.node_index(n) as usize;
+                self.ref_index(at, index);
+            }
+        }
+    }
+
+    /// A reference slot to a blob node, by the blob's identity (§2.5).
+    pub fn ref_blob(&mut self, at: i64, key: Option<usize>) {
+        match key {
+            None => self.put(at, 0, 8),
+            Some(k) => {
+                let index = self.graph.blob_index(k) as usize;
+                self.ref_index(at, index);
+            }
+        }
+    }
+
+    fn ref_index(&mut self, at: i64, index: usize) {
+        if index < 2 || index > self.offsets.len() {
+            self.ok = false; // a node the numbering does not carry
+            return;
+        }
+        let delta = self.offsets[index - 1] - at;
+        if delta == 0 {
+            self.ok = false;
+            return;
+        }
+        self.put(at, delta as u64, 8);
+    }
+
+    /// A blob node: its u32 length in the cook's order, then its bytes; the
+    /// pad word and a *string blob's terminator are the buffer's zeros.
+    pub fn put_blob(&mut self, at: i64, blob: &[u8]) {
+        self.put(at, blob.len() as u64, 4);
+        let from = at as usize + 8;
+        self.data[from..from + blob.len()].copy_from_slice(blob);
+    }
+
+    /// Frame the region (§7.1): the 64-byte header, the data part at
+    /// align_up(64, alignment), and the node directory — each node's offset
+    /// and type id — as the attribution part.
+    pub fn finish(self, g: &TableNodeGraph, root_type: u64, build: u64) -> Result<Vec<u8>, String> {
+        if !self.ok {
+            return Err(String::from("invalid_value"));
+        }
+        let data_offset = table_region_up(64, self.align) as usize;
+        let nodes = g.records.len() + 1;
+        let total = data_offset + self.data.len() + nodes * 16;
+        let mut out = TableRegionWriter { data: vec![0u8; total], order: self.order, align: self.align, graph: g, offsets: Vec::new(), ok: true };
+        out.put(0, 0x4b4f4f434d484353, 8);
+        out.put(8, build, 8);
+        out.put(16, self.order, 8);
+        out.put(24, self.data.len() as u64, 8);
+        out.put(32, (nodes * 16) as u64, 8);
+        out.put(40, self.align as u64, 8);
+        out.data[data_offset..data_offset + self.data.len()].copy_from_slice(&self.data);
+        let mut at = (data_offset + self.data.len()) as i64;
+        for k in 0..nodes {
+            let id = if k == 0 {
+                root_type
+            } else {
+                match &g.records[k - 1] {
+                    TableNodeRecord::Blob(type_id, _) => *type_id,
+                    TableNodeRecord::Table(type_id, _) => *type_id,
+                }
+            };
+            out.put(at, self.offsets[k] as u64, 8);
+            out.put(at + 8, id, 8);
+            at += 16;
+        }
+        Ok(out.data)
+    }
+}
