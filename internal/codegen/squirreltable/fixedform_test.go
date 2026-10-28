@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -353,4 +354,47 @@ print(same ? "NEGATIVE-CONTROL-GREEN\n" : "negative-control-red\n");
 	if !strings.Contains(out, "negative-control-red") {
 		t.Fatalf("the patched writer still agreed with the unpatched writer: %s", out)
 	}
+}
+
+// fixedNonFiniteValue is one manifest value the reference wrote as a NaN or
+// an infinity: its path, then the float's spelled bits ("nan|0x7F800001").
+var fixedNonFiniteValue = regexp.MustCompile(`^([A-Za-z0-9_.\[\]]+)=[^|]*\|0x([0-9A-Fa-f]{16}|[0-9A-Fa-f]{8})$`)
+
+// fixedNonFinite reads, per file of the corpus manifest, the path of the first
+// value the reference wrote as a NaN or an infinity, and "" for a file that
+// holds none, as the Go leg's fixedOracleManifestNonFinite does: such a file
+// is a MUST-REFUSE vector under the finite rule (docs/SPEC-TABLES.md §3.3).
+func fixedNonFinite(t *testing.T, corpus string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, ok := strings.Cut(line, " values=")
+		if !ok {
+			continue
+		}
+		file := ""
+		for field := range strings.FieldsSeq(head) {
+			if v, ok := strings.CutPrefix(field, "file="); ok {
+				file = v
+			}
+		}
+		for value := range strings.SplitSeq(values, ",") {
+			m := fixedNonFiniteValue.FindStringSubmatch(value)
+			if m == nil {
+				continue
+			}
+			bits, err := strconv.ParseUint(m[2], 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (len(m[2]) == 8 && bits&0x7F800000 == 0x7F800000 || len(m[2]) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000) && file != "" && out[file] == "" {
+				out[file] = m[1]
+			}
+		}
+	}
+	return out
 }
