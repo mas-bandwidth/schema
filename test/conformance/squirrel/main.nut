@@ -8,13 +8,13 @@
 // The working directory is the repository root, so every path the manifest
 // names resolves from here. The generated corpus is build/conformance-squirrel
 // by default (make/squirrel.mk); $SCHEMA_SQUIRREL_CONFORMANCE overrides it, and
-// the negative control points the same driver at a sabotaged copy. The driver
-// answers the surfaces whose runtime is on the base: report (the variable wire's
-// read report, the table-wire-load card) and wire (load then save, the
-// table-wire-load and table-wire-save cards). A case whose unit the target
-// refuses, or whose construct its wire does not carry, is answered
-// `<case>.absent`. One process per surface, one file per case, and nothing on
-// stderr, which the driver script treats as a crash.
+// the negative controls (test/conformance/squirrel/negative-control) point the
+// same driver at a sabotaged copy. The driver answers every surface the harness
+// asks (`list`); a case whose unit the target refuses is answered
+// `<case>.absent`, and a writer's refusal BY NAME is the absence holding that
+// name. One process per surface, one file per case, and nothing on stderr,
+// which the driver script treats as a crash: a failure throws, it is never
+// answered as an absence.
 
 local argv = vargv;
 if (argv.len() < 2) { return; }

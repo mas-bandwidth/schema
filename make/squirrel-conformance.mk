@@ -69,7 +69,7 @@ build/conformance-squirrel: $(wildcard internal/codegen/squirreltable/runtime/*.
 # fall below SQUIRREL_WIRE_PIN — the count at the head this gate landed on.
 # Setting it lower is how a regression becomes a new baseline, so it is raised
 # only when a card adds wire cases (docs/SPEC-TABLES.md §3).
-SQUIRREL_WIRE_PIN ?= 73
+SQUIRREL_WIRE_PIN ?= 79
 
 .PHONY: conformance-squirrel-wire-pin
 conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
@@ -93,3 +93,16 @@ conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
 		exit 1; \
 	fi; \
 	echo "Squirrel wire pin: $$cell (pin $(SQUIRREL_WIRE_PIN))"
+
+# J3 (docs/PORTING.md) — THE RELEASE TIER. The Squirrel leg's release act: the
+# whole conformance matrix pinned (a clean corpus, the wire count held), the
+# tolerant wire's differential fuzzer over both arms, and every conformance
+# negative control, each of which must go red on exactly its own surface.
+.PHONY: tables-squirrel-release
+tables-squirrel-release:
+	$(MAKE) conformance-squirrel-wire-pin
+	$(MAKE) tables-squirrel-wire-fuzz
+	$(MAKE) conformance-negative-control-squirrel
+	$(MAKE) conformance-negative-control-squirrel-walk
+	$(MAKE) conformance-negative-control-squirrel-block
+	$(MAKE) conformance-negative-control-squirrel-retain
