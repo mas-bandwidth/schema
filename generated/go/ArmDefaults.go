@@ -8,7 +8,7 @@
 package example
 
 import (
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // DefaultArm is the storage of schema type DefaultArm; WriteDefaultArm and

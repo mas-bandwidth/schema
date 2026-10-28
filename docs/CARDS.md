@@ -110,7 +110,7 @@ import "cards"
 
 Its `go.mod` requires the serialize.go runtime and the two historical units and
 replaces them with checkout-relative paths. The facade itself compiles with the
-Go standard library only; a customer needs `github.com/mas-bandwidth/serialize.go`
+Go standard library only; a customer needs `github.com/mas-bandwidth/serialize.go/v2`
 resolvable because the generated codecs call it.
 
 For adopting generated tables into a Go module of your own — the pinned
@@ -193,7 +193,7 @@ does not inherit replace directives from module `cards`:
 
 ```go
 replace cards => <checkout>/build/tables-generated-go/cards
-replace github.com/mas-bandwidth/serialize.go => <checkout>/../serialize.go
+replace github.com/mas-bandwidth/serialize.go/v2 => <checkout>/../serialize.go
 ```
 
 `make cards-example` is the runnable command. Its test runs the marked example

@@ -200,6 +200,7 @@ var catalog = []Entry{
 	e("test/js-tables", "JS table tests", "make test-js", "make test-js"),
 	e("test/js-view", "JS view listing program", "make tables-js-view", "make tables-js-view"),
 	e("test/packet-defaults", "packet default-value gates", "make test", "make test"),
+	e("test/packet-finite", "packet finite-float gates", "make test-go", "make test-go"),
 	e("test/packet-text", "packet UTF-8 gates", "make test", "make test"),
 	e("test/packet-void", "packet void-arm gates", "make test", "make test"),
 	e("test/packet-wide", "packet wide-text gates", "make test", "make test"),

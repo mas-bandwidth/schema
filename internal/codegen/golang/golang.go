@@ -112,7 +112,7 @@ func (g *gen) assemble() []byte {
 		std = append(std, `"unicode/utf8"`)
 	}
 	if g.needsSerialize {
-		ext = append(ext, `"github.com/mas-bandwidth/serialize.go"`)
+		ext = append(ext, `"github.com/mas-bandwidth/serialize.go/v2"`)
 	}
 	if len(std)+len(ext) > 0 {
 		h.WriteString("import (\n")

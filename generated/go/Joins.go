@@ -10,7 +10,7 @@ package example
 import (
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // ArmsAgree is the storage of schema type ArmsAgree; WriteArmsAgree and

@@ -764,7 +764,7 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 			t.Fatal(err)
 		}
 	}
-	mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", pkg, runtime)
+	mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", pkg, runtime)
 	if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -1361,7 +1361,7 @@ fixed table Root {
 	if err := os.MkdirAll(testDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	mod := fmt.Sprintf("module arglanetest\n\ngo 1.26\n\nrequire (\n\ttblw v0.0.0\n\ttblr v0.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\nreplace tblw => ../w\nreplace tblr => ../r\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+	mod := fmt.Sprintf("module arglanetest\n\ngo 1.26\n\nrequire (\n\ttblw v0.0.0\n\ttblr v0.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\nreplace tblw => ../w\nreplace tblr => ../r\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
 	if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte(mod), 0o600); err != nil {
 		t.Fatal(err)
 	}

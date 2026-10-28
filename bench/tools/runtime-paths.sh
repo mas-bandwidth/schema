@@ -165,7 +165,7 @@ EOF
         cp bench/go/go.mod "$RT_OVR/go.bench.mod"
         go mod edit \
             -replace "example=$ABS_ROOT/generated/go" \
-            -replace "github.com/mas-bandwidth/serialize.go=$ABS_SERIALIZE_GO" \
+            -replace "github.com/mas-bandwidth/serialize.go/v2=$ABS_SERIALIZE_GO" \
             "$RT_OVR/go.bench.mod"
         GO_MODFILE_ARG="-modfile=$ABS_ROOT/$RT_OVR/go.bench.mod"
     fi
@@ -223,7 +223,7 @@ verify_runtime() {
             return 1; }
         got="$(cd bench/go && go list $GO_MODFILE_ARG -m \
             -f '{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}' \
-            github.com/mas-bandwidth/serialize.go 2>/dev/null)"
+            github.com/mas-bandwidth/serialize.go/v2 2>/dev/null)"
         got="$(rp_dir "$got" || true)"
         if [ -z "$got" ] || [ "$got" != "$want" ]; then
             echo "go: the build resolves serialize.go to '${got:-<unresolvable>}' but the preamble would record SERIALIZE_GO=$SERIALIZE_GO ($want)" >&2

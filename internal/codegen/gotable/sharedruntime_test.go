@@ -161,7 +161,7 @@ func sharedRun(t *testing.T, u *ir.Unit, testSource string, rt Runtime, edit fun
 	if err != nil {
 		t.Fatal(err)
 	}
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", serialize, root))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", serialize, root))
 	files["values_test.go"] = []byte(testSource)
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

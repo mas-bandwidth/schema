@@ -552,7 +552,7 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 		"union WeaponFire\n{\n    laser LaserFire\n}\n\n"+
 		"type FireCommand\n{\n    fire WeaponFire\n}\n")
 	runtime := slowtest.SerializeGo(t, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["probe.go"] = []byte("package typed\n\n" +
 		"func probe(ship *Ship, command *FireCommand) (string, string) {\n" +
 		"\treturn EnumNameShipType(ship.ShipType), EnumNameWeaponFireType(command.Fire.Type)\n" +
@@ -626,7 +626,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 func TestClampTopOfRange(t *testing.T) {
@@ -654,7 +654,7 @@ func TestClampTopOfRange(t *testing.T) {
 `, steps, reference, reference)
 
 	runtime := slowtest.SerializeGo(t, "../../../")
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["clamp_test.go"] = []byte(probe)
 
 	dir := t.TempDir()
@@ -667,5 +667,51 @@ func TestClampTopOfRange(t *testing.T) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the clamped writer failed its probe: %v\n%s", err, out)
+	}
+}
+
+// TestGoFlatFloatsAreFiniteOnly pins SPEC §4.3's finite rule where the Go
+// target owns it. A flat run places a bare float's bits itself and never
+// reaches serialize.go's SerializeFloat32/64, so the generated writer must
+// refuse a NaN or an infinity, and the generated reader a pattern whose
+// exponent field is all ones, each with serialize.ErrNonFiniteFloat. A
+// single-float struct keeps the per-field form, whose runtime call carries
+// the rule, and emits no guard of its own. make packet-finite-go runs the
+// vectors and packet-finite-go-negative-control proves each guard is load
+// bearing.
+func TestGoFlatFloatsAreFiniteOnly(t *testing.T) {
+	t.Parallel()
+	files := generateGo(t, "Finite", "package t\n\n"+
+		"type Flat\n{\n    a float32\n    b float64\n    c bool\n}\n\n"+
+		"type Single\n{\n    x float32\n}\n")
+	want := map[string][]string{
+		"func WriteFlat(": {
+			"\tif math.Float32bits(value.A)&0x7f800000 == 0x7f800000 {",
+			"\tif math.Float64bits(value.B)&0x7ff0000000000000 == 0x7ff0000000000000 {",
+		},
+		"func ReadFlat(": {
+			"\tif v0&0x7f800000 == 0x7f800000 {",
+			"\tif v1&0x7ff0000000000000 == 0x7ff0000000000000 {",
+		},
+	}
+	for decl, guards := range want {
+		body := funcBody(t, files, decl)
+		for _, guard := range guards {
+			if !strings.Contains(body, guard) {
+				t.Errorf("%s emits no finite guard %q\n%s", decl, guard, body)
+			}
+		}
+		if got := strings.Count(body, "return serialize.ErrNonFiniteFloat"); got != 2 {
+			t.Errorf("%s refuses non_finite_float %d times, want one per float field\n%s", decl, got, body)
+		}
+	}
+	for _, decl := range []string{"func WriteSingle(", "func ReadSingle("} {
+		body := funcBody(t, files, decl)
+		if !strings.Contains(body, "stream.SerializeFloat32(&value.X)") {
+			t.Errorf("%s left the per-field form, so the shape under test did not arise\n%s", decl, body)
+		}
+		if strings.Contains(body, "ErrNonFiniteFloat") {
+			t.Errorf("%s guards a float the runtime already refuses\n%s", decl, body)
+		}
 	}
 }

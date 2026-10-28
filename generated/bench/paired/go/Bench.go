@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // ProtocolID is the unit's protocol id, the hash of its wire shape. Two
@@ -63,6 +63,15 @@ func WriteBenchPacket(stream *serialize.WriteStream, value *BenchPacket) error {
 	}
 	if value.C < -1000000 || value.C > 1000000 {
 		return serialize.ErrValueOutOfRange
+	}
+	if math.Float32bits(value.X)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.Y)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float32bits(value.Z)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
 	}
 	f0 := uint64(value.A+100) & 0xff
 	f1 := uint64(value.B) & 0xffff
@@ -127,10 +136,19 @@ func ReadBenchPacket(stream *serialize.ReadStream, value *BenchPacket) error {
 	v6 := (c1 >> 24) & 0x1
 	value.Flag = v6 != 0
 	v7 := (c1 >> 25) & 0xffffffff
+	if v7&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.X = math.Float32frombits(uint32(v7))
 	v8 := (c1>>57 | c2<<7) & 0xffffffff
+	if v8&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.Y = math.Float32frombits(uint32(v8))
 	v9 := (c2 >> 25) & 0xffffffff
+	if v9&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.Z = math.Float32frombits(uint32(v9))
 	v10 := c2>>57 | c3<<7
 	value.Big = v10
@@ -1286,6 +1304,12 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 		return stream.Err()
 	}
 	stream.SerializeBytes(value.Payload[:value.PayloadLength])
+	if math.Float32bits(value.Recoil)&0x7f800000 == 0x7f800000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
+	if math.Float64bits(value.Drift)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	f41 := uint64(0)
 	normalizedValue := (value.AimX + 1.0) / 2.0
 	if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
@@ -1672,8 +1696,14 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 	normalizedValue3 := float32(v43) / 200.0
 	value.AimZ = float32(normalizedValue3*2.0) - 1.0
 	v44 := (c12 >> 24) & 0xffffffff
+	if v44&0x7f800000 == 0x7f800000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.Recoil = math.Float32frombits(uint32(v44))
 	v45 := c12>>56 | c13<<8
+	if v45&0x7ff0000000000000 == 0x7ff0000000000000 { // a NaN or infinity pattern is refused on its raw bits
+		return serialize.ErrNonFiniteFloat
+	}
 	value.Drift = math.Float64frombits(v45)
 	stream.SerializeUint128(&value.WideKey)
 	stream.SerializeInt128(&value.Flux, serialize.Int128{Lo: 0x0, Hi: 0xfffffff000000000}, serialize.Int128{Lo: 0x0, Hi: 0x1000000000})

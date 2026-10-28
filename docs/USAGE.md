@@ -3966,11 +3966,11 @@ imports the standard library alone, so the files drop into any Go module
 with nothing added to its `go.mod`. The one exception is the 128-bit widths:
 a field of `int128`, `uint128` or a 128-bit `fixed`/`ufixed` stores in the
 generated code as `serialize.Int128`/`serialize.Uint128`, so the unit imports
-`github.com/mas-bandwidth/serialize.go` — and then the module carries the
+`github.com/mas-bandwidth/serialize.go/v2` — and then the module carries the
 one dependency, resolved at a tagged version with NO `replace`:
 
 ```
-require github.com/mas-bandwidth/serialize.go <tag>
+require github.com/mas-bandwidth/serialize.go/v2 <tag>
 ```
 
 **The two classes are two units.** A variable table — a `table`, pointers

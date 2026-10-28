@@ -708,7 +708,7 @@ func (g *tableGen) assembleForm(name string, form Form, body string) ([]byte, er
 
 // formImports is every import an optional form's file may need, in the order
 // a core file spells them.
-var formImports = []string{`"encoding/binary"`, `"unicode/utf8"`, `"sync"`, `"sync/atomic"`, `"slices"`, `"math"`, `"time"`, `"unsafe"`, `"github.com/mas-bandwidth/serialize.go"`}
+var formImports = []string{`"encoding/binary"`, `"unicode/utf8"`, `"sync"`, `"sync/atomic"`, `"slices"`, `"math"`, `"time"`, `"unsafe"`, `"github.com/mas-bandwidth/serialize.go/v2"`}
 
 // usedImports keeps the imports body refers to: a selector on an identifier
 // the file does not declare (go/parser leaves it unresolved) names a package.
@@ -800,7 +800,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 		std = append(std, `"unsafe"`)
 	}
 	if usesSerialize {
-		std = append(std, `"github.com/mas-bandwidth/serialize.go"`)
+		std = append(std, `"github.com/mas-bandwidth/serialize.go/v2"`)
 	}
 	// the core's imports are its own: what an optional form needed went with it
 	h.WriteString(goImports(usedImports(g.types.String()+g.body.String(), std)))
@@ -1974,7 +1974,7 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 
 // rtImportName is the name a file refers to an import by: its own name, else
 // the path's last element without a ".go" suffix
-// (github.com/mas-bandwidth/serialize.go is package serialize).
+// (github.com/mas-bandwidth/serialize.go/v2 is package serialize).
 func rtImportName(is *ast.ImportSpec) string {
 	if is.Name != nil {
 		return is.Name.Name

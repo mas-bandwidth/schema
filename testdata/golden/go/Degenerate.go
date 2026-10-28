@@ -8,7 +8,7 @@
 package example
 
 import (
-	"github.com/mas-bandwidth/serialize.go"
+	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
 // Vec2 is the storage of schema type Vec2; WriteVec2 and ReadVec2 carry it on

@@ -115,7 +115,7 @@ func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 				}
 			}
 			modDir := t.TempDir()
-			goMod := fmt.Sprintf("module subsetprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+			goMod := fmt.Sprintf("module subsetprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
 			if err := os.WriteFile(filepath.Join(modDir, "go.mod"), []byte(goMod), 0o600); err != nil {
 				t.Fatal(err)
 			}

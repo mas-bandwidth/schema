@@ -38,7 +38,7 @@ func main() {
 			os.Exit(1)
 		}
 		text := string(data)
-		if strings.Contains(text, "github.com/mas-bandwidth/serialize.go") {
+		if strings.Contains(text, "github.com/mas-bandwidth/serialize.go/v2") {
 			text = filter(text)
 		}
 		formatted, err := format.Source([]byte(text))
@@ -87,7 +87,7 @@ func pruneImports(text string) string {
 	var kept []string
 	for _, line := range lines[start+1 : end] {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.Contains(line, `"github.com/mas-bandwidth/serialize.go"`) {
+		if line == "" || strings.Contains(line, `"github.com/mas-bandwidth/serialize.go/v2"`) {
 			continue
 		}
 		path, err := strconv.Unquote(line)

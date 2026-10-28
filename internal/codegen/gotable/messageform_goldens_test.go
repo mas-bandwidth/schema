@@ -204,7 +204,7 @@ func runGoGoldens(t *testing.T, u *ir.Unit, testSource string) {
 		// with it, because a closure's view names every packet type including
 		// the cpp_native ones the sibling runtime carries — while the wire the
 		// message surface owes names none of them.
-		if bytes.Contains(data, []byte("github.com/mas-bandwidth/serialize.go")) || strings.HasSuffix(name, "View.go") {
+		if bytes.Contains(data, []byte("github.com/mas-bandwidth/serialize.go/v2")) || strings.HasSuffix(name, "View.go") {
 			delete(files, name)
 		}
 	}

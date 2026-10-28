@@ -1,0 +1,23 @@
+package finite
+
+// SPEC §4.3: a bare float is finite and rides as its IEEE-754 bit pattern.
+// Flat holds enough fields that the Go emitter packs it as one flat run and
+// places the float bits itself; Single32 and Single64 hold one float each, so
+// they keep the per-field form and reach the runtime's own float calls.
+
+type Flat
+{
+    a float32
+    b float64
+    c bool
+}
+
+type Single32
+{
+    x float32
+}
+
+type Single64
+{
+    x float64
+}

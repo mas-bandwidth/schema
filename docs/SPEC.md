@@ -1229,13 +1229,13 @@ it (§4.6).
   the reason `non_finite_float`, before the field is written. Every finite
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
-  (serialize v2.1.0), C (serialize.c v2.0.2), Rust (serialize.rs v3.1.0) and
-  JavaScript (serialize.js v2.0.1) enforce the rule through their serialize
-  runtime. Go and C# are still pinned to format 1.1 runtimes, and Java, Dart
-  and Elixir carry their own float codecs; those five still carry the 1.1
-  behaviour, where every pattern rides, until their own landings. A
-  *quantized* `float32` is a different field: its wire is the step index and
-  not the pattern, per its row below. The table forms keep their own float
+  (serialize v2.1.0), C (serialize.c v2.0.2), Rust (serialize.rs v3.1.0),
+  JavaScript (serialize.js v2.0.1) and Go (serialize.go v2.0.1) enforce the
+  rule through their serialize runtime. C# is still pinned to a format 1.1
+  runtime, and Java, Dart and Elixir carry their own float codecs; those four
+  still carry the 1.1 behaviour, where every pattern rides, until their own
+  landings. A *quantized* `float32` is a different field: its wire is the step
+  index and not the pattern, per its row below. The table forms keep their own float
   rule (SPEC-TABLES.md §3), which this paragraph does not change.
 
 The wire encodings are exactly classic serialize's — each row names its

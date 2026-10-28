@@ -16,7 +16,6 @@ package bench
 
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/serialize.go"
 	"math"
 	"slices"
 	"unicode/utf8"
