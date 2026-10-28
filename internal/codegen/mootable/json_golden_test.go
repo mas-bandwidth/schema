@@ -291,3 +291,39 @@ func readGolden(t *testing.T, name string) []byte {
 	}
 	return text
 }
+
+// TestMooJsonOneWalk is M9's moo cell (docs/PORTING.md): the text walk is ONE
+// runtime module, json.moo, byte-identical in every unit that carries the form,
+// and a generated table module carries no walk of its own — only its three
+// calls into it and the facts the descriptors lack.
+func TestMooJsonOneWalk(t *testing.T) {
+	m := readTextManifest(t)
+	want := Runtime()["json.moo"]
+	carried := 0
+	for _, key := range sortedKeys(m.units) {
+		u := loadUnit(t, m.units[key])
+		files, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, ok := files["json.moo"]
+		if ok != unitCarriesJson(u) {
+			t.Fatalf("unit %s: json.moo emitted %v, the unit carries json %v", key, ok, unitCarriesJson(u))
+		}
+		if !ok {
+			continue
+		}
+		carried++
+		if string(got) != string(want) {
+			t.Errorf("unit %s: json.moo differs from the runtime's", key)
+		}
+		for name, data := range files {
+			if strings.HasSuffix(name, "Table.moo") && strings.Contains(string(data), "local function read") {
+				t.Errorf("unit %s: %s carries a walk of its own", key, name)
+			}
+		}
+	}
+	if carried == 0 {
+		t.Fatal("no unit of the manifest carries json: the gate proves nothing")
+	}
+}
