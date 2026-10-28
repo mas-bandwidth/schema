@@ -155,7 +155,7 @@ func cT04Lineage(t *testing.T, oldSrc, newSrc string) (text string, own *ir.Unit
 func cT04R3(t *testing.T) {
 	text := cT04Retire(t, 2)
 	cT04Has(t, text, "lineage_fixed_floor = 2;", "R3 1 + the highest retired index")
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R3: lineage_fixed_load is not emitted")
 	}
@@ -188,7 +188,7 @@ func cT04R3(t *testing.T) {
 func cT04R32(t *testing.T) {
 	text := cT04Retire(t, 1)
 	cT04Has(t, text, "RETIRED:", "R32 the retired entry's mark is laid down")
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R32: lineage_fixed_load is not emitted")
 	}
@@ -227,7 +227,7 @@ func cT04R32(t *testing.T) {
 // header's hash: the header's eight bytes are taken as given and matched on.
 func cT04R10(t *testing.T) {
 	text := cT04Retire(t, 0)
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R10: lineage_fixed_load is not emitted")
 	}
@@ -258,7 +258,7 @@ func cT04R10(t *testing.T) {
 // after a returning read, never per record.
 func cT04R15(t *testing.T) {
 	text := cT04Retire(t, 0)
-	load := cT04Fn(text, "lineage_fixed_load")
+	load := cT04Fn(text, "lineage_fixed_load_tolerant")
 	if load == "" {
 		t.Fatal("R15: lineage_fixed_load is not emitted")
 	}

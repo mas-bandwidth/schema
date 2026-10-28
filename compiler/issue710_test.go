@@ -180,10 +180,10 @@ func TestIssue710TableRecovery(t *testing.T) {
 		}
 	}
 	checks := []string{
-		`Text v; TableReport r={0}; if(!text_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.label_length!=8 || strcmp(v.label,"untitled")) return 1;`,
-		`Rows v; TableReport r={0}; if(!rows_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`,
-		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 3; ok=mapping_load_builder(&b,wire,sizeof(wire),&r); if(!ok || !r.malformed || mapping_builder_root(&b)->past!=42 || mapping_builder_root(&b)->items.count) return 4; mapping_builder_shutdown(&b);`,
-		`Keyed v; TableReport r={0}; if(!keyed_load(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.items[0].value!=7 || v.items[1].value!=55) return 5;`,
+		`Text v; TableReport r={0}; if(!text_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.label_length!=8 || strcmp(v.label,"untitled")) return 1;`,
+		`Rows v; TableReport r={0}; if(!rows_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.items_count!=1 || v.items[0].value!=7) return 2;`,
+		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 3; ok=mapping_load_builder_tolerant(&b,wire,sizeof(wire),&r); if(!ok || !r.malformed || mapping_builder_root(&b)->past!=42 || mapping_builder_root(&b)->items.count) return 4; mapping_builder_shutdown(&b);`,
+		`Keyed v; TableReport r={0}; if(!keyed_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed || v.past!=42 || v.items[0].value!=7 || v.items[1].value!=55) return 5;`,
 	}
 	var csrc strings.Builder
 	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
@@ -390,7 +390,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 		for _, b := range wire {
 			fmt.Fprintf(&csrc, "%d,", b)
 		}
-		fmt.Fprintf(&csrc, "};%sBuilder b;TableReport r={0};int reason=0;if(!%s_builder_init(&b))return 1;if(%s_load_builder(&b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || %s_builder_root(&b)->past) return 2;if(%s_load_measure_ex(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=11)return 3;%s_builder_shutdown(&b); }\n", tc.root, tc.fn, tc.fn, tc.fn, tc.fn, tc.fn)
+		fmt.Fprintf(&csrc, "};%sBuilder b;TableReport r={0};int reason=0;if(!%s_builder_init(&b))return 1;if(%s_load_builder_tolerant(&b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || %s_builder_root(&b)->past) return 2;if(%s_load_measure_ex(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=11)return 3;%s_builder_shutdown(&b); }\n", tc.root, tc.fn, tc.fn, tc.fn, tc.fn, tc.fn)
 	}
 	csrc.WriteString("return 0;}\n")
 	issue710CompileRun(t, cdir, "cc", ".c", csrc.String())

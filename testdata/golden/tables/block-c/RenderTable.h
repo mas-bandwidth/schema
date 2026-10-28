@@ -78,6 +78,12 @@ typedef struct blockdemo_table_report_t
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
+       TableRefuseReason, the same value a measure's -1 and a cook's open
+       answer, set by every plain read name on its refusal and OK otherwise.
+       unknown, widened and retained alone leave it OK. The tolerant reads
+       never write it. */
+    int refuse_reason;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -2349,11 +2355,29 @@ enum {
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_DAMAGED=20,
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE=23,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED=24
 };
 static SCHEMA_UNUSED const uint8_t * blockdemo_table_cook_refuse(blockdemo_table_refuse_reason_t * out,blockdemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
+/* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
+   what the strict read refuses -- an unknown form, wire damage, a blob named
+   from two slots, a clamp or a kind mismatch -- and unknown, widened and
+   retained alone never refuse. decoded is the tolerant read's own answer.
+   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
+   them, and answers 1 when the plain name must refuse. */
+static SCHEMA_UNUSED int blockdemo_table_report_strict_refuses( blockdemo_table_report_t * report, int decoded )
+{
+    blockdemo_table_refuse_reason_t reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
+    if ( report->refused ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( !decoded || report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( report->blob_shared > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED; }
+    else if ( report->clamped > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_CLAMPED; }
+    else if ( report->kind_mismatch > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_KIND_MISMATCH; }
+    report->refuse_reason = reason;
+    return reason != SCHEMA_BLOCKDEMO_TABLE_REFUSE_OK;
+}
 #endif
 
 #ifndef SCHEMA_BLOCKDEMO_BUILD_VERSION
@@ -3884,7 +3908,10 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_camera_load( blockdemo_render_camera_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_camera_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_camera_load_tolerant( blockdemo_render_camera_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -3892,6 +3919,26 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load( blockdemo_render_camera_t
     blockdemo_render_camera_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_camera_load_body( &r, value );
+}
+
+/* The PLAIN render_camera_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_camera_load( blockdemo_render_camera_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_camera_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_camera_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_camera_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_camera_t * value)
@@ -4081,7 +4128,8 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_message_body(blockdemo_tab
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_camera_load_messages(blockdemo_render_camera_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_camera_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_camera_load_messages_tolerant(blockdemo_render_camera_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -4101,6 +4149,26 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_messages(blockdemo_render_
  for(i=0;i<bodies;i++){if(!blockdemo_render_camera_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_camera_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_camera_load_messages( blockdemo_render_camera_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_camera_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_camera_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_camera_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -4561,7 +4629,10 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_ship_load( blockdemo_render_ship_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_ship_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_ship_load_tolerant( blockdemo_render_ship_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -4569,6 +4640,26 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load( blockdemo_render_ship_t * v
     blockdemo_render_ship_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_ship_load_body( &r, value );
+}
+
+/* The PLAIN render_ship_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_ship_load( blockdemo_render_ship_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_ship_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_ship_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_ship_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_ship_t * value)
@@ -4894,7 +4985,8 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_message_body(blockdemo_table
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_ship_load_messages(blockdemo_render_ship_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_ship_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_ship_load_messages_tolerant(blockdemo_render_ship_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -4914,6 +5006,26 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_messages(blockdemo_render_sh
  for(i=0;i<bodies;i++){if(!blockdemo_render_ship_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_ship_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_ship_load_messages( blockdemo_render_ship_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_ship_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_ship_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_ship_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -5369,7 +5481,10 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_turret_load( blockdemo_render_turret_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_turret_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_turret_load_tolerant( blockdemo_render_turret_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -5377,6 +5492,26 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load( blockdemo_render_turret_t
     blockdemo_render_turret_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_turret_load_body( &r, value );
+}
+
+/* The PLAIN render_turret_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_turret_load( blockdemo_render_turret_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_turret_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_turret_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_turret_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_turret_t * value)
@@ -5647,7 +5782,8 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_message_body(blockdemo_tab
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_turret_load_messages(blockdemo_render_turret_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_turret_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_turret_load_messages_tolerant(blockdemo_render_turret_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -5667,6 +5803,26 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_messages(blockdemo_render_
  for(i=0;i<bodies;i++){if(!blockdemo_render_turret_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_turret_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_turret_load_messages( blockdemo_render_turret_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_turret_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_turret_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_turret_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -6014,7 +6170,10 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_missile_load( blockdemo_render_missile_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_missile_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_missile_load_tolerant( blockdemo_render_missile_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -6022,6 +6181,26 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load( blockdemo_render_missile
     blockdemo_render_missile_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_missile_load_body( &r, value );
+}
+
+/* The PLAIN render_missile_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_missile_load( blockdemo_render_missile_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_missile_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_missile_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_missile_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_missile_t * value)
@@ -6260,7 +6439,8 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_message_body(blockdemo_ta
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_missile_load_messages(blockdemo_render_missile_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_missile_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_missile_load_messages_tolerant(blockdemo_render_missile_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -6280,6 +6460,26 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_messages(blockdemo_render
  for(i=0;i<bodies;i++){if(!blockdemo_render_missile_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_missile_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_missile_load_messages( blockdemo_render_missile_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_missile_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_missile_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_missile_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -6629,7 +6829,10 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load( blockdemo_render_dynamic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_dynamic_prop_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_tolerant( blockdemo_render_dynamic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -6637,6 +6840,26 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load( blockdemo_render_dy
     blockdemo_render_dynamic_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_dynamic_prop_load_body( &r, value );
+}
+
+/* The PLAIN render_dynamic_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load( blockdemo_render_dynamic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_dynamic_prop_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_dynamic_prop_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_dynamic_prop_t * value)
@@ -6879,7 +7102,8 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_message_body(blockde
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages(blockdemo_render_dynamic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_dynamic_prop_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages_tolerant(blockdemo_render_dynamic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -6899,6 +7123,26 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages(blockdemo_r
  for(i=0;i<bodies;i++){if(!blockdemo_render_dynamic_prop_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_dynamic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages( blockdemo_render_dynamic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_dynamic_prop_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_dynamic_prop_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -7267,7 +7511,10 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_static_prop_load( blockdemo_render_static_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_static_prop_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_static_prop_load_tolerant( blockdemo_render_static_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -7275,6 +7522,26 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load( blockdemo_render_sta
     blockdemo_render_static_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_static_prop_load_body( &r, value );
+}
+
+/* The PLAIN render_static_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_static_prop_load( blockdemo_render_static_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_static_prop_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_static_prop_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_static_prop_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_static_prop_t * value)
@@ -7518,7 +7785,8 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_message_body(blockdem
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages(blockdemo_render_static_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_static_prop_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages_tolerant(blockdemo_render_static_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -7538,6 +7806,26 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages(blockdemo_re
  for(i=0;i<bodies;i++){if(!blockdemo_render_static_prop_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_static_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages( blockdemo_render_static_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_static_prop_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_static_prop_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -7928,7 +8216,10 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load( blockdemo_render_cosmetic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_cosmetic_prop_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_tolerant( blockdemo_render_cosmetic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -7936,6 +8227,26 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load( blockdemo_render_c
     blockdemo_render_cosmetic_prop_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_cosmetic_prop_load_body( &r, value );
+}
+
+/* The PLAIN render_cosmetic_prop_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load( blockdemo_render_cosmetic_prop_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_cosmetic_prop_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_cosmetic_prop_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_cosmetic_prop_t * value)
@@ -8202,7 +8513,8 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_message_body(blockd
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages(blockdemo_render_cosmetic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_cosmetic_prop_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages_tolerant(blockdemo_render_cosmetic_prop_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -8222,6 +8534,26 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages(blockdemo_
  for(i=0;i<bodies;i++){if(!blockdemo_render_cosmetic_prop_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_cosmetic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages( blockdemo_render_cosmetic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_cosmetic_prop_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_cosmetic_prop_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -8527,7 +8859,10 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_laser_load( blockdemo_render_laser_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_laser_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_laser_load_tolerant( blockdemo_render_laser_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -8535,6 +8870,26 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load( blockdemo_render_laser_t *
     blockdemo_render_laser_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_laser_load_body( &r, value );
+}
+
+/* The PLAIN render_laser_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_laser_load( blockdemo_render_laser_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_laser_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_laser_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_laser_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_laser_t * value)
@@ -8754,7 +9109,8 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_message_body(blockdemo_tabl
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_laser_load_messages(blockdemo_render_laser_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_laser_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_laser_load_messages_tolerant(blockdemo_render_laser_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -8774,6 +9130,26 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_messages(blockdemo_render_l
  for(i=0;i<bodies;i++){if(!blockdemo_render_laser_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_laser_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_laser_load_messages( blockdemo_render_laser_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_laser_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_laser_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_laser_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -9133,7 +9509,10 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_explosion_load( blockdemo_render_explosion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_explosion_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_explosion_load_tolerant( blockdemo_render_explosion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -9141,6 +9520,26 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load( blockdemo_render_explo
     blockdemo_render_explosion_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_explosion_load_body( &r, value );
+}
+
+/* The PLAIN render_explosion_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_explosion_load( blockdemo_render_explosion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_explosion_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_explosion_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_explosion_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_explosion_t * value)
@@ -9383,7 +9782,8 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_message_body(blockdemo_
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages(blockdemo_render_explosion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_explosion_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages_tolerant(blockdemo_render_explosion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -9403,6 +9803,26 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages(blockdemo_rend
  for(i=0;i<bodies;i++){if(!blockdemo_render_explosion_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_explosion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages( blockdemo_render_explosion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_explosion_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_explosion_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_explosion_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -10451,7 +10871,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_frame_load( blockdemo_render_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_frame_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_frame_load_tolerant( blockdemo_render_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -10459,6 +10882,26 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load( blockdemo_render_frame_t *
     blockdemo_render_frame_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_frame_load_body( &r, value );
+}
+
+/* The PLAIN render_frame_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_frame_load( blockdemo_render_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_frame_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_frame_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_frame_t * value)
@@ -10839,7 +11282,8 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_message_body(blockdemo_tabl
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_frame_load_messages(blockdemo_render_frame_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_frame_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_frame_load_messages_tolerant(blockdemo_render_frame_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -10859,6 +11303,26 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_messages(blockdemo_render_f
  for(i=0;i<bodies;i++){if(!blockdemo_render_frame_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_frame_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_frame_load_messages( blockdemo_render_frame_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_frame_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_frame_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -11067,7 +11531,10 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_vector3_load( blockdemo_render_vector3_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_vector3_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_vector3_load_tolerant( blockdemo_render_vector3_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -11075,6 +11542,26 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load( blockdemo_render_vector3
     blockdemo_render_vector3_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_vector3_load_body( &r, value );
+}
+
+/* The PLAIN render_vector3_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_vector3_load( blockdemo_render_vector3_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_vector3_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_vector3_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_vector3_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_vector3_t * value)
@@ -11210,7 +11697,8 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_message_body(blockdemo_ta
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages(blockdemo_render_vector3_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_vector3_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages_tolerant(blockdemo_render_vector3_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -11230,6 +11718,26 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages(blockdemo_render
  for(i=0;i<bodies;i++){if(!blockdemo_render_vector3_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_vector3_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages( blockdemo_render_vector3_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_vector3_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_vector3_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_vector3_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -11485,7 +11993,10 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
     }
 }
 
-static SCHEMA_UNUSED int blockdemo_render_quaternion_load( blockdemo_render_quaternion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+/* render_quaternion_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int blockdemo_render_quaternion_load_tolerant( blockdemo_render_quaternion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -11493,6 +12004,26 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load( blockdemo_render_quat
     blockdemo_render_quaternion_reset( value );
     if ( !blockdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return blockdemo_render_quaternion_load_body( &r, value );
+}
+
+/* The PLAIN render_quaternion_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int blockdemo_render_quaternion_load( blockdemo_render_quaternion_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = blockdemo_render_quaternion_load_tolerant( value, buffer, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        blockdemo_render_quaternion_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int blockdemo_render_quaternion_save_message_body(blockdemo_table_bit_writer_t * w,const blockdemo_render_quaternion_t * value)
@@ -11655,7 +12186,8 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_message_body(blockdemo
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages(blockdemo_render_quaternion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
+/* render_quaternion_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages_tolerant(blockdemo_render_quaternion_t * values,int64_t * count,const blockdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,blockdemo_table_report_t * report)
 {
  blockdemo_table_report_t ignored={0};
  blockdemo_table_message_reader_t r;
@@ -11675,6 +12207,26 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages(blockdemo_ren
  for(i=0;i<bodies;i++){if(!blockdemo_render_quaternion_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return blockdemo_table_message_close(&r);
+}
+/* The PLAIN render_quaternion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages( blockdemo_render_quaternion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = blockdemo_render_quaternion_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) blockdemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !blockdemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) blockdemo_render_quaternion_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_message_extent_(blockdemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -12160,7 +12712,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_save( const blockdemo
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_render_camera_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_camera_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load_tolerant( blockdemo_render_camera_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -12253,6 +12807,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_camera_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_camera_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_render_camera_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_camera_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_camera_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -12447,7 +13020,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_ship_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_ship_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load_tolerant( blockdemo_render_ship_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -12552,6 +13127,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_ship_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_ship_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_ship_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_ship_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_ship_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -12730,7 +13324,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_render_turret_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_turret_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load_tolerant( blockdemo_render_turret_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -12835,6 +13431,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_turret_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_turret_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_render_turret_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_turret_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_turret_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13018,7 +13633,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_render_missile_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_missile_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load_tolerant( blockdemo_render_missile_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -13123,6 +13740,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_missile_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_missile_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_render_missile_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_missile_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_missile_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13308,7 +13944,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo_render_dynamic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_dynamic_prop_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load_tolerant( blockdemo_render_dynamic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -13413,6 +14051,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_dynamic_prop_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_dynamic_prop_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo_render_dynamic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_dynamic_prop_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_dynamic_prop_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13598,7 +14255,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_render_static_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_static_prop_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load_tolerant( blockdemo_render_static_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -13703,6 +14362,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_static_prop_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_static_prop_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_render_static_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_static_prop_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_static_prop_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -13890,7 +14568,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdemo_render_cosmetic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_cosmetic_prop_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load_tolerant( blockdemo_render_cosmetic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -13995,6 +14675,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_cosmetic_prop_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_cosmetic_prop_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdemo_render_cosmetic_prop_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_cosmetic_prop_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_cosmetic_prop_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14174,7 +14873,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render_laser_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_laser_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load_tolerant( blockdemo_render_laser_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -14279,6 +14980,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_laser_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_laser_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render_laser_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_laser_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_laser_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -14462,7 +15182,9 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_render_explosion_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* render_explosion_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load_tolerant( blockdemo_render_explosion_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t local;
@@ -14567,6 +15289,25 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN render_explosion_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of render_explosion_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_render_explosion_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 blockdemo_table_fixed_entry_t * plan, int32_t plan_capacity, blockdemo_table_fixed_plan_cache_t * cache, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = blockdemo_render_explosion_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !blockdemo_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { blockdemo_render_explosion_reset( values + k ); }
+    return -1;
 }
 
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
@@ -15401,9 +16142,24 @@ static SCHEMA_UNUSED const blockdemo_table_type_info_t * blockdemo_render_quater
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_camera_from_json_( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_camera_to_json_( const blockdemo_render_camera_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_camera_from_json( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_camera_from_json_tolerant( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_camera_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_camera_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_camera_from_json( blockdemo_render_camera_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_camera_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_camera_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_to_json_measure( const blockdemo_render_camera_t * value ) { return schema_blockdemo_render_camera_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_to_json( const blockdemo_render_camera_t * value, char * buffer, int64_t capacity )
@@ -15416,9 +16172,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_to_json( const blockdemo_re
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_ship_from_json_( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_ship_to_json_( const blockdemo_render_ship_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_ship_from_json( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_ship_from_json_tolerant( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_ship_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_ship_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_ship_from_json( blockdemo_render_ship_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_ship_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_ship_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_to_json_measure( const blockdemo_render_ship_t * value ) { return schema_blockdemo_render_ship_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_to_json( const blockdemo_render_ship_t * value, char * buffer, int64_t capacity )
@@ -15431,9 +16202,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_to_json( const blockdemo_rend
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_turret_from_json_( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_turret_to_json_( const blockdemo_render_turret_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_turret_from_json( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_turret_from_json_tolerant( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_turret_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_turret_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_turret_from_json( blockdemo_render_turret_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_turret_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_turret_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_to_json_measure( const blockdemo_render_turret_t * value ) { return schema_blockdemo_render_turret_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_to_json( const blockdemo_render_turret_t * value, char * buffer, int64_t capacity )
@@ -15446,9 +16232,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_to_json( const blockdemo_re
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_missile_from_json_( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_missile_to_json_( const blockdemo_render_missile_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_missile_from_json( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_missile_from_json_tolerant( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_missile_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_missile_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_missile_from_json( blockdemo_render_missile_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_missile_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_missile_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_to_json_measure( const blockdemo_render_missile_t * value ) { return schema_blockdemo_render_missile_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_to_json( const blockdemo_render_missile_t * value, char * buffer, int64_t capacity )
@@ -15461,9 +16262,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_to_json( const blockdemo_r
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_dynamic_prop_from_json_( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_dynamic_prop_to_json_( const blockdemo_render_dynamic_prop_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_from_json( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_from_json_tolerant( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_dynamic_prop_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_dynamic_prop_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_from_json( blockdemo_render_dynamic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_dynamic_prop_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_dynamic_prop_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_to_json_measure( const blockdemo_render_dynamic_prop_t * value ) { return schema_blockdemo_render_dynamic_prop_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_to_json( const blockdemo_render_dynamic_prop_t * value, char * buffer, int64_t capacity )
@@ -15476,9 +16292,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_to_json( const blockd
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_static_prop_from_json_( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_static_prop_to_json_( const blockdemo_render_static_prop_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_static_prop_from_json( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_static_prop_from_json_tolerant( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_static_prop_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_static_prop_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_static_prop_from_json( blockdemo_render_static_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_static_prop_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_static_prop_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_to_json_measure( const blockdemo_render_static_prop_t * value ) { return schema_blockdemo_render_static_prop_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_to_json( const blockdemo_render_static_prop_t * value, char * buffer, int64_t capacity )
@@ -15491,9 +16322,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_to_json( const blockde
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_cosmetic_prop_from_json_( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_cosmetic_prop_to_json_( const blockdemo_render_cosmetic_prop_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_from_json( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_from_json_tolerant( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_cosmetic_prop_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_cosmetic_prop_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_from_json( blockdemo_render_cosmetic_prop_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_cosmetic_prop_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_cosmetic_prop_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_to_json_measure( const blockdemo_render_cosmetic_prop_t * value ) { return schema_blockdemo_render_cosmetic_prop_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_to_json( const blockdemo_render_cosmetic_prop_t * value, char * buffer, int64_t capacity )
@@ -15506,9 +16352,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_to_json( const block
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_laser_from_json_( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_laser_to_json_( const blockdemo_render_laser_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_laser_from_json( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_laser_from_json_tolerant( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_laser_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_laser_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_laser_from_json( blockdemo_render_laser_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_laser_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_laser_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_to_json_measure( const blockdemo_render_laser_t * value ) { return schema_blockdemo_render_laser_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_to_json( const blockdemo_render_laser_t * value, char * buffer, int64_t capacity )
@@ -15521,9 +16382,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_to_json( const blockdemo_ren
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_explosion_from_json_( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_explosion_to_json_( const blockdemo_render_explosion_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_explosion_from_json( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_explosion_from_json_tolerant( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_explosion_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_explosion_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_explosion_from_json( blockdemo_render_explosion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_explosion_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_explosion_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_to_json_measure( const blockdemo_render_explosion_t * value ) { return schema_blockdemo_render_explosion_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_to_json( const blockdemo_render_explosion_t * value, char * buffer, int64_t capacity )
@@ -15536,9 +16412,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_to_json( const blockdemo
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_frame_from_json_( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_frame_to_json_( const blockdemo_render_frame_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_frame_from_json( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_frame_from_json_tolerant( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_frame_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_frame_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_frame_from_json( blockdemo_render_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_frame_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_frame_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_to_json_measure( const blockdemo_render_frame_t * value ) { return schema_blockdemo_render_frame_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_to_json( const blockdemo_render_frame_t * value, char * buffer, int64_t capacity )
@@ -15551,9 +16442,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_to_json( const blockdemo_ren
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_vector3_from_json_( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_vector3_to_json_( const blockdemo_render_vector3_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_vector3_from_json( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_vector3_from_json_tolerant( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_vector3_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_vector3_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_vector3_from_json( blockdemo_render_vector3_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_vector3_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_vector3_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_to_json_measure( const blockdemo_render_vector3_t * value ) { return schema_blockdemo_render_vector3_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_to_json( const blockdemo_render_vector3_t * value, char * buffer, int64_t capacity )
@@ -15566,9 +16472,24 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_to_json( const blockdemo_r
    RenderTable.c; compile it to use them. */
 int schema_blockdemo_render_quaternion_from_json_( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report );
 int64_t schema_blockdemo_render_quaternion_to_json_( const blockdemo_render_quaternion_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int blockdemo_render_quaternion_from_json( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+static SCHEMA_UNUSED int blockdemo_render_quaternion_from_json_tolerant( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
     return schema_blockdemo_render_quaternion_from_json_( value, text, bytes, report );
+}
+/* The PLAIN render_quaternion_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int blockdemo_render_quaternion_from_json( blockdemo_render_quaternion_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
+{
+    blockdemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_blockdemo_render_quaternion_from_json_( value, text, bytes, report );
+    if ( blockdemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { blockdemo_render_quaternion_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_to_json_measure( const blockdemo_render_quaternion_t * value ) { return schema_blockdemo_render_quaternion_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_to_json( const blockdemo_render_quaternion_t * value, char * buffer, int64_t capacity )

@@ -60,6 +60,12 @@ type Report struct {
 	// not have kept it.
 	Retained   int
 	RetainLost int
+	// NonFiniteFloat is a REFUSAL, not one of §4's events (docs/SPEC-TABLES.md
+	// §3.3, a plain float's special values; Glenn, 2026-10-27): the first float
+	// field, as <Table>.<field>, whose bits a read found to be a NaN or an
+	// infinity, and empty when there was none. Every read refuses such a wire,
+	// tolerant and strict alike, as `non_finite_float`, and lands nothing.
+	NonFiniteFloat string
 }
 
 // Add folds another report into this one, which is how a pack over a tree of
@@ -77,7 +83,28 @@ func (r *Report) Add(o Report) {
 	}
 	r.Retained += o.Retained
 	r.RetainLost += o.RetainLost
+	if r.NonFiniteFloat == "" {
+		r.NonFiniteFloat = o.NonFiniteFloat
+	}
 }
+
+// RefuseNonFinite records the first float field a read found holding a NaN
+// or an infinity (docs/SPEC-TABLES.md §3.3), by its <Table>.<field> name. The
+// first name a read records wins, and the read that recorded one refuses with
+// Reason `non_finite_float: <Table>.<field>` when its walk ends.
+func (r *Report) RefuseNonFinite(name string) {
+	if r.NonFiniteFloat == "" {
+		r.NonFiniteFloat = name
+	}
+}
+
+// FiniteF32 and FiniteF64 are the raw-bits test every read runs before a
+// float's bits become a value (docs/SPEC-TABLES.md §3.3): an exponent of all
+// ones is a NaN (any sign, any payload) or an infinity, and nothing else is.
+func FiniteF32(bits uint32) bool { return bits&0x7F800000 != 0x7F800000 }
+
+// FiniteF64 is FiniteF32 at sixty-four bits.
+func FiniteF64(bits uint64) bool { return bits&0x7FF0000000000000 != 0x7FF0000000000000 }
 
 // Silent reports whether nothing at all was counted. RETENTION'S TWO COUNTERS
 // ARE NOT IN IT: `retained` names no loss at all, and `retain_lost` is read

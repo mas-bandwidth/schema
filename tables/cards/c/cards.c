@@ -337,7 +337,7 @@ int cards_load(const uint8_t *wire, int64_t wire_len, CardsRecord *out,
     }
     region = (uint8_t *)aligned_alloc64(n);
     if (region == NULL) return fail(err, err_cap, "cards: allocation failed");
-    root = cards_card_load(region, n, wire, wire_len, &rep);
+    root = cards_card_load_tolerant(region, n, wire, wire_len, &rep);
     if (root == NULL) {
         free(region);
         if (report != NULL) *report = rep;
@@ -375,7 +375,7 @@ int cards_from_json(const uint8_t *text, int64_t text_len, CardsRecord *out,
     memset(&report, 0, sizeof(report));
     if (!cards_card_builder_init(&b))
         return fail(err, err_cap, "cards: arena initialization failed");
-    if (!cards_card_from_json(&b, (const char *)text, text_len, &report) ||
+    if (!cards_card_from_json_tolerant(&b, (const char *)text, text_len, &report) ||
         report.malformed) {
         cards_card_builder_shutdown(&b);
         return fail(err, err_cap, "cards: JSON is malformed");
@@ -1255,7 +1255,7 @@ int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
     if (n < 0) return fail(err, err_cap, "cards: wire is not a card");
     region = (uint8_t *)aligned_alloc64(n);
     if (region == NULL) return fail(err, err_cap, "cards: allocation failed");
-    root = cards_card_load(region, n, record->wire, record->wire_len, &rep);
+    root = cards_card_load_tolerant(region, n, record->wire, record->wire_len, &rep);
     if (root == NULL) {
         free(region);
         return fail(err, err_cap, "cards: wire is malformed");
@@ -1628,7 +1628,7 @@ static int edit_common(CardsRecord *r, int (*mutate)(cards_card_t *, cards_table
     if (!cards_card_builder_init(&b))
         return fail(err, err_cap, "cards: arena initialization failed");
     memset(&rep, 0, sizeof(rep));
-    if (!cards_card_load_builder(&b, r->wire, r->wire_len, &rep)) {
+    if (!cards_card_load_builder_tolerant(&b, r->wire, r->wire_len, &rep)) {
         cards_card_builder_shutdown(&b);
         return fail(err, err_cap, "cards: reload into builder failed");
     }

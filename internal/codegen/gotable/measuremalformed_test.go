@@ -122,7 +122,7 @@ var measureMalformedSeed2Probe = `package probe
     ok, drep, text := tolerant(d)
     fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok
+    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
     if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
@@ -263,7 +263,7 @@ var measureMalformedSeed4Probe = `package probe
     ok, drep, text := tolerant(d)
     fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok
+    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
     if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
@@ -426,7 +426,7 @@ var measureMalformedSeed1Probe = `package probe
     ok, drep, text := tolerant(d)
     fmt.Fprintf(sum, "%v %v %q|", ok, drep.Malformed, text)
     m, merr := RootLoadMeasureReason(d)
-    bad := drep.Malformed || !ok
+    bad := drep.Malformed || !ok && drep.NonFiniteFloat == "" // a non-finite float is a value refusal the framing measure never reads (SPEC-TABLES §3.3)
     refused := m < 0
     if refused && drep.Malformed && !errors.Is(merr, TableRefuseWireDamaged) {
      otherReason++; hits++
@@ -543,8 +543,11 @@ func measureMalformedWStringProbe() string {
 
 // measureMalformedDigests are the tolerant load's recovery digests at BASE
 // (sprint/schema-go 454596324; the wire-bool-not-0-or-1 landing moved them), one per unit: a change to the strict measure
-// that moves any of them changed what the tolerant load recovers.
-var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "6cb634cea503ef64", 1: "3c349a4882bff250", 0: "63ddc043eeaf9665", 5: "7e55fc79c537f278"}
+// that moves any of them changed what the tolerant load recovers. Seeds 4 and 1
+// moved when table floats went finite only (SPEC-TABLES §3.3, 2026-10-27): the
+// damaged wires whose float bytes became a NaN or an infinity are now refused
+// by the tolerant load, by design, instead of landed.
+var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "b96fc5b8d8564d8c", 1: "7b597995a4b1475e", 0: "63ddc043eeaf9665", 5: "7e55fc79c537f278"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)

@@ -61,6 +61,9 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 				if ref := w.Ids.refAtHit(22, 0x2281498aa0200e40); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
 				}
+				if value.Speed-value.Speed != 0 {
+					return false
+				}
 				w.Put32(math.Float32bits(value.Speed))
 			}
 		}
@@ -97,6 +100,9 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 			if math.Float32bits(value.Wander) != math.Float32bits(0.5) {
 				if ref := w.Ids.refAtHit(104, 0xb8c758d8bd1845d4); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
+				}
+				if value.Wander-value.Wander != 0 {
+					return false
 				}
 				w.Put32(math.Float32bits(value.Wander))
 			}
@@ -213,11 +219,13 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Patrol.speed")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.speed")
+				} else {
+					v := math.Float32frombits(b)
+					value.Speed = v
 				}
-				value.Speed = v
 			}
 		case 0x247f0e7f55aacfbd: // has_target
 			if kind != 1 {
@@ -303,11 +311,13 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Patrol.wander")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.wander")
+				} else {
+					v := math.Float32frombits(b)
+					value.Wander = v
 				}
-				value.Wander = v
 			}
 		case 0x3bf8fbbad1587cdd: // note
 			if kind != 12 {
@@ -401,6 +411,9 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 				if ref := w.Ids.refAtHit(22, 0x2281498aa0200e40); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
 				}
+				if value.Speed-value.Speed != 0 {
+					return false
+				}
 				w.Put32(math.Float32bits(value.Speed))
 			}
 		}
@@ -437,6 +450,9 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 			if math.Float32bits(value.Wander) != math.Float32bits(0.5) {
 				if ref := w.Ids.refAtHit(104, 0xb8c758d8bd1845d4); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
+				}
+				if value.Wander-value.Wander != 0 {
+					return false
 				}
 				w.Put32(math.Float32bits(value.Wander))
 			}
@@ -557,11 +573,13 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Patrol.speed")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.speed")
+				} else {
+					v := math.Float32frombits(b)
+					value.Speed = v
 				}
-				value.Speed = v
 			}
 		case 0x247f0e7f55aacfbd: // has_target
 			if kind != 1 {
@@ -647,11 +665,13 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Patrol.wander")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.wander")
+				} else {
+					v := math.Float32frombits(b)
+					value.Wander = v
 				}
-				value.Wander = v
 			}
 		case 0x3bf8fbbad1587cdd: // note
 			if kind != 12 {
@@ -688,7 +708,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "Patrol") {
 				r.Report.Malformed = true
 				return false
 			}

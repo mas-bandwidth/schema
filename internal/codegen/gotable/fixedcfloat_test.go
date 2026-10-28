@@ -243,12 +243,41 @@ func TestFixedCFloatAtTheBoundsExactly(t *testing.T) {
 // bounds pass of `if v < min { .. } else if v > max { .. }` alone let a NaN
 // ride a compressed float THROUGH it: a value outside the declared range,
 // uncounted, handed to a caller the row promises a number inside [min, max]
-// to. That was the finding, and the rule now closes it (docs/SPEC-TABLES.md
-// §3.3, A COMPRESSED FLOAT'S SPECIAL VALUES): the pass tests for the NaN
-// FIRST, clamps it to `min` and counts it, exactly as -Inf and a finite value
-// below `min` clamp and count. The infinities clamp as they always did.
+// to. That was the finding. The rule of 2026-10-27 closes it the packet
+// wire's way (docs/SPEC-TABLES.md §3.3, A COMPRESSED FLOAT'S SPECIAL VALUES,
+// ruling 1): a NaN or an infinity is not a value of the type, so the read
+// tests the raw bits FIRST, before the bounds pass, and REFUSES one as
+// non_finite_float, naming the field, the tolerant read included; nothing is
+// clamped and nothing lands. The writer refuses one too.
 
-func TestFixedCFloatNaNClampsToMinAndCounts(t *testing.T) {
+// readRefused reads the one record and requires the non_finite_float refusal.
+func readRefused(file string) string {
+	return fmt.Sprintf(`
+	data, err := os.ReadFile(%q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got [1]Reading
+	var plan [64]TableFixedEntry
+	var report TableReport
+	if n := ReadingFixedLoadTolerant(got[:], data, plan[:], &report); n != -1 {
+		t.Fatalf("the reader landed %%d records holding a non-finite float", n)
+	}
+	if report.Reason != "non_finite_float: Reading.v" || report.Clamped != 0 || report.Err() != TableRefuseNonFiniteFloat {
+		t.Fatalf("the refusal is %%+v, want non_finite_float: Reading.v and no clamp", report)
+	}
+	if b := math.Float32bits(got[0].V); b != 0 {
+		t.Fatalf("the refused record kept %%#x", b)
+	}
+	var r Reading
+	ReadingReset(&r)
+	r.V = math.Float32frombits(0x7fc00000)
+	if ReadingFixedSave([]Reading{r}, make([]byte, ReadingFixedMeasure(1))) != -1 {
+		t.Fatal("the writer wrote a NaN")
+	}`, file)
+}
+
+func TestFixedCFloatNonFiniteIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []struct {
 		name string
@@ -257,16 +286,22 @@ func TestFixedCFloatNaNClampsToMinAndCounts(t *testing.T) {
 		{"quiet", 0x7FC00000},
 		{"payload", 0x7F800001},
 		{"negative_quiet", 0xFFC00000},
+		{"plus_inf", 0x7F800000},
+		{"minus_inf", 0xFF800000},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			file := cfWrite(t, dir, c.name, cfOld, writeOne(c.bits))
-			// min of [0, 1], and ONE clamp counted.
-			cfRead(t, cfOld, nil, readOne(file, 0x00000000, 1))
+			cfRead(t, cfOld, nil, readRefused(file))
 		})
 	}
 }
 
-func TestFixedCFloatInfinitiesClampAndCount(t *testing.T) {
+// NEGATIVE ZERO is not below a min of +0 (`-0.0 < 0.0` is false in IEEE-754),
+// and it once survived the pass with its SIGN BIT — a bit pattern the
+// declaration cannot name. It lands as +0, the value 0 itself, and counts
+// nothing, because it is inside the range. A finite value past an end still
+// clamps to that end and counts.
+func TestFixedCFloatNegativeZeroAndPastEndsClamp(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []struct {
 		name    string
@@ -274,12 +309,8 @@ func TestFixedCFloatInfinitiesClampAndCount(t *testing.T) {
 		want    uint32
 		clamped int32
 	}{
-		{"plus_inf", 0x7F800000, 0x3F800000, 1},  // +inf > max: clamps to max
-		{"minus_inf", 0xFF800000, 0x00000000, 1}, // -inf < min: clamps to min
-		// NEGATIVE ZERO is not below a min of +0 (`-0.0 < 0.0` is false in
-		// IEEE-754), and it once survived the pass with its SIGN BIT — a bit
-		// pattern the declaration cannot name. It now lands as +0, the value
-		// 0 itself, and counts nothing, because it is inside the range.
+		{"above_max", 0x40000000, 0x3F800000, 1}, // 2.0 > max: clamps to max
+		{"below_min", 0xC0000000, 0x00000000, 1}, // -2.0 < min: clamps to min
 		{"negative_zero", 0x80000000, 0x00000000, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {

@@ -575,7 +575,7 @@ const tableRefuseReasonLaterValues = `
     base64_damaged,        // encoded text with a byte outside the alphabet, or the wrong padding (§16.8)
     base64_not_canonical,  // encoded text that decodes but is not the canonical spelling of its bytes (§16.8)
     integrity_mismatch,    // the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19)
-    non_finite,            // a plain float the read landed as a NaN or an infinity (§3.3); the report's reason is non_finite: <field>
+    non_finite_float,      // a plain float whose bits are a NaN or an infinity: every read and every writer refuses it (§3.3); the report's reason is non_finite_float: <field>
     blob_shared,           // one blob record named from two slots: every writer refuses to emit it, and the strict read refuses it (§2.5)
     // THE FORM AND FIXED-FORM NAMES (§3, §3.3, §3.4, §6.5), which the C++ port
     // once kept in a second, message-path enum. Go appended them here, in

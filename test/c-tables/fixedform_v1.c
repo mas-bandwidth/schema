@@ -44,7 +44,7 @@ void fixed_v1_bounds( void )
     fixed_check( n == tblv1_cfg_fixed_measure( 1 ), "C bounds: V1 save" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblv1_cfg_fixed_load( &back, 1, file, n, plan, 8192, NULL, &r ) == 1,
+    fixed_check( tblv1_cfg_fixed_load_tolerant( &back, 1, file, n, plan, 8192, NULL, &r ) == 1,
                  "C bounds: the enum record reads" );
     fixed_check( back.grade == TBLV1_GRADE_NONE, "C ORDINAL: an ordinal past the enum's top value lands None" );
     fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );
@@ -74,7 +74,7 @@ void fixed_v1_bounds( void )
         fixed_check( n2 == tblv1_cfg_fixed_measure( 1 ), "C live-count: V1 save" );
 
         memset( &ident_r, 0, sizeof( ident_r ) );
-        fixed_check( tblv1_cfg_fixed_load( &ident, 1, file2, n2, plan, 8192, NULL, &ident_r ) == 1,
+        fixed_check( tblv1_cfg_fixed_load_tolerant( &ident, 1, file2, n2, plan, 8192, NULL, &ident_r ) == 1,
                      "C live-count: identity reads" );
         fixed_check( ident.a == 1000 && ident.items[0] == 255, "C live-count, identity: both live values clamp" );
         fixed_check( ident_r.clamped == 2, "C live-count, identity: two clamps, slack never" );

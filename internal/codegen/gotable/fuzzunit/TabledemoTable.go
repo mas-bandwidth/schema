@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xab8a81ea17f43b33)
-const _ = uint64(0xab8a81ea17f43b33 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x91fcccabacf566d0)
+const _ = uint64(0x91fcccabacf566d0 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -67,7 +67,7 @@ const TableRefuseKindMismatch = goruntime.TableRefuseKindMismatch
 const TableRefuseBase64Damaged = goruntime.TableRefuseBase64Damaged
 const TableRefuseBase64NotCanonical = goruntime.TableRefuseBase64NotCanonical
 const TableRefuseIntegrityMismatch = goruntime.TableRefuseIntegrityMismatch
-const TableRefuseNonFinite = goruntime.TableRefuseNonFinite
+const TableRefuseNonFiniteFloat = goruntime.TableRefuseNonFiniteFloat
 const TableRefuseBlobShared = goruntime.TableRefuseBlobShared
 const TableRefusePreviousForm = goruntime.TableRefusePreviousForm
 const TableRefuseNewerForm = goruntime.TableRefuseNewerForm
@@ -98,7 +98,9 @@ type TableBuildVersionMismatch = goruntime.TableBuildVersionMismatch
 
 type TableMissingRequired = goruntime.TableMissingRequired
 
-func tableNonFinite(a0 *string, a1 string) { goruntime.TableNonFinite(a0, a1) }
+func tableNonFiniteFloat(a0 *string, a1 string) { goruntime.TableNonFiniteFloat(a0, a1) }
+
+func tableNonFiniteRefused(a0 *TableReport) bool { return goruntime.TableNonFiniteRefused(a0) }
 
 func tableTextClamped(a0 *string, a1 string) { goruntime.TableTextClamped(a0, a1) }
 
@@ -1313,6 +1315,9 @@ func (r TableReader) EndsEarly() bool {
 
 func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
 	r := TableReader{Report: report}
+	if report != nil {
+		report.NonFiniteFloat = ""
+	} // this read's own refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3)
 	if len(data) == 0 {
 		return r, TableOpenDamaged
 	}
@@ -1413,13 +1418,6 @@ func (r *TableReader) Signed(kind uint8) int64 {
 	default:
 		return int64(r.Get64())
 	}
-}
-
-func tableWidenFloat(b uint32) uint64 {
-	if b&0x7f800000 == 0x7f800000 {
-		return uint64(b>>31)<<63 | 0x7ff0000000000000 | uint64(b&0x7fffff)<<29
-	}
-	return math.Float64bits(float64(math.Float32frombits(b)))
 }
 
 type TableMessageReader struct {
@@ -2805,6 +2803,9 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBody(r, base)
+	if tableNonFiniteRefused(report) {
+		return nil
+	}
 	return base
 }
 func tablePackNodeBytes(e *tableNodeEntry, a *TableArena) int64 {
@@ -3079,6 +3080,9 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	r.Nodes = nodes
 	r.Nested = false
 	ok := root.LoadBody(r, p)
+	if tableNonFiniteRefused(report) {
+		return false
+	}
 	return ok && !worker.refused
 }
 
@@ -3543,7 +3547,11 @@ func (r *TableRetainReader) Body() (TableRetainReader, bool) {
 	sub, ok := r.tableRetainPlainReader.Body()
 	return TableRetainReader{tableRetainPlainReader: sub, Retain: r.Retain, Path: r.Path}, ok
 }
-func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
+
+// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a NaN
+// or an infinity refuses the read as non_finite_float, named <owner>.0x<id>.
+func (r *TableRetainReader) capture(id uint64, kind uint8, owner string) bool {
 	at := r.Offset
 	if !r.Skip(kind) {
 		return false
@@ -3553,6 +3561,10 @@ func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
 	}
 	t := r.Retain
 	p := r.Path
+	if kind == 10 && binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000 == 0x7f800000 || kind == 11 && binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000 == 0x7ff0000000000000 {
+		tableNonFiniteFloat(&r.Report.NonFiniteFloat, tableRetainedFloatName(owner, id))
+		return true
+	}
 	limit := int64(len(t.Bytes)) - t.Used - int64(26+p.depth*8)
 	if limit < 0 {
 		r.Report.RetainLost++
@@ -3590,6 +3602,18 @@ func (r *TableRetainReader) capture(id uint64, kind uint8) bool {
 	t.Count++
 	r.Report.Retained++
 	return true
+}
+
+// tableRetainedFloatName names a retained unknown float for the
+// non_finite_float refusal: the body's table and the id it cannot name.
+func tableRetainedFloatName(owner string, id uint64) string {
+	const digits = "0123456789abcdef"
+	var hex [16]byte
+	for i := 15; i >= 0; i-- {
+		hex[i] = digits[id&0xf]
+		id >>= 4
+	}
+	return owner + ".0x" + string(hex[:])
 }
 
 type tableRetainIn struct {
@@ -4337,6 +4361,9 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	r.Nodes = nodes
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
+	if tableNonFiniteRefused(report) {
+		return nil
+	}
 	return base
 }
 func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, retain *TableRetain, report *TableReport, allocator ...TableAllocator) int64 {

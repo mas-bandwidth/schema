@@ -156,12 +156,17 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		case 1:
 			g.pf("%sif %s {w.Put(1,1)}else{w.Put(0,1)}\n", ind, expr)
 			return
-		case 10:
+		case 10, 11:
+			// A NaN OR AN INFINITY IS REFUSED, never quantized or clamped
+			// (docs/SPEC-TABLES.md §3.3, both special-values rules): the writer
+			// answers false before the quantizer runs, so measure and save
+			// both return -1.
 			g.needsMath = true
-			lo = "uint64(math.Float32bits(" + expr + "))"
-		case 11:
-			g.needsMath = true
+			g.pf("%sif %s-%s != 0 {return false}\n", ind, expr, expr)
 			lo = "math.Float64bits(" + expr + ")"
+			if entry.Kind == 10 {
+				lo = "uint64(math.Float32bits(" + expr + "))"
+			}
 		default:
 			if ir.TableKindWidth(int(entry.Kind)) == 16 {
 				lo = expr + ".Lo"

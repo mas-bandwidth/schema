@@ -37,7 +37,13 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report );\n", g.sym(st.Name, "from_json"), st.Name)
 		g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity, TableAllocator allocator );\n", g.sym(st.Name, "to_json"), st.Name)
-		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report ) { return %s(builder,text,bytes,report); }\n", g.api(st.Name, "from_json"), st.Name, g.sym(st.Name, "from_json"))
+		// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF
+		// ITS OWN (docs/SPEC-TABLES.md §6.5, §16.2).
+		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report ) { return %s(builder,text,bytes,report); }\n", g.api(st.Name, "from_json_tolerant"), st.Name, g.sym(st.Name, "from_json"))
+		g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */\n", g.api(st.Name, "from_json"))
+		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
+		g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
+		g.pf("    decoded = %s( builder, text, bytes, report );\n    return !table_report_strict_refuses( report, decoded );\n}\n", g.sym(st.Name, "from_json"))
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value ) { return %s(value,NULL,0,table_default_allocator()); }\n", g.api(st.Name, "to_json_measure"), st.Name, g.sym(st.Name, "to_json"))
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value, char * buffer, int64_t capacity ) { return %s(value,buffer,capacity,table_default_allocator()); }\n\n", g.api(st.Name, "to_json"), st.Name, g.sym(st.Name, "to_json"))
 		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * value,char * buffer,int64_t capacity,TableAllocator allocator) { return %s(value,buffer,capacity,allocator); }\n", g.api(st.Name, "to_json_with_allocator"), st.Name, g.sym(st.Name, "to_json"))
@@ -49,8 +55,15 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("   %sTable.c; compile it to use them. */\n", g.file.Base)
 	g.pf("int %s( %s * value, const char * text, int64_t bytes, TableReport * report );\n", g.sym(st.Name, "from_json"), st.Name)
 	g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity );\n", g.sym(st.Name, "to_json"), st.Name)
-	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5, §16.2).
+	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json_tolerant"), st.Name)
 	g.pf("    return %s( value, text, bytes, report );\n}\n", g.sym(st.Name, "from_json"))
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */\n", g.api(st.Name, "from_json"))
+	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
+	g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
+	g.pf("    decoded = %s( value, text, bytes, report );\n", g.sym(st.Name, "from_json"))
+	g.pf("    if ( table_report_strict_refuses( report, decoded ) )\n    {\n        if ( value != NULL ) { %s( value ); }\n        return 0;\n    }\n    return 1;\n}\n", g.api(st.Name, "reset"))
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value ) { return %s( value, NULL, 0 ); }\n", g.api(st.Name, "to_json_measure"), st.Name, g.sym(st.Name, "to_json"))
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value, char * buffer, int64_t capacity )\n{\n", g.api(st.Name, "to_json"), st.Name)
 	g.pf("    return %s( value, buffer, capacity );\n}\n\n", g.sym(st.Name, "to_json"))

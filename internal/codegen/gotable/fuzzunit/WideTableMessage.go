@@ -191,7 +191,7 @@ func WideBlobLoadMessageBodyRetain(r *TableRetainMessageReader, value *WideBlob)
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "WideBlob") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -507,7 +507,13 @@ func WideBlobLoadMessagesTolerant(values []WideBlob, vocabulary *TableVocabulary
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !WideBlobLoadMessageBody(&r, &values[i]) {
+		if !WideBlobLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
+			if tableNonFiniteRefused(&r.Report) {
+				for j := range i + 1 {
+					WideBlobReset(&values[j])
+				}
+				return 0, false
+			}
 			return i, false
 		}
 	}

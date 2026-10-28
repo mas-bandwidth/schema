@@ -101,11 +101,13 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 						return false
 					}
 					{
-						v := math.Float32frombits(payload2.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Patrol.speed")
+						b := payload2.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.speed")
+						} else {
+							v := math.Float32frombits(b)
+							value.Speed = v
 						}
-						value.Speed = v
 					}
 				}
 				if widened {
@@ -224,11 +226,13 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 						return false
 					}
 					{
-						v := math.Float32frombits(payload5.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Patrol.wander")
+						b := payload5.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.wander")
+						} else {
+							v := math.Float32frombits(b)
+							value.Wander = v
 						}
-						value.Wander = v
 					}
 				}
 				if widened {
@@ -280,7 +284,7 @@ func PatrolLoadMessageBodyRetain(r *TableRetainMessageReader, value *Patrol) boo
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(entry) {
+			if !r.capture(entry, "Patrol") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -302,6 +306,9 @@ func PatrolSaveMessageBody(w *TableMessageWriter, value *Patrol) bool {
 		if value.Active {
 			if math.Float32bits(value.Speed) != math.Float32bits(1.0) {
 				w.Put(33, TableMessageRefBitsHere)
+				if value.Speed-value.Speed != 0 {
+					return false
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Speed)), uint64(0))
 			}
 		}
@@ -330,6 +337,9 @@ func PatrolSaveMessageBody(w *TableMessageWriter, value *Patrol) bool {
 		if value.Active && !value.HasTarget {
 			if math.Float32bits(value.Wander) != math.Float32bits(0.5) {
 				w.Put(36, TableMessageRefBitsHere)
+				if value.Wander-value.Wander != 0 {
+					return false
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Wander)), uint64(0))
 			}
 		}
@@ -437,11 +447,13 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload2.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Patrol.speed")
+						b := payload2.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.speed")
+						} else {
+							v := math.Float32frombits(b)
+							value.Speed = v
 						}
-						value.Speed = v
 					}
 				}
 				if widened {
@@ -560,11 +572,13 @@ func PatrolLoadMessageBody(r *TableMessageReader, value *Patrol) bool {
 						return false
 					}
 					{
-						v := math.Float32frombits(payload5.Get32())
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "Patrol.wander")
+						b := payload5.Get32()
+						if b&0x7f800000 == 0x7f800000 {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.wander")
+						} else {
+							v := math.Float32frombits(b)
+							value.Wander = v
 						}
-						value.Wander = v
 					}
 				}
 				if widened {

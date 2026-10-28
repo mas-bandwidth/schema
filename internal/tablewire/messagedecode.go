@@ -73,6 +73,19 @@ func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte
 // plain read and holds one entry per body for the retaining one, so the plain
 // path is the path it always was and retains nothing.
 func decodeMessagesWith(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report, states []*retainState) (int, bool, error) {
+	// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+	// §3.3): no body of it is delivered, so the count is zero.
+	prior := report.NonFiniteFloat
+	report.NonFiniteFloat = ""
+	n, ok, err := decodeMessagesWalk(m, insts, data, v, report, states)
+	if refusal := refusedNonFinite(report); refusal != nil {
+		return 0, false, refusal
+	}
+	report.NonFiniteFloat = prior
+	return n, ok, err
+}
+
+func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report, states []*retainState) (int, bool, error) {
 	// THE FORM BYTE IS READ FIRST, before the count and before any body, so a
 	// wire that is both a form this reader does not carry and damaged is a
 	// refusal and never damage (§3).
@@ -1221,6 +1234,11 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 			d.report.Malformed = true
 			return false
 		}
+		if !tabletext.FiniteF64(raw) {
+			// refused on its raw bits (docs/SPEC-TABLES.md §3.3), as a file read does
+			d.report.RefuseNonFinite(FloatOwner(d.m, f))
+			return true
+		}
 		cell.F = math.Float64frombits(raw)
 		return true
 	case ir.TableKindF32:
@@ -1368,10 +1386,10 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		return false
 	}
 	bits := uint32(raw)
-	if bits&0x7F800000 == 0x7F800000 && bits&0x007FFFFF != 0 {
-		// a NaN's PAYLOAD IS DATA the reference carries bit for bit, and a NaN
-		// compares outside every range, so no clamp could fire on it
-		cell.F = widenF32NaN(bits)
+	if !tabletext.FiniteF32(bits) {
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+		// §3.3), before the bits become a value, as a file read refuses it
+		d.report.RefuseNonFinite(FloatOwner(d.m, f))
 		return true
 	}
 	v := float64(math.Float32frombits(bits))
@@ -1390,9 +1408,10 @@ func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
 	if !f.HasFloatRange {
 		return v
 	}
-	// THE ONE RULE (§3.3, the special values): a NaN clamps to min and counts,
-	// as -Inf does; a -0 lands as +0, uncounted.
-	if math.IsNaN(v) || v < f.FMin {
+	// THE ONE RULE (§3.3, the special values): a value is finite here, because
+	// the read refused a NaN or an infinity on its bits first; one past an end
+	// clamps and counts, and a -0 lands as +0, uncounted.
+	if v < f.FMin {
 		d.report.Clamped++
 		return f.FMin
 	}

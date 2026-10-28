@@ -166,3 +166,18 @@ func TestWireFuzzDriverStall(t *testing.T) {
 		t.Fatalf("the stall is not named: %v", err)
 	}
 }
+
+// A NON-FINITE FLOAT IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md §3.3): on a
+// mutant the oracle refuses as non_finite_float, a leg that keeps the rule
+// answers with the refusal verdict and nothing else is compared; a leg that
+// lands the pattern is a divergence.
+func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
+	root := &wireRoot{unit: "probe", root: "Root"}
+	answer := oracleAnswer{nonFinite: true}
+	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saveFail: true}, answer, 16); verdict != "" {
+		t.Fatalf("a leg that refused the non-finite float diverged: %s", verdict)
+	}
+	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0}}, answer, 16); verdict == "" {
+		t.Fatal("a leg that landed a non-finite float did not diverge")
+	}
+}

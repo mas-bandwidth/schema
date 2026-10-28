@@ -65,7 +65,7 @@ int main( void )
         check( size > 0 && size == tblw1_vessel_measure( &vessel ), "tblw1 saves its Vessel" );
         tblw2_ship_reset( &ship );
         memset( &report, 0, sizeof( report ) );
-        check( tblw2_ship_load( &ship, bytes, size, &report ), "tblw2 loads tblw1's Vessel as its Ship" );
+        check( tblw2_ship_load_tolerant( &ship, bytes, size, &report ), "tblw2 loads tblw1's Vessel as its Ship" );
         check( ship.hull == 640, "the hull crosses the generations" );
         check( !report.malformed && !report.unknown && !report.kind_mismatch, "and the read is silent" );
     }

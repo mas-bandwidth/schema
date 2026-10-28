@@ -562,44 +562,37 @@ func t03GoR20(t *testing.T) {
 
 // ---- go/R21 -----------------------------------------------------------------
 
-// t03GoR21 holds R21 to §4's float rung and §5.2's table: "widenf is the f32 at
-// src as an f64 at dst ... both are exact by construction, NaN payloads
-// included". The hardware f32->f64 conversion QUIETS a signalling NaN and can
-// drop a payload bit, so the emitted runtime assembles every all-ones exponent
-// by hand — the sign carried, f64's all-ones exponent, and the 23-bit mantissa
-// shifted left by 29, which carries the quiet bit as the writer wrote it.
+// t03GoR21 holds R21 to §4's float rung under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3, §21.2): "widenF ... by the ordinary conversion
+// (every finite f32 is exact in an f64; a non-finite source is refused as
+// non_finite_float)". The arm is the ordinary conversion, which keeps a NaN a
+// NaN and an infinity an infinity, and the read's finite pass over storage
+// (<T>FixedFiniteBody, emitted per type) is what refuses one afterwards; the
+// NaN bit surgery that used to carry a payload is gone.
 func t03GoR21(t *testing.T) {
 	runtime := tableFixedRuntime
 	widenF := t03GoBetween(runtime, "case tableFixedWidenF:", "case tableFixedConst:")
 	if widenF == "" {
 		t.Fatal("R21: the runtime has no tableFixedWidenF arm")
 	}
-	t03GoHas(t, widenF, "bits := tableFixedGet32(src[p.Src:])", "R21 the f32 pattern is read raw")
-	t03GoHas(t, widenF, "if bits&0x7f800000 == 0x7f800000 {", "R21 the all-ones exponent is handled on the bits")
-	t03GoHas(t, widenF, "0x7ff0000000000000", "R21 f64's all-ones exponent")
-	t03GoHas(t, widenF, "<<29", "R21 the 23-bit mantissa becomes the 52-bit one")
-	t03GoHas(t, widenF, "math.Float64bits(float64(math.Float32frombits(bits)))", "R21 every other exponent converts exactly")
-	t03GoHasNot(t, widenF, "tableFixedPutF64(dst[p.Dst:], float64(", "R21 the float rung still widens through the hardware conversion")
+	t03GoHas(t, widenF, "math.Float64bits(float64(math.Float32frombits(tableFixedGet32(src[p.Src:]))))", "R21 the rung is the ordinary conversion")
+	t03GoHasNot(t, widenF, "<<29", "R21 the retired NaN payload surgery")
+	t03GoHasNot(t, widenF, "0x7ff0000000000000", "R21 the retired hand-assembled exponent")
 	// THE CLAUSE EXECUTED, not merely present as text: the emitted arm's own
-	// body is lifted out of tableFixedRuntime and RUN over the f32 patterns,
-	// and the f64 bits it lands are read back and compared. A broken sign copy,
-	// a forced quiet bit or a dropped payload bit is red here; the substring
-	// checks above cannot see any of the three. The probe carries no sibling
-	// runtime and no foreign toolchain — only the Go compiler this leg runs.
+	// body is lifted out of tableFixedRuntime and RUN over finite patterns,
+	// -0 and the subnormals included, which must land exactly, and over the
+	// non-finite ones, which must stay non-finite for the finite pass to see.
 	t03GoR21Exec(t, widenF)
 }
 
 // t03GoR21Exec compiles and runs the exact text of the emitted
-// tableFixedWidenF arm over the NaN inputs the title names, wiring the few
-// names the arm reads (src, dst, p, report, tableFixedGet32, tableFixedPut64,
-// math) around it, so a planted edit to the arm turns this red by the bits it
-// lands, not by an absent substring (docs/SPEC-TABLES.md §3.4, §21.2).
+// tableFixedWidenF arm, wiring the few names the arm reads (src, dst, p,
+// report, tableFixedGet32, tableFixedPut64, math) around it, so a planted
+// edit to the arm turns this red by the bits it lands, not by an absent
+// substring (docs/SPEC-TABLES.md §3.3, §21.2).
 func t03GoR21Exec(t *testing.T, arm string) {
 	t.Helper()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated widen arm)")
-	if !strings.Contains(arm, "var widened uint64") {
-		t.Fatalf("R21: the arm text is not the assembled widen: %q", arm)
-	}
 	probe := "package probe\n\n" +
 		"import (\n\t\"encoding/binary\"\n\t\"math\"\n\t\"testing\"\n)\n\n" +
 		"const tableFixedWidenF uint8 = 6\n\n" +
@@ -611,11 +604,11 @@ func t03GoR21Exec(t *testing.T, arm string) {
 		arm + "\n}\n\n" +
 		"func TestWidenF(t *testing.T) {\n" +
 		"\tfor _, c := range []struct {\n\t\tin   uint32\n\t\twant uint64\n\t\twhat string\n\t}{\n" +
-		"\t\t{0x7f800001, 0x7ff0000020000000, \"positive signalling NaN keeps its quiet bit clear\"},\n" +
-		"\t\t{0x7fc00000, 0x7ff8000000000000, \"positive quiet NaN stays quiet\"},\n" +
-		"\t\t{0xff800001, 0xfff0000020000000, \"negative signalling NaN copies its sign\"},\n" +
-		"\t\t{0x7fbfffff, 0x7ff7ffffe0000000, \"full low-mantissa payload rides the shift\"},\n" +
 		"\t\t{0x3f800000, 0x3ff0000000000000, \"finite widens exactly\"},\n" +
+		"\t\t{0x80000000, 0x8000000000000000, \"-0 keeps its sign\"},\n" +
+		"\t\t{0x007fffff, 0x380fffffc0000000, \"the largest subnormal is exact\"},\n" +
+		"\t\t{0x80000001, 0xb6a0000000000000, \"the smallest negative subnormal is exact\"},\n" +
+		"\t\t{0x7f7fffff, 0x47efffffe0000000, \"the largest finite float32 is exact\"},\n" +
 		"\t} {\n" +
 		"\t\tsrc := make([]byte, 4)\n\t\tdst := make([]byte, 8)\n" +
 		"\t\tbinary.LittleEndian.PutUint32(src, c.in)\n" +
@@ -625,6 +618,13 @@ func t03GoR21Exec(t *testing.T, arm string) {
 		"\t\t\tt.Errorf(\"%s: widenF(0x%08x) landed 0x%016x, want 0x%016x\", c.what, c.in, got, c.want)\n\t\t}\n" +
 		"\t\tif r.Widened != 1 {\n" +
 		"\t\t\tt.Errorf(\"%s: the widen did not count: Widened=%d\", c.what, r.Widened)\n\t\t}\n" +
+		"\t}\n" +
+		"\tfor _, in := range []uint32{0x7f800001, 0x7fc00000, 0xffa5a5a5, 0x7f800000, 0xff800000} {\n" +
+		"\t\tsrc := make([]byte, 4)\n\t\tdst := make([]byte, 8)\n" +
+		"\t\tbinary.LittleEndian.PutUint32(src, in)\n" +
+		"\t\twidenF(src, dst, TableFixedEntry{}, &TableReport{})\n" +
+		"\t\tif v := math.Float64frombits(binary.LittleEndian.Uint64(dst)); v-v == 0 {\n" +
+		"\t\t\tt.Errorf(\"widenF(0x%08x) landed the finite %v: the finite pass could not refuse it\", in, v)\n\t\t}\n" +
 		"\t}\n}\n"
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module probe\n\ngo 1.26\n"), 0o600); err != nil {

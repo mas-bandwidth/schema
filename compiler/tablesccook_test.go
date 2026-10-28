@@ -81,7 +81,7 @@ int main(void) {
    CHECK(root_load_measure_ex(&unknown,1,NULL,&reason)==-1 && reason==SCHEMA_TABLE_REFUSE_UNKNOWN_FORM);
    reason=99;CHECK(root_load_measure_ex(NULL,0,NULL,&reason)==-1 && reason==99);
  }
- CHECK(root_builder_init(&b));CHECK(root_load_builder(&b,wire,sizeof(wire),&report));
+ CHECK(root_builder_init(&b));CHECK(root_load_builder_tolerant(&b,wire,sizeof(wire),&report));
  root=root_builder_root(&b);ctx.arena=&b.arena;sink.worker=&b.main;sink.region=NULL;
  /* Padding and unused string tails must not enter a content-addressed cook. */
  ((uint8_t *)(void *)root)[1]=0xa5;

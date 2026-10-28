@@ -123,7 +123,18 @@ func (g *tableGen) emitMessageGraphLoad(st *ir.Struct) {
 	if g.retain {
 		return
 	}
-	g.pf("static SCHEMA_UNUSED int %s(const %s ** roots,int64_t * count,uint8_t * region,int64_t region_bytes,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n TableReport ignored={0};TableMessageReader r;int64_t bodies,capacity,used=0,i;if(report==NULL)report=&ignored;\n if(roots==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n if(region==NULL||region_bytes<0||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return 0;}memset(region,0,(size_t)region_bytes);\n for(i=0;i<bodies;i++){roots[i]=NULL;if(!%s(&r,region,region_bytes,&used,roots+i))return 0;(*count)++;}return table_message_close(&r);\n}\n", g.api(n, "load_messages"), n, g.sym(n, "message_load_into"))
+	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
+	// OWN (docs/SPEC-TABLES.md §6.5): the batch decode runs under the tolerant
+	// name, unchanged, and the plain name wraps it below.
+	g.pf("/* %s is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered root and the report. */\n", g.api(n, "load_messages_tolerant"))
+	g.pf("static SCHEMA_UNUSED int %s(const %s ** roots,int64_t * count,uint8_t * region,int64_t region_bytes,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n TableReport ignored={0};TableMessageReader r;int64_t bodies,capacity,used=0,i;if(report==NULL)report=&ignored;\n if(roots==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n if(region==NULL||region_bytes<0||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return 0;}memset(region,0,(size_t)region_bytes);\n for(i=0;i<bodies;i++){roots[i]=NULL;if(!%s(&r,region,region_bytes,&used,roots+i))return 0;(*count)++;}return table_message_close(&r);\n}\n", g.api(n, "load_messages_tolerant"), n, g.sym(n, "message_load_into"))
+	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */\n", g.api(n, "load_messages"))
+	g.pf("static SCHEMA_UNUSED int %s( const %s ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary * vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(n, "load_messages"), n)
+	g.pf("    TableReport ignored;\n    int64_t i;\n    int ok;\n    if ( report == NULL ) report = &ignored;\n    /* this read's report, not the caller's last one */\n    memset( report, 0, sizeof( *report ) );\n")
+	g.pf("    ok = %s( roots, count, region, region_bytes, vocabulary, buffer, bytes, report );\n", g.api(n, "load_messages_tolerant"))
+	g.pf("    if ( !ok )\n    {\n        (void) table_report_strict_refuses( report, 0 );\n        return 0;\n    }\n")
+	g.pf("    if ( !table_report_strict_refuses( report, 1 ) ) return 1;\n")
+	g.pf("    for ( i = 0; i < *count; i++ ) roots[i] = NULL;\n    *count = 0;\n    return 0;\n}\n")
 }
 
 func (g *tableGen) retainMessageRoot() string {

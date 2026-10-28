@@ -239,8 +239,12 @@ func(t *TableRetain)countLost(r *TableReport){if t==nil||r==nil{return};for at:=
 type tableRetainPlainReader = TableReader
 type TableRetainReader struct {tableRetainPlainReader;Retain *TableRetain;Path tableRetainPath}
 func(r *TableRetainReader)Body()(TableRetainReader,bool){sub,ok:=r.tableRetainPlainReader.Body();return TableRetainReader{tableRetainPlainReader:sub,Retain:r.Retain,Path:r.Path},ok}
-func(r *TableRetainReader)capture(id uint64,kind uint8)bool{
+// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a NaN
+// or an infinity refuses the read as non_finite_float, named <owner>.0x<id>.
+func(r *TableRetainReader)capture(id uint64,kind uint8,owner string)bool{
  at:=r.Offset;if !r.Skip(kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
+ if kind==10&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000 {tableNonFiniteFloat(&r.Report.NonFiniteFloat,tableRetainedFloatName(owner,id));return true}
  limit:=int64(len(t.Bytes))-t.Used-int64(26+p.depth*8);if limit<0{r.Report.RetainLost++;return true};probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true},limit:limit}
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
  need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}
@@ -248,6 +252,10 @@ func(r *TableRetainReader)capture(id uint64,kind uint8)bool{
  for i := range p.depth {binary.LittleEndian.PutUint32(b[26+8*i:],p.steps[i].ordinal);binary.LittleEndian.PutUint32(b[30+8*i:],p.steps[i].index)}
  write:=tableRetainIn{r:probe.r,w:TableWriter{Buffer:b[26+p.depth*8:]},limit:limit};write.r.Offset=0;if !write.payload(kind,0)||write.w.Overflow{r.Report.RetainLost++;return true};t.Used+=need;t.Count++;r.Report.Retained++;return true
 }
+
+// tableRetainedFloatName names a retained unknown float for the
+// non_finite_float refusal: the body's table and the id it cannot name.
+func tableRetainedFloatName(owner string,id uint64)string{const digits="0123456789abcdef";var hex [16]byte;for i:=15;i>=0;i-- {hex[i]=digits[id&0xf];id>>=4};return owner+".0x"+string(hex[:])}
 
 type tableRetainIn struct {r TableReader;w TableWriter;limit int64}
 func(s *tableRetainIn)room(n int64)bool{return n>=0&&n<=s.limit-s.w.Offset}

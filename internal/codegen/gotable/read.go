@@ -139,7 +139,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("case 0xffffffffffffffff: if !r.Skip(kind) { r.Report.Malformed=true;return false }\n")
 	}
 	if g.retain {
-		g.pf("default:r.Report.Unknown++;if !r.capture(fieldID,kind){r.Report.Malformed=true;return false}\n}\n}\n}\n")
+		g.pf("default:r.Report.Unknown++;if !r.capture(fieldID,kind,%q){r.Report.Malformed=true;return false}\n}\n}\n}\n", st.DeclaredName())
 	} else {
 		g.pf("\t\tdefault:\n\t\t\tr.Report.Unknown++; if !r.Skip(kind) { r.Report.Malformed = true; return false }\n\t\t}\n\t}\n}\n\n")
 	}
@@ -185,7 +185,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\t// counts no unknown, no kind mismatch and no clamp — as when the framing\n")
 	g.pf("\t// walk refused before the reader had seen one byte.\n")
 	g.pf("\tbefore := *report\n")
-	g.pf("\tif !%sLoadBody(&r, value) {\n", n)
+	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+	// any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing lands.
+	g.pf("\tif !%sLoadBody(&r, value) || report.NonFiniteFloat != \"\" {\n", n)
+	g.pf("\t\tif tableNonFiniteRefused(report) {\n\t\t\t%sReset(value)\n\t\t\treturn false\n\t\t}\n", n)
 	g.pf("\t\t// The reading walk stops on rules the framing walk has no opinion about\n")
 	g.pf("\t\t// — a reserved id in a file body is the one that matters — so a body\n")
 	g.pf("\t\t// that stopped is still asked the framing question from the start of\n")
@@ -578,29 +581,33 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 		g.pf("%sif b > 1 { r.Report.Malformed = true; if r.Report.Reason == \"\" { r.Report.Reason = \"malformed: %s\" } }\n", ind, member(f))
 		g.pf("%s%s = b != 0\n%s}\n", ind, expr, ind)
 	case tkF32, tkF64:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value and before the field is written (docs/SPEC-TABLES.md
+		// §3.3; Glenn, 2026-10-27, "tables go finite-only too, same rule as
+		// packets"): the read names the field and the load refuses as
+		// non_finite_float, the tolerant one included. A compressed float takes
+		// the test before its bounds. Every finite float32 widens exactly, so
+		// the float rung (kind 10 into a float64) is the ordinary conversion.
 		g.needsMath = true
+		owner := g.floatOwner(f)
+		refuse := fmt.Sprintf("tableNonFiniteFloat(&r.Report.NonFiniteFloat, %q)", owner)
 		switch {
 		case kind == tkF32:
-			g.pf("%s{\n%s\tv := math.Float32frombits(%s.Get32())\n", ind, ind, rdr)
+			g.pf("%s{\n%s\tb := %s.Get32(); if b&0x7f800000 == 0x7f800000 { %s } else { v := math.Float32frombits(b)\n", ind, ind, rdr, refuse)
 		case knownKindWidth(wireKind) > 0:
-			g.pf("%s{\n%s\tv := math.Float64frombits(%s.Get64())\n", ind, ind, rdr)
+			g.pf("%s{\n%s\tb := %s.Get64(); if b&0x7ff0000000000000 == 0x7ff0000000000000 { %s } else { v := math.Float64frombits(b)\n", ind, ind, rdr, refuse)
 		default:
-			g.pf("%s{\n%s\tvar v float64\n%s\tif %s == 10 { v = math.Float64frombits(tableWidenFloat(%s.Get32())) } else { v = math.Float64frombits(%s.Get64()) }\n", ind, ind, ind, wireKind, rdr, rdr)
+			// the rung's source width is the wire kind's, known only at run time
+			g.pf("%s{\n%s\tfinite, v := true, float64(0); if %s == 10 { b := %s.Get32(); finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b)) } else { b := %s.Get64(); finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b) }; if !finite { %s } else {\n", ind, ind, wireKind, rdr, rdr, refuse)
 		}
 		if f.HasFloatRange {
 			lo, hi := formatFloat64(f.FMin), formatFloat64(f.FMax)
 			if kind == tkF32 {
 				lo, hi = formatFloat32(f.FMin), formatFloat32(f.FMax)
 			}
-			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q)", g.floatOwner(f))))
-		} else {
-			// A PLAIN float's NaN or infinity lands as its pattern and counts
-			// nothing, and the read NAMES it so the strict read refuses it as
-			// non_finite (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL
-			// VALUES"; §6.5): the text writer has no spelling for one (§16.3).
-			g.pf("%s\tif v != v || v-v != 0 { tableNonFinite(&r.Report.Reason, %q) }\n", ind, g.floatOwner(f))
+			g.pf("%s\t%s\n", ind, compressedFloatClamp("v", lo, hi, fmt.Sprintf("r.Report.Clamped++; tableTextClamped(&r.Report.ClampedField, %q)", owner)))
 		}
-		g.pf("%s\t%s = v\n%s}\n", ind, expr, ind)
+		g.pf("%s\t%s = v }\n%s}\n", ind, expr, ind)
 	default:
 		signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 		g.pf("%s{\n%s\tv := %s\n", ind, ind, scalarGetExpr(rdr, wireKind, signed))
@@ -703,7 +710,7 @@ func unitHasRequired(u *ir.Unit) bool {
 }
 
 // floatOwner names a float field as <Owner>.<field> for the report's
-// non_finite reason (docs/SPEC-TABLES.md §3.3), the owner being the table,
+// non_finite_float refusal (docs/SPEC-TABLES.md §3.3), the owner being the table,
 // type or union that declares it. A field the unit does not hold by pointer
 // (the message form's element copy, messageElement) is named by the closure
 // member whose codec is being emitted when that member declares a field of
@@ -712,7 +719,7 @@ func (g *tableGen) floatOwner(f *ir.Field) string {
 	for _, m := range []map[string]*ir.Struct{g.unit.Tables, g.unit.Structs} {
 		for _, st := range m {
 			if slices.Contains(st.Fields, f) {
-				return st.Name + "." + f.Name
+				return st.DeclaredName() + "." + f.Name
 			}
 		}
 	}
@@ -728,7 +735,7 @@ func (g *tableGen) floatOwner(f *ir.Field) string {
 	if g.owner != nil {
 		for _, x := range g.owner.Fields {
 			if x.Name == f.Name {
-				return g.owner.Name + "." + f.Name
+				return g.owner.DeclaredName() + "." + f.Name
 			}
 		}
 	}

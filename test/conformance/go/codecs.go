@@ -43,23 +43,23 @@ import (
 // lines. A row that stopped copying a counter would be caught by the first
 // case that counts it.
 func snapDemo(r *tabledemo.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tabledemo.TableOpenRefused || r.NonFiniteFloat != ""}
 }
 
 func snapV1(r *tblv1.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv1.TableOpenRefused}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv1.TableOpenRefused || r.NonFiniteFloat != ""}
 }
 
 func snapV2(r *tblv2.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv2.TableOpenRefused}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblv2.TableOpenRefused || r.NonFiniteFloat != ""}
 }
 
 func snapP1(r *tblp1.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp1.TableOpenRefused}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp1.TableOpenRefused || r.NonFiniteFloat != ""}
 }
 
 func snapP3(r *tblp3.TableReport) report {
-	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp3.TableOpenRefused}
+	return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp3.TableOpenRefused || r.NonFiniteFloat != ""}
 }
 
 var codecTable = []codec{
@@ -75,7 +75,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, tblp2.ChainToJSONMeasure, tblp2.ChainToJSON, tblp2.ChainCookMeasure, tblp2.ChainCookFrom, func(r *tblp2.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp2.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblp2.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("tblw1", "Fleet", tblw1.FleetLoadMeasure, tblw1.FleetLoadTolerant, tblw1.FleetMeasure, tblw1.FleetSave, func(text []byte, r *tblw1.TableReport) (*tblw1.Fleet, []byte, bool) {
 		var b tblw1.FleetBuilder
@@ -89,7 +89,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, tblw1.FleetToJSONMeasure, tblw1.FleetToJSON, tblw1.FleetCookMeasure, tblw1.FleetCookFrom, func(r *tblw1.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblw1.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblw1.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("tblw2", "Fleet", tblw2.FleetLoadMeasure, tblw2.FleetLoadTolerant, tblw2.FleetMeasure, tblw2.FleetSave, func(text []byte, r *tblw2.TableReport) (*tblw2.Fleet, []byte, bool) {
 		var b tblw2.FleetBuilder
@@ -103,7 +103,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, tblw2.FleetToJSONMeasure, tblw2.FleetToJSON, tblw2.FleetCookMeasure, tblw2.FleetCookFrom, func(r *tblw2.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblw2.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblw2.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("tblg1", "Guarded", tblg1.GuardedLoadMeasure, tblg1.GuardedLoadTolerant, tblg1.GuardedMeasure, tblg1.GuardedSave, func(text []byte, r *tblg1.TableReport) (*tblg1.Guarded, []byte, bool) {
 		var b tblg1.GuardedBuilder
@@ -117,32 +117,32 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, tblg1.GuardedToJSONMeasure, tblg1.GuardedToJSON, tblg1.GuardedCookMeasure, tblg1.GuardedCookFrom, func(r *tblg1.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblg1.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblg1.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	row("backenddemo", "LoginRequest", backenddemo.LoginRequestReset, backenddemo.LoginRequestLoadTolerant, backenddemo.LoginRequestMeasure, backenddemo.LoginRequestSave, backenddemo.LoginRequestFromJSONTolerant, backenddemo.LoginRequestToJSONMeasure, backenddemo.LoginRequestToJSON, backenddemo.LoginRequestCookMeasure, backenddemo.LoginRequestCookFrom, func(r *backenddemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("backenddemo", "MatchResult", backenddemo.MatchResultReset, backenddemo.MatchResultLoadTolerant, backenddemo.MatchResultMeasure, backenddemo.MatchResultSave, backenddemo.MatchResultFromJSONTolerant, backenddemo.MatchResultToJSONMeasure, backenddemo.MatchResultToJSON, backenddemo.MatchResultCookMeasure, backenddemo.MatchResultCookFrom, func(r *backenddemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("backenddemo", "StorePurchase", backenddemo.StorePurchaseReset, backenddemo.StorePurchaseLoadTolerant, backenddemo.StorePurchaseMeasure, backenddemo.StorePurchaseSave, backenddemo.StorePurchaseFromJSONTolerant, backenddemo.StorePurchaseToJSONMeasure, backenddemo.StorePurchaseToJSON, backenddemo.StorePurchaseCookMeasure, backenddemo.StorePurchaseCookFrom, func(r *backenddemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("backenddemo", "Envelope", backenddemo.EnvelopeReset, backenddemo.EnvelopeLoadTolerant, backenddemo.EnvelopeMeasure, backenddemo.EnvelopeSave, backenddemo.EnvelopeFromJSONTolerant, backenddemo.EnvelopeToJSONMeasure, backenddemo.EnvelopeToJSON, backenddemo.EnvelopeCookMeasure, backenddemo.EnvelopeCookFrom, func(r *backenddemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == backenddemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("vocabdemo", "Wide00", vocabdemo.Wide00Reset, vocabdemo.Wide00LoadTolerant, vocabdemo.Wide00Measure, vocabdemo.Wide00Save, vocabdemo.Wide00FromJSONTolerant, vocabdemo.Wide00ToJSONMeasure, vocabdemo.Wide00ToJSON, vocabdemo.Wide00CookMeasure, vocabdemo.Wide00CookFrom, func(r *vocabdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("vocabdemo", "Wide09", vocabdemo.Wide09Reset, vocabdemo.Wide09LoadTolerant, vocabdemo.Wide09Measure, vocabdemo.Wide09Save, vocabdemo.Wide09FromJSONTolerant, vocabdemo.Wide09ToJSONMeasure, vocabdemo.Wide09ToJSON, vocabdemo.Wide09CookMeasure, vocabdemo.Wide09CookFrom, func(r *vocabdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocabdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("vocab9demo", "Wide00", vocab9demo.Wide00Reset, vocab9demo.Wide00LoadTolerant, vocab9demo.Wide00Measure, vocab9demo.Wide00Save, vocab9demo.Wide00FromJSONTolerant, vocab9demo.Wide00ToJSONMeasure, vocab9demo.Wide00ToJSON, vocab9demo.Wide00CookMeasure, vocab9demo.Wide00CookFrom, func(r *vocab9demo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("vocab9demo", "Wide19", vocab9demo.Wide19Reset, vocab9demo.Wide19LoadTolerant, vocab9demo.Wide19Measure, vocab9demo.Wide19Save, vocab9demo.Wide19FromJSONTolerant, vocab9demo.Wide19ToJSONMeasure, vocab9demo.Wide19ToJSON, vocab9demo.Wide19CookMeasure, vocab9demo.Wide19CookFrom, func(r *vocab9demo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == vocab9demo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Cells", mapdemo.CellsLoadMeasure, mapdemo.CellsLoadTolerant, mapdemo.CellsMeasure, mapdemo.CellsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Cells, []byte, bool) {
 		var b mapdemo.CellsBuilder
@@ -156,7 +156,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.CellsToJSONMeasure, mapdemo.CellsToJSON, mapdemo.CellsCookMeasure, mapdemo.CellsCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Chunks", mapdemo.ChunksLoadMeasure, mapdemo.ChunksLoadTolerant, mapdemo.ChunksMeasure, mapdemo.ChunksSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Chunks, []byte, bool) {
 		var b mapdemo.ChunksBuilder
@@ -170,7 +170,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.ChunksToJSONMeasure, mapdemo.ChunksToJSON, mapdemo.ChunksCookMeasure, mapdemo.ChunksCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Crews", mapdemo.CrewsLoadMeasure, mapdemo.CrewsLoadTolerant, mapdemo.CrewsMeasure, mapdemo.CrewsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Crews, []byte, bool) {
 		var b mapdemo.CrewsBuilder
@@ -184,7 +184,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.CrewsToJSONMeasure, mapdemo.CrewsToJSON, mapdemo.CrewsCookMeasure, mapdemo.CrewsCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Depth", mapdemo.DepthLoadMeasure, mapdemo.DepthLoadTolerant, mapdemo.DepthMeasure, mapdemo.DepthSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Depth, []byte, bool) {
 		var b mapdemo.DepthBuilder
@@ -198,7 +198,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.DepthToJSONMeasure, mapdemo.DepthToJSON, mapdemo.DepthCookMeasure, mapdemo.DepthCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Docs", mapdemo.DocsLoadMeasure, mapdemo.DocsLoadTolerant, mapdemo.DocsMeasure, mapdemo.DocsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Docs, []byte, bool) {
 		var b mapdemo.DocsBuilder
@@ -212,7 +212,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.DocsToJSONMeasure, mapdemo.DocsToJSON, mapdemo.DocsCookMeasure, mapdemo.DocsCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Fleet", mapdemo.FleetLoadMeasure, mapdemo.FleetLoadTolerant, mapdemo.FleetMeasure, mapdemo.FleetSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Fleet, []byte, bool) {
 		var b mapdemo.FleetBuilder
@@ -226,7 +226,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.FleetToJSONMeasure, mapdemo.FleetToJSON, mapdemo.FleetCookMeasure, mapdemo.FleetCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Pairs", mapdemo.PairsLoadMeasure, mapdemo.PairsLoadTolerant, mapdemo.PairsMeasure, mapdemo.PairsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Pairs, []byte, bool) {
 		var b mapdemo.PairsBuilder
@@ -240,7 +240,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.PairsToJSONMeasure, mapdemo.PairsToJSON, mapdemo.PairsCookMeasure, mapdemo.PairsCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Slots", mapdemo.SlotsLoadMeasure, mapdemo.SlotsLoadTolerant, mapdemo.SlotsMeasure, mapdemo.SlotsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Slots, []byte, bool) {
 		var b mapdemo.SlotsBuilder
@@ -254,7 +254,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.SlotsToJSONMeasure, mapdemo.SlotsToJSON, mapdemo.SlotsCookMeasure, mapdemo.SlotsCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Spans", mapdemo.SpansLoadMeasure, mapdemo.SpansLoadTolerant, mapdemo.SpansMeasure, mapdemo.SpansSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Spans, []byte, bool) {
 		var b mapdemo.SpansBuilder
@@ -268,7 +268,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.SpansToJSONMeasure, mapdemo.SpansToJSON, mapdemo.SpansCookMeasure, mapdemo.SpansCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Text", mapdemo.TextLoadMeasure, mapdemo.TextLoadTolerant, mapdemo.TextMeasure, mapdemo.TextSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Text, []byte, bool) {
 		var b mapdemo.TextBuilder
@@ -282,7 +282,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.TextToJSONMeasure, mapdemo.TextToJSON, mapdemo.TextCookMeasure, mapdemo.TextCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Trails", mapdemo.TrailsLoadMeasure, mapdemo.TrailsLoadTolerant, mapdemo.TrailsMeasure, mapdemo.TrailsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Trails, []byte, bool) {
 		var b mapdemo.TrailsBuilder
@@ -296,7 +296,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.TrailsToJSONMeasure, mapdemo.TrailsToJSON, mapdemo.TrailsCookMeasure, mapdemo.TrailsCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Runs", mapdemo.RunsLoadMeasure, mapdemo.RunsLoadTolerant, mapdemo.RunsMeasure, mapdemo.RunsSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Runs, []byte, bool) {
 		var b mapdemo.RunsBuilder
@@ -310,7 +310,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.RunsToJSONMeasure, mapdemo.RunsToJSON, mapdemo.RunsCookMeasure, mapdemo.RunsCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "Row", mapdemo.RowLoadMeasure, mapdemo.RowLoadTolerant, mapdemo.RowMeasure, mapdemo.RowSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.Row, []byte, bool) {
 		var b mapdemo.RowBuilder
@@ -324,7 +324,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.RowToJSONMeasure, mapdemo.RowToJSON, mapdemo.RowCookMeasure, mapdemo.RowCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "WideRow", mapdemo.WideRowLoadMeasure, mapdemo.WideRowLoadTolerant, mapdemo.WideRowMeasure, mapdemo.WideRowSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.WideRow, []byte, bool) {
 		var b mapdemo.WideRowBuilder
@@ -338,7 +338,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.WideRowToJSONMeasure, mapdemo.WideRowToJSON, mapdemo.WideRowCookMeasure, mapdemo.WideRowCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("mapdemo", "EdgeRow", mapdemo.EdgeRowLoadMeasure, mapdemo.EdgeRowLoadTolerant, mapdemo.EdgeRowMeasure, mapdemo.EdgeRowSave, func(text []byte, r *mapdemo.TableReport) (*mapdemo.EdgeRow, []byte, bool) {
 		var b mapdemo.EdgeRowBuilder
@@ -352,7 +352,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, mapdemo.EdgeRowToJSONMeasure, mapdemo.EdgeRowToJSON, mapdemo.EdgeRowCookMeasure, mapdemo.EdgeRowCookFrom, func(r *mapdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("listdemo", "Sheet", listdemo.SheetLoadMeasure, listdemo.SheetLoadTolerant, listdemo.SheetMeasure, listdemo.SheetSave, func(text []byte, r *listdemo.TableReport) (*listdemo.Sheet, []byte, bool) {
 		var b listdemo.SheetBuilder
@@ -366,7 +366,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, listdemo.SheetToJSONMeasure, listdemo.SheetToJSON, listdemo.SheetCookMeasure, listdemo.SheetCookFrom, func(r *listdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("listdemo", "Army", listdemo.ArmyLoadMeasure, listdemo.ArmyLoadTolerant, listdemo.ArmyMeasure, listdemo.ArmySave, func(text []byte, r *listdemo.TableReport) (*listdemo.Army, []byte, bool) {
 		var b listdemo.ArmyBuilder
@@ -380,7 +380,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, listdemo.ArmyToJSONMeasure, listdemo.ArmyToJSON, listdemo.ArmyCookMeasure, listdemo.ArmyCookFrom, func(r *listdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	regionRow("listdemo", "Save", listdemo.SaveLoadMeasure, listdemo.SaveLoadTolerant, listdemo.SaveMeasure, listdemo.SaveSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Save, []byte, bool) {
@@ -395,7 +395,7 @@ var codecTable = []codec{
 			}
 			return b.AsConst(), b.Region(), ok
 		}, listdemo.SaveToJSONMeasure, listdemo.SaveToJSON, listdemo.SaveCookMeasure, listdemo.SaveCookFrom, func(r *listdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 	regionRow("listdemo", "Mixed", listdemo.MixedLoadMeasure, listdemo.MixedLoadTolerant, listdemo.MixedMeasure, listdemo.MixedSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Mixed, []byte, bool) {
@@ -410,7 +410,7 @@ var codecTable = []codec{
 			}
 			return b.AsConst(), b.Region(), ok
 		}, listdemo.MixedToJSONMeasure, listdemo.MixedToJSON, listdemo.MixedCookMeasure, listdemo.MixedCookFrom, func(r *listdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 	regionRow("listdemo", "Bytes", listdemo.BytesLoadMeasure, listdemo.BytesLoadTolerant, listdemo.BytesMeasure, listdemo.BytesSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Bytes, []byte, bool) {
@@ -425,7 +425,7 @@ var codecTable = []codec{
 			}
 			return b.AsConst(), b.Region(), ok
 		}, listdemo.BytesToJSONMeasure, listdemo.BytesToJSON, listdemo.BytesCookMeasure, listdemo.BytesCookFrom, func(r *listdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 	regionRow("listdemo", "Ints", listdemo.IntsLoadMeasure, listdemo.IntsLoadTolerant, listdemo.IntsMeasure, listdemo.IntsSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Ints, []byte, bool) {
@@ -440,7 +440,7 @@ var codecTable = []codec{
 			}
 			return b.AsConst(), b.Region(), ok
 		}, listdemo.IntsToJSONMeasure, listdemo.IntsToJSON, listdemo.IntsCookMeasure, listdemo.IntsCookFrom, func(r *listdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 	regionRow("listdemo", "Floats", listdemo.FloatsLoadMeasure, listdemo.FloatsLoadTolerant, listdemo.FloatsMeasure, listdemo.FloatsSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Floats, []byte, bool) {
@@ -455,7 +455,7 @@ var codecTable = []codec{
 			}
 			return b.AsConst(), b.Region(), ok
 		}, listdemo.FloatsToJSONMeasure, listdemo.FloatsToJSON, listdemo.FloatsCookMeasure, listdemo.FloatsCookFrom, func(r *listdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 	regionRow("listdemo", "Album", listdemo.AlbumLoadMeasure, listdemo.AlbumLoadTolerant, listdemo.AlbumMeasure, listdemo.AlbumSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Album, []byte, bool) {
@@ -470,7 +470,7 @@ var codecTable = []codec{
 			}
 			return b.AsConst(), b.Region(), ok
 		}, listdemo.AlbumToJSONMeasure, listdemo.AlbumToJSON, listdemo.AlbumCookMeasure, listdemo.AlbumCookFrom, func(r *listdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 	regionRow("listdemo", "Unbounded", listdemo.UnboundedLoadMeasure, listdemo.UnboundedLoadTolerant, listdemo.UnboundedMeasure, listdemo.UnboundedSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Unbounded, []byte, bool) {
@@ -485,7 +485,7 @@ var codecTable = []codec{
 			}
 			return b.AsConst(), b.Region(), ok
 		}, listdemo.UnboundedToJSONMeasure, listdemo.UnboundedToJSON, listdemo.UnboundedCookMeasure, listdemo.UnboundedCookFrom, func(r *listdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 
 	regionRow("streamdemo", "Feed", streamdemo.FeedLoadMeasure, streamdemo.FeedLoadTolerant, streamdemo.FeedMeasure, streamdemo.FeedSave,
@@ -502,7 +502,7 @@ var codecTable = []codec{
 			return b.AsConst(), b.Region(), ok
 		},
 		streamdemo.FeedToJSONMeasure, streamdemo.FeedToJSON, streamdemo.FeedCookMeasure, streamdemo.FeedCookFrom, func(r *streamdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == streamdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == streamdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 
 	regionRow("streamdemo", "Chunk", streamdemo.ChunkLoadMeasure, streamdemo.ChunkLoadTolerant, streamdemo.ChunkMeasure, streamdemo.ChunkSave,
@@ -519,7 +519,7 @@ var codecTable = []codec{
 			return b.AsConst(), b.Region(), ok
 		},
 		streamdemo.ChunkToJSONMeasure, streamdemo.ChunkToJSON, streamdemo.ChunkCookMeasure, streamdemo.ChunkCookFrom, func(r *streamdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == streamdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == streamdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 
 	regionRow("blobdemo", "Catalog", blobdemo.CatalogLoadMeasure, blobdemo.CatalogLoadTolerant, blobdemo.CatalogMeasure, blobdemo.CatalogSave,
@@ -536,7 +536,7 @@ var codecTable = []codec{
 			return b.AsConst(), b.Region(), ok
 		},
 		blobdemo.CatalogToJSONMeasure, blobdemo.CatalogToJSON, blobdemo.CatalogCookMeasure, blobdemo.CatalogCookFrom, func(r *blobdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}, blobdemo.CatalogMeasureReason),
 
 	regionRow("blobdemo", "Asset", blobdemo.AssetLoadMeasure, blobdemo.AssetLoadTolerant, blobdemo.AssetMeasure, blobdemo.AssetSave,
@@ -553,7 +553,7 @@ var codecTable = []codec{
 			return b.AsConst(), b.Region(), ok
 		},
 		blobdemo.AssetToJSONMeasure, blobdemo.AssetToJSON, blobdemo.AssetCookMeasure, blobdemo.AssetCookFrom, func(r *blobdemo.TableReport) report {
-			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused}
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == blobdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 		}),
 
 	regionRow("graphdemo", "Scene", graphdemo.SceneLoadMeasure, graphdemo.SceneLoadTolerant, graphdemo.SceneMeasure, graphdemo.SceneSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Scene, []byte, bool) {
@@ -568,7 +568,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, graphdemo.SceneToJSONMeasure, graphdemo.SceneToJSON, graphdemo.SceneCookMeasure, graphdemo.SceneCookFrom, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	regionRow("graphdemo", "ListNode", graphdemo.ListNodeLoadMeasure, graphdemo.ListNodeLoadTolerant, graphdemo.ListNodeMeasure, graphdemo.ListNodeSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.ListNode, []byte, bool) {
@@ -583,7 +583,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, graphdemo.ListNodeToJSONMeasure, graphdemo.ListNodeToJSON, graphdemo.ListNodeCookMeasure, graphdemo.ListNodeCookFrom, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	regionRow("graphdemo", "TreeNode", graphdemo.TreeNodeLoadMeasure, graphdemo.TreeNodeLoadTolerant, graphdemo.TreeNodeMeasure, graphdemo.TreeNodeSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.TreeNode, []byte, bool) {
@@ -598,7 +598,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, graphdemo.TreeNodeToJSONMeasure, graphdemo.TreeNodeToJSON, graphdemo.TreeNodeCookMeasure, graphdemo.TreeNodeCookFrom, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	regionRow("graphdemo", "Layer", graphdemo.LayerLoadMeasure, graphdemo.LayerLoadTolerant, graphdemo.LayerMeasure, graphdemo.LayerSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Layer, []byte, bool) {
@@ -613,7 +613,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, graphdemo.LayerToJSONMeasure, graphdemo.LayerToJSON, graphdemo.LayerCookMeasure, graphdemo.LayerCookFrom, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	regionRow("graphdemo", "Depot", graphdemo.DepotLoadMeasure, graphdemo.DepotLoadTolerant, graphdemo.DepotMeasure, graphdemo.DepotSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Depot, []byte, bool) {
@@ -628,7 +628,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, graphdemo.DepotToJSONMeasure, graphdemo.DepotToJSON, graphdemo.DepotCookMeasure, graphdemo.DepotCookFrom, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	regionRow("graphdemo", "Album", graphdemo.AlbumLoadMeasure, graphdemo.AlbumLoadTolerant, graphdemo.AlbumMeasure, graphdemo.AlbumSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Album, []byte, bool) {
@@ -643,7 +643,7 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, graphdemo.AlbumToJSONMeasure, graphdemo.AlbumToJSON, graphdemo.AlbumCookMeasure, graphdemo.AlbumCookFrom, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	regionRow("graphdemo", "Marker", graphdemo.MarkerLoadMeasure, graphdemo.MarkerLoadTolerant, graphdemo.MarkerMeasure, graphdemo.MarkerSave, func(text []byte, report *graphdemo.TableReport) (*graphdemo.Marker, []byte, bool) {
@@ -658,50 +658,50 @@ var codecTable = []codec{
 		}
 		return b.AsConst(), b.Region(), ok
 	}, graphdemo.MarkerToJSONMeasure, graphdemo.MarkerToJSON, graphdemo.MarkerCookMeasure, graphdemo.MarkerCookFrom, func(r *graphdemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == graphdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	row("messagedemo", "ToolMessage", messagedemo.ToolMessageReset, messagedemo.ToolMessageLoadTolerant, messagedemo.ToolMessageMeasure, messagedemo.ToolMessageSave, messagedemo.ToolMessageFromJSONTolerant, messagedemo.ToolMessageToJSONMeasure, messagedemo.ToolMessageToJSON, messagedemo.ToolMessageCookMeasure, messagedemo.ToolMessageCookFrom, func(r *messagedemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == messagedemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == messagedemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	row("widedemo", "Caption", widedemo.CaptionReset, widedemo.CaptionLoadTolerant, widedemo.CaptionMeasure, widedemo.CaptionSave, widedemo.CaptionFromJSONTolerant, widedemo.CaptionToJSONMeasure, widedemo.CaptionToJSON, widedemo.CaptionCookMeasure, widedemo.CaptionCookFrom, func(r *widedemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("widedemo", "Stamp", widedemo.StampReset, widedemo.StampLoadTolerant, widedemo.StampMeasure, widedemo.StampSave, widedemo.StampFromJSONTolerant, widedemo.StampToJSONMeasure, widedemo.StampToJSON, widedemo.StampCookMeasure, widedemo.StampCookFrom, func(r *widedemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	row("scalars", "SimState", scalardemo.SimStateReset, scalardemo.SimStateLoadTolerant, scalardemo.SimStateMeasure, scalardemo.SimStateSave, scalardemo.SimStateFromJSONTolerant, scalardemo.SimStateToJSONMeasure, scalardemo.SimStateToJSON, scalardemo.SimStateCookMeasure, scalardemo.SimStateCookFrom, func(r *scalardemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == scalardemo.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == scalardemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tblscalars2", "SimState", tblscalars2.SimStateReset, tblscalars2.SimStateLoadTolerant, tblscalars2.SimStateMeasure, tblscalars2.SimStateSave, tblscalars2.SimStateFromJSONTolerant, tblscalars2.SimStateToJSONMeasure, tblscalars2.SimStateToJSON, tblscalars2.SimStateCookMeasure, tblscalars2.SimStateCookFrom, func(r *tblscalars2.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblscalars2.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblscalars2.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	row("tblm1", "Msg", tblm1.MsgReset, tblm1.MsgLoadTolerant, tblm1.MsgMeasure, tblm1.MsgSave, tblm1.MsgFromJSONTolerant, tblm1.MsgToJSONMeasure, tblm1.MsgToJSON, tblm1.MsgCookMeasure, tblm1.MsgCookFrom, func(r *tblm1.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm1.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm1.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tblm2", "Msg", tblm2.MsgReset, tblm2.MsgLoadTolerant, tblm2.MsgMeasure, tblm2.MsgSave, tblm2.MsgFromJSONTolerant, tblm2.MsgToJSONMeasure, tblm2.MsgToJSON, tblm2.MsgCookMeasure, tblm2.MsgCookFrom, func(r *tblm2.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm2.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblm2.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tbla1", "Root", tbla1.RootReset, tbla1.RootLoadTolerant, tbla1.RootMeasure, tbla1.RootSave, tbla1.RootFromJSONTolerant, tbla1.RootToJSONMeasure, tbla1.RootToJSON, tbla1.RootCookMeasure, tbla1.RootCookFrom, func(r *tbla1.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla1.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla1.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tbla2", "Root", tbla2.RootReset, tbla2.RootLoadTolerant, tbla2.RootMeasure, tbla2.RootSave, tbla2.RootFromJSONTolerant, tbla2.RootToJSONMeasure, tbla2.RootToJSON, tbla2.RootCookMeasure, tbla2.RootCookFrom, func(r *tbla2.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla2.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tbla2.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tblk1", "Root", tblk1.RootReset, tblk1.RootLoadTolerant, tblk1.RootMeasure, tblk1.RootSave, tblk1.RootFromJSONTolerant, tblk1.RootToJSONMeasure, tblk1.RootToJSON, tblk1.RootCookMeasure, tblk1.RootCookFrom, func(r *tblk1.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk1.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk1.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tblk2", "Root", tblk2.RootReset, tblk2.RootLoadTolerant, tblk2.RootMeasure, tblk2.RootSave, tblk2.RootFromJSONTolerant, tblk2.RootToJSONMeasure, tblk2.RootToJSON, tblk2.RootCookMeasure, tblk2.RootCookFrom, func(r *tblk2.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk2.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk2.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tblr1", "Cfg", tblr1.CfgReset, tblr1.CfgLoadTolerant, tblr1.CfgMeasure, tblr1.CfgSave, tblr1.CfgFromJSONTolerant, tblr1.CfgToJSONMeasure, tblr1.CfgToJSON, tblr1.CfgCookMeasure, tblr1.CfgCookFrom, func(r *tblr1.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr1.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr1.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tblr2", "Cfg", tblr2.CfgReset, tblr2.CfgLoadTolerant, tblr2.CfgMeasure, tblr2.CfgSave, tblr2.CfgFromJSONTolerant, tblr2.CfgToJSONMeasure, tblr2.CfgToJSON, tblr2.CfgCookMeasure, tblr2.CfgCookFrom, func(r *tblr2.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr2.TableOpenRefused}
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr2.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
 	row("tabledemo", "RootConfig", tabledemo.RootConfigReset, tabledemo.RootConfigLoadTolerant,

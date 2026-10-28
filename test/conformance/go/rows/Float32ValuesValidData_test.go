@@ -10,12 +10,14 @@ import (
 
 // 32-bit floating-point fields: valid-data write/read acceptance
 // (docs/roadmap.sexp float32-values/go/valid-data; contract "§3.4 record,
-// float32"). The law: a float32 rides the fixed-form record as its IEEE-754
-// bit pattern, four bytes, little-endian, with NO canonicalisation
-// (docs/FIXED-FORM-ALGORITHM.md:174, docs/SPEC-TABLES.md §3), so a same-schema
-// write/read round trip lands every valid value BIT-EXACT — an ordinary
-// fraction, a negative, the range boundaries, negative zero and a NaN's
-// payload alike. The bench gate (bench/tables/go/table_main.go:403,413)
+// float32"). The law: a float32 rides the fixed-form record as the IEEE-754
+// bit pattern of a FINITE value, four bytes, little-endian, with NO
+// canonicalisation (docs/FIXED-FORM-ALGORITHM.md, docs/SPEC-TABLES.md §3,
+// §3.3), so a same-schema write/read round trip lands every valid value
+// BIT-EXACT — an ordinary fraction, a negative, the range boundaries,
+// negative zero and the subnormals alike. A NaN or an infinity is not valid
+// data (Glenn, 2026-10-27): TestRowFloat32ValuesNonFiniteRefused holds the
+// writer's and the reader's refusal. The bench gate (bench/tables/go/table_main.go:403,413)
 // proves external corpus byte fidelity; this row asserts the decoded values
 // directly, per the roadmap's remaining note.
 //
@@ -38,7 +40,7 @@ func TestRowFloat32ValuesValidData(t *testing.T) {
 			},
 		},
 		{
-			B:     math.Float32frombits(0x7FC0DEAD),                 // a quiet NaN's payload: canonicalisation would lose it
+			B:     math.Float32frombits(0x007FFFFF),                 // the largest subnormal: a flush to zero would lose it
 			Inner: tblv1.Inner{Factor: math.SmallestNonzeroFloat32}, // 0x00000001: the subnormal floor
 			Effect: tblv1.Effect{
 				Type: tblv1.EffectTypeWard,
@@ -101,6 +103,51 @@ func TestRowFloat32ValuesValidData(t *testing.T) {
 		}
 		if math.Float32bits(scratch[k].Effect.Ward.Charge) != math.Float32bits(values[k].Effect.Ward.Charge) {
 			t.Errorf("record %d: effect.ward.charge bits %08x want %08x", k, math.Float32bits(scratch[k].Effect.Ward.Charge), math.Float32bits(values[k].Effect.Ward.Charge))
+		}
+	}
+}
+
+// TestRowFloat32ValuesNonFiniteRefused is the sibling row: a NaN or an
+// infinity is refused by the fixed writer, and a record a foreign writer hands
+// in carrying one — at the top level, inside the nested Inner, under the ward
+// arm — is refused by the load as non_finite_float, naming the field, with the
+// batch landing nothing (docs/SPEC-TABLES.md §3.3, the 2026-10-27 rule).
+func TestRowFloat32ValuesNonFiniteRefused(t *testing.T) {
+	good := []tblv1.Cfg{
+		{B: 0.75, Inner: tblv1.Inner{Factor: -2.5}, Effect: tblv1.Effect{Type: tblv1.EffectTypeWard, Ward: tblv1.Ward{Charge: 1.5}}},
+		{B: 0.25, Inner: tblv1.Inner{Factor: 3.5}, Effect: tblv1.Effect{Type: tblv1.EffectTypeWard, Ward: tblv1.Ward{Charge: -4.5}}},
+	}
+	for _, bits := range []uint32{0x7FC0DEAD, 0x7F800001, 0xFFA5A5A5, 0x7F800000, 0xFF800000} {
+		bad := append([]tblv1.Cfg(nil), good...)
+		bad[1].Inner.Factor = math.Float32frombits(bits)
+		if n := tblv1.CfgFixedSave(bad, make([]byte, tblv1.CfgFixedMeasure(2))); n != -1 {
+			t.Errorf("%08x: the writer wrote it (n=%d)", bits, n)
+		}
+	}
+	buf := make([]byte, tblv1.CfgFixedMeasure(int64(len(good))))
+	if n := tblv1.CfgFixedSave(good, buf); int(n) != len(buf) {
+		t.Fatalf("CfgFixedSave: n=%d", n)
+	}
+	body := tblv1.TableFixedHeaderBytes + 4 + len(tblv1.CfgFixedLayout) + tblv1.CfgFixedRecordBytes + 8
+	for _, site := range []struct {
+		off  int
+		name string
+	}{{4, "Cfg.b"}, {45, "Inner.factor"}, {138, "Ward.charge"}} {
+		for _, bits := range []uint32{0x7FC0DEAD, 0xFF800000} {
+			forged := append([]byte(nil), buf...)
+			binary.LittleEndian.PutUint32(forged[body+site.off:], bits)
+			scratch := make([]tblv1.Cfg, 2)
+			plan := make([]tblv1.TableFixedEntry, 8192)
+			var report tblv1.TableReport
+			if n := tblv1.CfgFixedLoadTolerant(scratch, forged, plan, &report); n != -1 ||
+				report.Reason != "non_finite_float: "+site.name || report.Err() != tblv1.TableRefuseNonFiniteFloat {
+				t.Errorf("%s %08x: n=%d reason=%q err=%v, want the non_finite_float refusal", site.name, bits, n, report.Reason, report.Err())
+			}
+			var reset tblv1.Cfg
+			tblv1.CfgReset(&reset)
+			if scratch[0].B != reset.B || scratch[1].B != reset.B || scratch[1].Inner.Factor != reset.Inner.Factor {
+				t.Errorf("%s %08x: the refused batch kept %v %v %v, want the defaults", site.name, bits, scratch[0].B, scratch[1].B, scratch[1].Inner.Factor)
+			}
 		}
 	}
 }

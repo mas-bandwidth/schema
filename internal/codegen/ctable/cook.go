@@ -107,11 +107,29 @@ enum {
     SCHEMA_TABLE_REFUSE_BASE64_DAMAGED=20,
     SCHEMA_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
     SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
-    SCHEMA_TABLE_REFUSE_NON_FINITE=23,
+    SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT=23,
     SCHEMA_TABLE_REFUSE_BLOB_SHARED=24
 };
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
+/* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
+   what the strict read refuses -- an unknown form, wire damage, a blob named
+   from two slots, a clamp or a kind mismatch -- and unknown, widened and
+   retained alone never refuse. decoded is the tolerant read's own answer.
+   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
+   them, and answers 1 when the plain name must refuse. */
+static SCHEMA_UNUSED int table_report_strict_refuses( TableReport * report, int decoded )
+{
+    TableRefuseReason reason = SCHEMA_TABLE_REFUSE_OK;
+    if ( report->refused ) { reason = SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( !decoded || report->malformed ) { reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( report->blob_shared > 0 ) { reason = SCHEMA_TABLE_REFUSE_BLOB_SHARED; }
+    else if ( report->clamped > 0 ) { reason = SCHEMA_TABLE_REFUSE_CLAMPED; }
+    else if ( report->kind_mismatch > 0 ) { reason = SCHEMA_TABLE_REFUSE_KIND_MISMATCH; }
+    report->refuse_reason = reason;
+    return reason != SCHEMA_TABLE_REFUSE_OK;
+}
 #endif
 `
 

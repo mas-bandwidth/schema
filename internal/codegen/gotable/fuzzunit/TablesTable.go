@@ -531,7 +531,11 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !RootConfigLoadBody(&r, value) {
+	if !RootConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			RootConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -1008,7 +1012,7 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "RootConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -1069,6 +1073,9 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1076,6 +1083,9 @@ func WeaponConfigSaveBodyFields(w *TableWriter, value *WeaponConfig) bool {
 		if math.Float32bits(value.Speed) != math.Float32bits(500.0) {
 			if ref := w.Ids.refAtHit(12, 0x1733055702acb1d2); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Speed-value.Speed != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Speed))
 		}
@@ -1234,11 +1244,13 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
@@ -1254,11 +1266,13 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.speed")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.speed")
+				} else {
+					v := math.Float32frombits(b)
+					value.Speed = v
 				}
-				value.Speed = v
 			}
 		case 0x4f31c5309e13e932: // penetration
 			if kind != 4 {
@@ -1461,7 +1475,11 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !WeaponConfigLoadBody(&r, value) {
+	if !WeaponConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			WeaponConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -1551,6 +1569,9 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 			if ref := w.Ids.refAtHit(66, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Damage-value.Damage != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Damage))
 		}
 	}
@@ -1558,6 +1579,9 @@ func WeaponConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *WeaponConfig)
 		if math.Float32bits(value.Speed) != math.Float32bits(500.0) {
 			if ref := w.Ids.refAtHit(12, 0x1733055702acb1d2); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Speed-value.Speed != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Speed))
 		}
@@ -1718,11 +1742,13 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.damage")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.damage")
+				} else {
+					v := math.Float32frombits(b)
+					value.Damage = v
 				}
-				value.Damage = v
 			}
 		case 0x1733055702acb1d2: // speed
 			if kind != 10 {
@@ -1738,11 +1764,13 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "WeaponConfig.speed")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "WeaponConfig.speed")
+				} else {
+					v := math.Float32frombits(b)
+					value.Speed = v
 				}
-				value.Speed = v
 			}
 		case 0x4f31c5309e13e932: // penetration
 			if kind != 4 {
@@ -1905,7 +1933,7 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "WeaponConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -2685,7 +2713,11 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !LoadoutConfigLoadBody(&r, value) {
+	if !LoadoutConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			LoadoutConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -3507,7 +3539,7 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "LoadoutConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -3724,6 +3756,9 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 			if ref := w.Ids.refAtHit(24, 0x288427f5babd05f7); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
 			}
+			if value.Precision-value.Precision != 0 {
+				return false
+			}
 			w.Put64(math.Float64bits(value.Precision))
 		}
 	}
@@ -3744,6 +3779,9 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 				payload33 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := range int(4) {
+					if value.Ratings[i]-value.Ratings[i] != 0 {
+						return false
+					}
 					payload33.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
@@ -3763,6 +3801,9 @@ func ProfileConfigSaveBodyFields(w *TableWriter, value *ProfileConfig) bool {
 						w.putLebWide(pairs)
 					}
 					for i := range int(4) {
+						if value.Ratings[i]-value.Ratings[i] != 0 {
+							return false
+						}
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -4116,16 +4157,19 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 						return false
 					}
 					{
-						var v float64
+						finite, v := true, float64(0)
 						if kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(r.Get32()))
+							b := r.Get32()
+							finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))
 						} else {
-							v = math.Float64frombits(r.Get64())
+							b := r.Get64()
+							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+						if !finite {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+						} else {
+							value.Precision = v
 						}
-						value.Precision = v
 					}
 					r.Report.Widened++
 					break
@@ -4142,11 +4186,13 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 				return false
 			}
 			{
-				v := math.Float64frombits(r.Get64())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+				b := r.Get64()
+				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+				} else {
+					v := math.Float64frombits(b)
+					value.Precision = v
 				}
-				value.Precision = v
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
@@ -4186,11 +4232,13 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 							break
 						}
 						{
-							v := math.Float32frombits(sub.Get32())
-							if v != v || v-v != 0 {
-								tableNonFinite(&r.Report.Reason, "ProfileConfig.ratings")
+							b := sub.Get32()
+							if b&0x7f800000 == 0x7f800000 {
+								tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.ratings")
+							} else {
+								v := math.Float32frombits(b)
+								value.Ratings[i] = v
 							}
-							value.Ratings[i] = v
 						}
 					}
 				}
@@ -4285,7 +4333,11 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !ProfileConfigLoadBody(&r, value) {
+	if !ProfileConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			ProfileConfigReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -4522,6 +4574,9 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 			if ref := w.Ids.refAtHit(24, 0x288427f5babd05f7); !w.headerPair(ref, 11) {
 				w.headerRest(ref, 11)
 			}
+			if value.Precision-value.Precision != 0 {
+				return false
+			}
 			w.Put64(math.Float64bits(value.Precision))
 		}
 	}
@@ -4542,6 +4597,9 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 				payload4 := TableRetainWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := range int(4) {
+					if value.Ratings[i]-value.Ratings[i] != 0 {
+						return false
+					}
 					payload4.Put32(math.Float32bits(value.Ratings[i]))
 					pairs++
 				}
@@ -4561,6 +4619,9 @@ func ProfileConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ProfileConfi
 						w.putLebWide(pairs)
 					}
 					for i := range int(4) {
+						if value.Ratings[i]-value.Ratings[i] != 0 {
+							return false
+						}
 						w.Put32(math.Float32bits(value.Ratings[i]))
 					}
 				}
@@ -4945,16 +5006,19 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 						return false
 					}
 					{
-						var v float64
+						finite, v := true, float64(0)
 						if kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(r.Get32()))
+							b := r.Get32()
+							finite, v = b&0x7f800000 != 0x7f800000, float64(math.Float32frombits(b))
 						} else {
-							v = math.Float64frombits(r.Get64())
+							b := r.Get64()
+							finite, v = b&0x7ff0000000000000 != 0x7ff0000000000000, math.Float64frombits(b)
 						}
-						if v != v || v-v != 0 {
-							tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+						if !finite {
+							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+						} else {
+							value.Precision = v
 						}
-						value.Precision = v
 					}
 					r.Report.Widened++
 					break
@@ -4971,11 +5035,13 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 				return false
 			}
 			{
-				v := math.Float64frombits(r.Get64())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "ProfileConfig.precision")
+				b := r.Get64()
+				if b&0x7ff0000000000000 == 0x7ff0000000000000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.precision")
+				} else {
+					v := math.Float64frombits(b)
+					value.Precision = v
 				}
-				value.Precision = v
 			}
 		case 0xb921eb8a3d0cb0f9: // ratings
 			if kind != 14 {
@@ -5016,11 +5082,13 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 							break
 						}
 						{
-							v := math.Float32frombits(sub.Get32())
-							if v != v || v-v != 0 {
-								tableNonFinite(&r.Report.Reason, "ProfileConfig.ratings")
+							b := sub.Get32()
+							if b&0x7f800000 == 0x7f800000 {
+								tableNonFiniteFloat(&r.Report.NonFiniteFloat, "ProfileConfig.ratings")
+							} else {
+								v := math.Float32frombits(b)
+								value.Ratings[i] = v
 							}
-							value.Ratings[i] = v
 						}
 					}
 				}
@@ -5070,7 +5138,7 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "ProfileConfig") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -5093,6 +5161,9 @@ func AttachmentMeasureBody(value *AttachmentRow, ids *TableIds) int64 {
 	if value.Slot != 0 {
 		bytes += tableLebBytes(ids.refAtHit(59, 0x6a771618f6fe31d1)) + 1 + 4
 	} // slot
+	if (math.Float32bits(value.Power) != math.Float32bits(1.0)) && (value.Power-value.Power != 0) {
+		return -1
+	}
 	if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 		bytes += tableLebBytes(ids.refAtHit(140, 0xeef9d1358ae7b4e6)) + 1 + 4
 	} // power
@@ -5141,6 +5212,9 @@ func AttachmentSaveBodyFields(w *TableWriter, value *AttachmentRow) bool {
 		if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(140, 0xeef9d1358ae7b4e6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Power-value.Power != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Power))
 		}
@@ -5248,11 +5322,13 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Attachment.power")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Attachment.power")
+				} else {
+					v := math.Float32frombits(b)
+					value.Power = v
 				}
-				value.Power = v
 			}
 		default:
 			r.Report.Unknown++
@@ -5302,7 +5378,11 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !AttachmentLoadBody(&r, value) {
+	if !AttachmentLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			AttachmentReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -5395,6 +5475,9 @@ func AttachmentSaveBodyFieldsRetain(w *TableRetainWriter, value *AttachmentRow) 
 		if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(140, 0xeef9d1358ae7b4e6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Power-value.Power != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Power))
 		}
@@ -5492,15 +5575,17 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Attachment.power")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Attachment.power")
+				} else {
+					v := math.Float32frombits(b)
+					value.Power = v
 				}
-				value.Power = v
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "Attachment") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -5516,6 +5601,9 @@ func BuffReset(value *BuffRow) {
 
 func BuffMeasureBody(value *BuffRow, ids *TableIds) int64 {
 	bytes := int64(1)
+	if (math.Float32bits(value.Multiplier) != math.Float32bits(1.0)) && (value.Multiplier-value.Multiplier != 0) {
+		return -1
+	}
 	if math.Float32bits(value.Multiplier) != math.Float32bits(1.0) {
 		bytes += tableLebBytes(ids.refAtHit(79, 0x9adc623a805c87c6)) + 1 + 4
 	} // multiplier
@@ -5553,6 +5641,9 @@ func BuffSaveBodyFields(w *TableWriter, value *BuffRow) bool {
 		if math.Float32bits(value.Multiplier) != math.Float32bits(1.0) {
 			if ref := w.Ids.refAtHit(79, 0x9adc623a805c87c6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
+			}
+			if value.Multiplier-value.Multiplier != 0 {
+				return false
 			}
 			w.Put32(math.Float32bits(value.Multiplier))
 		}
@@ -5613,11 +5704,13 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Buff.multiplier")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Buff.multiplier")
+				} else {
+					v := math.Float32frombits(b)
+					value.Multiplier = v
 				}
-				value.Multiplier = v
 			}
 		default:
 			r.Report.Unknown++
@@ -5667,7 +5760,11 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !BuffLoadBody(&r, value) {
+	if !BuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			BuffReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -5750,6 +5847,9 @@ func BuffSaveBodyFieldsRetain(w *TableRetainWriter, value *BuffRow) bool {
 			if ref := w.Ids.refAtHit(79, 0x9adc623a805c87c6); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
+			if value.Multiplier-value.Multiplier != 0 {
+				return false
+			}
 			w.Put32(math.Float32bits(value.Multiplier))
 		}
 	}
@@ -5799,15 +5899,17 @@ func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 				return false
 			}
 			{
-				v := math.Float32frombits(r.Get32())
-				if v != v || v-v != 0 {
-					tableNonFinite(&r.Report.Reason, "Buff.multiplier")
+				b := r.Get32()
+				if b&0x7f800000 == 0x7f800000 {
+					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Buff.multiplier")
+				} else {
+					v := math.Float32frombits(b)
+					value.Multiplier = v
 				}
-				value.Multiplier = v
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "Buff") {
 				r.Report.Malformed = true
 				return false
 			}
@@ -6007,7 +6109,11 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
-	if !DebuffLoadBody(&r, value) {
+	if !DebuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
+		if tableNonFiniteRefused(report) {
+			DebuffReset(value)
+			return false
+		}
 		// The reading walk stops on rules the framing walk has no opinion about
 		// — a reserved id in a file body is the one that matters — so a body
 		// that stopped is still asked the framing question from the start of
@@ -6177,7 +6283,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 			}
 		default:
 			r.Report.Unknown++
-			if !r.capture(fieldID, kind) {
+			if !r.capture(fieldID, kind, "Debuff") {
 				r.Report.Malformed = true
 				return false
 			}

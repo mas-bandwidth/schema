@@ -132,12 +132,12 @@ using namespace probe;
 #define LEAF_LOAD(v,b,n,r) LeafLoad(v,b,n,r)
 #define REPORT_RESET(v) ((v) = TableReport())
 #else
-#define LOAD(v,b,n,r) root_load(&(v),b,n,r)
+#define LOAD(v,b,n,r) root_load_tolerant(&(v),b,n,r)
 #define SAVE(v,b,n) root_save(&(v),b,n)
 #define MEASURE(v) root_measure(&(v))
 #define RESET(v) root_reset(&(v))
-#define JSON(v,b,n,r) root_from_json(&(v),b,n,r)
-#define LEAF_LOAD(v,b,n,r) leaf_load(&(v),b,n,r)
+#define JSON(v,b,n,r) root_from_json_tolerant(&(v),b,n,r)
+#define LEAF_LOAD(v,b,n,r) leaf_load_tolerant(&(v),b,n,r)
 #define REPORT_RESET(v) memset(&(v),0,sizeof(v))
 #endif
 int main(void) {

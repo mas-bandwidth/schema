@@ -78,6 +78,12 @@ typedef struct tabledemo_table_report_t
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
+       TableRefuseReason, the same value a measure's -1 and a cook's open
+       answer, set by every plain read name on its refusal and OK otherwise.
+       unknown, widened and retained alone leave it OK. The tolerant reads
+       never write it. */
+    int refuse_reason;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -2355,11 +2361,29 @@ enum {
     SCHEMA_TABLEDEMO_TABLE_REFUSE_BASE64_DAMAGED=20,
     SCHEMA_TABLEDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
     SCHEMA_TABLEDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
-    SCHEMA_TABLEDEMO_TABLE_REFUSE_NON_FINITE=23,
+    SCHEMA_TABLEDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
     SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED=24
 };
 static SCHEMA_UNUSED const uint8_t * tabledemo_table_cook_refuse(tabledemo_table_refuse_reason_t * out,tabledemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
+/* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
+   what the strict read refuses -- an unknown form, wire damage, a blob named
+   from two slots, a clamp or a kind mismatch -- and unknown, widened and
+   retained alone never refuse. decoded is the tolerant read's own answer.
+   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
+   them, and answers 1 when the plain name must refuse. */
+static SCHEMA_UNUSED int tabledemo_table_report_strict_refuses( tabledemo_table_report_t * report, int decoded )
+{
+    tabledemo_table_refuse_reason_t reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
+    if ( report->refused ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( !decoded || report->malformed ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( report->blob_shared > 0 ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED; }
+    else if ( report->clamped > 0 ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_CLAMPED; }
+    else if ( report->kind_mismatch > 0 ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; }
+    report->refuse_reason = reason;
+    return reason != SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
+}
 #endif
 
 
@@ -5047,7 +5071,10 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_body( tabledemo_table_reader_t
     }
 }
 
-static SCHEMA_UNUSED int tabledemo_wide_blob_load( tabledemo_wide_blob_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
+/* wide_blob_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int tabledemo_wide_blob_load_tolerant( tabledemo_wide_blob_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -5055,6 +5082,26 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load( tabledemo_wide_blob_t * value
     tabledemo_wide_blob_reset( value );
     if ( !tabledemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return tabledemo_wide_blob_load_body( &r, value );
+}
+
+/* The PLAIN wide_blob_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int tabledemo_wide_blob_load( tabledemo_wide_blob_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = tabledemo_wide_blob_load_tolerant( value, buffer, bytes, report );
+    if ( tabledemo_table_report_strict_refuses( report, decoded ) )
+    {
+        tabledemo_wide_blob_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body(tabledemo_table_bit_writer_t * w,const tabledemo_wide_blob_t * value)
@@ -5210,7 +5257,8 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int tabledemo_wide_blob_load_messages(tabledemo_wide_blob_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
+/* wide_blob_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int tabledemo_wide_blob_load_messages_tolerant(tabledemo_wide_blob_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
  tabledemo_table_report_t ignored={0};
  tabledemo_table_message_reader_t r;
@@ -5230,6 +5278,26 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_messages(tabledemo_wide_blob_t
  for(i=0;i<bodies;i++){if(!tabledemo_wide_blob_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return tabledemo_table_message_close(&r);
+}
+/* The PLAIN wide_blob_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int tabledemo_wide_blob_load_messages( tabledemo_wide_blob_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = tabledemo_wide_blob_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) tabledemo_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !tabledemo_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) tabledemo_wide_blob_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_message_extent_(tabledemo_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -5783,9 +5851,24 @@ static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_wide_blob_tab
    WideTable.c; compile it to use them. */
 int schema_tabledemo_wide_blob_from_json_( tabledemo_wide_blob_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report );
 int64_t schema_tabledemo_wide_blob_to_json_( const tabledemo_wide_blob_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int tabledemo_wide_blob_from_json( tabledemo_wide_blob_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+static SCHEMA_UNUSED int tabledemo_wide_blob_from_json_tolerant( tabledemo_wide_blob_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
     return schema_tabledemo_wide_blob_from_json_( value, text, bytes, report );
+}
+/* The PLAIN wide_blob_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int tabledemo_wide_blob_from_json( tabledemo_wide_blob_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_tabledemo_wide_blob_from_json_( value, text, bytes, report );
+    if ( tabledemo_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { tabledemo_wide_blob_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t tabledemo_wide_blob_to_json_measure( const tabledemo_wide_blob_t * value ) { return schema_tabledemo_wide_blob_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t tabledemo_wide_blob_to_json( const tabledemo_wide_blob_t * value, char * buffer, int64_t capacity )

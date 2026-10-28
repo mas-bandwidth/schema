@@ -877,6 +877,38 @@ tables-c-ref-ordinal-negative-control:
 	@grep -m1 -E "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/c-ref-ordinal-nc/log
 	@echo "negative control: a rewind that leaves the ordinal slot standing names a POPPED entry — the file stops round-tripping"
 
+# THE STRICT RULE'S OWN CONTROL, C LEG (docs/SPEC-TABLES.md §6.5). Every plain
+# read name -- <name>_load in both shapes, _load_builder, _from_json,
+# _fixed_load and _load_messages -- refuses through table_report_strict_refuses,
+# and the tolerant reads keep their own names. Make that helper answer "accept"
+# and the plain names read tolerantly again: compiler/tablescstrictload_test.go
+# must go RED on the plain read accepting a wire the tolerant read names.
+# Through `go test -overlay`, so no tracked file moves.
+.PHONY: tables-c-strict-load-negative-control
+tables-c-strict-load-negative-control:
+	@rm -rf build/c-strict-load-nc && mkdir -p build/c-strict-load-nc
+	@sed -e 's|    return reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
+		internal/codegen/ctable/cook.go > build/c-strict-load-nc/cook.go.txt
+	@grep -q SABOTAGED build/c-strict-load-nc/cook.go.txt || \
+		{ echo "NEGATIVE CONTROL: the strict-rule sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/ctable/cook.go":"%s/build/c-strict-load-nc/cook.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-strict-load-nc/overlay.json
+	@if SCHEMA_SLOW=1 go test -v -overlay build/c-strict-load-nc/overlay.json -count=1 ./compiler \
+			-run '^TestCTablePlainLoadIsStrict$$' > build/c-strict-load-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-strict-load-nc/log || \
+				! grep -q -- '--- PASS' build/c-strict-load-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: the strict-read test did not run (skipped), so this control is watching nothing"; \
+			cat build/c-strict-load-nc/log; exit 1; \
+		fi; \
+		echo "NEGATIVE CONTROL FAILED: the plain names read tolerantly and the strict-read test stayed green"; \
+		cat build/c-strict-load-nc/log; exit 1; \
+	fi
+	@grep -q "THE PLAIN READ ACCEPTED" build/c-strict-load-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the strict-read test went red, but not on a plain read accepting"; \
+		  cat build/c-strict-load-nc/log; exit 1; }
+	@grep -m1 "THE PLAIN READ ACCEPTED" build/c-strict-load-nc/log
+	@echo "negative control: a plain read that does not refuse is the tolerant read under the plain name"
+
 # THE SECOND HALF OF THE SAME RULE HAS NO C CONTROL, and the reason is a fact
 # about this emitter rather than an omission. C++'s
 # tables-ref-ordinal-shared-negative-control removes the ordinal recording from
@@ -1220,8 +1252,8 @@ build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_
 
 .PHONY: tables-c-wire-fuzz
 tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
 # Wide text on the packet wire, using the shared group's corpus.
 build/packet-wide/c/.stamp: bin/schema build/packet-wide/source/WideText.schema
@@ -1268,7 +1300,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@grep -q 'SABOTAGED canonical LEB128' build/c-wire-sabotage/generated/examples/TablesTable.h || { echo 'NEGATIVE CONTROL: canonical LEB128 sabotage did not apply'; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
 		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-wire-sabotage/driver -lm
-	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
+	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
 	@grep -q 'the report differs' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
@@ -1361,8 +1393,8 @@ tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-a
 	sh test/slowgate/proof tables-c-retain \
 		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
 		./compiler -run '^TestCTableRetain' -count=1
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
 tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative
