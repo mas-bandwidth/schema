@@ -792,6 +792,10 @@ pub enum TableReason {
     InvalidValue,
     AllocationFailed,
     WireDamaged,
+    /// A FLOAT WHOSE BITS ARE A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3,
+    /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
+    /// refuses to emit one. The report names the field in non_finite_float.
+    NonFiniteFloat,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -826,6 +830,7 @@ impl TableReason {
             TableReason::InvalidValue => "invalid_value",
             TableReason::AllocationFailed => "allocation_failed",
             TableReason::WireDamaged => "wire_damaged",
+            TableReason::NonFiniteFloat => "non_finite_float",
         }
     }
 }
@@ -870,6 +875,13 @@ pub struct TableReport {
     pub reason: TableReason,
     pub build_version_remote: u64,
     pub build_version_own: u64,
+    /// THE FIRST NON-FINITE FLOAT A READ MET (docs/SPEC-TABLES.md §3.3): its
+    /// <Table>.<field>, and "" when there was none. A read that names one
+    /// refuses as non_finite_float and lands nothing, the tolerant read
+    /// included. For a RETAINED UNKNOWN float (§6.6) it is the body's table
+    /// and non_finite_float_id is the id the reader cannot name.
+    pub non_finite_float: &'static str,
+    pub non_finite_float_id: Option<u64>,
 }
 
 impl TableReport {
@@ -879,6 +891,48 @@ impl TableReport {
         self.reason = reason;
         false
     }
+
+    /// Names a float whose raw bits are a NaN or an infinity (§3.3). The first
+    /// name a read records wins.
+    pub fn non_finite(&mut self, field: &'static str) {
+        if self.non_finite_float.is_empty() {
+            self.non_finite_float = field;
+        }
+    }
+
+    /// Names a RETAINED UNKNOWN float of a float kind whose bits are a NaN or
+    /// an infinity (§3.3, §6.6): tested like a known field, refused alike.
+    pub fn non_finite_unknown(&mut self, owner: &'static str, id: u64) {
+        if self.non_finite_float.is_empty() {
+            self.non_finite_float = owner;
+            self.non_finite_float_id = Some(id);
+        }
+    }
+
+    /// The refusal's reason as the Go reference spells it,
+    /// "non_finite_float: <Table>.<field>" ("<Table>.0x<id>" for a retained
+    /// unknown), or None when no non-finite float was named.
+    pub fn non_finite_float_reason(&self) -> Option<String> {
+        if self.non_finite_float.is_empty() {
+            return None;
+        }
+        Some(match self.non_finite_float_id {
+            Some(id) => format!("non_finite_float: {}.0x{:016x}", self.non_finite_float, id),
+            None => format!("non_finite_float: {}", self.non_finite_float),
+        })
+    }
+}
+
+/// THE RAW-BITS TEST EVERY READ RUNS (docs/SPEC-TABLES.md §3.3): an exponent
+/// of all ones is a NaN (any sign, any payload) or an infinity, and nothing
+/// else is. -0 and the subnormals are values.
+pub const fn table_finite_f32(bits: u32) -> bool {
+    bits & 0x7F80_0000 != 0x7F80_0000
+}
+
+/// table_finite_f32 at sixty-four bits.
+pub const fn table_finite_f64(bits: u64) -> bool {
+    bits & 0x7FF0_0000_0000_0000 != 0x7FF0_0000_0000_0000
 }
 
 `
