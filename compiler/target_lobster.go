@@ -6,7 +6,6 @@ package compiler
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
@@ -44,12 +43,10 @@ func (lobsterTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineag
 	// engine. The constructs of compiler/carries.go stay refused centrally
 	// unless carries_lobster*.go registers them.
 	//
-	// A PACKET type's string, bytes or flags default is still refused by
-	// name: the type surface has no type-wire read path yet, so nothing
-	// proves those defaults (docs/PORT-LOBSTER.md, THE CARD MAP).
-	if err := lobsterRefusePacketDefaults(u); err != nil {
-		return nil, err
-	}
+	// A PACKET type's string, bytes or flags default is carried too: the
+	// constructor writes it and the type wire reads and writes over it
+	// (internal/codegen/lobster/packet_defaults_test.go reads the C++ pins
+	// of test/packet-defaults), so lobster registers as a packet carrier.
 	files, err := lobster.Generate(u)
 	if err != nil {
 		return nil, err
@@ -65,26 +62,6 @@ func (lobsterTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineag
 		files[name] = data
 	}
 	return files, nil
-}
-
-// lobsterRefusePacketDefaults is refuseValueDefaults' packet half (SPEC §4.2):
-// a string, bytes or flags default on a declaration no table closure reaches.
-// The table half is carried by the table runtime and is not refused.
-func lobsterRefusePacketDefaults(u *ir.Unit) error {
-	full := ir.TableClosure(u)
-	var names []string
-	for _, name := range ir.ValueDefaultFields(u) {
-		owner, _, _ := strings.Cut(name, ".") // ValueDefaultFields returns Decl.field
-		if !full[owner] {
-			names = append(names, name)
-		}
-	}
-	if len(names) == 0 {
-		return nil
-	}
-	carry, flags := carriers(packetValueDefaultTargets)
-	return fmt.Errorf("unit declares a string, bytes or flags default (%s): packet-wire defaults are %s only today, and the lobster form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
-		englishList(names), englishList(carry), englishList(flags))
 }
 
 // lobsterTableLineage is the lock's lineage in the Lobster backend's own
@@ -119,6 +96,11 @@ func init() {
 	registerListCarrier("lobster")
 	registerMapCarrier("lobster")
 	registerOptionalArrayCarrier("lobster")
+	// the packet wire carries a string, bytes or flags default and
+	// wstring(N) (internal/codegen/lobster: packet_defaults_test.go,
+	// packet_wide_test.go)
+	registerPacketValueDefaultCarrier("lobster")
+	registerWideTextCarrier("lobster")
 	// tables, arms, unionArrays and blobs: the variable form carries a union
 	// whose arms are field lines of any type, payload-free arms among them,
 	// an array of unions and the *string / *bytes blobs (docs/SPEC-TABLES.md
