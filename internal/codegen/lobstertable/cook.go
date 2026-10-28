@@ -90,6 +90,7 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("    align: %d,\n", ml.Align)
 	g.Pf("    record: %d,\n", record)
 	g.Pf("    extent: %s,\n", boolLit(recordHasExtent(u, st)))
+	g.Pf("    build: %s,\n", buildLit(u))
 	g.Pf("    fields: [\n")
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
@@ -122,7 +123,14 @@ func emitCookTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// words, the alignment and both part lengths. It points at the region and\n")
 	g.Pf("// allocates nothing; the check lives once in the runtime.\n")
 	g.Pf("def %sOpen(data:string) -> bool:\n", st.Name)
-	g.Pf("    return %s.cook_open(data, %s, %d, %d)\n\n",
+	g.Pf("    return %sOpenReason(data, 0, false) == \"ok\"\n\n", st.Name)
+
+	g.Pf("// %sOpenReason is Open with the reason beside the refusal (docs/SPEC-TABLES.md\n", st.Name)
+	g.Pf("// §7): the first failing clause as the refusal enum's value name, or \"ok\".\n")
+	g.Pf("// data is exactly the extent the caller claims; lead is how far past an\n")
+	g.Pf("// aligned base the buffer sits, and nobuf is a NULL buffer.\n")
+	g.Pf("def %sOpenReason(data:string, lead:int, nobuf:bool) -> string:\n", st.Name)
+	g.Pf("    return %s.cook_open_reason(data, %s, %d, %d, lead, nobuf)\n\n",
 		rt, buildLit(u), ml.Align, ml.Size)
 }
 

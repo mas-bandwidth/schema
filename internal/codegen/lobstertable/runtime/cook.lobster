@@ -68,7 +68,8 @@ def cook_word32(data:string, at:int, big:bool) -> int:
 def cook_align_up(v:int, a:int) -> int:
     return (v + a - 1) & ~(a - 1)
 
-// cook_open is `Open`'s check for one table (docs/SPEC-TABLES.md §7, §7.1;
+// cook_open is the cooked READ's header check, in EITHER order (Open itself is
+// cook_open_reason below, this build's order only) (docs/SPEC-TABLES.md §7, §7.1;
 // internal/tablecook.ReadHeader): the magic, the order it establishes, the
 // build version, every reserved word zero, the alignment, and both part
 // lengths against the size the caller passed — a truncated file refuses.
@@ -108,6 +109,44 @@ def cook_open(data:string, build:int, root_align:int, root_size:int) -> bool:
     if data_length < root_size:
         return false
     return true
+
+// cook_open_reason is a generated `Open` (docs/SPEC-TABLES.md §7, §7.1;
+// internal/codegen/gotable's emitOpen): the header checked in §7's order in
+// THIS BUILD's byte order, little-endian, so a cook of the other order
+// refuses at the magic. It answers the first failing clause as the refusal
+// enum's value name, or "ok". The caller's buffer is `data` (exactly the
+// extent it claims); `lead` is how many bytes past an aligned base it sits and
+// `nobuf` is a NULL buffer, the two pointer facts a file cannot carry.
+def cook_open_reason(data:string, build:int, root_align:int, root_size:int, lead:int, nobuf:bool) -> string:
+    if nobuf:
+        return "unaligned_base"
+    let bytes = length(data)
+    if bytes < cook_header_bytes:
+        return "truncated"
+    let magic = read_uint64_le(data, 0)
+    if magic != cook_magic:
+        if magic == cook_magic_swapped:
+            return "foreign_order"
+        return "not_a_cook"
+    if read_uint64_le(data, 16) != cook_byte_order_little:
+        return "not_a_cook"
+    if read_uint64_le(data, 8) != build:
+        return "wrong_build_version"
+    if read_uint64_le(data, 48) != 0 or read_uint64_le(data, 56) != 0:
+        return "reserved_not_zero"
+    let alignment = read_uint64_le(data, 40)
+    if alignment < 8 or alignment > 64 or (alignment & (alignment - 1)) != 0 or (root_align > 0 and alignment % root_align != 0):
+        return "bad_alignment"
+    let data_offset = cook_align_up(cook_header_bytes, alignment)
+    let data_length = read_uint64_le(data, 24)
+    let attrib_length = read_uint64_le(data, 32)
+    // the two lengths are unsigned on the wire: a word with the top bit set
+    // reads negative here and is as far out of range as it is there
+    if data_offset > bytes or data_length < 0 or data_length > bytes - data_offset or attrib_length != bytes - data_offset - data_length or data_length < root_size:
+        return "truncated"
+    if lead % alignment != 0:
+        return "unaligned_base"
+    return "ok"
 
 // ---- the layout, as the emitter folds it (docs/SPEC-TABLES.md §7.2) ----
 
@@ -164,6 +203,9 @@ class CookTable:
     align:int = 8
     record:int = 0
     extent:bool = false
+    // the unit's build version (§20), so a reflective caller can Open and
+    // Cook by the table's name alone
+    build:int = 0
     fields:[CookField] = []
 
 class CookUnion:
@@ -1081,3 +1123,190 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
     if root.d.id != desc.id:
         return nil
     return root
+
+// ---- THE CANONICAL NODE DUMP (test/conformance/go/cooks.go; §7, §7.5) ----
+//
+// The walk a reader makes through an opened cook's OWN derefs, written as
+// text so two implementations' walks compare byte for byte: a node is visited
+// once, a pointer slot is the signed self-relative delta of §6.3 (zero is
+// null), and by-value storage — a nested record, an array slot — is descended
+// through rather than numbered. The region is read in this build's order.
+
+class CookDump:
+    data:string
+    base:int
+    length:int
+    offs:[int] = []
+    types:[string] = []
+    out:string = ""
+    err:string = ""
+
+def cd_emit(w:CookDump, path:string, value:string) -> void:
+    w.out += "  " + path + " = " + value + "\n"
+
+// cd_text is a string's or a bytes' USED bytes, every byte outside printable
+// ASCII (and the quote and backslash) escaped as \xNN, then its length
+def cd_text(w:CookDump, at:int, used:int) -> string:
+    var s = "\""
+    var i = 0
+    while i < used:
+        let c = w.data[w.base + at + i]
+        if c >= 0x20 and c < 0x7f and c != 0x22 and c != 0x5c:
+            s += unicode_to_string([c])
+        else:
+            s += "\\x" + lowercase(number_to_string(c, 16, 2))
+        i++
+    return s + "\" len={used}"
+
+def cd_scalar(w:CookDump, at:int, fd:FieldDescriptor, width:int) -> string:
+    let p = w.base + at
+    if fd.s == "bool":
+        return if w.data[p] != 0: "true" else: "false"
+    if fd.s == "float":
+        w.err = "the dump met a float, whose canonical cross-language spelling this gate does not fix"
+        return ""
+    var v = 0
+    if width <= 1:
+        v = read_uint8_le(w.data, p)
+        if fd.signed and v >= 0x80:
+            v -= 0x100
+    elif width == 2:
+        v = read_uint16_le(w.data, p)
+        if fd.signed and v >= 0x8000:
+            v -= 0x10000
+    elif width == 4:
+        v = read_uint32_le(w.data, p)
+        if fd.signed and v >= 0x80000000:
+            v -= 0x100000000
+    else:
+        v = read_uint64_le(w.data, p)
+        if not fd.signed and v < 0:
+            // an unsigned 64-bit word past 2^63, printed as the unsigned value
+            let q = ((v >> 1) & 0x7fffffffffffffff) / 5
+            let r = v - q * 10
+            return "{q}{r}"
+    return "{v}"
+
+def cd_find(w:CookDump, off:int) -> int:
+    for(w.offs) o, i:
+        if o == off:
+            return i
+    return -1
+
+def cd_node(w:CookDump, off:int, table:string, depth:int) -> void:
+    if w.err != "":
+        return
+    if depth > 4096:
+        w.err = "the walk nested past any depth a region can hold"
+        return
+    let at = cd_find(w, off)
+    if at >= 0:
+        if w.types[at] != table:
+            w.err = "two references name the node at offset {off} as two different tables"
+        return
+    let ct = cook_table_of(table)
+    if not ct:
+        w.err = "no cooked layout names {table}"
+        return
+    if off > w.length or ct.size > w.length - off:
+        w.err = "the node at offset {off} ({table}) does not fit inside the region"
+        return
+    let index = length(w.offs)
+    push(w.offs, off)
+    push(w.types, table)
+    w.out += "node {index} {table} @{off}\n"
+    cd_storage(w, off, table_of(table), ct, "", depth)
+
+def cd_storage(w:CookDump, at:int, d:TableDescriptor, t:CookTable, path:string, depth:int) -> void:
+    var i = 0
+    while i < length(d.fields) and i < length(t.fields) and w.err == "":
+        let fd = d.fields[i]
+        let cf = t.fields[i]
+        let name = if path == "": fd.name else: path + "." + fd.name
+        let fat = at + cf.off
+        cd_field(w, fat, fd, cf, name, depth)
+        i++
+
+def cd_field(w:CookDump, fat:int, fd:FieldDescriptor, cf:CookField, name:string, depth:int) -> void:
+    let s = fd.s
+    var used = -1
+    if cf.count >= 0:
+        used = read_uint32_le(w.data, w.base + fat + cf.count)
+        if used >= 0x80000000:
+            used -= 0x100000000
+        let bound = if s == "str" or s == "text" or s == "bytes": cf.size else: fd.bound
+        if used < 0 or used > bound:
+            w.err = "{name} carries a count companion of {used}, outside [ 0, {bound} ]"
+            return
+    if s == "ptr":
+        let delta = read_int64_le(w.data, w.base + fat)
+        if delta == 0:
+            cd_emit(w, name, "null")
+        else:
+            let target = fat + delta
+            if target < 0 or target >= w.length:
+                w.err = "{name} resolves outside the region — a delta of {delta}"
+                return
+            cd_emit(w, name, "-> @{target}")
+            cd_node(w, target, fd.t, depth + 1)
+    elif s == "str" or s == "text" or s == "bytes":
+        cd_emit(w, name, cd_text(w, fat, max(used, 0)))
+    elif s == "tab" or (s == "arr" and elem_of(fd).s == "tab"):
+        let tname = if s == "tab": fd.t else: elem_of(fd).t
+        let ct = cook_table_of(tname)
+        if not ct:
+            w.err = "no cooked layout names {tname}"
+            return
+        if s == "arr":
+            var k = 0
+            while k < fd.bound and w.err == "":
+                cd_storage(w, fat + k * cf.elem, table_of(tname), ct, "{name}[{k}]", depth)
+                k++
+        else:
+            cd_storage(w, fat, table_of(tname), ct, name, depth)
+    elif s == "arr":
+        if fd.array == "list":
+            w.err = "{name}: the dump does not walk an unbounded array"
+            return
+        let e = elem_of(fd)
+        var k = 0
+        while k < fd.bound and w.err == "":
+            if e.s == "ptr":
+                cd_field(w, fat + k * cf.elem, e, CookField { size: cf.esize, count: -1 }, "{name}[{k}]", depth)
+            else:
+                cd_emit(w, "{name}[{k}]", cd_scalar(w, fat + k * cf.elem, e, cf.esize))
+            k++
+    elif s == "union" or s == "map" or s == "sblob" or s == "bblob":
+        w.err = "{name}: the dump does not walk a {s}"
+        return
+    else:
+        cd_emit(w, name, cd_scalar(w, fat, fd, cf.size))
+    if cf.count >= 0 and s != "str" and s != "text" and s != "bytes":
+        cd_emit(w, name + "#count", "{used}")
+    if fd.present != "" and cf.present >= 0:
+        cd_emit(w, name + "#present", if w.data[w.base + fat + cf.present] != 0: "true" else: "false")
+
+// cook_dump opens one cook in this build's order and answers its canonical
+// node dump, or "" with the reason the walk stopped.
+def cook_dump(data:string, root:string) -> string, string:
+    let ct = cook_table_of(root)
+    if not ct:
+        return "", "no cooked layout names {root}"
+    let why = cook_open_reason(data, ct.build, ct.align, ct.size, 0, false)
+    if why != "ok":
+        return "", "the cook does not open: " + why
+    let alignment = read_uint64_le(data, 40)
+    if not (alignment >= 8 and alignment <= 64 and (alignment & (alignment - 1)) == 0):
+        return "", "the cook does not open"
+    let w = CookDump { data: data, base: cook_align_up(cook_header_bytes, alignment), length: read_uint64_le(data, 24) }
+    cd_node(w, 0, root, 0)
+    if w.err != "":
+        return "", w.err
+    return w.out, ""
+
+// cook_open_named is a table's Open reached by its name (the conformance
+// driver's reflective path): the same clauses as <Name>OpenReason.
+def cook_open_named(root:string, data:string, lead:int, nobuf:bool) -> string:
+    let ct = cook_table_of(root)
+    assert ct
+    return cook_open_reason(data, ct.build, ct.align, ct.size, lead, nobuf)
