@@ -213,7 +213,7 @@ func scalarWireKind(f *ir.Field) int {
 }
 
 // scalarRust is a scalar's Rust storage: bits(N) in the narrowest unsigned
-// integer that holds N bits.
+// integer that holds N bits, and fixed(I, F) as its raw storage integer.
 func scalarRust(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -224,7 +224,9 @@ func scalarRust(f *ir.Field) string {
 		return "f64"
 	case ir.TBits:
 		return rustUint(f.Type.Width)
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		// a FIXED value is the raw integer its storage holds, units × 2^F
+		// (docs/SPEC-TABLES.md §3, kinds 20–29), as the oracle's storage is
 		if f.Type.Signed {
 			return rustInt(f.Type.Width)
 		}
@@ -865,7 +867,10 @@ func intRange(f *ir.Field) (lo, hi string, ok bool) {
 // for the C and C++ legs. "" when there is no declared range or neither end
 // can fire.
 func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) string {
-	if !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+	// a fixed field clamps on the RAW scale: its whole-unit bounds shifted by
+	// F (docs/SPEC-TABLES.md §4), the integers' bounds as they are
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
 		return ""
 	}
 	localMin, localMax := new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
@@ -873,10 +878,10 @@ func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) 
 		localMin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
 		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
 	}
-	lo, hi := f.IntMin.String(), f.IntMax.String()
+	lo, hi := rlo.String(), rhi.String()
 	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s += 1; }", lo, suffix, lo, suffix, counter)
 	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s += 1; }", hi, suffix, hi, suffix, counter)
-	switch canLow, canHigh := f.IntMin.Cmp(localMin) > 0, f.IntMax.Cmp(localMax) < 0; {
+	switch canLow, canHigh := rlo.Cmp(localMin) > 0, rhi.Cmp(localMax) < 0; {
 	case canLow && canHigh:
 		return ind + low + " else " + high + "\n"
 	case canLow:
@@ -912,7 +917,7 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 		fmt.Fprintf(b, "%s%s = if %s == %d { table_widen_f32(raw as u32) } else { f64::from_bits(raw) };\n", ind, dst, kvar, ir.TableKindF32)
 		return
 	}
-	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 	// the local is mutable only when a clamp below can write it
 	mut := func(clamps string) string {
 		if clamps == "" {
