@@ -21,9 +21,12 @@ func init() { Register("cook", emitCook) }
 // cooked record read (§7, Uncook) and Open's header match (§7, §7.1).
 func emitCook(g *lobster.Gen) error {
 	emitted := false
+	// a packet type gets cooked storage only when a table reaches it: an
+	// unreached one has no descriptor for the cooked read to fill
+	reach := closure(g.Unit)
 	candidates := append([]*ir.Struct{}, g.File.Tables...)
 	for _, d := range g.File.Decls {
-		if st, ok := d.(*ir.Struct); ok {
+		if st, ok := d.(*ir.Struct); ok && reach[st.Name] {
 			candidates = append(candidates, st)
 		}
 	}
@@ -50,7 +53,7 @@ func emitCook(g *lobster.Gen) error {
 	}
 	unions := append([]*ir.Union{}, g.File.TableUnions...)
 	for _, d := range g.File.Decls {
-		if un, ok := d.(*ir.Union); ok {
+		if un, ok := d.(*ir.Union); ok && reach[un.Name] {
 			unions = append(unions, un)
 		}
 	}
