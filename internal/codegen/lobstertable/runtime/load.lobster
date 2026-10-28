@@ -37,6 +37,10 @@ class LoadReport:
     // missing_required is a record's `| required` refusal (docs/SPEC-TABLES.md
     // §2.3): one per body that ends without a required field, named in reason.
     missing_required:int = 0
+    // non_finite_float names the first float whose raw bits were a NaN or an
+    // infinity, <Owner>.<field> (docs/SPEC-TABLES.md §3.3): every read, the
+    // tolerant one too, refuses the wire and lands nothing.
+    non_finite_float:string = ""
     refused:bool = false
     reason:string = ""
 
@@ -394,10 +398,46 @@ def read_raw(r:Reader, width:int, signed:bool) -> Int128:
     let hi = if signed and v < 0: -1 else: 0
     return Int128 { v, hi }
 
-def widen_f32_nan(bits:int) -> float:
-    let sign = shl(shr(bits, 31) & 1, 63)
-    let payload = shl(bits & 0x007FFFFF, 29)
-    return f64frombits(sign | 0x7FF0000000000000 | payload)
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables
+// go finite-only too, same rule as packets"): the test is on the RAW BITS,
+// before they become a value. -0 and the subnormals are finite and ride bit
+// for bit; every finite float32 widens exactly through the ordinary
+// conversion, so no bit surgery is left.
+def finite_f32_bits(bits:int) -> bool:
+    return (bits & 0x7F800000) != 0x7F800000
+
+def finite_f64_bits(bits:int) -> bool:
+    return (bits & 0x7FF0000000000000) != 0x7FF0000000000000
+
+// finite_f32 and finite_f64 are the writer's test on a stored value: a
+// float32 field's value is tested at the width it is written, so a double
+// past float32's range (an infinity once narrowed) is refused too.
+def finite_f32(x:float) -> bool:
+    return finite_f32_bits(f32bits(x))
+
+def finite_f64(x:float) -> bool:
+    return finite_f64_bits(f64bits(x))
+
+// float_owner names a float descriptor as <Owner>.<field> for the
+// non_finite_float refusal (Go's tablewire.FloatOwner): the table, type or
+// union that declares the field, an array's element named by its field. It
+// runs only on the refusal path.
+def float_owner(fd:FieldDescriptor) -> string:
+    for(registered_tables()) d:
+        for(d.fields) f:
+            if f == fd or f.e == fd:
+                return d.name + "." + f.name
+    for(registered_unions()) u:
+        for(u.arms) a:
+            if a == fd or a.e == fd:
+                return u.name + "." + a.name
+    return fd.name
+
+// refuse_non_finite records the first non-finite float a read met; the read
+// walks on, so its framing verdict is a finite wire's, and refuses at its end.
+def refuse_non_finite(rep:LoadReport, fd:FieldDescriptor):
+    if rep.non_finite_float == "":
+        rep.non_finite_float = float_owner(fd)
 
 // scalar_at decodes one fixed-width value that arrived under kind: the
 // declared kind or one it widens (docs/SPEC-TABLES.md §4; Go's scalarAt).
@@ -422,14 +462,10 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
         let bits = read_uint32_le(r.b, r.off)
         var v = read_float32_le(r.b, r.off)
         r.off += 4
-        if (bits & 0x7F800000) == 0x7F800000 and (bits & 0x007FFFFF) != 0:
-            // a NaN's payload is data, carried bit for bit; under a
-            // declared range it clamps to min and counts (§3.3)
-            if fd.franged and declared == 10:
-                cell.f = fround(fd.flo)
-                rep.clamped++
-                return true
-            cell.f = widen_f32_nan(bits)
+        if not finite_f32_bits(bits):
+            // a NaN or an infinity is refused on its raw bits, before the
+            // field is written and before a compressed float's bounds (§3.3)
+            refuse_non_finite(rep, fd)
             return true
         if declared == 11:
             cell.f = v
@@ -446,8 +482,12 @@ def scalar_at(r:Reader, cell:Value, fd:FieldDescriptor, declared:int, kind:int) 
         cell.f = fround(v)
         return true
     if kind == 11:
+        let bits = read_int64_le(r.b, r.off)
         let v = read_float64_le(r.b, r.off)
         r.off += 8
+        if not finite_f64_bits(bits):
+            refuse_non_finite(rep, fd)
+            return true
         cell.f = v
         return true
     if kind_wide(kind):
@@ -1702,12 +1742,56 @@ def decode_variable(st:LoadState, root:Record, hi:int):
     if not st.count_refused:
         body_at(reader(st, 1, hi), root, false, false)
 
-// load reads a form-1 wire at the root table named root into a fresh
-// Record, filling report (docs/SPEC-TABLES.md §3, §4). A form byte this
-// reader does not carry is REFUSED and nothing is decoded: it returns nil
-// with report.refused set. Damage is reported, never fatal, and the record
-// keeps what it decoded.
+// load_tolerant is THE TOLERANT READ, by its own name (docs/SPEC-TABLES.md
+// §6.5): it reads a form-1 wire at the root table named root into a fresh
+// Record, filling report (§3, §4). A form byte this reader does not carry is
+// REFUSED and nothing is decoded: it returns nil with report.refused set.
+// Damage is reported, never fatal, and the record keeps what it decoded. A
+// missing required field and a non-finite float refuse even here (§2.3,
+// §3.3): nil, with the field named in report.reason.
+def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
+    let rec = load_walk(root, data, report)
+    if report.non_finite_float != "":
+        report.reason = "non_finite_float: " + report.non_finite_float
+        return nil
+    return rec
+
+// strict_reason is docs/SPEC-TABLES.md §6.5's one typed reason for a read,
+// in the order Go's TableReport.Err() applies: a non-finite float first
+// (§3.3), then a form refusal, missing_required, malformed, blob_shared,
+// clamped and kind_mismatch; the empty string on a read whose only counters
+// are unknown or widened, which are not loss.
+def strict_reason(rep:LoadReport) -> string:
+    if rep.non_finite_float != "":
+        return "non_finite_float"
+    if rep.refused or rep.reason == "form" or rep.reason == "message_form_as_file":
+        return "unknown_form"
+    if rep.missing_required > 0:
+        return "missing_required"
+    if rep.malformed:
+        return "malformed"
+    if rep.blob_shared > 0:
+        return "blob_shared"
+    if rep.clamped > 0:
+        return "clamped"
+    if rep.kind_mismatch > 0:
+        return "kind_mismatch"
+    return ""
+
+// load is THE PLAIN NAME, and it is THE STRICT READ (docs/SPEC-TABLES.md
+// §6.5, as Go's RootLoad and C++'s Load are): it answers the record only for
+// a wire the strict read accepts, and nil otherwise, the report holding the
+// read's counters and strict_reason(report) the one typed reason. Unknown
+// and widened alone are not a refusal. load_tolerant keeps the recovered
+// record.
 def load(root:string, data:string, report:LoadReport) -> Record?:
+    let rec = load_tolerant(root, data, report)
+    if strict_reason(report) != "":
+        return nil
+    return rec
+
+// load_walk is the framing walk both reads share (Go's decodeWalk).
+def load_walk(root:string, data:string, report:LoadReport) -> Record?:
     if length(data) < 1:
         report.malformed = true
         return nil

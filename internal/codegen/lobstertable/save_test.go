@@ -24,7 +24,7 @@ const saveDump = `def saverun(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load(root, data, rep)
+    let rec = schema_rt.load_tolerant(root, data, rep)
     assert rec
     let out = schema_rt.save(rec)
     let h = hexs(out)
@@ -35,7 +35,7 @@ const saveDump = `def saverun(root:string, file:string):
         print(substring(h, j * 40000, min(40000, length(h) - j * 40000)))
         j++
     let rep2 = schema_rt.LoadReport {}
-    let rec2 = schema_rt.load(root, out, rep2)
+    let rec2 = schema_rt.load_tolerant(root, out, rep2)
     labels = []
     var dump = "nil"
     if rec2:

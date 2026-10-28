@@ -19,8 +19,9 @@ import (
 // wideKindsSchema declares every construct this card carries: a timestamp
 // (kind 36, SPEC.md §4.13, docs/SPEC-TABLES.md §2.11), a one-sided minimum
 // and a one-sided maximum range (§4.3), an enum (kind 30), wide text (kind
-// 33) and a plain float64 whose -0, NaN and infinity each take the
-// non_finite rule. A single table holds them so one wire exercises them all.
+// 33) and a plain float64 whose -0 and subnormal ride bit for bit (a NaN or an
+// infinity is refused, finite_test.go). A single table holds them so one wire
+// exercises them all.
 const wideKindsSchema = `package widekinds
 
 enum Mode { Idle, Busy }
@@ -219,7 +220,7 @@ func wideUnitConstructs(u *ir.Unit) []string {
 // (docs/SPEC-TABLES.md §2.11, §3, §4; SPEC.md §4.13; docs/PORT-LOBSTER.md,
 // THE LOAD): a timestamp, both one-sided ranges, an enum, an escape and
 // wstring(N) on every manifest unit that uses them, plus the card's own
-// sample whose plain float64 carries -0, NaN and infinity. Each construct is
+// sample whose plain float64 carries -0 and a subnormal. Each construct is
 // named with its count, and load, save and re-load agree with Go's engine
 // byte for byte and report for report.
 func TestLobsterWideKinds(t *testing.T) {
@@ -278,14 +279,14 @@ func TestLobsterWideKinds(t *testing.T) {
 		return loadRow{kind: "instance", name: name, unit: "widekinds", root: "Sample",
 			data: wideWire(t, g, opened, -5, 500, 2, labelUnits, f)}
 	}
-	nonFinite := []loadRow{
+	finite := []loadRow{
 		sample("negative_zero", math.Copysign(0, -1)),
-		sample("nan", math.NaN()),
-		sample("infinity", math.Inf(1)),
+		sample("subnormal", math.Float64frombits(1)),
 	}
-	// every non_finite row carries the sample's timestamp, both one-sided
-	// ranges, its enum and its wstring, so one pass names all six.
-	compareWideRows(t, g, nonFinite, []string{"non_finite", "timestamp", "one-sided-range (minimum and maximum)", "enum", "wstring"}, counts, refusals)
+	// every finite-float row carries the sample's timestamp, both one-sided
+	// ranges, its enum and its wstring, so one pass names all six. A NaN or
+	// an infinity is refused by every read and the save (finite_test.go).
+	compareWideRows(t, g, finite, []string{"finite-float (-0, subnormal)", "timestamp", "one-sided-range (minimum and maximum)", "enum", "wstring"}, counts, refusals)
 
 	escape := sample("escape", 1.0)
 	escape.data = withEscape(t, escape.data, []byte{0xde, 0xad, 0xbe, 0xef})
@@ -295,7 +296,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	}
 	compareWideRows(t, g, []loadRow{escape}, []string{"escape"}, counts, refusals)
 
-	for _, name := range []string{"timestamp", "one-sided-range (minimum and maximum)", "enum", "escape", "wstring", "non_finite"} {
+	for _, name := range []string{"timestamp", "one-sided-range (minimum and maximum)", "enum", "escape", "wstring", "finite-float (-0, subnormal)"} {
 		if counts[name] == 0 {
 			t.Errorf("%s: no row was compared, so the construct is not carried", name)
 		}

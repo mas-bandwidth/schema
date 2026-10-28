@@ -252,7 +252,7 @@ def run(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load(root, data, rep)
+    let rec = schema_rt.load_tolerant(root, data, rep)
     print(report_line(rep))
     labels = []
     var dump = "nil"

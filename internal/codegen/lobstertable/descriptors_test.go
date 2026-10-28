@@ -349,7 +349,7 @@ def probe(root:string, file:string) -> void:
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load(root, data, rep)
+    let rec = schema_rt.load_tolerant(root, data, rep)
     print("loadreport " + report_line(rep))
     if not rec:
         print("saved -")
@@ -360,7 +360,7 @@ def probe(root:string, file:string) -> void:
     let saved = schema_rt.save(rec)
     print("saved " + hexs(saved))
     let rep2 = schema_rt.LoadReport {}
-    let rec2 = schema_rt.load(root, saved, rep2)
+    let rec2 = schema_rt.load_tolerant(root, saved, rep2)
     print("reloadreport " + report_line(rep2))
     labels = []
     push(labels, rec)

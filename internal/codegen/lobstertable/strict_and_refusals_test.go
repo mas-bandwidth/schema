@@ -61,17 +61,24 @@ func strictProgram(g *loadUnit, roots []string) string {
 }
 
 // goStrictReason is the Go reference's strict answer for one wire, in the
-// order TableReport.Err() applies (§6.5): a form refusal is unknown_form, then
-// malformed, blob_shared, clamped, kind_mismatch and non_finite; unknown and
-// widened alone are not a refusal.
+// order TableReport.Err() applies (§6.5): a non-finite float first, a form
+// refusal as unknown_form, then missing_required, malformed, blob_shared,
+// clamped and kind_mismatch; unknown and widened alone are not a refusal.
 func goStrictReason(u *irUnit, rootName string, wire []byte) string {
 	m := tabletext.NewModel(u.u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
 	_, err := tablewire.Decode(m, inst, wire, &rep)
 	switch {
+	case strings.HasPrefix(rep.Reason, "non_finite: ") || strings.HasPrefix(rep.Reason, "non_finite_float: "):
+		// a non-finite float outranks every other verdict (§3.3); the
+		// engine on main spells it non_finite until the finite-tables
+		// oracle lands, and this port spells it non_finite_float already
+		return "non_finite_float"
 	case err != nil:
 		return "unknown_form"
+	case strings.HasPrefix(rep.Reason, "missing_required"):
+		return "missing_required"
 	case rep.Malformed:
 		return "malformed"
 	case rep.BlobShared > 0:
@@ -80,8 +87,6 @@ func goStrictReason(u *irUnit, rootName string, wire []byte) string {
 		return "clamped"
 	case rep.KindMismatch > 0:
 		return "kind_mismatch"
-	case strings.HasPrefix(rep.Reason, "non_finite: "):
-		return "non_finite"
 	}
 	return "ok"
 }
@@ -138,7 +143,8 @@ func runStrictRows(t *testing.T, g *loadUnit, rows []loadRow) strictResult {
 // docs/SPEC-TABLES.md §6.5 and to Go's own answer on every manifest row: the
 // plain name is strict, the tolerant walk has its own name, unknown and
 // widened alone do not refuse, and malformed, clamped, kind_mismatch,
-// blob_shared, non_finite and an unknown form each refuse by Go's name. It
+// blob_shared, missing_required, non_finite_float and an unknown form each
+// refuse by Go's name. It
 // also runs load, save and re-load through the same unit and holds the bytes
 // and the report to the reference's, and it refuses the probe units' trailing
 // root bytes and negative id count by name. Every construct is named with its
@@ -229,7 +235,7 @@ func TestLobsterStrictRead(t *testing.T) {
 	if rowsRun == 0 {
 		t.Fatal("no manifest row was read: the comparison is vacuous")
 	}
-	for _, name := range []string{"ok", "malformed", "clamped", "kind_mismatch", "blob_shared", "non_finite", "unknown_form"} {
+	for _, name := range []string{"ok", "malformed", "clamped", "kind_mismatch", "blob_shared", "missing_required", "non_finite_float", "unknown_form"} {
 		t.Logf("strict construct %s: %d", name, counts[name])
 	}
 
@@ -276,7 +282,7 @@ func TestLobsterStrictReadNegativeControl(t *testing.T) {
 	if got := runStrictRows(t, g, rows).reason[0]; got != want {
 		t.Fatalf("the control, unpatched: strict read = %s, want %s", got, want)
 	}
-	path := filepath.Join(g.dir, "strict_and_refusals.lobster")
+	path := filepath.Join(g.dir, "load.lobster")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

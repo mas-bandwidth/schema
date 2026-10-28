@@ -109,7 +109,7 @@ def textmain():
     assert ed
     print(schema_rt.text_save(ed))
     let rep = schema_rt.LoadReport {}
-    let back = schema_rt.load("Config", wire, rep)
+    let back = schema_rt.load_tolerant("Config", wire, rep)
     assert back
     print(drec(back))
 textmain()
@@ -170,7 +170,7 @@ func textSweepProgram(g *loadUnit, roots []string) string {
 		b.WriteString("    let wire = schema_rt.save(doc.rec)\n")
 		fmt.Fprintf(&b, "    print(%s + \" \" + hexs(wire))\n", lobsterString(r))
 		b.WriteString("    let rep = schema_rt.LoadReport {}\n")
-		fmt.Fprintf(&b, "    let back = schema_rt.load(%s, wire, rep)\n", lobsterString(r))
+		fmt.Fprintf(&b, "    let back = schema_rt.load_tolerant(%s, wire, rep)\n", lobsterString(r))
 		b.WriteString("    assert back\n")
 		fmt.Fprintf(&b, "    print(%s + \" \" + report_line(rep))\n", lobsterString(r))
 		fmt.Fprintf(&b, "    print(%s + \" \" + drec(back))\n", lobsterString(r))

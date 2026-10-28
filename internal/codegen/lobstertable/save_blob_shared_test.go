@@ -23,7 +23,7 @@ func blobSharedProgram(g *loadUnit, rootName string) string {
 	fmt.Fprintf(&b, `let data = read_file("w0")
 assert data
 let rep = schema_rt.LoadReport {}
-let rec = schema_rt.load(%q, data, rep)
+let rec = schema_rt.load_tolerant(%q, data, rep)
 assert rec
 let out, why = schema_rt.save_reasoned(rec)
 print("shared {rep.blob_shared}")

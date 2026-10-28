@@ -272,18 +272,9 @@ def sg_visit_edges(g:SaveGraph, rec:Record) -> void:
 class SaveEncoder:
     ids:SaveIds
     g:SaveGraph
-
-// save_widen32 is Go's NarrowF32 (docs/SPEC-TABLES.md §3.3, PORT-LOBSTER
-// FLOAT32): a NaN's payload rides by bit surgery, never a hardware cast.
-def save_narrow32(x:float) -> int:
-    let b = f64bits(x)
-    if (b & 0x7FF0000000000000) == 0x7FF0000000000000 and (b & 0x000FFFFFFFFFFFFF) != 0:
-        let sign = shr(b, 63) & 1
-        var payload = shr(b, 29) & 0x007FFFFF
-        if payload == 0:
-            payload = 0x00400000
-        return shl(sign, 31) | 0x7F800000 | payload
-    return f32bits(x)
+    // non_finite names the first NaN or infinity the writer met
+    // (docs/SPEC-TABLES.md §3.3): the save refuses it as non_finite_float
+    non_finite:string = ""
 
 def save_wide_bytes(units:[int]) -> string:
     var out = zeros(length(units) * 2)
@@ -319,7 +310,7 @@ def save_is_default(d:FieldDescriptor, v:Value) -> bool:
         if d.f32:
             if d.franged:
                 return fround(v.f) == fround(d.def_float)
-            return save_narrow32(v.f) == save_narrow32(d.def_float)
+            return f32bits(v.f) == f32bits(d.def_float)
         if d.franged:
             return v.f == d.def_float
         return f64bits(v.f) == f64bits(d.def_float)
@@ -348,7 +339,7 @@ def save_elem_is_default(d:FieldDescriptor, kind:int, v:Value) -> bool:
         if d.f32:
             if d.franged:
                 return fround(v.f) == 0.0
-            return save_narrow32(v.f) == 0
+            return f32bits(v.f) == 0
         if d.franged:
             return v.f == 0.0
         return f64bits(v.f) == 0
@@ -396,9 +387,19 @@ def save_element(e:SaveEncoder, w:SaveOut, d:FieldDescriptor, kind:int, v:Value)
         so_leb(w, length(v.s))
         so_bytes(w, v.s)
     elif kind == 10:
-        so_u32(w, save_narrow32(v.f))
+        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an infinity
+        // (a double past float32's range included, once narrowed) is refused
+        // by the writer, never written; the ordinary conversion carries
+        // every finite value, -0 and the subnormals bit for bit.
+        let b = f32bits(v.f)
+        if not finite_f32_bits(b) and e.non_finite == "":
+            e.non_finite = float_owner(d)
+        so_u32(w, b)
     elif kind == 11:
-        so_u64(w, f64bits(v.f))
+        let b = f64bits(v.f)
+        if not finite_f64_bits(b) and e.non_finite == "":
+            e.non_finite = float_owner(d)
+        so_u64(w, b)
     elif kind == 13:
         var t = v.tab
         if not t:
@@ -748,13 +749,15 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
 // save writes a form-1 wire from a Record (docs/SPEC-TABLES.md §3): the FORM
 // BYTE, the ROOT BODY, the ID TABLE, in that order. A data cycle is refused
 // as the reference refuses it (§3.1), and so is one blob named from two slots
-// (§2.5: every writer refuses that graph rather than write a copy per slot);
-// the empty string is the refusal, and save_reasoned names it.
+// (§2.5: every writer refuses that graph rather than write a copy per slot)
+// and a NaN or an infinity in any float (§3.3); the empty string is the
+// refusal, and save_reasoned names it.
 def save(rec:Record) -> string:
     return save_reasoned(rec)
 
 // save_reasoned is save with the refusal's name beside the bytes: "cycle",
-// "blob_shared" (Go's TableRefuseReason spelling), or "" when it wrote.
+// "blob_shared", "non_finite_float" (Go's TableRefuseReason spellings), or ""
+// when it wrote.
 def save_reasoned(rec:Record) -> string, string:
     let g = SaveGraph {}
     push(g.nodes, SaveNode { kind: 1, rec: rec, tid: rec.d.id, open: true })
@@ -771,6 +774,8 @@ def save_reasoned(rec:Record) -> string, string:
     encode_body_fields(e, fields, rec)
     if length(g.nodes) > 1:
         encode_node_table(e, fields, g)
+    if e.non_finite != "":
+        return "", "non_finite_float"
     let out = SaveOut {}
     so_u8(out, 1) // THE FORM BYTE
     so_bytes(out, so_take(fields))

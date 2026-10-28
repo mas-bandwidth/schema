@@ -157,7 +157,7 @@ const saveRel = `def save_rel(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load(root, data, rep)
+    let rec = schema_rt.load_tolerant(root, data, rep)
     if not rec:
         print("")
         print(report_line(rep))
@@ -167,7 +167,7 @@ const saveRel = `def save_rel(root:string, file:string):
     let saved = hexs(out)
     print(saved)
     let rep2 = schema_rt.LoadReport {}
-    let rec2 = schema_rt.load(root, out, rep2)
+    let rec2 = schema_rt.load_tolerant(root, out, rep2)
     print(report_line(rep2))
     labels = []
     var dump = "nil"
