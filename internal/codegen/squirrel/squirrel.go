@@ -265,7 +265,6 @@ func emitEnum(m *Module, d *ir.Enum) {
 		m.Printf("%s", ir.DocComment(d.VariantDocs[i], "  ", "//"))
 		m.Printf("  %s = %d,\n", TableKey(v), i+1)
 	}
-	m.Printf("  Count = %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	m.Printf("  Max = %d, // the exported extent (SPEC §4.2)\n", d.Max)
 	m.Printf("};\n\n")
 	emitNameFunction(m, "EnumName"+d.Name, d.Variants)
@@ -483,7 +482,6 @@ func emitUnion(m *Module, d *ir.Union) {
 		m.Printf("%s", ir.DocComment(v.Doc, "  ", "//"))
 		m.Printf("  %s = %d,\n", TableKey(names[i]), i+1)
 	}
-	m.Printf("  Count = %d, // the declared variant count (SPEC §4.2)\n", len(d.Variants))
 	m.Printf("  Max = %d, // the exported extent (SPEC §4.2)\n", len(d.Variants))
 	m.Printf("};\n\n")
 	emitNameFunction(m, "EnumName"+d.Name+"Type", names)

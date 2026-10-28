@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // Squirrel CARRIES the byte and string buffers (docs/SPEC-TABLES.md §2.5): a
 // `*bytes` and a `*string` table field are pointers to a BLOB NODE held at
 // exactly the bytes it was given, framed at its length on the wire and pointed

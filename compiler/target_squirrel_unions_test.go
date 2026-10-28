@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // TestSquirrelCarriesUnionsInTableClosures proves the Squirrel target carries
 // the union a table closure holds (docs/SPEC-TABLES.md §2.6, §3, §16.2): a
 // table arm, a payload-free arm and an array of unions generate, run under the

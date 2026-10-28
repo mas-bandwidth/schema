@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 package compiler
 
 // Squirrel carries the ONE-SIDED INTEGER RANGE (docs/SPEC-TABLES.md §4.3,

@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The Squirrel target carries the `forms` table declaration
 // (docs/SPEC-TABLES.md §2.12). The carrier decision lives in the shared
 // registry (compiler/carries.go), one registration per target; this file is

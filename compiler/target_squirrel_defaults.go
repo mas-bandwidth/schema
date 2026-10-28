@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // Squirrel carries a string, bytes or flags DEFAULT on the FORM-1 table wire
 // (docs/SPEC-TABLES.md §4, §16.2; SPEC §4.2): its table writer elides a field
 // whose value is the declared default, and its reader restores that default

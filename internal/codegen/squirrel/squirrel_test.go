@@ -136,7 +136,7 @@ func TestSqrunFailsAScriptThatThrows(t *testing.T) {
 // declared size with its used length, a counted array born at its minimum
 // (SPEC §4.6), a pre-allocated instance per nested record and per union arm
 // (SPEC §6.1, §4.8), and no reference shared between the two constructions.
-// Constants, enums (Count, Max) and flags masks are held the same way. Then the
+// Constants, enums (None, Max) and flags masks are held the same way. Then the
 // ArmDefaults checks test/go/main.go testDefaultArmInitialization makes of a
 // constructed value: a DefaultArm is born with no entries and both backing
 // entries at ProbeConfig's defaults (retries -1, preferred Railgun).
@@ -190,7 +190,7 @@ func TestSquirrelTypesConstructAtTheirDefaults(t *testing.T) {
 				for _, k := range []struct {
 					name string
 					v    int64
-				}{{"None", 0}, {"Count", int64(len(d.Variants))}, {"Max", d.Max}} {
+				}{{"None", 0}, {"Max", d.Max}} { // an enum exports no Count (SPEC §4.2)
 					key := "enum." + d.Name + "." + k.name
 					fmt.Fprintf(&p, "out(%q, show(%s.%s.%s));\n", key, mod, d.Name, k.name)
 					want[key] = exact(strconv.FormatInt(k.v, 10))

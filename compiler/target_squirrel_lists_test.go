@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // TestSquirrelCarriesUnboundedArrays proves Squirrel carries the unbounded
 // array (docs/SPEC-TABLES.md §2.9): the construct's probe unit generates, the
 // emitted module reads and writes it under the pinned interpreter, and its

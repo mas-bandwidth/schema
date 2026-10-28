@@ -113,7 +113,7 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		nameFunc: "pub fn enum_name_weapon_fire_type(value: WeaponFireType) -> &'static str {",
 	},
 	"squirrel": {
-		count:    "  Count = 2, // the declared variant count (SPEC §4.2)",
+		noCount:  "  Count = ",
 		max:      "  Max = 2, // the exported extent (SPEC §4.2)",
 		nameFunc: "_M.EnumNameWeaponFireType <- function(value) {",
 	},

@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 // The INTEGRITY TRAILER on the Squirrel table surface
 // (docs/SPEC-TABLES.md §2.14): the target declares that it carries the
 // construct, so the untagged registry test's expectation joins it here the way

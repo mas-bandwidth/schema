@@ -1,5 +1,3 @@
-//go:build schema_leg_squirrel
-
 package compiler
 
 // The Squirrel target carries the `timestamp` kind (docs/SPEC-TABLES.md §2.11,
