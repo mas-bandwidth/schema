@@ -66,7 +66,7 @@ func TestLuauTableSaveSkipsFalseGuards(t *testing.T) {
 	assertGuard("wander", true)
 	assertGuard("note", true)
 
-	main := `local save = require("./save")
+	main := `local save = require("./schema_save")
 local St = require("./schema_tables")
 require("./GuardedTable")
 local d = St.lookup("Patrol")

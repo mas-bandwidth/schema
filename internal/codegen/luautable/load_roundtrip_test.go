@@ -19,7 +19,7 @@ import (
 // walks the loaded value and the emitted descriptors and prints the value as
 // §16's JSON text. It is written into t.TempDir(), never shipped.
 const roundtripMain = `local S = require("./schema_tables")
-local load = require("./load")
+local load = require("./schema_load")
 local inputs = require("./inputs")
 
 -- flagsOf maps a field, arm or array descriptor to its flags' variant names

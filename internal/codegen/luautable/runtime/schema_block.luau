@@ -1,5 +1,5 @@
 --!strict
--- block.luau — the block form's builder (docs/SPEC-TABLES.md §19.1), the
+-- schema_block.luau — the block form's builder (docs/SPEC-TABLES.md §19.1), the
 -- Luau leg of what blockbuild.go emits on the Go side. It lays one extent out
 -- from its counts the way the generated Go builder does: it stamps the
 -- prologue, places each out-of-line array's (offset_of, count, stride) triple

@@ -1,14 +1,14 @@
 --!strict
--- textform.luau — THE HAND-EDITABLE TEXT FORM's read (docs/SPEC-TABLES.md
+-- schema_textform.luau — THE HAND-EDITABLE TEXT FORM's read (docs/SPEC-TABLES.md
 -- §16.9). A document is one strict s-expression; every value is resolved
 -- against the reflection descriptors (§8) and transcoded into the canonical
--- JSON of the same value, which json.luau's read walk then lands. Every place
+-- JSON of the same value, which schema_json.luau's read walk then lands. Every place
 -- §16.2 would clamp, skip or last-wins is refused here first, so a refusal is
 -- the stable name, byte offset and field path of §16.9.4.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
-local J = require("./json")
+local J = require("./schema_json")
 
 local T = {}
 local ProvidedFlags: any = nil
@@ -1152,7 +1152,7 @@ end
 -- ---- entry point ----
 
 -- SetFlags hands the reader the flags variant names a descriptor does not
--- carry (the same table json.luau takes, docs/SPEC-TABLES.md §16.2).
+-- carry (the same table schema_json.luau takes, docs/SPEC-TABLES.md §16.2).
 function T.SetFlags(f: any) ProvidedFlags = f end
 
 -- LoadTextForm reads one document strictly (docs/SPEC-TABLES.md §16.9) and

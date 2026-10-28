@@ -88,8 +88,8 @@ type loadFixGAnswer struct {
 // harness's 47-byte header (loaded, five counters, malformed, refused,
 // measure -1, retained, retain_lost, saved length) and the saved bytes.
 const loadFixGProbe = `local S = require("./schema_tables")
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local inputs = require("./inputs")
 
 local function hex(b)

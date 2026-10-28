@@ -91,8 +91,8 @@ table Plain
 	wantLedger := referenceSave("Ledger", true)
 	wantPlain := referenceSave("Plain", false)
 
-	main := `local save = require("./save")
-local refusal = require("./refusal")
+	main := `local save = require("./schema_save")
+local refusal = require("./schema_refusal")
 local St = require("./schema_tables")
 local T = require("./SealTable")
 

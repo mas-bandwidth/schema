@@ -170,7 +170,7 @@ func strictGoWriteVerdict(t *testing.T, m *tabletext.Model, mutate func(*tablete
 // when ToJson accepts the value.
 func strictRefusalProbe(g *generatedUnit, mutation string) string {
 	return jsonModules(g) + `
-local json = require("./json")
+local json = require("./schema_json")
 local St = require("./schema_tables")
 local v = St.lookup("Root").new()
 ` + mutation + `

@@ -4,7 +4,7 @@
 -- and required as require("./schema_tables"). It holds the DESCRIPTOR types
 -- every table module's data has, the constructors that freeze them, and the
 -- registry a walk resolves a descriptor's name through: the table codecs
--- (load.luau, save.luau, fixed.luau, message.luau, json.luau, text.luau) are
+-- (schema_load.luau, schema_save.luau, schema_fixed.luau, schema_message.luau, schema_json.luau, schema_text.luau) are
 -- later runtime files beside this one, each walking these descriptors as data
 -- (docs/SPEC-TABLES.md §8.1; docs/PORTING.md M13).
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.

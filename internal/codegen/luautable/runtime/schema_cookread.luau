@@ -1,5 +1,5 @@
 --!strict
--- cookread.luau — THE COOKED FORM's READ (docs/SPEC-TABLES.md §7, §7.1,
+-- schema_cookread.luau — THE COOKED FORM's READ (docs/SPEC-TABLES.md §7, §7.1,
 -- §7.2, §7.4). Open checks the header in §7.4's order and then reads the
 -- region the cook carries — Lock's region written verbatim, the root at its
 -- base — into the same value the variable-form load builds (§4). A refusal is
@@ -356,7 +356,7 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 			end
 			-- a list of pointers may hold null slots, which a Luau length cannot
 			-- see: its live length rides as n, the table.pack convention (§2.9),
-			-- exactly as load.luau writes it.
+			-- exactly as schema_load.luau writes it.
 			if (e.s == "ptr" or e.s == "sblob" or e.s == "bblob") and got > 0 then out.n = got end
 			return out
 		end

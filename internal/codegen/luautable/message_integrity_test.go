@@ -97,7 +97,7 @@ func TestLuauMessageFormIntegrity(t *testing.T) {
 	wantLedger := append([]byte(nil), ledgerWire...)
 	wantLedger = binary.LittleEndian.AppendUint32(wantLedger, crc32.Checksum(ledgerWire, crc32.MakeTable(crc32.Castagnoli)))
 
-	main := `local M = require("./message")
+	main := `local M = require("./schema_message")
 local T = require("./ProbeTable")
 local inputs = require("./inputs")
 

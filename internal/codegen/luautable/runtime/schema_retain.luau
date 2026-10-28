@@ -1,12 +1,12 @@
 --!strict
--- retain.luau — the Luau table runtime's RETAIN-UNKNOWN opt-in on the load
+-- schema_retain.luau — the Luau table runtime's RETAIN-UNKNOWN opt-in on the load
 -- (docs/SPEC-TABLES.md §6.6). LoadRetain answers the value the ordinary
 -- variable-form load answers, and beside it the retained set: every unknown
 -- field this build cannot name, with its id, its kind, its body path and its
 -- payload with every reference resolved.
 --
--- THE LOAD IS REUSED, NOT COPIED: the value comes from load.luau's own walk
--- (require("./load")), which is what keeps this opt-in additive. The capturing
+-- THE LOAD IS REUSED, NOT COPIED: the value comes from schema_load.luau's own walk
+-- (require("./schema_load")), which is what keeps this opt-in additive. The capturing
 -- walk below is §6.6's resolving walk and nothing else: it reads the framing
 -- the plain read already accepted and rewrites a retained record's references
 -- to the 64-bit ids they name. A record it cannot take is one `retain_lost`
@@ -20,8 +20,8 @@
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
-local Load = require("./load")
-local Save = require("./save")
+local Load = require("./schema_load")
+local Save = require("./schema_save")
 
 local R = {}
 
@@ -662,7 +662,7 @@ local function node_records(bytes: buffer, ids: { any }, endpos: number): any
 end
 
 -- LoadRetain is the ordinary load's answer beside §6.6's retained set. The
--- value comes from load.luau's own walk; the capturing walk adds nothing to
+-- value comes from schema_load.luau's own walk; the capturing walk adds nothing to
 -- the plain read's verdict and never raises `malformed`. `capacity` is the
 -- byte ceiling the caller owns: the retained store never grows past it and a
 -- whole record that does not fit counts one `retain_lost` (§6.6). `idCount` is
@@ -726,7 +726,7 @@ end
 -- ---------------------------------------------------------------------------
 -- THE RETAINING SAVE (docs/SPEC-TABLES.md §6.6)
 --
--- SaveRetain saves the value exactly as save.luau does, then writes each kept
+-- SaveRetain saves the value exactly as schema_save.luau does, then writes each kept
 -- record back at the end of the body that carried it, in the order retained.
 -- A record the saved path no longer names is dropped and counts one
 -- retain_lost; the save itself is never refused by retention.

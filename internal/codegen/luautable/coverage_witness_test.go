@@ -6,11 +6,11 @@ package luautable_test
 // reference engine's bytes on the smallest schema that reaches the defect,
 // so planting the old behaviour back fails here by name:
 //
-//   - cook.luau placed a string's int32 length companion by aligning against
+//   - schema_cook.luau placed a string's int32 length companion by aligning against
 //     the FIELD's start rather than the record's (a string(N) at an odd
 //     offset), stored bits(N) at its wire kind's width rather than the
 //     uint32/uint64 ir/blocklayout.go stores it at, and never wrote a float64;
-//   - the descriptor carried no flags variant names, so json.luau wrote a
+//   - the descriptor carried no flags variant names, so schema_json.luau wrote a
 //     flags mask as an integer rather than its §16.2 name array.
 //
 // The retain witnesses are corpus rows and live in retain_corpus_test.go.
@@ -118,8 +118,8 @@ func TestLuauCookLayoutAgreesWithTheReference(t *testing.T) {
 	binary.LittleEndian.PutUint64(build, ir.BuildVersion(u))
 	probe := `--!strict
 local T = require("./witnessTable")
-local L = require("./load")
-local C = require("./cook")
+local L = require("./schema_load")
+local C = require("./schema_cook")
 local inputs = require("./inputs")
 local function hex(b: buffer): string
 	local parts = table.create(buffer.len(b))
@@ -177,9 +177,9 @@ func TestLuauJsonSpellsFlagsFromTheDescriptor(t *testing.T) {
 	}
 	probe := `--!strict
 require("./witnessTable")
-local J = require("./json")
-local L = require("./load")
-local S = require("./save")
+local J = require("./schema_json")
+local L = require("./schema_load")
+local S = require("./schema_save")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local function hex(b: buffer): string

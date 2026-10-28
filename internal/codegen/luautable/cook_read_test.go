@@ -103,8 +103,8 @@ local function dump(v: any): string
 end
 `
 
-// cookProbe builds one Luau main: load the wire through load.luau, open the
-// cook through cookread.luau at this build, and compare the two dumps.
+// cookProbe builds one Luau main: load the wire through schema_load.luau, open the
+// cook through schema_cookread.luau at this build, and compare the two dumps.
 func cookProbe(g *generatedUnit, rootName, build string, nilBase bool) string {
 	var mods []string
 	for name := range g.files {
@@ -193,7 +193,7 @@ func runProbe(t *testing.T, g *generatedUnit, main string, inputs map[string][]b
 }
 
 // TestLuauCookOpenAgreesWithGo cooks every instance row the Luau target can
-// generate (internal/tablecook, the Go writer), opens it through cookread.luau
+// generate (internal/tablecook, the Go writer), opens it through schema_cookread.luau
 // and requires the value to equal Go's variable-form read of the same wire
 // (internal/tabletext + internal/tablewire). One damaged file per §7.4
 // refusal answers the name Go's own check computes. The build version is

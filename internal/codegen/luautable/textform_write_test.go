@@ -175,7 +175,7 @@ func TestLuauTextFormEditKeepsTheDocument(t *testing.T) {
 	}
 	maps.Copy(goFiles, tables)
 	runtime := tfSerializeGoRuntime(t)
-	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
+	goFiles["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	var lit strings.Builder
 	for i, c := range cases {
 		fmt.Fprintf(&lit, "\n\t{name: %q, input: %q, edits: []TableTextFormEdit{", fmt.Sprintf("case%03d", i), c.input)

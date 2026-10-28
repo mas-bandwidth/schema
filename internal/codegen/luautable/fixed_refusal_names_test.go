@@ -193,11 +193,11 @@ func fixedGoOracle(t *testing.T, schemaSrc string) map[string]fixedOracleCase {
 	return cases
 }
 
-// TestLuauFixedLoadNamesEveryRefusal holds fixed.luau to Go's TableFixedReason
+// TestLuauFixedLoadNamesEveryRefusal holds schema_fixed.luau to Go's TableFixedReason
 // names for every case of gotable's TestFixedLoadNamesEveryRefusal that has a
 // Luau surface (docs/SPEC-TABLES.md §3.4; docs/FIXED-FORM-ALGORITHM.md §5.3):
 // the files are built and the verdicts computed by the same unit's generated Go
-// fixed load, then fixed.luau loads those exact bytes. plan_too_large (no plan
+// fixed load, then schema_fixed.luau loads those exact bytes. plan_too_large (no plan
 // argument) and batch_too_large (F.load takes no capacity) have no Luau surface.
 func TestLuauFixedLoadNamesEveryRefusal(t *testing.T) {
 	t.Parallel()
@@ -273,7 +273,7 @@ end
 			continue
 		}
 		if g.reason != want.reason || g.malformed != want.malformed {
-			t.Errorf("%s: fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
+			t.Errorf("%s: schema_fixed.luau answered %s (malformed %t), Go answered %s (malformed %t)",
 				name, g.reason, g.malformed, want.reason, want.malformed)
 		}
 	}

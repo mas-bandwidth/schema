@@ -2620,7 +2620,7 @@ adapt_field = function(fd: any, owner: any): any
     o.shape = "flags"
     o.variants = flag_names(owner, fd)
   else
-    error("schema: json.luau cannot read shape " .. tostring(s))
+    error("schema: schema_json.luau cannot read shape " .. tostring(s))
   end
   return o
 end

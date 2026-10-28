@@ -180,9 +180,9 @@ type jsonTextZeroResult struct {
 // the wire it produces from the read value (docs/SPEC-TABLES.md §16.3).
 func runJsonTextZeroProbe(t *testing.T, g *generatedUnit, text string) jsonTextZeroResult {
 	t.Helper()
-	const probe = `local json = require("./json")
+	const probe = `local json = require("./schema_json")
 json.SetFlags(SCHEMA_JSON_FLAGS)
-local save = require("./save")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 local inputs = require("./inputs")
 local function hex(b)

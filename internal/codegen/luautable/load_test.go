@@ -294,7 +294,7 @@ func TestLuauTableLoadNegativeControl(t *testing.T) {
 	if got := runWire(t, g, "Box", wire); got != want {
 		t.Fatalf("the control, an unpatched duplicate: got %s, want %s", got, want)
 	}
-	path := filepath.Join(g.dir, "load.luau")
+	path := filepath.Join(g.dir, "schema_load.luau")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

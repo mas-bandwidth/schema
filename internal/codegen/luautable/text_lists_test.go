@@ -30,12 +30,12 @@ table Lists
 }
 `
 
-// textListsProbe loads one wire through the emitted load.luau, saves it through
-// save.luau, prints the report counters, the saved bytes and the measure, then
+// textListsProbe loads one wire through the emitted schema_load.luau, saves it through
+// schema_save.luau, prints the report counters, the saved bytes and the measure, then
 // loads and saves the saved bytes again.
 const textListsProbe = `local inputs = require("./inputs")
-local load = require("./load")
-local save = require("./save")
+local load = require("./schema_load")
+local save = require("./schema_save")
 local St = require("./schema_tables")
 require("./ListsTable")
 local function fresh()

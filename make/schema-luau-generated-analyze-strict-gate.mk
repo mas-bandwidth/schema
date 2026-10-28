@@ -9,7 +9,7 @@
 # --!strict, so the analyzer is not left in its nonstrict default. The
 # analyzer exits 0 on lint warnings, so the test rejects any diagnostic line,
 # not just a non-zero exit. tables/maps is analyzed whole: its Text.schema
-# module collides with the runtime text.luau only when case is folded, so the
+# module collides with the runtime schema_text.luau only when case is folded, so the
 # test stages that one schema file renamed on this case-sensitive gate.
 #
 # The analyzer is the pinned Luau release make/luau.mk names (0.741) and

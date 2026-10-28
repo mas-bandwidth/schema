@@ -1,8 +1,8 @@
 --!strict
--- fixed.luau — the Luau table runtime's FIXED FORM (docs/SPEC-TABLES.md §3.4,
+-- schema_fixed.luau — the Luau table runtime's FIXED FORM (docs/SPEC-TABLES.md §3.4,
 -- form byte 3), the one reader and writer for a record. Emitted beside the
 -- unit's <Base>Table.luau modules by internal/codegen/luautable and required
--- from them as require("./fixed"). The layout, hash and record size are the
+-- from them as require("./schema_fixed"). The layout, hash and record size are the
 -- emitter's static data (fixedform.go); this file only reads and writes the
 -- bytes those facts describe (docs/FIXED-FORM-ALGORITHM.md §1, §3, §4).
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.

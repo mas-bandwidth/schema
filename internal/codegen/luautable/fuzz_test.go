@@ -319,7 +319,7 @@ func (g *luauFuzzGroup) chunks() []*luauFuzzChunk {
 
 // runLuauFuzzDifferential drives the differential over every instance root of
 // the corpus whose unit the Luau target generates. edit, when non-nil, patches
-// the emitted load.luau of every unit (the negative control). The groups are
+// the emitted schema_load.luau of every unit (the negative control). The groups are
 // staged in order, their probes run concurrently (each a separate process in
 // its own t.TempDir(), no network and no clock), and every answer is then
 // compared with the engine in order, so a red is deterministic.
@@ -401,7 +401,7 @@ func runLuauFuzzDifferential(t *testing.T, edit func([]byte) []byte) luauFuzzRes
 		}
 		files := make(map[string][]byte, len(gen.files)+1)
 		for name, data := range gen.files {
-			if name == "load.luau" && edit != nil {
+			if name == "schema_load.luau" && edit != nil {
 				data = edit(data)
 			}
 			files[name] = data
@@ -555,7 +555,7 @@ func TestLuauWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 }
 
 // luauFuzzControlAnchor is the string field's frame check in the emitted load
-// (runtime/load.luau, read_field): a length past the body is malformed (§3).
+// (runtime/schema_load.luau, read_field): a length past the body is malformed (§3).
 // The "str" branch is matched exactly once.
 const luauFuzzControlAnchor = `	elseif s == "str" then
 		local n = r_leb(r)
@@ -571,7 +571,7 @@ func TestLuauWireFuzzNegativeControl(t *testing.T) {
 	sabotaged := strings.Replace(luauFuzzControlAnchor, "_report.malformed = true; return false", "return false", 1)
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luauFuzzControlAnchor); n != 1 {
-			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage anchor appears %d times in load.luau, want 1", n)
+			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage anchor appears %d times in schema_load.luau, want 1", n)
 		}
 		return []byte(strings.Replace(string(src), luauFuzzControlAnchor, sabotaged, 1))
 	}
