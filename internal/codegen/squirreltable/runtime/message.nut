@@ -269,9 +269,33 @@ local numberBits = function(fd) {
   if (fd.bits > 0) return fd.bits;
   return fd.width * 8;
 };
+// WIDE TEXT ON THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): kind 33's
+// content rule, SURROGATES PAIRED and no zero unit (wideValid in
+// internal/tablewire/text.go), and its clamp, which never splits a pair
+// (wideBoundary). Here ill-formed text is damage and TERMINAL: a bit stream
+// has no defined position to continue from.
+local wideValid = function(units) {
+  local n = units.len();
+  for (local i = 0; i < n; i++) {
+    local u = units[i];
+    if (u == 0) return false;
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 >= n || units[i + 1] < 0xDC00 || units[i + 1] > 0xDFFF) return false;
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) return false;
+  }
+  return true;
+};
+local wideClamp = function(units, bound) {
+  local cut = bound;
+  if (cut > 0 && units[cut - 1] >= 0xD800 && units[cut - 1] <= 0xDBFF) cut--;
+  return units.slice(0, cut);
+};
+
 local defaultValue = function(fd, value, owner) {
   if (("optional" in fd) && fd.optional) return !owner[fd.member + "Present"];
   if (fd.shape == "str") return value == fd.def;
+  if (fd.shape == "wstr") return value.len() == 0;
   if (fd.shape == "bytes") {
     if (value.len() != fd.def.len()) return false;
     for (local i = 0; i < value.len(); i++) if (value[i] != fd.def[i]) return false;
@@ -381,6 +405,13 @@ writePayload = function(T, w, fd, value, depth) {
     local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
     for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
   }
+  if (fd.shape == "wstr") {
+    // the length at bits_required(0, N), NO align, then sixteen bits a code
+    // unit (§3.3); the used length is checked, the content is not (§3)
+    local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound));
+    foreach (u in value) { if (typeof u != "integer" || u < 0 || u > 0xFFFF) { w.bad = true; return; } put(w, u, 16); }
+    return;
+  }
   if (fd.shape == "tab") { writeBody(T, w, T.Descriptors[fd.table], value, depth + 1); return; }
   if (fd.shape == "union") {
     local ud = T[fd.table + "Descriptor"], arm = null;
@@ -418,6 +449,10 @@ skipPayload = function(T, v, r, fd, depth) {
     local n = get(r, bitCount(fd.bound)); if (r.bad || n > fd.bound) { r.bad = true; return; }
     if (!alignRead(r)) { r.bad = true; return; } skip(r, n * 8); return;
   }
+  if (fd.shape == "wstr") {
+    local n = get(r, bitCount(fd.bound)); if (r.bad || n > fd.bound) { r.bad = true; return; }
+    skip(r, n * 16); return;
+  }
   if (fd.shape == "tab") { local d = T.Descriptors[fd.table]; for (;;) { local ref=get(r,v.RefBits); if(r.bad||ref==0)return; local id=idAt(v,ref); local f=id==null?null:d.byId[id]; if(f==null){r.bad=true;return;} skipPayload(T,v,r,f,depth+1); } }
   if (fd.shape == "union") {
     local ref=get(r,v.RefBits); if(r.bad||ref==0)return;
@@ -451,6 +486,13 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
     local b=blob(kept);for(local i=0;i<n;i++){local x=get(r,8)&0xff;if(i<kept)b[i]=x;}
     owner[member]=b;return;
+  }
+  if (fd.shape == "wstr") {
+    local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max||r.bits+n*16>r.b.len()*8){r.bad=true;return;}
+    local units=array(n);for(local i=0;i<n;i++)units[i]=get(r,16);
+    if(r.bad||!wideValid(units)){r.bad=true;return;}
+    if(n>fd.bound){r.clamped++;units=wideClamp(units,fd.bound);}
+    owner[member]=units;return;
   }
   if(fd.shape=="tab"){local child=T.Descriptors[fd.table].make();readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);owner[member]=child;return;}
   if(fd.shape=="union"){

@@ -687,6 +687,24 @@ local text = function(r, v, bound) {
   return true;
 };
 
+// wideText is a wstring(N) (§16.9.2): the same string, its bound N in UTF-16
+// CODE UNITS after unescaping, so an astral code point (a four-byte UTF-8
+// sequence) counts two. The decoded text is well-formed, so the lead byte
+// alone says how many units each code point takes.
+local wideText = function(r, v, bound) {
+  if (v.kind != '"') return rfail(r, KIND_MISMATCH, v, v.start);
+  local units = 0;
+  foreach (ch in v.text) {
+    local c = ch & 0xff;
+    if ((c & 0xc0) == 0x80) continue;
+    units += (c >= 0xf0) ? 2 : 1;
+  }
+  if (units > bound) return rfail(r, BOUND, v, v.start);
+  v.canon = v.text;
+  jsonString(r, v.text);
+  return true;
+};
+
 // blob is standard padded base64 with no stray byte and zero pad bits; a
 // negative bound is a *bytes blob, which has none.
 local B64 = function(c) {
@@ -1039,6 +1057,7 @@ field = function(r, v, d, path) {
   if (d.optional && v.kind == 'z') { v.canon = "null"; raw(r, "null"); return true; }
   if (d.shape == "arr") return d.kind == 16 ? keyed(r, v, d, path) : sequence(r, v, d, path);
   if (d.shape == "str") return text(r, v, d.bound);
+  if (d.shape == "wstr") return wideText(r, v, d.bound);
   if (d.shape == "bytes") return blobValue(r, v, d.bound);
   return scalar(r, v, d, path);
 };
@@ -1059,6 +1078,7 @@ scalar = function(r, v, d, path) {
     case "enum": return enumValue(r, v, d);
     case "flags": return flagsValue(r, v, d, path);
     case "str": return text(r, v, d.bound);
+    case "wstr": return wideText(r, v, d.bound);
     case "bytes": return blobValue(r, v, d.bound);
     case "bool":
       if (v.kind != 't' && v.kind != 'f') return rfail(r, KIND_MISMATCH, v, v.start);

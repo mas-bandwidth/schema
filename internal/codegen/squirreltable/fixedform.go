@@ -138,10 +138,9 @@ func emitFixedLineage(m *Module, st *ir.Struct, entries []FixedLineageEntry, flo
 	m.Printf("];\n\n")
 }
 
-// fixedSupported is the subset of the form this card's codec carries: no
-// union, no enum-keyed array, and no wide text (the Squirrel table surface
-// refuses wstring anyway). A table outside it is simply not a root of this
-// card's codec; the layout walk still holds it for a later card.
+// fixedSupported is the subset of the form this card's codec carries. A
+// table outside it is simply not a root of this card's codec; the layout walk
+// still holds it for a later card.
 func fixedSupported(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if !fixedFieldSupported(f) {
@@ -166,7 +165,9 @@ func fixedFieldSupported(f *ir.Field) bool {
 	case ir.TBool, ir.TInt, ir.TFixed, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
 		return f.Type.Width <= 128
 	case ir.TWString:
-		return false
+		// WIDE TEXT (docs/SPEC-TABLES.md §3.4, §7.2): an int32 used length in
+		// CODE UNITS, then N two-byte units little-endian
+		return true
 	}
 	return false
 }
@@ -435,14 +436,54 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 		m.Printf("%sfor (local i = 0; i < %s; i++) {\n", ind, count)
 		fixedEmitWriteElement(m, f, base, expr+"[i]", ind+"  ", "i * "+fmt.Sprint(fixedElementBytes(f)))
 		m.Printf("%s}\n", ind)
-	case f.Type.Kind == ir.TString:
-		m.Printf("%s_rt_fixed.puti32(b, at + %d, %s.len());\n", ind, at, expr)
-		m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %d + i] = %s[i] & 0xff;\n", ind, expr, at+4, expr)
-	case f.Type.Kind == ir.TBytes:
-		m.Printf("%s_rt_fixed.puti32(b, at + %d, %s.len());\n", ind, at, expr)
-		m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %d + i] = %s[i] & 0xff;\n", ind, expr, at+4, expr)
+	case fixedIsText(f):
+		fixedEmitWriteText(m, f, fmt.Sprint(at), expr, ind)
 	default:
 		fixedEmitWriteElement(m, f, at, expr, ind, "0")
+	}
+}
+
+// fixedIsText is a lone string(N), bytes(N) or wstring(N): a length and its
+// buffer, where an array element or a union arm holds one too.
+func fixedIsText(f *ir.Field) bool {
+	return f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString)
+}
+
+// fixedEmitWriteText stores a text field at `at + off`: the int32 used length,
+// then that many units, the slack left at the template's zeros. A byte or a
+// string unit is one byte; a WIDE unit is two, little-endian, and the length
+// counts CODE UNITS (docs/SPEC-TABLES.md §3.4, §7.2).
+func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
+	m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
+	if f.Type.Kind == ir.TWString {
+		m.Printf("%sfor (local i = 0; i < %s.len(); i++) { b[at + %s + %d + 2 * i] = %s[i] & 0xff; b[at + %s + %d + 2 * i + 1] = (%s[i] >> 8) & 0xff; }\n",
+			ind, expr, off, fixedCountBytes, expr, off, fixedCountBytes, expr)
+		return
+	}
+	m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %s + %d + i] = %s[i] & 0xff;\n", ind, expr, off, fixedCountBytes, expr)
+}
+
+// fixedEmitDecodeText reads a text field at `at + off` back into expr: a
+// length past the PLAN's bound refuses length_over_bound, and ill-formed text
+// refuses text_ill_formed — UTF-8 for a string, paired surrogates and no zero
+// unit for wide text (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
+// §4.5, §5.4 fix 11).
+func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
+	m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
+	m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
+	switch f.Type.Kind {
+	case ir.TString:
+		m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + %d, n)) return \"text_ill_formed\";\n", ind, off, fixedCountBytes)
+		m.Printf("%slocal s = \"\";\n", ind)
+		m.Printf("%sfor (local i = 0; i < n; i++) s += b[at + %s + %d + i].tochar();\n", ind, off, fixedCountBytes)
+		m.Printf("%s%s = s;\n", ind, expr)
+	case ir.TWString:
+		m.Printf("%slocal w = _rt_fixed.wideUnits(b, at + %s + %d, n);\n", ind, off, fixedCountBytes)
+		m.Printf("%sif (w == null) return \"text_ill_formed\";\n", ind)
+		m.Printf("%s%s = w;\n", ind, expr)
+	default:
+		m.Printf("%s%s = blob(n);\n", ind, expr)
+		m.Printf("%sfor (local i = 0; i < n; i++) %s[i] = b[at + %s + %d + i];\n", ind, expr, off, fixedCountBytes)
 	}
 }
 
@@ -467,7 +508,12 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
-				fixedEmitWriteElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0")
+				if fixedIsText(v.F) {
+					// a text arm is a length and its buffer at the arm's start
+					fixedEmitWriteText(m, v.F, fmt.Sprintf("%s + %d", off, tag), expr+"."+ir.GoExportName(v.Name), ind+"  ")
+				} else {
+					fixedEmitWriteElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", dyn)
+				}
 				m.Printf("%s}\n", ind)
 			}
 			return
@@ -556,22 +602,8 @@ func fixedEmitDecodePayload(m *Module, f *ir.Field, at int64, expr, ind string) 
 		}
 		fixedEmitDecodeElement(m, f, base, expr+"[i]", ind+"    ", "i * "+fmt.Sprint(fixedElementBytes(f)), true)
 		m.Printf("%s  }\n", ind)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		// a length past the PLAN's bound refuses length_over_bound, and an
-		// ill-formed string payload refuses text_ill_formed
-		// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §4.5,
-		// §5.4 fix 11).
-		m.Printf("%s  local n = _rt_fixed.geti32(b, at + %d);\n", ind, at)
-		m.Printf("%s  if (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)
-		if f.Type.Kind == ir.TString {
-			m.Printf("%s  if (_rt_fixed.textIllFormed(b, at + %d, n)) return \"text_ill_formed\";\n", ind, at+4)
-			m.Printf("%s  local s = \"\";\n", ind)
-			m.Printf("%s  for (local i = 0; i < n; i++) s += b[at + %d + i].tochar();\n", ind, at+4)
-			m.Printf("%s  %s = s;\n", ind, expr)
-		} else {
-			m.Printf("%s  %s = blob(n);\n", ind, expr)
-			m.Printf("%s  for (local i = 0; i < n; i++) %s[i] = b[at + %d + i];\n", ind, expr, at+4)
-		}
+	case fixedIsText(f):
+		fixedEmitDecodeText(m, f, fmt.Sprint(at), expr, ind+"  ")
 	default:
 		fixedEmitDecodeElement(m, f, at, expr, ind+"  ", "0", false)
 	}
@@ -600,7 +632,11 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 					continue
 				}
 				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
-				fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", "0", false)
+				if fixedIsText(v.F) {
+					fixedEmitDecodeText(m, v.F, fmt.Sprintf("%s + %d", off, tag), expr+"."+ir.GoExportName(v.Name), ind+"  ")
+				} else {
+					fixedEmitDecodeElement(m, v.F, at+tag, expr+"."+ir.GoExportName(v.Name), ind+"  ", dyn, false)
+				}
 				m.Printf("%s}\n", ind)
 			}
 			return

@@ -114,7 +114,10 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 	}
 
 	cases := []refusalRow{
-		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", false},
+		// this construct is LIFTED (compiler/target_squirrel.go init): the
+		// target carries wstring(N) on the packet wire and as table kind 33,
+		// so the refuser accepts squirrel (SPEC §4.12, docs/SPEC-TABLES.md §3).
+		{"refuseWideText", "wide text", "package probe\n\ntable L\n{\n    w wstring(8)\n}\n", "L.w", true},
 		// this construct is LIFTED (compiler/target_squirrel_blobs.go): the
 		// tagged target carries the byte and string buffers, so the refusers
 		// accept squirrel and still refuse a target that has not registered

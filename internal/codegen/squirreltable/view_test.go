@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -303,8 +304,12 @@ func runGoView(t *testing.T, root string, gu viewUnit) []string {
 
 	var calls strings.Builder
 	for _, name := range gu.names {
+		// gotable spells every identifier in Go's initialisms (a generated map
+		// entry FleetByIdEntry is FleetByIDEntry there); the row keeps the
+		// schema name both legs print
+		goName := goname.Initialisms(name)
 		fmt.Fprintf(&calls, "\twriteInfo(%q, %q, %t, %sTableInfo)\n\tfor _, f := range %sTableFields {\n\t\twriteField(%q, %q, f)\n\t}\n",
-			gu.key, name, gu.unit.Tables[name] != nil && gu.unit.Tables[name].IsTable, name, name, gu.key, name)
+			gu.key, name, gu.unit.Tables[name] != nil && gu.unit.Tables[name].IsTable, goName, goName, gu.key, name)
 	}
 	writeFile(t, filepath.Join(dir, "view_test.go"),
 		[]byte(fmt.Sprintf(viewGoTest, gu.unit.Package, calls.String())))

@@ -104,13 +104,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	m := &Module{Unit: u, runtimes: map[string]bool{}}
 	m.Closure, m.Roots = closure(u)
-	for _, st := range m.Closure {
-		for _, f := range st.Fields {
-			if why := unmapped(f); why != "" {
-				return nil, fmt.Errorf("squirrel table surface: %s.%s is %s, which the Squirrel descriptors do not map yet (docs/PORT-SQUIRREL.md, THE REGISTER)", st.Name, f.Name, why)
-			}
-		}
-	}
 	desc := m.Runtime("descriptor")
 	for _, un := range unions(m.Closure) {
 		emitUnion(m, un)
@@ -203,14 +196,6 @@ func closure(u *ir.Unit) (all, roots []*ir.Struct) {
 		}
 	}
 	return all, roots
-}
-
-// unmapped names a construct the descriptors do not carry yet, or "".
-func unmapped(f *ir.Field) string {
-	if f.Type.Kind == ir.TWString {
-		return "wide text (SPEC §4.12; table kind 33)"
-	}
-	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +318,8 @@ func elemZero(f *ir.Field) string {
 		return `""`
 	case f.Type.Kind == ir.TBytes:
 		return "blob(0)"
+	case f.Type.Kind == ir.TWString:
+		return "[]"
 	}
 	return scalarZero(f)
 }
@@ -370,6 +357,11 @@ func valueDefault(f *ir.Field) string {
 		return squirrel.StringLit(f.DefBytes)
 	case f.Type.Kind == ir.TBytes:
 		return "_rt_descriptor.blobOf(" + squirrel.StringLit(f.DefBytes) + ")"
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT (SPEC §4.12) is its UTF-16 CODE UNITS, an array of
+		// integers each in [0, 0xFFFF] whose length is the used length; it
+		// takes no `= default`, so a fresh field is empty.
+		return "[]"
 	}
 	return scalarDefault(f)
 }
@@ -595,6 +587,14 @@ func baseDesc(f *ir.Field) map[string]string {
 		d["shape"] = `"bytes"`
 		d["bound"] = fmt.Sprint(f.Type.Size)
 		d["def"] = squirrel.StringLit(f.DefBytes)
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3; SPEC §4.12): storage is
+		// the UTF-16 code units, the bound is N in CODE UNITS, and the field
+		// takes no default, so the default is the empty array. A runtime that
+		// lands the default copies it, never shares this one.
+		d["shape"] = `"wstr"`
+		d["bound"] = fmt.Sprint(f.Type.Size)
+		d["def"] = "[]"
 	case f.Type.Kind == ir.TBool:
 		d["shape"] = `"bool"`
 		d["def"] = scalarDefault(f)

@@ -178,7 +178,12 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 		m.Printf("%sif (typeof %s != \"array\" || %s > %d) return false;\n", indent, val, length, size)
 		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "")
 		m.Printf("%sfor (local _j = 0; _j < %s; _j++) {\n", indent, length)
-		emitCall(m, indent+"  ", val+"[_j]", "serializeUint32")
+		// a zero unit among the used units is refused, as §4.7 refuses the
+		// interior null, and a slot that is not a code unit has no group
+		// (SPEC §4.12)
+		m.Printf("%s  local _u = %s[_j];\n", indent, val)
+		m.Printf("%s  if (typeof _u != \"integer\" || _u <= 0 || _u > 0xFFFF) return false;\n", indent)
+		emitCall(m, indent+"  ", "_u", "serializeUint32")
 		m.Printf("%s}\n", indent)
 	case ir.TNamed:
 		emitWriteNamed(m, val, f, indent)

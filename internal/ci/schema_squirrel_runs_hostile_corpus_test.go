@@ -67,19 +67,11 @@ type squirrelExpectedHostileMismatch struct {
 // dev now holds the engine's refusal of ill-formed UTF-8 (`refuse damaged`),
 // which is the Squirrel reader's answer, so those rows pass.
 //
-// conformance-str-zero-escape-map-key arrived with dev's §16.3 zero rows. Its
-// schema, tables/maps, declares wide text (SPEC §4.12, table kind 33), which
-// the Squirrel descriptors do not map yet, so the generator refuses the unit
-// and there is no reader verdict. The wide-text carry cards own it
-// (docs/PORT-SQUIRREL.md, THE REGISTER).
+// conformance-str-zero-escape-map-key arrived with dev's §16.3
+// zero rows in tables/maps, a unit that declares wide text (SPEC §4.12, table
+// kind 33). The Squirrel descriptors carry kind 33 now, so the unit generates
+// and the reader refuses the zero key by name, which is the manifest's verdict.
 var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
-	{
-		name:     "conformance-str-zero-escape-map-key",
-		input:    "inputs/conformance-str-zero-escape-map-key.json",
-		expected: "refuse damaged",
-		actual:   "generator refuses tables/maps; no reader verdict",
-		fixCard:  "schema-squirrel-carries-wide-text",
-	},
 	// wire-non-finite-float arrived with the finite-tables ruling (#2226,
 	// SPEC-TABLES §3.3): Squirrel refuses the NaN but names it non_finite where
 	// the engine names non_finite_float. The squirrel finite-tables card

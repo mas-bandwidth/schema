@@ -343,14 +343,28 @@ func emitReadString(m *Module, f *ir.Field, target, ind string) {
 
 // emitReadWString reads a wstring field: the length in UTF-16 code units via
 // the runtime ranged call, then each unit as a 32-bit group into the
-// pre-allocated integer array (SPEC §4.12).
+// pre-allocated integer array (SPEC §4.12), with the read refusals every
+// target owes, in the spec's order: the length is bounded by the ranged call
+// before any group is read, a group above 0xFFFF is not a code unit, a zero
+// group is an interior null, a high surrogate must be followed at once by a
+// low one (and is never the final group), and a low surrogate must follow a
+// high one. Exhaustion fails the group's own read.
 func emitReadWString(m *Module, f *ir.Field, target, ind string) {
 	scratch := m.Helper(holder)
 	m.Printf("%sif (!stream.serializeInt(%s, 0, %d)) return false;\n", ind, scratch, f.Type.Size)
 	m.Printf("%s%sLength = %s.value;\n", ind, target, scratch)
-	m.Printf("%sfor (local i = 0; i < %sLength; i++) {\n", ind, target)
-	m.Printf("%s  if (!stream.serializeBits(%s, 32)) return false;\n", ind, scratch)
-	m.Printf("%s  %s[i] = %s.value;\n", ind, target, scratch)
+	m.Printf("%s{\n", ind)
+	m.Printf("%s  local high = false;\n", ind)
+	m.Printf("%s  for (local i = 0; i < %sLength; i++) {\n", ind, target)
+	m.Printf("%s    if (!stream.serializeBits(%s, 32)) return false;\n", ind, scratch)
+	m.Printf("%s    local u = %s.value;\n", ind, scratch)
+	m.Printf("%s    if (u < 0 || u > 0xFFFF || u == 0) return false;\n", ind)
+	m.Printf("%s    local lo = u >= 0xDC00 && u <= 0xDFFF;\n", ind)
+	m.Printf("%s    if (high != lo) return false;\n", ind)
+	m.Printf("%s    high = u >= 0xD800 && u <= 0xDBFF;\n", ind)
+	m.Printf("%s    %s[i] = u;\n", ind, target)
+	m.Printf("%s  }\n", ind)
+	m.Printf("%s  if (high) return false;\n", ind)
 	m.Printf("%s}\n", ind)
 }
 
