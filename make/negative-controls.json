@@ -634,6 +634,17 @@
       "node": "26"
     },
     {
+      "name": "dart-conformance",
+      "when": "pull-request",
+      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, and the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout.",
+      "dart": "3.13.2",
+      "targets": [
+        "conformance-negative-control-dart-walk",
+        "conformance-negative-control-dart-zero",
+        "tables-dart-usage-negative-control"
+      ]
+    },
+    {
       "name": "dart",
       "when": "pull-request",
       "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",

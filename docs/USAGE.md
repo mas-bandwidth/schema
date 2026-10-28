@@ -4494,17 +4494,43 @@ if (!ok) {
 }
 ```
 
-Dart carries the two **table accelerators** (docs/SPEC-TABLES.md §19 and §7)
-and not the table wire: a unit that declares tables grows `<Base>Block.dart`
-and `<Base>Cook.dart` beside its packet library, plus one runtime home per
-unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A block
-is pointed at and a cook is opened; neither parses a wire, both are read-only,
-and both refuse a forged image rather than throwing on it (`make
-tables-dart-fuzz` is that oracle over mutated corpus images, with its planted
-control). There is no `<Base>Table.dart`: the Dart port of the table wire wrote
-the form that preceded the id-table wire, which the current specification does
-not describe, and it was removed rather than carried; schema#514 is the row that
-brings the id-table wire to Dart, and ROADMAP.md marks the cells.
+A unit that declares tables grows `<Package>Wire.dart`, the table wire
+(docs/SPEC-TABLES.md §3): one class per table, `<root>WireLoad(bytes,
+[report])` and `<root>WireSave(value)` for the id-table form, and
+`<root>ToJson` / `<root>FromJson(text, [report])` for the §16 text form, beside
+`<Package>Fixed.dart` (the fixed form, §3.4) and the two **table accelerators**
+(§19 and §7): `<Base>Block.dart` and `<Base>Cook.dart`, plus one runtime home
+per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A
+wire load never throws on hostile bytes: it answers what it could read and
+says why in a `TableWireReport` (`malformed`, `refused`, and `reason`, the
+refusal by name). A text read is tolerant in the same way, counting what it set
+aside in a `TableTextReport`, and refuses text that is not JSON, or a text
+string that holds U+0000 (§16.3), by throwing a `FormatException`. A block is
+pointed at and a cook is opened; neither parses a wire, both are read-only, and
+both refuse a forged image rather than throwing on it (`make tables-dart-fuzz`
+is that oracle over mutated corpus images, with its planted control). This
+fragment is compiled and run against the `tables/pointers` unit by `make
+tables-dart-usage`:
+
+<!-- dart-table-usage -->
+```dart
+import 'GraphdemoWire.dart';
+
+final report = TableWireReport();
+final scene = sceneWireLoad(bytes, report); // never throws on hostile bytes
+if (report.malformed || report.refused) {
+  // drop it: report.reason names why (wire_damaged, unknown_form)
+} else {
+  for (var node = scene.head; node != null; node = node.next) {
+    use(node.value);
+  }
+  final again = sceneWireSave(scene); // the canonical id-table wire
+  final text = sceneToJson(scene); // the §16 text form
+  final back = sceneFromJson(text, TableTextReport());
+  use(again.length + back.name.length);
+}
+```
+<!-- /dart-table-usage -->
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;

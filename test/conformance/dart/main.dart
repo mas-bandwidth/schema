@@ -1373,6 +1373,10 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = graphdemo.TableTextReport();
         graphdemo.sceneFromJson(text, r);
         break;
+      case 'mapdemo Text':
+        r = mapdemo.TableTextReport();
+        mapdemo.textFromJson(text, r);
+        break;
       case 'messagedemo ToolMessage':
         r = messagedemo.TableTextReport();
         messagedemo.toolMessageFromJson(text, r);

@@ -1329,7 +1329,7 @@ table of controls.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ❌ #514 | ❌ #515 |
+| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ✅ `conformance-negative-control-dart-walk` `conformance-negative-control-dart-zero` | ❌ #515 |
 
 ### I12 — The documented surface compiles and runs
 
@@ -1339,7 +1339,7 @@ drifting from it.
 
 **Reference.** `test/tables/cook_main.cpp:1394` (`mode_usage`,
 under `tables-cook-open`); `tables-dart-usage` runs the page's Dart verbatim
-against the golden.
+over the graph_tree corpus wire, with infos fatal under the analyzer.
 
 **Proven in.** C++.
 
@@ -1352,7 +1352,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ✅ `tables-dart-usage` `tables-dart-usage-negative-control` | ✅ `tables-elixir-usage` |
 
 ### I13 — The text differential against a third implementation
 
