@@ -94,7 +94,19 @@ func emitDescriptors(g *lobster.Gen) error {
 	// the key enum of every enum-keyed array: the descriptor carries the key's
 	// variants so the load needs no second registration (§2.4; PORT-LOBSTER,
 	// THE LOAD).
-	for _, t := range g.File.Tables {
+	// Every struct of the file is walked, the tables and the types a table
+	// reaches alike: a keyed array inside a nested type needs its keys too
+	// (folded from sprint vt-optionals' emitOptionals, which registered them
+	// a second time).
+	keyedOwners := append([]*ir.Struct{}, g.File.Tables...)
+	for _, d := range g.File.Decls {
+		if st, ok := d.(*ir.Struct); ok {
+			if _, isTable := g.Unit.Tables[st.Name]; !isTable {
+				keyedOwners = append(keyedOwners, st)
+			}
+		}
+	}
+	for _, t := range keyedOwners {
 		for _, f := range t.Fields {
 			if f.KeyEnumRef == nil {
 				continue

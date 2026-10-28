@@ -563,14 +563,14 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
     let f = sl.fd
     if f.s == "ptr":
         let idx = if sl.cell.node: sg_rec_index(e.g, sl.cell.node) else: 0
-        if idx == 0:
+        if idx == 0 and not f.required:
             return
         so_leb(w, sid_ref(e.ids, f.id))
         so_u8(w, 17)
         so_leb(w, idx)
         return
     if f.s == "sblob" or f.s == "bblob":
-        if not sl.cell.blob:
+        if not sl.cell.blob and not f.required:
             return
         let idx = sg_blob_index(e.g, sl.cell)
         so_leb(w, sid_ref(e.ids, f.id))
@@ -578,7 +578,12 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         so_leb(w, idx)
         return
     if f.s == "map":
-        if length(sl.entries) == 0:
+        // PRESENCE IS THE PAYLOAD (docs/SPEC-TABLES.md §2.8): an ABSENT
+        // optional map elides; a PRESENT-EMPTY one writes its kind-14 body
+        // with count 0, so absent and present-empty stay two values.
+        if f.present != "" and not sl.present:
+            return
+        if length(sl.entries) == 0 and f.present == "":
             return
         so_leb(w, sid_ref(e.ids, f.id))
         so_u8(w, 14)
@@ -624,7 +629,7 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
             return
         let ed = elem_of(f)
         if f.array == "counted" or f.array == "list":
-            if sl.count == 0:
+            if sl.count == 0 and not f.required:
                 return
             save_array(e, w, sl, f.ek, sl.count)
             return
@@ -637,12 +642,12 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
             if i < length(sl.elems) and not save_elem_is_default(ed, f.ek, sl.elems[i]):
                 all = false
             i++
-        if all:
+        if all and not f.required:
             return
         save_array(e, w, sl, f.ek, f.bound)
         return
     if f.s == "bytes":
-        if sl.cell.s == f.def_str:
+        if sl.cell.s == f.def_str and not f.required:
             return
         so_leb(w, sid_ref(e.ids, f.id))
         so_u8(w, 14)
@@ -654,7 +659,7 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         so_bytes(w, so_take(body))
         return
     if f.s == "str" and f.wide:
-        if length(sl.cell.units) == 0:
+        if length(sl.cell.units) == 0 and not f.required:
             return
         so_leb(w, sid_ref(e.ids, f.id))
         so_u8(w, 33)
@@ -663,7 +668,7 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         so_bytes(w, b)
         return
     if f.s == "str" or f.s == "text":
-        if sl.cell.s == f.def_str:
+        if sl.cell.s == f.def_str and not f.required:
             return
         so_leb(w, sid_ref(e.ids, f.id))
         so_u8(w, 12)
@@ -684,7 +689,7 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         if not t:
             t = new_record(table_of(f.t))
         let body = encode_body(e, t)
-        if length(body) <= 1:
+        if length(body) <= 1 and not f.required:
             sid_rollback(e.ids, mark)
             return
         so_leb(w, ref)
@@ -692,7 +697,7 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         so_leb(w, length(body))
         so_bytes(w, body)
         return
-    if save_is_default(f, sl.cell):
+    if not f.required and save_is_default(f, sl.cell):
         return
     so_leb(w, sid_ref(e.ids, f.id))
     so_u8(w, f.k)

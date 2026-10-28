@@ -29,6 +29,11 @@ type loadRow struct {
 	// data, when set, is the wire itself, built by the test rather than read
 	// from the file wire names
 	data []byte
+	// saveData, when set, is the reference's save of the row's value where the
+	// generic writer (internal/tablewire) cannot spell it: a present-empty
+	// optional map and a required field at its default both ride although that
+	// writer elides them (docs/SPEC-TABLES.md §2.3, §2.8).
+	saveData []byte
 }
 
 // loadRows reads the report and instance lines of the tables manifest, in

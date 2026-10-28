@@ -34,6 +34,9 @@ class LoadReport:
     duplicate:int = 0
     malformed:bool = false
     blob_shared:int = 0
+    // missing_required is a record's `| required` refusal (docs/SPEC-TABLES.md
+    // §2.3): one per body that ends without a required field, named in reason.
+    missing_required:int = 0
     refused:bool = false
     reason:string = ""
 
@@ -891,6 +894,7 @@ let wide_shape = register_shape(WideShape { key: "wstr" })
 // falls back on its declared defaults, staying the body it was.
 def nested_body(r:Reader, rec:Record) -> bool:
     let rep = r.st.report
+    let missing_before = rep.missing_required
     let n, ok = leb(r)
     if not ok or not has(r, n):
         rep.malformed = true
@@ -898,6 +902,11 @@ def nested_body(r:Reader, rec:Record) -> bool:
     let sr = sub(r, n)
     body_at(sr, rec, true, false)
     if r.st.count_refused:
+        return false
+    // a body below refused for a missing required field refuses this body too
+    // (docs/SPEC-TABLES.md §2.3, THE RECORD'S at any depth)
+    if rep.missing_required > missing_before:
+        r.off += n
         return false
     if sr.off != sr.hi:
         rep.malformed = true
@@ -1440,6 +1449,14 @@ def slot_by_id(rec:Record, id:int) -> Slot?:
             return sl
     return nil
 
+// mark_seen records that this body NAMED the slot's field (§2.3): a required
+// field the body names is not missing, whatever its kind or value.
+def mark_seen(rec:Record, sl:Slot, seen:[bool]):
+    for(rec.fields) x, i:
+        if x == sl:
+            seen[i] = true
+            return
+
 // body_at decodes one table body (§3, §4; Go's bodyAt): unknown ids skip by
 // their kind and count, a kind the declaration widens decodes and counts, any
 // other foreign kind skips and counts, and framing damage stops this body.
@@ -1448,6 +1465,14 @@ def slot_by_id(rec:Record, id:int) -> Slot?:
 // counts once (§2.8).
 def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
     let rep = r.st.report
+    // THE `| required` SEEN FLAGS (docs/SPEC-TABLES.md §2.3; Go's reqSeen):
+    // one per field of this body, set when the body NAMES the field, and
+    // judged at its terminator. A child body's refusal rides up (the report
+    // is the record's at any depth).
+    let missing_before = rep.missing_required
+    let seen:[bool] = []
+    for(rec.fields):
+        push(seen, false)
     while true:
         if r.st.count_refused:
             return false
@@ -1456,6 +1481,21 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             rep.malformed = true
             return false
         if ref == 0:
+            let missing:[string] = []
+            for(rec.fields) x, i:
+                if x.fd.required and not seen[i]:
+                    push(missing, x.fd.name)
+            if length(missing) > 0:
+                rep.missing_required++
+                var names = ""
+                for(missing) nm:
+                    if names != "":
+                        names += ", "
+                    names += nm
+                rep.reason = "missing_required: " + names
+                return false
+            if rep.missing_required > missing_before:
+                return false
             return true
         let id, named = rid(r, ref)
         if not named or not has(r, 1):
@@ -1493,12 +1533,14 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
                     rep.widened++
                 if f.present != "":
                     sl.present = true
+                mark_seen(rec, sl, seen)
                 continue
             rep.kind_mismatch++
             if not skip(r, kind):
                 rep.malformed = true
                 return false
             continue
+        mark_seen(rec, sl, seen)
         if not shape(shape_key(f)).field(r, sl):
             return false
         if f.present != "" and f.s != "arr":
@@ -1686,9 +1728,13 @@ def load(root:string, data:string, report:LoadReport) -> Record?:
         return rec
     if not rec.d.variable:
         body_at(reader(st, 1, first), rec, false, false)
+        if report.missing_required > 0:
+            return nil
         return rec
     decode_variable(st, rec, first)
     if st.count_refused:
         report.refused = true
+        return nil
+    if report.missing_required > 0:
         return nil
     return rec

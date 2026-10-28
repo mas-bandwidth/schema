@@ -4,10 +4,11 @@
 // load is the strict read, the tolerant walk is load_tolerant, and every
 // read-time refusal carries Go's TableRefuseReason spelling. This file joins
 // the descriptor emitter through Register and refuses, at compile time and by
-// the same names, the constructs the Lobster walk does not carry: a
-// `| required` field (missing_required, §2.3) and a collection bound above
-// the int32 extent cap (count_over_extent_cap, §2.2). It edits neither
-// lobstertable.go nor load.lobster.
+// the same name, the one construct the Lobster walk does not carry: a
+// collection bound above the int32 extent cap (count_over_extent_cap, §2.2).
+// A `| required` field is carried: the load counts and names
+// missing_required at any depth and the save never elides one (§2.3,
+// runtime/load.lobster and runtime/schema_save.lobster).
 package lobstertable
 
 import (
@@ -35,9 +36,6 @@ func emitStrictAndRefusals(g *lobster.Gen) error {
 
 func refuseStrictUncarried(st *ir.Struct) error {
 	for _, f := range st.Fields {
-		if f.Required {
-			return fmt.Errorf("missing_required: %s.%s — the Lobster table walk does not carry | required (docs/SPEC-TABLES.md §2.3, §6.5)", st.Name, f.Name)
-		}
 		if f.ArrayBound > math.MaxInt32 {
 			return fmt.Errorf("count_over_extent_cap: %s.%s — a count above the int32 extent cap (docs/SPEC-TABLES.md §2.2, §6.5)", st.Name, f.Name)
 		}
