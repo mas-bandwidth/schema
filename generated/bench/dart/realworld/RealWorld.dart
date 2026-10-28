@@ -507,6 +507,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   var v = 0;
   assert(value.f001Int >= -805495);
   assert(value.f001Int <= 805495);
+  assert(value.f002F64.isFinite);
   v = (value.f001Int + 805495) & 0x1fffff;
   scratch |= v << scratchBits;
   scratchBits += 21;
@@ -563,17 +564,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (25 - scratchBits);
   }
-  if (!value.f007F32.isNaN) {
-    Schema.f32[0] = value.f007F32;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.f007F32;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.f007F32;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -602,17 +595,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (6 - scratchBits);
   }
-  if (!value.f010F32.isNaN) {
-    Schema.f32[0] = value.f010F32;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.f010F32;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.f010F32;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -631,17 +616,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratch = v >>> (11 - scratchBits);
   }
   if (value.f012Bool) {
-    if (!value.f013F32.isNaN) {
-      Schema.f32[0] = value.f013F32;
-      v = Schema.u32[0];
-    } else {
-      Schema.f64[0] = value.f013F32;
-      v = (Schema.u64[0] >>> 29) & 0x7fffff;
-      if (v == 0) {
-        v = 0x400000;
-      }
-      v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-    }
+    Schema.f32[0] = value.f013F32;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
     scratch |= v << scratchBits;
     scratchBits += 32;
     if (scratchBits >= 64) {
@@ -674,6 +651,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f018Int >= -834);
   assert(value.f018Int <= 834);
+  assert(value.f019F64.isFinite);
   v = (value.f018Int + 834) & 0x7ff;
   scratch |= v << scratchBits;
   scratchBits += 11;
@@ -692,17 +670,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  if (!value.f020F32.isNaN) {
-    Schema.f32[0] = value.f020F32;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.f020F32;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.f020F32;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -722,17 +692,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (27 - scratchBits);
   }
-  if (!value.f022F32.isNaN) {
-    Schema.f32[0] = value.f022F32;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.f022F32;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.f022F32;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -750,17 +712,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (25 - scratchBits);
   }
-  if (!value.f024F32.isNaN) {
-    Schema.f32[0] = value.f024F32;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.f024F32;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.f024F32;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -818,17 +772,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (64 - scratchBits);
   }
-  if (!value.f030F32.isNaN) {
-    Schema.f32[0] = value.f030F32;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.f030F32;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.f030F32;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -888,17 +834,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratch = v >>> (31 - scratchBits);
   }
   if (value.f043Bool) {
-    if (!value.f044F32.isNaN) {
-      Schema.f32[0] = value.f044F32;
-      v = Schema.u32[0];
-    } else {
-      Schema.f64[0] = value.f044F32;
-      v = (Schema.u64[0] >>> 29) & 0x7fffff;
-      if (v == 0) {
-        v = 0x400000;
-      }
-      v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-    }
+    Schema.f32[0] = value.f044F32;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
     scratch |= v << scratchBits;
     scratchBits += 32;
     if (scratchBits >= 64) {
@@ -924,6 +862,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
       scratch = v >>> (49 - scratchBits);
     }
   }
+  assert(value.f048F64.isFinite);
   assert(value.f049Ufixed >= 0);
   assert(value.f049Ufixed <= 49152);
   v = Schema.float64BitsFromDouble(value.f048F64);
@@ -956,17 +895,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (8 - scratchBits);
     }
-    if (!value.f053F32.isNaN) {
-      Schema.f32[0] = value.f053F32;
-      v = Schema.u32[0];
-    } else {
-      Schema.f64[0] = value.f053F32;
-      v = (Schema.u64[0] >>> 29) & 0x7fffff;
-      if (v == 0) {
-        v = 0x400000;
-      }
-      v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-    }
+    Schema.f32[0] = value.f053F32;
+    v = Schema.u32[0];
+    assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
     scratch |= v << scratchBits;
     scratchBits += 32;
     if (scratchBits >= 64) {
@@ -1003,17 +934,9 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (11 - scratchBits);
   }
-  if (!value.f058F32.isNaN) {
-    Schema.f32[0] = value.f058F32;
-    v = Schema.u32[0];
-  } else {
-    Schema.f64[0] = value.f058F32;
-    v = (Schema.u64[0] >>> 29) & 0x7fffff;
-    if (v == 0) {
-      v = 0x400000;
-    }
-    v |= ((Schema.u64[0] >>> 63) << 31) | 0x7f800000;
-  }
+  Schema.f32[0] = value.f058F32;
+  v = Schema.u32[0];
+  assert((v & 0x7f800000) != 0x7f800000); // finite only (SPEC §4.3)
   scratch |= v << scratchBits;
   scratchBits += 32;
   if (scratchBits >= 64) {
@@ -1022,6 +945,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
     scratchBits -= 64;
     scratch = v >>> (32 - scratchBits);
   }
+  assert(value.f059F64.isFinite);
   v = Schema.float64BitsFromDouble(value.f059F64);
   scratch |= v << scratchBits;
   scratchBits += 64;
@@ -1273,6 +1197,7 @@ int writeRealPacket(RealPacket value, ByteData view) {
   }
   assert(value.f086Uint >= 0);
   assert(value.f086Uint <= 399);
+  assert(value.f087F64.isFinite);
   v =
       (value.f084Ufixed & 0xff) |
       ((value.f085Bits & 0x1fffff) << 8) |
@@ -1400,6 +1325,9 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.f002F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0x1fffff;
   bitsRead += 21;
@@ -1440,14 +1368,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.f007F32 = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.f007F32 = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.f007F32 = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1478,14 +1403,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.f010F32 = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.f010F32 = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.f010F32 = Schema.f32[0];
   v = (window >>> 32) & 0x3ff;
   bitsRead += 10;
   value.f011Bits = v;
@@ -1503,14 +1425,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    if ((v & 0x7fffffff) <= 0x7f800000) {
-      Schema.u32[0] = v;
-      value.f013F32 = Schema.f32[0];
-    } else {
-      Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-      Schema.u64[0] |= 0x7ff0000000000000;
-      value.f013F32 = Schema.f64[0];
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
     }
+    Schema.u32[0] = v;
+    value.f013F32 = Schema.f32[0];
     v = (window >>> 32) & 0x3ff;
     bitsRead += 10;
     if (v > 775) {
@@ -1572,6 +1491,9 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.f019F64 = Schema.doubleFromFloat64Bits(lo);
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
@@ -1580,14 +1502,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.f020F32 = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.f020F32 = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.f020F32 = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1606,14 +1525,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.f022F32 = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.f022F32 = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.f022F32 = Schema.f32[0];
   v = (window >>> 32) & 0x1ffffff;
   bitsRead += 25;
   value.f023Bits = v;
@@ -1624,14 +1540,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.f024F32 = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.f024F32 = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.f024F32 = Schema.f32[0];
   v = (window >>> 32) & 0xffff;
   bitsRead += 16;
   if (v > 60928) {
@@ -1677,14 +1590,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   }
   v = window & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.f030F32 = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.f030F32 = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.f030F32 = Schema.f32[0];
   v = (window >>> 32) & 0x1;
   bitsRead += 1;
   value.f031Bits = v;
@@ -1763,14 +1673,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     }
     v = window & 0xffffffff;
     bitsRead += 32;
-    if ((v & 0x7fffffff) <= 0x7f800000) {
-      Schema.u32[0] = v;
-      value.f044F32 = Schema.f32[0];
-    } else {
-      Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-      Schema.u64[0] |= 0x7ff0000000000000;
-      value.f044F32 = Schema.f64[0];
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
     }
+    Schema.u32[0] = v;
+    value.f044F32 = Schema.f32[0];
     v = (window >>> 32) & 0xfff;
     bitsRead += 12;
     value.f045Bits = v;
@@ -1816,6 +1723,9 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.f048F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0xffff;
   bitsRead += 16;
@@ -1846,14 +1756,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
     value.f052Int = -57 + v;
     v = (window >>> 8) & 0xffffffff;
     bitsRead += 32;
-    if ((v & 0x7fffffff) <= 0x7f800000) {
-      Schema.u32[0] = v;
-      value.f053F32 = Schema.f32[0];
-    } else {
-      Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-      Schema.u64[0] |= 0x7ff0000000000000;
-      value.f053F32 = Schema.f64[0];
+    if ((v & 0x7f800000) == 0x7f800000) {
+      return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
     }
+    Schema.u32[0] = v;
+    value.f053F32 = Schema.f32[0];
     v = (window >>> 40) & 0x7f;
     bitsRead += 7;
     if (v > 70) {
@@ -1891,14 +1798,11 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   value.f057Int = -15 + v;
   v = (window >>> 11) & 0xffffffff;
   bitsRead += 32;
-  if ((v & 0x7fffffff) <= 0x7f800000) {
-    Schema.u32[0] = v;
-    value.f058F32 = Schema.f32[0];
-  } else {
-    Schema.u64[0] = ((v >>> 31) << 63) | ((v & 0x7fffff) << 29);
-    Schema.u64[0] |= 0x7ff0000000000000;
-    value.f058F32 = Schema.f64[0];
+  if ((v & 0x7f800000) == 0x7f800000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
   }
+  Schema.u32[0] = v;
+  value.f058F32 = Schema.f32[0];
   if (bitsRead >>> 3 < tailBase) {
     window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
   } else {
@@ -1915,6 +1819,9 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.f059F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0xff;
   bitsRead += 8;
@@ -2149,6 +2056,9 @@ bool readRealPacket(RealPacket value, ByteData view, int numBits) {
   v = window & 0xffffffff;
   bitsRead += 32;
   lo |= v << 32;
+  if ((lo & 0x7ff0000000000000) == 0x7ff0000000000000) {
+    return false; // non_finite_float: a NaN or an infinity is refused (SPEC §4.3)
+  }
   value.f087F64 = Schema.doubleFromFloat64Bits(lo);
   v = (window >>> 32) & 0x7ff;
   bitsRead += 11;

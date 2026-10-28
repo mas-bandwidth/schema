@@ -1128,6 +1128,37 @@ packet-utf8-dart-negative-control: packet-utf8-dart
 
 test-dart: packet-utf8-dart packet-utf8-dart-negative-control
 
+# Packet floats are finite (SPEC §4.3): write refusals in the checked twin, read
+# refusals from crafted bytes and bit-exact -0/subnormals in both twins, and a
+# control that removes the read check and must red exactly the read refusals.
+build/packet-finite/dart/.stamp: bin/schema test/packet-finite/dart/Finite.schema
+	./bin/schema generate --lang dart --out build/packet-finite/dart test/packet-finite/dart/Finite.schema
+	@touch $@
+
+.PHONY: packet-finite-dart packet-finite-dart-negative-control
+packet-finite-dart: build/packet-finite/dart/.stamp
+	$(DART) analyze build/packet-finite/dart test/packet-finite/dart
+	$(DART) format --set-exit-if-changed --output=none build/packet-finite/dart test/packet-finite/dart
+	$(DART) --enable-asserts test/packet-finite/dart/main.dart
+	$(DART) compile exe -o build/packet-finite/dart/checker test/packet-finite/dart/main.dart >/dev/null
+	./build/packet-finite/dart/checker
+
+packet-finite-dart-negative-control: packet-finite-dart
+	@rm -rf build/packet-finite/dart-negative && mkdir -p build/packet-finite/dart-negative
+	go run ./tools/sabotage -name packet-finite-dart-read -out build/packet-finite/dart-negative/functions.gotext internal/codegen/dart/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-finite/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-finite/dart-negative/overlay.json
+	go run -overlay=build/packet-finite/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-finite/dart-negative/generated test/packet-finite/dart/Finite.schema
+	@sed 's|../../../build/packet-finite/dart/|$(CURDIR)/build/packet-finite/dart-negative/generated/|' test/packet-finite/dart/main.dart > build/packet-finite/dart-negative/main.dart
+	@if $(DART) --enable-asserts build/packet-finite/dart-negative/main.dart > build/packet-finite/dart-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: Dart packet floats with no read check passed'; exit 1; fi
+	@grep -Fq 'FAILED: non_finite_float read refusal: ' build/packet-finite/dart-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Dart failed for another reason'; cat build/packet-finite/dart-negative/log; exit 1; }
+	@if grep -v 'FAILED: non_finite_float read refusal: ' build/packet-finite/dart-negative/log | grep -Fq 'FAILED:'; then \
+		echo 'NEGATIVE CONTROL FAILED: a check other than the read refusals went red'; cat build/packet-finite/dart-negative/log; exit 1; fi
+	@echo "packet finite Dart negative control: removed read check reds $$(grep -c 'FAILED: non_finite_float read refusal: ' build/packet-finite/dart-negative/log) read refusals and nothing else"
+
+test-dart: packet-finite-dart packet-finite-dart-negative-control
+
 
 build/packet-wide/dart/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
 	./bin/schema generate --lang dart --out build/packet-wide/dart build/packet-wide/source/WideText.schema

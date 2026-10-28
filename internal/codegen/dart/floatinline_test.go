@@ -21,8 +21,9 @@ import (
 // pass whatever their @pragma('vm:prefer-inline') said — make
 // tables-dart-float-jit measures it — so the packet emitter and the darttable
 // block and message emitters spell the conversion inline at each assignment,
-// through the typed-data views, with the helper's NaN rules (float32 cells
-// are bit transparent: TestDartFloat32CellsAreBitTransparent is the law), and
+// through the typed-data views (the packet emitter asserts the value finite,
+// SPEC §4.3; table float32 cells keep the helper's NaN rules and are bit
+// transparent: TestDartFloat32CellsAreBitTransparent is the law), and
 // the helper itself is gone from the output. Pure Go over generated text.
 func TestDartFloatBitsAreAtTheAssignment(t *testing.T) {
 	t.Parallel()
