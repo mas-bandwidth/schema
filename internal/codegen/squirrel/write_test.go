@@ -75,7 +75,7 @@ func TestSquirrelTypeWireWriteNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := squirrelTypeWireFiles(t, root)
-	const anchor = "stream.serializeBool({ value = v.HasFlags })"
+	const anchor = "_h.value = value.HasFlags;\n  if (!stream.serializeBool(_h)) return false;"
 	count := 0
 	for _, data := range files {
 		count += strings.Count(string(data), anchor)
@@ -86,7 +86,7 @@ func TestSquirrelTypeWireWriteNegativeControl(t *testing.T) {
 	for name, data := range files {
 		if strings.Contains(string(data), anchor) {
 			files[name] = []byte(strings.Replace(string(data), anchor,
-				"stream.serializeBits({ value = v.HasFlags ? 1 : 0 }, 2)", 1))
+				"_h.value = value.HasFlags ? 1 : 0;\n  if (!stream.serializeBits(_h, 2)) return false;", 1))
 		}
 	}
 	got := writeSquirrelTypeWire(t, files)

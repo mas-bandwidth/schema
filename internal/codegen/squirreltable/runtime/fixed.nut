@@ -5,8 +5,9 @@
 // host's order (docs/PORT-SQUIRREL.md, BYTE BUFFERS).
 local _M = vargv[0];
 
+local nib = function(c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
+
 _M.blobOfHex <- function(s) {
-  local nib = function(c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
   local out = blob(s.len() / 2);
   for (local i = 0; i < s.len(); i += 2) out[i / 2] = nib(s[i]) * 16 + nib(s[i + 1]);
   return out;

@@ -785,12 +785,7 @@ func wireTable(m *Module, st *ir.Struct) {
 	l := squirrel.StringLit([]byte(st.Name))
 	m.Printf("_M.%sMeasure <- function(v) { return %s.measure(_M, %s, v); };\n", st.Name, save, l)
 	m.Printf("_M.%sSave <- function(v) { return %s.save(_M, %s, v); };\n", st.Name, save, l)
-	m.Printf("_M.%sLoad <- function(bytes, report = null) {\n", st.Name)
-	m.Printf("  if (report == null) report = {};\n")
-	m.Printf("  foreach (k in [\"unknown\", \"kindMismatch\", \"widened\", \"clamped\", \"duplicate\", \"nonFinite\"]) if (!(k in report)) report[k] <- 0;\n")
-	m.Printf("  if (!(\"malformed\" in report)) report.malformed <- false;\n")
-	m.Printf("  if (!(\"refused\" in report)) report.refused <- false;\n")
-	m.Printf("  return %s.load(_M, %s, bytes, report);\n};\n", load, l)
+	m.Printf("_M.%sLoad <- function(bytes, report = null) { return %s.load(_M, %s, bytes, %s.report(report)); };\n", st.Name, load, l, load)
 }
 
 // jsonEntries emits the per-table JSON entry points (<T>ToJson,

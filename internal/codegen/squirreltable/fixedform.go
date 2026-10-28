@@ -272,13 +272,15 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("  b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n")
 	m.Printf("  local lb = _rt_fixed.blobOfHex(_M.%sFixedLayout);\n", st.Name)
 	m.Printf("  b.writen(lb.len(), 'i'); b.writeblob(lb);\n")
+	// one zeroed body, written whole per record: the record template the
+	// body writer fills, with no per-byte loop
+	m.Printf("  local zero = blob(_M.%sFixedRecord - 8);\n", st.Name)
 	m.Printf("  for (local k = 0; k < recs.len(); k++) {\n")
 	m.Printf("    local why = _M.%sFixedDeprecated(recs[k]);\n", st.Name)
 	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("    b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n")
-	m.Printf("    local body = _M.%sFixedRecord - 8;\n", st.Name)
 	m.Printf("    local start = b.tell();\n")
-	m.Printf("    for (local z = 0; z < body; z++) b.writen(0, 'b');\n")
+	m.Printf("    b.writeblob(zero);\n")
 	m.Printf("    _M.%sFixedWriteBody(b, start, recs[k]);\n", st.Name)
 	m.Printf("  }\n")
 	if st.Integrity != "" {

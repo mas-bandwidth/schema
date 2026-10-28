@@ -12,6 +12,8 @@
 // place, never created here.
 local _M = vargv[0];
 local _require = vargv[1];
+// required once here, never per call (a require walks the name)
+local R = _require("schema_table_refusal");
 
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 local NODE_TABLE_ID = 0xffffffffffffffff;
@@ -1319,7 +1321,18 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
 // leaving the reason and the first field that moved its counter in the report
 // and answering null; the recovered value is never handed back. The retaining
 // read (LoadRetain, §6.6) and the wire-fuzz diagnostic name the Tolerant twin.
+// REPORT fills the counters and flags a caller's report table does not hold
+// yet, so a <T>Load entry hands the walk one whole report; a fresh table when
+// the caller passed none.
+local REPORT_COUNTERS = ["unknown", "kindMismatch", "widened", "clamped", "duplicate", "nonFinite"];
+_M.report <- function(report) {
+  if (report == null) report = {};
+  foreach (k in REPORT_COUNTERS) if (!(k in report)) report[k] <- 0;
+  if (!("malformed" in report)) report.malformed <- false;
+  if (!("refused" in report)) report.refused <- false;
+  return report;
+};
+
 _M.load <- function(T, rootName, bytes, report) {
-  local R = _require("schema_table_refusal");
   return R.ReadStrict(T, rootName, bytes, report);
 };

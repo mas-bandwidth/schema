@@ -74,7 +74,7 @@ func TestSquirrelTypeWireReadNegativeControl(t *testing.T) {
 	}
 	u := loadUnit(t, filepath.Join(root, "examples"))
 	files := squirrelTypeWireFiles(t, root)
-	const anchor = "if (!stream.serializeBits(_rs, 32)) return false;\n  value.Uint32Value = _rs.value;"
+	const anchor = "if (!stream.serializeBits(_h, 32)) return false;\n  value.Uint32Value = _h.value;"
 	count := 0
 	for _, data := range files {
 		count += strings.Count(string(data), anchor)
@@ -85,7 +85,7 @@ func TestSquirrelTypeWireReadNegativeControl(t *testing.T) {
 	for name, data := range files {
 		if strings.Contains(string(data), anchor) {
 			files[name] = []byte(strings.Replace(string(data), anchor,
-				"if (!stream.serializeBits(_rs, 31)) return false;\n  value.Uint32Value = _rs.value;", 1))
+				"if (!stream.serializeBits(_h, 31)) return false;\n  value.Uint32Value = _h.value;", 1))
 		}
 	}
 	// readSquirrelTypeWire fails the test on a load or runtime error (sqrun
