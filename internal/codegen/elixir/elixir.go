@@ -416,9 +416,9 @@ func (g *gen) assemble() []byte {
 		h.WriteString("#\n")
 		h.WriteString("# zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the\n")
 		h.WriteString("# specified defaults instead. Enum values are atoms, union values are nil,\n")
-		h.WriteString("# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:\n")
-		h.WriteString("# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads\n")
-		h.WriteString("# back as {:nonfinite, bits} and writes from the same form.\n")
+		h.WriteString("# {:arm, payload} or a payload-free :arm. Floats are finite (SPEC §4.3): a\n")
+		h.WriteString("# write of a non-float raises non_finite_float, a read refuses a NaN or an\n")
+		h.WriteString("# infinity on its raw bits, and -0.0 and subnormals ride bit exact.\n")
 	}
 	h.WriteString("\n")
 	h.WriteString(strings.TrimRight(normalizeBlanks(g.body.String()), "\n"))

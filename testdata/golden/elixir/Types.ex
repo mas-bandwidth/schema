@@ -11,11 +11,7 @@ defmodule Example.Vec3 do
   codecs are in Example.Types.
   """
 
-  @type t :: %__MODULE__{
-          x: Example.PacketRuntime.float64(),
-          y: Example.PacketRuntime.float64(),
-          z: Example.PacketRuntime.float64()
-        }
+  @type t :: %__MODULE__{x: float(), y: float(), z: float()}
 
   defstruct x: 0.0, y: 0.0, z: 0.0
 end
@@ -27,12 +23,7 @@ defmodule Example.Quat do
   codecs are in Example.Types.
   """
 
-  @type t :: %__MODULE__{
-          x: Example.PacketRuntime.float64(),
-          y: Example.PacketRuntime.float64(),
-          z: Example.PacketRuntime.float64(),
-          w: Example.PacketRuntime.float64()
-        }
+  @type t :: %__MODULE__{x: float(), y: float(), z: float(), w: float()}
 
   defstruct x: 0.0, y: 0.0, z: 0.0, w: 0.0
 end
@@ -135,11 +126,11 @@ defmodule Example.Input do
   """
 
   @type t :: %__MODULE__{
-          stick_x: Example.PacketRuntime.float32(),
-          stick_y: Example.PacketRuntime.float32(),
-          throttle: Example.PacketRuntime.float32(),
-          yaw: Example.PacketRuntime.float32(),
-          pitch: Example.PacketRuntime.float32(),
+          stick_x: float(),
+          stick_y: float(),
+          throttle: float(),
+          yaw: float(),
+          pitch: float(),
           fire: boolean(),
           alt_fire: boolean(),
           boost: boolean(),

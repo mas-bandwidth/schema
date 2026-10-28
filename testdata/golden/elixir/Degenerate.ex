@@ -11,7 +11,7 @@ defmodule Example.Vec2 do
   codecs are in Example.Degenerate.
   """
 
-  @type t :: %__MODULE__{x: Example.PacketRuntime.float64(), y: Example.PacketRuntime.float64()}
+  @type t :: %__MODULE__{x: float(), y: float()}
 
   defstruct x: 0.0, y: 0.0
 end
@@ -23,7 +23,7 @@ defmodule Example.SpanF64 do
   codecs are in Example.Degenerate.
   """
 
-  @type t :: %__MODULE__{values: [Example.PacketRuntime.float64()]}
+  @type t :: %__MODULE__{values: [float()]}
 
   defstruct values: List.duplicate(0.0, 2)
 end
@@ -83,7 +83,7 @@ defmodule Example.SpanTail do
   codecs are in Example.Degenerate.
   """
 
-  @type t :: %__MODULE__{values: [Example.PacketRuntime.float64()], tail: 0..4_294_967_295}
+  @type t :: %__MODULE__{values: [float()], tail: 0..4_294_967_295}
 
   defstruct values: List.duplicate(0.0, 2), tail: 0
 end
@@ -95,10 +95,7 @@ defmodule Example.SpanTwice do
   codecs are in Example.Degenerate.
   """
 
-  @type t :: %__MODULE__{
-          a: [Example.PacketRuntime.float64()],
-          b: [Example.PacketRuntime.float64()]
-        }
+  @type t :: %__MODULE__{a: [float()], b: [float()]}
 
   defstruct a: List.duplicate(0.0, 2), b: List.duplicate(0.0, 2)
 end

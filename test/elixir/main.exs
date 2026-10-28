@@ -6,7 +6,7 @@
 # functions held to the written wire, the refusal vectors (reject, never
 # clamp — and never raise on hostile bytes), the always-on writer contracts
 # (ArgumentError — the BEAM has no compile-out assert, so there is no
-# checked/release twin), the {:nonfinite, bits} float convention, and the
+# checked/release twin), the non_finite_float write refusal, and the
 # bench-corpus pins (bench_*, real_packet) the C++ bench pinner authored.
 #
 # Prints OK and exits 0, exactly like its C++/Go/JS/Dart twins. Run from

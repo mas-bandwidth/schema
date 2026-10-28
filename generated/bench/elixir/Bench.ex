@@ -24,9 +24,9 @@
 #
 # zero_<name>() -> the §5 zero form; construction (%Struct{}) carries the
 # specified defaults instead. Enum values are atoms, union values are nil,
-# {:arm, payload} or a payload-free :arm. Floats travel bit-transparently:
-# a non-finite IEEE-754 pattern — which no BEAM float term can hold — reads
-# back as {:nonfinite, bits} and writes from the same form.
+# {:arm, payload} or a payload-free :arm. Floats are finite (SPEC §4.3): a
+# write of a non-float raises non_finite_float, a read refuses a NaN or an
+# infinity on its raw bits, and -0.0 and subnormals ride bit exact.
 
 # type BenchPacket
 defmodule Bench.BenchPacket do
@@ -43,9 +43,9 @@ defmodule Bench.BenchPacket do
           bits13: 0..8191,
           bits23: 0..8_388_607,
           flag: boolean(),
-          x: Bench.PacketRuntime.float32(),
-          y: Bench.PacketRuntime.float32(),
-          z: Bench.PacketRuntime.float32(),
+          x: float(),
+          y: float(),
+          z: float(),
           big: 0..18_446_744_073_709_551_615,
           blob: [0..255]
         }
@@ -365,8 +365,8 @@ defmodule Bench.BenchMixed do
           aim_x: float(),
           aim_y: float(),
           aim_z: float(),
-          recoil: Bench.PacketRuntime.float32(),
-          drift: Bench.PacketRuntime.float64(),
+          recoil: float(),
+          drift: float(),
           wide_key: 0..340_282_366_920_938_463_463_374_607_431_768_211_455,
           flux:
             -1_267_650_600_228_229_401_496_703_205_376..1_267_650_600_228_229_401_496_703_205_376,

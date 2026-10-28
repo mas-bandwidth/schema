@@ -48,13 +48,8 @@ func (g *gen) scalarSpec(f *ir.Field) string {
 	switch t.Kind {
 	case ir.TBool:
 		return "boolean()"
-	case ir.TFloat32:
-		if f.HasFloatRange {
-			return "float()"
-		}
-		return g.runtimeType("float32")
-	case ir.TFloat64:
-		return g.runtimeType("float64")
+	case ir.TFloat32, ir.TFloat64:
+		return "float()"
 	case ir.TString:
 		return "String.t()"
 	case ir.TBytes, ir.TWString:
@@ -89,11 +84,6 @@ func (g *gen) scalarSpec(f *ir.Field) string {
 		}
 	}
 	return "term()"
-}
-
-// runtimeType names a type the unit's runtime module exports.
-func (g *gen) runtimeType(name string) string {
-	return g.mod(RuntimeModule) + "." + name + "()"
 }
 
 // enumAtom is a variant's atom; None is :none.
