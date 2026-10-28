@@ -3,7 +3,10 @@
 # HARNESS).
 #
 # Every call is handed to ONE Goose program, test/conformance/goose/main.goose,
-# under the pinned compiler (`goose run`, the in-process TinyCC). The program's
+# under the pinned compiler (`goose run`, the in-process TinyCC): `list` from
+# here, and a surface once per unit, from a copy beside that unit's generated
+# modules (build/conformance-goose/<unit>, make/goose.mk) with the unit's glue,
+# units/<unit>.goose, as its unit.goose. The program's
 # arguments follow `--`, without which `goose run` takes them as more input
 # files. A Goose program reads files and writes stdout through the standard
 # library's os module, so the manifest goes IN as its path and the answers come
@@ -30,13 +33,25 @@ list)
 	exit "$status"
 	;;
 *)
+	# one run per unit that has glue and a generated tree (main.goose's
+	# header): the answers concatenate, and a case no unit answered is
+	# written ABSENT below
 	mkdir -p "$3" || exit 1
-	"$goose" run "$main" -- "$2" "$1" >"$dir/$2.out" 2>"$dir/$2.err"
-	status=$?
-	if [ "$status" -ne 0 ]; then
-		[ "$status" -eq 2 ] || cat "$dir/$2.err" >&2
-		exit "$status"
-	fi
+	: >"$dir/$2.out"
+	for glue in test/conformance/goose/units/*.goose; do
+		unit=$(basename "$glue" .goose)
+		tree=build/conformance-goose/$unit
+		[ -d "$tree" ] || continue
+		cp "$main" "$tree/main.goose" && cp "$glue" "$tree/unit.goose" || exit 1
+		"$goose" run "$tree/main.goose" -- "$2" "$1" "$unit" >>"$dir/$2.out" 2>"$dir/$2.$unit.err"
+		status=$?
+		if [ "$status" -ne 0 ]; then
+			[ "$status" -eq 2 ] || cat "$dir/$2.$unit.err" >&2
+			exit "$status"
+		fi
+	done
 	GOOSE_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; close $f; next } open(my $f, ">:raw", "$ENV{GOOSE_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
+	# the cases of the surface's manifest kind that no unit answered
+	GOOSE_OUTDIR=$3 GOOSE_SURFACE=$2 perl -ne 'my @w = split; next unless @w && $w[0] eq $ENV{GOOSE_SURFACE}; my $c = $w[1]; next if -e "$ENV{GOOSE_OUTDIR}/$c" || -e "$ENV{GOOSE_OUTDIR}/$c.absent"; open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; close $f;' <"$1"
 	;;
 esac

@@ -380,14 +380,19 @@ lowercase hex lines.**
   name, a space, the answer's bytes in hex, or the word `absent` — into one
   file per case in `<outdir>` (`<case>.absent` for the absent word). The
   leg's CI row (`ci.json`) installs the pin with `make dist-goose` before the
-  harness runs. **`main.goose` answers no surface yet**, and `list` is empty:
-  every harness surface reads a form the port does not carry (the id-table
-  wire, the message form, JSON, the cook, the block form), and the one codec
-  it does carry, the fixed form, is judged against the C++ reference's byte
-  oracle by `make test-goose`, which builds `build/fixedform-corpus` and runs
-  under `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to
-  `list` and answers it there; `compiler/carries_goose.go` claims no
-  construct, so the two agree.
+  harness runs. **A surface run is one program per unit**: Goose compiles
+  whole programs and each unit carries its own copy of the runtime, so the
+  driver copies `main.goose` and the unit's glue (`units/<unit>.goose`, as
+  `unit.goose`) beside that unit's generated modules
+  (`build/conformance-goose/<unit>`), runs it once per unit, and writes a case
+  no unit answered as absent. **`list` names `json-hostile`**, the text form's
+  hostile battery (`goosetable/json_form.go`); every other surface reads a
+  form the port does not carry yet (the id-table wire, which `json-read` and
+  `json-write` also need, the message form, the cook, the block form), and
+  the fixed form is judged against the C++ reference's byte oracle by `make
+  test-goose`, which builds `build/fixedform-corpus` and runs under
+  `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to `list`
+  and answers it there.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
   per mutant) is a `goose build -O2` executable reading stdin with
   `read_stdin` and writing with `write_stdout` and `flush_stdout`: Goose
