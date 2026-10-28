@@ -1066,7 +1066,7 @@ final class TableWireReader {
 
   // readF32/readF64 read one float payload at an offset the caller has bounded,
   // TESTING THE RAW BITS FIRST (docs/SPEC-TABLES.md §3.3, a plain float's
-  // special values; Glenn, 2026-10-27, "same rule as packets"): a NaN or an
+  // special values, the same rule as packets): a NaN or an
   // infinity never becomes a double. The read is refused as non_finite_float,
   // naming the field, and 0 stands in for the value the load then discards.
   // Every finite float32 widens to a double exactly, so the float rung (kind 10

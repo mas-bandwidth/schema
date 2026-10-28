@@ -192,8 +192,8 @@ abstract final class TableFixedRefusal {
   /// disagree). Both text kinds and the compiled plan's text op answer it.
   static const int textIllFormed = 17; // ill-formed text in the USED units
 
-  /// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same
-  /// rule as packets"): a NaN or an infinity in a record refuses the whole
+  /// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as packets):
+  /// a NaN or an infinity in a record refuses the whole
   /// read by name, the report naming the field, and nothing lands.
   static const int nonFiniteFloat = 18;
 
