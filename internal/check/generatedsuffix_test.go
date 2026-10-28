@@ -26,6 +26,7 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 		"FixedSaveReason",
 		"FixedCheckBody",
 		"FixedCheckBodyExact",
+		"FixedFiniteBody",
 		"LoadTextForm",
 		"SaveTextForm",
 		"EditTextForm",
