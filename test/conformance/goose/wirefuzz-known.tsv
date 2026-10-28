@@ -1,0 +1,18 @@
+# THE GOOSE WIRE-FUZZ LEG'S KNOWN FINDINGS (make/goose-wirefuzz.sh). One row
+# per arm that the differential holds red today, at the pinned seed and count
+# make/goose-fuzz.mk runs: the unit, the arm, a substring of the harness's
+# first divergence, and the card that owes the fix. A known arm that goes red
+# on anything else, or goes GREEN, fails the gate: a fixed finding leaves this
+# file in the same commit, so the list cannot rot into silence. The fuzzer
+# stops an arm at its first divergence, so a known row also hides whatever
+# that arm would have found after it; the fix's own run says what that is.
+#
+# All three are one defect of the table wire's load (schema-goose-table-wire-
+# load): a value-only body whose walk STOPS on framing damage keeps less than
+# the engine keeps (tablewire.DecodeRegion: "the instance keeps what it
+# decoded"), so the re-save differs. Replay each with the line the gate prints.
+#
+# unit	arm	first divergence	owed by
+scalars	fixed	the decoded value differs: the leg saves 254 bytes, the oracle 254, first difference at byte 133	schema-goose-table-wire-load
+tblm1	fixed	the decoded value differs: the leg saves 24 bytes, the oracle 72, first difference at byte 7	schema-goose-table-wire-load
+widedemo	fixed	the decoded value differs: the leg saves 10 bytes, the oracle 33, first difference at byte 1	schema-goose-table-wire-load
