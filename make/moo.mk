@@ -49,7 +49,6 @@ toolchain-moo:
 test-moo: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/moo/...
 update-goldens-moo: ;
-build/conformance-moo: ;
 generated/bench/tables/moo/.stamp: ;
 
 TEST_LEGS          += test-moo
