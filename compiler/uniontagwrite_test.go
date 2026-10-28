@@ -85,6 +85,10 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		text := generatedText(t, unionTagUnit, target)
 
 		switch {
+		case writerStillOwed(t, target, text):
+			// no writer yet: the claim is owed (countedbirth_test.go,
+			// packetWriterOwed)
+
 		case target == "js":
 			// the fork, not a statement: the contract lives in the checked
 			// flat writer and the production writer is free of it

@@ -243,11 +243,14 @@ jobs:
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
             esac
+            case "$f" in
+              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|make/goose.mk) add_leg goose ;;
+            esac
           done <<EOF
           $files
           EOF
           if [ "$broad" = yes ]; then
-            legs="cpp go c rust js cs java dart elixir"
+            legs="cpp go c rust js cs java dart elixir goose"
           fi
 
           # THE PACKAGES. Every directory holding a changed .go file, as the
@@ -494,6 +497,16 @@ jobs:
             exit 1
           fi
 
+      # THE Goose PIN, when a Goose package is touched: internal/codegen/goose
+      # and internal/codegen/goosetable (the only importers of gooserun) run
+      # generated Goose under the pinned compiler and fail, never skip,
+      # without it. make/goose.mk's dist-goose installs it at the sha256 it
+      # names, into the dist/ path gooserun's default names; ci-full.yml's
+      # go-test does the same.
+      - name: install the Goose pin
+        if: contains(needs.plan.outputs.packages, '/codegen/goose') || contains(needs.plan.outputs.packages, './...')
+        run: make dist-goose
+
       - name: go test the touched packages
         env:
           PACKAGES: ${{ needs.plan.outputs.packages }}
@@ -655,5 +668,8 @@ jobs:
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            # the Goose leg's fixed form against the reference's bytes (make/goose.mk;
+            # its versioning rows are owed, schema#2236), under the pinned compiler
+            goose)  make dist-goose test-goose ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac

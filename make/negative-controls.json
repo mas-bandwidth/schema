@@ -830,6 +830,14 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "goose",
+      "when": "pull-request",
+      "why": "the Goose leg's fixed-form control (docs/PORT-GOOSE.md): the target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
+      "targets": [
+        "tables-goose-fixedform-negative-control"
+      ]
+    },
+    {
       "name": "nightly",
       "when": "nightly",
       "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
