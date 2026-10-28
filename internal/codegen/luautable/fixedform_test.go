@@ -251,17 +251,23 @@ func layoutLiteral(oracle []byte) string {
 	return b.String()
 }
 
-func fixedLiteral(oracle []byte) string {
+// knownLiteral is a lineage entry (docs/FIXED-FORM-ALGORITHM.md §5.2) for the
+// layout an oracle file carries, as Luau static data: the test plays the lock,
+// stating the older writer's locked entry the way the build hands it down.
+func knownLiteral(oracle []byte) string {
 	hash := binary.LittleEndian.Uint64(oracle[8:16])
-	recordBytes := binary.LittleEndian.Uint32(oracle[20+4+9 : 20+4+13])
-	return fmt.Sprintf("{ hash = %s, recordBytes = %d, layout = %s }",
-		luau.IntegerLit(new(big.Int).SetUint64(hash)), recordBytes, layoutLiteral(oracle))
+	length := binary.LittleEndian.Uint32(oracle[16:20])
+	body := binary.LittleEndian.Uint32(oracle[20+4+9 : 20+4+13])
+	return fmt.Sprintf("{ hash = %s, layout = %s, layoutBytes = %d, recordBytes = %d }",
+		luau.IntegerLit(new(big.Int).SetUint64(hash)), layoutLiteral(oracle), length, 8+body)
 }
 
-// TestLuauFixedFormVersioning pins the §3.4 invariant: a reader one appended
-// field newer reads the older writer's record, widening int16->int32 and
-// f32->f64, and writes the older writer's bytes back (appended fields absent
-// from the plan); the older reader refuses the newer file as layout_unknown.
+// TestLuauFixedFormVersioning pins the §3.4 invariant through the lineage
+// (§5.2, §5.3): a reader one appended field newer, handed the older writer's
+// locked entry, reads the older writer's record, widening int16->int32 and
+// f32->f64, and writes the older writer's bytes back under that entry's layout;
+// the older reader, whose lineage holds no newer entry, refuses the newer file
+// as layout_unknown, reporting the file's hash.
 func TestLuauFixedFormVersioning(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
@@ -286,8 +292,9 @@ func TestLuauFixedFormVersioning(t *testing.T) {
 	if leaf != "" {
 		// the older file holds a non-finite float (until #2232 regenerates the
 		// corpus): the newer reader refuses it, before any widening runs
-		probe := fmt.Sprintf("--!strict\nlocal T = require(\"./%s\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\nlocal foreign = %s\n", mod, fixedLiteral(oldOracle)) +
-			fmt.Sprintf(fixedRefusalProbe, "FuRoot", "{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }", ", foreign")
+		probe := fmt.Sprintf("--!strict\nlocal T = require(\"./%s\")\nlocal F = require(\"./schema_fixed\")\nlocal inputs = require(\"./inputs\")\nlocal older = %s\n", mod, knownLiteral(oldOracle)) +
+			"local fixed = { hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout, lineage = { older, T.FuRootFixedLineage[#T.FuRootFixedLineage] }, floor = 0 }\n" +
+			fmt.Sprintf(fixedRefusalProbe, "FuRoot", "fixed", "")
 		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(probe), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -298,11 +305,15 @@ func TestLuauFixedFormVersioning(t *testing.T) {
 local T = require("./%s")
 local F = require("./schema_fixed")
 local inputs = require("./inputs")
-local foreign = %s
-local values = F.load(T.FuRootDescriptor, %s, inputs.old, foreign)
-local out = F.save(T.FuRootDescriptor, foreign, values)
+local older = %s
+local fixed = { hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout,
+	lineage = { older, T.FuRootFixedLineage[#T.FuRootFixedLineage] }, floor = 0 }
+local report: any = {}
+local values = F.load(T.FuRootDescriptor, fixed, inputs.old, report)
+if report.widened == 0 then error("a widening lineage moved no widened counter") end
+local out = F.save(T.FuRootDescriptor, { hash = older.hash, recordBytes = older.recordBytes - 8, layout = older.layout }, values)
 print(hex(out))
-`, mod, fixedLiteral(oldOracle), "{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }")
+`, mod, knownLiteral(oldOracle))
 		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -328,6 +339,7 @@ print(hex(out))
 			}
 			t.Errorf("the newer reader did not read the older record back to its bytes (first diff %d)", at)
 		}
+
 	}
 
 	dir, mod, _ = build(t, "test/tables/FU1.schema")
@@ -335,22 +347,45 @@ print(hex(out))
 local T = require("./%s")
 local F = require("./schema_fixed")
 local inputs = require("./inputs")
-local ok, err = pcall(function()
-	return F.load(T.FuRootDescriptor, %s, inputs.new)
-end)
-if ok then print("read") elseif type(err) == "table" then print(err.name) else print("error") end
-`, mod, "{ hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout }")
+local fixed = { hash = T.FuRootFixedHash, recordBytes = T.FuRootFixedRecordBytes, layout = T.FuRootFixedLayout,
+	lineage = T.FuRootFixedLineage, floor = T.FuRootFixedFloor }
+local report: any = {}
+local values = F.read(T.FuRootDescriptor, fixed, inputs.new, report)
+if values ~= nil then print("read") else print(report.reason .. "|" .. tostring(report.layoutHash)) end
+`, mod)
 	if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"new": newOracle})
-	if strings.TrimSpace(string(out)) != "layout_unknown" {
-		t.Errorf("the older reader did not refuse the newer file as layout_unknown: %q", out)
+	want := fmt.Sprintf("layout_unknown|%d", int64(binary.LittleEndian.Uint64(newOracle[8:16])))
+	if strings.TrimSpace(string(out)) != want {
+		t.Errorf("the older reader did not refuse the newer file as layout_unknown with its hash: %q, want %q", out, want)
 	}
 }
 
-// TestLuauFixedFormRefusals reaches each named refusal with one forged layout
-// (docs/FIXED-FORM-ALGORITHM.md §1.1, §4.2; docs/SPEC-TABLES.md §3).
+// forgedFile is a form-3 file with no records whose header carries `hash` and
+// the layout `entries` verbatim (docs/SPEC-TABLES.md §3.4 THE FRAMING).
+func forgedFile(hash uint64, entries [][4]uint64) []byte {
+	b := make([]byte, 20, 24+17*len(entries))
+	b[0] = 3
+	binary.LittleEndian.PutUint64(b[8:], hash)
+	binary.LittleEndian.PutUint32(b[16:], uint32(4+17*len(entries)))
+	b = binary.LittleEndian.AppendUint32(b, uint32(len(entries)))
+	for _, e := range entries {
+		b = binary.LittleEndian.AppendUint64(b, e[0])
+		b = append(b, byte(e[1]))
+		b = binary.LittleEndian.AppendUint32(b, uint32(e[2]))
+		b = binary.LittleEndian.AppendUint32(b, uint32(e[3]))
+	}
+	return b
+}
+
+// TestLuauFixedFormRefusals reaches each named refusal of a lineage entry that
+// will not build — a LANE CARRYING ITS NAME (docs/FIXED-FORM-ALGORITHM.md §5.9
+// #36, §5.3's table) — with a file whose header carries that entry's hash and
+// layout byte for byte, so the comparison of step 7 passes and the entry's own
+// plan is what refuses; and the form byte's name before any of it (§1.1, §4.2;
+// docs/SPEC-TABLES.md §3).
 func TestLuauFixedFormRefusals(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
@@ -362,52 +397,73 @@ func TestLuauFixedFormRefusals(t *testing.T) {
 		}
 		t.Fatalf("the FX1 oracle is absent: make tables-fixedform-corpus: %v", err)
 	}
-	forged := map[string]struct {
-		file []byte
-		fix  string
-	}{
-		"previous_form": {func() []byte { b := append([]byte(nil), oracle...); b[0] = 1; return b }(),
-			"{ hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = T.FxRootFixedLayout }"},
-		"layout_malformed": {oracle,
-			"{ hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = {} }"},
-		"layout_record_too_large": {oracle,
-			`{ hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = { { id = 0i, kind = 13, size = 70000, children = 0 } } }`},
-		"plan_too_large": {oracle, planTooLarge},
+	const forgedHash = 0x0123456789abcdef
+	tooLarge := [][4]uint64{{0, 13, 70000, 0}}
+	var tooMany [][4]uint64
+	tooMany = append(tooMany, [4]uint64{0, 13, 0, 0})
+	for range 4097 {
+		tooMany = append(tooMany, [4]uint64{0, 4, 4, 0})
 	}
-	for name, f := range forged {
+	forged := map[string][][4]uint64{
+		"layout_malformed":        {},
+		"layout_record_too_large": tooLarge,
+		"plan_too_large":          tooMany,
+	}
+	for name, entries := range forged {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir, mod, _ := build(t, "test/tables/FX1.schema")
+			var lit strings.Builder
+			lit.WriteString("{")
+			for _, e := range entries {
+				fmt.Fprintf(&lit, " { id = %di, kind = %d, size = %d, children = %d },", e[0], e[1], e[2], e[3])
+			}
+			lit.WriteString(" }")
+			body := uint64(0)
+			if len(entries) > 0 {
+				body = entries[0][2]
+			}
 			main := fmt.Sprintf(`--!strict
 local T = require("./%s")
 local F = require("./schema_fixed")
 local inputs = require("./inputs")
-local forged = %s
-local ok, err = pcall(function()
-	return F.load(T.FxRootDescriptor, forged, inputs.oracle, forged)
-end)
-if ok then print("read") elseif type(err) == "table" then print(err.name) else print("error") end
-`, mod, f.fix)
+local forged = { hash = %di, layout = %s, layoutBytes = %d, recordBytes = %d }
+local fixed = { hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = T.FxRootFixedLayout,
+	lineage = { forged, T.FxRootFixedLineage[#T.FxRootFixedLineage] }, floor = 0 }
+local report: any = {}
+if F.read(T.FxRootDescriptor, fixed, inputs.forged, report) ~= nil then print("read") else print(report.reason) end
+`, mod, int64(forgedHash), lit.String(), 4+17*len(entries), 8+body)
 			if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"oracle": f.file})
+			out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"forged": forgedFile(forgedHash, entries)})
 			if got := strings.TrimSpace(string(out)); got != name {
-				t.Errorf("the forged layout reached %q, want %q", got, name)
+				t.Errorf("the forged lineage entry reached %q, want %q", got, name)
 			}
 		})
 	}
+	t.Run("previous_form", func(t *testing.T) {
+		t.Parallel()
+		dir, mod, _ := build(t, "test/tables/FX1.schema")
+		main := fmt.Sprintf(`--!strict
+local T = require("./%s")
+local F = require("./schema_fixed")
+local inputs = require("./inputs")
+local fixed = { hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = T.FxRootFixedLayout }
+local report: any = {}
+if F.read(T.FxRootDescriptor, fixed, inputs.oracle, report) ~= nil then print("read") else print(report.reason) end
+`, mod)
+		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		b := append([]byte(nil), oracle...)
+		b[0] = 1
+		out := luaurun.Run(t, dir, "main.luau", map[string][]byte{"oracle": b})
+		if got := strings.TrimSpace(string(out)); got != "previous_form" {
+			t.Errorf("a form-1 byte reached %q, want previous_form", got)
+		}
+	})
 }
-
-var planTooLarge = func() string {
-	var b strings.Builder
-	b.WriteString("{ hash = T.FxRootFixedHash, recordBytes = T.FxRootFixedRecordBytes, layout = { { id = 0i, kind = 13, size = 0, children = 0 }")
-	for range 4097 {
-		b.WriteString(", { id = 0i, kind = 4, size = 4, children = 0 }")
-	}
-	b.WriteString(" } }")
-	return b.String()
-}()
 
 // TestLuauFixedFormNegativeControl patches the emitted runtime in memory at one
 // anchor, matched exactly once, so the writer skips each record's last field;

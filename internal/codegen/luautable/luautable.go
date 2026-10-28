@@ -75,10 +75,23 @@ func Register(name string, fn Part) {
 // alone, and it obtains its standalone view through [GenerateView]
 // (docs/SPEC-TABLES.md §8.3, §15).
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is [Generate] with the LINEAGE the build holds for each
+// fixed table, keyed by its declared name: the locked layouts OLDEST FIRST,
+// the current one last (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #1). The
+// caller makes the lock's three calls (compiler/lineage.go); a nil lineage is
+// a unit that was never locked, and every table carries its own entry alone.
+// A handed entry that is a bug in the lock fails the build (§5.9 #8, #26).
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
 	if err := Refuse(u); err != nil {
+		return nil, err
+	}
+	if err := refuseFixedLineage(u, lineage); err != nil {
 		return nil, err
 	}
 	out := map[string][]byte{}
@@ -93,11 +106,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g := luau.NewGen(u, f)
 		g.Self, g.Suffix, g.Kind = "_T", "Table", "table surface"
 		emitFile(g, reach)
+		if lineage != nil {
+			lineages.Store(g, lineage)
+		}
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
+				lineages.Delete(g)
 				return nil, fmt.Errorf("luau %s: %s: %w", p.name, f.Base, err)
 			}
 		}
+		lineages.Delete(g)
 		out[f.Base+"Table.luau"] = g.Assemble()
 		deps := map[string]bool{}
 		for _, m := range g.Requires() {

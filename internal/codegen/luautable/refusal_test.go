@@ -587,6 +587,8 @@ func TestLuauStrictReadNamesCoverEveryReason(t *testing.T) {
 	for _, re := range []*regexp.Regexp{
 		regexp.MustCompile(`refuse\("([a-z_]+)"(?:, true)?\)`),
 		regexp.MustCompile(`\{ name = "([a-z_]+)" \}`),
+		// F.read's own refusals, answered through its report (§5.3)
+		regexp.MustCompile(`no\("([a-z_]+)"(?:, true)?\)`),
 	} {
 		for _, m := range re.FindAllStringSubmatch(fixed, -1) {
 			answered[m[1]] = true
