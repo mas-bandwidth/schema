@@ -256,6 +256,16 @@ hex lines.**
   bytes in hex, or the word `absent` — into one file per case in `<outdir>`
   (`<case>.absent` for the absent word). While `main.luau` is absent the leg
   answers ABSENT: `list` prints nothing and every surface exits 2.
+  `main.luau` answers all eighteen surfaces. The accelerator ones read the
+  bytes through the runtime's own readers: `schema_blockread`'s `BlockOpen`
+  over the generated `<Base>Block.luau` (each fixed table's block form as
+  data, emitted ON THE SIDE by `luautable/blockform.go` so a build that never
+  opens a block requires none of it), and `schema_cookread`'s `Check` (Open's
+  header check alone, at a base and a claimed extent, the base's residue
+  last). A forgery's pointer column is the base offset handed beside the
+  buffer: a Luau buffer has no address, so the offset is the placement fact.
+  The two canonical dumps walk those descriptors and the reader's own layout
+  (`schema_cookread`'s `layout`), naming no field.
 - **The wire-fuzz pipe** (test/conformance/README.md, one process on a pipe,
   little-endian frames, a reply flushed per mutant) cannot be spoken by a
   Luau program at all. Its host shim is a small Go program of the
@@ -308,9 +318,10 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `luau.go` or
 | schema-luau-conformance-leg | `main.luau`, `make conformance` and CI (M4b, I2, I11, J2) | `test/conformance/luau/main.luau`, `make/luau-conformance.mk`, the CI step keyed on ci.json's `luau` field |
 | schema-luau-fuzz-differential | the wire fuzzer against the Go engine, and its host shim (I3, I15) | `test/conformance/luau/wirefuzz.luau`, `make/luau-fuzz.mk` |
 
-Not yet carded, and named so in the register: the block and cook
-accelerators (M7, M8, I5), the allocation instrument and its pin (I1, I14),
-the soak (I9), the bench leg (I8, J5), the release tier (J3), the documented
+Not yet carded, and named so in the register: the block row walk by
+stride (M7) and the base-alignment gate (I5) — the conformance leg opens,
+dumps and refuses both accelerators, and M8 is carried — the allocation
+instrument and its pin (I1, I14), the soak (I9), the bench leg (I8, J5), the release tier (J3), the documented
 surface (I12), accessor and descriptor agreement (J1), a node larger than a
 slab (M17) and the formatter half of J4.
 

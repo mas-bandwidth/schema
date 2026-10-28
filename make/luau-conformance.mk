@@ -29,28 +29,65 @@ $(LUAU_CONFORMANCE_DRIVER)/units.luau: $(LUAU_CONFORMANCE_MANIFEST)
 build/conformance-luau: $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANCE_DRIVER)/units.luau
 
 # THE LUAU LEG's NEGATIVE CONTROL, on the same rule as the Go one: a harness
-# that has never gone red on a leg is watching that leg. The emitted LOAD
-# runtime is sabotaged in place — one report counter is forced to differ from
-# the corpus expectation — so `luau / report` goes red while `luau / wire`,
-# whose saved bytes are unaffected by the counter, stays green.
+# that has never gone red on a leg is watching that leg. Two sabotages of the
+# emitted runtime, in place and one after the other (they share the generated
+# tree), each required to turn EXACTLY its surfaces red and leave every other
+# surface of the matrix passing:
+#
+#   1. the LOAD: one report counter is forced to differ from the corpus
+#      expectation, so `report` and `retain` (which prints the load's unknown
+#      count) go red while `wire`, whose saved bytes the counter does not
+#      touch, stays green;
+#   2. the ACCELERATOR READERS: the cook's reserved-words clause and the
+#      block's pitch clause are cut out of Check and BlockOpen, so the two
+#      forgery batteries and the two reason surfaces go red while the cook and
+#      block opens, dumps and foreign refusals, which those clauses never
+#      decide, stay green.
+LUAU_CONTROL_MODULES := schema_load schema_cookread schema_blockread
+
 .PHONY: conformance-negative-control-luau
 conformance-negative-control-luau: build/conformance-harness build/conformance-luau $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@set -eu; \
 	if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi; \
 	out=build/luau-table-control; \
 	rm -rf $$out && mkdir -p $$out/backup; \
-	for f in build/conformance-luau/*/load.luau; do \
+	for m in $(LUAU_CONTROL_MODULES); do for f in build/conformance-luau/*/$$m.luau; do \
 		k=$${f#build/conformance-luau/}; mkdir -p $$out/backup/$$(dirname $$k); cp $$f $$out/backup/$$k; \
-	done; \
-	trap 'for f in build/conformance-luau/*/load.luau; do k=$${f#build/conformance-luau/}; cp $$out/backup/$$k $$f; done' EXIT; \
-	for f in build/conformance-luau/*/load.luau; do \
+	done; done; \
+	restore() { for m in $(LUAU_CONTROL_MODULES); do for f in build/conformance-luau/*/$$m.luau; do \
+		k=$${f#build/conformance-luau/}; cp $$out/backup/$$k $$f; done; done; }; \
+	trap restore EXIT; \
+	printf 'luau test/conformance/luau/driver\n' > $$out/drivers.txt; \
+	reds() { grep -E '^[a-z-]+ +FAIL' $$1 | awk '{print $$1}' | tr '\n' ' '; }; \
+	for f in build/conformance-luau/*/schema_load.luau; do \
 		sed -i '/^[[:space:]]*resolve(report)$$/a\	report.unknown = report.unknown + 1' $$f; \
 	done; \
-	printf 'luau test/conformance/luau/driver\n' > $$out/drivers.txt; \
-	if ./build/conformance-harness run --drivers $$out/drivers.txt --work $$out/work > $$out/log 2>&1; then \
+	if ./build/conformance-harness run --drivers $$out/drivers.txt --work $$out/work > $$out/load.log 2>&1; then \
 		echo "negative control failed: the luau load sabotage left conformance green" >&2; \
 		exit 1; \
 	fi; \
-	grep -q 'luau / report' $$out/log; \
-	grep -q '^wire          pass' $$out/log; \
-	echo "Luau table negative control: the load sabotage is caught by report and leaves wire green"
+	got=$$(reds $$out/load.log); \
+	if [ "$$got" != "report retain " ]; then \
+		echo "negative control failed: the luau load sabotage turned [$$got] red, want [report retain ]" >&2; \
+		exit 1; \
+	fi; \
+	restore; \
+	n=0; for f in build/conformance-luau/*/schema_cookread.luau; do \
+		sed -i 's/then return "reserved_not_zero" end/then end/' $$f; \
+		if grep -q 'then return "reserved_not_zero" end' $$f; then exit 1; fi; n=$$((n + 1)); \
+	done; \
+	for f in build/conformance-luau/*/schema_blockread.luau; do \
+		sed -i 's/if offsetOf < 0 or stride ~= f.stride then/if offsetOf < 0 then/' $$f; \
+		if grep -q 'stride ~= f.stride' $$f; then exit 1; fi; n=$$((n + 1)); \
+	done; \
+	if [ "$$n" -eq 0 ]; then echo "negative control failed: no accelerator reader to sabotage" >&2; exit 1; fi; \
+	if ./build/conformance-harness run --drivers $$out/drivers.txt --work $$out/work > $$out/accel.log 2>&1; then \
+		echo "negative control failed: the luau reader sabotage left conformance green" >&2; \
+		exit 1; \
+	fi; \
+	got=$$(reds $$out/accel.log); \
+	if [ "$$got" != "forgery cook-forgery cook-reason block-reason " ]; then \
+		echo "negative control failed: the luau reader sabotage turned [$$got] red, want [forgery cook-forgery cook-reason block-reason ]" >&2; \
+		exit 1; \
+	fi; \
+	echo "Luau table negative control: the load sabotage turns exactly report and retain red; the reader sabotage exactly forgery, cook-forgery, cook-reason and block-reason"
