@@ -40,8 +40,9 @@ $(GOOSE_GATES_SCHEMA):
 # modules and the runtime modules emitted beside them (schema_rt, schema_tables,
 # fixed) — on its own, from its own directory, with `goose check` under the
 # pinned compiler, and any warning or any module that does not typecheck alone
-# is red. The conformance driver (test/conformance/goose) is held to the same
-# bar. Its first run found 586 redundant casts across the emitted fixed form
+# is red. (The conformance driver is not in the corpus: it imports the glue
+# module its shell driver writes per unit, so it does not check on its own.)
+# Its first run found 586 redundant casts across the emitted fixed form
 # and its runtime, and every <Base>Table.goose module failing alone because it
 # named schema_rt::FixedReport without importing fixed: both fixed in the
 # emitter (internal/codegen/goosetable/fixedform.go, runtime/fixed.goose).
@@ -51,7 +52,7 @@ tables-goose-strict: $(GOOSE_GATES_SCHEMA)
 	$(call goose_gates_generate,./$(GOOSE_GATES_SCHEMA),$(GOOSE_GATES_DIR)/strict)
 	@sh make/goose-strict.sh "$(GOOSE)" $(GOOSE_GATES_DIR)/strict/units $(GOOSE_GATES_DIR)/strict/examples \
 		$(GOOSE_GATES_DIR)/strict/examples128 $(GOOSE_GATES_DIR)/strict/fixed-FX1 $(GOOSE_GATES_DIR)/strict/fixed-FX2 \
-		$(GOOSE_GATES_DIR)/strict/fixed-FU1 $(GOOSE_GATES_DIR)/strict/fixed-FU2 test/conformance/goose
+		$(GOOSE_GATES_DIR)/strict/fixed-FU1 $(GOOSE_GATES_DIR)/strict/fixed-FU2
 
 # THE STRICT GATE'S PLANT. One redundant cast — the warning class the gate
 # found 586 of — planted at the end of a copy of one generated module
