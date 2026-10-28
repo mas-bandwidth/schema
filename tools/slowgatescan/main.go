@@ -537,12 +537,13 @@ var ciPackage = regexp.MustCompile(`^\./[A-Za-z0-9_./-]+$`)
 // command reads.
 const modulePath = "github.com/mas-bandwidth/schema/v2"
 
-// The complement command: `go test $(go list ./... | grep -v 'X' | grep -v 'Y')`.
+// The complement command: `go test $(go list ./... | grep -v 'X' | grep -v 'Y')`,
+// or the same over `go list ./dir/...`.
 // A filter is a literal with an optional trailing `$` (no other regular
 // expression syntax), so its basic-regex meaning to grep and its meaning here
 // are the same: a substring, or with `$` a suffix, of the import path.
 var (
-	ciComplement     = regexp.MustCompile(`^go test \$\(go list \./\.\.\.((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
+	ciComplement     = regexp.MustCompile(`^go test \$\(go list (\./(?:[A-Za-z0-9_-]+/)*\.\.\.)((?: \| grep -v (?:'[A-Za-z0-9_/-]+\$?'|"[A-Za-z0-9_/-]+\$?"))+)\)$`)
 	ciComplementDrop = regexp.MustCompile(`grep -v ['"]([A-Za-z0-9_/-]+\$?)['"]`)
 )
 var ciBareRun = regexp.MustCompile(`^[A-Za-z0-9_./^-]+$`)
@@ -570,15 +571,20 @@ func parseSupportedCommandLine(cmd string, stepEnvSlow bool) (func(pkg, test str
 		cmd = strings.TrimSpace(strings.TrimPrefix(cmd, fields[0]))
 	}
 	// This is the one supported substitution, matched as a complete command:
-	// the module's packages less every package whose import path one of a chain
-	// of `grep -v` filters drops. Its package selection cannot be inferred from
-	// a substring in another argument.
+	// the packages one `go list ./...` or `go list ./dir/...` pattern names,
+	// less every package whose import path one of a chain of `grep -v` filters
+	// drops. Its package selection cannot be inferred from a substring in
+	// another argument.
 	if m := ciComplement.FindStringSubmatch(cmd); m != nil {
+		base := strings.TrimSuffix(strings.TrimSuffix(m[1], "..."), "/")
 		var drops []string
-		for _, f := range ciComplementDrop.FindAllStringSubmatch(m[1], -1) {
+		for _, f := range ciComplementDrop.FindAllStringSubmatch(m[2], -1) {
 			drops = append(drops, f[1])
 		}
 		return func(pkg, test string) bool {
+			if base != "." && pkg != base && !strings.HasPrefix(pkg, base+"/") {
+				return false
+			}
 			path := modulePath + "/" + strings.TrimPrefix(pkg, "./")
 			if pkg == "." {
 				path = modulePath

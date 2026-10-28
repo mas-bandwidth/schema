@@ -187,11 +187,12 @@ jobs:
     # versioning suites that cannot ride `go test ./...` at all. Every step
     # below is the step it was; what is new is which row runs it, and no step
     # runs in none of them or in two.
-    #   unit-codegen    — go test ./internal/codegen/...
+    #   unit-codegen    — go test ./internal/codegen/... less elixirtable
     #   unit-compiler-1 — go test ./compiler, the tests one pattern names
     #   unit-compiler-2 — go test ./compiler, every other test
     #   unit-rest       — go vet ./..., go test over everything that is
-    #                     neither an emitter package nor ./compiler, the
+    #                     neither an emitter package nor ./compiler, then
+    #                     internal/codegen/elixirtable on its own, the
     #                     projection's three controls, the toolchain control,
     #                     the python leg and the one Linux cache write
     #   slow-gate       — the slowtest accounting (schema#988)
@@ -350,11 +351,16 @@ jobs:
       # seconds instead of minutes (the owner's rule, twice today: "Remember the
       # 1-2 minute iteration rule on unit tests."). THIS LANE SETS IT, so the
       # merge and nightly runs check exactly what they checked before.
+      #
+      # LESS internal/codegen/elixirtable, which the unit-rest row runs in a
+      # step of its own: its TestOffsetsComposeFromHalvesElixir measures
+      # allocations and is load-sensitive, so it runs with no other package's
+      # tests beside it, on the lightest row (2026-10-27).
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
-        run: go test ./internal/codegen/...
+        run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')
 
       # THE COMPILER PACKAGE, IN TWO ROWS, because on its own it is 441 s of
       # the complement below and one package is one test binary: the only cut
@@ -387,6 +393,16 @@ jobs:
         env:
           SCHEMA_SLOW: '1'
         run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$')
+
+      # THE ELIXIR EMITTER'S PACKAGE, ALONE. Its allocation test measures heap
+      # words and is load-sensitive, so it is not inside the emitter row's
+      # `go test`, where every codegen package compiles and runs at once; it
+      # runs here, after the step above has finished, on the lightest row.
+      - name: go test the Elixir emitter package on its own
+        if: matrix.group == 'unit-rest'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/codegen/elixirtable
 
       # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
       # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is

@@ -118,6 +118,17 @@ func TestShardAccountingRefusesAGapAndAnOverlap(t *testing.T) {
 	if n := count(overlap, "./compiler", "TestA"); n != 2 {
 		t.Errorf("a complement that keeps ./compiler selects compiler.TestA %d times, want 2", n)
 	}
+	sub := head + step("a", "go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')") +
+		step("b", "go test ./internal/codegen/elixirtable")
+	if n := count(sub, "./internal/codegen/elixirtable", "TestE"); n != 1 {
+		t.Errorf("a ./dir/... complement and a named step select elixirtable.TestE %d times, want 1", n)
+	}
+	if n := count(sub, "./internal/codegen/gotable", "TestG"); n != 1 {
+		t.Errorf("a ./dir/... complement selects gotable.TestG %d times, want 1", n)
+	}
+	if n := count(sub, "./compiler", "TestA"); n != 0 {
+		t.Errorf("a ./internal/codegen/... complement reaches outside its directory: compiler.TestA selected %d times, want 0", n)
+	}
 	unknownRow := head + "      - name: x\n        if: matrix.group == 'z'\n        env:\n          SCHEMA_SLOW: '1'\n        run: go test ./compiler\n"
 	if n := count(unknownRow, "./compiler", "TestA"); n != 0 {
 		t.Errorf("a step on a row the matrix does not declare selects compiler.TestA %d times, want 0", n)
