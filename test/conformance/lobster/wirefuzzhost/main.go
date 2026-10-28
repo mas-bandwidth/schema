@@ -270,6 +270,12 @@ type entry struct {
 	form, retain byte
 }
 
+// entryCommand is one command line naming a roster entry: the root, its
+// FORM byte and its RETAIN byte.
+func entryCommand(verb string, e entry) string {
+	return fmt.Sprintf("%s %s %d %d", verb, e.root, e.form, e.retain)
+}
+
 func readString(r io.Reader) (string, error) {
 	var n uint16
 	if err := binary.Read(r, binary.LittleEndian, &n); err != nil {
@@ -360,11 +366,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for _, i := range idx {
-				// the message form and retention are not carried: 0
-				if roster[i].form != 1 || roster[i].retain != 0 {
-					continue
-				}
-				b, err := l.ask("root "+roster[i].root, oneByte)
+				b, err := l.ask(entryCommand("root", roster[i]), oneByte)
 				if err == nil && b[0] > 1 {
 					err = fmt.Errorf("unit %s answered %d for root %s", unit, b[0], roster[i].root)
 				}
@@ -420,7 +422,7 @@ func main() {
 		if err := os.WriteFile(l.mutant, data, 0o644); err != nil {
 			fatalf("%v", err)
 		}
-		reply, err := l.ask("load "+e.root, oneRecord)
+		reply, err := l.ask(entryCommand("load", e), oneRecord)
 		if err != nil {
 			fatalf("%v", err)
 		}

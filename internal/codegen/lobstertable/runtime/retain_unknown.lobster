@@ -22,6 +22,10 @@ class Retain:
     used:int = 0
     ids:[int] = []
     known:[int] = []
+    // holders is every record this load kept a field in, the store's own
+    // index (Go's store.records keys): a save counts the ones it never
+    // reached
+    holders:[Record] = []
 
 // retain_depth_cap is THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): 64
 // nested bodies, the one depth on this path a file can drive.
@@ -284,6 +288,8 @@ class RetainCaptureImpl : RetainCapture
             lost()
             return
         retain.used += cost
+        if length(rec.retained) == 0:
+            push(retain.holders, rec)
         push(rec.retained, RetainedField { id: id, kind: kind, payload: so_take(rs.out), cost: cost, placed: false })
         report.retained++
     def lost() -> void:
@@ -295,6 +301,7 @@ class RetainCaptureImpl : RetainCapture
 def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record:
     retain.used = 0
     retain.ids = []
+    retain.holders = []
     retain.known = known_ids()
     let mark = length(retain_captures)
     register_retain_capture(RetainCaptureImpl { retain: retain, report: report })
@@ -484,8 +491,19 @@ def save_retain(rec:Record, retain:Retain, report:LoadReport) -> string:
     if length(retain.known) == 0:
         retain.known = known_ids()
     retain.ids = []
+    // THE SAVE'S OWN MARK IS CLEARED BEFORE EVERY SAVE (Go's EncodeRetain)
+    for(retain.holders) h:
+        for(h.retained) rf:
+            rf.placed = false
     let mark = length(retain_tails)
     register_retain_tail(RetainTailImpl { retain: retain, report: report })
     let out = save(rec)
     truncate(retain_tails, mark)
+    // AND A RETAINED RECORD THE SAVE WALK NEVER REACHED COUNTS ONE
+    // retain_lost (§6.6): the body it belonged to is not in this save, an
+    // orphan node, or a body the caller dropped between load and save
+    for(retain.holders) h:
+        for(h.retained) rf:
+            if not rf.placed:
+                report.retain_lost++
     return out

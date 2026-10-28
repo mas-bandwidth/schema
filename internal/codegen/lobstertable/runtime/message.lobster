@@ -1092,41 +1092,55 @@ def message_reset_report(rep:LoadReport):
 // DELIVERS BODIES 1 TO k - 1, and the count says k - 1; a count above the
 // capacity is refused before anything is decoded and answers the wire's M.
 def load_messages_tolerant(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int) -> [Record], int, bool:
-    let out:[Record] = []
+    let batch:[Record] = []
+    let count, ok = load_messages_into(root, v, data, rep, capacity, batch)
+    // the bodies read whole; a body the stream stopped inside is dropped here
+    // and kept by load_messages_into's caller
+    if not ok and length(batch) > count:
+        truncate(batch, count)
+    return batch, count, ok
+
+// load_messages_into is the batch read into the caller's batch (Go's
+// tablewire.DecodeMessages over caller-held instances): each body is pushed
+// before it is read, so a body the stream stops inside stays in the batch
+// with what it decoded, as a tolerant read keeps its partial value (§4).
+// It answers the batch's count M (or the bodies before a stop) and whether
+// the whole batch read.
+def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
     if length(data) == 0:
         rep.malformed = true
-        return out, 0, false
+        return 0, false
     if data[0] != 2:
         message_refuse(rep, "newer_form")
-        return out, 0, false
+        return 0, false
     if not v.announced:
         message_refuse(rep, "no_vocabulary")
-        return out, 0, false
+        return 0, false
     if length(data) < 2:
         rep.malformed = true
-        return out, 0, false
+        return 0, false
     if not is_message_root(root):
         message_refuse(rep, "not_a_message_root: " + root)
-        return out, 0, false
+        return 0, false
     let count = data[1] + 1
     if count > capacity:
         message_refuse(rep, "batch_too_large")
-        return out, count, false
+        return count, false
     let bits = MessageBits { b: data, lo: 2, n: (length(data) - 2) * 8 }
     let m = MessageRead { bits: bits, v: v, rep: rep }
     let d = table_of(root)
     var i = 0
     while i < count:
         let rec = new_record(d)
+        push(batch, rec)
         if not message_body(m, rec):
-            return out, i, false
-        push(out, rec)
+            return i, false
         i++
     // THE TRAILING PAD IS VERIFIED ZERO, AND BYTES AFTER IT ARE MALFORMED
     if not mb_align(bits) or bits.off != bits.n:
         rep.malformed = true
-        return out, count, false
-    return out, count, true
+        return count, false
+    return count, true
 
 // load_messages is the plain batch read, and it is STRICT (§6.5; Go's
 // <Name>LoadMessages): the report is this read's, and a batch the strict rule
