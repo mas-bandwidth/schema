@@ -70,7 +70,7 @@ int main(void) {
  total=catalog_load_measure(shared,sizeof(shared)); CHECK(total>0);
  region=(uint8_t *)malloc((size_t)total); CHECK(region!=NULL);
  memset(&report,0,sizeof(report));
- loaded=catalog_load(region,total,shared,sizeof(shared),&report);
+ loaded=catalog_load_tolerant(region,total,shared,sizeof(shared),&report);
  CHECK(loaded!=NULL && !report.malformed && !report.refused);
  CHECK(report.blob_shared==1);
  CHECK(table_bytes_at(NULL,&loaded->thumb).data==table_bytes_at(NULL,&loaded->alias).data);
@@ -90,7 +90,7 @@ int main(void) {
  CHECK(catalog_save(&ctx,root,saved,sizeof(saved))==total);
  catalog_builder_shutdown(&once);
  CHECK(catalog_builder_init(&back)); memset(&report,0,sizeof(report));
- CHECK(catalog_load_builder(&back,saved,total,&report));
+ CHECK(catalog_load_builder_tolerant(&back,saved,total,&report));
  CHECK(!report.malformed && report.blob_shared==0);
   root=catalog_builder_root(&back); backctx.arena=&back.arena;
   CHECK(table_bytes_at(&backctx,&root->thumb).length==4);
@@ -104,14 +104,14 @@ int main(void) {
     c.calls=0; c.fail=1000; c.live=0;
     CHECK(catalog_builder_init_with_allocator(&fb,fa));
     c.calls=0; c.fail=1;
-    CHECK(!catalog_load_builder(&fb,shared,sizeof(shared),&freport));
+    CHECK(!catalog_load_builder_tolerant(&fb,shared,sizeof(shared),&freport));
     CHECK(freport.malformed);
     catalog_builder_shutdown(&fb);
   }
 
   /* THE STRICT FAIL-CLOSED WITNESSES: the strict reason path's own region
      allocation (wire_blob_shared) and its decoder's blob_named side array
-     (catalog_load) each refuse closed on failure — catalog_load_measure_ex
+     (catalog_load_tolerant) each refuse closed on failure — catalog_load_measure_ex
      returns -1 naming blob_shared — rather than silently accepting the wire. */
   { int i;
     for (i=1;i<=2;i++) {

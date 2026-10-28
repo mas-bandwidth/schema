@@ -123,7 +123,7 @@ int main(void)
     CHECK(signed_ints_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = signed_ints_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
+    n = signed_ints_fixed_load_tolerant(loaded, 2, file, need, plan, 64, NULL, &report);
     CHECK(n == 2);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded[0].i8 == INT8_MIN && loaded[0].i16 == INT16_MIN && loaded[0].i32 == INT32_MIN && loaded[0].i64 == INT64_MIN);
@@ -162,7 +162,7 @@ int main(void)
     CHECK(unsigned_ints_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = unsigned_ints_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
+    n = unsigned_ints_fixed_load_tolerant(loaded, 2, file, need, plan, 64, NULL, &report);
     CHECK(n == 2);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded[0].u8 == 0 && loaded[0].u16 == 0 && loaded[0].u32 == 0 && loaded[0].u64 == 0);
@@ -222,7 +222,7 @@ int main(void)
     }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = signed_wide_fixed_load(loaded, 4, file, need, plan, 64, NULL, &report);
+    n = signed_wide_fixed_load_tolerant(loaded, 4, file, need, plan, 64, NULL, &report);
     CHECK(n == 4);
     CHECK(!report.malformed && !report.refused && report.clamped == 1);
     CHECK(serialize_int128_equal(loaded[0].wide, value[0].wide));
@@ -283,7 +283,7 @@ int main(void)
     }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = unsigned_wide_fixed_load(loaded, 4, file, need, plan, 64, NULL, &report);
+    n = unsigned_wide_fixed_load_tolerant(loaded, 4, file, need, plan, 64, NULL, &report);
     CHECK(n == 4);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(serialize_uint128_equal(loaded[0].u128, value[0].u128));
@@ -321,7 +321,7 @@ int main(void)
     CHECK(bits_value_fixed_save(value, 2, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = bits_value_fixed_load(loaded, 2, file, need, plan, 64, NULL, &report);
+    n = bits_value_fixed_load_tolerant(loaded, 2, file, need, plan, 64, NULL, &report);
     CHECK(n == 2);
     CHECK(!report.malformed && !report.refused && report.clamped == 1);
     CHECK(loaded[0].v == 4095);
@@ -359,7 +359,7 @@ int main(void)
     CHECK(float32_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = float32_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
+    n = float32_value_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded[0].v == 1.5f && loaded[1].v == FLT_MAX && loaded[2].v == -FLT_MAX);
@@ -396,7 +396,7 @@ int main(void)
     CHECK(float64_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = float64_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
+    n = float64_value_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded[0].v == 1.5 && loaded[1].v == DBL_MAX && loaded[2].v == -DBL_MAX);
@@ -434,7 +434,7 @@ int main(void)
     CHECK(compressed_float_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = compressed_float_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);
+    n = compressed_float_fixed_load_tolerant(loaded, 5, file, need, plan, 64, NULL, &report);
     CHECK(n == 5);
     CHECK(!report.malformed && !report.refused && report.clamped == 2);
     CHECK(loaded[0].v == 1.0f && loaded[1].v == -1.0f);
@@ -474,7 +474,7 @@ int main(void)
     CHECK(fixed_point_fixed_save(value, 5, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = fixed_point_fixed_load(loaded, 5, file, need, plan, 64, NULL, &report);
+    n = fixed_point_fixed_load_tolerant(loaded, 5, file, need, plan, 64, NULL, &report);
     CHECK(n == 5);
     CHECK(!report.malformed && !report.refused && report.clamped == 2);
     CHECK(loaded[0].v == 32768 && loaded[1].v == 65536 && loaded[2].v == -65536);
@@ -536,7 +536,7 @@ int main(void)
     }
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = u_fixed_point_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
+    n = u_fixed_point_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
     CHECK(!report.malformed && !report.refused && report.clamped == 2);
     CHECK(loaded[0].v == 32768 && loaded[1].v == 65536 && loaded[2].v == 65536);
@@ -577,7 +577,7 @@ int main(void)
     CHECK(flags_value_fixed_save(value, 3, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = flags_value_fixed_load(loaded, 3, file, need, plan, 64, NULL, &report);
+    n = flags_value_fixed_load_tolerant(loaded, 3, file, need, plan, 64, NULL, &report);
     CHECK(n == 3);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded[0].caps == (CAPS_JUMP | CAPS_FLY));

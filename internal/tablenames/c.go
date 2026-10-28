@@ -478,6 +478,7 @@ func init() {
 		Name{Name: "table_graph_cook", What: "the C canonical cook writer"},
 		Name{Name: "TableRefuseReason", What: "the C cook and block refusal surface"},
 		Name{Name: "table_cook_refuse", What: "the C cook and block refusal surface"},
+		Name{Name: "table_report_strict_refuses", What: "the C strict rule every plain read name refuses through (docs/SPEC-TABLES.md §6.5)"},
 		Name{Name: "table_cook_open_ex", What: "the C cook and block refusal surface"},
 		Name{Name: "TableBlockConstRows", What: "the C cook and block refusal surface"},
 		Name{Name: "table_block_row_at_const", What: "the C cook and block refusal surface"},

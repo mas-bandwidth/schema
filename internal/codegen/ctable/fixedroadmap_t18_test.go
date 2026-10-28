@@ -154,7 +154,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
         if ( n < 0 ) { printf( "label save failed\n" ); return 1; }
         memset( back, 0x5A, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
             { printf( "label load refused=%d malformed=%d reason=%d\n", r.refused, r.malformed, (int) r.reason ); return 1; }
         if ( back[0].pick.type != PICK_TYPE_LABEL ) { printf( "label arm=%d\n", (int) back[0].pick.type ); return 1; }
         if ( back[0].pick.as.label.value_length != 8 )
@@ -174,7 +174,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
         if ( n < 0 ) { printf( "empty label save failed\n" ); return 1; }
         memset( back, 0x5A, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
             { printf( "empty label load refused=%d\n", r.refused ); return 1; }
         if ( back[0].pick.as.label.value_length != 0 )
             { printf( "empty label length=%d\n", (int) back[0].pick.as.label.value_length ); return 1; }
@@ -190,7 +190,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
         if ( n < 0 ) { printf( "blob save failed\n" ); return 1; }
         memset( back, 0x5A, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
             { printf( "blob load refused=%d\n", r.refused ); return 1; }
         if ( back[0].pick.type != PICK_TYPE_BLOB ) { printf( "blob arm=%d\n", (int) back[0].pick.type ); return 1; }
         if ( back[0].pick.as.blob.value_length != 4 )
@@ -209,7 +209,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
         if ( n < 0 ) { printf( "empty blob save failed\n" ); return 1; }
         memset( back, 0x5A, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
             { printf( "empty blob load refused=%d\n", r.refused ); return 1; }
         if ( back[0].pick.as.blob.value_length != 0 )
             { printf( "empty blob length=%d\n", (int) back[0].pick.as.blob.value_length ); return 1; }
@@ -223,7 +223,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
         if ( n < 0 ) { printf( "cells save failed\n" ); return 1; }
         memset( back, 0x5A, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
             { printf( "cells load refused=%d\n", r.refused ); return 1; }
         if ( back[0].pick.type != PICK_TYPE_CELLS ) { printf( "cells arm=%d\n", (int) back[0].pick.type ); return 1; }
         for ( k = 0; k < 3; ++k )
@@ -241,7 +241,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
         if ( n < 0 ) { printf( "span save failed\n" ); return 1; }
         memset( back, 0x5A, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
             { printf( "span load refused=%d\n", r.refused ); return 1; }
         if ( back[0].pick.type != PICK_TYPE_SPAN ) { printf( "span arm=%d\n", (int) back[0].pick.type ); return 1; }
         if ( back[0].pick.as.span.value_count != 3 )
@@ -261,7 +261,7 @@ func TestFixedRoadmapCT18DirectArms(t *testing.T) {
         if ( n < 0 ) { printf( "empty span save failed\n" ); return 1; }
         memset( back, 0x5A, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
-        if ( root_fixed_load( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+        if ( root_fixed_load_tolerant( back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
             { printf( "empty span load refused=%d\n", r.refused ); return 1; }
         if ( back[0].pick.as.span.value_count != 0 )
             { printf( "empty span count=%d\n", (int) back[0].pick.as.span.value_count ); return 1; }

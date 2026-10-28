@@ -150,7 +150,7 @@ int main( void )
         check( stamped == vessel_fixed_hash,
                "the file header's 8-byte hash field equals vessel_fixed_hash" );
         printf( "  stamped = 0x%016llx\n", (unsigned long long) stamped );
-        int64_t loaded = vessel_fixed_load( &v, 1, buffer, written,
+        int64_t loaded = vessel_fixed_load_tolerant( &v, 1, buffer, written,
                                             plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ),
                                             NULL, &report );
         check( loaded == 1 && report.refused == 0,

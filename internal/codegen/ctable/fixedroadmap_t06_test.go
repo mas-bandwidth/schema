@@ -126,7 +126,7 @@ int main( void )
 %s
     return 0;
 }
-`, header, snake, root, root, root, snake+"_reset", snake+"_reset", setup, snake+"_fixed_save", forge, snake+"_fixed_load", body)
+`, header, snake, root, root, root, snake+"_reset", snake+"_reset", setup, snake+"_fixed_save", forge, snake+"_fixed_load_tolerant", body)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}

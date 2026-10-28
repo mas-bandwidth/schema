@@ -77,6 +77,12 @@ typedef struct benchtable_table_report_t
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
+       TableRefuseReason, the same value a measure's -1 and a cook's open
+       answer, set by every plain read name on its refusal and OK otherwise.
+       unknown, widened and retained alone leave it OK. The tolerant reads
+       never write it. */
+    int refuse_reason;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -2328,6 +2334,24 @@ enum {
 };
 static SCHEMA_UNUSED const uint8_t * benchtable_table_cook_refuse(benchtable_table_refuse_reason_t * out,benchtable_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
+/* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
+   what the strict read refuses -- an unknown form, wire damage, a blob named
+   from two slots, a clamp or a kind mismatch -- and unknown, widened and
+   retained alone never refuse. decoded is the tolerant read's own answer.
+   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
+   them, and answers 1 when the plain name must refuse. */
+static SCHEMA_UNUSED int benchtable_table_report_strict_refuses( benchtable_table_report_t * report, int decoded )
+{
+    benchtable_table_refuse_reason_t reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_OK;
+    if ( report->refused ) { reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( !decoded || report->malformed ) { reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( report->blob_shared > 0 ) { reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_BLOB_SHARED; }
+    else if ( report->clamped > 0 ) { reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_CLAMPED; }
+    else if ( report->kind_mismatch > 0 ) { reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; }
+    report->refuse_reason = reason;
+    return reason != SCHEMA_BENCHTABLE_TABLE_REFUSE_OK;
+}
 #endif
 
 #ifndef SCHEMA_BENCHTABLE_BUILD_VERSION
@@ -4343,7 +4367,10 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_body( benchtable_table_rea
     }
 }
 
-static SCHEMA_UNUSED int benchtable_table_entity_load( benchtable_table_entity_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+/* table_entity_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int benchtable_table_entity_load_tolerant( benchtable_table_entity_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored; benchtable_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -4351,6 +4378,26 @@ static SCHEMA_UNUSED int benchtable_table_entity_load( benchtable_table_entity_t
     benchtable_table_entity_reset( value );
     if ( !benchtable_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return benchtable_table_entity_load_body( &r, value );
+}
+
+/* The PLAIN table_entity_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int benchtable_table_entity_load( benchtable_table_entity_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = benchtable_table_entity_load_tolerant( value, buffer, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        benchtable_table_entity_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int benchtable_table_entity_save_message_body(benchtable_table_bit_writer_t * w,const benchtable_table_entity_t * value)
@@ -4798,7 +4845,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int benchtable_table_entity_load_messages(benchtable_table_entity_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
+/* table_entity_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int benchtable_table_entity_load_messages_tolerant(benchtable_table_entity_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
  benchtable_table_message_reader_t r;
@@ -4818,6 +4866,26 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_messages(benchtable_table_
  for(i=0;i<bodies;i++){if(!benchtable_table_entity_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return benchtable_table_message_close(&r);
+}
+/* The PLAIN table_entity_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int benchtable_table_entity_load_messages( benchtable_table_entity_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = benchtable_table_entity_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) benchtable_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !benchtable_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) benchtable_table_entity_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_benchtable_table_entity_message_extent_(benchtable_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -4979,7 +5047,10 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_body( benchtable_table_reade
     }
 }
 
-static SCHEMA_UNUSED int benchtable_table_stat_load( benchtable_table_stat_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+/* table_stat_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int benchtable_table_stat_load_tolerant( benchtable_table_stat_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored; benchtable_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -4987,6 +5058,26 @@ static SCHEMA_UNUSED int benchtable_table_stat_load( benchtable_table_stat_t * v
     benchtable_table_stat_reset( value );
     if ( !benchtable_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return benchtable_table_stat_load_body( &r, value );
+}
+
+/* The PLAIN table_stat_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int benchtable_table_stat_load( benchtable_table_stat_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = benchtable_table_stat_load_tolerant( value, buffer, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        benchtable_table_stat_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int benchtable_table_stat_save_message_body(benchtable_table_bit_writer_t * w,const benchtable_table_stat_t * value)
@@ -5090,7 +5181,8 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_message_body(benchtable_tabl
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int benchtable_table_stat_load_messages(benchtable_table_stat_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
+/* table_stat_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int benchtable_table_stat_load_messages_tolerant(benchtable_table_stat_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
  benchtable_table_message_reader_t r;
@@ -5110,6 +5202,26 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_messages(benchtable_table_st
  for(i=0;i<bodies;i++){if(!benchtable_table_stat_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return benchtable_table_message_close(&r);
+}
+/* The PLAIN table_stat_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int benchtable_table_stat_load_messages( benchtable_table_stat_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = benchtable_table_stat_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) benchtable_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !benchtable_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) benchtable_table_stat_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_benchtable_table_stat_message_extent_(benchtable_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -6637,7 +6749,10 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
     }
 }
 
-static SCHEMA_UNUSED int benchtable_table_mixed_load( benchtable_table_mixed_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+/* table_mixed_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int benchtable_table_mixed_load_tolerant( benchtable_table_mixed_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored; benchtable_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -6645,6 +6760,26 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load( benchtable_table_mixed_t *
     benchtable_table_mixed_reset( value );
     if ( !benchtable_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return benchtable_table_mixed_load_body( &r, value );
+}
+
+/* The PLAIN table_mixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int benchtable_table_mixed_load( benchtable_table_mixed_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = benchtable_table_mixed_load_tolerant( value, buffer, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        benchtable_table_mixed_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int benchtable_table_mixed_save_message_body(benchtable_table_bit_writer_t * w,const benchtable_table_mixed_t * value)
@@ -7432,7 +7567,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int benchtable_table_mixed_load_messages(benchtable_table_mixed_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
+/* table_mixed_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int benchtable_table_mixed_load_messages_tolerant(benchtable_table_mixed_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
  benchtable_table_message_reader_t r;
@@ -7452,6 +7588,26 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_messages(benchtable_table_m
  for(i=0;i<bodies;i++){if(!benchtable_table_mixed_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return benchtable_table_message_close(&r);
+}
+/* The PLAIN table_mixed_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int benchtable_table_mixed_load_messages( benchtable_table_mixed_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = benchtable_table_mixed_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) benchtable_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !benchtable_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) benchtable_table_mixed_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_message_extent_(benchtable_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -7732,7 +7888,10 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_body( benchtable_table_
     }
 }
 
-static SCHEMA_UNUSED int benchtable_table_hit_event_load( benchtable_table_hit_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+/* table_hit_event_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int benchtable_table_hit_event_load_tolerant( benchtable_table_hit_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored; benchtable_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -7740,6 +7899,26 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load( benchtable_table_hit_e
     benchtable_table_hit_event_reset( value );
     if ( !benchtable_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return benchtable_table_hit_event_load_body( &r, value );
+}
+
+/* The PLAIN table_hit_event_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int benchtable_table_hit_event_load( benchtable_table_hit_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = benchtable_table_hit_event_load_tolerant( value, buffer, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        benchtable_table_hit_event_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int benchtable_table_hit_event_save_message_body(benchtable_table_bit_writer_t * w,const benchtable_table_hit_event_t * value)
@@ -7887,7 +8066,8 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages(benchtable_table_hit_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
+/* table_hit_event_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages_tolerant(benchtable_table_hit_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
  benchtable_table_message_reader_t r;
@@ -7907,6 +8087,26 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages(benchtable_tab
  for(i=0;i<bodies;i++){if(!benchtable_table_hit_event_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return benchtable_table_message_close(&r);
+}
+/* The PLAIN table_hit_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages( benchtable_table_hit_event_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = benchtable_table_hit_event_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) benchtable_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !benchtable_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) benchtable_table_hit_event_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_benchtable_table_hit_event_message_extent_(benchtable_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -8096,7 +8296,10 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_body( benchtable_table
     }
 }
 
-static SCHEMA_UNUSED int benchtable_table_chat_event_load( benchtable_table_chat_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+/* table_chat_event_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int benchtable_table_chat_event_load_tolerant( benchtable_table_chat_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored; benchtable_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -8104,6 +8307,26 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load( benchtable_table_chat
     benchtable_table_chat_event_reset( value );
     if ( !benchtable_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return benchtable_table_chat_event_load_body( &r, value );
+}
+
+/* The PLAIN table_chat_event_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int benchtable_table_chat_event_load( benchtable_table_chat_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = benchtable_table_chat_event_load_tolerant( value, buffer, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        benchtable_table_chat_event_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int benchtable_table_chat_event_save_message_body(benchtable_table_bit_writer_t * w,const benchtable_table_chat_event_t * value)
@@ -8207,7 +8430,8 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_message_body(benchtabl
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages(benchtable_table_chat_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
+/* table_chat_event_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages_tolerant(benchtable_table_chat_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
  benchtable_table_message_reader_t r;
@@ -8227,6 +8451,26 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages(benchtable_ta
  for(i=0;i<bodies;i++){if(!benchtable_table_chat_event_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return benchtable_table_message_close(&r);
+}
+/* The PLAIN table_chat_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages( benchtable_table_chat_event_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = benchtable_table_chat_event_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) benchtable_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !benchtable_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) benchtable_table_chat_event_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_benchtable_table_chat_event_message_extent_(benchtable_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -8416,7 +8660,10 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_body( benchtable_tab
     }
 }
 
-static SCHEMA_UNUSED int benchtable_table_pickup_event_load( benchtable_table_pickup_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+/* table_pickup_event_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
+   recovered value and its report, and answers 0 only for a refusal or a
+   body the walk could not finish. */
+static SCHEMA_UNUSED int benchtable_table_pickup_event_load_tolerant( benchtable_table_pickup_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored; benchtable_table_reader_t r;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -8424,6 +8671,26 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load( benchtable_table_pi
     benchtable_table_pickup_event_reset( value );
     if ( !benchtable_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
     return benchtable_table_pickup_event_load_body( &r, value );
+}
+
+/* The PLAIN table_pickup_event_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
+   whatever the strict read refuses -- an unknown form, wire damage, a clamp
+   or a kind mismatch -- answering 0 with the value reset to its declared
+   defaults and the report this read's own, its refuse_reason set. unknown
+   and widened alone never refuse. */
+static SCHEMA_UNUSED int benchtable_table_pickup_event_load( benchtable_table_pickup_event_t * value, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = benchtable_table_pickup_event_load_tolerant( value, buffer, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        benchtable_table_pickup_event_reset( value );
+        return 0;
+    }
+    return 1;
 }
 
 static SCHEMA_UNUSED int benchtable_table_pickup_event_save_message_body(benchtable_table_bit_writer_t * w,const benchtable_table_pickup_event_t * value)
@@ -8527,7 +8794,8 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_message_body(benchta
  malformed:r->report->malformed=1;
  return 0;
 }
-static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages(benchtable_table_pickup_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
+/* table_pickup_event_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages_tolerant(benchtable_table_pickup_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
  benchtable_table_message_reader_t r;
@@ -8547,6 +8815,26 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages(benchtable_
  for(i=0;i<bodies;i++){if(!benchtable_table_pickup_event_load_message_body(&r,values+i))return 0;
  (*count)++;
  }return benchtable_table_message_close(&r);
+}
+/* The PLAIN table_pickup_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages( benchtable_table_pickup_event_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int64_t i;
+    int ok;
+    if ( report == NULL ) report = &ignored;
+    /* this read's report, not the caller's last one */
+    memset( report, 0, sizeof( *report ) );
+    ok = benchtable_table_pickup_event_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
+    if ( !ok )
+    {
+        (void) benchtable_table_report_strict_refuses( report, 0 );
+        return 0;
+    }
+    if ( !benchtable_table_report_strict_refuses( report, 1 ) ) return 1;
+    for ( i = 0; i < *count; i++ ) benchtable_table_pickup_event_reset( values + i );
+    *count = 0;
+    return 0;
 }
 static SCHEMA_UNUSED int schema_benchtable_table_pickup_event_message_extent_(benchtable_table_message_reader_t * r,int64_t * at,int depth)
 {
@@ -9138,7 +9426,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_save( const benchtabl
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_table_entity_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* table_entity_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load_tolerant( benchtable_table_entity_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
 {
     benchtable_table_report_t local;
@@ -9243,6 +9533,25 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN table_entity_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of table_entity_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_table_entity_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = benchtable_table_entity_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !benchtable_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { benchtable_table_entity_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -9389,7 +9698,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_save( const benchtable_
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_stat_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* table_stat_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load_tolerant( benchtable_table_stat_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
 {
     benchtable_table_report_t local;
@@ -9494,6 +9805,25 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN table_stat_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of table_stat_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_stat_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = benchtable_table_stat_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !benchtable_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { benchtable_table_stat_reset( values + k ); }
+    return -1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -9852,7 +10182,9 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_save( const benchtable
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table_mixed_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+/* table_mixed_fixed_load_tolerant is the TOLERANT fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   keeps every recovered record, the counters counted onto the report. */
+static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load_tolerant( benchtable_table_mixed_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
 {
     benchtable_table_report_t local;
@@ -9957,6 +10289,25 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
     report->unknown += census_unknown;
     report->kind_mismatch += census_kind;
     return count;
+}
+
+/* The PLAIN table_mixed_fixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
+   every refusal of table_mixed_fixed_load_tolerant and for a read the strict rule
+   refuses -- malformed, clamped, kind-mismatched or refused -- with every
+   value it had written reset to its declared defaults. A supplied report
+   receives THIS read's report, its refuse_reason set. unknown and widened
+   alone never refuse. */
+static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table_mixed_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t local;
+    int64_t n, k;
+    if ( report == NULL ) { report = &local; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    n = benchtable_table_mixed_fixed_load_tolerant( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( !benchtable_table_report_strict_refuses( report, n >= 0 ) ) { return n; }
+    for ( k = 0; k < n; ++k ) { benchtable_table_mixed_reset( values + k ); }
+    return -1;
 }
 
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
@@ -10348,9 +10699,24 @@ static SCHEMA_UNUSED const benchtable_table_type_info_t * benchtable_table_picku
    BenchTableTable.c; compile it to use them. */
 int schema_benchtable_table_entity_from_json_( benchtable_table_entity_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report );
 int64_t schema_benchtable_table_entity_to_json_( const benchtable_table_entity_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int benchtable_table_entity_from_json( benchtable_table_entity_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+static SCHEMA_UNUSED int benchtable_table_entity_from_json_tolerant( benchtable_table_entity_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
     return schema_benchtable_table_entity_from_json_( value, text, bytes, report );
+}
+/* The PLAIN table_entity_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int benchtable_table_entity_from_json( benchtable_table_entity_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_benchtable_table_entity_from_json_( value, text, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { benchtable_table_entity_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t benchtable_table_entity_to_json_measure( const benchtable_table_entity_t * value ) { return schema_benchtable_table_entity_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t benchtable_table_entity_to_json( const benchtable_table_entity_t * value, char * buffer, int64_t capacity )
@@ -10363,9 +10729,24 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_to_json( const benchtable_t
    BenchTableTable.c; compile it to use them. */
 int schema_benchtable_table_stat_from_json_( benchtable_table_stat_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report );
 int64_t schema_benchtable_table_stat_to_json_( const benchtable_table_stat_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int benchtable_table_stat_from_json( benchtable_table_stat_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+static SCHEMA_UNUSED int benchtable_table_stat_from_json_tolerant( benchtable_table_stat_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
     return schema_benchtable_table_stat_from_json_( value, text, bytes, report );
+}
+/* The PLAIN table_stat_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int benchtable_table_stat_from_json( benchtable_table_stat_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_benchtable_table_stat_from_json_( value, text, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { benchtable_table_stat_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t benchtable_table_stat_to_json_measure( const benchtable_table_stat_t * value ) { return schema_benchtable_table_stat_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t benchtable_table_stat_to_json( const benchtable_table_stat_t * value, char * buffer, int64_t capacity )
@@ -10378,9 +10759,24 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_to_json( const benchtable_tab
    BenchTableTable.c; compile it to use them. */
 int schema_benchtable_table_mixed_from_json_( benchtable_table_mixed_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report );
 int64_t schema_benchtable_table_mixed_to_json_( const benchtable_table_mixed_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int benchtable_table_mixed_from_json( benchtable_table_mixed_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+static SCHEMA_UNUSED int benchtable_table_mixed_from_json_tolerant( benchtable_table_mixed_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
     return schema_benchtable_table_mixed_from_json_( value, text, bytes, report );
+}
+/* The PLAIN table_mixed_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int benchtable_table_mixed_from_json( benchtable_table_mixed_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_benchtable_table_mixed_from_json_( value, text, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { benchtable_table_mixed_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t benchtable_table_mixed_to_json_measure( const benchtable_table_mixed_t * value ) { return schema_benchtable_table_mixed_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t benchtable_table_mixed_to_json( const benchtable_table_mixed_t * value, char * buffer, int64_t capacity )
@@ -10393,9 +10789,24 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_to_json( const benchtable_ta
    BenchTableTable.c; compile it to use them. */
 int schema_benchtable_table_hit_event_from_json_( benchtable_table_hit_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report );
 int64_t schema_benchtable_table_hit_event_to_json_( const benchtable_table_hit_event_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int benchtable_table_hit_event_from_json( benchtable_table_hit_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+static SCHEMA_UNUSED int benchtable_table_hit_event_from_json_tolerant( benchtable_table_hit_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
     return schema_benchtable_table_hit_event_from_json_( value, text, bytes, report );
+}
+/* The PLAIN table_hit_event_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int benchtable_table_hit_event_from_json( benchtable_table_hit_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_benchtable_table_hit_event_from_json_( value, text, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { benchtable_table_hit_event_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t benchtable_table_hit_event_to_json_measure( const benchtable_table_hit_event_t * value ) { return schema_benchtable_table_hit_event_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t benchtable_table_hit_event_to_json( const benchtable_table_hit_event_t * value, char * buffer, int64_t capacity )
@@ -10408,9 +10819,24 @@ static SCHEMA_UNUSED int64_t benchtable_table_hit_event_to_json( const benchtabl
    BenchTableTable.c; compile it to use them. */
 int schema_benchtable_table_chat_event_from_json_( benchtable_table_chat_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report );
 int64_t schema_benchtable_table_chat_event_to_json_( const benchtable_table_chat_event_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int benchtable_table_chat_event_from_json( benchtable_table_chat_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+static SCHEMA_UNUSED int benchtable_table_chat_event_from_json_tolerant( benchtable_table_chat_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
     return schema_benchtable_table_chat_event_from_json_( value, text, bytes, report );
+}
+/* The PLAIN table_chat_event_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int benchtable_table_chat_event_from_json( benchtable_table_chat_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_benchtable_table_chat_event_from_json_( value, text, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { benchtable_table_chat_event_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t benchtable_table_chat_event_to_json_measure( const benchtable_table_chat_event_t * value ) { return schema_benchtable_table_chat_event_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t benchtable_table_chat_event_to_json( const benchtable_table_chat_event_t * value, char * buffer, int64_t capacity )
@@ -10423,9 +10849,24 @@ static SCHEMA_UNUSED int64_t benchtable_table_chat_event_to_json( const benchtab
    BenchTableTable.c; compile it to use them. */
 int schema_benchtable_table_pickup_event_from_json_( benchtable_table_pickup_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report );
 int64_t schema_benchtable_table_pickup_event_to_json_( const benchtable_table_pickup_event_t * value, char * buffer, int64_t capacity );
-static SCHEMA_UNUSED int benchtable_table_pickup_event_from_json( benchtable_table_pickup_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+static SCHEMA_UNUSED int benchtable_table_pickup_event_from_json_tolerant( benchtable_table_pickup_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {
     return schema_benchtable_table_pickup_event_from_json_( value, text, bytes, report );
+}
+/* The PLAIN table_pickup_event_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
+static SCHEMA_UNUSED int benchtable_table_pickup_event_from_json( benchtable_table_pickup_event_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
+{
+    benchtable_table_report_t ignored;
+    int decoded;
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_benchtable_table_pickup_event_from_json_( value, text, bytes, report );
+    if ( benchtable_table_report_strict_refuses( report, decoded ) )
+    {
+        if ( value != NULL ) { benchtable_table_pickup_event_reset( value ); }
+        return 0;
+    }
+    return 1;
 }
 static SCHEMA_UNUSED int64_t benchtable_table_pickup_event_to_json_measure( const benchtable_table_pickup_event_t * value ) { return schema_benchtable_table_pickup_event_to_json_( value, NULL, 0 ); }
 static SCHEMA_UNUSED int64_t benchtable_table_pickup_event_to_json( const benchtable_table_pickup_event_t * value, char * buffer, int64_t capacity )

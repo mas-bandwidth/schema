@@ -174,7 +174,7 @@ static int r22_roundtrip( const Cfg * from, Cfg * into )
     memset( into, 0, sizeof( *into ) );
     cfg_reset( into );
     memset( &report, 0, sizeof( report ) );
-    ok = cfg_load( into, buffer, wrote, &report )
+    ok = cfg_load_tolerant( into, buffer, wrote, &report )
         && report.unknown == 0 && report.kind_mismatch == 0
         && report.clamped == 0 && report.duplicate == 0
         && report.widened == 0 && !report.malformed && !report.refused;
@@ -262,7 +262,7 @@ int main( void )
     if ( golden == NULL )
     {
         r22_check( 0, "5: the corpus instance of the whole closure loads clean "
-            "through cfg_load (cannot read testdata/wire/tables/v1_cfg.bin)" );
+            "through cfg_load_tolerant (cannot read testdata/wire/tables/v1_cfg.bin)" );
         r22_check( 0, "6: the loaded closure re-saves to the golden's own bytes "
             "(golden unreadable)" );
     }
@@ -271,12 +271,12 @@ int main( void )
         memset( &cfg, 0, sizeof( cfg ) );
         cfg_reset( &cfg );
         memset( &report, 0, sizeof( report ) );
-        loaded = cfg_load( &cfg, golden, (int64_t) golden_bytes, &report );
+        loaded = cfg_load_tolerant( &cfg, golden, (int64_t) golden_bytes, &report );
         r22_check( loaded && report.unknown == 0 && report.kind_mismatch == 0
             && report.clamped == 0 && report.duplicate == 0
             && report.widened == 0 && !report.malformed && !report.refused,
             "5: the corpus instance of the whole closure loads clean through "
-            "cfg_load (no unknown, mismatch, clamp, duplicate, widen, refusal)" );
+            "cfg_load_tolerant (no unknown, mismatch, clamp, duplicate, widen, refusal)" );
 
         need = cfg_measure( &cfg );
         buffer = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );

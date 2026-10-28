@@ -83,7 +83,7 @@ int main( void )
        opens it. The refusal below is about the DIFFERENCE, not the file. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &report, 0, sizeof( report ) );
-    n = root_fixed_load( &back, 1, clean, saved_bytes, NULL, 0, NULL, &report );
+    n = root_fixed_load_tolerant( &back, 1, clean, saved_bytes, NULL, 0, NULL, &report );
     check( n == 1, "CONTROL: the un-bent layout, under its held hash, opens" );
     check( back.grade == GRADE_BRONZE && back.raw == 7, "CONTROL: the un-bent read lands every field" );
     check( !report.refused && !report.malformed, "CONTROL: the un-bent read is a read, not a refusal" );
@@ -105,7 +105,7 @@ int main( void )
        entry, byte for byte. */
     memset( &back, 0x5A, sizeof( back ) );
     memset( &report, 0, sizeof( report ) );
-    n = root_fixed_load( &back, 1, bent, total_bytes, NULL, 0, NULL, &report );
+    n = root_fixed_load_tolerant( &back, 1, bent, total_bytes, NULL, 0, NULL, &report );
     check( n == -1, "F12: a second layout for a held hash refuses by name" );
     check( report.refused && !report.malformed,
            "F12: the refusal is a refusal by name, not framing damage" );
@@ -135,7 +135,7 @@ int main( void )
 
     memset( &back, 0x5A, sizeof( back ) );
     memset( &report, 0, sizeof( report ) );
-    n = root_fixed_load( &back, 1, other, total_bytes, NULL, 0, NULL, &report );
+    n = root_fixed_load_tolerant( &back, 1, other, total_bytes, NULL, 0, NULL, &report );
     check( n == -1, "F12 CONTRAST: an unknown hash refuses" );
     check( report.refused && !report.malformed,
            "F12 CONTRAST: the refusal is a refusal by name, not damage" );

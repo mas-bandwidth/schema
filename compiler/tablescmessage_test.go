@@ -51,7 +51,7 @@ func TestCTableMessageSave(t *testing.T) {
 			t.Fatalf("fixture %d: %+v", i, report)
 		}
 		instances = append(instances, v)
-		fmt.Fprintf(&setup, "CHECK(root_from_json(values+%d,%q,%d,&report));\n", i, s, len(s))
+		fmt.Fprintf(&setup, "CHECK(root_from_json_tolerant(values+%d,%q,%d,&report));\n", i, s, len(s))
 	}
 	expected, err := tablewire.EncodeMessages(m, instances)
 	if err != nil {
@@ -79,7 +79,7 @@ int main(void) {
  CHECK(!report.refused && !report.malformed);
  n=root_measure_messages(values,3,&report);CHECK(n==sizeof(expected));
  CHECK(root_save_messages(values,3,output,n,&report)==n);CHECK(!memcmp(output,expected,sizeof(expected)));
- count=3;CHECK(root_load_messages(decoded,&count,&vocabulary,expected,sizeof(expected),&report));CHECK(count==3);
+ count=3;CHECK(root_load_messages_tolerant(decoded,&count,&vocabulary,expected,sizeof(expected),&report));CHECK(count==3);
  CHECK(!report.malformed&&!report.refused&&!report.unknown&&!report.clamped&&!report.widened&&!report.kind_mismatch);
  CHECK(root_save_messages(decoded,3,output,n,&report)==n);CHECK(!memcmp(output,expected,sizeof(expected)));
  output[n-1]=0xa5;CHECK(root_save_messages(values,3,output,n-1,&report)==-1);CHECK(output[n-1]==0xa5);
@@ -153,16 +153,16 @@ static const uint8_t expected[]={%s};
 int main(void){
  RootBuilder a,b;const Root * roots[2],*loaded[2];uint8_t buffer[4096],*region;int64_t n,storage,count,attribution;
  TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary vocabulary=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};TableRefuseReason reason=99;
- CHECK(root_builder_init(&a));CHECK(root_builder_init(&b));CHECK(root_from_json(&a,%q,%d,&report));CHECK(!report.malformed&&!report.clamped&&!report.unknown);
+ CHECK(root_builder_init(&a));CHECK(root_builder_init(&b));CHECK(root_from_json_tolerant(&a,%q,%d,&report));CHECK(!report.malformed&&!report.clamped&&!report.unknown);
  CHECK(root_builder_root(&b)!=NULL);CHECK(root_builder_lock(&a));CHECK(root_builder_lock(&b));roots[0]=(const Root *)(const void *)a.region;roots[1]=(const Root *)(const void *)b.region;
  n=root_measure_messages(roots,2,&report);CHECK(n==sizeof(expected));CHECK(root_save_messages(roots,2,buffer,n,&report)==n);CHECK(!memcmp(buffer,expected,sizeof(expected)));
  CHECK(announce_read(&vocabulary,kTableAnnounce,kTableAnnounceBytes,&report));
  storage=root_load_measure_messages_ex(&vocabulary,expected,sizeof(expected),&attribution,&reason);CHECK(storage>attribution&&reason==99);
  region=(uint8_t *)malloc((size_t)storage+8);CHECK(region!=NULL);memset(region,0xa5,(size_t)storage+8);
- count=2;CHECK(root_load_messages(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&!report.malformed&&!report.refused&&!report.unknown&&!report.clamped&&!report.kind_mismatch);
+ count=2;CHECK(root_load_messages_tolerant(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&!report.malformed&&!report.refused&&!report.unknown&&!report.clamped&&!report.kind_mismatch);
  CHECK(region[storage]==0xa5);CHECK(node_at(NULL,&loaded[0]->vertex)==node_at(NULL,&loaded[0]->aliases[0]));
  CHECK(root_save_messages(loaded,2,buffer,n,&report)==n);CHECK(!memcmp(buffer,expected,sizeof(expected)));
- count=1;CHECK(!root_load_messages(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&report.reason==SCHEMA_TABLE_BATCH_TOO_LARGE);
+ count=1;CHECK(!root_load_messages_tolerant(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&report.reason==SCHEMA_TABLE_BATCH_TOO_LARGE);
  root_builder_shutdown(&a);root_builder_shutdown(&b);free(region);return 0;
 }`, bytes.String(), text, len(text))
 	runCTableWireProbe(t, u, source)
@@ -231,7 +231,7 @@ changed string(4) }
 static const uint8_t announcement[]={%s},wire[]={%s},expected[]={%s};
 int main(void){
  Root value;TableMessageEntry entries[128];TableVocabulary v=table_vocabulary(entries,128);TableReport report={0};int64_t count=1,n;uint8_t saved[4096];
- CHECK(announce_read(&v,announcement,sizeof(announcement),&report));CHECK(root_load_messages(&value,&count,&v,wire,sizeof(wire),&report));
+ CHECK(announce_read(&v,announcement,sizeof(announcement),&report));CHECK(root_load_messages_tolerant(&value,&count,&v,wire,sizeof(wire),&report));
  CHECK(!report.malformed&&!report.refused&&report.widened==%d&&report.clamped==%d&&report.kind_mismatch==%d&&report.unknown==%d);
  n=root_save(&value,saved,sizeof(saved));CHECK(n==sizeof(expected));CHECK(!memcmp(saved,expected,sizeof(expected)));return 0;
 }`, octets(announcement), octets(wire), octets(expected), report.Widened, report.Clamped, report.KindMismatch, report.Unknown)
@@ -269,7 +269,7 @@ value uint64 }
  if(!announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report))return 1;
  table_bit_put(&w,2,8);table_bit_put(&w,0,8);table_bit_put(&w,%d,kTableMessageRefBitsHere);table_bit_put(&w,99,32);table_bit_align_write(&w);
  need=root_load_measure_messages(&v,wire,w.bits/8);if(need<=0)return 2;region=(uint8_t *)malloc((size_t)need);if(!region)return 3;
- if(root_load_messages(&root,&count,region,need,&v,wire,w.bits/8,&report)||count!=0||root==NULL||!report.malformed||report.refused||root->value!=0){free(region);return 4;}
+ if(root_load_messages_tolerant(&root,&count,region,need,&v,wire,w.bits/8,&report)||count!=0||root==NULL||!report.malformed||report.refused||root->value!=0){free(region);return 4;}
  free(region);return 0;
  }`, slot))
 }
@@ -316,7 +316,7 @@ int main(void){
  need=scene_load_measure_messages(&v,wire,sizeof(wire));
  if(need!=960){fprintf(stderr,"reserved framing extent %lld want 960\n",(long long)need);return 2;}
  region=(uint8_t *)malloc((size_t)need);if(!region)return 3;
- if(scene_load_messages(roots,&count,region,need,&v,wire,sizeof(wire),&report)||!report.malformed){free(region);return 4;}
+ if(scene_load_messages_tolerant(roots,&count,region,need,&v,wire,sizeof(wire),&report)||!report.malformed){free(region);return 4;}
  free(region);return 0;
 }
 `)

@@ -26,7 +26,7 @@ static int check_large_list(void) {
  CHECK(*listdemo_bytes_data_at(&locked->data,99999)==(uint8_t)99999);CHECK(listdemo_bytes_data_at(&locked->data,100000)==NULL);
  size=listdemo_bytes_measure(NULL,locked);CHECK(size>100000);wire=(uint8_t *)malloc((size_t)size);CHECK(wire!=NULL);
  CHECK(listdemo_bytes_save(NULL,locked,wire,size)==size);need=listdemo_bytes_load_measure(wire,size);CHECK(need>100000 && need<101000);
- region=(uint8_t *)malloc((size_t)need);CHECK(region!=NULL);locked=listdemo_bytes_load(region,need,wire,size,&report);
+ region=(uint8_t *)malloc((size_t)need);CHECK(region!=NULL);locked=listdemo_bytes_load_tolerant(region,need,wire,size,&report);
  CHECK(locked!=NULL && !report.malformed && !report.clamped && locked->data.count==100000);
  for(i=0;i<100000;i++) {CHECK(*listdemo_bytes_data_at(&locked->data,i)==(uint8_t)i);}
  free(region);free(wire);listdemo_bytes_builder_shutdown(&builder);return 1;

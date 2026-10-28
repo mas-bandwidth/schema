@@ -281,7 +281,7 @@ int main(void)
         if (path == 1) { T08_REHASH(file); }
         memset(&back, 0x5A, sizeof(back));
         memset(&r, 0, sizeof(r));
-        CHECK(root_fixed_load(&back, 1, file, need, plan, 4096, NULL, &r) == 1);
+        CHECK(root_fixed_load_tolerant(&back, 1, file, need, plan, 4096, NULL, &r) == 1);
         CHECK(!r.refused && !r.malformed && r.clamped == 0);
         CHECK(back.pick.type == 2);
         CHECK(back.pick.as.p.label_length == 4 && memcmp(back.pick.as.p.label, "arm2", 5) == 0);
@@ -367,7 +367,7 @@ int main(void)
             if (poison == 1) { T08_BODY(file)[OUTER_AT] = 2; }
             memset(&back, 0xAA, sizeof(back));
             memset(&r, 0, sizeof(r));
-            CHECK(root_fixed_load(&back, 1, file, need, plan, 4096, NULL, &r) == 1);
+            CHECK(root_fixed_load_tolerant(&back, 1, file, need, plan, 4096, NULL, &r) == 1);
             CHECK(!r.refused && !r.malformed);
             if (poison == 0)
             {
@@ -503,12 +503,12 @@ int main(void)
                    identity plan carries the chain, a stranger's two-lane plan
                    does not, and the reference's name for it is
                    layout_record_too_large (§5.8 row 6). */
-                if (root_fixed_load(&back, 1, file, need, plan, 1 << 16, NULL, &r) != -1 ||
+                if (root_fixed_load_tolerant(&back, 1, file, need, plan, 1 << 16, NULL, &r) != -1 ||
                     !r.refused || r.malformed || r.reason != SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE)
                     { fprintf(stderr, "path %%d poison %%d: the compiled plan did not refuse the third nested union by name (refused=%%d reason=%%d)\n", path, poison, (int) r.refused, (int) r.reason); return 1; }
                 continue;
             }
-            if (root_fixed_load(&back, 1, file, need, plan, 1 << 16, NULL, &r) != 1)
+            if (root_fixed_load_tolerant(&back, 1, file, need, plan, 1 << 16, NULL, &r) != 1)
                 { fprintf(stderr, "path %%d poison %%d: the read refused (reason %%d): the chain is bounded by something other than the layout's 64\n", path, poison, (int) r.reason); return 1; }
             CHECK(!r.refused && !r.malformed);
             if (poison == 0)
@@ -686,7 +686,7 @@ func cT08GuardChain(t *testing.T) {
 	if ir.TableFixedWithinDepth(past.Tables["Root"]) {
 		t.Fatalf("%d nested unions are past the 64-entry depth bound", deepest+1)
 	}
-	if strings.Contains(t03Header(t, past), "root_fixed_load(") {
+	if strings.Contains(t03Header(t, past), "root_fixed_load_tolerant(") {
 		t.Fatalf("%d nested unions: the fixed form is emitted past the depth bound", deepest+1)
 	}
 	named := false
@@ -774,9 +774,9 @@ func cT08IdentityEqualsCompiled(t *testing.T) {
         memset(&a, 0x5A, sizeof(a));
         memset(&b, 0x5A, sizeof(b));
         memset(&r, 0, sizeof(r));
-        CHECK(root_fixed_load(&a, 1, first, need, plan, 4096, NULL, &r) == 1 && !r.refused);
+        CHECK(root_fixed_load_tolerant(&a, 1, first, need, plan, 4096, NULL, &r) == 1 && !r.refused);
         memset(&r, 0, sizeof(r));
-        CHECK(root_fixed_load(&b, 1, second, need, plan, 4096, NULL, &r) == 1 && !r.refused);
+        CHECK(root_fixed_load_tolerant(&b, 1, second, need, plan, 4096, NULL, &r) == 1 && !r.refused);
         if (memcmp(&a, &b, sizeof(a)) != 0)
             { fprintf(stderr, "case %d: the compiled plan's read differs from the identity plan's\n", k); return 1; }
     }
@@ -943,7 +943,7 @@ int main(void)
         if (path == 1) { T08_REHASH(file); }
         memset(&loaded, 0xAA, sizeof(loaded));
         memset(&report, 0, sizeof(report));
-        CHECK(held_fixed_load(&loaded, 1, file, need, plan, 4096, NULL, &report) == 1);
+        CHECK(held_fixed_load_tolerant(&loaded, 1, file, need, plan, 4096, NULL, &report) == 1);
         CHECK(!report.malformed && !report.refused && report.clamped == 0);
         CHECK(held_fixed_save(&loaded, 1, second, (int64_t) sizeof(second)) == need);
         if (memcmp(first, second, (size_t) need) != 0)
@@ -1045,7 +1045,7 @@ int main(void)
                 if (p < 6) { hit[at] = poison[p]; } else { hit[at] ^= (uint8_t) (1u << (p - 6)); }
                 memset(&back, 0x5A, sizeof(back));
                 memset(&r, 0, sizeof(r));
-                n = host_fixed_load(&back, 1, hit, need, plan, 4096, NULL, &r);
+                n = host_fixed_load_tolerant(&back, 1, hit, need, plan, 4096, NULL, &r);
                 if (n < 0)
                 {
                     /* A REFUSAL BY NAME, or A MALFORMED READ — exactly one. */
@@ -1111,7 +1111,7 @@ int main(void)
                 if (p < 6) { hit[at] = poison[p]; } else { hit[at] ^= (uint8_t) (1u << (p - 6)); }
                 memset(&back, 0x5A, sizeof(back));
                 memset(&r, 0, sizeof(r));
-                n = root_fixed_load(&back, 1, hit, need, plan, 4096, NULL, &r);
+                n = root_fixed_load_tolerant(&back, 1, hit, need, plan, 4096, NULL, &r);
                 if (n < 0)
                 {
                     if (r.refused == r.malformed || (r.refused && r.reason == 0))
@@ -1186,7 +1186,7 @@ int main(void)
     /* (2) the loader refuses: Fxold locks no lineage entry for Fxnew's hash. */
     memset(&back, 0x5A, sizeof(back));
     memset(&r, 0, sizeof(r));
-    CHECK(fxold_fixed_load(&back, 1, w2, need, plan, 1024, NULL, &r) == -1);
+    CHECK(fxold_fixed_load_tolerant(&back, 1, w2, need, plan, 1024, NULL, &r) == -1);
     CHECK(r.refused && r.reason == SCHEMA_TABLE_LAYOUT_NEWER);
     CHECK(!r.malformed && r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && r.widened == 0);
 
@@ -1207,7 +1207,7 @@ int main(void)
     CHECK(fxold_fixed_save(&one, 1, w1, (int64_t)sizeof(w1)) == need);
     memset(&back, 0x5A, sizeof(back));
     memset(&r, 0, sizeof(r));
-    CHECK(fxold_fixed_load(&back, 1, w1, need, plan, 1024, NULL, &r) == 1);
+    CHECK(fxold_fixed_load_tolerant(&back, 1, w1, need, plan, 1024, NULL, &r) == 1);
     CHECK(back.renamed == 321 && back.narrow == 40000 && back.keep == 4242);
     return 0;
 }

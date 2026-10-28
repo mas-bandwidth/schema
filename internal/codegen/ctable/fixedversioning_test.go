@@ -877,7 +877,7 @@ int main( void )
 %s
     return 0;
 }
-`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load", body)
+`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load_tolerant", body)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}

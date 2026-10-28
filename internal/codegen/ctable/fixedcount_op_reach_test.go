@@ -102,7 +102,7 @@ int main(void)
 
     memset(&back, 0, sizeof(back));
     memset(&r, 0, sizeof(r));
-    n = root_fixed_load(&back, 1, file, len, plan, 4096, NULL, &r);
+    n = root_fixed_load_tolerant(&back, 1, file, len, plan, 4096, NULL, &r);
     if (n != -1) { fprintf(stderr, "count-op: loaded, want a refusal\n"); return 1; }
     if (!r.refused) { fprintf(stderr, "count-op: the read failed without a named refusal\n"); return 1; }
     if (r.reason != SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE) { fprintf(stderr, "count-op: reason %d, want record-too-large\n", (int) r.reason); return 1; }

@@ -37,7 +37,7 @@ void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
     tblfx2_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx2_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "older writer: one record" );
     fixed_check( back.keep == 4242u, "older writer: an unmoved field" );
     fixed_check( back.narrow == 40000u, "WIDENED: uint16 into uint32, exactly" );
@@ -142,7 +142,7 @@ void fixed_fx2_probe( const uint8_t * data, int64_t bytes )
     tblfx2_table_report_t r;
     memset( &r, 0, sizeof( r ) );
     tblfx2_fx_root_reset( &back );
-    (void) tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    (void) tblfx2_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
 }
 
 /* THE SAME NUMBERS THROUGH A COMPILED PLAN: the pass runs over STORAGE, so one
@@ -153,7 +153,7 @@ void fixed_fx2_bounds( const uint8_t * data, int64_t bytes )
     tblfx2_fx_root_t back;
     tblfx2_table_report_t r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds, compiled: the record reads" );
     fixed_check( back.renamed_to == 1000, "C RANGE, compiled: the same clamp through a compiled plan" );
     fixed_check( r.clamped == 1, "C RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
@@ -181,13 +181,13 @@ void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
     tblfx2_table_fixed_plan_cache_init( &cache, g_cache_slab, CacheStride );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: first foreign load" );
     fixed_check( cache.compiles == 1, "cache: first foreign load compiled once" );
     fixed_check( cache.used == 1 && cache.slots[0].made == 1, "cache: the slot is marked made" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: second foreign load" );
     fixed_check( cache.compiles == 1, "cache: two loads of the same layout compiled once" );
 
@@ -200,7 +200,7 @@ void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
     tblfx2_table_fixed_put64( mutated + TBLFX2_K_TABLE_FIXED_HASH_AT, hashB );
     tblfx2_table_fixed_put64( mutated + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes, hashB );
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, mutated, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, mutated, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: a different hash compiles once more" );
     fixed_check( cache.compiles == 2, "cache: the third load compiled once more" );
     fixed_check( cache.used == 2 && cache.slots[1].made == 1, "cache: the second slot is marked made" );
@@ -211,7 +211,7 @@ void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
     two.keep = 1;
     fixed_check( tblfx2_fx_root_fixed_save( &two, 1, own, need ) == need, "cache: FX2 save" );
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, own, need, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, own, need, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: identity load" );
     fixed_check( cache.compiles == 2, "cache: identity never increments the compile counter" );
 }

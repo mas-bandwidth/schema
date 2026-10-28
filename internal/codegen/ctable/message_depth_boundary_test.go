@@ -282,7 +282,7 @@ static void check_case(const char * name, const TableVocabulary * vocab, const u
     int64_t count = 2;
     TableReport rep;
     memset(&rep, 0, sizeof(rep));
-    int ok = root_load_messages(values, &count, vocab, wire, len, &rep);
+    int ok = root_load_messages_tolerant(values, &count, vocab, wire, len, &rep);
     if (expect_ok) {
         if (ok && count == 2 && !rep.malformed && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
             printf("PASS %s\n", name);

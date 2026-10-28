@@ -34,7 +34,7 @@ func TestCFixedFormRaggedTail(t *testing.T) {
 	newer := cReadSchema(t, "VNEW_field_append")
 	file := filepath.Join(corpus, "new_field_append.bin")
 	snake := ir.RustSnake(cFixedRootName(t, cUnitOf(t, newer)))
-	load := snake + "_fixed_load"
+	load := snake + "_fixed_load_tolerant"
 	recordBytes := snake + "_fixed_record_bytes"
 
 	body := fmt.Sprintf(`

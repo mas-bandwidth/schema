@@ -61,7 +61,7 @@ const cT01Macros = `
 func cT01Body(t *testing.T, reader, body string) string {
 	t.Helper()
 	snake := ir.RustSnake(cFixedRootName(t, cUnitOf(t, reader)))
-	return strings.NewReplacer("@LOAD@", snake+"_fixed_load", "@SNAKE@", snake).Replace(cT01Macros + body)
+	return strings.NewReplacer("@LOAD@", snake+"_fixed_load_tolerant", "@SNAKE@", snake).Replace(cT01Macros + body)
 }
 
 // cT01Forge writes a forged file and returns its path.

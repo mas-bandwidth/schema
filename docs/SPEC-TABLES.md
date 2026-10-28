@@ -10214,8 +10214,9 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   (`LoadRetain`, `LoadRetainBuilder`, `LoadRetainMessages`, §6.6) and the
   cook's and block's `Open` are outside this rule today and keep their
   behaviour: a named follow-on.
-  **Go is first and the only target that carries the rule**: the citation on
-  its emitter is this bullet. Every other target keeps the behaviour it has,
+  **Go, C++ and C carry the rule** (Go first; C++'s plain `LoadMessages` is
+  still its tolerant read): the citation on each emitter is this bullet.
+  Every other target keeps the behaviour it has,
   its plain name tolerant and its strict read (where it has one) separate,
   until its emitter takes the rule; no other emitter is edited by it.
 

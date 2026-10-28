@@ -95,7 +95,7 @@ void fixed_fx1_slack( void )
                  "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
 
     memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load_tolerant( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "C slack: the record reads" );
     fixed_check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
                  "C slack: the used length reads, and the buffer terminates at it" );
@@ -122,7 +122,7 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
     tblfx1_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "same schema: one record" );
     fixed_check( back.keep == 4242u && back.narrow == 40000u && back.renamed == 321 && back.gone == 654,
                  "same schema: the scalars" );
@@ -147,7 +147,7 @@ static void form_case( const char * name, const uint8_t * file, int64_t bytes,
     memset( &after, 0xAB, sizeof( after ) );
     memset( &r, 0, sizeof( r ) );
 
-    got = tblfx1_fx_root_fixed_load( &after, 1, file, bytes, g_plan, PlanCapacity, NULL, &r );
+    got = tblfx1_fx_root_fixed_load_tolerant( &after, 1, file, bytes, g_plan, PlanCapacity, NULL, &r );
 
     snprintf( why, sizeof( why ), "C FORM HEADER: %s returns a refusal, never a record", name );
     fixed_check( got < 0, why );
@@ -211,7 +211,7 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
     tblfx1_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx1_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "newer writer: one record" );
     fixed_check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
     fixed_check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
@@ -253,7 +253,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     const uint8_t * body;
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblfx1_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds: the record reads" );
     fixed_check( back.renamed == 1000, "C RANGE: a value past max lands at max" );
     fixed_check( back.gone == 0, "C RANGE: a value under min lands at min" );
@@ -357,7 +357,7 @@ void fixed_fx1_text_content( void )
         fixed_check( n == tblfx1_fx_root_fixed_measure( 1 ), "C text content: the record saves" );
 
         memset( &r, 0, sizeof( r ) );
-        fixed_check( tblfx1_fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
+        fixed_check( tblfx1_fx_root_fixed_load_tolerant( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
                      "C text content: ill-formed content refuses the read" );
         fixed_check( r.refused && !r.malformed, cases[k].what );
         fixed_check( r.reason == SCHEMA_TBLFX1_TABLE_TEXT_ILL_FORMED,
@@ -393,7 +393,7 @@ void fixed_fx1_text_content( void )
         v.label_length = 5;
         n = tblfx1_fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
         memset( &r, 0, sizeof( r ) );
-        fixed_check( tblfx1_fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
+        fixed_check( tblfx1_fx_root_fixed_load_tolerant( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
                      "C text content: the well-formed record reads" );
         fixed_check( back.label_length == 5 && memcmp( back.label, "\xC3\xA9t\xC3\xA9", 5 ) == 0,
                      "C TEXT CONTENT: well-formed multi-byte UTF-8 rides whole" );
