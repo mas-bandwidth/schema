@@ -1891,7 +1891,7 @@ jobs:
       # conformance-negative-control-lua drives the Lua driver, which runs
       # under the pinned interpreter (make/lua.mk's dist-lua)
       - name: install the Lua pin
-        if: matrix.name == 'base-conformance'
+        if: matrix.name == 'base-conformance-2'
         run: make dist-lua
 
       - name: build bin/schema and the generated tree once
