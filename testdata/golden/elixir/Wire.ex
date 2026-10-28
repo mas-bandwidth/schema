@@ -34,10 +34,6 @@ defmodule Example.Weapon do
   def from_int(v) when is_integer(v) and v > 3 and v <= 15, do: {:ok, v}
   def from_int(_), do: :error
 
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 3
-
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()
   def max, do: 15
@@ -158,10 +154,6 @@ defmodule Example.ProbeShapeType do
   def from_int(1), do: {:ok, :ring}
   def from_int(2), do: {:ok, :slab}
   def from_int(_), do: :error
-
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 2
 
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()

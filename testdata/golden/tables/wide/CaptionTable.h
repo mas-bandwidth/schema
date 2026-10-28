@@ -4145,7 +4145,6 @@ enum class BodyType : uint8_t {
     Wide = 1,
     Narrow = 2,
     Tally = 3,
-    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
 

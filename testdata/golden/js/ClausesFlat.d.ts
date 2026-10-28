@@ -8,7 +8,7 @@
 
 import type { ArrEleven, ArrNested, ArrTri3, Eleven, EmptyA, EmptyB, EmptyUnion, F13, HoldsEmptyUnion, Sole, Strs, Tri3, W1, W13, W17, W26, W50, W52 } from "./Clauses.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteW13Flat(view: DataView, value: W13): number;
 export declare function ReadW13Flat(view: DataView, numBits: number, value: W13): boolean;

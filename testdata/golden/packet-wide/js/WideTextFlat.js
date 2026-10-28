@@ -19,7 +19,7 @@
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
-// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load
+// FlatReadSlack = 8 bytes past the payload — 64-bit windows load
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
 
@@ -29,7 +29,7 @@
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
 // interior null (SPEC §4.7). Every string field's read calls it; nothing
@@ -136,7 +136,7 @@ function writeWideSevenFlatChecked(view, value) {
 export const WriteWideSevenFlat = PRODUCTION ? writeWideSevenFlatProduction : writeWideSevenFlatChecked;
 
 // ReadWideSevenFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadWideSevenFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 3 > numBits) return false;
@@ -229,7 +229,7 @@ function writeWideFourFlatChecked(view, value) {
 export const WriteWideFourFlat = PRODUCTION ? writeWideFourFlatProduction : writeWideFourFlatChecked;
 
 // ReadWideFourFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadWideFourFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 3 > numBits) return false;
@@ -347,7 +347,7 @@ function writeNarrowFifteenFlatChecked(view, value) {
 export const WriteNarrowFifteenFlat = PRODUCTION ? writeNarrowFifteenFlatProduction : writeNarrowFifteenFlatChecked;
 
 // ReadNarrowFifteenFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadNarrowFifteenFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 4 > numBits) {
@@ -441,7 +441,7 @@ function writeWideInteropFlatChecked(view, value) {
 export const WriteWideInteropFlat = PRODUCTION ? writeWideInteropFlatProduction : writeWideInteropFlatChecked;
 
 // ReadWideInteropFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadWideInteropFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 3 > numBits) return false;

@@ -15,7 +15,7 @@ const SC = new DataView(new ArrayBuffer(8));
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
 // interior null (SPEC §4.7). Every string field's read calls it; nothing
@@ -85,7 +85,7 @@ export function WriteArmsAgreeFlat(view, value) {
 }
 
 // ReadArmsAgreeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArmsAgreeFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (24 > numBits) {
@@ -159,7 +159,7 @@ export function WriteArmsDisagreeFlat(view, value) {
 }
 
 // ReadArmsDisagreeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArmsDisagreeFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (6 > numBits) {
@@ -247,7 +247,7 @@ export function WriteArmEmptyFlat(view, value) {
 }
 
 // ReadArmEmptyFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArmEmptyFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (6 > numBits) {
@@ -354,7 +354,7 @@ export function WriteArmsNestedFlat(view, value) {
 }
 
 // ReadArmsNestedFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArmsNestedFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (4 > numBits) {
@@ -590,7 +590,7 @@ function writeArmAlignFlatChecked(view, value) {
 export const WriteArmAlignFlat = PRODUCTION ? writeArmAlignFlatProduction : writeArmAlignFlatChecked;
 
 // ReadArmAlignFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArmAlignFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (6 > numBits) {
@@ -783,7 +783,7 @@ function writeArmArrayFlatChecked(view, value) {
 export const WriteArmArrayFlat = PRODUCTION ? writeArmArrayFlatProduction : writeArmArrayFlatChecked;
 
 // ReadArmArrayFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArmArrayFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (6 > numBits) {
@@ -862,7 +862,7 @@ export function WriteNarrowFlat(view, value) {
 }
 
 // ReadNarrowFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadNarrowFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (3 > numBits) {
@@ -891,7 +891,7 @@ export function WriteWideFlat(view, value) {
 }
 
 // ReadWideFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadWideFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -1012,7 +1012,7 @@ function writeUnevenFlatChecked(view, value) {
 export const WriteUnevenFlat = PRODUCTION ? writeUnevenFlatProduction : writeUnevenFlatChecked;
 
 // ReadUnevenFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadUnevenFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -1192,7 +1192,7 @@ function writeHoldsUnevenFlatChecked(view, value) {
 export const WriteHoldsUnevenFlat = PRODUCTION ? writeHoldsUnevenFlatProduction : writeHoldsUnevenFlatChecked;
 
 // ReadHoldsUnevenFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadHoldsUnevenFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -1415,7 +1415,7 @@ function writeArrUnevenFlatChecked(view, value) {
 export const WriteArrUnevenFlat = PRODUCTION ? writeArrUnevenFlatProduction : writeArrUnevenFlatChecked;
 
 // ReadArrUnevenFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArrUnevenFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -1699,7 +1699,7 @@ function writeRegainAfterAlignFlatChecked(view, value) {
 export const WriteRegainAfterAlignFlat = PRODUCTION ? writeRegainAfterAlignFlatProduction : writeRegainAfterAlignFlatChecked;
 
 // ReadRegainAfterAlignFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadRegainAfterAlignFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (5 > numBits) {

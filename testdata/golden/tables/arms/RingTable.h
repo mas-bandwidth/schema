@@ -7595,7 +7595,6 @@ enum class SlotType : uint8_t {
     None = 0,
     Vertex = 1,
     Plain = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 
@@ -7645,7 +7644,6 @@ enum class SlotsType : uint8_t {
     None = 0,
     Many = 1,
     Plain = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 

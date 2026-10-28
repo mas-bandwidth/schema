@@ -133,7 +133,6 @@ typedef uint8_t example_uneven_type_t;
 #define EXAMPLE_UNEVEN_TYPE_NONE 0
 #define EXAMPLE_UNEVEN_TYPE_NARROW 1
 #define EXAMPLE_UNEVEN_TYPE_WIDE 2
-#define EXAMPLE_UNEVEN_TYPE_COUNT 2
 #define EXAMPLE_UNEVEN_TYPE_MAX 2
 
 /* Debug/log name for any UnevenType value, out-of-set included. */

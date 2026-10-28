@@ -8,7 +8,7 @@
 
 import type { RenderBlock, RenderSprite } from "./Render.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteRenderSpriteFlat(view: DataView, value: RenderSprite): number;
 export declare function ReadRenderSpriteFlat(view: DataView, numBits: number, value: RenderSprite): boolean;

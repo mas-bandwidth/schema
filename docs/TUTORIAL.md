@@ -355,28 +355,26 @@ enum class ShipType : uint8_t {
     Fighter = 1,
     Freighter = 2,
     Corvette = 3,
-    Count = 3, // the declared variant count (SPEC §4.2)
     Max = 3, // the exported extent (SPEC §4.2)
 };
 ```
 
-Three members you did not declare.
+Two members you did not declare.
 
 **Every enum has an implicit `None = 0`.** You never assign values, there is
 no `Fighter = 5` in this language, and variants pack densely from 1. Zero is
 reserved for "no value", so a zero-initialized enum field is the null, in
 band, and you never need a separate has-flag beside an enum field.
 
-**`Count` is the number of variants you declared**, `None` excluded. A loop
-over the real ship types runs `1` to `Count` inclusive.
-
 **`Max` is the enum's extent**, the highest wire-legal value, and the same
 number you can name in a schema expression as `ShipType.Max`. Size storage and
-keyed arrays by `Max`. Here `Count` and `Max` are both 3. They stop being the
-same number the moment you declare headroom, at the end of this part, and that
-difference is what the two words are for.
+keyed arrays by `Max`. Because `None` takes 0 and the variants pack densely
+from 1, `Max` is also the number of variants you declared, so a loop over the
+real ship types runs `1` to `Max` inclusive. One number, one name: an enum
+exports no `Count`. The one way `Max` grows past the declared variants is
+headroom, at the end of this part.
 
-Try to declare either name yourself and the compiler refuses. `bad/Bad.schema`:
+Try to declare `None` or `Max` yourself and the compiler refuses. `bad/Bad.schema`:
 
 ```
 package bad
@@ -485,8 +483,9 @@ schema: 1 error(s)
 
 There is no implicit `None`, because the empty mask is `0` and needs no name.
 The declared count is exported as `SystemFlagsCount` and is usable in a schema
-expression as `SystemFlags.Count`, the same word an enum carries meaning the
-same thing.
+expression as `SystemFlags.Count`. It is the flags counterpart of an enum's
+`Max`: a flags declaration has a `Count` and no `Max`, an enum a `Max` and no
+`Count`.
 
 There is no `SystemFlags.Max`. Ask for it in `bad/Bad.schema`:
 
@@ -537,14 +536,14 @@ enum class Weapon : uint8_t {
     None = 0,
     Laser = 1,
     Missile = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 15, // the exported extent (SPEC §4.2)
 };
 ```
 
 The wire is now 4 bits, room for 15 variants, and stays 4 bits as you add them.
-This is where `Count` and `Max` part company: 2 variants declared, an extent of
-15. Size a keyed array by `Max` and loop the real variants by `Count`. A read
+This is where `Max` and the declared variants part company: 2 variants
+declared, an extent of 15. Size a keyed array by `Max`, which covers every
+value a read can deliver. A read
 accepts any value in `[0, 15]`, values you have not named included, so a
 `switch` over a headroom enum keeps a `default`.
 
@@ -557,7 +556,6 @@ opens on the next line, as `Weapon` shows.
 ```cpp
 enum class Pending : uint8_t {
     None = 0,
-    Count = 0, // the declared variant count (SPEC §4.2)
     Max = 0, // the exported extent (SPEC §4.2)
 };
 ```
@@ -581,7 +579,7 @@ int main()
     printf( "%lld players at %lld Hz, %f s per tick\n",
             (long long) MaxPlayers, (long long) TickRate, TickInterval );
 
-    for ( int i = 1; i <= (int) ShipType::Count; i++ )
+    for ( int i = 1; i <= (int) ShipType::Max; i++ )
     {
         printf( "ship type %d is %s\n", i, EnumName( (ShipType) i ) );
     }
@@ -589,8 +587,8 @@ int main()
     SystemFlags mask = SystemFlags_Shields | SystemFlags_WarpDrive;
     char names[SystemFlagsNamesMax];
     printf( "systems: %s\n", FlagNamesSystemFlags( mask, names, sizeof( names ) ) );
-    printf( "weapon extent %d, declared %d\n", (int) Weapon::Max, (int) Weapon::Count );
-    printf( "pending extent %d, declared %d\n", (int) Pending::Max, (int) Pending::Count );
+    printf( "weapon extent %d\n", (int) Weapon::Max );
+    printf( "pending extent %d\n", (int) Pending::Max );
     return 0;
 }
 ```
@@ -603,8 +601,8 @@ ship type 1 is Fighter
 ship type 2 is Freighter
 ship type 3 is Corvette
 systems: Shields|WarpDrive
-weapon extent 15, declared 2
-pending extent 0, declared 0
+weapon extent 15
+pending extent 0
 ```
 
 The unit's id moved when you added those declarations, as promised in Part 1:
@@ -1478,7 +1476,6 @@ enum class WeaponFireType : uint8_t {
     None = 0,
     Laser = 1,
     Missile = 2,
-    Count = 2, // the declared variant count (SPEC §4.2)
     Max = 2, // the exported extent (SPEC §4.2)
 };
 
@@ -1500,13 +1497,13 @@ Like the enum, **every union has an implicit `None = 0`**, the empty union, in
 band. A default-constructed union carries "nothing" without a has-flag, and
 a stream of unions can end on `None`. The program below prints that tag.
 
-The tag enum is a full enum. It carries `None`, the variants, `Count` and
-`Max`, and the debug-name function beside them, so `EnumName( first.fire.fire.type )`
+The tag enum is a full enum. It carries `None`, the variants and `Max`, and the debug-name function beside them, so `EnumName( first.fire.fire.type )`
 compiles and prints `"Laser"`. It is the same call a declared enum takes, found
 by lookup the same way. Log a tag with it. The switch the program below writes is
 there to reach the payload, which a name cannot do. Because the enum carries
-`Count`, `count` is a refused arm name on every union, alongside `none` and
-`max`.
+`None` and `Max`, `none` and `max` are refused arm names on every union.
+`count` is an ordinary arm name: a tag enum carries no `Count`, as a declared
+enum carries none.
 
 To select an arm in C++, construct the payload and set its tag:
 

@@ -42,7 +42,6 @@ extension type const DriveMode(int _value) implements int {
   static const DriveMode cruise = DriveMode(1);
   static const DriveMode warp = DriveMode(2);
   static const DriveMode ludicrous = DriveMode(3);
-  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 3; // the exported extent (SPEC §4.2)
 }
 

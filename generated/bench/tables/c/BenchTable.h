@@ -45,7 +45,6 @@ typedef uint8_t benchtable_table_weapon_t;
 #define BENCHTABLE_TABLE_WEAPON_TURRET 13
 #define BENCHTABLE_TABLE_WEAPON_DRONE 14
 #define BENCHTABLE_TABLE_WEAPON_REPAIR 15
-#define BENCHTABLE_TABLE_WEAPON_COUNT 15
 #define BENCHTABLE_TABLE_WEAPON_MAX 15
 
 /* Debug/log name for any TableWeapon value, out-of-set included. */
@@ -201,7 +200,6 @@ typedef uint8_t benchtable_table_event_type_t;
 #define BENCHTABLE_TABLE_EVENT_TYPE_HIT 1
 #define BENCHTABLE_TABLE_EVENT_TYPE_CHAT 2
 #define BENCHTABLE_TABLE_EVENT_TYPE_PICKUP 3
-#define BENCHTABLE_TABLE_EVENT_TYPE_COUNT 3
 #define BENCHTABLE_TABLE_EVENT_TYPE_MAX 3
 
 /* Debug/log name for any TableEventType value, out-of-set included. */

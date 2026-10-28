@@ -19,7 +19,7 @@
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
-// FLAT_READ_SLACK = 8 bytes past the payload — 64-bit windows load
+// FlatReadSlack = 8 bytes past the payload — 64-bit windows load
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
 
@@ -34,7 +34,7 @@ const SC = new DataView(new ArrayBuffer(8));
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
 // interior null (SPEC §4.7). Every string field's read calls it; nothing
@@ -262,7 +262,7 @@ function writeBenchPacketFlatChecked(view, value) {
 export const WriteBenchPacketFlat = PRODUCTION ? writeBenchPacketFlatProduction : writeBenchPacketFlatChecked;
 
 // ReadBenchPacketFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadBenchPacketFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -421,7 +421,7 @@ function writeBenchIntsFlatChecked(view, value) {
 export const WriteBenchIntsFlat = PRODUCTION ? writeBenchIntsFlatProduction : writeBenchIntsFlatChecked;
 
 // ReadBenchIntsFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadBenchIntsFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (110 > numBits) {
@@ -500,7 +500,7 @@ export function WriteBenchBitsFlat(view, value) {
 }
 
 // ReadBenchBitsFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadBenchBitsFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -615,7 +615,7 @@ function writeMixedEntityFlatChecked(view, value) {
 export const WriteMixedEntityFlat = PRODUCTION ? writeMixedEntityFlatProduction : writeMixedEntityFlatChecked;
 
 // ReadMixedEntityFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadMixedEntityFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (135 > numBits) {
@@ -694,7 +694,7 @@ function writeMixedStatFlatChecked(view, value) {
 export const WriteMixedStatFlat = PRODUCTION ? writeMixedStatFlatProduction : writeMixedStatFlatChecked;
 
 // ReadMixedStatFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadMixedStatFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (18 > numBits) {
@@ -736,7 +736,7 @@ function writeMixedHitEventFlatChecked(view, value) {
 export const WriteMixedHitEventFlat = PRODUCTION ? writeMixedHitEventFlatProduction : writeMixedHitEventFlatChecked;
 
 // ReadMixedHitEventFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadMixedHitEventFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (28 > numBits) {
@@ -779,7 +779,7 @@ function writeMixedChatEventFlatChecked(view, value) {
 export const WriteMixedChatEventFlat = PRODUCTION ? writeMixedChatEventFlatProduction : writeMixedChatEventFlatChecked;
 
 // ReadMixedChatEventFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadMixedChatEventFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (14 > numBits) {
@@ -818,7 +818,7 @@ function writeMixedPickupEventFlatChecked(view, value) {
 export const WriteMixedPickupEventFlat = PRODUCTION ? writeMixedPickupEventFlatProduction : writeMixedPickupEventFlatChecked;
 
 // ReadMixedPickupEventFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadMixedPickupEventFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (18 > numBits) {
@@ -951,7 +951,7 @@ function writeMixedEventFlatChecked(view, value) {
 export const WriteMixedEventFlat = PRODUCTION ? writeMixedEventFlatProduction : writeMixedEventFlatChecked;
 
 // ReadMixedEventFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadMixedEventFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (2 > numBits) {
@@ -2055,7 +2055,7 @@ function writeBenchMixedFlatChecked(view, value) {
 export const WriteBenchMixedFlat = PRODUCTION ? writeBenchMixedFlatProduction : writeBenchMixedFlatChecked;
 
 // ReadBenchMixedFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadBenchMixedFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, nw = 0, nl = 0, br = 0;
   let bg = 0n;

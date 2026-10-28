@@ -8,7 +8,7 @@
 
 import type { ArmAlign, ArmArray, ArmEmpty, ArmsAgree, ArmsDisagree, ArmsNested, ArrUneven, HoldsUneven, Narrow, RegainAfterAlign, Uneven, Wide } from "./Joins.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteArmsAgreeFlat(view: DataView, value: ArmsAgree): number;
 export declare function ReadArmsAgreeFlat(view: DataView, numBits: number, value: ArmsAgree): boolean;

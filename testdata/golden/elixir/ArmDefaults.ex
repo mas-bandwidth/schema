@@ -41,10 +41,6 @@ defmodule Example.DefaultChoiceType do
   def from_int(2), do: {:ok, :second}
   def from_int(_), do: :error
 
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 2
-
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()
   def max, do: 2
@@ -109,10 +105,6 @@ defmodule Example.DefaultBulkChoiceType do
   def from_int(1), do: {:ok, :first}
   def from_int(2), do: {:ok, :second}
   def from_int(_), do: :error
-
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 2
 
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()

@@ -15,7 +15,7 @@ const SC = new DataView(new ArrayBuffer(8));
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // ---- type Vec3: the flat codec ----
 
@@ -30,7 +30,7 @@ export function WriteVec3Flat(view, value) {
 }
 
 // ReadVec3Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadVec3Flat(view, numBits, value) {
   if (192 > numBits) {
     return false;
@@ -55,7 +55,7 @@ export function WriteQuatFlat(view, value) {
 }
 
 // ReadQuatFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadQuatFlat(view, numBits, value) {
   if (256 > numBits) {
     return false;
@@ -92,7 +92,7 @@ function writeHandleFlatChecked(view, value) {
 export const WriteHandleFlat = PRODUCTION ? writeHandleFlatProduction : writeHandleFlatChecked;
 
 // ReadHandleFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadHandleFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (22 > numBits) {
@@ -152,7 +152,7 @@ function writeQuantizedPositionFlatChecked(view, value) {
 export const WriteQuantizedPositionFlat = PRODUCTION ? writeQuantizedPositionFlatProduction : writeQuantizedPositionFlatChecked;
 
 // ReadQuantizedPositionFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadQuantizedPositionFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (75 > numBits) {
@@ -222,7 +222,7 @@ function writeQuantizedVelocityFlatChecked(view, value) {
 export const WriteQuantizedVelocityFlat = PRODUCTION ? writeQuantizedVelocityFlatProduction : writeQuantizedVelocityFlatChecked;
 
 // ReadQuantizedVelocityFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadQuantizedVelocityFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (69 > numBits) {
@@ -289,7 +289,7 @@ function writeQuantizedRotationFlatChecked(view, value) {
 export const WriteQuantizedRotationFlat = PRODUCTION ? writeQuantizedRotationFlatProduction : writeQuantizedRotationFlatChecked;
 
 // ReadQuantizedRotationFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadQuantizedRotationFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (48 > numBits) {
@@ -460,7 +460,7 @@ export function WriteRigidBodyFlat(view, value) {
 }
 
 // ReadRigidBodyFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadRigidBodyFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (449 > numBits) {
@@ -673,7 +673,7 @@ export function WriteInputFlat(view, value) {
 }
 
 // ReadInputFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadInputFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (168 > numBits) {
@@ -1033,7 +1033,7 @@ function writeInputPacketFlatChecked(view, value) {
 export const WriteInputPacketFlat = PRODUCTION ? writeInputPacketFlatProduction : writeInputPacketFlatChecked;
 
 // ReadInputPacketFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadInputPacketFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -1328,7 +1328,7 @@ function writeShipCreateFlatChecked(view, value) {
 export const WriteShipCreateFlat = PRODUCTION ? writeShipCreateFlatProduction : writeShipCreateFlatChecked;
 
 // ReadShipCreateFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadShipCreateFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (196 > numBits) {
@@ -1470,7 +1470,7 @@ function writeExpressionProbeFlatChecked(view, value) {
 export const WriteExpressionProbeFlat = PRODUCTION ? writeExpressionProbeFlatProduction : writeExpressionProbeFlatChecked;
 
 // ReadExpressionProbeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadExpressionProbeFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (16 > numBits) {
@@ -1564,7 +1564,7 @@ function writeExtremeProbeFlatChecked(view, value) {
 export const WriteExtremeProbeFlat = PRODUCTION ? writeExtremeProbeFlatProduction : writeExtremeProbeFlatChecked;
 
 // ReadExtremeProbeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadExtremeProbeFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -1687,7 +1687,7 @@ function writeExtremeRowFlatChecked(view, value) {
 export const WriteExtremeRowFlat = PRODUCTION ? writeExtremeRowFlatProduction : writeExtremeRowFlatChecked;
 
 // ReadExtremeRowFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadExtremeRowFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;

@@ -177,10 +177,14 @@ union Empty {}
 			}
 		}
 	}
-	for _, want := range []string{"Ping = 1", "Payload = 2", "Pong = 3", "Count = 3", "Max = 3"} {
+	for _, want := range []string{"Ping = 1", "Payload = 2", "Pong = 3", "Max = 3"} {
 		if !strings.Contains(string(files["Choice.h"]), want) {
 			t.Errorf("Choice.h lost a tag when omitting payload-free storage: %q", want)
 		}
+	}
+	// a tag enum exports Max and no Count (SPEC §4.2)
+	if strings.Contains(string(files["Choice.h"]), "Count = ") {
+		t.Errorf("Choice.h tag enum exports a Count: SPEC §4.2 gives it Max only")
 	}
 	for _, name := range []string{"ChoiceWire.h", "SignalsWire.h"} {
 		// Both void arms must remain explicit in both directions. Omitting

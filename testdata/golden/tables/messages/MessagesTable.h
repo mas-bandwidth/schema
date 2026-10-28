@@ -4151,7 +4151,6 @@ enum class OriginType : uint8_t {
     Script = 2,
     Pid = 3,
     Note = 4,
-    Count = 4, // the declared variant count (SPEC §4.2)
     Max = 4, // the exported extent (SPEC §4.2)
 };
 
@@ -4222,7 +4221,6 @@ enum class EditBodyType : uint8_t {
     Marks = 4,
     Blob = 5,
     Mode = 6,
-    Count = 6, // the declared variant count (SPEC §4.2)
     Max = 6, // the exported extent (SPEC §4.2)
 };
 
@@ -4317,7 +4315,6 @@ enum class ToolBodyType : uint8_t {
     Spans = 6,
     Origin = 7,
     Ack = 8,
-    Count = 8, // the declared variant count (SPEC §4.2)
     Max = 8, // the exported extent (SPEC §4.2)
 };
 

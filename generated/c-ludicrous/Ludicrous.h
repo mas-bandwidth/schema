@@ -35,7 +35,6 @@ typedef uint8_t ludicrous_drive_mode_t;
 #define LUDICROUS_DRIVE_MODE_CRUISE 1
 #define LUDICROUS_DRIVE_MODE_WARP 2
 #define LUDICROUS_DRIVE_MODE_LUDICROUS 3
-#define LUDICROUS_DRIVE_MODE_COUNT 3
 #define LUDICROUS_DRIVE_MODE_MAX 3
 
 /* Debug/log name for any DriveMode value, out-of-set included. */

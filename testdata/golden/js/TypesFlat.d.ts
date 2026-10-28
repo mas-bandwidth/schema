@@ -8,7 +8,7 @@
 
 import type { ExpressionProbe, ExtremeProbe, ExtremeRow, Handle, Input, InputPacket, QuantizedPosition, QuantizedRotation, QuantizedVelocity, Quat, RigidBody, ShipCreate, Vec3 } from "./Types.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteVec3Flat(view: DataView, value: Vec3): number;
 export declare function ReadVec3Flat(view: DataView, numBits: number, value: Vec3): boolean;

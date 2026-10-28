@@ -15,7 +15,7 @@ const SC = new DataView(new ArrayBuffer(8));
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
 // interior null (SPEC §4.7). Every string field's read calls it; nothing
@@ -122,7 +122,7 @@ function writeW13FlatChecked(view, value) {
 export const WriteW13Flat = PRODUCTION ? writeW13FlatProduction : writeW13FlatChecked;
 
 // ReadW13Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadW13Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (4 > numBits) {
@@ -207,7 +207,7 @@ function writeW17FlatChecked(view, value) {
 export const WriteW17Flat = PRODUCTION ? writeW17FlatProduction : writeW17FlatChecked;
 
 // ReadW17Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadW17Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (4 > numBits) {
@@ -292,7 +292,7 @@ function writeW26FlatChecked(view, value) {
 export const WriteW26Flat = PRODUCTION ? writeW26FlatProduction : writeW26FlatChecked;
 
 // ReadW26Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadW26Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (3 > numBits) {
@@ -377,7 +377,7 @@ function writeW1FlatChecked(view, value) {
 export const WriteW1Flat = PRODUCTION ? writeW1FlatProduction : writeW1FlatChecked;
 
 // ReadW1Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadW1Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (5 > numBits) {
@@ -482,7 +482,7 @@ function writeW52FlatChecked(view, value) {
 export const WriteW52Flat = PRODUCTION ? writeW52FlatProduction : writeW52FlatChecked;
 
 // ReadW52Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadW52Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -595,7 +595,7 @@ function writeW50FlatChecked(view, value) {
 export const WriteW50Flat = PRODUCTION ? writeW50FlatProduction : writeW50FlatChecked;
 
 // ReadW50Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadW50Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -681,7 +681,7 @@ function writeF13FlatChecked(view, value) {
 export const WriteF13Flat = PRODUCTION ? writeF13FlatProduction : writeF13FlatChecked;
 
 // ReadF13Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadF13Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (91 > numBits) {
@@ -713,7 +713,7 @@ export function WriteTri3Flat(view, value) {
 }
 
 // ReadTri3Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadTri3Flat(view, numBits, value) {
   let v = 0, out = 0;
   if (3 > numBits) {
@@ -782,7 +782,7 @@ function writeArrTri3FlatChecked(view, value) {
 export const WriteArrTri3Flat = PRODUCTION ? writeArrTri3FlatProduction : writeArrTri3FlatChecked;
 
 // ReadArrTri3Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArrTri3Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (4 > numBits) {
@@ -827,7 +827,7 @@ export function WriteElevenFlat(view, value) {
 }
 
 // ReadElevenFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadElevenFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (11 > numBits) {
@@ -867,7 +867,7 @@ export function WriteArrElevenFlat(view, value) {
 }
 
 // ReadArrElevenFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArrElevenFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (99 > numBits) {
@@ -899,7 +899,7 @@ export function WriteEmptyAFlat() {
 }
 
 // ReadEmptyAFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadEmptyAFlat() {
   return true;
 }
@@ -914,7 +914,7 @@ export function WriteEmptyBFlat() {
 }
 
 // ReadEmptyBFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadEmptyBFlat() {
   return true;
 }
@@ -966,7 +966,7 @@ function writeEmptyUnionFlatChecked(view, value) {
 export const WriteEmptyUnionFlat = PRODUCTION ? writeEmptyUnionFlatProduction : writeEmptyUnionFlatChecked;
 
 // ReadEmptyUnionFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadEmptyUnionFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (2 > numBits) {
@@ -1054,7 +1054,7 @@ function writeHoldsEmptyUnionFlatChecked(view, value) {
 export const WriteHoldsEmptyUnionFlat = PRODUCTION ? writeHoldsEmptyUnionFlatProduction : writeHoldsEmptyUnionFlatChecked;
 
 // ReadHoldsEmptyUnionFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadHoldsEmptyUnionFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (5 > numBits) {
@@ -1278,7 +1278,7 @@ function writeStrsFlatChecked(view, value) {
 export const WriteStrsFlat = PRODUCTION ? writeStrsFlatProduction : writeStrsFlatChecked;
 
 // ReadStrsFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadStrsFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (5 > numBits) {
@@ -1441,7 +1441,7 @@ function writeArrNestedFlatChecked(view, value) {
 export const WriteArrNestedFlat = PRODUCTION ? writeArrNestedFlatProduction : writeArrNestedFlatChecked;
 
 // ReadArrNestedFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadArrNestedFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (5 > numBits) {
@@ -1502,7 +1502,7 @@ export function WriteSoleFlat(view, value) {
 }
 
 // ReadSoleFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSoleFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (13 > numBits) {

@@ -1357,8 +1357,6 @@ public final class Clauses {
         public static final byte NONE = 0;
         public static final byte A = 1;
         public static final byte B = 2;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 2;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 2;
     }

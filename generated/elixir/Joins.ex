@@ -146,10 +146,6 @@ defmodule Example.UnevenType do
   def from_int(2), do: {:ok, :wide}
   def from_int(_), do: :error
 
-  @doc "The declared variant count (SPEC §4.2)."
-  @spec count() :: non_neg_integer()
-  def count, do: 2
-
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
   @spec max() :: non_neg_integer()
   def max, do: 2

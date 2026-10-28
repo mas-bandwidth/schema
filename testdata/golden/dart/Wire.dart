@@ -26,7 +26,6 @@ extension type const Weapon(int _value) implements int {
   static const Weapon laser = Weapon(1);
   static const Weapon missile = Weapon(2);
   static const Weapon railgun = Weapon(3);
-  static const int count = 3; // the declared variant count (SPEC §4.2)
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
 
@@ -899,7 +898,6 @@ extension type const ProbeShapeType(int _value) implements int {
   static const ProbeShapeType none = ProbeShapeType(0);
   static const ProbeShapeType ring = ProbeShapeType(1);
   static const ProbeShapeType slab = ProbeShapeType(2);
-  static const int count = 2; // the declared variant count (SPEC §4.2)
   static const int max = 2; // the exported extent (SPEC §4.2)
 }
 

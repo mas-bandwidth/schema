@@ -23,8 +23,8 @@ int main(int argc, char **argv)
     alignas(8) const uint8_t pong[16] = {0x02};
     alignas(8) const uint8_t invalid[16] = {0x03};
 
-    CHECK(uint8_t(MixedType::Count) == 2 && uint8_t(MixedType::Max) == 2, "mixed tag extent");
-    CHECK(uint8_t(TagsType::Count) == 2 && uint8_t(SingleType::Count) == 1 && uint8_t(EmptyType::Count) == 0, "void tag counts");
+    CHECK(uint8_t(MixedType::Max) == 2, "mixed tag extent");
+    CHECK(uint8_t(TagsType::Max) == 2 && uint8_t(SingleType::Max) == 1 && uint8_t(EmptyType::Max) == 0, "void tag extents");
     CHECK(std::strcmp(EnumName(MixedType::Ping), "Ping") == 0 &&
           std::strcmp(EnumName(TagsType::Pong), "Pong") == 0, "void debug names");
     CHECK(MixedMaxBits == 23 && TagsMaxBits == 2 && SingleMaxBits == 1 && EmptyMaxBits == 0, "void maximum bits");

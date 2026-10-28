@@ -75,7 +75,6 @@ impl DefaultChoiceType {
     pub const NONE: DefaultChoiceType = DefaultChoiceType(0);
     pub const FIRST: DefaultChoiceType = DefaultChoiceType(1);
     pub const SECOND: DefaultChoiceType = DefaultChoiceType(2);
-    pub const COUNT: DefaultChoiceType = DefaultChoiceType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: DefaultChoiceType = DefaultChoiceType(2); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.
@@ -236,7 +235,6 @@ impl DefaultBulkChoiceType {
     pub const NONE: DefaultBulkChoiceType = DefaultBulkChoiceType(0);
     pub const FIRST: DefaultBulkChoiceType = DefaultBulkChoiceType(1);
     pub const SECOND: DefaultBulkChoiceType = DefaultBulkChoiceType(2);
-    pub const COUNT: DefaultBulkChoiceType = DefaultBulkChoiceType(2); // the declared variant count (SPEC §4.2)
     pub const MAX: DefaultBulkChoiceType = DefaultBulkChoiceType(2); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.

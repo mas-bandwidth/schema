@@ -114,8 +114,6 @@ public final class Ludicrous {
         public static final byte CRUISE = 1;
         public static final byte WARP = 2;
         public static final byte LUDICROUS = 3;
-        // the declared variant count (SPEC §4.2)
-        public static final byte COUNT = 3;
         // the exported extent (SPEC §4.2)
         public static final byte MAX = 3;
     }

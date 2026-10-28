@@ -8,7 +8,7 @@
 
 import type { DegenerateProbe, FixedProbe, FixedQuat, FixedVec, LudicrousState, UnsignedProbe, WideProbe } from "./Ludicrous.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteFixedProbeFlat(view: DataView, value: FixedProbe): number;
 export declare function ReadFixedProbeFlat(view: DataView, numBits: number, value: FixedProbe): boolean;

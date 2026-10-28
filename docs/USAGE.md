@@ -4776,14 +4776,14 @@ buffers, and measures 8–10x the runtime tier (within a few x of native C):
 
 ```js
 import { ShipCreate } from "./Wire.js";
-import { WriteShipCreateFlat, ReadShipCreateFlat, FLAT_READ_SLACK } from "./WireFlat.js";
+import { WriteShipCreateFlat, ReadShipCreateFlat, FlatReadSlack } from "./WireFlat.js";
 import { ShipCreateMaxBytes } from "./Wire.js";
 
 const buf = new Uint8Array(ShipCreateMaxBytes);        // write: MaxBytes suffices
 const view = new DataView(buf.buffer);
 const bytes = WriteShipCreateFlat(view, ship);          // bytes written, or -1 (checked refusal)
 
-const rbuf = new Uint8Array(bytes + FLAT_READ_SLACK);   // read: 8 bytes of slack past the payload
+const rbuf = new Uint8Array(bytes + FlatReadSlack);   // read: 8 bytes of slack past the payload
 rbuf.set(buf.subarray(0, bytes));                       // (copy exactly-sized receive buffers in)
 const ok = ReadShipCreateFlat(new DataView(rbuf.buffer), bytes * 8, out);
 ```

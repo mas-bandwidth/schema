@@ -200,9 +200,9 @@ int main( void )
        LedgerSlots = 3; enum Mode { Alpha, Beta }, Grade { Bronze, Gold },
        Slot { Alpha, Beta, Gamma, Delta }. */
     r22_check( MAX_SLOTS == 6 && TALLY_SLOTS == 3 && LEDGER_SLOTS == 3
-        && MODE_COUNT == 2 && MODE_MAX == 2
-        && GRADE_COUNT == 2 && GRADE_MAX == 2
-        && SLOT_COUNT == 4 && SLOT_MAX == 4,
+        && MODE_MAX == 2
+        && GRADE_MAX == 2
+        && SLOT_MAX == 4,
         "1: the constants and enum extents the closure names are the schema's "
         "own (6, 3, 3; Mode 2, Grade 2, Slot 4)" );
 

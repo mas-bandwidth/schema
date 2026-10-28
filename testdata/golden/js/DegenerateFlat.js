@@ -10,7 +10,7 @@
 const SC = new DataView(new ArrayBuffer(8));
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // ---- type Vec2: the flat codec ----
 
@@ -24,7 +24,7 @@ export function WriteVec2Flat(view, value) {
 }
 
 // ReadVec2Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadVec2Flat(view, numBits, value) {
   if (128 > numBits) {
     return false;
@@ -69,7 +69,7 @@ export function WriteSpanF64Flat(view, value) {
 }
 
 // ReadSpanF64Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSpanF64Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (128 > numBits) {
@@ -132,7 +132,7 @@ export function WriteSpanU64Flat(view, value) {
 }
 
 // ReadSpanU64Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSpanU64Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -197,7 +197,7 @@ export function WriteSpanI64Flat(view, value) {
 }
 
 // ReadSpanI64Flat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSpanI64Flat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -262,7 +262,7 @@ export function WriteSpanOneFlat(view, value) {
 }
 
 // ReadSpanOneFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSpanOneFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -317,7 +317,7 @@ export function WriteSpanChunkFlat(view, value) {
 }
 
 // ReadSpanChunkFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSpanChunkFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (64 > numBits) {
@@ -380,7 +380,7 @@ export function WriteSpanTailFlat(view, value) {
 }
 
 // ReadSpanTailFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSpanTailFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (160 > numBits) {
@@ -471,7 +471,7 @@ export function WriteSpanTwiceFlat(view, value) {
 }
 
 // ReadSpanTwiceFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadSpanTwiceFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (256 > numBits) {
@@ -535,7 +535,7 @@ export function WriteTrioFlat(view, value) {
 }
 
 // ReadTrioFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadTrioFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (64 > numBits) {
@@ -570,7 +570,7 @@ export function WriteTrioSoleFlat(view, value) {
 }
 
 // ReadTrioSoleFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadTrioSoleFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (64 > numBits) {
@@ -601,7 +601,7 @@ export function WriteVec3SoleFlat(view, value) {
 }
 
 // ReadVec3SoleFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadVec3SoleFlat(view, numBits, value) {
   if (192 > numBits) {
     return false;
@@ -631,7 +631,7 @@ export function WriteTrioFirstFlat(view, value) {
 }
 
 // ReadTrioFirstFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadTrioFirstFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (80 > numBits) {
@@ -696,7 +696,7 @@ export function WriteTrioStraddleFlat(view, value) {
 }
 
 // ReadTrioStraddleFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadTrioStraddleFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;

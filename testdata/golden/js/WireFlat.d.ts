@@ -8,7 +8,7 @@
 
 import type { Block, Chat, CompressedProbe, Heartbeat, ProbeArray, ProbeBits, ProbeCollider, ProbeConfig, ProbeHeader, ProbeReport, ProbeRing, ProbeSample, ProbeShape, ProbeSlab, Test, TestData } from "./Wire.js";
 
-export declare const FLAT_READ_SLACK: 8;
+export declare const FlatReadSlack: 8;
 
 export declare function WriteProbeHeaderFlat(view: DataView, value: ProbeHeader): number;
 export declare function ReadProbeHeaderFlat(view: DataView, numBits: number, value: ProbeHeader): boolean;

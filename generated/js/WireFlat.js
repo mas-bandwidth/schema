@@ -15,7 +15,7 @@ const SC = new DataView(new ArrayBuffer(8));
 const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
-export const FLAT_READ_SLACK = 8;
+export const FlatReadSlack = 8;
 
 // validText(bytes, length) -> bool: bytes[0, length) is well-formed UTF-8 with no
 // interior null (SPEC §4.7). Every string field's read calls it; nothing
@@ -86,7 +86,7 @@ export function WriteProbeHeaderFlat(view, value) {
 }
 
 // ReadProbeHeaderFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeHeaderFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -189,7 +189,7 @@ function writeProbeBitsFlatChecked(view, value) {
 export const WriteProbeBitsFlat = PRODUCTION ? writeProbeBitsFlatProduction : writeProbeBitsFlatChecked;
 
 // ReadProbeBitsFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeBitsFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -404,7 +404,7 @@ function writeProbeSampleFlatChecked(view, value) {
 export const WriteProbeSampleFlat = PRODUCTION ? writeProbeSampleFlatProduction : writeProbeSampleFlatChecked;
 
 // ReadProbeSampleFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeSampleFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -517,7 +517,7 @@ export function WriteProbeRingFlat(view, value) {
 }
 
 // ReadProbeRingFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeRingFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (16 > numBits) {
@@ -554,7 +554,7 @@ function writeProbeSlabFlatChecked(view, value) {
 export const WriteProbeSlabFlat = PRODUCTION ? writeProbeSlabFlatProduction : writeProbeSlabFlatChecked;
 
 // ReadProbeSlabFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeSlabFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (15 > numBits) {
@@ -657,7 +657,7 @@ function writeProbeShapeFlatChecked(view, value) {
 export const WriteProbeShapeFlat = PRODUCTION ? writeProbeShapeFlatProduction : writeProbeShapeFlatChecked;
 
 // ReadProbeShapeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeShapeFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (2 > numBits) {
@@ -976,7 +976,7 @@ function writeProbeColliderFlatChecked(view, value) {
 export const WriteProbeColliderFlat = PRODUCTION ? writeProbeColliderFlatProduction : writeProbeColliderFlatChecked;
 
 // ReadProbeColliderFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeColliderFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (8 > numBits) {
@@ -1184,7 +1184,7 @@ function writeProbeConfigFlatChecked(view, value) {
 export const WriteProbeConfigFlat = PRODUCTION ? writeProbeConfigFlatProduction : writeProbeConfigFlatChecked;
 
 // ReadProbeConfigFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeConfigFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (36 > numBits) {
@@ -1481,7 +1481,7 @@ function writeProbeArrayFlatChecked(view, value) {
 export const WriteProbeArrayFlat = PRODUCTION ? writeProbeArrayFlatProduction : writeProbeArrayFlatChecked;
 
 // ReadProbeArrayFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeArrayFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -1631,7 +1631,7 @@ export function WriteHeartbeatFlat() {
 }
 
 // ReadHeartbeatFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadHeartbeatFlat() {
   return true;
 }
@@ -1673,7 +1673,7 @@ function writeTestFlatChecked(view, value) {
 export const WriteTestFlat = PRODUCTION ? writeTestFlatProduction : writeTestFlatChecked;
 
 // ReadTestFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadTestFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (46 > numBits) {
@@ -1782,7 +1782,7 @@ function writeBlockFlatChecked(view, value) {
 export const WriteBlockFlat = PRODUCTION ? writeBlockFlatProduction : writeBlockFlatChecked;
 
 // ReadBlockFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadBlockFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 11 > numBits) {
@@ -1901,7 +1901,7 @@ function writeChatFlatChecked(view, value) {
 export const WriteChatFlat = PRODUCTION ? writeChatFlatProduction : writeChatFlatChecked;
 
 // ReadChatFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadChatFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   if (br + 9 > numBits) {
@@ -2008,7 +2008,7 @@ function writeProbeReportFlatChecked(view, value) {
 export const WriteProbeReportFlat = PRODUCTION ? writeProbeReportFlatProduction : writeProbeReportFlatChecked;
 
 // ReadProbeReportFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadProbeReportFlat(view, numBits, value) {
   let v = 0, out = 0;
   let bg = 0n;
@@ -2534,7 +2534,7 @@ function writeTestDataFlatChecked(view, value) {
 export const WriteTestDataFlat = PRODUCTION ? writeTestDataFlatProduction : writeTestDataFlatChecked;
 
 // ReadTestDataFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadTestDataFlat(view, numBits, value) {
   let v = 0, bi = 0, wlo = 0, whi = 0, s2 = 0, out = 0, br = 0;
   let bg = 0n;
@@ -2827,7 +2827,7 @@ function writeCompressedProbeFlatChecked(view, value) {
 export const WriteCompressedProbeFlat = PRODUCTION ? writeCompressedProbeFlatProduction : writeCompressedProbeFlatChecked;
 
 // ReadCompressedProbeFlat(view, numBits, value) -> bool. The buffer behind view must
-// extend FLAT_READ_SLACK bytes past the payload.
+// extend FlatReadSlack bytes past the payload.
 export function ReadCompressedProbeFlat(view, numBits, value) {
   let v = 0, out = 0;
   if (24 > numBits) {

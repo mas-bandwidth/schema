@@ -34,7 +34,6 @@ typedef uint8_t example_weapon_t;
 #define EXAMPLE_WEAPON_LASER 1
 #define EXAMPLE_WEAPON_MISSILE 2
 #define EXAMPLE_WEAPON_RAILGUN 3
-#define EXAMPLE_WEAPON_COUNT 3
 #define EXAMPLE_WEAPON_MAX 15
 
 /* Debug/log name for any Weapon value, out-of-set included. */
@@ -189,7 +188,6 @@ typedef uint8_t example_probe_shape_type_t;
 #define EXAMPLE_PROBE_SHAPE_TYPE_NONE 0
 #define EXAMPLE_PROBE_SHAPE_TYPE_RING 1
 #define EXAMPLE_PROBE_SHAPE_TYPE_SLAB 2
-#define EXAMPLE_PROBE_SHAPE_TYPE_COUNT 2
 #define EXAMPLE_PROBE_SHAPE_TYPE_MAX 2
 
 /* Debug/log name for any ProbeShapeType value, out-of-set included. */

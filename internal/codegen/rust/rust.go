@@ -340,7 +340,6 @@ func (g *gen) emitTagEnum(name string, members []string, docs []string, comment 
 		g.pf("%s", ir.DocComment(docs[i], "    ", "///"))
 		g.pf("    pub const %s: %s = %s(%d);\n", ir.RustConstName(m), name, name, i+1)
 	}
-	g.pf("    pub const COUNT: %s = %s(%d); // the declared variant count (SPEC §4.2)\n", name, name, len(members))
 	g.pf("    pub const MAX: %s = %s(%d); // the exported extent (SPEC §4.2)\n", name, name, len(members))
 	// the tag enum's name surface is a declared enum's, member for member: a
 	// reader logging which message arrived writes `{}` or as_str() whichever
@@ -464,7 +463,6 @@ func (g *gen) emitEnum(d *ir.Enum) {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "    ", "///"))
 		g.pf("    pub const %s: %s = %s(%d);\n", ir.RustConstName(v), d.Name, d.Name, i+1)
 	}
-	g.pf("    pub const COUNT: %s = %s(%d); // the declared variant count (SPEC §4.2)\n", d.Name, d.Name, len(d.Variants))
 	g.pf("    pub const MAX: %s = %s(%d); // the exported extent (SPEC §4.2)\n", d.Name, d.Name, d.Max)
 	// Debug/log name for any value, out-of-set included — the counterpart of
 	// C++'s and Go's EnumName.
