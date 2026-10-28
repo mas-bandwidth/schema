@@ -903,6 +903,10 @@
   ],
   "excluded": [
     {
+      "target": "schema-moo-nightly-fuzz-negative-control",
+      "reason": "the moo packet-wire fuzz differential's two reversed witnesses (TestMooWireFuzzWriteNegativeControl, TestMooWireFuzzReadNegativeControl) are go tests of internal/codegen/moo: every pull request already runs them in ci-full's unit-codegen row and in make test-moo, with the moo pin installed, and the nightly runs this target in its own job in schema-moo-nightly-fuzz.yml. A manifest group would run them a third time on a row that installs no moo pin."
+    },
+    {
       "target": "tables-cs-clean-negative-control-run",
       "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs-packet group already runs the wrapper, so running the body again proves the same planted misindent twice."
     },

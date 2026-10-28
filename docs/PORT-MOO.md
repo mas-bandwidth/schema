@@ -122,6 +122,35 @@ OS and architecture. No unit test uses real time, a socket or the network.
 | `moo-analyze` silent (no error, no lint warning) over every generated corpus | `TestMooGeneratedCodeIsAnalyzerClean`; its control `TestMooAnalyzerGateNegativeControl` |
 | the runtime is serialize.moo v2.1.1 verbatim | `TestMooRuntimeIsTheVendoredPin` against `runtime/SERIALIZE_PIN` |
 
+## THE FUZZ DIFFERENTIAL (layer 6)
+
+`internal/codegen/moo/fuzz_test.go` holds the generated moo codecs against the
+Go target's, over every packet corpus the leg generates (the analyzer gate's
+list: `examples`, `examples128`, `test/packet-*`), the way serialize.moo's
+`fuzz/differential_test.go` holds the runtime against serialize.go. Each round
+draws random instances of every packet type and union inside their declared
+contracts (`fuzzvalue_test.go`), builds each one in both languages from the one
+draw, and requires the two writers to emit identical bytes; then both readers
+read the Go image and mutants of it (bit flips, overwritten bytes, truncation,
+trailing bytes, padding bits, random images), each followed by
+`serializeEnd`, and must agree on accept or refuse, on the latched refusal
+reason, and on the bytes each writes back. Two reason differences are the
+targets' and not the port's, and are not counted: a schema rule's refusal
+(Go's `ErrValidation`, moo's unlatched `false`) names no runtime reason, and a
+Go flat run reads its whole run before checking any value, so its `past_end`
+may stand where moo, field by field, refuses the first bad value.
+
+| gate | test / target |
+|---|---|
+| a seeded round, every root drawn, every refusal reached | `TestMooWireFuzzAgreesWithTheGoTarget`, `make moo-wire-fuzz` (in `make test-moo`) |
+| a planted writer bug (an 8-bit field's top bit dropped) goes red | `TestMooWireFuzzWriteNegativeControl` |
+| a planted reader bug (a union tag's bound dropped) goes red | `TestMooWireFuzzReadNegativeControl` |
+| the long run: 100 rounds of 2000 instances a unit, seeded by the run id | `make schema-moo-nightly-fuzz`, `.github/workflows/schema-moo-nightly-fuzz.yml` |
+| the nightly's wiring | `TestSchemaMooNightlyFuzzWiring` and its control |
+
+The shared hostile corpus (`internal/ci/hostilecorpus`) and the table-wire
+fuzz are table surfaces; they join this layer when the table layer lands.
+
 ## THE LAYERS
 
 The port lands in layers, each green on main before the layer that depends on
