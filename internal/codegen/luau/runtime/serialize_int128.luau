@@ -15,8 +15,12 @@
 local RAISE_MINMAX = "serialize: min must not be greater than max"
 local RAISE_INT128 = "serialize: serializeInt128 parameters must be Int128 pairs"
 
-local OVERFLOW = "overflow"
+local PAST_END = "past_end"
 local OUT_OF_RANGE = "value_out_of_range"
+
+-- The write-misuse traps (IMPLEMENTING.md U9, U6): raised, never latched.
+local RAISE_RANGE = "serialize: serializeInt128 value must be in [min,max]"
+local RAISE_ROOM = "serialize: the write does not fit the room left in the buffer"
 
 local MASK32 = 0xffffffffi
 local ZERO = 0i
@@ -231,7 +235,7 @@ attach(Uint128, cmpUnsigned)
 
 -- bitsRequired128 is serialize.go BitsRequired128: the span in the unsigned
 -- domain, so ranges wider than 2^127 are exact (STANDARD.md, int128).
-function bitsRequired128(min: any, max: any): number
+local function bitsRequired128(min: any, max: any): number
 	if min.lo == max.lo and min.hi == max.hi then
 		return 0
 	end
@@ -258,26 +262,26 @@ end
 
 -- writeInt128: STANDARD.md, int128 (ranged). The offset value - min is
 -- computed in the unsigned domain, low half first, then the high remainder.
-function writeInt128(s: any, holder: any, min: any, max: any): boolean
+local function writeInt128(s: any, holder: any, min: any, max: any): boolean
 	if not isPair(min) or not isPair(max) or not isPair(holder.value) then
-		error(RAISE_INT128, 2)
+		return s:_misuse(RAISE_INT128)
 	end
 	if cmpSigned(min, max) > 0 then
-		error(RAISE_MINMAX, 2)
+		return s:_misuse(RAISE_MINMAX)
 	end
 	if s:_latched() then
 		return false
 	end
 	local value = holder.value
 	if cmpSigned(value, min) < 0 or cmpSigned(value, max) > 0 then
-		return s:_fail(OUT_OF_RANGE)
+		return s:_misuse(RAISE_RANGE)
 	end
 	local bits = bitsRequired128(min, max)
 	if s._kind == "measure" then
 		return s:_measure(bits)
 	end
 	if s:_available() < bits then
-		return s:_fail(OVERFLOW)
+		return s:_misuse(RAISE_ROOM)
 	end
 	if bits > 0 then
 		writeGroups(s, sub(value, min), bits)
@@ -285,19 +289,19 @@ function writeInt128(s: any, holder: any, min: any, max: any): boolean
 	return true
 end
 
-function readInt128(s: any, holder: any, min: any, max: any): boolean
+local function readInt128(s: any, holder: any, min: any, max: any): boolean
 	if not isPair(min) or not isPair(max) then
-		error(RAISE_INT128, 2)
+		return s:_misuse(RAISE_INT128)
 	end
 	if cmpSigned(min, max) > 0 then
-		error(RAISE_MINMAX, 2)
+		return s:_misuse(RAISE_MINMAX)
 	end
 	if s:_latched() then
 		return false
 	end
 	local bits = bitsRequired128(min, max)
 	if s:_available() < bits then
-		return s:_fail(OVERFLOW)
+		return s:_fail(PAST_END)
 	end
 	if bits == 0 then
 		holder.value = new(min.lo, min.hi)
@@ -311,63 +315,52 @@ function readInt128(s: any, holder: any, min: any, max: any): boolean
 	return true
 end
 
-function measureInt128(s: any, holder: any, min: any, max: any): boolean
+local function measureInt128(s: any, holder: any, min: any, max: any): boolean
 	if not isPair(min) or not isPair(max) or not isPair(holder.value) then
-		error(RAISE_INT128, 2)
+		return s:_misuse(RAISE_INT128)
 	end
 	if cmpSigned(min, max) > 0 then
-		error(RAISE_MINMAX, 2)
+		return s:_misuse(RAISE_MINMAX)
 	end
 	if s:_latched() then
 		return false
 	end
 	if cmpSigned(holder.value, min) < 0 or cmpSigned(holder.value, max) > 0 then
-		return s:_fail(OUT_OF_RANGE)
+		return s:_misuse(RAISE_RANGE)
 	end
 	return s:_measure(bitsRequired128(min, max))
 end
 
 -- The unsigned 128-bit arms (STANDARD.md, uint128; serialize.go
 -- SerializeUint128): all 128 bits, low half first, no range.
-function writeUint128(s: any, holder: any): boolean
+local function writeUint128(s: any, holder: any): boolean
 	if not isPair(holder.value) then
-		error(RAISE_INT128, 2)
+		return s:_misuse(RAISE_INT128)
 	end
 	if s:_latched() then
 		return false
 	end
 	if s:_available() < 128 then
-		return s:_fail(OVERFLOW)
+		return s:_misuse(RAISE_ROOM)
 	end
 	s:_writeBits64(holder.value.lo, 64)
 	s:_writeBits64(holder.value.hi, 64)
 	return true
 end
 
-function readUint128(s: any, holder: any): boolean
-	if not isPair(holder.value) then
-		error(RAISE_INT128, 2)
-	end
+-- readUint128 assigns its holder whatever it held before, an empty {}
+-- included: a read's holder value is an output (audit 2026-10-27).
+local function readUint128(s: any, holder: any): boolean
 	if s:_latched() then
 		return false
 	end
 	if s:_available() < 128 then
-		return s:_fail(OVERFLOW)
+		return s:_fail(PAST_END)
 	end
 	local lo = s:_readBits64(64)
 	local hi = s:_readBits64(64)
 	holder.value = new(lo, hi)
 	return true
-end
-
-function measureUint128(s: any, holder: any): boolean
-	if not isPair(holder.value) then
-		error(RAISE_INT128, 2)
-	end
-	if s:_latched() then
-		return false
-	end
-	return s:_measure(128)
 end
 
 return table.freeze({
@@ -379,5 +372,4 @@ return table.freeze({
 	measureInt128 = measureInt128,
 	writeUint128 = writeUint128,
 	readUint128 = readUint128,
-	measureUint128 = measureUint128,
 })
