@@ -27,10 +27,15 @@ import .schema_save
 import .strict_and_refusals
 import .block_form
 import .message
+import .cook
+import .retain_unknown
 
 // the surfaces this leg answers: the variable wire's load and save (§3, §4),
-// and the block form's reflective read (§19.2) with its cross-endian refusal
-let surfaces = ["wire", "report", "block", "block-foreign", "block-dump", "message"]
+// the message form (§3.3), retain-unknown (§6.6), the cooked form's read,
+// write and forgery battery (§7), and the block form's reflective read with
+// its forgery battery (§19.2), each refusal with its reason
+let surfaces = ["wire", "message", "report", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
+    "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason"]
 
 let arguments = command_line_arguments()
 let argument_count = length(arguments)
@@ -179,6 +184,140 @@ def surface_message(text:string):
                     assert n == length(out)
                     say(f[1], out)
 
+// lines are the manifest's lines of one kind, whatever unit they name
+def lines(text:string, kind:string) -> [[string]]:
+    let out:[[string]] = []
+    for(tokenize(text, "\n", " \t\r")) line:
+        let f = words(line)
+        if length(f) >= 2 and f[0] == kind:
+            push(out, f)
+    return out
+
+// the COOK surface: Open the cook and write THE CANONICAL NODE DUMP, the walk
+// through its own derefs (test/conformance/go/cooks.go). A cook line is
+// `cook <case> <unit> <root> <file>`: the case names the answer and the root
+// the reader, since one root can have more than one fixture.
+def surface_cook(text:string):
+    for(rows(text, "cook")) f:
+        let dump, why = schema_rt.cook_dump(fixture(f[4]), f[3])
+        if why != "":
+            print("driver: " + f[1] + ": " + why)
+        say(f[1], dump)
+
+// the COOK-FOREIGN surface: the same cooks with the magic reversed, which this
+// build's Open must refuse at the magic (§7.1)
+def surface_cook_foreign(text:string):
+    for(rows(text, "cook")) f:
+        let why = schema_rt.cook_open_named(f[3], foreign(fixture(f[4])), 0, false)
+        say(f[1], if why == "ok": "open\n" else: "refuse\n")
+
+// the COOK-WRITE surface (§7.6): Load the instance's wire, Cook it in each
+// byte order, the bytes as <instance> and <instance>-be. A cook-write line is
+// `cook-write <instance>`, joined to its instance line for the unit and root.
+def surface_cook_write(text:string):
+    let insts = lines(text, "instance")
+    for(lines(text, "cook-write")) cw:
+        for(insts) f:
+            if f[1] == cw[1] and f[2] == unit_key:
+                let rep = schema_rt.LoadReport {}
+                let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+                assert rec and not rep.malformed and not rep.refused
+                let ct = schema_rt.cook_table_of(f[3])
+                assert ct
+                let size = schema_rt.cook_measure(rec, ct.build)
+                let little = schema_rt.cook_write(rec, ct.build, false)
+                let big = schema_rt.cook_write(rec, ct.build, true)
+                assert length(little) == size and length(big) == size
+                say(f[1], little)
+                say(f[1] + "-be", big)
+
+// claim is the buffer a forgery's caller holds (test/conformance/README.md):
+// EXACTLY the extent it claims, the file copied in as far as it fits and zero
+// past it; -1 is the file's own length
+def claim(data:string, extent:int) -> string:
+    if extent < 0 or extent == length(data):
+        return data
+    if extent < length(data):
+        return substring(data, 0, extent)
+    var pad = ""
+    for(extent - length(data)):
+        pad += "\x00"
+    return data + pad
+
+// block_unit and cook_unit name the unit a forgery's SUBJECT lives in: a
+// block forgery's subject is a block line's name, a cook forgery's a cook
+// line's root
+def subject_unit(text:string, kind:string, subject:string) -> string:
+    if kind == "block":
+        for(lines(text, "block")) b:
+            if b[1] == subject:
+                return b[2]
+    else:
+        for(lines(text, "cook")) c:
+            if length(c) >= 4 and c[3] == subject:
+                return c[2]
+    return ""
+
+// forged opens one forgery line, `forgery <name> <kind> <subject> <file>
+// <extent> <pointer>`, and answers the reason beside the refusal, or "ok"
+def forged(f:[string]) -> string:
+    let data = claim(fixture(f[4]), string_to_int(f[5]))
+    let nobuf = f[6] == "null"
+    let lead = if nobuf: 0 else: string_to_int(f[6])
+    if f[2] == "block":
+        return schema_rt.block_open_reason(block_root(f[3]), data, lead, nobuf)
+    return schema_rt.cook_open_named(f[3], data, lead, nobuf)
+
+// the FORGERY and COOK-FORGERY surfaces: `open` or `refuse` per forgery of the
+// kind; and the two REASON surfaces: the refusal enum's value name per
+// `refusal <forgery> <kind>` line, or `ok`
+def surface_forgery(text:string, kind:string):
+    for(lines(text, "forgery")) f:
+        if length(f) >= 7 and f[2] == kind and subject_unit(text, kind, f[3]) == unit_key:
+            say(f[1], if forged(f) == "ok": "open\n" else: "refuse\n")
+
+def surface_reason(text:string, kind:string):
+    let forgeries = lines(text, "forgery")
+    for(lines(text, "refusal")) r:
+        if length(r) >= 3 and r[2] == kind:
+            for(forgeries) f:
+                if f[1] == r[1] and subject_unit(text, kind, f[3]) == unit_key:
+                    say(r[1], forged(f) + "\n")
+
+// the RETAIN surfaces (§6.6): LoadRetain at the row's two capacities,
+// MeasureRetain, SaveRetain; the counters `<retained>,<retain_lost>,<unknown>
+// <save lost>`, or the saved bytes. A retain line is `retain <case> <unit>
+// <root> <wire> <capacity> <ids>`: `short` is one byte short of what this
+// leg's own load used, so the driver loads once roomy and once again. A
+// retain-message row needs the message form's SaveRetain, which §3.3 refuses
+// by name over a plain table root: a named absence, as the Go leg answers it.
+def surface_retain(text:string, saves:bool):
+    for(lines(text, "retain-message")) f:
+        if length(f) >= 4 and f[3] == unit_key:
+            print(f[1] + " absent plain table: §3.3")
+    for(rows(text, "retain")) f:
+        let wire = fixture(f[4])
+        let ids = if f[6] == "full": 1 << 17 else: string_to_int(f[6])
+        var capacity = 1 << 20
+        if f[5] == "short":
+            let probe = schema_rt.Retain { capacity: capacity, id_capacity: ids }
+            schema_rt.load_retain(f[3], wire, probe, schema_rt.LoadReport {})
+            capacity = probe.used - 1
+        let retain = schema_rt.Retain { capacity: capacity, id_capacity: ids }
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.load_retain(f[3], wire, retain, rep)
+        assert not rep.malformed
+        let retained, lost, unknown = rep.retained, rep.retain_lost, rep.unknown
+        let out = schema_rt.save_retain(rec, retain, rep)
+        let save_lost = rep.retain_lost - lost
+        let again_rep = schema_rt.LoadReport {}
+        let again = schema_rt.save_retain(rec, retain, again_rep)
+        assert again == out and again_rep.retain_lost == save_lost
+        if saves:
+            say(f[1], out)
+        else:
+            say(f[1], "{retained},{lost},{unknown} {save_lost}\n")
+
 if surface == "list":
     for(surfaces) s:
         print(s)
@@ -193,6 +332,24 @@ else:
         surface_block(text, false)
     elif surface == "message":
         surface_message(text)
+    elif surface == "retain":
+        surface_retain(text, false)
+    elif surface == "retain-save":
+        surface_retain(text, true)
+    elif surface == "cook":
+        surface_cook(text)
+    elif surface == "cook-write":
+        surface_cook_write(text)
+    elif surface == "cook-foreign":
+        surface_cook_foreign(text)
+    elif surface == "forgery":
+        surface_forgery(text, "block")
+    elif surface == "cook-forgery":
+        surface_forgery(text, "cook")
+    elif surface == "block-reason":
+        surface_reason(text, "block")
+    elif surface == "cook-reason":
+        surface_reason(text, "cook")
     elif surface == "block-foreign":
         surface_block(text, true)
     else:
