@@ -1441,7 +1441,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #381 — card schema-luau-fuzz-differential (docs/PORT-LUAU.md, THE CARD MAP) |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ✅ `tables-luau-wire-fuzz` `tables-luau-wire-fuzz-negative-control` `TestLuauWireFuzzAgreesWithTheGoEngine` `TestLuauWireFuzzNegativeControl` (the file form on the pipe, under the native host `tools/luaufuzzhost`; the nine message-form roots are pinned absent by name in `test/conformance/luau/wire-fuzz-absent.txt`, and the `--retain` arm is driven but not yet gated) |
 
 ### J1 — Accessor and descriptor agreement
 

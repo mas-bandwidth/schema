@@ -919,6 +919,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-luau-nightly-fuzz.yml:replay",
+		"schema-luau-resource-bounds.yml:luau-resource-bounds",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
@@ -972,6 +975,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"ci-full.yml:pins",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
+		"schema-luau-nightly-fuzz.yml:replay",
+		"schema-luau-resource-bounds.yml:luau-resource-bounds",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
@@ -995,6 +1001,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			"schema-dart-generated-strict-analyze-gate.yml:fast",
 			"schema-elixir-runs-hostile-corpus.yml:corpus",
 			"schema-go-generated-golangci-lint-gate.yml:gate",
+			"schema-luau-nightly-fuzz.yml:replay",
+			"schema-luau-resource-bounds.yml:luau-resource-bounds",
+			"schema-luau-runs-hostile-corpus.yml:corpus",
 		} {
 			wfName, jobName, _ := strings.Cut(wantKey, ":")
 			if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, pushEv); err != nil || !ok {
@@ -1024,6 +1033,10 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-luau-nightly-fuzz.yml:nightly",
+		"schema-luau-resource-bounds.yml:luau-resource-bounds",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-luau-runs-hostile-corpus.yml:negative-control",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, schedEv); err != nil || !ok {
@@ -1087,7 +1100,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-luau-nightly-fuzz.yml:nightly",
 		"schema-luau-nightly-fuzz.yml:replay",
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
-		"schema-luau-runs-hostile-corpus.yml:luau-hostile-corpus",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-luau-runs-hostile-corpus.yml:negative-control",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
 		t.Fatalf("enumerated self-hosted jobs = %v, want %v", gotKeys, wantKeys)
