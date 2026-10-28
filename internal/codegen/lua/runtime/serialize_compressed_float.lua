@@ -15,7 +15,9 @@
     multiplies by max_integer_value, adds 0.5, floors, and clamps the integer
     to max_integer_value (STANDARD.md, "The integer clamp is normative"). The
     reader divides by max_integer_value, multiplies by delta, and adds min; it
-    refuses an integer above max_integer_value.
+    refuses an integer above max_integer_value (value_out_of_range) and a decode
+    that is not finite (non_finite_float, STANDARD.md "The decode must be
+    finite"). The writer raises on a declaration whose top decode is not finite.
 
     The whole of the arithmetic is float32, emulated by fround after EVERY
     step (STANDARD.md, "This arithmetic is float32", "The reader's arithmetic
@@ -29,9 +31,12 @@
 local stream = require("serialize_stream")
 local bits = require("serialize_bits")
 
-local VALUE_OUT_OF_RANGE = stream.SerializeError.ValueOutOfRange
+local VALUE_OUT_OF_RANGE = stream.Refusal.ValueOutOfRange
+local NON_FINITE_FLOAT = stream.Refusal.NonFiniteFloat
 local PANIC_FLOAT_PARAMS = "serialize: compressed float requires min < max and resolution > 0"
-local PANIC_PRECOMPUTED = "serialize: precomputed compressed float constants must be exactly what CompressedFloatParams derives"
+local PANIC_DECODE = "serialize: compressed float declaration's top decode min + delta must be finite in float32"
+local PANIC_PRECOMPUTED = "serialize: precomputed compressed float constants must be exactly what "
+  .. "CompressedFloatParams derives"
 
 local pack = string.pack
 local unpack = string.unpack
@@ -141,8 +146,7 @@ end
 
 -- roundNumber(x, what): a finite float32 parameter or value. The wrong Lua
 -- type and a non-finite value after float32 rounding are both API misuse and
--- raise (DESIGN.md (c), (e); STANDARD.md, "Non-finite inputs are
--- non-conforming").
+-- raise (DESIGN.md (c), (e); IMPLEMENTING.md, "The check model").
 local function roundNumber(x, what)
   if type(x) ~= "number" then
     error("serialize: " .. what .. " takes a number", 0)
@@ -152,6 +156,62 @@ local function roundNumber(x, what)
     error("serialize: " .. what .. " must be a finite float32", 0)
   end
   return r
+end
+
+local function isFinite(x)
+  return x == x and x ~= math.huge and x ~= -math.huge
+end
+
+-- numberError(x, what): roundNumber's rule as a message, or nil, for the
+-- declaration checks, which never raise (serialize_stream.lua, M.method).
+local function numberError(x, what)
+  if type(x) ~= "number" then
+    return "serialize: " .. what .. " takes a number"
+  end
+  if not isFinite(fround(x)) then
+    return "serialize: " .. what .. " must be a finite float32"
+  end
+  return nil
+end
+
+-- STANDARD.md, compressed_float: values is clamped to [1, 4294967040], so
+-- max_integer_value lies there (IMPLEMENTING.md U16).
+local MAX_INTEGER_VALUE = 4294967040
+
+-- STANDARD.md, compressed_float, "The decode must be finite": a declaration
+-- whose top integer decodes past FLT_MAX (min + delta, rounded once in
+-- float32) is non-conforming as a whole, so the WRITER raises on it, as on any
+-- other misdeclared field, even for a value that would decode finite. An
+-- overflowing delta (max - min past FLT_MAX) is caught here too. The reader
+-- never raises on it: it refuses the non-finite decode itself.
+local function checkTopDecode(min, delta)
+  if not isFinite(fround(min + delta)) then error(PANIC_DECODE, 0) end
+end
+
+-- decode(iv, maxInt, delta, min): STANDARD.md, compressed_float, the reader's
+-- float32 arithmetic, every step rounded. A result that is not finite is
+-- refused as non_finite_float, the destination untouched.
+local function decode(s, iv, maxInt, delta, min)
+  local q = fround(fround(iv) / fround(maxInt))
+  local p = fround(q * delta)
+  local v = fround(p + min)
+  if not isFinite(v) then return s:_fail(NON_FINITE_FLOAT) end
+  return true, v
+end
+
+-- IMPLEMENTING.md, "The check model", and U9: on a write and a measure, a
+-- declaration whose delta (max - min) or delta / res is not finite in float32
+-- is write misuse, and traps, never clamped: (0, 1e38, 1e-38) would otherwise
+-- clamp values to 4294967040 and send a field nobody declared. The top decode
+-- min + delta is checked too (checkTopDecode). A read derives as the standard
+-- says and refuses a non-finite decode at runtime, so these are write side.
+local PANIC_DELTA = "serialize: compressed float declaration's delta max - min must be finite in float32"
+local PANIC_VALUES = "serialize: compressed float declaration's delta / resolution must be finite in float32"
+local function checkWriteDeclaration(min, max, res)
+  local delta = fround(max - min)
+  if not isFinite(delta) then error(PANIC_DELTA, 0) end
+  if not isFinite(fround(delta / res)) then error(PANIC_VALUES, 0) end
+  checkTopDecode(min, delta)
 end
 
 -- derive(min, max, res): STANDARD.md, "compressed_float", over float32
@@ -171,11 +231,15 @@ end
 local compressed = {
   -- serialize.go CompressedFloatParams panics: min must be < max and resolution
   -- > 0, after each is rounded to float32 (DESIGN.md (e)).
+  -- A declaration check returns the rule's message, or nil (U16).
   check = function(min, max, resolution)
-    local mn = roundNumber(min, "min")
-    local mx = roundNumber(max, "max")
-    local rs = roundNumber(resolution, "resolution")
-    if not (mn < mx) or not (rs > 0) then error(PANIC_FLOAT_PARAMS, 0) end
+    local e = numberError(min, "min") or numberError(max, "max")
+      or numberError(resolution, "resolution")
+    if e ~= nil then return e end
+    if not (fround(min) < fround(max)) or not (fround(resolution) > 0) then
+      return PANIC_FLOAT_PARAMS
+    end
+    return nil
   end,
   checkValue = function(value)
     roundNumber(value, "value")
@@ -188,6 +252,7 @@ local compressed = {
     local mx = roundNumber(max, "max")
     local rs = roundNumber(resolution, "resolution")
     local val = roundNumber(value, "value")
+    checkWriteDeclaration(mn, mx, rs)
     local maxInt, bitsN, delta = derive(mn, mx, rs)
     local normalized = fround(fround(val - mn) / delta)
     if not (normalized >= 0) then
@@ -212,17 +277,16 @@ local compressed = {
     local iv = s:_readBits(bitsN)
     if iv == nil then return false end
     if iv > maxInt then return s:_fail(VALUE_OUT_OF_RANGE) end
-    local q = fround(fround(iv) / fround(maxInt))
-    local p = fround(q * delta)
-    local v = fround(p + mn)
-    return true, v
+    return decode(s, iv, maxInt, delta, mn)
   end,
-  -- serialize.go MeasureStream.SerializeCompressedFloat32: the wire width.
-  measure = function(s, value, min, max, resolution)
+  -- serialize.go MeasureStream.SerializeCompressedFloat32: the wire width,
+  -- after every check the write makes (IMPLEMENTING.md U6).
+  measure = function(s, _value, min, max, resolution)
     local mn = roundNumber(min, "min")
     local mx = roundNumber(max, "max")
     local rs = roundNumber(resolution, "resolution")
-    local maxInt, bitsN, delta = derive(mn, mx, rs)
+    checkWriteDeclaration(mn, mx, rs)
+    local _, bitsN = derive(mn, mx, rs)
     return s:_measure(bitsN)
   end,
 }
@@ -231,16 +295,26 @@ local precomputed = {
   -- serialize.go validateCompressedFloatConstants: the precomputed constants
   -- must be exactly what compressedFloatParams derives; anything else raises
   -- panicPrecomputedFloat (DESIGN.md (e)). delta must be exactly a float32.
+  -- maxIntegerValue lies in [1, 4294967040], the uint32 range the
+  -- derivation clamps to, before bitsRequired sees it (IMPLEMENTING.md U16;
+  -- AUDIT-LEDGER 2026-10-27, lua M: 2^32 passed with bits 0 and 2^32 + 5 with
+  -- bits 3, because bitsRequired works over 32 bits). Returns the rule's
+  -- message, or nil.
   check = function(maxIntegerValue, bitsN, delta, min)
-    local dl = roundNumber(delta, "delta")
-    local mn = roundNumber(min, "min")
+    local e = numberError(delta, "delta") or numberError(min, "min")
+    if e ~= nil then return e end
     if math_type(maxIntegerValue) ~= "integer" or math_type(bitsN) ~= "integer" then
-      error(PANIC_PRECOMPUTED, 0)
+      return PANIC_PRECOMPUTED
     end
-    if maxIntegerValue == 0 or bitsN ~= bits.api.bitsRequired(0, maxIntegerValue)
-      or not (dl > 0) or dl - dl ~= 0 or dl ~= fround(dl) then
-      error(PANIC_PRECOMPUTED, 0)
+    if maxIntegerValue < 1 or maxIntegerValue > MAX_INTEGER_VALUE then
+      return PANIC_PRECOMPUTED
     end
+    local dl = fround(delta)
+    if bitsN ~= bits.api.bitsRequired(0, maxIntegerValue)
+      or not (dl > 0) or dl ~= delta then
+      return PANIC_PRECOMPUTED
+    end
+    return nil
   end,
   checkValue = function(value)
     roundNumber(value, "value")
@@ -249,6 +323,7 @@ local precomputed = {
     local val = roundNumber(value, "value")
     local dl = roundNumber(delta, "delta")
     local mn = roundNumber(min, "min")
+    checkTopDecode(mn, dl)
     local normalized = fround(fround(val - mn) / dl)
     if not (normalized >= 0) then
       normalized = 0
@@ -267,12 +342,11 @@ local precomputed = {
     local iv = s:_readBits(bitsN)
     if iv == nil then return false end
     if iv > maxIntegerValue then return s:_fail(VALUE_OUT_OF_RANGE) end
-    local q = fround(fround(iv) / fround(maxIntegerValue))
-    local p = fround(q * dl)
-    local v = fround(p + mn)
-    return true, v
+    return decode(s, iv, maxIntegerValue, dl, mn)
   end,
-  measure = function(s, value, maxIntegerValue, bitsN, delta, min)
+  -- the wire width, after the top decode check the write makes (U6)
+  measure = function(s, _value, _maxIntegerValue, bitsN, delta, min)
+    checkTopDecode(roundNumber(min, "min"), roundNumber(delta, "delta"))
     return s:_measure(bitsN)
   end,
 }

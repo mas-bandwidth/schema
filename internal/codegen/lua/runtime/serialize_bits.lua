@@ -17,6 +17,8 @@
 local type, math, error = type, math, error
 local mathtype = math.type
 
+local VALUE_OUT_OF_RANGE = require("serialize_stream").Refusal.ValueOutOfRange
+
 -- serialize.go's panic strings, for the misuse raises (DESIGN.md (g)).
 local PANIC_BITS_RANGE = "serialize: bits must be in [1,32]"
 local PANIC_BITS_RANGE64 = "serialize: bits must be in [1,64]"
@@ -25,13 +27,22 @@ local function intErr(field)
   error("serialize: " .. field .. " must be an integer", 2)
 end
 
+-- A declaration check returns the rule's message, or nil (serialize_stream.lua,
+-- M.method: write and measure raise it, a read refuses value_out_of_range).
 local function checkBits(bits, lo, hi, panicmsg)
   if mathtype(bits) ~= "integer" or bits < lo or bits > hi then
-    error(panicmsg, 2)
+    return panicmsg
   end
+  return nil
 end
 
+-- IMPLEMENTING.md U8, "The check model": a value that does not fit its bit
+-- width is caught, never masked. It traps on a write and a measure (U9), as
+-- every value outside its call's range does here (DESIGN.md (c), (g); the
+-- measure by the same trap, U6). (value >> bits) is logical: a negative value
+-- fails it below 64 bits, and at 64 bits every pattern fits.
 local function armWrite(stream, value, bits)
+  if value >> bits ~= 0 then return stream:_fail(VALUE_OUT_OF_RANGE) end
   return stream:_writeBits(value, bits)
 end
 
@@ -42,6 +53,7 @@ local function armRead(stream, bits)
 end
 
 local function armMeasure(stream, value, bits)
+  if value >> bits ~= 0 then return stream:_fail(VALUE_OUT_OF_RANGE) end
   return stream:_measure(bits)
 end
 
@@ -50,7 +62,7 @@ local M = {}
 M.methods = {
   serializeBits = {
     check = function(bits)
-      checkBits(bits, 1, 32, PANIC_BITS_RANGE)
+      return checkBits(bits, 1, 32, PANIC_BITS_RANGE)
     end,
     checkValue = function(value)
       if mathtype(value) ~= "integer" then intErr("bits value") end
@@ -64,7 +76,7 @@ M.methods = {
   },
   serializeBits64 = {
     check = function(bits)
-      checkBits(bits, 1, 64, PANIC_BITS_RANGE64)
+      return checkBits(bits, 1, 64, PANIC_BITS_RANGE64)
     end,
     checkValue = function(value)
       if mathtype(value) ~= "integer" then intErr("bits value") end

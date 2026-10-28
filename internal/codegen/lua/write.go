@@ -183,7 +183,7 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 		call(fmt.Sprintf("stream:serializeBytes({ value = string.sub(%s, 1, %s) }, %s)", val, length, length),
 			" -- align, then the used bytes (SPEC §4.7)")
 	case ir.TWString:
-		call(fmt.Sprintf("stream:serializeWideString({ value = %s }, %d)", val, t.Size), " -- UTF-16 code units (SPEC §4.12)")
+		emitWriteWString(b, val, t.Size, indent)
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
@@ -204,6 +204,24 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 			call(fmt.Sprintf("%s(stream, %s)", writeFn(m, t.Name), val), "")
 		}
 	}
+}
+
+// emitWriteWString composes wstring(N) itself (SPEC §4.12: serialize format
+// 2.0 removed wstring from every runtime, and no runtime call carries it). The
+// storage is the reader's: a sequence of UTF-16 code units, each an integer.
+// The bytes are classic serialize_wstring's over a buffer of N + 1: the length
+// as a ranged integer over [0, N] with no alignment, then each code unit as one
+// 32-bit group. A unit outside [1, 0xFFFF] is not a code unit the wire can
+// carry (zero is §4.7's interior null) and refuses, as the Go target does.
+func emitWriteWString(b *strings.Builder, val string, size int64, indent string) {
+	fmt.Fprintf(b, "%sif type(%s) ~= \"table\" or #%s > %d then return false end -- the length in [0, %d] (SPEC §4.12)\n",
+		indent, val, val, size, size)
+	emitBitsOrSkip(b, indent, "#"+val, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the length, no alignment (SPEC §4.12)")
+	fmt.Fprintf(b, "%sfor _u = 1, #%s do\n", indent, val)
+	fmt.Fprintf(b, "%s  local unit = %s[_u]\n", indent, val)
+	fmt.Fprintf(b, "%s  if math.type(unit) ~= \"integer\" or unit < 1 or unit > 0xFFFF then return false end\n", indent)
+	fmt.Fprintf(b, "%s  if not stream:serializeBits({ value = unit }, 32) then return false end -- one 32-bit group per code unit\n", indent)
+	fmt.Fprintf(b, "%send\n", indent)
 }
 
 // emitBitsOrSkip writes expr as bits raw bits, or nothing when the range is
