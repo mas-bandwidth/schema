@@ -193,7 +193,7 @@ func flagsMeta(u *ir.Unit) map[string][]string {
 
 // hostileProbe is the Luau program: one line per case, name, verdict, reason,
 // digest (hex of the canonical text form; "-" for a refusal).
-func hostileProbe(cases []hostileCase, mods []string, flags map[string][]string, plant bool) string {
+func hostileProbe(cases []hostileCase, mods []string, flags map[string][]string) string {
 	var b strings.Builder
 	b.WriteString(`local inputs = require("./inputs")
 local J = require("./schema_json")
@@ -230,7 +230,6 @@ local T = setmetatable({}, { __index = function(_, k) error("no module declares 
 		b.WriteString("},\n")
 	}
 	b.WriteString("}\nJ.SetFlags(SCHEMA_JSON_FLAGS)\n")
-	fmt.Fprintf(&b, "local PLANT = %v\n", plant)
 	b.WriteString(`local function newreport(): any
 	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 end
@@ -267,7 +266,6 @@ local CASES = {
 for _, c in CASES do
 	local b = inputs[c.name]
 	local function one(): (string, string, string)
-	if PLANT and c.carrier == "text" then return "refuse", "damaged", "-" end
 	local verdict, reason, dig = "accept", "-", "-"
 	local v = nil
 	if c.carrier == "text" then
@@ -361,6 +359,32 @@ end
 	return b.String()
 }
 
+// hostilePlantAnchor is the strict text reader's last refusal in the emitted
+// runtime (schema_json.luau, J.FromJson): a value is answered only when the
+// read placed one. The plant turns it into a refusal of every text, damaged,
+// as the Elixir port's control turns its text reader's success into an error
+// (make/schema-elixir-runs-hostile-corpus.mk).
+const hostilePlantAnchor = "  if lua == nil or report.malformed then return nil end\n"
+
+// plantHostileTextReader plants the reader bug in the scratch unit only: the
+// anchor must match exactly once, so a moved runtime fails the control by
+// name rather than leaving it planted nowhere.
+func plantHostileTextReader(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "schema_json.luau")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(src), hostilePlantAnchor); n != 1 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the plant anchor appears %d times in schema_json.luau, want 1", n)
+	}
+	planted := strings.Replace(string(src), hostilePlantAnchor, "  report.malformed = true; if true then return nil end\n", 1)
+	if err := os.WriteFile(path, []byte(planted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // runHostileCorpus runs the corpus and returns one FIX-CARD line per mismatch.
 func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string {
 	t.Helper()
@@ -382,7 +406,10 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 		for _, c := range group {
 			inputs[c.name] = hostilePayload(t, corpusDir, c.input)
 		}
-		main := hostileProbe(group, mods, flags, plant)
+		if plant {
+			plantHostileTextReader(t, dir)
+		}
+		main := hostileProbe(group, mods, flags)
 		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -459,8 +486,10 @@ func TestLuauRunsHostileCorpus(t *testing.T) {
 }
 
 // TestLuauRunsHostileCorpusPlantedPattern is the control: the same runner,
-// with a reader bug (the text reader refuses every input) planted in the
-// generated scratch program only, must go red and name the inputs it refuses.
+// with a reader bug planted in the generated scratch units only (the strict
+// text reader refuses every input, damaged), must go red on EXACTLY the rows
+// the plant moves: every text-carrier case whose manifest answer is not
+// already refuse/damaged, and no other.
 func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "luau (the pinned release)")
@@ -468,18 +497,34 @@ func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings := runHostileCorpus(t, root, filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus"), true)
-	if len(findings) == 0 {
-		t.Fatal("the planted reader bug left the hostile-corpus runner green")
-	}
-	found := 0
-	for _, f := range findings {
-		if strings.Contains(f, "FIX-CARD: luau-hostile-corpus:") {
-			found++
+	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
+	want := map[string]bool{}
+	for _, c := range loadHostileManifest(t, corpusDir) {
+		if c.carrier == "text" && (c.verdict != "refuse" || c.reason != "damaged") {
+			want[c.name] = true
 		}
 	}
-	if found == 0 {
-		t.Fatal("the planted reader bug was caught without a FIX-CARD line")
+	if len(want) == 0 {
+		t.Fatal("NEGATIVE CONTROL FAILED: the manifest has no text case the plant can move")
+	}
+	got := map[string]bool{}
+	for _, f := range runHostileCorpus(t, root, corpusDir, true) {
+		rest, ok := strings.CutPrefix(f, "FIX-CARD: luau-hostile-corpus: ")
+		if !ok {
+			t.Fatalf("NEGATIVE CONTROL FAILED: a finding without its FIX-CARD line: %s", f)
+		}
+		name, _, _ := strings.Cut(rest, " ")
+		got[name] = true
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("NEGATIVE CONTROL FAILED: the planted text reader left %s green", name)
+		}
+	}
+	for name := range got {
+		if !want[name] {
+			t.Errorf("NEGATIVE CONTROL FAILED: the planted text reader moved %s, which it cannot reach", name)
+		}
 	}
 }
 
