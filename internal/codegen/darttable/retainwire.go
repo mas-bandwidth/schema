@@ -482,6 +482,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")
@@ -495,6 +496,12 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tr.scanNodeTable();\n")
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\t%s(r, v, false);\n", d+"WireLoadBody")
+	// A NON-FINITE FLOAT REFUSES THE READ (docs/SPEC-TABLES.md §3.3, §6.6):
+	// nothing lands, the retained store included.
+	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) {\n")
+	g.pf("\t\tretain.reset();\n")
+	g.pf("\t\treturn %s();\n", n)
+	g.pf("\t}\n")
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 

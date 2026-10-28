@@ -360,9 +360,9 @@ func (g *wireGen) emitPutElem(f *ir.Field, ek int, e, p, ind string) {
 	case wireKindBool:
 		g.pf("%s%s.putByte(%s ? 1 : 0);\n", ind, p, e)
 	case wireKindF32:
-		g.pf("%s%s.putU32(_f32Bits(%s));\n", ind, p, e)
+		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
 	case wireKindF64:
-		g.pf("%s%s.putU64(_f64Bits(%s));\n", ind, p, e)
+		g.pf("%s%s.putU64(_f64Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
 	default:
 		if ir.TableKindWide(ek) { // kinds 18-29, raw at the width (§3, §15)
 			g.pf("%s_putWide(%s, %s, %d);\n", ind, p, e, ir.TableKindWidth(ek))
@@ -607,14 +607,16 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		g.pf("%sif (kind == %d) {\n", ind, wireKindF32)
 		g.pf("%s\tif (%s.limit - %s.pos != 4) %s\n", ind, p, p, bad)
-		g.pf("%s\t%s = _f32FromBits(readU32(%s.data, %s.pos));\n", ind, dest, p, p)
+		g.pf("%s\t%s = %s.readF32(%s.pos, '%s');\n", ind, dest, p, p, g.floatOwner(f))
 		g.pf("%s} else {\n", ind)
 		g.pf("%s\tif (%s.limit - %s.pos != 8) %s\n", ind, p, p, bad)
-		g.pf("%s\t%s = _f64FromBits(readU64(%s.data, %s.pos));\n", ind, dest, p, p)
+		g.pf("%s\t%s = %s.readF64(%s.pos, '%s');\n", ind, dest, p, p, g.floatOwner(f))
 		g.pf("%s}\n", ind)
 		if f.HasFloatRange {
+			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
 			g.pf("%sif (%s < %s) { %s = %s; %s.report.clamped++; }\n", ind, dest, fmtFloat(f.FMin), dest, fmtFloat(f.FMin), p)
 			g.pf("%sif (%s > %s) { %s = %s; %s.report.clamped++; }\n", ind, dest, fmtFloat(f.FMax), dest, fmtFloat(f.FMax), p)
+			g.pf("%sif (%s == 0) %s = 0.0;\n", ind, dest, dest)
 		}
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
 		g.pf("%sreturn true;\n", ind)
@@ -705,10 +707,10 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		g.pf("%s%s.add(%s.readByte() != 0);\n", ind, out, p)
 	case wireKindF32:
 		g.pf("%sif (!%s.has(4)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, out, p, p, p)
+		g.pf("%s%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
 	case wireKindF64:
 		g.pf("%sif (!%s.has(8)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, out, p, p, p)
+		g.pf("%s%s.add(%s.readF64(%s.pos, '%s')); %s.pos += 8;\n", ind, out, p, p, g.floatOwner(f), p)
 	default:
 		w := ir.TableKindWidth(ek)
 		if ir.TableKindWide(ek) { // kinds 18-29 (§3, §15)
