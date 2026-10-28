@@ -148,8 +148,7 @@ local readU64 = function(r) {
   return v;
 };
 
-// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same
-// rule as packets"): a read refuses a NaN or an infinity on its RAW BITS,
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's rule): a read refuses a NaN or an infinity on its RAW BITS,
 // before the bits become a value, as non_finite_float. readPrim answers the
 // sentinel NONFINITE for one, and the site that asked records the field's
 // <Owner>.<field> name on the load's state (refuseNonFinite) and lands

@@ -138,8 +138,7 @@ local narrowF32 = function(x) {
 
 local writeF64 = function(w, x) { wfixed(w, castf2i(x), 8); };
 
-// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same
-// rule as packets"): every writer refuses a NaN or an infinity, and a float32
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's rule): every writer refuses a NaN or an infinity, and a float32
 // field's value must stay finite at float32 too, so a double past float32's
 // range, which narrows to an infinity, is refused rather than written as one.
 // The refusal names the field, non_finite_float: <Owner>.<field>, on
