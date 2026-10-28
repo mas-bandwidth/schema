@@ -11,7 +11,7 @@
 // The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
 // load_registry): each value's descriptor names its Loader, and the field,
 // element and arm positions each call one overload set on it (load_field,
-// load_item, load_payload; goose_spec.md §8.2 tag dispatch), one case function
+// load_item, load_payload; the Goose spec's tag dispatch, case functions), one case function
 // per registered kind. It reads nothing but the descriptors and the unit the
 // caller hands it (LoadUnit). What it builds is the FLAT VALUE TABLE: every
 // value it decodes is a LoadVal in the caller's pool, linked by index, and

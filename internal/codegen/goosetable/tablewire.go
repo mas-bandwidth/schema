@@ -120,7 +120,7 @@ func emitTableWireUnit(g *goose.Gen) error {
 		for i, f := range st.Fields {
 			if f.KeyEnumRef != nil {
 				// the key enum's variants, declared HERE: a descriptor global of
-				// another module may not have initialised yet (goose_spec.md §11.1)
+				// another module may not have initialised yet (the Goose spec: globals initialise in declaration order, imported files first)
 				e := f.KeyEnumRef
 				name := fmt.Sprintf("_TableUnitKey%d", len(keys))
 				parts := make([]string, len(e.Variants))
