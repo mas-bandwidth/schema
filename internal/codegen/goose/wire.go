@@ -257,7 +257,7 @@ func (w *wgen) emitZeroField(f *ir.Field, base, ind string) {
 	switch {
 	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
 		if f.Array != ir.ArrayNone {
-			i := w.tmp("i")
+			i := w.tmp("ix")
 			w.Pf("%sfor %s in %d {\n%s    for %s in %d { %s[%s][%s] = 0; }\n%s    %sLength[%s] = 0;\n%s}\n",
 				ind, i, f.ArrayBound, ind, "j"+i, t.Size, name, i, "j"+i, ind, name, i, ind)
 			if f.Array == ir.ArrayCounted {
@@ -265,10 +265,10 @@ func (w *wgen) emitZeroField(f *ir.Field, base, ind string) {
 			}
 			return
 		}
-		i := w.tmp("i")
+		i := w.tmp("ix")
 		w.Pf("%sfor %s in %d { %s[%s] = 0; }\n%s%sLength = 0;\n", ind, i, t.Size, name, i, ind, name)
 	case f.Array != ir.ArrayNone:
-		i := w.tmp("i")
+		i := w.tmp("ix")
 		w.Pf("%sfor %s in %d {\n", ind, i, f.ArrayBound)
 		w.emitZeroScalar(f, name+"["+i+"]", ind+"    ")
 		w.Pf("%s}\n", ind)

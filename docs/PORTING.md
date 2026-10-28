@@ -1070,7 +1070,7 @@ reader controls share.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) | ❌ #2236 — card schema-goose-conformance-leg (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) | ✅ `packet-utf8-goose-negative-control` `packet-wide-goose-negative-control` `packet-defaults-goose-negative-control` `packet-finite-goose-negative-control` (make/goose-packet.mk: each a named `tools/sabotage` edit of one Goose emitter, `go build -overlay` into a private compiler, the fixture regenerated and the gate required red on exactly its rows; the finite controls diff the failing vectors against `test/packet-finite/goose/read.expected` and `test/packet-finite/goose/write.expected`) |
 
 ### I3 — The forgery fuzz oracle walks what it opened
 

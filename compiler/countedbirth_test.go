@@ -75,12 +75,17 @@ var bornAtMinimum = map[string]string{
 // targets that still hold the count that way. Go and Elixir are here by the
 // ruling — "For each language, do not force this in. If the language simply
 // doesn't have this concept (Golang) then it is not something we can do" — an
-// error-returning runtime in Go, an always-on raise in Elixir. They are the
-// only two: every other target has a build-removable idiom and is held to it
-// by assertsInDebug.
+// error-returning runtime in Go, an always-on raise in Elixir. Goose joins
+// them for the same reason (its `assert` aborts in every build), returning
+// the refusal kind. Every other target has a build-removable idiom and is
+// held to it by assertsInDebug.
 var refusesEveryBuild = map[string][]string{
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	// Goose's `assert` aborts in every build and the language has no
+	// build-removable check, so the writer returns the refusal kind, Go's form
+	// (internal/codegen/goose/write.go)
+	"goose": {"if value.WindowCount < 2 || value.WindowCount > 8 { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
 }
 
 // assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
@@ -104,9 +109,7 @@ var assertsInDebug = map[string][]string{
 // the target out of this map and into assertsInDebug or refusesEveryBuild,
 // and into the tag maps of uniontagwrite_test.go (docs/PORT-GOOSE.md, THE
 // CARD MAP).
-var packetWriterOwed = map[string]string{
-	"goose": "schema-goose-type-wire-write",
-}
+var packetWriterOwed = map[string]string{}
 
 // writerStillOwed reports whether target's write-side claim is owed, and
 // fails the test when the owed target already emits a writer.
@@ -139,8 +142,9 @@ var goneFromRelease = map[string][]string{
 // contracts with. For a refusesEveryBuild target, none of them may reach the
 // count.
 var assertToken = map[string][]string{
-	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
-	"go":     nil, // the runtime returns an error, in every build
+	"elixir": nil,         // the BEAM has no compile-out assert, so the raise is always on
+	"go":     nil,         // the runtime returns an error, in every build
+	"goose":  {"assert("}, // the writer returns the refusal kind; an assert would abort, never compile out
 }
 
 // generatedText renders every file the target emits for the unit, joined, so a

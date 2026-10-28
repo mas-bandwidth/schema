@@ -33,7 +33,7 @@ func (w *wgen) emitWriteField(f *ir.Field, ind string) error {
 		}
 		limit = name + "Count"
 	}
-	i := w.tmp("i")
+	i := w.tmp("ix")
 	w.Pf("%sfor %s in %s {\n", ind, i, limit)
 	if err := w.emitWriteScalar(f, name+"["+i+"]", name+"Length["+i+"]", ind+"    "); err != nil {
 		return err

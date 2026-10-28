@@ -324,10 +324,11 @@ payload-free arm included, which the packet surface carries in every
 target), and a `[A..B]` count born at `A`. Its claims sit in
 `compiler/*_test.go` beside the other nine targets' (`bornAtMinimum`,
 `guardComment`, `tagEnumSurface`, the payload-free arm's `carried`). The
-packet WRITER is owed: `packetWriterOwed` in `compiler/countedbirth_test.go`
-names schema-goose-type-wire-write as the card that owes the write-side
-claims (the count and the union tag on write), and the gate turns red if
-goose emits a `fn Write...` while it is still listed there.
+packet wire has landed since (THE PACKET WIRE): goose left
+`packetWriterOwed` and carries its write-side claims in `refusesEveryBuild`
+and `tagRefusesEveryBuild`, and `compiler/carries_goose_packet.go` registers
+wide text on the packet wire and the string, bytes and flags packet
+defaults.
 
 **How a later card carries a construct.** In its OWN new file
 `compiler/carries_goose_<surface>.go`, tag `schema_leg_goose`, never by
@@ -392,6 +393,61 @@ lowercase hex lines.**
   per mutant) is a `goose build -O2` executable reading stdin with
   `read_stdin` and writing with `write_stdout` and `flush_stdout`: Goose
   speaks it directly, with no host shim (schema-goose-fuzz-differential).
+
+## THE PACKET WIRE
+
+The type surface's codec (`internal/codegen/goose/wire.go`, `write.go`,
+`read.go`), bit-packed over serialize.goose v2.1.1, vendored verbatim into
+`internal/codegen/goose/runtime/serialize*.goose` and held to
+`runtime/SERIALIZE_PIN` (repository, tag, commit, one sha256 per file) by
+`TestGooseVendoredSerializeIsThePin`. Per type and union of a module:
+
+```goose
+let <T>MaxBits: i64; let <T>MaxBytes: i64
+fn Zero<T>(value: <T>&)                         // the §5 zero form, not the defaults
+fn Write<T>(s: WriteStream&, value: <T>&) -> i32 // SERIALIZE_ERROR_NONE or the refusal kind
+fn Read<T>(s: ReadStream&, value: <T>&) -> bool  // false: the reason is serialize_error(s)
+```
+
+Every bit count is folded at generation time from the declaration, as the
+Go and C targets fold it, and every value moves through the runtime's bit
+primitives (`serialize_bits`, `serialize_bits64`, `serialize_bytes`, the
+fixed, int128, float and compressed-float entries).
+
+**Writes refuse in every build, and never abort.** serialize.goose aborts on
+write misuse (its U9), and Goose's `assert` aborts in every build: the
+language has no build-removable check. So the generated writer checks every
+value the wire cannot carry BEFORE the runtime sees it and returns the kind,
+the form Go makes native: `SERIALIZE_ERROR_VALUE_OUT_OF_RANGE` for a value
+outside its range, a count or length past its bound, a mask bit above the
+flags width, an interior null in wide text, an out-of-set union tag (which
+writes nothing); `SERIALIZE_ERROR_NON_FINITE_FLOAT` for a NaN or an infinity
+(SPEC §4.3). The claims are `refusesEveryBuild` and `tagRefusesEveryBuild` in
+`compiler/countedbirth_test.go` and `compiler/uniontagwrite_test.go`.
+
+**Reads refuse, never clamp,** latching the reason the C target latches:
+`value_out_of_range` for a value in a range's bit headroom, a const or
+reserved mismatch, a tag above the arm count or a broken surrogate pair;
+`invalid_utf8` and `embedded_nul` for string content; the runtime's own
+reasons (`past_end`, `non_finite_float`, `nonzero_padding`) otherwise. A
+read zeroes the untaken side of a branch through `Zero<T>` (SPEC §5), and a
+union selection builds its arm fresh at its declared defaults (SPEC §4.8).
+A direct read overlays the received prefix of a string and keeps the tail.
+
+**Storage crossing.** A 128-bit value's storage is `schema_rt::Int128`, the
+runtime's is serialize.goose's global `Int128`/`Uint128`; the codec moves the
+two lanes, `lo` and `hi`, by name. An unsigned fixed field rides the next
+wider signed fixed entry with `I = width - F`, zero extended, which writes
+the same bytes (the wire depends only on the raw span) and never reads a raw
+value above the signed half as negative.
+
+**The gates.** `TestGooseExamplesAgreeWithTheWireGoldens` and
+`TestGooseLudicrousAgreesWithTheWireGoldens` (`make test-goose`) run
+`test/goose/main.goose` and `test/goose-ludicrous/main.goose`, the Go legs'
+golden tests in Goose, against `testdata/wire`, at `-O1` and under
+`--debug`. `make/goose-packet.mk` holds the shared packet gates, each with
+its registered control (group `goose-packet`): `packet-utf8-goose`,
+`packet-wide-goose`, `packet-defaults-goose` and `packet-finite-goose`.
 
 ## THE REGISTER
 

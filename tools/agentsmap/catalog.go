@@ -190,6 +190,8 @@ var catalog = []Entry{
 	e("test/generated-tree", "committed generated/ verify", "test/generated-tree/verify", "make generated-current"),
 	e("test/go", "Go packet tests", "make test-go", "make test-go"),
 	e("test/go-ludicrous", "Go int128 tests", "make test-go", "make test-go"),
+	e("test/goose", "Goose packet tests", "make test-goose", "make test-goose"),
+	e("test/goose-ludicrous", "Goose int128 tests", "make test-goose", "make test-goose"),
 	e("test/go-tables", "Go table tests", "make test-go", "make test-go"),
 	e("test/guard", "C++ include-guard test", "./build/schema_test_guard", "./build/schema_test_guard"),
 	e("test/java", "Java packet tests", "make test-java", "make test-java"),

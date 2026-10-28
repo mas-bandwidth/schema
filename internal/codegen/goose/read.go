@@ -27,7 +27,7 @@ func (w *wgen) emitReadField(f *ir.Field, ind string) error {
 		w.emitReadRanged(lo, hi, "i32", name+"Count", ind)
 		limit = name + "Count"
 	}
-	i := w.tmp("i")
+	i := w.tmp("ix")
 	w.Pf("%sfor %s in %s {\n", ind, i, limit)
 	if err := w.emitReadScalar(f, name+"["+i+"]", name+"Length["+i+"]", ind+"    "); err != nil {
 		return err
