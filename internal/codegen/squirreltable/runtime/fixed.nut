@@ -44,6 +44,43 @@ _M.put <- function(b, at, w, v) {
   for (local i = 0; i < w; i++) { b[at + i] = (v >> (8 * i)) & 0xff; }
 };
 
+// A FIXED-FORM FLOAT IS ITS IEEE-754 BIT PATTERN, AND FINITE
+// (docs/SPEC-TABLES.md §3.3, §3.4; Glenn, 2026-10-27, "same rule as
+// packets"): a writer refuses a NaN or an infinity, a float32 one that
+// narrows to an infinity included, and a read refuses one on its RAW BITS
+// before the field is written, as non_finite_float. Every finite float32
+// narrows and widens exactly through the blob's 'f' view (the C conversion,
+// round to nearest, ties to even), -0 and the subnormals included.
+local scratch = blob(8);
+local f32Bits = function(v) {
+  scratch.seek(0); scratch.writen(v.tofloat(), 'f');
+  scratch.seek(0); return scratch.readn('i') & 0xffffffff;
+};
+_M.putF32 <- function(b, at, v) {
+  local bits = f32Bits(v);
+  if ((bits & 0x7f800000) == 0x7f800000) return false;
+  _M.put(b, at, 4, bits);
+  return true;
+};
+_M.putF64 <- function(b, at, v) {
+  local bits = castf2i(v.tofloat());
+  if ((bits & 0x7ff0000000000000) == 0x7ff0000000000000) return false;
+  _M.put(b, at, 8, bits);
+  return true;
+};
+// getF32 / getF64: the value, or null for a NaN or an infinity on the bits
+_M.getF32 <- function(b, at) {
+  local bits = _M.u32le(b, at);
+  if ((bits & 0x7f800000) == 0x7f800000) return null;
+  scratch.seek(0); scratch.writen(bits, 'i');
+  scratch.seek(0); return scratch.readn('f');
+};
+_M.getF64 <- function(b, at) {
+  local bits = _M.u64le(b, at);
+  if ((bits & 0x7ff0000000000000) == 0x7ff0000000000000) return null;
+  return casti2f(bits);
+};
+
 // textIllFormed reports whether the string payload at b[at..at+n) is NOT the
 // text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
 // with no zero byte. A zero byte, an overlong or surrogate sequence, a value

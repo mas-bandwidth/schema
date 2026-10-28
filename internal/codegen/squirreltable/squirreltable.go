@@ -17,6 +17,7 @@ import (
 	"embed"
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -430,7 +431,7 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 	m.Printf("  make = function() { return _M.%s(); },\n", st.Name)
 	m.Printf("  fields = [\n")
 	for i, f := range st.Fields {
-		m.Printf("    %s,\n", fieldDesc(f, i))
+		m.Printf("    %s,\n", fieldDesc(m.Unit, f, i))
 	}
 	m.Printf("  ],\n")
 	m.Printf("};\n\n")
@@ -457,7 +458,7 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 // mapDesc renders a map field's descriptor (docs/SPEC-TABLES.md §2.8): shape
 // "map", the key and value each at their own sub-descriptor, the value
 // null (an empty map elides, §3).
-func mapDesc(f *ir.Field, ordinal int) string {
+func mapDesc(u *ir.Unit, f *ir.Field, ordinal int) string {
 	d := map[string]string{
 		"name":       squirrel.StringLit([]byte(f.Name)),
 		"member":     squirrel.StringLit([]byte(squirrel.Member(f))),
@@ -472,26 +473,26 @@ func mapDesc(f *ir.Field, ordinal int) string {
 		"bound":      "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
-		"entry": "null", "textlist": "0", "unbounded": "false",
+		"entry": "null", "textlist": "0", "unbounded": "false", "nf": "null",
 	}
 	// the GENERATED entry is an ordinary table of the closure (§2.8): the
 	// runtime decodes and writes an entry through its descriptor, so the key
 	// and value take the ordinary field codecs and the entry rides whole.
 	d["entry"] = squirrel.StringLit([]byte(f.MapEntry.Name))
-	d["mapkey"] = fieldDesc(ir.MapKeyField(f), 0)
-	d["mapvalue"] = fieldDesc(ir.MapValueField(f), 1)
+	d["mapkey"] = fieldDesc(u, ir.MapKeyField(f), 0)
+	d["mapvalue"] = fieldDesc(u, ir.MapValueField(f), 1)
 	return render(d, mapKeys)
 }
 
 var mapKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
 	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
-	"entry", "mapkey", "mapvalue", "optional", "required", "deprecated", "textlist", "unbounded"}
+	"entry", "mapkey", "mapvalue", "optional", "required", "deprecated", "textlist", "unbounded", "nf"}
 
-func fieldDesc(f *ir.Field, ordinal int) string {
+func fieldDesc(u *ir.Unit, f *ir.Field, ordinal int) string {
 	if f.IsMap() {
-		return mapDesc(f, ordinal)
+		return mapDesc(u, f, ordinal)
 	}
-	d := baseDesc(f)
+	d := baseDesc(u, f)
 	d["name"] = squirrel.StringLit([]byte(f.Name))
 	d["member"] = squirrel.StringLit([]byte(squirrel.Member(f)))
 	d["key"] = squirrel.StringLit([]byte(ir.TableFieldJsonKey(f)))
@@ -502,7 +503,7 @@ func fieldDesc(f *ir.Field, ordinal int) string {
 	d["required"] = fmt.Sprint(f.Required)
 	d["deprecated"] = fmt.Sprint(f.Deprecated)
 	if f.Array != ir.ArrayNone {
-		elem := baseDesc(f)
+		elem := baseDesc(u, f)
 		elem["kind"] = fmt.Sprint(ir.TableWireElemKind(f))
 		d["shape"] = `"arr"`
 		d["bound"] = fmt.Sprint(f.ArrayBound)
@@ -534,20 +535,21 @@ func fieldDesc(f *ir.Field, ordinal int) string {
 	return render(d, fieldKeys)
 }
 
-var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist"}
+var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist", "nf", "qcount", "qmin", "qdelta", "qbits"}
 
 var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
 	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
-	"optional", "required", "deprecated", "textlist", "unbounded"}
+	"optional", "required", "deprecated", "textlist", "unbounded", "nf", "qcount", "qmin", "qdelta", "qbits"}
 
 // baseDesc is the facts of the field's VALUE type, which an array's element
 // shares.
-func baseDesc(f *ir.Field) map[string]string {
+func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 	d := map[string]string{
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
 		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
-		"entry": "null", "textlist": "0", "unbounded": "false",
+		"entry": "null", "textlist": "0", "unbounded": "false", "nf": "null",
+		"qcount": "0", "qmin": "0.0", "qdelta": "0.0", "qbits": "0",
 	}
 	if f.Type.TextUnbounded() {
 		// UNBOUNDED TEXT (§2.13.1): the reader has no capacity to clamp at.
@@ -602,6 +604,24 @@ func baseDesc(f *ir.Field) map[string]string {
 		d["shape"] = `"float"`
 		d["f32"] = fmt.Sprint(f.Type.Kind == ir.TFloat32)
 		d["def"] = scalarDefault(f)
+		// the <Owner>.<field> a non-finite read or write refuses as
+		// (docs/SPEC-TABLES.md §3.3, non_finite_float)
+		d["nf"] = squirrel.StringLit([]byte(FloatOwner(u, f)))
+		// a COMPRESSED float32's message-form quantizer (docs/SPEC-TABLES.md
+		// §3.3, SPEC.md §4.3): the step count, min, delta and index width
+		// the message writer quantizes by; 0 steps for a float carried whole
+		shape := ir.TableFieldShape(f)
+		if shape.Inner != nil && (f.Array != ir.ArrayNone || f.KeyEnum != "") {
+			shape = *shape.Inner
+		}
+		if shape.Packing == ir.TableMessageQuantized {
+			if count, delta, ok := ir.TableMessageQuantization(shape); ok {
+				d["qcount"] = fmt.Sprint(count)
+				d["qmin"] = squirrel.Float32Lit(float64(shape.QMin))
+				d["qdelta"] = squirrel.Float32Lit(float64(delta))
+				d["qbits"] = fmt.Sprint(shape.Bits)
+			}
+		}
 	default:
 		d["shape"] = `"int"`
 		d["signed"] = fmt.Sprint(f.Type.Signed && f.Type.Kind != ir.TBits)
@@ -703,7 +723,7 @@ func emitUnion(m *Module, un *ir.Union) {
 	for i, v := range un.Variants {
 		payload := "null"
 		if !v.Void() {
-			payload = fieldDesc(v.F, i)
+			payload = fieldDesc(m.Unit, v.F, i)
 		}
 		m.Printf("    { name = %s, member = %s, id = %s, tag = %d, payload = %s },\n",
 			squirrel.StringLit([]byte(v.Name)), squirrel.StringLit([]byte(ir.GoExportName(v.Name))),
@@ -802,4 +822,30 @@ func jsonEntries(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFromJson <- function(text, report = null) {\n", st.Name)
 	m.Printf("  if (report == null) report = {};\n")
 	m.Printf("  return %s.FromJson(_M, %s, text, report);\n};\n", js, l)
+}
+
+// FloatOwner names a float field <Owner>.<field> for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3): the owner is the table, type or union
+// that declares it, the name the Go oracle's tablewire.FloatOwner records,
+// and an array element is named by its array field.
+func FloatOwner(u *ir.Unit, f *ir.Field) string {
+	if u != nil {
+		for _, set := range []map[string]*ir.Struct{u.Tables, u.Structs} {
+			for _, st := range set {
+				if slices.Contains(st.Fields, f) {
+					return st.Name + "." + f.Name
+				}
+			}
+		}
+		for _, set := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+			for _, un := range set {
+				for i := range un.Variants {
+					if un.Variants[i].F == f {
+						return un.Name + "." + f.Name
+					}
+				}
+			}
+		}
+	}
+	return f.Name
 }

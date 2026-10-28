@@ -1,7 +1,7 @@
 // THE STRICT READ AND ITS NAMED REFUSALS (docs/SPEC-TABLES.md §6.5, §11,
 // §2.14). ReadStrict answers the root or refuses with ONE name, the set §6.5
 // states and Go's TableReport.Err() answers: wire_damaged (the file's own
-// framing), malformed, non_finite, clamped and kind_mismatch, each with the
+// framing), non_finite_float, malformed, clamped and kind_mismatch, each with the
 // first field the walk saw move it; a form byte the root's own form does not read
 // (previous_form, message_form_as_file, newer_form); and integrity_mismatch.
 // It does NOT refuse unknown, widened or duplicate alone (§6.5: unknown is
@@ -21,7 +21,7 @@ local FORM_FIXED = 3;
 local COUNTERS = {
   unknown = "unknown", kindMismatch = "kind_mismatch", widened = "widened",
   clamped = "clamped", duplicate = "duplicate", malformed = "malformed",
-  nonFinite = "non_finite", refused = "refused",
+  refused = "refused",
   countRefusal = "count_refusal"
 };
 
@@ -218,6 +218,7 @@ local reset = function(report) {
   report.missingRequired <- false;
   report.reason <- null;
   report.field <- null;
+  report.nonFiniteFloat <- null;
   report.unknownField <- null;
   report.duplicateField <- null;
 };
@@ -255,7 +256,12 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   if (fixedReader && form == FORM_FIXED) {
     local out = [d.make()];
     local n = T[root + "FixedLoadTolerant"](bytes, out, 1);
-    if (n < 0) { report.reason = T.FixedReason; return null; }
+    if (n < 0) {
+      report.reason = T.FixedReason;
+      // a non-finite float names its field (docs/SPEC-TABLES.md §3.3)
+      if (("FixedField" in T) && T.FixedField != null) report.field = T.FixedField;
+      return null;
+    }
     if (n != 1) { report.malformed = true; report.reason = "wire_damaged"; return null; }
     return out[0];
   }
@@ -276,6 +282,13 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local v = _load.loadTolerant(T, root, bytes, witness(store, first), null, true);
   foreach (k, _ in COUNTERS) report[k] = store[k];
   report.missingRequired = store.missingRequired;
+  // A NON-FINITE FLOAT OUTRANKS EVERY OTHER VERDICT (docs/SPEC-TABLES.md
+  // §3.3): the load named it on this report, <Owner>.<field>
+  if (report.nonFiniteFloat != null) {
+    report.reason = "non_finite_float";
+    report.field = report.nonFiniteFloat;
+    return null;
+  }
   // A MISSING REQUIRED FIELD IS ITS OWN NAME (docs/SPEC-TABLES.md §2.3): the
   // load sets malformed for the refusal, and this slot says why, so the strict
   // caller answers missing_required with the field rather than a bare
@@ -302,10 +315,8 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     report.reason = "wire_damaged";
     return null;
   }
-  // damage, then the refusing counters in Go's Err() order: a plain float's
-  // non_finite (docs/SPEC-TABLES.md §3.3) sits beside clamped and
-  // kind_mismatch and names the first field the load saw it on
-  foreach (k in ["malformed", "nonFinite", "clamped", "kindMismatch"]) {
+  // damage, then the refusing counters in Go's Err() order
+  foreach (k in ["malformed", "clamped", "kindMismatch"]) {
     local moved = typeof store[k] == "bool" ? store[k] : store[k] > 0;
     if (!moved) continue;
     report.reason = COUNTERS[k];
@@ -323,7 +334,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
   integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
-  non_finite = true, clamped = true, kind_mismatch = true, count_refusal = true,
+  non_finite_float = true, clamped = true, kind_mismatch = true, count_refusal = true,
   missing_required = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
   layout_malformed = true, layout_record_too_large = true, no_layout = true,

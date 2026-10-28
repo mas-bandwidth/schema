@@ -92,7 +92,7 @@ local joinField = function(cf, fd) {
     offset = cf.offset, elemSize = cf.elemSize, storage = cf.storage, table = fd.table,
     isArray = cf.isArray, bound = cf.bound, countOffset = cf.countOffset,
     presentOffset = cf.presentOffset, isPointer = fd.shape == "ptr", variants = fd.variants,
-    f32 = ("f32" in fd) && fd.f32, list = ("list" in fd) && fd.list,
+    f32 = ("f32" in fd) && fd.f32, nf = ("nf" in fd) ? fd.nf : null, list = ("list" in fd) && fd.list,
     counted = ("counted" in fd) && fd.counted
   };
 };
@@ -236,10 +236,19 @@ scalarWrite = function(buf, at, f, val, order) {
   // THE SCALAR'S OWN WIDTH, not the FIELD's size: an optional field's size
   // carries its one-byte presence companion (docs/SPEC-TABLES.md §20.2).
   local w = f.elemSize - ((("optional" in f) && f.optional) ? 1 : 0);
-  if (f.shape == "bool") { put(buf, at, val ? 1 : 0, 1, order); return; }
+  if (f.shape == "bool") { put(buf, at, val ? 1 : 0, 1, order); return true; }
   if (f.shape == "float") {
-    if (f.f32 || w == 4) { put(buf, at, narrowF32(val), 4, order); } else { put(buf, at, castf2i(val), 8, order); }
-    return;
+    // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): the cook
+    // writer answers false with CookReason non_finite_float: <Owner>.<field>,
+    // and a float32 must stay finite at float32
+    local bits = (f.f32 || w == 4) ? narrowF32(val.tofloat()) : castf2i(val.tofloat());
+    local finite = (f.f32 || w == 4) ? (bits & 0x7f800000) != 0x7f800000 : (bits & 0x7ff0000000000000) != 0x7ff0000000000000;
+    if (!finite) {
+      if (_M.CookReason == null) _M.CookReason <- "non_finite_float: " + f.nf;
+      return false;
+    }
+    put(buf, at, bits, (f.f32 || w == 4) ? 4 : 8, order);
+    return true;
   }
   if (f.shape == "enum") {
     local ordinal = 0;
@@ -352,8 +361,7 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
     if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, n, 4, order);
     return true;
   }
-  scalarWrite(buf, at, f, inst[f.member], order);
-  return true;
+  return scalarWrite(buf, at, f, inst[f.member], order) != false;
 };
 
 recordWrite = function(T, flds, inst, buf, regionBase, recBase, order, nodes, offsets) {
@@ -383,8 +391,7 @@ elementWrite = function(T, e, val, buf, regionBase, at, order, nodes, offsets, e
     for (local i = 0; i < n; i++) buf[at + i] = b[i] & 0xff;
     return true;
   }
-  scalarWrite(buf, at, e, val, order);
-  return true;
+  return scalarWrite(buf, at, e, val, order) != false;
 };
 
 _M.CookMeasure <- function(T, root, value) {
@@ -400,6 +407,7 @@ _M.CookMeasure <- function(T, root, value) {
 
 _M.Cook <- function(T, root, value, buf, order) {
   CUR = T;
+  _M.CookReason <- null;
   local form = ("cookForms" in T) && (root in T.cookForms) ? T.cookForms[root] : null;
   if (form == null || value == null || order < 1 || order > 2) return false;
   local nodes = number(T, root, value);

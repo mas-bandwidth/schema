@@ -131,6 +131,10 @@ type fuzzAnswer struct {
 	malformed, refused                                 bool
 	saved                                              []byte
 	saveFail                                           bool
+	// nonFinite is the engine's refusal of a NaN or an infinity
+	// (docs/SPEC-TABLES.md §3.3): every read refuses it, so the whole of
+	// what the leg owes is its own refusal verdict
+	nonFinite bool
 }
 
 func (a fuzzAnswer) String() string {
@@ -146,6 +150,12 @@ func (a fuzzAnswer) String() string {
 // "" when they agree (test/conformance/harness/wirefuzz.go, wireVerdict, for
 // the builder arm and the fixed-class roots).
 func fuzzVerdict(leg, eng fuzzAnswer) string {
+	if eng.nonFinite {
+		if !leg.refused {
+			return "the engine refuses a non-finite float (non_finite_float); the leg did not refuse the wire"
+		}
+		return ""
+	}
 	switch {
 	case leg.loaded != eng.loaded:
 		return "the builder's completion differs"
@@ -188,6 +198,10 @@ func fuzzEngine(m *tabletext.Model, def *ir.Struct, variable bool, data []byte) 
 		}
 	} else {
 		ok, derr = tablewire.DecodeRegion(m, inst, data, &rep)
+	}
+	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](derr); refused {
+		ans.nonFinite = true
+		return ans, nil
 	}
 	switch {
 	case tablewire.Refused(derr):

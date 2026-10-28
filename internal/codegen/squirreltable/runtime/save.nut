@@ -138,6 +138,29 @@ local narrowF32 = function(x) {
 
 local writeF64 = function(w, x) { wfixed(w, castf2i(x), 8); };
 
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same
+// rule as packets"): every writer refuses a NaN or an infinity, and a float32
+// field's value must stay finite at float32 too, so a double past float32's
+// range, which narrows to an infinity, is refused rather than written as one.
+// The refusal names the field, non_finite_float: <Owner>.<field>, on
+// SaveReason. A finite value rides as its bits, -0 and the subnormals exact.
+local floatFinite = function(d, val) {
+  val = val.tofloat();
+  if (d.f32) return (narrowF32(val) & 0x7f800000) != 0x7f800000;
+  return (castf2i(val) & 0x7ff0000000000000) != 0x7ff0000000000000;
+};
+local refuseNonFinite = function(d) {
+  if (_M.SaveReason == null) _M.SaveReason <- "non_finite_float: " + d.nf;
+  return false;
+};
+
+// ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
+// default rides, and a float32 compares at float32
+local floatIsDefault = function(d, val, def) {
+  if (d.f32) return narrowF32(val.tofloat()) == narrowF32(def.tofloat());
+  return castf2i(val.tofloat()) == castf2i(def.tofloat());
+};
+
 local scalarEqual = function(val, def) { return val == def; };
 local scalarDefault = function(val, def) {
   if (typeof val == "array") {
@@ -357,7 +380,8 @@ local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeB
 writePrim = function(w, d, val, ids) {
   if (d.shape == "bool") { wu8(w, val ? 1 : 0); return true; }
   if (d.shape == "float") {
-    if (d.f32) { wfixed(w, narrowF32(val), 4); } else { writeF64(w, val); }
+    if (!floatFinite(d, val)) return refuseNonFinite(d);
+    if (d.f32) { wfixed(w, narrowF32(val.tofloat()), 4); } else { writeF64(w, val.tofloat()); }
     return true;
   }
   if (d.shape == "enum") {
@@ -444,8 +468,8 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
         rides = val[i] != null && val[i].Type != null && val[i].Type != 0;
       } else if (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob") {
         rides = val[i] != null;
-      } else if (e.shape == "float" && e.f32) {
-        rides = narrowF32(val[i]) != narrowF32(e.def);
+      } else if (e.shape == "float") {
+        rides = !floatIsDefault(e, val[i], e.def);
       } else {
         rides = !scalarDefault(val[i], e.def);
       }
@@ -732,8 +756,8 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
   }
   // a scalar: bool, int, flags, float or enum
   if (!always) {
-    if (shape == "float" && d.f32) {
-      if (narrowF32(val) == narrowF32(d.def)) return true;
+    if (shape == "float") {
+      if (floatIsDefault(d, val, d.def)) return true;
     } else if (scalarDefault(val, d.def)) {
       return true;
     }
@@ -757,7 +781,7 @@ _M.save <- function(T, rootName, value, retain = null) {
   local w = newWriter();
   wu8(w, FORM_VARIABLE);
   if (!writeFields(T, c, value, w, ids, nodes, value)) {
-    _M.SaveReason <- w.reason;
+    if (w.reason != null) _M.SaveReason <- w.reason;
     return null;
   }
   if (nodes.len() > 0) {
