@@ -110,6 +110,9 @@ public final class Types {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + VEC3_MAX_BITS;
+        assert value.x - value.x == 0.0; // finite: NaN and both infinities fail this
+        assert value.y - value.y == 0.0; // finite: NaN and both infinities fail this
+        assert value.z - value.z == 0.0; // finite: NaN and both infinities fail this
         return true;
     }
 
@@ -177,6 +180,9 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.x = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -184,6 +190,9 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.y = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -191,6 +200,9 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.z = Double.longBitsToDouble(lo);
         return bitsRead;
     }
@@ -239,6 +251,10 @@ public final class Types {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + QUAT_MAX_BITS;
+        assert value.x - value.x == 0.0; // finite: NaN and both infinities fail this
+        assert value.y - value.y == 0.0; // finite: NaN and both infinities fail this
+        assert value.z - value.z == 0.0; // finite: NaN and both infinities fail this
+        assert value.w - value.w == 0.0; // finite: NaN and both infinities fail this
         return true;
     }
 
@@ -313,6 +329,9 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.x = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -320,6 +339,9 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.y = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -327,6 +349,9 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.z = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -334,6 +359,9 @@ public final class Types {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.w = Double.longBitsToDouble(lo);
         return bitsRead;
     }
@@ -1007,6 +1035,11 @@ public final class Types {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + INPUT_MAX_BITS;
+        assert value.stickX - value.stickX == 0.0f; // finite: NaN and both infinities fail this
+        assert value.stickY - value.stickY == 0.0f; // finite: NaN and both infinities fail this
+        assert value.throttle - value.throttle == 0.0f; // finite: NaN and both infinities fail this
+        assert value.yaw - value.yaw == 0.0f; // finite: NaN and both infinities fail this
+        assert value.pitch - value.pitch == 0.0f; // finite: NaN and both infinities fail this
         return true;
     }
 
@@ -1093,18 +1126,33 @@ public final class Types {
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.stickX = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.stickY = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.throttle = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.yaw = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.pitch = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;

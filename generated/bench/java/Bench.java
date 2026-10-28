@@ -196,6 +196,9 @@ public final class Bench {
         assert value.b <= 65535;
         assert value.c >= -1000000;
         assert value.c <= 1000000;
+        assert value.x - value.x == 0.0f; // finite: NaN and both infinities fail this
+        assert value.y - value.y == 0.0f; // finite: NaN and both infinities fail this
+        assert value.z - value.z == 0.0f; // finite: NaN and both infinities fail this
         return true;
     }
 
@@ -296,12 +299,21 @@ public final class Bench {
         value.flag = v != 0;
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.x = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.y = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.z = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -1793,6 +1805,8 @@ public final class Bench {
         assert value.aimX - value.aimX == 0.0f; // finite: NaN and both infinities fail this
         assert value.aimY - value.aimY == 0.0f; // finite: NaN and both infinities fail this
         assert value.aimZ - value.aimZ == 0.0f; // finite: NaN and both infinities fail this
+        assert value.recoil - value.recoil == 0.0f; // finite: NaN and both infinities fail this
+        assert value.drift - value.drift == 0.0; // finite: NaN and both infinities fail this
         {
             final Int128 min = new Int128(0xfffffff000000000L, 0);
             final Int128 max = new Int128(68719476736L, 0);
@@ -2195,6 +2209,9 @@ public final class Bench {
         value.aimZ = (float) v / 200.0f * 2.0f + -1.0f;
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.recoil = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -2202,6 +2219,9 @@ public final class Bench {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.drift = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;

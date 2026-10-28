@@ -509,8 +509,8 @@ func (g *gen) hasCheckScalar(f *ir.Field) bool {
 		return true
 	case ir.TInt:
 		return f.HasIntRange || g.widened(f)
-	case ir.TFloat32:
-		return f.HasFloatRange
+	case ir.TFloat32, ir.TFloat64:
+		return true // finite only: compressed and bare alike (SPEC §4.3)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -640,9 +640,10 @@ func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 		}
 		g.assertRange(loaded, f.IntMin, f.IntMax, f.IntMax.Cmp(maxInt64) <= 0, ind)
 	case ir.TFloat32:
-		if f.HasFloatRange {
-			g.pf("%sassert %s - %s == 0.0f; // finite: NaN and both infinities fail this\n", ind, name, name)
-		}
+		// compressed or bare, the value is finite (SPEC §4.3)
+		g.pf("%sassert %s - %s == 0.0f; // finite: NaN and both infinities fail this\n", ind, name, name)
+	case ir.TFloat64:
+		g.pf("%sassert %s - %s == 0.0; // finite: NaN and both infinities fail this\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -944,7 +945,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteCompressedFloat(f, name, ind)
 			return
 		}
-		// bit transparent: raw bits preserve every NaN payload
+		// the raw bits of a finite value: -0 and subnormals bit exact
 		g.putW(fmt.Sprintf("Float.floatToRawIntBits(%s) & 0xffffffffL", name), 32, ind)
 	case ir.TFloat64:
 		g.pf("%s{\n", ind)
@@ -1417,9 +1418,11 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			return
 		}
 		g.readR(32, ind)
+		g.pf("%sif ((v & 0x7f800000L) == 0x7f800000L) {\n%s    return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)\n%s}\n", ind, ind, ind)
 		g.pf("%s%s = Float.intBitsToFloat((int) v);\n", ind, name)
 	case ir.TFloat64:
 		g.emitReadWide64(64, ind)
+		g.pf("%sif ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {\n%s    return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)\n%s}\n", ind, ind, ind)
 		g.pf("%s%s = Double.longBitsToDouble(lo);\n", ind, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

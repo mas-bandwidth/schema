@@ -2000,7 +2000,11 @@ public final class Wire {
             assert value.items[i0] <= 255;
         }
         // finite: NaN and both infinities fail this
+        assert value.floatValue - value.floatValue == 0.0f;
+        // finite: NaN and both infinities fail this
         assert value.compressedFloatValue - value.compressedFloatValue == 0.0f;
+        // finite: NaN and both infinities fail this
+        assert value.doubleValue - value.doubleValue == 0.0;
         assert value.uint8Value >= 0;
         assert value.uint8Value <= 255;
         assert value.uint16Value >= 0;
@@ -2194,6 +2198,9 @@ public final class Wire {
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.floatValue = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
         bitsRead += 10;
@@ -2207,6 +2214,9 @@ public final class Wire {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.doubleValue = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;

@@ -600,6 +600,7 @@ public final class RealWorld {
         assert (long) data.length * 8 >= (long) bitOffset + REAL_PACKET_MAX_BITS;
         assert value.f001Int >= -805495;
         assert value.f001Int <= 805495;
+        assert value.f002F64 - value.f002F64 == 0.0; // finite: NaN and both infinities fail this
         assert value.f003Int >= -835897;
         assert value.f003Int <= 835897;
         assert value.f004Cf32 - value.f004Cf32 == 0.0f; // finite: NaN and both infinities fail this
@@ -607,9 +608,13 @@ public final class RealWorld {
         assert value.f005Uint <= 7316;
         assert value.f006Int >= -1513;
         assert value.f006Int <= 1513;
+        assert value.f007F32 - value.f007F32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f009Int >= -22;
         assert value.f009Int <= 22;
+        assert value.f010F32 - value.f010F32 == 0.0f; // finite: NaN and both infinities fail this
         if (value.f012Bool) {
+            // finite: NaN and both infinities fail this
+            assert value.f013F32 - value.f013F32 == 0.0f;
             assert value.f014Uint >= 0;
             assert value.f014Uint <= 775;
             assert value.f015Int >= -21;
@@ -621,11 +626,16 @@ public final class RealWorld {
         }
         assert value.f018Int >= -834;
         assert value.f018Int <= 834;
+        assert value.f019F64 - value.f019F64 == 0.0; // finite: NaN and both infinities fail this
+        assert value.f020F32 - value.f020F32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f021Ufixed >= 0;
         assert value.f021Ufixed <= 102977536;
+        assert value.f022F32 - value.f022F32 == 0.0f; // finite: NaN and both infinities fail this
+        assert value.f024F32 - value.f024F32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f025Fixed >= -30464;
         assert value.f025Fixed <= 30464;
         assert value.f027Cf32 - value.f027Cf32 == 0.0f; // finite: NaN and both infinities fail this
+        assert value.f030F32 - value.f030F32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f032Int >= -3;
         assert value.f032Int <= 3;
         assert value.f033Uint >= 0;
@@ -639,16 +649,21 @@ public final class RealWorld {
         assert value.f041Int >= -55;
         assert value.f041Int <= 55;
         if (value.f043Bool) {
+            // finite: NaN and both infinities fail this
+            assert value.f044F32 - value.f044F32 == 0.0f;
             assert value.f046Uint >= 0;
             assert value.f046Uint <= 76063;
             assert value.f047Int >= -430976;
             assert value.f047Int <= 430976;
         }
+        assert value.f048F64 - value.f048F64 == 0.0; // finite: NaN and both infinities fail this
         assert value.f049Ufixed >= 0;
         assert value.f049Ufixed <= 49152;
         if (value.f050Bool) {
             assert value.f052Int >= -57;
             assert value.f052Int <= 57;
+            // finite: NaN and both infinities fail this
+            assert value.f053F32 - value.f053F32 == 0.0f;
             assert value.f054Int >= -35;
             assert value.f054Int <= 35;
         }
@@ -656,6 +671,8 @@ public final class RealWorld {
         assert value.f056Int <= 13;
         assert value.f057Int >= -15;
         assert value.f057Int <= 15;
+        assert value.f058F32 - value.f058F32 == 0.0f; // finite: NaN and both infinities fail this
+        assert value.f059F64 - value.f059F64 == 0.0; // finite: NaN and both infinities fail this
         assert value.f061Cf32 - value.f061Cf32 == 0.0f; // finite: NaN and both infinities fail this
         assert value.f062Uint >= 0;
         assert value.f062Uint <= 503;
@@ -686,6 +703,7 @@ public final class RealWorld {
         assert value.f084Ufixed <= 128;
         assert value.f086Uint >= 0;
         assert value.f086Uint <= 399;
+        assert value.f087F64 - value.f087F64 == 0.0; // finite: NaN and both infinities fail this
         assert value.f088Int >= -694;
         assert value.f088Int <= 694;
         assert value.f090Uint >= 0;
@@ -1142,6 +1160,9 @@ public final class RealWorld {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f002F64 = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffL;
         bitsRead += 21;
@@ -1169,6 +1190,9 @@ public final class RealWorld {
         value.f006Int = (short) (v + -1513);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f007F32 = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -1185,6 +1209,9 @@ public final class RealWorld {
         value.f009Int = (byte) (v + -22);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f010F32 = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
         bitsRead += 10;
@@ -1198,6 +1225,9 @@ public final class RealWorld {
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
+            if ((v & 0x7f800000L) == 0x7f800000L) {
+                return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+            }
             value.f013F32 = Float.intBitsToFloat((int) v);
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
             bitsRead += 10;
@@ -1245,9 +1275,15 @@ public final class RealWorld {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f019F64 = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f020F32 = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffffffL;
         bitsRead += 27;
@@ -1257,12 +1293,18 @@ public final class RealWorld {
         value.f021Ufixed = v;
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f022F32 = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffffL;
         bitsRead += 25;
         value.f023Bits = v;
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f024F32 = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
@@ -1291,6 +1333,9 @@ public final class RealWorld {
         value.f029I64 = lo;
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f030F32 = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
         bitsRead += 1;
@@ -1355,6 +1400,9 @@ public final class RealWorld {
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
+            if ((v & 0x7f800000L) == 0x7f800000L) {
+                return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+            }
             value.f044F32 = Float.intBitsToFloat((int) v);
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
             bitsRead += 12;
@@ -1386,6 +1434,9 @@ public final class RealWorld {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f048F64 = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
         bitsRead += 16;
@@ -1411,6 +1462,9 @@ public final class RealWorld {
             value.f052Int = (byte) (v + -57);
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
+            if ((v & 0x7f800000L) == 0x7f800000L) {
+                return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+            }
             value.f053F32 = Float.intBitsToFloat((int) v);
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
             bitsRead += 7;
@@ -1444,6 +1498,9 @@ public final class RealWorld {
         value.f057Int = (byte) (v + -15);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
+        if ((v & 0x7f800000L) == 0x7f800000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f058F32 = Float.intBitsToFloat((int) v);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -1451,6 +1508,9 @@ public final class RealWorld {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f059F64 = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
         bitsRead += 8;
@@ -1612,6 +1672,9 @@ public final class RealWorld {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.f087F64 = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
         bitsRead += 11;

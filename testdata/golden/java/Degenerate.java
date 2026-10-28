@@ -108,6 +108,8 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + VEC2_MAX_BITS;
+        assert value.x - value.x == 0.0; // finite: NaN and both infinities fail this
+        assert value.y - value.y == 0.0; // finite: NaN and both infinities fail this
         return true;
     }
 
@@ -168,6 +170,9 @@ public final class Degenerate {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.x = Double.longBitsToDouble(lo);
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
@@ -175,6 +180,9 @@ public final class Degenerate {
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
         bitsRead += 32;
         lo |= v << 32;
+        if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+        }
         value.y = Double.longBitsToDouble(lo);
         return bitsRead;
     }
@@ -214,6 +222,10 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + SPAN_F64_MAX_BITS;
+        for (int i0 = 0; i0 < 2; i0++) {
+            // finite: NaN and both infinities fail this
+            assert value.values[i0] - value.values[i0] == 0.0;
+        }
         return true;
     }
 
@@ -270,6 +282,9 @@ public final class Degenerate {
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo |= v << 32;
+            if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+            }
             value.values[i0] = Double.longBitsToDouble(lo);
         }
         return bitsRead;
@@ -682,6 +697,10 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + SPAN_TAIL_MAX_BITS;
+        for (int i0 = 0; i0 < 2; i0++) {
+            // finite: NaN and both infinities fail this
+            assert value.values[i0] - value.values[i0] == 0.0;
+        }
         assert value.tail >= 0;
         assert value.tail <= 4294967295L;
         return true;
@@ -742,6 +761,9 @@ public final class Degenerate {
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo |= v << 32;
+            if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+            }
             value.values[i0] = Double.longBitsToDouble(lo);
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -788,6 +810,12 @@ public final class Degenerate {
         assert data.length % 8 == 0;
         assert bitOffset >= 0;
         assert (long) data.length * 8 >= (long) bitOffset + SPAN_TWICE_MAX_BITS;
+        for (int i0 = 0; i0 < 2; i0++) {
+            assert value.a[i0] - value.a[i0] == 0.0; // finite: NaN and both infinities fail this
+        }
+        for (int i0 = 0; i0 < 2; i0++) {
+            assert value.b[i0] - value.b[i0] == 0.0; // finite: NaN and both infinities fail this
+        }
         return true;
     }
 
@@ -853,6 +881,9 @@ public final class Degenerate {
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo |= v << 32;
+            if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+            }
             value.a[i0] = Double.longBitsToDouble(lo);
         }
         for (int i0 = 0; i0 < 2; i0++) {
@@ -862,6 +893,9 @@ public final class Degenerate {
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
             bitsRead += 32;
             lo |= v << 32;
+            if ((lo & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                return -1; // non_finite_float: NaN or an infinity (SPEC §4.3)
+            }
             value.b[i0] = Double.longBitsToDouble(lo);
         }
         return bitsRead;
