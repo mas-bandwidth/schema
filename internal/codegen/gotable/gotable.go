@@ -731,9 +731,7 @@ func usedImports(body string, candidates []string) []string {
 	var keep []string
 	for _, c := range candidates {
 		path := strings.Trim(c, `"`)
-		name := path[strings.LastIndex(path, "/")+1:]
-		name = strings.TrimSuffix(name, ".go")
-		if used[name] {
+		if used[goname.ImportName(path)] {
 			keep = append(keep, c)
 		}
 	}
@@ -1973,14 +1971,13 @@ func buildSharedRuntime() (*sharedRuntime, error) {
 }
 
 // rtImportName is the name a file refers to an import by: its own name, else
-// the path's last element without a ".go" suffix
-// (github.com/mas-bandwidth/serialize.go/v2 is package serialize).
+// goname.ImportName of its path.
 func rtImportName(is *ast.ImportSpec) string {
 	if is.Name != nil {
 		return is.Name.Name
 	}
 	path, _ := strconv.Unquote(is.Path.Value)
-	return strings.TrimSuffix(path[strings.LastIndex(path, "/")+1:], ".go")
+	return goname.ImportName(path)
 }
 
 // rtStructFields is a shared struct type's name and its field names in order,

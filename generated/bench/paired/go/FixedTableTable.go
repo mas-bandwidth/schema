@@ -8,7 +8,10 @@
 
 package bench
 
-import "unsafe"
+import (
+	"github.com/mas-bandwidth/serialize.go/v2"
+	"unsafe"
+)
 
 // FixedTable — TABLE-wire storage: exported fields, every buffer inside the value,
 // declared defaults restored by FixedTableReset (mas-bandwidth/schema docs/SPEC-TABLES.md).
