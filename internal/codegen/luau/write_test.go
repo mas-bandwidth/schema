@@ -60,12 +60,12 @@ func TestLuauTypeWireWriteNegativeControl(t *testing.T) {
 	}
 	dir := t.TempDir()
 	types := files["Types.luau"]
-	anchor := "stream:serializeBool({ value = v.HasFlags })"
+	anchor := "BOOL.value = v.HasFlags\n"
 	if strings.Count(string(types), anchor) != 1 {
 		t.Fatalf("negative-control anchor %q matched %d times in emitted Types.luau", anchor, strings.Count(string(types), anchor))
 	}
 	patched := strings.Replace(string(types), anchor,
-		"(function() stream:serializeBool({ value = v.HasFlags }); return stream:serializeBool({ value = v.HasFlags }) end)()", 1)
+		"BOOL.value = v.HasFlags; stream:serializeBool(BOOL)\n", 1)
 	files["Types.luau"] = []byte(patched)
 	writeAll(t, dir, files)
 	writeFile(t, dir, "main.luau", luaurun.HexProbe+`

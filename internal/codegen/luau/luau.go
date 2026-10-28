@@ -6,8 +6,8 @@
 // later surface lands.
 //
 // This file is the type surface and nothing else: constants, enums (with
-// Count and Max), flags, unions and a constructor per type that builds the
-// value at its defaults. It has no codec. A later card joins the module
+// Max, their only exported number: SPEC §4.2), flags, unions and a
+// constructor per type that builds the value at its defaults. It has no codec. A later card joins the module
 // through [Register] from its own file's init (read.go, write.go), so no
 // later card edits this file.
 //
@@ -466,8 +466,7 @@ func (g *Gen) emitEnum(d *ir.Enum) {
 		g.Pf("%s", ir.DocComment(d.VariantDocs[i], "\t", "--"))
 		g.Pf("\t%s = %d,\n", v, i+1)
 	}
-	g.Pf("\tCount = %d, -- the declared variant count (SPEC §4.2)\n", len(d.Variants))
-	g.Pf("\tMax = %d, -- the exported extent (SPEC §4.2)\n", d.Max)
+	g.Pf("\tMax = %d, -- the exported extent, the enum's only number (SPEC §4.2)\n", d.Max)
 	g.Pf("})\n\n")
 	g.emitEnumName(d.Name, d.Variants)
 }
@@ -565,8 +564,7 @@ func (g *Gen) EmitUnion(d *ir.Union) {
 		g.Pf("%s", ir.DocComment(d.Variants[i].Doc, "\t", "--"))
 		g.Pf("\t%s = %d,\n", m, i+1)
 	}
-	g.Pf("\tCount = %d, -- the declared variant count (SPEC §4.2)\n", len(members))
-	g.Pf("\tMax = %d, -- the exported extent (SPEC §4.2)\n", len(members))
+	g.Pf("\tMax = %d, -- the exported extent, the tag's only number (SPEC §4.2)\n", len(members))
 	g.Pf("})\n\n")
 	g.emitEnumName(tag, members)
 
