@@ -843,6 +843,16 @@
         "schema-dart-generated-strict-analyze-nested-default-negative-control"
       ],
       "dart": "3.13.2"
+    },
+    {
+      "name": "luau",
+      "when": "pull-request",
+      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row. Luau and the host C++ compiler, nothing else.",
+      "targets": [
+        "conformance-negative-control-luau",
+        "luau-nightly-fuzz-negative-control"
+      ],
+      "luau": "0.741"
     }
   ],
   "excluded": [
@@ -881,6 +891,18 @@
     {
       "target": "schema-shared-hostile-corpus-negative-control",
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+    },
+    {
+      "target": "schema-luau-generated-analyze-strict-gate-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-generated-analyze-strict-gate.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) beside the gate it controls, so this leg would run it a second time."
+    },
+    {
+      "target": "schema-luau-resource-bounds-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-resource-bounds.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) beside the gate it controls, so this leg would run it a second time."
+    },
+    {
+      "target": "schema-luau-runs-hostile-corpus-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-runs-hostile-corpus.yml, on the nightly schedule and on dispatch, which installs the pinned Luau (make dist-luau) beside the gate it controls, so this leg would run it a second time."
     }
   ]
 }
