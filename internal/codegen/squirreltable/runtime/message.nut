@@ -304,12 +304,27 @@ local defaultValue = function(fd, value, owner) {
   if (fd.shape == "arr") {
     if ((("list" in fd) && fd.list) || (("counted" in fd) && fd.counted)) return value.len() == 0;
     if (fd.elem.shape == "tab" || fd.elem.shape == "union") return false;
+    // a float element compares its BITS (docs/SPEC-TABLES.md §3.3): a -0
+    // element under a +0 default rides the array
+    if (fd.elem.shape == "float") {
+      foreach (x in value) {
+        if (fd.elem.f32) { if (messageNarrowF32(x.tofloat()) != messageNarrowF32(fd.elem.def.tofloat())) return false; }
+        else if (castf2i(x.tofloat()) != castf2i(fd.elem.def.tofloat())) return false;
+      }
+      return true;
+    }
     for (local i = 0; i < value.len(); i++) if (value[i] != fd.elem.def) return false;
     return true;
   }
   if (fd.shape == "union") return value.Type == 0;
   if (fd.shape == "ptr" || fd.shape == "sblob" || fd.shape == "bblob") return value == null;
   if (fd.shape == "tab") return false;
+  // ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
+  // default rides, and a float32 compares at float32
+  if (fd.shape == "float") {
+    if (fd.f32) return messageNarrowF32(value.tofloat()) == messageNarrowF32(fd.def.tofloat());
+    return castf2i(value.tofloat()) == castf2i(fd.def.tofloat());
+  }
   return value == fd.def;
 };
 
@@ -319,6 +334,7 @@ local readBody;
 local readPayload;
 local skipPayload;
 local kindWidens;
+local readBatch;
 
 local writeScalar = function(T, w, fd, value) {
   local kind = fd.kind, bits = numberBits(fd);
@@ -341,6 +357,13 @@ local writeScalar = function(T, w, fd, value) {
     put(w, ref, T.TableMessageRefBitsHere); return;
   }
   if (fd.shape == "float") {
+    // A NaN OR AN INFINITY IS REFUSED BEFORE THE QUANTIZER RUNS, never
+    // clamped (docs/SPEC-TABLES.md §3.3), and a float32 must stay finite at
+    // float32: the write refuses, non_finite_float: <Owner>.<field>
+    value = value.tofloat();
+    local finite = fd.f32 ? (messageNarrowF32(value) & 0x7f800000) != 0x7f800000
+                          : (castf2i(value) & 0x7ff0000000000000) != 0x7ff0000000000000;
+    if (!finite) { w.reason = "non_finite_float: " + fd.nf; w.bad = true; return; }
     if (fd.f32 && fd.qcount > 0) {
       local v=messageWidenF32(messageNarrowF32(value)), norm=messageWidenF32(messageNarrowF32((v-fd.qmin)/fd.qdelta));
       if(!(norm>=0))norm=0;else if(!(norm<=1))norm=1;
@@ -376,6 +399,12 @@ local readScalar = function(r, T, v, fd, shape) {
     return dep ? fd.def : name;
   }
   if (fd.shape == "float") {
+    // A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+    // §3.3), before the bits become a value: the first name wins and the
+    // batch refuses whole (LoadMessages). A quantized float's index always
+    // names a finite value.
+    if (shape.Kind==11) {local raw=get(r,64);if(r.bad)return 0.0;if((raw&0x7ff0000000000000)==0x7ff0000000000000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return casti2f(raw);}
+    if (shape.Kind==10 && shape.Packing!=2) {local raw=get(r,32);if(r.bad)return 0.0;if((raw&0x7f800000)==0x7f800000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return messageWidenF32(raw);}
     if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(index>shape.QCount)index=shape.QCount;local ratio=messageWidenF32(messageNarrowF32(index.tofloat()/shape.QCount));local scaled=messageWidenF32(messageNarrowF32(ratio*shape.QDelta));return messageWidenF32(messageNarrowF32(scaled+shape.QMin));}
     if (shape.Kind==10) return messageWidenF32(get(r, 32));
     return casti2f(get(r, 64));
@@ -593,7 +622,14 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
   if(storage.len()<count)return refuse(report,"batch_too_large");
-  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0,widened=0,clamped=0};
+  local r={b=bytes,bits=16,bad=false,unknown=0,kindMismatch=0,widened=0,clamped=0,nonFinite=null};
+  local walked=readBatch(T,v,r,d,storage,count,bytes,report);
+  // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+  // §3.3), outranking every other verdict: no body of it is delivered
+  if(r.nonFinite!=null)return refuse(report,"non_finite_float: "+r.nonFinite);
+  return walked;
+};
+readBatch = function(T, v, r, d, storage, count, bytes, report) {
   for(local k=0;k<count;k++){
     local before=r.bits;readBody(T,v,r,d,storage[k],0);
     if(report!=null){report.unknown+=r.unknown;report.kindMismatch+=r.kindMismatch;report.widened+=r.widened;report.clamped+=r.clamped;}

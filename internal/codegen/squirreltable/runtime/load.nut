@@ -148,8 +148,18 @@ local readU64 = function(r) {
   return v;
 };
 
-// a float32 widens to a double by BIT SURGERY, never through the blob's 'f'
-// conversion (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS)
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same
+// rule as packets"): a read refuses a NaN or an infinity on its RAW BITS,
+// before the bits become a value, as non_finite_float. readPrim answers the
+// sentinel NONFINITE for one, and the site that asked records the field's
+// <Owner>.<field> name on the load's state (refuseNonFinite) and lands
+// nothing that survives: the load answers the refusal at its end.
+local NONFINITE = { nonFinite = true };
+local finiteF32 = function(bits) { return (bits & 0x7f800000) != 0x7f800000; };
+local finiteF64 = function(bits) { return (bits & 0x7ff0000000000000) != 0x7ff0000000000000; };
+
+// a FINITE float32 widens to a double exactly, -0 and the subnormals
+// included; the surgery is on the bits, so no conversion is trusted
 local widenF32 = function(bits) {
   bits = bits & 0xffffffff;
   local sign = bits & 0x80000000;
@@ -181,8 +191,8 @@ local readPrim = function(r, kind, ...) {
   local v;
   switch (kind) {
     case 1: { local b = r.b[r.at] & 0xff; r.at += 1; if (b > 1 && report != null) report.malformed = true; return b != 0; }
-    case 10: return widenF32(readU32(r));
-    case 11: { local bits = readU64(r); return casti2f(bits); }
+    case 10: { local bits = readU32(r); return finiteF32(bits) ? widenF32(bits) : NONFINITE; }
+    case 11: { local bits = readU64(r); return finiteF64(bits) ? casti2f(bits) : NONFINITE; }
     case 2: case 20: {
       local x = r.b[r.at] & 0xff; r.at += 1;
       v = (x & 0x80) ? x - 256 : x;
@@ -277,14 +287,25 @@ local clampScalar = function(fd, kind, x, report) {
   return x;
 };
 
-// A PLAIN FLOAT'S NaN OR INFINITY LANDS AS ITS PATTERN AND MOVES NO COUNTER
-// (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES TAKE ONE RULE"):
-// the load NAMES the field on report.nonFinite so the strict read refuses it
-// as non_finite (§6.5), the same order as clamped and kind_mismatch. A NaN is
-// unequal to itself and an infinity is its own negative; -0 is 0 - 0.
-local nonFinite = function(fd, x, report) {
-  if (fd.shape == "float" && typeof x == "float" && (x != x || x - x != 0))
-    report.nonFinite = report.nonFinite + 1;
+// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md §3.3),
+// tolerant and strict alike: the first field the walk met one on is named
+// <Owner>.<field> (the descriptor's nf) on the load's state, and the load
+// answers non_finite_float at its end, outranking every other verdict. The
+// sentinel the site holds is never handed back.
+local refuseNonFinite = function(desc, x, st) {
+  if (x != NONFINITE) return false;
+  if (st.nonFinite == null) st.nonFinite = desc.nf;
+  return true;
+};
+
+// the raw-bits test on an unknown entry a read is retaining (§3.3, §6.6):
+// kind 10's four bytes and kind 11's eight, little-endian; true for any
+// other kind, and for a payload that is not its kind's width
+local retainedFinite = function(b, from, to, kind) {
+  if (kind == 10 && to - from == 4)
+    return finiteF32((b[from] & 0xff) | ((b[from + 1] & 0xff) << 8) | ((b[from + 2] & 0xff) << 16) | ((b[from + 3] & 0xff) << 24));
+  if (kind == 11 && to - from == 8) return finiteF64(u64At(b, from));
+  return true;
 };
 
 // skipping a field the reader cannot name (docs/SPEC-TABLES.md §3)
@@ -512,7 +533,16 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       // (docs/SPEC-TABLES.md §6.6): the resolving walk is retain.nut's
       local start = r.at;
       if (!skipField(r, kind)) { report.malformed = true; return false; }
-      if (st.retain != null) st.retain.capture(v, r.b, start, r.at, id, kind, table, report);
+      if (st.retain != null) {
+        // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
+        // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
+        // read, named <Table>.0x<id>
+        if (!retainedFinite(r.b, start, r.at, kind)) {
+          if (st.nonFinite == null) st.nonFinite = c.name + format(".0x%016x", id);
+          continue;
+        }
+        st.retain.capture(v, r.b, start, r.at, id, kind, table, report);
+      }
       continue;
     }
     local fd = c.byId[id];
@@ -524,8 +554,8 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       if (widens(kind, fd.kind)) {
         local x = readPrim(r, kind, report);
         if (x == null || r.bad) { report.malformed = true; return false; }
+        if (refuseNonFinite(fd, x, st)) continue;
         x = clampScalar(fd, kind, x, report);
-        nonFinite(fd, x, report);
         v[fd.member] = x;
         if (fd.optional) v[fd.member + "Present"] = true;
         // a MAP ENTRY's key widening is the MAP's one event (docs/SPEC-TABLES.md
@@ -546,8 +576,8 @@ readField = function(fd, r, T, table, v, report, st, nested) {
   if (shape == "bool" || shape == "int" || shape == "float" || shape == "flags") {
     local x = readPrim(r, fd.kind, report);
     if (x == null || r.bad) { report.malformed = true; return false; }
+    if (refuseNonFinite(fd, x, st)) return true;
     x = clampScalar(fd, fd.kind, x, report);
-    nonFinite(fd, x, report);
     v[fd.member] = x;
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
@@ -676,7 +706,7 @@ readField = function(fd, r, T, table, v, report, st, nested) {
 // the counters a map entry's decode can move, by name (readMapField)
 local mapEntryCounters = function(report) {
   local out = {};
-  foreach (k in ["unknown", "kindMismatch", "widened", "clamped", "duplicate", "nonFinite"]) {
+  foreach (k in ["unknown", "kindMismatch", "widened", "clamped", "duplicate"]) {
     local x = null;
     try { x = report[k]; } catch (e) { x = null; }
     if (x != null) out[k] <- x;
@@ -998,8 +1028,8 @@ readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
   }
   local x = readPrim(sr, ek, report);
   if (x == null || sr.bad) { report.malformed = true; return [null, false]; }
+  if (refuseNonFinite(e, x, st)) return [0.0, true];
   x = clampScalar(e, ek, x, report);
-  nonFinite(e, x, report);
   return [x, true];
 };
 
@@ -1052,8 +1082,8 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
   if (x == null || r.bad) { report.malformed = true; return false; }
   // an element's declared range and bit width clamp as a field's do
   // (docs/SPEC-TABLES.md §4)
+  if (refuseNonFinite(e, x, st)) { out.append(0.0); return true; }
   x = clampScalar(e, ek, x, report);
-  nonFinite(e, x, report);
   out.append(x);
   return true;
 };
@@ -1112,8 +1142,8 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     }
     local x = readPrim(sub, wireKind, report);
     if (x == null || sub.bad) { report.malformed = true; inst.Type = 0; return true; }
+    if (refuseNonFinite(p, x, st)) return true;
     x = clampScalar(p, wireKind, x, report);
-    nonFinite(p, x, report);
     inst[p.member] = x;
     if (p.optional) inst[p.member + "Present"] = true;
     return true;
@@ -1263,13 +1293,9 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   if (report.widened == null) report.widened <- 0;
   if (report.clamped == null) report.clamped <- 0;
   if (report.duplicate == null) report.duplicate <- 0;
-  // a caller's report may predate this counter (a tolerant load builds its
-  // own table); the strict read's witness carries a delegate, so its slot is
-  // written through _set rather than created beside it
-  if (!report.rawin("nonFinite")) {
-    if (report.getdelegate() == null) report.nonFinite <- 0;
-    else report.nonFinite = 0;
-  }
+  // THIS READ'S OWN non_finite_float (docs/SPEC-TABLES.md §3.3): a name an
+  // earlier read left on a reused report does not refuse this one
+  if (report.getdelegate() == null) report.nonFiniteFloat <- null;
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
   if (!report.rawin("countRefusal")) {
@@ -1328,7 +1354,7 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   // reserved id in its body is a field it cannot name, counted unknown
   local raw = c.variable ? nodeScan(bytes, table, end, report) : [];
   local st = { good = raw != null, nodes = [], root = v, pending = [], retain = retain,
-    blobShared = 0, blobField = null };
+    blobShared = 0, blobField = null, nonFinite = null };
   if (raw != null) {
     foreach (rec in raw) {
       if (rec.tid == STRING_BLOB_ID) {
@@ -1364,6 +1390,22 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   // builder caller discards. It is told only to a caller whose report
   // declares the slot `stopped`; the value is returned either way.
   if ("stopped" in report) report.stopped = !finished;
+  // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+  // every other verdict the walk reached (docs/SPEC-TABLES.md §3.3): nothing
+  // lands. The report names it, reason non_finite_float: <Owner>.<field>; a
+  // strict caller (ReadStrict, refusal.nut) reads the name off its own
+  // report and answers non_finite_float with that field.
+  if (st.nonFinite != null) {
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.nonFiniteFloat = st.nonFinite;
+      report.reason <- "non_finite_float: " + st.nonFinite;
+      return null;
+    }
+    local strict = ::getstackinfos(2);
+    if (strict != null && ("_strictFrame" in strict.locals)) strict.locals.report.nonFiniteFloat <- st.nonFinite;
+    return null;
+  }
   if (report.getdelegate() == null) {
     report.blobShared <- st.blobShared;
     if (st.blobShared > 0 && !report.malformed && !report.countRefusal) {
@@ -1380,8 +1422,7 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     if (st.blobShared > 0 && !s.countRefusal && !s.malformed) {
       cr.reason = "blob_shared";
       cr.field = st.blobField;
-      local saved = { nonFinite = s.nonFinite, clamped = s.clamped, kindMismatch = s.kindMismatch };
-      delete s.nonFinite;
+      local saved = { clamped = s.clamped, kindMismatch = s.kindMismatch };
       delete s.clamped;
       delete s.kindMismatch;
       local seen = {};
@@ -1409,7 +1450,7 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
 // REPORT fills the counters and flags a caller's report table does not hold
 // yet, so a <T>Load entry hands the walk one whole report; a fresh table when
 // the caller passed none.
-local REPORT_COUNTERS = ["unknown", "kindMismatch", "widened", "clamped", "duplicate", "nonFinite"];
+local REPORT_COUNTERS = ["unknown", "kindMismatch", "widened", "clamped", "duplicate"];
 _M.report <- function(report) {
   if (report == null) report = {};
   foreach (k in REPORT_COUNTERS) if (!(k in report)) report[k] <- 0;

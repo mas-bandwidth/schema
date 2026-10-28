@@ -195,7 +195,13 @@ local writeScalar = function(b, at, f, value) {
   local n = f.elemSize;
   if (f.storage == "Bool") { b[at] = value ? 1 : 0; return true; }
   if (f.storage == "Float") {
-    writeRaw(b, at, (n == 4) ? narrowF32(value) : castf2i(value), n);
+    // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): the
+    // builder writes no byte and Set answers false, SetReason naming
+    // non_finite_float; a float32 must stay finite at float32
+    local bits = (n == 4) ? narrowF32(value.tofloat()) : castf2i(value.tofloat());
+    local finite = (n == 4) ? (bits & 0x7f800000) != 0x7f800000 : (bits & 0x7ff0000000000000) != 0x7ff0000000000000;
+    if (!finite) { _M.SetReason <- "non_finite_float"; return false; }
+    writeRaw(b, at, bits, n);
     return true;
   }
   if (f.storage == "Signed" || f.storage == "Unsigned") {
@@ -228,6 +234,12 @@ local writeValue = function(b, f, at, idx, value) {
   if (f.isArray) {
     if (idx != null) return writeScalar(b, at, f, value);
     if (typeof value != "array") return false;
+    // the whole array refuses before any byte changes when one element is
+    // a NaN or an infinity (docs/SPEC-TABLES.md §3.3)
+    if (f.storage == "Float") {
+      local probe = blob(8);
+      foreach (x in value) if (!writeScalar(probe, 0, f, x)) return false;
+    }
     for (local i = 0; i < value.len(); i++) writeScalar(b, at + i * f.elemSize, f, value[i]);
     return true;
   }
@@ -269,6 +281,7 @@ setPath = function(T, block, info, at, segs, k, value) {
 // (§19.2): a dotted path, with `[i]` for a fixed-array slot and `:present` for
 // an optional's companion.
 _M.Set <- function(T, block, record, at, path, value) {
+  _M.SetReason <- null;
   if (block == null) return false;
   local info = (record == null || record == block.Form.name) ? block.Form.projection : T.blockRecords[record];
   if (info == null) return false;

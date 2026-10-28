@@ -61,7 +61,7 @@ type squirrelExpectedHostileMismatch struct {
 	name, input, expected, actual, fixCard string
 }
 
-// One row is carried. The four rows the list held before (the three
+// No row is carried. The four rows the list held before (the three
 // ill-formed UTF-8 fuzz-text inputs and conformance-str-illformed-at-bound)
 // had one cause, a corpus manifest that predated §16.3; the shared corpus on
 // dev now holds the engine's refusal of ill-formed UTF-8 (`refuse damaged`),
@@ -71,19 +71,11 @@ type squirrelExpectedHostileMismatch struct {
 // zero rows in tables/maps, a unit that declares wide text (SPEC §4.12, table
 // kind 33). The Squirrel descriptors carry kind 33 now, so the unit generates
 // and the reader refuses the zero key by name, which is the manifest's verdict.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
-	// wire-non-finite-float arrived with the finite-tables ruling (#2226,
-	// SPEC-TABLES §3.3): Squirrel refuses the NaN but names it non_finite where
-	// the engine names non_finite_float. The squirrel finite-tables card
-	// (tables-finite/squirrel) owns the name and removes this row.
-	{
-		name:     "wire-non-finite-float",
-		input:    "inputs/wire-non-finite-float.bin",
-		expected: "refuse non_finite_float",
-		actual:   "refuse non_finite",
-		fixCard:  "tables-finite/squirrel",
-	},
-}
+//
+// wire-non-finite-float, which arrived with the finite-tables ruling (#2226,
+// SPEC-TABLES §3.3), passes since tables-finite/squirrel: the strict read
+// refuses the NaN as non_finite_float, the manifest's verdict.
+var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
 
 func squirrelExpectedHostileMismatchNames() []string {
 	names := make([]string, 0, len(squirrelExpectedHostileMismatches))

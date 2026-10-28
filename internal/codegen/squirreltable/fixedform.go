@@ -265,6 +265,8 @@ func fixedEmitDeprecatedValue(m *Module, f *ir.Field, expr, path, ind string) {
 
 func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("_M.%sFixedSave <- function(out, recs) {\n", st.Name)
+	m.Printf("  _M.FixedReason <- null;\n")
+	m.Printf("  _M.FixedField <- null;\n")
 	m.Printf("  local b = out;\n")
 	m.Printf("  b.seek(0);\n")
 	m.Printf("  b.writen(%d, 'b');\n", fixedFormByte)
@@ -282,7 +284,8 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("    b.writen(h & 0xFFFFFFFF, 'i'); b.writen((h >> 32) & 0xFFFFFFFF, 'i');\n")
 	m.Printf("    local start = b.tell();\n")
 	m.Printf("    b.writeblob(zero);\n")
-	m.Printf("    _M.%sFixedWriteBody(b, start, recs[k]);\n", st.Name)
+	m.Printf("    why = _M.%sFixedWriteBody(b, start, recs[k]);\n", st.Name)
+	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
 	m.Printf("  }\n")
 	if st.Integrity != "" {
 		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING):
@@ -302,6 +305,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("_M.%sFixedLoadTolerant <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
+	m.Printf("  _M.FixedField <- null;\n")
 	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
 	// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4): the
 	// reasons answer the Go fixed reader's in its order — the form byte and the
@@ -396,6 +400,10 @@ func emitFixedWriteBody(m *Module, st *ir.Struct) {
 		fixedEmitWriteField(m, f, cur, "v."+squirrel.Member(f), "  ")
 		cur += fixedFieldBytes(f)
 	}
+	// a written body answers null unless a value refused: a NaN or an
+	// infinity is non_finite_float, the field named on FixedField
+	// (docs/SPEC-TABLES.md §3.3, §3.4)
+	m.Printf("  return null;\n")
 	m.Printf("};\n\n")
 }
 
@@ -494,7 +502,7 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			m.Printf("%s_M.%sFixedWriteBody(b, at + %s, %s);\n", ind, r.Name, off, expr)
+			m.Printf("%s{\n%s  local why = _M.%sFixedWriteBody(b, at + %s, %s);\n%s  if (why != null) return why;\n%s}\n", ind, ind, r.Name, off, expr, ind, ind)
 			return
 		}
 		if r, ok := f.Type.Ref.(*ir.Union); ok {
@@ -537,6 +545,15 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 	if fixedStorageBytes(f.Type) == 16 {
 		m.Printf("%s_rt_fixed.put(b, at + %s, 8, %s[0]);\n", ind, off, expr)
 		m.Printf("%s_rt_fixed.put(b, at + %s + 8, 8, %s[1]);\n", ind, off, expr)
+		return
+	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		put := "putF64"
+		if f.Type.Kind == ir.TFloat32 {
+			put = "putF32"
+		}
+		m.Printf("%sif (!_rt_fixed.%s(b, at + %s, %s)) { _M.FixedField <- %s; return \"non_finite_float\"; }\n",
+			ind, put, off, expr, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
 		return
 	}
 	m.Printf("%s_rt_fixed.put(b, at + %s, %d, %s);\n", ind, off, fixedStorageBytes(f.Type), expr)
@@ -673,6 +690,18 @@ func fixedEmitDecodeElement(m *Module, f *ir.Field, at int64, expr, ind, dyn str
 	// the [lo, hi] pair the table surface uses.
 	if fixedStorageBytes(f.Type) == 16 {
 		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
+		return
+	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		get := "getF64"
+		if f.Type.Kind == ir.TFloat32 {
+			get = "getF32"
+		}
+		// refused on its raw bits before the field is written
+		// (docs/SPEC-TABLES.md §3.3): the load answers non_finite_float
+		m.Printf("%s{\n%s  local x = _rt_fixed.%s(b, at + %s);\n", ind, ind, get, off)
+		m.Printf("%s  if (x == null) { _M.FixedField <- %s; return \"non_finite_float\"; }\n", ind, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+		m.Printf("%s  %s = x;\n%s}\n", ind, expr, ind)
 		return
 	}
 	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, fixedStorageBytes(f.Type))

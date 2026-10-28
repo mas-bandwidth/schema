@@ -143,15 +143,16 @@ Squirrel has one integer type, `SQInteger`, which `sq64` makes the C
   subtraction with an explicit borrow. The table wire's 128-bit kinds are
   refused today (`ir.RefuseWideTableKinds`), as every port without them does.
 - **Floats.** `SQUSEDOUBLE` makes the float a double, so a `float64` is
-  exact. A `float32` is held in that double. The ordinary conversion is exact
-  in both directions for every ordinary value, but it is NOT exact for a
-  signalling NaN or a NaN payload, which the wire carries bit for bit (SPEC
-  §4.3, docs/PORTING.md M21). So the codec moves a float's BIT PATTERN:
-  `castf2i(f)` and `casti2f(i)` (the blob library's globals) reinterpret the
-  64 bits of a double as an integer and back with no conversion, and the
-  float32 ↔ float64 widening and narrowing of M21 is integer surgery on those
-  bits. The blob's `'f'` view is the C conversion and is used for nothing
-  that can hold a NaN.
+  exact. A `float32` is held in that double. Packet and table floats are
+  FINITE only (SPEC §4.3, docs/SPEC-TABLES.md §3.3): every finite `float32`
+  widens to the double exactly and narrows back exactly, `-0` and the
+  subnormals included, so the ordinary conversion is enough and no NaN bit
+  surgery is left. A writer refuses a NaN or an infinity and a reader refuses
+  one on its RAW BITS, before any value exists, as `non_finite_float`: the
+  packet wire through the vendored serialize.nut (v2.x), the table forms in
+  schema's own runtime. `castf2i(f)` and `casti2f(i)` (the blob library's
+  globals) reinterpret the 64 bits of a double as an integer and back with no
+  conversion, which is how both test the bits.
 - **A float32 write rounds exactly as the Go reference writer does**
   (coordinator ruling, 2026-10-17, shared with the Lua design). A double that
   is not exactly a float32 is NOT refused: it is narrowed by IEEE-754

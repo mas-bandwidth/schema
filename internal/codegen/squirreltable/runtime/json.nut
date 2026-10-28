@@ -223,6 +223,9 @@ local parseF32 = function(tok) {
 // A non-finite value has no JSON spelling: null, and the writer refuses.
 local floatText = function(v, single) {
   if (!isFinite(v)) return null;
+  // a float32 field's value must stay finite at float32 (docs/SPEC-TABLES.md
+  // §3.3): a double past float32's range narrows to an infinity, refused
+  if (single && (narrowF32(v, 0)[0] & 0x7f800000) == 0x7f800000) return null;
   local low = single ? 6 : 15, high = single ? 9 : 17;
   for (local digits = low; ; digits++) {
     local text = formatG(v, digits);
