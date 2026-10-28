@@ -45,8 +45,7 @@ _M.put <- function(b, at, w, v) {
 };
 
 // A FIXED-FORM FLOAT IS ITS IEEE-754 BIT PATTERN, AND FINITE
-// (docs/SPEC-TABLES.md §3.3, §3.4; Glenn, 2026-10-27, "same rule as
-// packets"): a writer refuses a NaN or an infinity, a float32 one that
+// (docs/SPEC-TABLES.md §3.3, §3.4, the packet wire's rule): a writer refuses a NaN or an infinity, a float32 one that
 // narrows to an infinity included, and a read refuses one on its RAW BITS
 // before the field is written, as non_finite_float. Every finite float32
 // narrows and widens exactly through the blob's 'f' view (the C conversion,
