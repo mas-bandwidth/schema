@@ -36,6 +36,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -498,6 +499,7 @@ var finiteSabotages = []finiteSabotage{
 // "" for a pass and the failure's detail otherwise.
 func runFiniteProbe(t *testing.T, sabotage *finiteSabotage) map[string]string {
 	t.Helper()
+	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, java := javaTools(t)
 	u := unitFrom(t, finiteSchema)
 	files, err := Generate(u)
