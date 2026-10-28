@@ -3,8 +3,10 @@
 // is this module's exports table and vargv[1] the loader's require. It encodes an
 // increasing sequence of non-negative int32 values as a ladder of one-bit flags,
 // with the five bounded tiers' payloads and an absolute 32-bit fallback.
-// serialize.go v1.15.1 is the reference; the arm shape and the number model are
-// DESIGN.md (c), (d), (g).
+// STANDARD.md int_relative: the writer takes the first tier the difference fits,
+// and that is the only encoding, so the reader refuses the absolute tier carrying
+// a bounded difference as non_canonical. serialize.go v2.0.0 is the reference;
+// the arm shape and the number model are DESIGN.md (c), (d), (g).
 local _M = vargv[0];
 local require = vargv[1];
 
@@ -47,9 +49,10 @@ local checkPrevious = function(previous) {
 local write = {};
 write.serializeIntRelative <- function(s, previous, h) {
   checkPrevious(previous);
-  if (s.error() != null) return false;
   local current = h.value;
-  if (previous >= current) return s._fail(SerializeError.ValueOutOfRange);
+  // current is held in a 64-bit SQInteger, so the domain's top is checked too:
+  // a current past 2^31 - 1 would write 32 bits its own reader refuses
+  if (previous >= current || current > INT_MAX) return s._fail(SerializeError.ValueOutOfRange);
   local diff = current - previous;
   local total;
   local chosen = -1;
@@ -86,9 +89,12 @@ write.serializeIntRelative <- function(s, previous, h) {
 };
 
 local read = {};
+// a previous outside the domain on read is a bad declaration: it refuses
+// ValueOutOfRange after the failure state, never a raise (IMPLEMENTING.md U7,
+// U16; the reference refuses it on read since 2.1)
 read.serializeIntRelative <- function(s, previous, h) {
-  checkPrevious(previous);
   if (s.error() != null) return false;
+  if (typeof previous != "integer" || previous < 0 || previous > INT_MAX) return s._fail(SerializeError.ValueOutOfRange);
   if (!s._room(1)) return false;
   if (s._take(1)) {
     local c = previous + 1;
@@ -111,7 +117,12 @@ read.serializeIntRelative <- function(s, previous, h) {
   }
   if (!s._room(32)) return false;
   local v = s._take(32);
+  // the domain and ordering rule first (value_out_of_range), then the canonical
+  // tier: an absolute current no more than 69914 above previous has a bounded
+  // encoding, so this one is a second encoding of it (non_canonical). v is the
+  // 32 raw bits in a 64-bit SQInteger, so the difference cannot wrap.
   if (v > INT_MAX || v <= previous) return s._fail(SerializeError.ValueOutOfRange);
+  if (v - previous <= TIERS[TIERS.len() - 1].max) return s._fail(SerializeError.NonCanonical);
   h.value = v;
   return true;
 };
@@ -119,9 +130,10 @@ read.serializeIntRelative <- function(s, previous, h) {
 local measure = {};
 measure.serializeIntRelative <- function(s, previous, h) {
   checkPrevious(previous);
-  if (s.error() != null) return false;
   local current = h.value;
-  if (previous >= current) return s._fail(SerializeError.ValueOutOfRange);
+  // current is held in a 64-bit SQInteger, so the domain's top is checked too:
+  // a current past 2^31 - 1 would write 32 bits its own reader refuses
+  if (previous >= current || current > INT_MAX) return s._fail(SerializeError.ValueOutOfRange);
   local diff = current - previous;
   local total = 1;
   if (diff != 1) {

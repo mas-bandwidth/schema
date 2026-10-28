@@ -1,8 +1,10 @@
 // serialize.nut: a bitpacking serializer for Squirrel, one of the serialize
 // family (C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Rust, ...), which
 // all speak one wire: the same values produce the same bytes in every one.
-// STANDARD.md (vendored verbatim from mas-bandwidth/serialize v1.17.0) is the
-// authority; this library implements format version 1.1 of it. DESIGN.md is
+// STANDARD.md (vendored verbatim from mas-bandwidth/serialize v2.0.0) is the
+// authority; this library implements format version 2.0 of it: the wire
+// carries only integers and bytes, and every value has exactly one encoding,
+// so a packet reader reads its top-level object and then serializeEnd. DESIGN.md is
 // the port's design, and every section cited below is one of its sections.
 //
 // THE ENTRY. This file is the only one a caller runs:
@@ -99,12 +101,42 @@ local lazy = function(family, name, arity) {
   throw "serialize: lazy arity " + arity;
 };
 
-// THE API (DESIGN.md (a)): serialize.go v1.15.1's exports in serialize.js's
-// spelling.
+// THE API (DESIGN.md (a)): serialize.go v2.0.0's exports in serialize.js's
+// spelling, and nothing beyond what IMPLEMENTING.md U15's export ruling
+// allows: the reference operations and streams, the refusal list and its
+// name, copyString, the U15 extras (Continue, Until), the reference's public
+// helpers, and the language necessities, each marked where it is exported.
+// The loader's directory is internal and not exported.
 local api = {
-  // the error kinds latched on a stream (serialize.go ErrOverflow,
-  // ErrValueOutOfRange, ErrAlign); None is a healthy stream
+  // the refusal reasons latched on a stream (STANDARD.md, Refusal reasons;
+  // serialize.go v2's Refusal); None is a healthy stream
   SerializeError = streams.SerializeError,
+
+  // the family spelling of a reason, "none" for no refusal (IMPLEMENTING.md
+  // U14; the reference's serialize::refusal_name)
+  refusalName = streams.refusalName,
+
+  // copyString(source, destSize): the reference's serialize_copy_string in
+  // Squirrel's idiom (IMPLEMENTING.md U15, ruling 2026-10-27): a string is a
+  // value, so the copy is returned rather than written into a destination.
+  // On the source's bytes: the bytes before the first zero byte; if more than
+  // destSize - 1, the first destSize - 1 of them, then bytes dropped from the
+  // end while the first byte left out is a UTF-8 continuation byte
+  // (10xxxxxx), so the copy never ends inside a character. Squirrel strings
+  // are bytes, so this holds for ill-formed text too. destSize below 1 is
+  // write misuse and traps (U9).
+  copyString = function(source, destSize) {
+    if (typeof source != "string") throw "serialize: write misuse: copyString copies a string";
+    if (typeof destSize != "integer" || destSize < 1) throw "serialize: write misuse: copyString requires destSize >= 1";
+    local len = source.len();
+    for (local i = 0; i < len; i++) {
+      if (source[i] == 0) { len = i; break; }
+    }
+    if (len <= destSize - 1) return source.slice(0, len);
+    local n = destSize - 1;
+    while (n > 0 && (source[n] & 0xC0) == 0x80) n--;
+    return source.slice(0, n);
+  },
 
   // the three streams (DESIGN.md (g)); serialize_stream.nut
   WriteStream = streams.WriteStream,
@@ -122,14 +154,18 @@ local api = {
   signedToUnsigned = lazy("serialize_bits", "signedToUnsigned", 1),
   unsignedToSigned = lazy("serialize_bits", "unsignedToSigned", 1),
 
-  // 128-bit values as [lo, hi] (serialize-squirrel-int); serialize_int128.nut
+  // 128-bit values as [lo, hi] (serialize-squirrel-int); serialize_int128.nut.
+  // A LANGUAGE NECESSITY (IMPLEMENTING.md U15): Squirrel has no 128-bit
+  // integer, so the 128-bit carrier's constructors are exported
   int128From64 = lazy("serialize_int128", "int128From64", 1),
   uint128From64 = lazy("serialize_int128", "uint128From64", 1),
 
   // the precomputed compressed float (serialize-squirrel-compressed-float)
   compressedFloatParams = lazy("serialize_compressed_float", "compressedFloatParams", 3),
 
-  // the float32 narrowing every float32 write uses (serialize-squirrel-float)
+  // the float32 narrowing every float32 write uses (serialize-squirrel-float).
+  // A LANGUAGE NECESSITY (IMPLEMENTING.md U15): Squirrel has no float32 type,
+  // so the float32 rounding is exported
   fround = lazy("serialize_float", "fround", 1),
 
   // sentinel-driven loops that always terminate (serialize.go Continue and
@@ -143,9 +179,6 @@ local api = {
     if (!stream.serializeBool(done)) return false;
     return !done.value;
   },
-
-  // the loader's own directory, for tests and tools (DESIGN.md (f))
-  dir = dir,
 };
 
 return api;

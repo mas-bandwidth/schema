@@ -2,7 +2,8 @@
 // family card fills. A module of the closed loader (DESIGN.md (f)): vargv[0]
 // is this module's exports table and vargv[1] the loader's require.
 //
-// What lives here, IMPLEMENTED: the error latch and terminality, the bit
+// What lives here, IMPLEMENTED: the reader's error latch and terminality, the
+// write-misuse trap (IMPLEMENTING.md U9), the bit
 // accounting (bits processed, the write capacity and read length checks), the
 // stream-level operations (object, align bits, bytes processed, context), and
 // the dispatch of every serialize method into its family module. What does NOT
@@ -12,18 +13,43 @@
 local _M = vargv[0];
 local require = vargv[1];
 
-// THE ERROR KINDS (DESIGN.md (a), (g)): serialize.go's ErrOverflow,
-// ErrValueOutOfRange and ErrAlign. The first error latches on the stream and
-// sticks: every later call fails, consumes nothing and leaves its holder and
-// destination untouched (STANDARD.md, Reader Obligations: the failure is
-// terminal). Only reset clears it.
+// THE REFUSAL REASONS (DESIGN.md (a), (g); STANDARD.md, Refusal reasons): the
+// closed list of nine, each value spelled exactly as STANDARD.md spells it, and
+// serialize.go v2's Refusal sentinels. The FIRST refusal latches on the stream
+// and sticks: every later call fails with that same reason (its echoes keep
+// it), consumes nothing and leaves its holder and destination untouched
+// (STANDARD.md, Reader Obligations: the failure is terminal). Only reset
+// clears it.
 local SerializeError = {
   None = null,
-  Overflow = "overflow",
+  PastEnd = "past_end",
   ValueOutOfRange = "value_out_of_range",
-  Align = "align",
+  NonzeroPadding = "nonzero_padding",
+  TrailingData = "trailing_data",
+  NonFiniteFloat = "non_finite_float",
+  InvalidUtf8 = "invalid_utf8",
+  EmbeddedNul = "embedded_nul",
+  NonCanonical = "non_canonical",
+  Rejected = "rejected",
 };
 _M.SerializeError <- SerializeError;
+
+// REASONS: the closed list as a set of its spellings, for fail(reason) and
+// refusalName (IMPLEMENTING.md U14)
+local REASONS = {};
+foreach (k, v in SerializeError) if (v != null) REASONS[v] <- true;
+
+// refusalName(reason): the family spelling of a refusal reason, "none" for no
+// refusal (SerializeError.None, null), and "unknown" for anything outside the
+// closed list, as the reference's serialize::refusal_name (IMPLEMENTING.md
+// U14). A stream's error() already returns the spelling; this names a reason
+// held anywhere, null included.
+local refusalName = function(reason) {
+  if (reason == null) return "none";
+  if (typeof reason == "string" && reason in REASONS) return reason;
+  return "unknown";
+};
+_M.refusalName <- refusalName;
 
 // the family of every serialize method (DESIGN.md (h)): the method's arm lives
 // in src/serialize_<family>.nut as <module>.write / .read / .measure [method]
@@ -38,14 +64,14 @@ local FAMILY = {
   serializeFloat = "float", serializeDouble = "float",
   serializeCompressedFloat = "compressed_float",
   serializeCompressedFloatPrecomputed = "compressed_float",
-  serializeBytes = "bytes", serializeString = "bytes", serializeWideString = "bytes",
+  serializeBytes = "bytes", serializeString = "bytes",
 };
 _M.FAMILY <- FAMILY;
 
 // arm(kind, family, method): the family's arm for this stream kind, loaded on
 // first use. Absent file, or a file with no such arm: the not-implemented
-// error, raised in every stream state (API misuse and missing code raise; only
-// data latches, DESIGN.md (g)).
+// error, raised in every stream state (misuse traps and missing code raises;
+// only a reader latches, DESIGN.md (g)).
 local arm = function(kind, family, method) {
   local m = require("serialize_" + family, method);
   if (!(kind in m) || !(method in m[kind])) {
@@ -85,7 +111,10 @@ class Stream {
 
   // --- the primitives the family arms use (DESIGN.md (h)) ---------------
 
-  // _fail(kind): latch kind if nothing is latched yet; always false
+  // _fail(kind): latch kind if nothing is latched yet; always false. Only a
+  // ReadStream latches: WriteStream and MeasureStream override it with the
+  // trap (IMPLEMENTING.md U9: write misuse never latches), so an arm shared
+  // by the write and the measure side traps wherever it would have latched.
   function _fail(kind) {
     if (_error == null) _error = kind;
     return false;
@@ -95,7 +124,7 @@ class Stream {
   // not-implemented error; every serialize method dispatches through it
   function _arm(family, method) { return arm(_kind, family, method); }
 
-  // --- the dispatch: every serialize method of serialize.go v1.15.1's
+  // --- the dispatch: every serialize method of serialize.go v2.0.0's
   // Stream, in serialize.js's spelling (DESIGN.md (a)) -------------------
   function serializeBits(h, bits) { return _arm("bits", "serializeBits")(this, h, bits); }
   function serializeBits64(h, bits) { return _arm("bits", "serializeBits64")(this, h, bits); }
@@ -128,26 +157,56 @@ class Stream {
   }
   function serializeBytes(data) { return _arm("bytes", "serializeBytes")(this, data); }
   function serializeString(h, bufferSize) { return _arm("bytes", "serializeString")(this, h, bufferSize); }
-  function serializeWideString(h, bufferSize) { return _arm("bytes", "serializeWideString")(this, h, bufferSize); }
+
+  // serializeEnd(): the end of the top-level object (STANDARD.md end). On a
+  // write or a measure it is a no-op returning true, emitting and costing
+  // nothing, whatever the stream's state (IMPLEMENTING.md U12; the stream's
+  // error() and flush still tell a failed write). ReadStream overrides it with
+  // the reader's end.
+  function serializeEnd() { return true; }
 
   // serializeObject(object): object.serialize(stream) inline, no bytes of its
-  // own (STANDARD.md object). A latched stream does not call it. Anything but
-  // true from the object fails the call; serialize.go latches the object's
-  // own error, and a Squirrel serializer returns a boolean, so a false that
-  // latched nothing latches ValueOutOfRange: the object refused its own value
-  // (DESIGN.md (a), the one deviation of the error model).
+  // own (STANDARD.md object). On a write or a measure, anything but true from
+  // the object makes the call return false and records nothing
+  // (IMPLEMENTING.md U9). ReadStream overrides it with the latch.
   function serializeObject(object) {
-    if (_error != null) return false;
-    local r = object.serialize(this);
-    if (r != true) return _fail(SerializeError.ValueOutOfRange);
-    return _error == null;
+    return object.serialize(this) == true;
   }
+
+  // reject(): the caller's own refusal (STANDARD.md, Refusal reasons,
+  // `rejected`; IMPLEMENTING.md U2). On a write or a measure it is caller
+  // misuse and traps (U9: this port has no unchecked build, so it traps in
+  // every run). ReadStream overrides it with the latch.
+  function reject() { _trap("reject on a write or a measure stream (a refusal is read only)"); }
+
+  // fail(reason): a refusal decided outside the stream (IMPLEMENTING.md U14).
+  // On a write or a measure it answers false, records nothing and never traps:
+  // it is the path every refusal takes, so a serialize function shared by the
+  // read and write sides can call it (U6, U9). ReadStream overrides it.
+  function fail(reason = null) { return false; }
+
+  // _trap(what): THE TRAP (IMPLEMENTING.md U9; DESIGN.md (g)), the one
+  // write-misuse mechanism: a thrown string, "serialize: write misuse: <what>".
+  // It is thrown at the call, before any bit of the operation moves, and
+  // nothing is recorded on the stream.
+  function _trap(what) { throw "serialize: write misuse: " + what; }
 }
+
+// TRAPPED: what each reason an arm would have latched means as write misuse,
+// for the trap's text (WriteStream and MeasureStream _fail)
+local TRAPPED = {
+  value_out_of_range = "a value outside its range or its bit width, or a string longer than bufferSize - 1",
+  non_finite_float = "a float or double value that is not finite",
+  past_end = "an operation that does not fit the room left in the buffer",
+};
+local misuse = function(kind) {
+  return kind in TRAPPED ? TRAPPED[kind] : "" + kind;
+};
 
 // WriteStream(buffer): writes into buffer, a blob whose length is a multiple
 // of 8 bytes (STANDARD.md General Conventions: the stream occupies whole
 // 8-byte words in the writer's buffer). STRICT (DESIGN.md (g)): exactly
-// serialize.go v1.15.1's bytes.
+// serialize.go v2.0.0's bytes.
 class WriteStream extends Stream {
   _buffer = null;
   _capacity = 0;    // bits the buffer holds
@@ -169,14 +228,15 @@ class WriteStream extends Stream {
     _error = null;
   }
 
-  // _room(bits): true when bits more fit; a full buffer latches Overflow
-  // (serialize.go WriteStream: a message that does not fit is a runtime
-  // condition); a latched stream is false and latches nothing new
+  // _room(bits): true when bits more fit; an operation that does not fit the
+  // room left traps, whole, before its first bit (IMPLEMENTING.md U9, U10)
   function _room(bits) {
-    if (_error != null) return false;
-    if (_bits + bits > _capacity) return _fail(SerializeError.Overflow);
+    if (_bits + bits > _capacity) _trap(misuse(SerializeError.PastEnd));
     return true;
   }
+
+  // _fail(kind): write misuse never latches; it traps (IMPLEMENTING.md U9)
+  function _fail(kind) { _trap(misuse(kind)); }
 
   // _put(value, bits): one group of bits in [1,32], after _room
   function _put(value, bits) {
@@ -229,12 +289,51 @@ class ReadStream extends Stream {
   }
 
   // _room(bits): the reader's test, bit_index + n > 8 * bytes fails the read
-  // with Overflow (STANDARD.md Reader Obligations, Reading past the end must
-  // fail); a latched stream is false and latches nothing new
+  // with PastEnd (STANDARD.md Reader Obligations, Reading past the end must be
+  // refused, as past_end); a latched stream is false and latches nothing new
   function _room(bits) {
     if (_error != null) return false;
-    if (_bits + bits > _length) return _fail(SerializeError.Overflow);
+    if (_bits + bits > _length) return _fail(SerializeError.PastEnd);
     return true;
+  }
+
+  // serializeEnd(): the reader's end (STANDARD.md end; serialize.go
+  // ReadStream.SerializeEnd). A failed stream answers with its first reason;
+  // a whole byte or more left is TrailingData, checked first, so `bits 3; end`
+  // over 0D 00 is trailing_data; otherwise the remaining 0-7 bits are the
+  // final byte's padding, consumed, and any set bit is NonzeroPadding. The
+  // bits of the last field are never examined. An accepted end leaves the
+  // stream exactly consumed: 8 * bytes bits.
+  function serializeEnd() {
+    if (_error != null) return false;
+    local remaining = _length - _bits;
+    if (remaining >= 8) return _fail(SerializeError.TrailingData);
+    if (remaining > 0 && _take(remaining) != 0) return _fail(SerializeError.NonzeroPadding);
+    return true;
+  }
+
+  // serializeObject(object): a latched stream does not call it. Anything but
+  // true from the object fails the call, and a false that latched nothing
+  // latches Rejected through the same latch, so a primitive's earlier reason
+  // is kept (STANDARD.md, Refusal reasons, `rejected`; IMPLEMENTING.md U2).
+  function serializeObject(object) {
+    if (_error != null) return false;
+    local r = object.serialize(this);
+    if (r != true) return _fail(SerializeError.Rejected);
+    return _error == null;
+  }
+
+  // reject(): latch Rejected through the same latch as a wire refusal, so the
+  // first reason wins and the stream is terminal from here on; always false
+  function reject() { return _fail(SerializeError.Rejected); }
+
+  // fail(reason): latch reason through the same latch, so the first reason
+  // wins; no reason, or anything outside the closed list, latches Rejected,
+  // never none (a refused stream that reported none would be relabelled by
+  // the next read) and never a raise (IMPLEMENTING.md U14, U7). Always false.
+  function fail(reason = null) {
+    if (typeof reason == "string" && reason in REASONS) return _fail(reason);
+    return _fail(SerializeError.Rejected);
   }
 
   // _take(bits): one group of bits in [1,32], after _room
@@ -271,7 +370,10 @@ class MeasureStream extends Stream {
 
   function alignBits() { return 7; }
 
-  function _room(bits) { return _error == null; }
+  // a measure has no room to run out of (IMPLEMENTING.md U6), and makes every
+  // other check a write makes by the same trap, latching nothing
+  function _room(bits) { return true; }
+  function _fail(kind) { _trap(misuse(kind)); }
   function _put(value, bits) { _bits += bits; }
   function _putBytes(data, offset, n) { _bits += 8 * n; }
 }

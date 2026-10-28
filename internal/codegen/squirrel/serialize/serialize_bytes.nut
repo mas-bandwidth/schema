@@ -1,20 +1,20 @@
-// serialize_bytes.nut: the bytes, string and wstring family of
-// serialize-squirrel (DESIGN.md (h), file layout: src/serialize_bytes.nut).
-// A module of the closed loader (DESIGN.md (f)): vargv[0] is this module's
-// exports table and vargv[1] the loader's require.
+// serialize_bytes.nut: the bytes and string family of serialize-squirrel
+// (DESIGN.md (h), file layout: src/serialize_bytes.nut). A module of the
+// closed loader (DESIGN.md (f)): vargv[0] is this module's exports table and
+// vargv[1] the loader's require.
 //
 // THE WIRE (STANDARD.md, Bytes and Strings):
 //
 //   bytes   aligns first, then writes the block; the length is known to both
-//           sides and is not transmitted. A zero count still aligns.
+//           sides and is not transmitted. A zero count still aligns. Set
+//           padding is refused as nonzero_padding before the payload's length
+//           is checked.
 //   string  the length in [0, bufferSize-1] as serialize_int, then the bytes
-//           as serialize_bytes (which aligns). The reader refuses malformed
-//           UTF-8 and an interior NUL with ValueOutOfRange.
-//   wstring the length in UTF-16 code units in [0, bufferSize-1], then each
-//           unit as a 32-bit group; no alignment anywhere. Astral code points
-//           are split into surrogate pairs on write and recombined on read;
-//           the reader refuses a group above 0xFFFF, an unpaired surrogate
-//           and a zero group.
+//           as serialize_bytes (which aligns). The payload is well-formed
+//           UTF-8 with no zero byte: the reader refuses a zero byte as
+//           embedded_nul, scanning the whole payload BEFORE it validates the
+//           encoding, then malformed UTF-8 as invalid_utf8; the writer is
+//           handed such text only, and raises on any other.
 //
 // bufferSize is in [1, 2^31) on all three streams, serialize.go's
 // panicBufferSize. Every read bounds-checks the whole length before it
@@ -27,14 +27,17 @@ local E = require("serialize_stream").SerializeError;
 
 local PANIC_BUFFER_SIZE = "serialize: string buffer size must be in [1,1<<31)";
 local PANIC_NOT_BLOB = "serialize: serializeBytes requires a blob";
+local PANIC_STRING_NUL = "serialize: a string must not contain a zero byte";
+local PANIC_STRING_UTF8 = "serialize: a string must be well-formed UTF-8";
 
 // validateBufferSize(bufferSize): serialize.go's validateBufferSize, the
 // panic text verbatim (serialize.go panicBufferSize). API misuse raises in
 // every stream state (DESIGN.md (g)).
+local bufferSizeIsValid = function(bufferSize) {
+  return typeof bufferSize == "integer" && bufferSize >= 1 && bufferSize <= 0x7fffffff;
+};
 local validateBufferSize = function(bufferSize) {
-  if (typeof bufferSize != "integer" || bufferSize < 1 || bufferSize > 0x7fffffff) {
-    throw PANIC_BUFFER_SIZE;
-  }
+  if (!bufferSizeIsValid(bufferSize)) throw PANIC_BUFFER_SIZE;
 };
 
 local isBlob = function(b) {
@@ -47,13 +50,6 @@ local writeString = function(h) {
     throw "serialize: the string holder must be a table { value = <string> }";
   }
   return h.value;
-};
-
-// checkReadHolder(h): a read holder is a table with a value field to assign.
-local checkReadHolder = function(h) {
-  if (typeof h != "table" || !("value" in h)) {
-    throw "serialize: the string holder must be a table { value = ... }";
-  }
 };
 
 // rangeBits(min, max): serialize.go BitsRequired, the width of the unsigned
@@ -99,10 +95,37 @@ local stringToBlob = function(str) {
   return b;
 };
 
+local BYTE_CHARS = array(256);
+for (local c = 0; c < 256; c++) BYTE_CHARS[c] = c.tochar();
+
+// sliceToString(b, lo, hi): balanced midpoint string assembly over b[lo..hi).
+// Squirrel 3.2 strings are immutable and SQVM::StringCat copies both operands;
+// a left-associative per-byte prefix loop copies n*(n+1)/2 bytes. Splitting at
+// the midpoint bounds recursion depth to ceil(log2(n/4)) + 1 and total copied
+// bytes across tree levels to O(n log n), while each intermediate SQString is
+// released from SQStringTable as soon as its parent concatenation completes.
+local sliceToString = null;
+sliceToString = function(b, lo, hi) {
+  local span = hi - lo;
+  if (span <= 4) {
+    if (span == 4) {
+      return (BYTE_CHARS[b[lo] & 0xff] + BYTE_CHARS[b[lo + 1] & 0xff]) +
+          (BYTE_CHARS[b[lo + 2] & 0xff] + BYTE_CHARS[b[lo + 3] & 0xff]);
+    }
+    if (span == 3) {
+      return BYTE_CHARS[b[lo] & 0xff] + BYTE_CHARS[b[lo + 1] & 0xff] +
+          BYTE_CHARS[b[lo + 2] & 0xff];
+    }
+    if (span == 2) return BYTE_CHARS[b[lo] & 0xff] + BYTE_CHARS[b[lo + 1] & 0xff];
+    if (span == 1) return BYTE_CHARS[b[lo] & 0xff];
+    return "";
+  }
+  local mid = lo + (span >> 1);
+  return sliceToString(b, lo, mid) + sliceToString(b, mid, hi);
+};
+
 local blobToString = function(b) {
-  local s = "";
-  for (local i = 0; i < b.len(); i++) s += (b[i] & 0xff).tochar();
-  return s;
+  return sliceToString(b, 0, b.len());
 };
 
 local hasNul = function(b) {
@@ -155,99 +178,33 @@ local utf8Valid = function(b) {
   return true;
 };
 
-// decodeRune(b, i): one UTF-8 code point as [cp, next], malformed bytes as
-// U+FFFD with size 1, as Go's range does (the wstring writer contract is the
-// caller's; a malformed byte becomes the replacement character, never a raise).
-local decodeRune = function(b, i) {
-  local n = b.len();
-  local c = b[i] & 0xff;
-  if (c < 0x80) return [ c, i + 1 ];
-  if (c >= 0xc2 && c <= 0xdf && i + 1 < n) {
-    local c1 = b[i + 1] & 0xff;
-    if (c1 >= 0x80 && c1 <= 0xbf) return [ ((c & 0x1f) << 6) | (c1 & 0x3f), i + 2 ];
-  } else if (c >= 0xe0 && c <= 0xef && i + 2 < n) {
-    local c1 = b[i + 1] & 0xff;
-    local c2 = b[i + 2] & 0xff;
-    if (c1 >= 0x80 && c1 <= 0xbf && c2 >= 0x80 && c2 <= 0xbf &&
-        !(c == 0xe0 && c1 < 0xa0) && !(c == 0xed && c1 > 0x9f)) {
-      return [ ((c & 0x0f) << 12) | ((c1 & 0x3f) << 6) | (c2 & 0x3f), i + 3 ];
-    }
-  } else if (c >= 0xf0 && c <= 0xf4 && i + 3 < n) {
-    local c1 = b[i + 1] & 0xff;
-    local c2 = b[i + 2] & 0xff;
-    local c3 = b[i + 3] & 0xff;
-    if (c1 >= 0x80 && c1 <= 0xbf && c2 >= 0x80 && c2 <= 0xbf && c3 >= 0x80 && c3 <= 0xbf &&
-        !(c == 0xf0 && c1 < 0x90) && !(c == 0xf4 && c1 > 0x8f)) {
-      return [ ((c & 0x07) << 18) | ((c1 & 0x3f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f), i + 4 ];
-    }
-  }
-  return [ 0xfffd, i + 1 ];
-};
-
-local utf8Codepoints = function(str) {
-  local b = stringToBlob(str);
-  local out = [];
-  local i = 0;
-  while (i < b.len()) {
-    local r = decodeRune(b, i);
-    out.append(r[0]);
-    i = r[1];
-  }
-  return out;
-};
-
-// appendCodepoint(out, cp): the UTF-8 bytes of one code point, into an array.
-local appendCodepoint = function(out, cp) {
-  if (cp < 0x80) {
-    out.append(cp);
-  } else if (cp < 0x800) {
-    out.append(0xc0 | (cp >>> 6));
-    out.append(0x80 | (cp & 0x3f));
-  } else if (cp < 0x10000) {
-    out.append(0xe0 | (cp >>> 12));
-    out.append(0x80 | ((cp >>> 6) & 0x3f));
-    out.append(0x80 | (cp & 0x3f));
-  } else {
-    out.append(0xf0 | (cp >>> 18));
-    out.append(0x80 | ((cp >>> 12) & 0x3f));
-    out.append(0x80 | ((cp >>> 6) & 0x3f));
-    out.append(0x80 | (cp & 0x3f));
-  }
-};
-
-local stringFromCodepoints = function(cps) {
-  local bytes = [];
-  foreach (cp in cps) appendCodepoint(bytes, cp);
-  local b = blob(bytes.len());
-  for (local i = 0; i < bytes.len(); i++) b[i] = bytes[i];
-  return blobToString(b);
-};
-
 // putBytes(s, data): bytes on write and measure. alignBits() is the write's
 // actual padding and the measure's worst case 7 (STANDARD.md, bytes; The
 // Measure Stream). count zero still aligns.
+// The room for the whole operation, align and payload, is checked before the
+// first bit moves (IMPLEMENTING.md U10): no align bits ahead of a payload that
+// does not fit.
 local putBytes = function(s, data) {
   if (!isBlob(data)) throw PANIC_NOT_BLOB;
   local align = s.alignBits();
-  if (align > 0) {
-    if (!s._room(align)) return false;
-    s._put(0, align);
-  }
   local n = data.len();
-  if (!s._room(8 * n)) return false;
+  if (!s._room(align + 8 * n)) return false;
+  if (align > 0) s._put(0, align);
   if (n > 0) s._putBytes(data, 0, n);
   return true;
 };
 
 // readBytes(s, data): aligns (verifying zero padding), bounds-checks the whole
 // count, then fills the caller's blob (STANDARD.md, bytes; Reader Obligations).
+// A destination that is not a blob is a bad declaration on read: it refuses
+// ValueOutOfRange after the failure state, never a raise (IMPLEMENTING.md U7).
 local readBytes = function(s, data) {
-  if (!isBlob(data)) throw PANIC_NOT_BLOB;
+  if (!isBlob(data)) return s._fail(E.ValueOutOfRange);
   local align = s.alignBits();
   if (align > 0) {
     if (!s._room(align)) return false;
     local pad = s._take(align);
-    if (pad != 0) return s._fail(E.Align);
+    if (pad != 0) return s._fail(E.NonzeroPadding);
   }
   local n = data.len();
   if (!s._room(8 * n)) return false;
@@ -256,32 +213,42 @@ local readBytes = function(s, data) {
 };
 
 // putString(s, h, bufferSize): the length prefix, the align, then the bytes
-// (STANDARD.md, string). A string that does not fit latches ValueOutOfRange,
-// as serialize.go's WriteStream does; a write past the buffer latches Overflow.
+// (STANDARD.md, string). The writer is handed well-formed UTF-8 with no zero
+// byte that fits bufferSize - 1, as it is handed an int in its range
+// (STANDARD.md, string): anything else is write misuse and traps, on the
+// write and the measure stream, latching nothing; so does a write that does
+// not fit the room left (IMPLEMENTING.md U6, U9, U10; DESIGN.md (g)).
 local putString = function(s, h, bufferSize) {
   validateBufferSize(bufferSize);
   local value = writeString(h);
-  if (s.error() != null) return false;
+  local bytes = stringToBlob(value);
+  if (hasNul(bytes)) throw PANIC_STRING_NUL;
+  if (!utf8Valid(bytes)) throw PANIC_STRING_UTF8;
   local length = value.len();
-  if (length >= bufferSize) return s._fail(E.ValueOutOfRange);
+  if (length >= bufferSize) return s._fail(E.ValueOutOfRange); // the trap (U9)
+  // the whole operation's room first, the length field, the align after it
+  // and the payload, so nothing is written ahead of a payload that does not
+  // fit (IMPLEMENTING.md U10); a measure's room is unbounded
+  local lengthBits = rangeBits(0, bufferSize - 1);
+  local align = (8 - (s.bitsProcessed() + lengthBits) % 8) % 8;
+  if (!s._room(lengthBits + align + 8 * length)) return false;
   if (!writeRange(s, length, 0, bufferSize - 1)) return false;
-  local align = s.alignBits();
-  if (align > 0) {
-    if (!s._room(align)) return false;
-    s._put(0, align);
-  }
-  if (!s._room(8 * length)) return false;
-  if (length > 0) s._putBytes(stringToBlob(value), 0, length);
+  align = s.alignBits();
+  if (align > 0) s._put(0, align);
+  if (length > 0) s._putBytes(bytes, 0, length);
   return true;
 };
 
 // readString(s, h, bufferSize): the length prefix, the align, the whole length
 // bounds check, the copy, and only then the NUL and UTF-8 refusals, so the
 // holder is untouched on failure (STANDARD.md, string; Reader Obligations).
+// A buffer size outside [1, 2^31) or a holder that is not a table with a
+// value field is a bad declaration on read: it refuses ValueOutOfRange after
+// the failure state, before any bit moves, never a raise (IMPLEMENTING.md U7,
+// U16).
 local readString = function(s, h, bufferSize) {
-  validateBufferSize(bufferSize);
-  checkReadHolder(h);
   if (s.error() != null) return false;
+  if (!bufferSizeIsValid(bufferSize) || typeof h != "table" || !("value" in h)) return s._fail(E.ValueOutOfRange);
   local r = readRange(s, 0, bufferSize - 1);
   if (!r.ok) return false;
   local length = r.value;
@@ -289,95 +256,28 @@ local readString = function(s, h, bufferSize) {
   if (align > 0) {
     if (!s._room(align)) return false;
     local pad = s._take(align);
-    if (pad != 0) return s._fail(E.Align);
+    if (pad != 0) return s._fail(E.NonzeroPadding);
   }
   if (!s._room(8 * length)) return false;
   local data = blob(length);
   if (length > 0) s._takeBytes(data, 0, length);
-  if (hasNul(data) || !utf8Valid(data)) return s._fail(E.ValueOutOfRange);
+  if (hasNul(data)) return s._fail(E.EmbeddedNul);
+  if (!utf8Valid(data)) return s._fail(E.InvalidUtf8);
   h.value = blobToString(data);
-  return true;
-};
-
-// putWideString(s, h, bufferSize): the length in UTF-16 code units, then each
-// unit as a 32-bit group with no alignment anywhere (STANDARD.md, wstring).
-// The length is compared with bufferSize at SQInteger width before the length
-// field is written, as serialize.go's wideStringFits does before narrowing.
-local putWideString = function(s, h, bufferSize) {
-  validateBufferSize(bufferSize);
-  local value = writeString(h);
-  if (s.error() != null) return false;
-  local cps = utf8Codepoints(value);
-  local units = cps.len();
-  foreach (cp in cps) if (cp >= 0x10000) units++;
-  if (units >= bufferSize) return s._fail(E.ValueOutOfRange);
-  if (!writeRange(s, units, 0, bufferSize - 1)) return false;
-  foreach (cp in cps) {
-    if (cp >= 0x10000) {
-      local v = cp - 0x10000;
-      local high = 0xd800 + (v >>> 10);
-      local low = 0xdc00 + (v & 0x3ff);
-      if (!s._room(32)) return false;
-      s._put(high, 32);
-      if (!s._room(32)) return false;
-      s._put(low, 32);
-    } else {
-      if (!s._room(32)) return false;
-      s._put(cp, 32);
-    }
-  }
-  return true;
-};
-
-// readWideString(s, h, bufferSize): the length prefix, the whole length bounds
-// check before allocation, then the groups with every STANDARD.md wstring
-// refusal: a group above 0xFFFF, an unpaired surrogate and a zero group all
-// latch ValueOutOfRange; the holder is assigned only after the last one.
-local readWideString = function(s, h, bufferSize) {
-  validateBufferSize(bufferSize);
-  checkReadHolder(h);
-  if (s.error() != null) return false;
-  local r = readRange(s, 0, bufferSize - 1);
-  if (!r.ok) return false;
-  local length = r.value;
-  if (!s._room(length * 32)) return false;
-  local cps = [];
-  local i = 0;
-  while (i < length) {
-    local unit = s._take(32);
-    if (unit == 0) return s._fail(E.ValueOutOfRange);
-    if (unit > 0xffff) return s._fail(E.ValueOutOfRange);
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      i++;
-      if (i == length) return s._fail(E.ValueOutOfRange);
-      local low = s._take(32);
-      if (low < 0xdc00 || low > 0xdfff) return s._fail(E.ValueOutOfRange);
-      cps.append(0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00));
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      return s._fail(E.ValueOutOfRange);
-    } else {
-      cps.append(unit);
-    }
-    i++;
-  }
-  h.value = stringFromCodepoints(cps);
   return true;
 };
 
 _M.write <- {
   serializeBytes = putBytes,
   serializeString = putString,
-  serializeWideString = putWideString,
 };
 
 _M.read <- {
   serializeBytes = readBytes,
   serializeString = readString,
-  serializeWideString = readWideString,
 };
 
 _M.measure <- {
   serializeBytes = putBytes,
   serializeString = putString,
-  serializeWideString = putWideString,
 };

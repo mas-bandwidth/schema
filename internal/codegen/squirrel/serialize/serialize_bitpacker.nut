@@ -2,7 +2,7 @@
 // layer and the family card of serialize-squirrel-bitpacker (DESIGN.md (h)).
 // A module of the closed loader (DESIGN.md (f)): vargv[0] is this module's
 // exports table and vargv[1] the loader's require. It is a pure port of
-// serialize.go v1.15.1's bitpacker.go: the same bytes, bit for bit.
+// serialize.go v2.0.0's bitpacker.go: the same bytes, bit for bit.
 //
 // THE WIRE (STANDARD.md, General Conventions; DESIGN.md (b)). Bits are packed
 // least-significant-bit first into a 64-bit scratch word. A value crossing the

@@ -43,20 +43,51 @@ local bitlen64 = function(x) {
   return n;
 };
 
+// THE 64-BIT LANES (DESIGN.md (c): signed overflow, and a left shift that
+// loses bits, are C++ undefined behaviour in the VM, so the library never
+// leaves a sum, a difference or a shift that can wrap to SQInteger
+// arithmetic). Each is composed from the two 32-bit halves, where nothing can
+// overflow, and is exact modulo 2^64. serialize_int.nut, serialize_bits.nut
+// and serialize_fixed.nut reach them through this module.
+local MASK32 = 0xFFFFFFFF;
+
+// add64(a, b): a + b, wrapping modulo 2^64
+local add64 = function(a, b) {
+  local lo = (a & MASK32) + (b & MASK32);
+  local hi = ((a >>> 32) + (b >>> 32) + (lo >>> 32)) & MASK32;
+  return (hi << 32) | (lo & MASK32);
+};
+
+// sub64(a, b): a - b, wrapping modulo 2^64, with an explicit borrow
+local sub64 = function(a, b) {
+  local lo = (a & MASK32) - (b & MASK32);
+  local borrow = lo < 0 ? 1 : 0;
+  local hi = ((a >>> 32) - (b >>> 32) - borrow) & MASK32;
+  return (hi << 32) | (lo & MASK32);
+};
+
+// shl64(x, n): x << n for n in [0,63], wrapping modulo 2^64: the bits that
+// would leave the word are masked off first, so the VM's shift never loses a
+// bit and never shifts a negative value
+local shl64 = function(x, n) {
+  if (n == 0) return x;
+  return (x & (0xFFFFFFFFFFFFFFFF >>> n)) << n;
+};
+
 // u128sub(a, b): a - b, wrapping modulo 2^128 (STANDARD.md int128: the
 // offset is computed in the unsigned domain)
 local u128sub = function(a, b) {
-  local lo = a[0] - b[0];
+  local lo = sub64(a[0], b[0]);
   local br = ucmp64(a[0], b[0]) < 0 ? 1 : 0;
-  local hi = a[1] - b[1] - br;
+  local hi = sub64(sub64(a[1], b[1]), br);
   return [lo, hi];
 };
 
 // u128add(a, b): a + b, wrapping modulo 2^128
 local u128add = function(a, b) {
-  local lo = a[0] + b[0];
+  local lo = add64(a[0], b[0]);
   local ca = ucmp64(a[0], lo) > 0 ? 1 : 0;
-  local hi = a[1] + b[1] + ca;
+  local hi = add64(add64(a[1], b[1]), ca);
   return [lo, hi];
 };
 
@@ -86,13 +117,13 @@ local u128len = function(x) {
 // lsh, rsh, each on [lo, hi]
 local lsh = function(x, n) {
   if (n == 0) return x;
-  if (n < 64) return [(x[0] << n), ((x[1] << n) | (x[0] >>> (64 - n)))];
-  return [0, x[0] << (n - 64)];
+  if (n < 64) return [shl64(x[0], n), (shl64(x[1], n) | (x[0] >>> (64 - n)))];
+  return [0, shl64(x[0], n - 64)];
 };
 
 local rsh = function(x, n) {
   if (n == 0) return x;
-  if (n < 64) return [((x[0] >>> n) | (x[1] << (64 - n))), (x[1] >>> n)];
+  if (n < 64) return [((x[0] >>> n) | shl64(x[1], 64 - n)), (x[1] >>> n)];
   return [(x[1] >>> (n - 64)), 0];
 };
 
@@ -154,7 +185,6 @@ local measure = {};
 // from the range (STANDARD.md int).
 write.serializeInt128 <- function(s, h, min, max) {
   if (i128cmp(min, max) > 0) throw PANIC_MINMAX;
-  if (s._error != null) return false;
   local v = h.value;
   if (i128cmp(v, min) < 0 || i128cmp(v, max) > 0) return s._fail(SerializeError.ValueOutOfRange);
   local numBits = u128len(u128sub(max, min));
@@ -164,11 +194,13 @@ write.serializeInt128 <- function(s, h, min, max) {
   return true;
 };
 
+// a bad declaration (min > max) refuses ValueOutOfRange on read, never a
+// raise (IMPLEMENTING.md U7, U16)
 read.serializeInt128 <- function(s, h, min, max) {
-  if (i128cmp(min, max) > 0) throw PANIC_MINMAX;
   if (s._error != null) return false;
+  if (i128cmp(min, max) > 0) return s._fail(SerializeError.ValueOutOfRange);
   local numBits = u128len(u128sub(max, min));
-  if (numBits == 0) { h.value = min; return true; }
+  if (numBits == 0) { h.value = [min[0], min[1]]; return true; }
   if (!s._room(numBits)) return false;
   local off = takeGroups(s, numBits);
   // reject, never clamp: the decoded offset must be at most max - min in the
@@ -180,7 +212,6 @@ read.serializeInt128 <- function(s, h, min, max) {
 
 measure.serializeInt128 <- function(s, h, min, max) {
   if (i128cmp(min, max) > 0) throw PANIC_MINMAX;
-  if (s._error != null) return false;
   local v = h.value;
   if (i128cmp(v, min) < 0 || i128cmp(v, max) > 0) return s._fail(SerializeError.ValueOutOfRange);
   local numBits = u128len(u128sub(max, min));
@@ -193,7 +224,6 @@ measure.serializeInt128 <- function(s, h, min, max) {
 // serializeUint128(s, h): the raw unsigned 128-bit integer, always 128 bits:
 // the low 64-bit half first, then the high half (STANDARD.md uint128)
 write.serializeUint128 <- function(s, h) {
-  if (s._error != null) return false;
   if (!s._room(128)) return false;
   local v = h.value;
   s._put(v[0] & 0xFFFFFFFF, 32);
@@ -217,7 +247,6 @@ read.serializeUint128 <- function(s, h) {
 };
 
 measure.serializeUint128 <- function(s, h) {
-  if (s._error != null) return false;
   if (!s._room(128)) return false;
   s._put(0, 128);
   return true;
@@ -232,6 +261,10 @@ _M.uint128From64 <- function(x) {
   return [x, 0];
 };
 
+_M.add64 <- add64;
+_M.sub64 <- sub64;
+_M.shl64 <- shl64;
+_M.add <- u128add;
 _M.sub <- u128sub;
 _M.cmp <- u128cmp;
 _M.lsh <- lsh;
