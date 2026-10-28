@@ -242,7 +242,7 @@ func TestCppNativeHeaderIsIncludedWhenAMappingIsLive(t *testing.T) {
 }
 
 // TestNativeMappingIsCppOnly pins the other half of SPEC §4.2: cpp_* keys are
-// C++'s alone, and every other target ignores them. Each of the other eight
+// C++'s alone, and every other target ignores them. Each of the other nine
 // languages' generated examples unit (where the mapping is live in C++)
 // carries no mention of the hand type or its header.
 func TestNativeMappingIsCppOnly(t *testing.T) {
@@ -254,8 +254,8 @@ func TestNativeMappingIsCppOnly(t *testing.T) {
 		t.Fatal("examples declares no cpp_native mapping")
 	}
 	targets := c.Targets()
-	if len(targets) != 9 {
-		t.Fatalf("want the nine built-in targets, got %v", targets)
+	if len(targets) != 10 {
+		t.Fatalf("want the ten built-in targets, got %v", targets)
 	}
 	for _, target := range targets {
 		if target == "cpp" {

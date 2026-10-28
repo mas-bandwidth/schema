@@ -6,8 +6,7 @@ byte buffers it reads and writes, where every file of the leg lives and how a
 module reaches its runtime, how the leg's tests run the interpreter, the
 port's column of the techniques register, and which card of the
 `schema-squirrel` stream fills each surface. The skeleton it describes is in
-the tree: `compiler/target_squirrel.go` (behind the `schema_leg_squirrel`
-tag), `internal/codegen/squirrel` (the type surface), `internal/codegen/squirreltable`
+the tree: `compiler/target_squirrel.go` (a built-in target), `internal/codegen/squirrel` (the type surface), `internal/codegen/squirreltable`
 (the table surface) and `make/squirrel.mk`. Neither surface carries a codec
 yet; the cards below add them without editing the skeleton's files.
 
@@ -200,7 +199,7 @@ Fixed now for the pro cards; nothing below is renamed.
 
 | path | what it is | who adds to it |
 |---|---|---|
-| `compiler/target_squirrel.go` | the target, behind the `schema_leg_squirrel` tag; the skeleton's refusals | the card that lifts a refusal |
+| `compiler/target_squirrel.go` | the built-in target; its refusals | the card that lifts a refusal |
 | `internal/codegen/squirrel/squirrel.go` | the TYPE emitter: one `<Base>.nut` per schema file, the constants, enums (`Count`, `Max`), flags, unions and constructors; `RegisterSurface` | no later card edits it |
 | `internal/codegen/squirrel/read.go`, `write.go` | the type wire's read and write, joining every module through `RegisterSurface` from their `init` | type-wire-read, type-wire-write |
 | `internal/codegen/squirrel/runtime/*.nut` | the type runtime, `go:embed` by glob, emitted beside the modules as `schema_<name>.nut`: `module.nut` (the loader) now, `bitreader.nut` and `bitwriter.nut` later | one file per card |

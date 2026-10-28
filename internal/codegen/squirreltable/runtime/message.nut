@@ -231,24 +231,24 @@ local bitCount = function(n) {
   while (n > 0) { bits++; n = n >> 1; }
   return bits;
 };
-local skipPeerEntry;
-local skipPeerBody;
-skipPeerEntry = function(T,v,r,e,depth) {
+local skipRemoteEntry;
+local skipRemoteBody;
+skipRemoteEntry = function(T,v,r,e,depth) {
   if(depth>128){r.bad=true;return;}
   local sh=e.Shape,k=sh.Kind;
   if(k==0||k==32)return;
   if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local en=v.Entries[ref-1];if(en==null||en.Shape.Kind!=0||(en.Id==0xfffffffffffffffd||en.Id==0xfffffffffffffffe||en.Id==0xffffffffffffffff))r.bad=true;return;}
-  if(k==13){skipPeerBody(T,v,r,depth+1);return;}
-  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||(arm.Id==0xfffffffffffffffd||arm.Id==0xfffffffffffffffe||arm.Id==0xffffffffffffffff)){r.bad=true;return;}skipPeerEntry(T,v,r,arm,depth+1);return;}
+  if(k==13){skipRemoteBody(T,v,r,depth+1);return;}
+  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||(arm.Id==0xfffffffffffffffd||arm.Id==0xfffffffffffffffe||arm.Id==0xffffffffffffffff)){r.bad=true;return;}skipRemoteEntry(T,v,r,arm,depth+1);return;}
   if(k==12||k==33){local n=get(r,sh.Bits);if(r.bad||n>sh.Max){r.bad=true;return;}if(k==12&&!alignRead(r)){r.bad=true;return;}skip(r,n*(k==12?8:16));return;}
   if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
-  if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}}skipPeerEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
+  if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}}skipRemoteEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
   if(k==17){r.bad=true;return;}
   if(sh.Bits<0){r.bad=true;return;}skip(r,sh.Bits);
 };
-skipPeerBody = function(T,v,r,depth) {
+skipRemoteBody = function(T,v,r,depth) {
   if(depth>128){r.bad=true;return;}
-  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}local entry=v.Entries[ref-1];if(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff){r.bad=true;return;}skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;}
+  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}local entry=v.Entries[ref-1];if(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff){r.bad=true;return;}skipRemoteEntry(T,v,r,entry,depth+1);if(r.bad)return;}
 };
 local findSlot = function(T, id) {
   for (local i = 0; i < T.TableMessageIds.len(); i++) if (T.TableMessageIds[i] == id) return i + 1;
@@ -426,7 +426,7 @@ skipPayload = function(T, v, r, fd, depth) {
     if(arm==null){r.bad=true;return;} if(arm.payload!=null) skipPayload(T,v,r,arm.payload,depth+1); return;
   }
   if (fd.shape == "arr") {
-    // §3.3: consume byte alignment and raw kind-6 elements, or keyed refs before each peer element.
+    // §3.3: consume byte alignment and raw kind-6 elements, or keyed refs before each element.
     local n = fd.list || fd.counted || fd.elem.shape == "bytes" || (fd.keyvariants != null) ? get(r, bitCount(fd.bound-fd.min)) + fd.min : fd.bound;
     if(fd.elem.shape == "bytes") { if(!alignRead(r)){r.bad=true;return;} skip(r,n*8); return; }
     for(local i=0;i<n;i++){if((fd.keyvariants != null)){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}}skipPayload(T,v,r,fd.elem,depth+1);} return;
@@ -437,7 +437,7 @@ skipPayload = function(T, v, r, fd, depth) {
 
 readPayload = function(T, v, r, fd, owner, member, depth, entry) {
   if (depth > 128) { r.bad = true; return; }
-  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth);return;}
+  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,depth);return;}
   if(entry.Kind!=fd.kind)r.widened++;
   if (fd.shape == "str") {
     local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max){r.bad=true;return;}
@@ -459,7 +459,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     if(ref!=0&&id==null){r.bad=true;return;}
     if(ref!=0){local entry=v.Entries[ref-1];if(entry.Shape.Kind==0||(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff)){r.bad=true;return;}}
     foreach(a in ud.arms)if(a.id==id)arm=a;
-    if(arm==null&&ref!=0){if(ref>v.Count){r.bad=true;return;}r.unknown++;skipPeerEntry(T,v,r,v.Entries[ref-1],depth+1);owner[member]=u;return;}
+    if(arm==null&&ref!=0){if(ref>v.Count){r.bad=true;return;}r.unknown++;skipRemoteEntry(T,v,r,v.Entries[ref-1],depth+1);owner[member]=u;return;}
     if(arm!=null){u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1,v.Entries[ref-1]);}
     owner[member]=u;return;
   }
@@ -472,8 +472,8 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local keyed=(fd.keyvariants != null),a=keyed?owner[member]:[];if(!keyed){local size=((fd.list||fd.counted)?kept:fd.bound);for(local j=0;j<size;j++)a.append(fd.elem.def);}
     for(local i=0;i<n;i++){
       local index=i;
-      if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipPeerEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}}
-      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.kindMismatch++;skipPeerEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}
+      if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipRemoteEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}}
+      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry.Element,depth+1);if(r.bad)return;continue;}
       local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(index<kept)a[index]=holder.value;if(r.bad)return;
     }
     owner[member]=a;return;
@@ -513,8 +513,8 @@ readBody = function(T, v, r, d, value, depth) {
     local id=idAt(v,ref);if(id==null||ref>v.Entries.len()){r.bad=true;return;}
     if(id==0xfffffffffffffffd||id==0xfffffffffffffffe||id==0xffffffffffffffff){r.bad=true;return;}
     local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
-    if(fd==null){r.unknown++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
-    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipPeerEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
+    if(fd==null){r.unknown++;skipRemoteEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
+    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.kindMismatch++;skipRemoteEntry(T,v,r,entry,depth+1);if(r.bad)return;continue;}
     if(fd.optional)value[fd.member + "Present"] = true;
     readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
     if(r.bad)return;

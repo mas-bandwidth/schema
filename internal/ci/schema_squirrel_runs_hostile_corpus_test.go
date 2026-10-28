@@ -80,6 +80,17 @@ var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
 		actual:   "generator refuses tables/maps; no reader verdict",
 		fixCard:  "schema-squirrel-carries-wide-text",
 	},
+	// wire-non-finite-float arrived with the finite-tables ruling (#2226,
+	// SPEC-TABLES §3.3): Squirrel refuses the NaN but names it non_finite where
+	// the engine names non_finite_float. The squirrel finite-tables card
+	// (tables-finite/squirrel) owns the name and removes this row.
+	{
+		name:     "wire-non-finite-float",
+		input:    "inputs/wire-non-finite-float.bin",
+		expected: "refuse non_finite_float",
+		actual:   "refuse non_finite",
+		fixCard:  "tables-finite/squirrel",
+	},
 }
 
 func squirrelExpectedHostileMismatchNames() []string {

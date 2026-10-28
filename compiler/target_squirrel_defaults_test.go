@@ -97,7 +97,7 @@ foreach (key in ["default", "set"]) {
 		t.Fatalf("the probe printed %d lines for %d cases: %q", len(lines), len(cases)*3, lines)
 	}
 	for i, c := range cases {
-		for phase := 0; phase < 2; phase++ {
+		for phase := range 2 {
 			got, err := hex.DecodeString(lines[3*i+phase])
 			if err != nil {
 				t.Errorf("%s phase %d is not hex: %q", c.name, phase, lines[3*i+phase])

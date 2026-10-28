@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cookShape carries the chain each CASE's fixture is generated with, matching
@@ -141,6 +142,7 @@ func readCookRows(t *testing.T, path string) ([]cookRow, []cookForgery, map[stri
 // reason, so the first failing clause is pinned and not merely a null.
 func TestSquirrelCookReadMatchesTheCorpus(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

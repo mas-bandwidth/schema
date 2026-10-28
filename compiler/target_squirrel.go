@@ -1,12 +1,8 @@
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
-// Scaffolded by `schema new-leg squirrel`. The schema_leg_squirrel tag keeps
-// this target out of the default nine until the packet surface has claims in
-// compiler/*_test.go; `go build -tags schema_leg_squirrel` is `schema generate
-// --lang squirrel` (make/squirrel.mk builds it as build/schema-squirrel). Drop
-// the tag when the port joins the builtins (docs/PORT-SQUIRREL.md, THE CARD
-// MAP).
+// Scaffolded by `schema new-leg squirrel`; a built-in target since the port
+// joined main (docs/PORT-SQUIRREL.md).
 package compiler
 
 import (

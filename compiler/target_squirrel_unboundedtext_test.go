@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -42,7 +43,8 @@ func TestSquirrelUnboundedTextRefuserFollowsTheRegistry(t *testing.T) {
 // JSON text must equal internal/tabletext's, byte for byte.
 func TestSquirrelCarriesUnboundedText(t *testing.T) {
 	t.Parallel()
-	ensurePinnedSquirrel(t)
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
+	sqrun.Require(t)
 	cases := []struct {
 		name   string
 		src    string
@@ -59,7 +61,6 @@ func TestSquirrelCarriesUnboundedText(t *testing.T) {
 	}
 	c := New()
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			u := unitFromSource(t, tc.src)
@@ -107,7 +108,7 @@ func TestSquirrelCarriesUnboundedText(t *testing.T) {
 			out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wantWire})
 
 			var gotWire, gotJSON []byte
-			for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+			for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 				switch {
 				case strings.HasPrefix(line, "wire:"):
 					gotWire = decodeHex(t, strings.TrimPrefix(line, "wire:"))
@@ -129,7 +130,6 @@ func TestSquirrelCarriesUnboundedText(t *testing.T) {
 		t.Fatalf("the Squirrel target is not registered as carrying the unbounded text (compiler/target_squirrel_unboundedtext.go, docs/SPEC-TABLES.md §2.13.1)")
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run("unregistered "+tc.name, func(t *testing.T) {
 			u := unitFromSource(t, tc.src)
 			if _, err := c.Generate(u, "c", Options{}); err == nil {

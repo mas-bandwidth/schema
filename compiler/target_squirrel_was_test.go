@@ -202,7 +202,7 @@ func TestSquirrelCarriesWasRows(t *testing.T) {
 	}
 	out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"old": oldWire})
 	lines := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
 			t.Fatalf("probe line %q has no label", line)

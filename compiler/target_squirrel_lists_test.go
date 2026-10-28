@@ -98,7 +98,7 @@ func TestSquirrelCarriesUnboundedArrays(t *testing.T) {
 	out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"want": want})
 	rows := map[string]string{}
 	var hexes []string
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 		if k, v, ok := strings.Cut(line, "="); ok {
 			rows[k] = v
 			continue

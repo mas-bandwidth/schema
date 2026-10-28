@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -22,7 +22,8 @@ import (
 // and an array-root table's JSON text must equal internal/tabletext's, byte
 // for byte.
 func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
-	ensurePinnedSquirrel(t)
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
+	sqrun.Require(t)
 	t.Parallel()
 	cases := []struct {
 		name, src, root, json string
@@ -44,7 +45,6 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 	}
 	c := New()
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			u := unitFromSource(t, tc.src)
@@ -98,7 +98,7 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 			out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wantWire})
 
 			var gotWire, gotJSON []byte
-			for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+			for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 				switch {
 				case strings.HasPrefix(line, "wire:"):
 					gotWire = decodeHex(t, strings.TrimPrefix(line, "wire:"))
@@ -120,39 +120,12 @@ func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
 		t.Fatalf("the Squirrel target is not registered as carrying the text list and the array root (compiler/target_squirrel_textlists.go, docs/SPEC-TABLES.md §2.13, §16.10)")
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run("unregistered "+tc.name, func(t *testing.T) {
 			u := unitFromSource(t, tc.src)
 			if _, err := c.Generate(u, "c", Options{}); err == nil {
 				t.Fatalf("an unregistered target generated the %s; only squirrel carries it", tc.name)
 			}
 		})
-	}
-}
-
-// ensurePinnedSquirrel makes the control independent of whether the pinned
-// interpreter has already been built in this checkout. make dist-squirrel is
-// the setup step (make/squirrel.mk); without it sqrun refuses every run and
-// this control is red even though the text-lists landing is intact. The build
-// is idempotent, so a checkout that already has dist/squirrel-3.2/bin/sq pays
-// nothing.
-func ensurePinnedSquirrel(t *testing.T) {
-	t.Helper()
-	if _, err := sqrun.Interpreter(); err == nil {
-		return
-	}
-	root, err := sqrun.RepoRoot()
-	if err != nil {
-		t.Fatalf("the pinned Squirrel interpreter does not resolve and the repository root cannot be found: %v", err)
-	}
-	cmd := exec.Command("make", "dist-squirrel")
-	cmd.Dir = root
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("the pinned Squirrel interpreter does not resolve and `make dist-squirrel` failed: %v\n%s", err, out)
-	}
-	if _, err := sqrun.Interpreter(); err != nil {
-		t.Fatalf("`make dist-squirrel` succeeded but the pinned Squirrel interpreter still does not resolve: %v", err)
 	}
 }
 

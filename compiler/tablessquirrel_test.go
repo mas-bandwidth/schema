@@ -2,12 +2,11 @@
 // BY NAME (docs/SPEC-TABLES.md §11, docs/PORT-SQUIRREL.md): each refusal names
 // the field and the target, so a schema author is told which port lacks what.
 //
-// The target itself is behind the schema_leg_squirrel tag
-// (compiler/target_squirrel.go), so this test reads the target's refusal chain
-// from its SOURCE and runs that chain, which needs no tag: every refuser the
+// This test reads the target's refusal chain from its SOURCE
+// (compiler/target_squirrel.go) and runs that chain: every refuser the
 // target's Generate calls, with refuseUnported opened into its own, must have
-// a construct here it refuses naming the field and squirrel. Under the tag the
-// same constructs also go through Generate("squirrel") whole.
+// a construct here it refuses naming the field and squirrel. The same
+// constructs also go through Generate("squirrel") whole.
 package compiler
 
 import (

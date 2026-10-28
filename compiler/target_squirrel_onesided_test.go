@@ -119,7 +119,6 @@ func TestSquirrelCarriesOneSidedIntegerRanges(t *testing.T) {
 		{"b above max", "b", 10},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			wire, wantSaved, wantAccepted, wantClamped, wantA, wantB := squirrelOneSidedOracle(t, model, u, tc)
 			out := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wire})))
