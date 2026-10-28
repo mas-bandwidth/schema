@@ -510,20 +510,26 @@ func emitReadFixed(r *readBody, f *ir.Field, target, ind string) {
 		}
 		return
 	}
+	fn, intBits, widened := fixedDeclaration(f)
 	if t.Width > 64 {
 		v := r.int128()
 		r.call(ind, v, fmt.Sprintf("serialize_fixed128(%s, %d, %d, %s, %s) // the Q format's raw offset (SPEC §4.3)",
-			v, t.IntBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax)))
+			v, intBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax)))
 		r.pf(ind, "%s = %s.Int128 { lo: %s.lo, hi: %s.hi }", target, RuntimeNamespace, v, v)
 		return
 	}
-	fn := "serialize_fixed32"
-	if t.Width > 32 {
-		fn = "serialize_fixed64"
+	if widened {
+		// a ufixed whose raw values reach 2^63 (fixedDeclaration): the
+		// 128-bit operation, and the low lane is the 64-bit pattern
+		v := r.int128()
+		r.call(ind, v, fmt.Sprintf("serialize_fixed128(%s, %d, %d, %s, %s) // the Q format's raw offset, unsigned (SPEC §4.3)",
+			v, intBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax)))
+		r.pf(ind, "%s = %s.lo", target, v)
+		return
 	}
 	v := r.int()
 	r.call(ind, v, fmt.Sprintf("%s(%s, %d, %d, %s, %s) // the Q format's raw offset (SPEC §4.3)",
-		fn, v, t.IntBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax)))
+		fn, v, intBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax)))
 	r.pf(ind, "%s = %s", target, v)
 }
 

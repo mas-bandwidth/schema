@@ -358,17 +358,52 @@ func emitWriteFixed(g *Gen, val string, f *ir.Field, indent string) {
 		g.Pf("%sassert %s == %s // the degenerate range's one raw value (SPEC §4.6)\n", indent, val, IntLit(raw))
 		return
 	}
+	fn, intBits, widened := fixedDeclaration(f)
 	switch {
 	case t.Width > 64:
 		g.Pf("%ss.serialize_fixed128(serialize_int128 { lo: %s.lo, hi: %s.hi }, %d, %d, %s, %s) // the Q format's raw offset (SPEC §4.3)\n",
-			indent, val, val, t.IntBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
-	case t.Width > 32:
-		g.Pf("%ss.serialize_fixed64(%s, %d, %d, %s, %s) // the Q format's raw offset (SPEC §4.3)\n",
-			indent, val, t.IntBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
+			indent, val, val, intBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
+	case widened:
+		// a ufixed whose raw values reach 2^63: the 64-bit pattern
+		// zero-extended into the 128-bit signed declaration
+		g.Pf("%ss.serialize_fixed128(serialize_int128 { lo: %s, hi: 0 }, %d, %d, %s, %s) // the Q format's raw offset, unsigned (SPEC §4.3)\n",
+			indent, val, intBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
 	default:
-		g.Pf("%ss.serialize_fixed32(%s, %d, %d, %s, %s) // the Q format's raw offset (SPEC §4.3)\n",
-			indent, val, t.IntBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
+		g.Pf("%ss.%s(%s, %d, %d, %s, %s) // the Q format's raw offset (SPEC §4.3)\n",
+			indent, fn, val, intBits, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
 	}
+}
+
+// fixedDeclaration is the serialize.lobster declaration a fixed field is
+// written and read through: the operation, the integer_bits it passes, and
+// whether a 64-bit-or-narrower value rides the 128-bit operation.
+//
+// serialize's fixed operations take a SIGNED Q format (STANDARD.md, fixed: the
+// sign bit counts toward integer_bits, and the runtime refuses a declaration
+// whose bounds the signed storage cannot hold). The wire depends only on the
+// fraction bits and the raw bounds (min << F, max << F), never on
+// integer_bits, so a ufixed(I, F) (SPEC §4.3) is passed as the widest signed
+// declaration of the same F that holds its raw values, and the bytes are the
+// same: storage 64 (integer_bits 64 - F) while its raw maximum stays below
+// 2^63, else storage 128 (integer_bits 128 - F) with the 64-bit pattern
+// zero-extended. Every ufixed of storage 64 or less takes the 64-bit
+// operation, because the 32-bit one answers its raw value sign-extended from
+// bit 31. A signed fixed passes its own declaration.
+func fixedDeclaration(f *ir.Field) (fn string, intBits int, widened bool) {
+	t := f.Type
+	switch {
+	case t.Width > 64:
+		return "serialize_fixed128", t.IntBits, false
+	case t.Signed && t.Width > 32:
+		return "serialize_fixed64", t.IntBits, false
+	case t.Signed:
+		return "serialize_fixed32", t.IntBits, false
+	}
+	rawMax := new(big.Int).Lsh(f.IntMax, uint(t.FracBits))
+	if rawMax.Cmp(big.NewInt(math.MaxInt64)) <= 0 {
+		return "serialize_fixed64", 64 - t.FracBits, false
+	}
+	return "serialize_fixed128", 128 - t.FracBits, true
 }
 
 // emitInt128Equal asserts the degenerate range's one 128-bit raw value; zero
