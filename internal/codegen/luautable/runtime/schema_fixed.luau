@@ -13,7 +13,7 @@ local F = {}
 
 export type LayoutEntry = { id: integer, kind: number, size: number, children: number }
 export type Fixed = { hash: integer, recordBytes: number, layout: { LayoutEntry } }
-export type Refusal = { name: string, malformed: boolean? }
+export type Refusal = { name: string, malformed: boolean?, field: string? }
 
 local HEADER = 16
 local HASH_AT = 8
@@ -70,39 +70,29 @@ local function signed(kind: number): boolean
 		(kind >= 20 and kind <= 24) or kind == 11
 end
 
--- f32 raw bits <-> a double holding the exact float32 value, by bit surgery so
--- a NaN payload survives a round trip (docs/PORT-LUAU.md, BYTE BUFFERS).
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4; Glenn, 2026-10-27,
+-- "same rule as packets"). A read tests the RAW BITS before they become a
+-- value, and a NaN or an infinity refuses the file as non_finite_float, naming
+-- <Owner>.<field>, before the record lands; a write refuses one the same way
+-- (a float32 tests its NARROWED bits, so a double past the float32 range is
+-- refused, never written as an infinity). Every finite float32 widens to a
+-- double exactly, so the conversions are the ordinary ones.
 local scratch4 = buffer.create(4)
 local function f32ToDouble(bits: number): number
-	local exp = bit32.band(bit32.rshift(bits, 23), 0xff)
-	if exp == 0xff then
-		local sign = bit32.band(bit32.rshift(bits, 31), 1)
-		local frac = bit32.band(bits, 0x7fffff)
-		local d = buffer.create(8)
-		local lo = bit32.lshift(bit32.band(frac, 7), 29)
-		local hi2 = bit32.bor(bit32.lshift(sign, 31), 0x7ff00000, bit32.rshift(frac, 3))
-		buffer.writeu32(d, 0, lo)
-		buffer.writeu32(d, 4, hi2)
-		return buffer.readf64(d, 0)
-	end
 	buffer.writeu32(scratch4, 0, bits)
 	return buffer.readf32(scratch4, 0)
 end
 
 local function doubleToF32(v: number): number
-	local d = buffer.create(8)
-	buffer.writef64(d, 0, v)
-	local lo = buffer.readu32(d, 0)
-	local hi = buffer.readu32(d, 4)
-	local sign = bit32.band(bit32.rshift(hi, 31), 1)
-	local exp = bit32.band(bit32.rshift(hi, 20), 0x7ff)
-	if exp == 0x7ff then
-		local frac = bit32.bor(bit32.lshift(bit32.band(hi, 0xfffff), 3), bit32.rshift(lo, 29))
-		local f32 = bit32.bor(bit32.lshift(sign, 31), 0x7f800000, frac)
-		return f32
-	end
 	buffer.writef32(scratch4, 0, v)
 	return buffer.readu32(scratch4, 0)
+end
+
+-- the body and the field a walk is in, for the refusal's name
+local _owner = "?"
+local _field = "?"
+local function nonFinite(f: any): Refusal
+	return { name = "non_finite_float", malformed = false, field = _owner .. "." .. (f.name or _field) }
 end
 
 local function asInt(v: any): integer
@@ -296,8 +286,11 @@ local function readLeaf(f: any, n: Node, buf: buffer, off: number): any
 		return buffer.readu8(buf, off) ~= 0
 	elseif f.s == "float" then
 		if k == 10 then
-			return f32ToDouble(buffer.readu32(buf, off))
+			local bits = buffer.readu32(buf, off)
+			if bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end
+			return f32ToDouble(bits)
 		end
+		if bit32.band(buffer.readu32(buf, off + 4), 0x7FF00000) == 0x7FF00000 then error(nonFinite(f), 0) end
 		return buffer.readf64(buf, off)
 	elseif f.s == "enum" then
 		local raw = 0
@@ -411,6 +404,7 @@ function readStruct(d: any, n: Node, buf: buffer, off: number): any
 	for _, f in d.fields do
 		local c = childById(n, f.id)
 		local slot = f.slot
+		_owner, _field = d.name, f.name
 		if c ~= nil then
 			if f.present ~= nil then
 				local present = buffer.readu8(buf, c.off) ~= 0
@@ -446,8 +440,11 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 		buffer.writeu8(buf, off, v and 1 or 0)
 	elseif f.s == "float" then
 		if n.kind == 10 then
-			buffer.writeu32(buf, off, doubleToF32(v))
+			local bits = doubleToF32(v)
+			if bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end
+			buffer.writeu32(buf, off, bits)
 		else
+			if v ~= v or v == math.huge or v == -math.huge then error(nonFinite(f), 0) end
 			buffer.writef64(buf, off, v)
 		end
 	elseif f.s == "enum" then
@@ -561,6 +558,7 @@ function writeStruct(d: any, n: Node, value: any, buf: buffer)
 	-- FIXED-WRITE-ANCHOR
 	for _, f in d.fields do
 		local c = childById(n, f.id)
+		_owner, _field = d.name, f.name
 		if c ~= nil and (f.present == nil or value[f.present]) then
 			local pair = deprecatedValue(f, value[f.slot], value)
 			if pair ~= nil then error({ name = "invalid_value", field = d.name .. "." .. f.name, variant = pair[1] }, 0) end

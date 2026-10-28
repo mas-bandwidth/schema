@@ -975,7 +975,7 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control` (the C++ leg's finite-tables card retires it) | ✅ `tables-c-wire-fuzz` | ❌ #366 | — retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingNaNWideningAndLEBOverflow`, `TestGoPlainFloatSpecialValuesAgreeAcrossForms`) | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 | ❌ #381 — card schema-luau-table-wire-load (docs/PORT-LUAU.md, THE CARD MAP) |
+|  ✅ `tables-float-nan` `tables-float-nan-negative-control` (the C++ leg's finite-tables card retires it) | ✅ `tables-c-wire-fuzz` | ❌ #366 | — retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingNaNWideningAndLEBOverflow`, `TestGoPlainFloatSpecialValuesAgreeAcrossForms`) | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 | — retired: the Luau leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestLuauTablesAreFiniteOnly`, `TestLuauPlainFloatSpecialValues`)  |
 
 ### M22 — Typed table serialization fast path
 

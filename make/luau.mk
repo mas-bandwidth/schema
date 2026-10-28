@@ -124,6 +124,27 @@ packet-finite-luau-negative-control: packet-finite-luau
 	$(call packet-finite-luau-control,read)
 	$(call packet-finite-luau-control,write)
 
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# finite-only too, same rule as packets"). Every Luau table read refuses a NaN
+# or an infinity on its raw bits as non_finite_float (the variable load,
+# tolerant and strict; a retained unknown float; the message batch; the fixed
+# form; the cook's open), the block accessor latches one and answers +0, every
+# writer refuses one (save, measure, the message writers, the fixed save, the
+# cook, the JSON writer), and -0 and the subnormals ride exact. The gate is
+# TestLuauTablesAreFiniteOnly with TestLuauPlainFloatSpecialValues; its reversed
+# witness removes each rule's check from the emitted runtime in turn and the
+# probe must red on exactly that rule's rows.
+.PHONY: tables-luau-finite-float tables-luau-finite-float-negative-control
+tables-luau-finite-float: toolchain-luau
+	sh test/slowgate/proof tables-luau-finite-float \
+		'TestLuauTablesAreFiniteOnly TestLuauPlainFloatSpecialValues' \
+		./internal/codegen/luautable -run '^(TestLuauTablesAreFiniteOnly|TestLuauPlainFloatSpecialValues)$$' -count=1 -timeout 600s
+tables-luau-finite-float-negative-control: toolchain-luau
+	sh test/slowgate/proof tables-luau-finite-float-negative-control \
+		'TestLuauFiniteFloatNegativeControl' \
+		./internal/codegen/luautable -run '^TestLuauFiniteFloatNegativeControl$$' -count=1 -timeout 600s
+test-luau: tables-luau-finite-float
+
 TEST_LEGS         += test-luau
 TOOLCHAIN_LEGS    += luau
 TOOLCHAIN_PINS_luau := LUAU

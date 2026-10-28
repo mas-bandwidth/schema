@@ -51,6 +51,9 @@ export type Block = {
 	base: number,
 	bytes: number,
 	info: Info,
+	-- the first float an accessor met holding a NaN or an infinity, latched
+	-- as <Owner>.<field> (docs/SPEC-TABLES.md §3.3, ruling 2 of 2026-10-27)
+	nonFiniteFloat: string?,
 }
 
 local B = {}
@@ -142,6 +145,18 @@ end
 -- one scalar slot at the width and kind the descriptors carry (§8.1, §19.2).
 -- An enum's slot holds the ORDINAL at its own derived storage width, which is
 -- why the fallback reads elem_size rather than the kind's wire width.
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
+-- as packets"): a NaN or an infinity is not a value of the type.
+-- An accessor that meets one never returns it: it latches non_finite_float on
+-- the block, naming <Owner>.<field> (the first one wins), and answers +0.
+local _block: Block? = nil
+local _owner = "?"
+local function nonFinite(f: Field): number
+	local b = _block
+	if b ~= nil and b.nonFiniteFloat == nil then b.nonFiniteFloat = _owner .. "." .. f.name end
+	return 0.0
+end
+
 local function scalar(buf: buffer, at: number, f: Field): any
 	local k = f.kind
 	if k == 1 then
@@ -163,8 +178,10 @@ local function scalar(buf: buffer, at: number, f: Field): any
 	elseif k == 9 then
 		return buffer.readinteger(buf, at)
 	elseif k == 10 then
+		if bit32.band(buffer.readu32(buf, at), 0x7F800000) == 0x7F800000 then return nonFinite(f) end
 		return buffer.readf32(buf, at)
 	elseif k == 11 then
+		if bit32.band(buffer.readu32(buf, at + 4), 0x7FF00000) == 0x7FF00000 then return nonFinite(f) end
 		return buffer.readf64(buf, at)
 	end
 	local n = f.elemSize or f.size
@@ -198,6 +215,7 @@ end
 readRecord = function(info: Info, buf: buffer, at: number): { [string]: any }
 	local out: { [string]: any } = {}
 	for _, f in info.fields do
+		_owner = info.name
 		if f.outOfLine then
 			out[f.name] = readArray(f, buf, at)
 		elseif f.optional and f.presentOffset ~= nil and buffer.readu8(buf, at + f.presentOffset) == 0 then
@@ -239,7 +257,17 @@ end
 -- a value keyed by field name, using the descriptors alone (docs/SPEC-TABLES.md
 -- §19.2). An out-of-line array answers a one-based list of row values.
 function B.Read(info: Info, block: Block): { [string]: any }
-	return readRecord(info, block.buffer, block.base)
+	_block = block
+	local out = readRecord(info, block.buffer, block.base)
+	_block = nil
+	return out
+end
+
+-- NonFiniteFloat(block) is the latched refusal, "non_finite_float: <Owner>.<field>",
+-- or nil while every float an accessor read was finite (docs/SPEC-TABLES.md §3.3).
+function B.NonFiniteFloat(block: Block): string?
+	if block.nonFiniteFloat == nil then return nil end
+	return "non_finite_float: " .. block.nonFiniteFloat
 end
 
 return table.freeze(B)

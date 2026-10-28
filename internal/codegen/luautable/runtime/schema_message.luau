@@ -97,6 +97,35 @@ local function skip(r: any, width: number): boolean
 	return true
 end
 
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
+-- as packets"): a known float field's raw bits are tested as the walk steps
+-- over them, and a NaN or an infinity is recorded, the first one named
+-- <Owner>.<field>, for the batch to refuse whole as non_finite_float. A
+-- quantized float rides its step index, which cannot spell one. The walk goes
+-- on, so the framing is the one a finite batch meets.
+local function floatStep(r: any, st: any, kind: number, fd: any): boolean
+	local finite = true
+	if kind == 10 then
+		local bits, ok = get(r, 32)
+		if not ok then return false end
+		finite = bit32.band(bits, 0x7F800000) ~= 0x7F800000
+	else
+		local _, lok = get(r, 32)
+		local hi, hok = get(r, 32)
+		if not lok or not hok then return false end
+		finite = bit32.band(hi, 0x7FF00000) ~= 0x7FF00000
+	end
+	if not finite and st.nonFinite == nil then
+		st.nonFinite = (st.owner or "?") .. "." .. (fd.name or "?")
+	end
+	return true
+end
+
+-- whether a shape is a plain float the walk must test: kind 10 unpacked, or 11
+local function plainFloat(shape: any, fd: any): boolean
+	return fd ~= nil and fd.s == "float" and ((shape.kind == 10 and shape.packing == 0) or shape.kind == 11)
+end
+
 -- put writes a reference back at a bit offset already read: only a deprecated
 -- enum reference is ever rewritten, at the same width (docs/SPEC-TABLES.md §2.15).
 local function put(r: any, at: number, width: number, value: number)
@@ -425,6 +454,7 @@ skipBody = function(r: any, st: any, desc: any, dep: any): boolean
 		local e = entryOf(st.v, ref)
 		if e == nil or reserved(e.id) then return false end
 		if dep ~= nil and desc ~= nil then dep.table = desc.name end
+		if desc ~= nil then st.owner = desc.name end
 		if not skipShape(r, st, e, fieldById(desc, e.id), dep) then return false end
 	end
 end
@@ -478,6 +508,7 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 				if a.id == arm.id then armFd = a; break end
 			end
 		end
+		if armFd ~= nil then st.owner = fd.t end
 		return skipShape(r, st, arm, armFd, dep)
 	elseif k == 12 or k == 33 then
 		local n, ok = countOf(r, e.shape)
@@ -507,6 +538,12 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		end
 		if e.shape.elem == 6 and not align(r) then return false end
 		local ik = e.element.kind
+		if plainFloat(e.element, ef) then
+			for _ = 1, n do
+				if not floatStep(r, st, ik, ef) then return false end
+			end
+			return true
+		end
 		if ik ~= 12 and ik ~= 13 and ik ~= 14 and ik ~= 15 and ik ~= 16 and ik ~= 17 and ik ~= 30 and ik ~= 31 then
 			return skip(r, n * e.element.bits)
 		end
@@ -519,6 +556,7 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		local n, ok = get(r, 32)
 		return ok and skip(r, n * 8)
 	end
+	if plainFloat(e.shape, fd) then return floatStep(r, st, k, fd) end
 	return skip(r, e.shape.bits)
 end
 
@@ -578,8 +616,8 @@ end
 -- (docs/SPEC-TABLES.md §2.15). The caller only asks for the rewriting pass on
 -- a copy, so a clean batch allocates nothing and the caller's buffer is never
 -- changed.
-local function walkBodies(v: any, data: buffer, desc: any, count: number, write: boolean): (number, any, boolean, any)
-	local st = { v = v, refBits = v.refBits, indexBits = 0 }
+local function walkBodies(v: any, data: buffer, desc: any, count: number, write: boolean): (number, any, boolean, any, string?)
+	local st: any = { v = v, refBits = v.refBits, indexBits = 0, owner = nil, nonFinite = nil }
 	local r = newReader(data, 16)
 	local dep = { write = write, found = false, field = nil, table = nil }
 	local bodies = {}
@@ -587,15 +625,24 @@ local function walkBodies(v: any, data: buffer, desc: any, count: number, write:
 	for i = 1, count do
 		local from = r.off
 		if not skipRoot(r, st, desc, dep) then
-			return i - 1, bodies, true, dep
+			return i - 1, bodies, true, dep, st.nonFinite
 		end
 		at = at + 1
 		bodies[at] = { buffer = data, from = from, to = r.off }
 	end
 	if not align(r) or r.off ~= r.n then
-		return count, bodies, true, dep
+		return count, bodies, true, dep, st.nonFinite
 	end
-	return count, bodies, false, dep
+	return count, bodies, false, dep, st.nonFinite
+end
+
+-- A NaN OR AN INFINITY REFUSES THE BATCH WHOLE (docs/SPEC-TABLES.md §3.3):
+-- every read, tolerant and strict alike, and every writer, the field named.
+local function refuseNonFinite(report: any, field: string, read: boolean)
+	report.verdict = 1
+	report.reason = if read then "non_finite_float: " .. field else "non_finite_float"
+	report.nonFiniteFloat = field
+	report.field = field
 end
 
 function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
@@ -627,7 +674,12 @@ function M.LoadMessages(v: any, root: string, data: buffer, capacity: number, re
 		refuse(report, "batch_too_large")
 		return count, {}
 	end
-	local got, bodies, malformed, dep = walkBodies(v, data, desc, count, false)
+	local got, bodies, malformed, dep, nonFinite = walkBodies(v, data, desc, count, false)
+	if nonFinite ~= nil then
+		-- the refusal outranks every verdict a body could reach after it
+		refuseNonFinite(report, nonFinite, true)
+		return -1, {}
+	end
 	if malformed then
 		report.malformed = true
 		return got, bodies
@@ -657,18 +709,21 @@ end
 -- that still holds a deprecated variant names <Table>.<field>, exactly as a
 -- value does (docs/SPEC-TABLES.md §2.15). Bodies returned by LoadMessages are
 -- already normalized and find none.
-local function deprecatedField(v: any, root: string, bodies: any): string?
+local function deprecatedField(v: any, root: string, bodies: any): (string?, string?)
 	local desc = S.lookup(root)
 	for _, b in bodies do
-		local st = { v = v, refBits = v.refBits, indexBits = 0 }
+		local st: any = { v = v, refBits = v.refBits, indexBits = 0, owner = nil, nonFinite = nil }
 		local r = newReader(b.buffer, b.from)
 		r.n = b.to
 		local dep = { write = false, found = false, field = nil, table = nil }
-		if skipRoot(r, st, desc, dep) and dep.found then
-			return dep.field or "?"
+		local walked = skipRoot(r, st, desc, dep)
+		-- EVERY WRITER REFUSES A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3)
+		if st.nonFinite ~= nil then return nil, st.nonFinite end
+		if walked and dep.found then
+			return dep.field or "?", nil
 		end
 	end
-	return nil
+	return nil, nil
 end
 
 local function refuseDeprecated(report: any, field: string): boolean
@@ -686,7 +741,11 @@ function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): num
 		refuse(report, "batch_too_large")
 		return -1
 	end
-	local bad = deprecatedField(v, root, bodies)
+	local bad, nonFinite = deprecatedField(v, root, bodies)
+	if nonFinite ~= nil then
+		refuseNonFinite(report, nonFinite, false)
+		return -1
+	end
 	if bad ~= nil then
 		refuseDeprecated(report, bad)
 		return -1
@@ -724,7 +783,11 @@ function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffe
 		refuse(report, "batch_too_large")
 		return nil, -1
 	end
-	local bad = deprecatedField(v, root, bodies)
+	local bad, nonFinite = deprecatedField(v, root, bodies)
+	if nonFinite ~= nil then
+		refuseNonFinite(report, nonFinite, false)
+		return nil, -1
+	end
 	if bad ~= nil then
 		refuseDeprecated(report, bad)
 		return nil, -1
