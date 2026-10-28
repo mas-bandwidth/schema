@@ -7,6 +7,9 @@
 // reader refuses keeps the binary reader's name (§2.14, §16.8).
 local _M = vargv[0];
 local _require = vargv[1];
+// required once here, never per call (a require walks the name)
+local S = _require("schema_table_save");
+local R = _require("schema_table_refusal");
 
 // ---- BASE64 codec (standard alphabet, padded; docs/SPEC-TABLES.md §16.8) ----
 local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -98,7 +101,6 @@ local b64decode = function(s, strict) {
 // The wire itself is the table save's (docs/SPEC-TABLES.md §3, §3.1): the text
 // carrier adds no framing of its own (§16.8).
 _M.SaveText <- function(T, rootName, value) {
-  local S = _require("schema_table_save");
   local wire = S.save(T, rootName, value);
   if (wire == null) return null;
   return b64encode(wire);
@@ -135,7 +137,6 @@ _M.LoadText <- function(T, rootName, text, report) {
     report.reason = "base64_not_canonical";
     return null;
   }
-  local R = _require("schema_table_refusal");
   local value = R.ReadStrict(T, rootName, wire, report);
   if (value == null) {
     report.refused = true;

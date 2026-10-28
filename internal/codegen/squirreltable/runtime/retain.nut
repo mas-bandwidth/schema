@@ -10,6 +10,9 @@
 // the terminator and, for the root, before the node table.
 local _M = vargv[0];
 local _require = vargv[1];
+// required once here, never per call (a require walks the name)
+local L = _require("schema_table_load");
+local S = _require("schema_table_save");
 
 local NODE_TABLE_ID = 0xffffffffffffffff;
 local BUILD_VERSION_ID = 0xfffffffffffffffe;
@@ -424,13 +427,11 @@ _M.LoadRetain <- function(T, rootName, bytes, store, report) {
     foreach (rec in store.recs) if (rec.body == inst) return true;
     return false;
   };
-  local L = _require("schema_table_load");
   return L.loadTolerant(T, rootName, bytes, report, store);
 };
 
 _M.MeasureRetain <- function(T, rootName, value, store) {
   resetPlaced(store);
-  local S = _require("schema_table_save");
   local b = S.save(T, rootName, value, store);
   return b == null ? -1 : b.len();
 };
@@ -439,7 +440,6 @@ _M.SaveRetain <- function(T, rootName, value, store, out, report) {
   if (report == null) return -1;
   resetPlaced(store);
   if (!("retainLost" in report)) report.retainLost <- 0;
-  local S = _require("schema_table_save");
   local b = S.save(T, rootName, value, store);
   if (b == null) return -1;
   local lost = 0;

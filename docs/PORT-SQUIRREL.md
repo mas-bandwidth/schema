@@ -200,10 +200,10 @@ Fixed now for the pro cards; nothing below is renamed.
 | path | what it is | who adds to it |
 |---|---|---|
 | `compiler/target_squirrel.go` | the built-in target; its refusals | the card that lifts a refusal |
-| `internal/codegen/squirrel/squirrel.go` | the TYPE emitter: one `<Base>.nut` per schema file, the constants, enums (`Count`, `Max`), flags, unions and constructors; `RegisterSurface` | no later card edits it |
+| `internal/codegen/squirrel/squirrel.go` | the TYPE emitter: one `<Base>.nut` per schema file, the constants, enums (`Max`, no `Count`), flags, unions and constructors, each type's and union's `<Name>MaxBits`/`<Name>MaxBytes`; `RegisterSurface` | no later card edits it |
 | `internal/codegen/squirrel/read.go`, `write.go` | the type wire's read and write, joining every module through `RegisterSurface` from their `init` | type-wire-read, type-wire-write |
 | `internal/codegen/squirrel/runtime/*.nut` | the type runtime, `go:embed` by glob, emitted beside the modules as `schema_<name>.nut`: `module.nut` (the loader) now, `bitreader.nut` and `bitwriter.nut` later | one file per card |
-| `internal/codegen/squirrel/serialize/*.nut`, `SERIALIZE_PIN` | the vendored serialize port (schema-squirrel-serialize-vendor), the type wire's BOTTOM LAYER: its src files copied verbatim from the repository `SERIALIZE_PIN` names, emitted beside the modules under their OWN names (`serialize.nut`, `serialize_bits.nut`, ...), where schema's loader resolves them; `serialize.nut` runs as a module with (exports, require) in vargv, which the port's design allows | serialize-vendor |
+| `internal/codegen/squirrel/serialize/*.nut`, `SERIALIZE_PIN` | the vendored serialize port (schema-squirrel-serialize-vendor), the type wire's BOTTOM LAYER: its src files copied verbatim from the repository `SERIALIZE_PIN` names, placed beside the modules under their OWN names (`serialize.nut`, `serialize_bits.nut`, ...) by the caller, never by the generator: a generated module requires no serialize file, it calls the methods of the stream it is handed, as generated JavaScript never imports serialize.js; `serialize.nut` runs as a module with (exports, require) in vargv, which the port's design allows | serialize-vendor |
 | `internal/codegen/squirrel/sqrun/sqrun.go` | the test helper (THE HARNESS) | |
 | `internal/codegen/squirreltable/squirreltable.go` | the TABLE emitter: one `<Package>Tables.nut` per unit with a DESCRIPTOR per table (data the runtime walks, as `internal/codegen/jstable/variableruntime.go` walks its codec descriptors), the constructors, the unit registry; `RegisterSurface` | no later card edits it |
 | `internal/codegen/squirreltable/fixedform.go`, `messageform.go` | the forms that need emitted code, joining through `RegisterSurface` | fixed-form, message-form |
@@ -240,16 +240,33 @@ arguments, its exports table and `require`:
     local _M = vargv[0];
     local _require = vargv[1];
     local _rt_bitreader = _require("schema_bitreader");
-    local _Wire = _require("Wire");
+    local _Wire_ = _require("Wire");
 
 The loader caches the table BEFORE running the script, so two schema files
 that name each other each load once and a cycle meets the table it is still
 filling. A declaration is a slot of `_M` (`_M.ShipCreate <- class { … }`), a
 reference to another file's declaration goes through that file's local
-(`_Wire.ProbeConfig()`), and a constructor reads the slot when it runs, so
+(`_Wire_.ProbeConfig()`; the trailing underscore keeps every file's local apart from the locals the generator declares, none of which ends in one, so a file named `M` or `h` cannot shadow `_M` or the holder), and a constructor reads the slot when it runs, so
 emission order matters only for top-level initializers, which the emitter
 folds to constants. A schema file whose base starts with `schema_` is refused
 (it would take a runtime file's name), as is one named `<Package>Tables`.
+
+**The codec's shape.** `Write<Name>(stream, value)` and `Read<Name>(stream,
+value)` are the family's target-first pair (SPEC §6.1) and return `false` on a
+refusal. Every serialize call goes through one module-scope holder,
+`local _h = { value = 0 };`, which a call consumes in the statement that fills
+it, so neither path allocates per field (generated JavaScript's
+`NUMBER_SCRATCH`). A module declares a helper only where its body names it:
+`_h`; `_usedBytes(b, n)`, the used prefix of a string or bytes buffer as the
+blob a write hands over whole (the buffer itself when it is full, else one
+native `readblob`); and `_validText(b, n)`, the one UTF-8 and interior-NUL check
+every string read shares. A read copies a string's bytes into its buffer with
+one `writeblob`. Union cases are integer literals commented with the arm's
+name: a case that named `_M.<Union>Type.<Arm>` would cost a table get each.
+A ranged integer takes the same serialize call on both sides: `serializeInt`
+inside int32, `serializeInt64` inside int64, else raw bits over `value - min`
+checked in the unsigned domain, where a bound at the domain's edge is not
+emitted.
 
 ## LOADING IS CLOSED
 

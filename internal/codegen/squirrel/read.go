@@ -15,6 +15,7 @@
 package squirrel
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 
@@ -22,25 +23,13 @@ import (
 )
 
 // readRef is the expression that names the Read<Name> function of declaration
-// typ: _M.Read<Name> here, or _<Base>.Read<Name> through the file that
+// typ: _M.Read<Name> here, or _<Base>_.Read<Name> through the file that
 // declares it.
-func readRef(m *Module, typ string) string {
-	base, ok := m.Unit.DeclFile[typ]
-	if !ok || base == m.File.Base {
-		return "_M.Read" + typ
-	}
-	m.deps[base] = true
-	return "_" + base + ".Read" + typ
-}
+func readRef(m *Module, typ string) string { return m.ref(typ, "Read"+typ) }
 
 func init() {
-	RegisterSurface(Surface{Name: "read", Decl: readDecl, File: readFile})
+	RegisterSurface(Surface{Name: "read", Decl: readDecl})
 }
-
-// readFile runs once per module after its declarations: nothing is needed
-// here today beyond the module-scoped scratch holder, which the read functions
-// declare lazily themselves.
-func readFile(m *Module) {}
 
 // readDecl emits the read function for a struct or union declaration.
 func readDecl(m *Module, d ir.Decl) {
@@ -52,82 +41,57 @@ func readDecl(m *Module, d ir.Decl) {
 	}
 }
 
-// readScratch is the { value = ... } holder every read call in one function
-// shares, declared once at the top of the function body (never lazily inside
-// a branch or loop, whose scope would end before a later use). A holder is
-// always consumed in the same call that fills it — the design's twin of the
-// runtime's own shared FLOAT_SCRATCH.
-type readScratch struct {
-	used bool
-}
-
-// declare emits the holder at the top of a read function's body.
-func (r *readScratch) declare(m *Module) {
-	m.Printf("  local _rs = { value = 0 };\n")
-	r.used = true
-}
-
-func (r *readScratch) decl(m *Module) string {
-	if !r.used {
-		r.declare(m)
-	}
-	return "_rs"
-}
-
 // emitReadStruct is one type's reader: the wire tree of st.Items in order,
 // with the untaken side of each branch zeroed (SPEC §5).
 func emitReadStruct(m *Module, st *ir.Struct) {
-	m.Printf("// Read%s decodes the wire into value, filling its pre-allocated storage\n", st.Name)
-	m.Printf("// (SPEC §6.1); the untaken side of a branch reads as zero (SPEC §5).\n")
+	m.Printf("// Read%s reads into value's storage in place; false on a refused read.\n", st.Name)
 	m.Printf("_M.Read%s <- function(stream, value) {\n", st.Name)
-	if len(st.Items) == 0 {
-		m.Printf("  // empty body — presence is the payload (SPEC §4.6)\n")
-	} else {
-		rs := &readScratch{}
-		rs.declare(m)
-		emitReadItems(m, st.Items, "  ", rs)
-	}
+	emitReadItems(m, st.Items, "  ")
 	m.Printf("  return true;\n};\n\n")
 }
 
 // emitReadUnion is a one-of reader (SPEC §4.8): the tag in [0, Max] via the
 // runtime ranged call (which rejects a tag past the arms), then the selected
-// arm's payload read. A payload-free arm is the tag alone; None is the tag
-// alone. The selected arm is decoded in place; the other arms' storage is
-// left as it was.
+// arm's payload read in place. A payload-free arm and None are the tag alone;
+// the other arms' storage is left as it was. The cases are literals, each
+// commented with its arm: a table lookup per case would cost a get each.
 func emitReadUnion(m *Module, d *ir.Union) {
+	m.Printf("// Read%s reads the tag, then the selected arm in place; false on a refused read.\n", d.Name)
 	m.Printf("_M.Read%s <- function(stream, value) {\n", d.Name)
-	rs := &readScratch{}
-	scratch := rs.decl(m)
 	if d.Max == 0 {
-		m.Printf("  value.Type = 0; // zero wire bits — only None exists (SPEC §4.8)\n")
+		m.Printf("  value.Type = 0; // zero wire bits: only None exists\n")
 		m.Printf("  return true;\n};\n\n")
 		return
 	}
-	m.Printf("  if (!stream.serializeInt(%s, 0, %d)) return false; // rejects a tag above the arms (SPEC §4.8)\n", scratch, d.Max)
-	m.Printf("  value.Type = %s.value;\n", scratch)
-	m.Printf("  switch (value.Type) {\n")
-	for i, v := range d.Variants {
-		tag := i + 1
-		armName := ir.GoExportName(v.Name)
-		if v.Void() {
-			m.Printf("    case %d: return true; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", tag)
-			continue
-		}
-		armType := v.Type
-		if armType == "" && v.F != nil && v.F.Array == ir.ArrayNone && v.F.Type.Kind == ir.TNamed {
-			armType = v.F.Type.Name
-		}
-		m.Printf("    case %d: {\n", tag)
-		if armType != "" {
-			m.Printf("      if (!%s(stream, value.%s)) return false;\n", readRef(m, armType), armName)
-		} else {
-			// a scalar arm field: read it in place
-			emitReadField(m, v.F, "value."+armName, "      ", rs)
-		}
-		m.Printf("      return true;\n    }\n")
+	h := m.Helper(holder)
+	m.Printf("  if (!stream.serializeInt(%s, 0, %d)) return false;\n", h, d.Max)
+	m.Printf("  value.Type = %s.value;\n", h)
+	payload := false
+	for _, v := range d.Variants {
+		payload = payload || !v.Void()
 	}
-	m.Printf("    default: return true; // None\n  }\n};\n\n")
+	if payload {
+		m.Printf("  switch (value.Type) {\n")
+		for i, v := range d.Variants {
+			if v.Void() {
+				continue
+			}
+			armName := ir.GoExportName(v.Name)
+			armType := v.Type
+			if armType == "" && v.F != nil && v.F.Array == ir.ArrayNone && v.F.Type.Kind == ir.TNamed {
+				armType = v.F.Type.Name
+			}
+			m.Printf("    case %d: // %s\n", i+1, armName)
+			if armType != "" {
+				m.Printf("      if (!%s(stream, value.%s)) return false;\n", readRef(m, armType), armName)
+			} else {
+				emitReadField(m, v.F, "value."+armName, "      ")
+			}
+			m.Printf("      break;\n")
+		}
+		m.Printf("  }\n")
+	}
+	m.Printf("  return true;\n};\n\n")
 }
 
 // intRangePath picks the runtime call family for a ranged integer — the same
@@ -147,26 +111,26 @@ func intRangePath(min, max *big.Int) string {
 }
 
 // emitReadItems is one wire tree in order.
-func emitReadItems(m *Module, items []ir.Item, ind string, rs *readScratch) {
+func emitReadItems(m *Module, items []ir.Item, ind string) {
 	for _, item := range items {
 		switch item := item.(type) {
 		case *ir.FieldItem:
-			emitReadField(m, item.F, "value."+Member(item.F), ind, rs)
+			emitReadField(m, item.F, "value."+Member(item.F), ind)
 		case *ir.ConstItem:
-			emitReadConst(m, item, ind, rs)
+			emitReadConst(m, item, ind)
 		case *ir.ReservedItem:
-			emitReadReserved(m, item, ind, rs)
+			emitReadReserved(m, item, ind)
 		case *ir.AlignItem:
-			m.Printf("%sif (!stream.serializeAlign()) return false; // rejects nonzero padding (SPEC §4.3)\n", ind)
+			m.Printf("%sif (!stream.serializeAlign()) return false;\n", ind)
 		case *ir.Branch:
 			m.Printf("%sif (%svalue.%s) {\n", ind, branchNeg(item.Neg), ir.GoExportName(item.Cond))
-			emitReadItems(m, item.Then, ind+"  ", rs)
+			emitReadItems(m, item.Then, ind+"  ")
 			if item.Else != nil {
 				emitZeroItems(m, item.Else, ind+"  ")
 			}
 			m.Printf("%s} else {\n", ind)
 			if item.Else != nil {
-				emitReadItems(m, item.Else, ind+"  ", rs)
+				emitReadItems(m, item.Else, ind+"  ")
 			}
 			emitZeroItems(m, item.Then, ind+"  ")
 			m.Printf("%s}\n", ind)
@@ -181,41 +145,38 @@ func branchNeg(neg bool) string {
 	return ""
 }
 
-func emitReadConst(m *Module, item *ir.ConstItem, ind string, rs *readScratch) {
-	scratch := rs.decl(m)
-	fn, lit := "serializeBits", IntLit(item.Value)
-	if item.Bits > 32 {
-		fn = "serializeBits64"
-	}
-	m.Printf("%sif (!stream.%s(%s, %d)) return false;\n", ind, fn, scratch, item.Bits)
-	m.Printf("%sif (%s.value != %s) { // const(%s, %d): a read rejects any other value (SPEC §4.3)\n", ind, scratch, lit, item.Value.String(), item.Bits)
-	m.Printf("%s  return false;\n%s}\n", ind, ind)
+// emitReadConst reads a const group and refuses any other value (SPEC §4.3).
+func emitReadConst(m *Module, item *ir.ConstItem, ind string) {
+	emitReadExpect(m, item.Bits, IntLit(item.Value), fmt.Sprintf("const(%s, %d)", item.Value.String(), item.Bits), ind)
 }
 
-func emitReadReserved(m *Module, item *ir.ReservedItem, ind string, rs *readScratch) {
-	scratch := rs.decl(m)
+// emitReadReserved reads a reserved group and refuses a nonzero one (SPEC §4.3).
+func emitReadReserved(m *Module, item *ir.ReservedItem, ind string) {
+	emitReadExpect(m, item.Bits, "0", fmt.Sprintf("reserved(%d)", item.Bits), ind)
+}
+
+func emitReadExpect(m *Module, bits int64, want, what, ind string) {
+	h := m.Helper(holder)
 	fn := "serializeBits"
-	if item.Bits > 32 {
+	if bits > 32 {
 		fn = "serializeBits64"
 	}
-	m.Printf("%sif (!stream.%s(%s, %d)) return false;\n", ind, fn, scratch, item.Bits)
-	m.Printf("%sif (%s.value != 0) { // reserved(%d): a read rejects nonzero (SPEC §4.3)\n", ind, scratch, item.Bits)
-	m.Printf("%s  return false;\n%s}\n", ind, ind)
+	m.Printf("%sif (!stream.%s(%s, %d) || %s.value != %s) return false; // %s\n", ind, fn, h, bits, h, want, what)
 }
 
 // emitReadField reads one field into target (a storage path expression).
-func emitReadField(m *Module, f *ir.Field, target, ind string, rs *readScratch) {
+func emitReadField(m *Module, f *ir.Field, target, ind string) {
 	if f.Array != ir.ArrayNone {
-		emitReadArray(m, f, target, ind, rs)
+		emitReadArray(m, f, target, ind)
 		return
 	}
-	emitReadScalar(m, f, target, ind, rs)
+	emitReadScalar(m, f, target, ind)
 }
 
-func emitReadArray(m *Module, f *ir.Field, target, ind string, rs *readScratch) {
-	scratch := rs.decl(m)
+func emitReadArray(m *Module, f *ir.Field, target, ind string) {
+	scratch := m.Helper(holder)
 	if f.Array == ir.ArrayCounted {
-		m.Printf("%sif (!stream.serializeInt(%s, %d, %d)) return false; // the count guards the loop (§6.3)\n", ind, scratch, f.ArrayMin, f.ArrayBound)
+		m.Printf("%sif (!stream.serializeInt(%s, %d, %d)) return false;\n", ind, scratch, f.ArrayMin, f.ArrayBound)
 		m.Printf("%s%sCount = %s.value;\n", ind, target, scratch)
 		m.Printf("%sfor (local i = 0; i < %sCount; i++) {\n", ind, target)
 	} else {
@@ -230,13 +191,13 @@ func emitReadArray(m *Module, f *ir.Field, target, ind string, rs *readScratch) 
 		m.Printf("%s  if (!stream.serializeBits(%s, 8)) return false;\n", ind, scratch)
 		m.Printf("%s  %s = %s.value;\n", ind, elem, scratch)
 	} else {
-		emitReadScalar(m, f, elem, ind+"  ", rs)
+		emitReadScalar(m, f, elem, ind+"  ")
 	}
 	m.Printf("%s}\n", ind)
 }
 
-func emitReadScalar(m *Module, f *ir.Field, target, ind string, rs *readScratch) {
-	scratch := rs.decl(m)
+func emitReadScalar(m *Module, f *ir.Field, target, ind string) {
+	scratch := m.Helper(holder)
 	switch f.Type.Kind {
 	case ir.TBool:
 		m.Printf("%sif (!stream.serializeBool(%s)) return false;\n", ind, scratch)
@@ -289,9 +250,9 @@ func emitReadScalar(m *Module, f *ir.Field, target, ind string, rs *readScratch)
 		m.Printf("%sif (!stream.serializeDouble(%s)) return false;\n", ind, scratch)
 		m.Printf("%s%s = %s.value;\n", ind, target, scratch)
 	case ir.TWString:
-		emitReadWString(m, f, target, ind, rs)
+		emitReadWString(m, f, target, ind)
 	case ir.TString, ir.TBytes:
-		emitReadString(m, f, target, ind, rs)
+		emitReadString(m, f, target, ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -334,9 +295,8 @@ func (m *Module) emitReadInt(f *ir.Field, target, ind, scratch string) {
 			m.Printf("%sif (!stream.serializeBits64(%s, %d)) return false;\n",
 				ind, scratch, ir.BitsRequired(f.IntMin, f.IntMax))
 			if diff.Cmp(maxUint64) != 0 {
-				m.Printf("%sif (%s.value > %s) { // a read rejects out-of-range (SPEC §5) — not latched\n",
-					ind, scratch, IntLit(diff))
-				m.Printf("%s  return false;\n%s}\n", ind, ind)
+				m.Printf("%sif ((%s.value ^ %s) > %s) return false; // past the range: refused, not latched\n",
+					ind, scratch, min64, IntLit(xorMin64(diff)))
 			}
 			if f.IntMin.Sign() == 0 {
 				m.Printf("%s%s = %s.value;\n", ind, target, scratch)
@@ -363,51 +323,29 @@ func (m *Module) emitReadInt(f *ir.Field, target, ind, scratch string) {
 }
 
 // emitReadString reads a string/bytes field: the length via the runtime ranged
-// call (guarding the loop), then the used bytes into a temporary blob of
-// exactly that length (the serialize port fills whole blobs), copied into the
-// pre-allocated field buffer. For a string, UTF-8 and interior-NUL validation
-// ride the byte copy (SPEC §4.7).
-func emitReadString(m *Module, f *ir.Field, target, ind string, rs *readScratch) {
-	scratch := rs.decl(m)
-	m.Printf("%sif (!stream.serializeInt(%s, 0, %d)) return false; // the length guards the copy (§6.3)\n", ind, scratch, f.Type.Size)
+// call (guarding the copy), then the used bytes into a blob of exactly that
+// length (the serialize port fills whole blobs), validated as text for a
+// string (SPEC §4.7) and copied natively into the pre-allocated buffer.
+func emitReadString(m *Module, f *ir.Field, target, ind string) {
+	scratch := m.Helper(holder)
+	m.Printf("%sif (!stream.serializeInt(%s, 0, %d)) return false;\n", ind, scratch, f.Type.Size)
 	m.Printf("%s%sLength = %s.value;\n", ind, target, scratch)
-	m.Printf("%slocal _n = %s.value;\n", ind, scratch)
-	m.Printf("%slocal _tmp = blob(_n);\n", ind)
-	m.Printf("%sif (!stream.serializeBytes(_tmp)) return false;\n", ind)
-	m.Printf("%sfor (local i = 0; i < _n; i++) %s[i] = _tmp[i];\n", ind, target)
+	m.Printf("%s{\n", ind)
+	m.Printf("%s  local _tmp = blob(%s.value);\n", ind, scratch)
+	m.Printf("%s  if (!stream.serializeBytes(_tmp)) return false;\n", ind)
 	if f.Type.Kind == ir.TString {
-		m.Printf("%sfor (local i = 0; i < _n; i++) { if (%s[i] == 0) return false; } // interior NUL (SPEC §4.7)\n", ind, target)
-		emitReadUTF8Squirrel(m, target, "_n", ind)
+		m.Printf("%s  if (!%s(_tmp, _tmp.len())) return false;\n", ind, m.Helper(validText))
 	}
-}
-
-// emitReadUTF8Squirrel validates the used bytes in place (Unicode Table 3-7).
-func emitReadUTF8Squirrel(m *Module, name, n, ind string) {
-	m.Printf("%sfor (local i = 0; i < %s; ) {\n", ind, n)
-	m.Printf("%s  local c = %s[i]; i++;\n", ind, name)
-	m.Printf("%s  if (c < 0x80) continue;\n", ind)
-	m.Printf("%s  local rem, point;\n", ind)
-	m.Printf("%s  if ((c & 0xE0) == 0xC0) { rem = 1; point = c & 0x1F; }\n", ind)
-	m.Printf("%s  else if ((c & 0xF0) == 0xE0) { rem = 2; point = c & 0x0F; }\n", ind)
-	m.Printf("%s  else if ((c & 0xF8) == 0xF0) { rem = 3; point = c & 0x07; }\n", ind)
-	m.Printf("%s  else return false; // malformed UTF-8 lead (SPEC §4.7)\n", ind)
-	m.Printf("%s  if (rem > %s - i) return false;\n", ind, n)
-	m.Printf("%s  for (local j = 0; j < rem; j++) {\n", ind)
-	m.Printf("%s    local b = %s[i]; i++;\n", ind, name)
-	m.Printf("%s    if ((b & 0xC0) != 0x80) return false;\n", ind)
-	m.Printf("%s    point = (point << 6) | (b & 0x3F);\n", ind)
-	m.Printf("%s  }\n", ind)
-	m.Printf("%s  if (rem == 1 && point < 0x80) return false;\n", ind)
-	m.Printf("%s  if (rem == 2 && (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) return false;\n", ind)
-	m.Printf("%s  if (rem == 3 && (point < 0x10000 || point > 0x10FFFF)) return false;\n", ind)
+	m.Printf("%s  %s.seek(0);\n", ind, target)
+	m.Printf("%s  %s.writeblob(_tmp);\n", ind, target)
 	m.Printf("%s}\n", ind)
 }
 
 // emitReadWString reads a wstring field: the length in UTF-16 code units via
 // the runtime ranged call, then each unit as a 32-bit group into the
 // pre-allocated integer array (SPEC §4.12).
-func emitReadWString(m *Module, f *ir.Field, target, ind string, rs *readScratch) {
-	scratch := rs.decl(m)
+func emitReadWString(m *Module, f *ir.Field, target, ind string) {
+	scratch := m.Helper(holder)
 	m.Printf("%sif (!stream.serializeInt(%s, 0, %d)) return false;\n", ind, scratch, f.Type.Size)
 	m.Printf("%s%sLength = %s.value;\n", ind, target, scratch)
 	m.Printf("%sfor (local i = 0; i < %sLength; i++) {\n", ind, target)

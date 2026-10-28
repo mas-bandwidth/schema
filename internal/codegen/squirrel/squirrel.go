@@ -107,20 +107,38 @@ type Module struct {
 	body     strings.Builder
 	deps     map[string]bool // other schema files this module requires
 	runtimes map[string]bool // runtime modules (schema_<name>) it requires
+	helpers  map[string]bool // module-scope helpers the body names
 }
 
 // Printf appends to the module body.
 func (m *Module) Printf(format string, args ...any) { fmt.Fprintf(&m.body, format, args...) }
 
 // Ref is the expression that names declaration decl from this module: _M.X
-// here, or _<Base>.X through the file that declares it.
-func (m *Module) Ref(decl string) string {
+// here, or _<Base>_.X through the file that declares it.
+func (m *Module) Ref(decl string) string { return m.ref(decl, decl) }
+
+// ref names member of the module that declares decl: _M.<member> here, or
+// _<Base>_.<member> through the file that declares it.
+func (m *Module) ref(decl, member string) string {
 	base, ok := m.Unit.DeclFile[decl]
 	if !ok || base == m.File.Base {
-		return "_M." + decl
+		return "_M." + member
 	}
 	m.deps[base] = true
-	return "_" + base + "." + decl
+	return depLocal(base) + "." + member
+}
+
+// depLocal is the module-scope local that holds another schema file's module.
+// The trailing underscore keeps it apart from every other local a module
+// declares (_M, _require, _rt_<name>, the helpers, a function's own locals),
+// none of which ends in one, so no schema file name can shadow them.
+func depLocal(base string) string { return "_" + base + "_" }
+
+// Helper declares the module-scope helper name once and returns the local
+// that holds it (see helperSource).
+func (m *Module) Helper(name string) string {
+	m.helpers[name] = true
+	return name
 }
 
 // Runtime requires the runtime module schema_<name> and returns the local
@@ -144,7 +162,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out := Runtime()
 	home := ir.ProtocolIdHome(u)
 	for _, f := range u.Files {
-		m := &Module{Unit: u, File: f, deps: map[string]bool{}, runtimes: map[string]bool{}}
+		m := &Module{Unit: u, File: f, deps: map[string]bool{}, runtimes: map[string]bool{}, helpers: map[string]bool{}}
 		emitFile(m, f.Base == home)
 		out[f.Base+"."+ext] = assemble(m)
 	}
@@ -159,7 +177,7 @@ func assemble(m *Module) []byte {
 	h.WriteString("// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
 	h.WriteString("// your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
 	h.WriteString("// AGPL-3.0, its output is not.\n")
-	fmt.Fprintf(&h, "// package %s, protocol_id 0x%016x\n", m.Unit.Package, m.Unit.ProtocolId)
+	fmt.Fprintf(&h, "// package %s — protocol id 0x%016x\n", m.Unit.Package, m.Unit.ProtocolId)
 	h.WriteString("//\n")
 	h.WriteString("// Load through the loader beside this file (docs/PORT-SQUIRREL.md):\n")
 	fmt.Fprintf(&h, "//   local %s = dofile(dir + \"/%smodule.nut\", true).require(%q);\n\n", m.File.Base, RuntimePrefix, m.File.Base)
@@ -169,11 +187,74 @@ func assemble(m *Module) []byte {
 		fmt.Fprintf(&h, "local _rt_%s = _require(%q);\n", name, RuntimePrefix+name)
 	}
 	for _, base := range sortedKeys(m.deps) {
-		fmt.Fprintf(&h, "local _%s = _require(%q);\n", base, base)
+		fmt.Fprintf(&h, "local %s = _require(%q);\n", depLocal(base), base)
 	}
 	h.WriteString("\n")
+	for _, name := range helperOrder {
+		if m.helpers[name] {
+			h.WriteString(helperSource[name])
+			h.WriteString("\n")
+		}
+	}
 	h.WriteString(m.body.String())
 	return []byte(h.String())
+}
+
+// THE MODULE-SCOPE HELPERS, each declared only where the body names it, in
+// this order. They are locals of the module, so a call reaches them as an
+// outer variable, never through a table.
+var helperOrder = []string{holder, usedBytes, validText}
+
+const (
+	holder    = "_h"
+	usedBytes = "_usedBytes"
+	validText = "_validText"
+)
+
+var helperSource = map[string]string{
+	// the serialize port's { value } holder: every call in the module shares
+	// it, and a call always consumes it in the statement that fills it, so the
+	// read and write paths allocate nothing per field
+	holder: "local _h = { value = 0 };\n",
+	// _usedBytes(b, n): the first n bytes of a string or bytes buffer as the
+	// blob a write hands the serialize port whole: the buffer itself when the
+	// value fills it, else one native copy of the used prefix
+	usedBytes: `local _noBytes = blob(0);
+local _usedBytes = function(b, n) {
+  if (n == b.len()) return b;
+  if (n == 0) return _noBytes;
+  b.seek(0);
+  return b.readblob(n);
+};
+`,
+	// _validText(b, n): whether b[0..n) is well-formed UTF-8 (Unicode Table
+	// 3-7: no overlong form, no surrogate, nothing past U+10FFFF, no truncated
+	// tail) with no zero byte (SPEC §4.7)
+	validText: `local _validText = function(b, n) {
+  for (local i = 0; i < n; ) {
+    local c = b[i]; i++;
+    if (c < 0x80) {
+      if (c == 0) return false;
+      continue;
+    }
+    local rem, point;
+    if ((c & 0xE0) == 0xC0) { rem = 1; point = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { rem = 2; point = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { rem = 3; point = c & 0x07; }
+    else return false;
+    if (rem > n - i) return false;
+    for (local j = 0; j < rem; j++) {
+      local d = b[i]; i++;
+      if ((d & 0xC0) != 0x80) return false;
+      point = (point << 6) | (d & 0x3F);
+    }
+    if (rem == 1 && point < 0x80) return false;
+    if (rem == 2 && (point < 0x800 || (point >= 0xD800 && point <= 0xDFFF))) return false;
+    if (rem == 3 && (point < 0x10000 || point > 0x10FFFF)) return false;
+  }
+  return true;
+};
+`,
 }
 
 func sortedKeys(set map[string]bool) []string {
@@ -333,6 +414,11 @@ func emitClass(m *Module, d *ir.Struct) {
 		emitFieldInit(m, f, "this."+Member(f), "    ")
 	}
 	m.Printf("  }\n};\n\n")
+	maxBits := ir.MaxBitsStruct(d)
+	m.Printf("// %sMaxBits is the longest wire path, align padding at its worst case;\n", d.Name)
+	m.Printf("// %sMaxBytes is that, rounded up to the 8-byte write-buffer granularity.\n", d.Name)
+	m.Printf("_M.%sMaxBits <- %d;\n", d.Name, maxBits)
+	m.Printf("_M.%sMaxBytes <- %d;\n\n", d.Name, ir.MaxBytes(maxBits))
 }
 
 // fieldMembers is every member one field occupies: the value, and beside it
@@ -514,6 +600,11 @@ func emitUnion(m *Module, d *ir.Union) {
 		emitFieldInit(m, v.F, "this."+names[i], "    ")
 	}
 	m.Printf("  }\n};\n\n")
+	maxBits := ir.MaxBitsUnion(d)
+	m.Printf("// %sMaxBits is the tag plus the largest arm, None the tag alone;\n", d.Name)
+	m.Printf("// %sMaxBytes is that, rounded up to the 8-byte write-buffer granularity.\n", d.Name)
+	m.Printf("_M.%sMaxBits <- %d;\n", d.Name, maxBits)
+	m.Printf("_M.%sMaxBytes <- %d;\n\n", d.Name, ir.MaxBytes(maxBits))
 }
 
 // ---------------------------------------------------------------------------

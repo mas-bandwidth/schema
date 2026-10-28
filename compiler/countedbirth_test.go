@@ -81,7 +81,7 @@ var bornAtMinimum = map[string]string{
 var refusesEveryBuild = map[string][]string{
 	"elixir":   {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":       {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
-	"squirrel": {`if (typeof v.WindowCount != "integer" || v.WindowCount < 2 || v.WindowCount > 8) return false;`},
+	"squirrel": {`if (typeof value.WindowCount != "integer" || value.WindowCount < 2 || value.WindowCount > 8) return false;`},
 }
 
 // assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
