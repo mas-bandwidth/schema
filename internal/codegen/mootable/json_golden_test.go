@@ -282,3 +282,12 @@ func TestMooJsonHostileVerdicts(t *testing.T) {
 		}
 	}
 }
+
+func readGolden(t *testing.T, name string) []byte {
+	t.Helper()
+	text, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "conformance", "tables", "json", name+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return text
+}
