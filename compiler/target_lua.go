@@ -82,5 +82,11 @@ func luaTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]luatable.Fi
 }
 
 func init() {
-	registerBuiltin(luaTarget{}, false, false, false, false)
+	// tables, table arms, arrays of unions and both byte buffers: the Lua
+	// table backend carries every construct the nine do (the conformance
+	// manifest generates for lua with no refusal), so it registers as they do.
+	registerBuiltin(luaTarget{}, true, true, true, true)
+	registerOptionalArrayCarrier("lua")
+	registerListCarrier("lua")
+	registerMapCarrier("lua")
 }

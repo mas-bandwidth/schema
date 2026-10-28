@@ -74,6 +74,9 @@ var tagGoneFromRelease = map[string][]string{
 var tagRefusesEveryBuild = map[string][]string{
 	"elixir": {`raise ArgumentError, "value.shot is not a Shot value: #{inspect(value_shot_other)}"`},
 	"go":     {"if value.Type > ShotTypeMax {"},
+	// Lua's assert() is an ordinary call no build strips, so the writer
+	// refuses an out-of-set tag (returns false) in every build, as Go does.
+	"lua": {`if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end`},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the

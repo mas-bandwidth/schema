@@ -137,16 +137,16 @@ func TestCsCarriesBlobs(t *testing.T) {
 			t.Errorf("blob field %q missing from generated C#", want)
 		}
 	}
-	// every built-in target now registers blobs (dart, compiler/target_dart.go,
-	// was the last), so the refusal is asked for lua, a port the reserved-word
-	// table names that has no target yet. refuseBlobs leaves java out of the
+	// every built-in target now registers blobs (lua, compiler/target_lua.go,
+	// was the last), so the refusal is asked for a new leg's name, which has
+	// no target. refuseBlobs leaves java out of the
 	// carrier list it spells (compiler/builtin.go), so the list below does not
 	// name it.
-	err = refuseBlobs(u, "lua")
+	err = refuseBlobs(u, "newleg")
 	if err == nil {
-		t.Fatal("refuseBlobs accepted a blob-bearing unit for lua")
+		t.Fatal("refuseBlobs accepted a blob-bearing unit for a new leg")
 	}
-	for _, want := range []string{"*bytes and *string are c, cpp, cs, dart, elixir, go, js and rust only today", "--lang cs", "--lang js", "--lang rust"} {
+	for _, want := range []string{"*bytes and *string are c, cpp, cs, dart, elixir, go, js, lua and rust only today", "--lang cs", "--lang js", "--lang rust"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)
 		}

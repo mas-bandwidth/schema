@@ -14,12 +14,13 @@
 // point. ... checks are *DEBUG ONLY*". The count is a writer contract like any
 // other scalar range — it is caught by an assert in debug and gone in release,
 // in every target whose language HAS that idiom. Go and Elixir have none, so
-// they keep the every-build refusal their languages make native.
+// they keep the every-build refusal their languages make native, and so does
+// Lua, whose assert() is an ordinary call no build strips.
 //
 // Two claims are pinned here, one per test, so a regression in either is named
 // on its own:
 //
-//  1. the constructed form is born at the declared minimum, in all nine
+//  1. the constructed form is born at the declared minimum, in every target
 //  2. the write path holds the count in its target's own debug-only idiom
 //     where the language has one, and refuses in every build where it does not
 package compiler
@@ -50,6 +51,7 @@ var countName = map[string]string{
 	"go":     "WindowCount",
 	"java":   "windowCount",
 	"js":     "windowCount",
+	"lua":    "WindowCount",
 	"rust":   "window_count",
 }
 
@@ -66,6 +68,7 @@ var bornAtMinimum = map[string]string{
 	"go":     "value.WindowCount = 2",
 	"java":   "public int windowCount = 2;",
 	"js":     "this.windowCount = 2;",
+	"lua":    "WindowCount = 2,",
 	"rust":   "window_count: 2,",
 }
 
@@ -79,6 +82,9 @@ var bornAtMinimum = map[string]string{
 var refusesEveryBuild = map[string][]string{
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	// Lua's assert is a function call that no build removes, so the writer
+	// refuses (returns false) in every build, as Go's does.
+	"lua": {"v.WindowCount < 2 or v.WindowCount > 8 then return false end"},
 }
 
 // assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
@@ -113,6 +119,7 @@ var goneFromRelease = map[string][]string{
 var assertToken = map[string][]string{
 	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
 	"go":     nil, // the runtime returns an error, in every build
+	"lua":    nil, // assert() is always on; the writer returns false in every build
 }
 
 // generatedText renders every file the target emits for the unit, joined, so a
