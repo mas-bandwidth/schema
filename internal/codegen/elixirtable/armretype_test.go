@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestArmRetypeElixir pins docs/SPEC-TABLES.md §3 and §4 at a UNION ARM and at
@@ -26,6 +28,7 @@ import (
 // red, so the probe is shown to see the rule it pins.
 func TestArmRetypeElixir(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
