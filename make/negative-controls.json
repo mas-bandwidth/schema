@@ -44,6 +44,7 @@
         "tables-c-ref-ordinal-negative-control",
         "tables-c-two-units-negative-controls",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-runtime-home-bytes-negative-control",
         "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
