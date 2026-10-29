@@ -8,7 +8,7 @@
 # test/conformance/lobster/wirefuzzhost: it speaks the harness's stream and
 # runs test/conformance/lobster/wirefuzz.lobster once per generated unit,
 # which loads each mutant through the Lobster tolerant read and saves what it
-# decoded. Two arms cover every form-1 root the corpus names:
+# decoded. Two arms cover every form-1 root the corpus names, and a third the retention form:
 #
 #   the ordinary run   the FIXED-class roots (a fixed root always loads and
 #                      answers the measure -1)
@@ -16,14 +16,19 @@
 #                      tablewire.Decode with no region preflight: Lobster's
 #                      load fills a record, not a region a LoadMeasure sizes
 #
-# and the two arms the harness spells as flags of the ordinary run:
+# the third is a flag of the ordinary run, with the
+# message roots riding the ordinary run itself:
 #
 #   --retain           the variable roots through load_retain and save_retain
 #                      with both capacities large (§6.6), the retention report
 #                      held to the oracle beside the six counters
-#   --message          the FIXED message roots (§3.3) through the tolerant
-#                      batch read; a variable message root is not carried (the
-#                      port's message form is fixed roots only, as Go's is)
+#   message roots      the harness's ordinary run already mutates the manifest's
+#                      message batches and holds the leg to the oracle: the
+#                      FIXED message roots (§3.3) through the tolerant batch
+#                      read. A variable message root is not carried (the
+#                      port's message form is fixed roots only, as Go's is).
+#                      --message only REPLAYS a mutant as a batch, which the
+#                      pinned message vectors below use
 #
 # Every pinned vector of test/conformance/lobster/vectors replays in the
 # builder arm; the retention and message arms replay the corpus's own pinned
@@ -93,8 +98,6 @@ tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/c
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)
 	./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-retain.bin
-	./build/conformance-harness wire-fuzz --message --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
-		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-message.bin
 	$(call lobster_wire_fuzz_arm_vectors,build/conformance-lobster)
 
 test-lobster: tables-lobster-wire-fuzz
@@ -114,7 +117,7 @@ tables-lobster-release:
 #            pinned map_retained_replaced vector must go red on the retention
 #            report in the --retain arm and stay green in the plain arm
 #   message  the batch read stops refusing ill-formed text, so the pinned
-#            message_ill_formed_text vector must go red in the --message arm
+#            message_ill_formed_text vector must go red replayed as a batch
 # Unplanted, the same units are green.
 LOBSTER_WIRE_FUZZ_PLANT := build/lobster-wire-fuzz-plant
 tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost

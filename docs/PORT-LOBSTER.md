@@ -424,12 +424,12 @@ as lines (lowercase hex for bytes).**
   has no blocking stdin read. The oracle is the Go engine
   (internal/tablewire). The budget is a count: `test-lobster` runs the
   enumerated pass and a small random count, `tables-lobster-release` the
-  release count. Four arms run: the ordinary one over every form-1 root
-  (variable roots answer `load_measure`, a port of `FileRegionMeasure`),
-  `--builder`, `--retain` over the variable roots, and `--message` over the
-  fixed message roots. A VARIABLE message root is not carried: the port's
+  release count. Three arms run: the ordinary one over every form-1 root
+  (variable roots answer `load_measure`, a port of `FileRegionMeasure`) and
+  the manifest's fixed message batches, `--builder`, and `--retain` over the
+  variable roots. A VARIABLE message root is not carried: the port's
   message form is fixed roots only, as Go's is (§3.3), so the arm answers 0
-  for it. Each of the retain and message arms has a pinned-vector replay and a
+  for it. The retain arm and the message batches each have a pinned-vector replay and a
   negative control in `tables-lobster-wire-fuzz-negative-control`.
   `test/conformance/lobster/wirefuzz-known-leaks.txt` is empty:
   a loaded cyclic graph releases every node. The packet wire's hostile bytes
