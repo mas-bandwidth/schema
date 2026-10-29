@@ -690,7 +690,7 @@ defmodule Driver do
       json = Path.join(tree, root <> ".json")
       mod = table_module(unit)
 
-      if mod == nil or not mod.carried?(root) do
+      if mod == nil do
         write_absent(outdir, name)
       else
         case mod.from_json(root, File.read!(json)) do

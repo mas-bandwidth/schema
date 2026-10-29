@@ -251,6 +251,49 @@ tables-elixir-emit-format-negative-control: bin/schema
 	@echo 'elixir emit-format negative control: dropping a call'"'"'s parentheses in the cook emitter reds the raw-format gate on CookRuntime.ex'
 test-elixir: tables-elixir-emit-format-negative-control
 
+# THE JSON-HOSTILE ROWS' NEGATIVE CONTROLS (docs/SPEC-TABLES.md §16.2). Each
+# sabotages the table emitter, rebuilds the corpus, runs the harness's elixir
+# leg against that build (the driver takes its modules through
+# ELIXIR_TABLES_EBIN) and requires the json-hostile surface red on EXACTLY the
+# rows its rule owns: a control that reds more has found a second defect, and
+# one that reds fewer has not found its own.
+#   dup: an enum-keyed array's repeated slot name stops counting `duplicate`
+#        (dup-key-rejected-keyed, keyed-duplicate-mixed, keyed-duplicate-slot);
+#   f32: a float32 field or element past the largest float32's rounding
+#        midpoint is stored instead of a kind mismatch (num-float32-midpoint
+#        by integer token, num-float32-overflow by decimal token).
+CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
+ELIXIR_HOSTILE_DUP_SED := -e 's|if Map.has_key?(acc, name),$$|if false and Map.has_key?(acc, name),|'
+ELIXIR_HOSTILE_DUP_ROWS := dup-key-rejected-keyed keyed-duplicate-mixed keyed-duplicate-slot
+CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
+ELIXIR_HOSTILE_F32_SED := -e 's|abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448|abs(raw) >= 3_402_823_567_797_336_616_375_393_954_581_425_684_480|' \
+	-e 's|if abs(raw) >= 3.4028235677973366e38, do: :error|if abs(raw) >= 3.4028235677973366e48, do: :error|'
+ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
+
+# $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
+define ELIXIR_HOSTILE_CONTROL
+	$(call ELIXIR_SABOTAGED_BUILD,$(1),internal/codegen/elixirtable/variableform.go,$(2))
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir > $(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(4) left the json-hostile surface green"; exit 1; \
+	fi
+	@got=$$(sed -n 's|^  elixir / json-hostile: \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \
+		want="$$(echo $(3) | tr ' ' '\n' | sort | tr '\n' ' ')"; \
+		if [ "$$got" != "$$want" ]; then \
+			echo "NEGATIVE CONTROL FAILED: $(4) reds [$$got], want exactly [$$want]"; cat $(1)/log; exit 1; \
+		fi
+endef
+
+.PHONY: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
+tables-elixir-json-hostile-dup-negative-control: build/conformance-harness
+	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP),ELIXIR_HOSTILE_DUP_SED,$(ELIXIR_HOSTILE_DUP_ROWS),an uncounted repeated enum-keyed slot)
+	@echo "elixir json-hostile dup negative control: an uncounted repeated slot reds exactly its three rows"
+
+tables-elixir-json-hostile-f32-negative-control: build/conformance-harness
+	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32),ELIXIR_HOSTILE_F32_SED,$(ELIXIR_HOSTILE_F32_ROWS),a float32 stored past its rounding midpoint)
+	@echo "elixir json-hostile f32 negative control: a stored float32 overflow reds exactly its two rows"
+
+test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
+
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 

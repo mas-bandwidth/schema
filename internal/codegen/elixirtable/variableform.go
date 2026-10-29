@@ -978,9 +978,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
-      vid = Map.fetch!(f.by_name, v)
       {ref, ids, order} = intern(ids, order, f.id)
-      {vref, ids, order} = intern(ids, order, vid)
+
+      # the nil variant is reference 0, as read_payload reads it: a tolerant
+      # text read of "None" or an unknown name over a non-nil default holds nil
+      {vref, ids, order} =
+        case v do
+          nil -> {0, ids, order}
+          _ -> intern(ids, order, Map.fetch!(f.by_name, v))
+        end
+
       {idx_map, ids, order, [acc, leb_encode(ref), <<30>>, leb_encode(vref)]}
     end
   end
@@ -3186,6 +3193,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :keyed} = f, {:obj, pairs}, report) do
     Enum.reduce(pairs, {%{}, report}, fn {name, input}, {acc, report} ->
       if Map.has_key?(f.key_ids, name) do
+        # a repeated slot name is counted and the last occurrence wins (§16.2)
+        report =
+          if Map.has_key?(acc, name),
+            do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+            else: report
+
         {v, report} = json_read_field(f.item, input, report)
         {Map.put(acc, name, v), report}
       else
@@ -3338,16 +3351,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
-    v = raw * 1.0
+    case json_float_in_width(raw, f.width) do
+      :error ->
+        {Map.get(f, :default, 0.0), %{report | kind_mismatch: report.kind_mismatch + 1}}
 
-    {v, report} =
-      case f do
-        %{min: lo, max: _hi} when v < lo -> {lo * 1.0, %{report | clamped: report.clamped + 1}}
-        %{min: _lo, max: hi} when v > hi -> {hi * 1.0, %{report | clamped: report.clamped + 1}}
-        _ -> {v, report}
-      end
+      {:ok, v} ->
+        case f do
+          %{min: lo, max: _hi} when v < lo ->
+            {lo * 1.0, %{report | clamped: report.clamped + 1}}
 
-    {v, report}
+          %{min: _lo, max: hi} when v > hi ->
+            {hi * 1.0, %{report | clamped: report.clamped + 1}}
+
+          _ ->
+            {v, report}
+        end
+    end
   end
 
   defp json_read_field(%{t: :float} = f, raw, report) do
@@ -3405,10 +3424,30 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # clamp_json_int clamps a JSON integer to the field's declared range and
   # then to its storage domain, counting each clamp (docs/SPEC-TABLES.md §16.2).
+  #
+  # The order is the reference's (gotable tableJSONReadScalar): a token past
+  # sixty-four bits saturates first and counts, then the declared range, then
+  # the storage width, each clamp counted. A fixed-point or 128-bit field has
+  # one domain, which comes first, then its range.
   defp clamp_json_int(v, f, report) do
-    {v, report} = clamp_int(v, f, report)
-    {lo, hi} = int_domain_bounds(f)
+    if Map.has_key?(f, :frac) or Map.get(f, :width) == 16 do
+      {v, report} = clamp_between(v, int_domain_bounds(f), report)
+      clamp_int(v, f, report)
+    else
+      signed = Map.get(f, :signed, false)
 
+      sat =
+        if signed,
+          do: {-(1 <<< 63), (1 <<< 63) - 1},
+          else: {0, (1 <<< 64) - 1}
+
+      {v, report} = clamp_between(v, sat, report)
+      {v, report} = clamp_int(v, f, report)
+      clamp_between(v, int_domain_bounds(f), report)
+    end
+  end
+
+  defp clamp_between(v, {lo, hi}, report) do
     cond do
       v < lo -> {lo, %{report | clamped: report.clamped + 1}}
       v > hi -> {hi, %{report | clamped: report.clamped + 1}}
@@ -3441,6 +3480,54 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     else
       Base.decode64(raw, padding: false)
     end
+  end
+
+  # json_clamp_elem holds one integer element to its kind's storage domain and
+  # then to the declared range, each clamp counted (docs/SPEC-TABLES.md §16.2),
+  # the order a scalar field takes.
+  defp json_clamp_elem(v, %{elem_kind: kind} = f, report) do
+    bits = kind_width(kind) * 8
+
+    {lo, hi} =
+      if kind in 2..5 or kind == 18 or kind in 20..24,
+        do: {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1},
+        else: {0, (1 <<< bits) - 1}
+
+    {v, report} =
+      cond do
+        v < lo -> {lo, %{report | clamped: report.clamped + 1}}
+        v > hi -> {hi, %{report | clamped: report.clamped + 1}}
+        true -> {v, report}
+      end
+
+    case f do
+      %{elem_min: rlo} when v < rlo -> {rlo, %{report | clamped: report.clamped + 1}}
+      %{elem_max: rhi} when v > rhi -> {rhi, %{report | clamped: report.clamped + 1}}
+      _ -> {v, report}
+    end
+  end
+
+  # json_float_in_width is the double a number spells, held to the field's
+  # width: a number past the double's range, or one a float32 rounds to
+  # infinity (the midpoint above its largest value included), spells no value
+  # the field can store and reads as the wrong shape (docs/SPEC-TABLES.md
+  # §16.2); no infinity is ever stored.
+  # An integer token compares exactly: 2^128 - 2^103 is the midpoint and one
+  # below it still rounds to the largest float32.
+  defp json_float_in_width(raw, 4) when is_integer(raw) do
+    if abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448,
+      do: :error,
+      else: {:ok, raw * 1.0}
+  end
+
+  defp json_float_in_width(raw, 4) do
+    if abs(raw) >= 3.4028235677973366e38, do: :error, else: {:ok, raw * 1.0}
+  end
+
+  defp json_float_in_width(raw, _width) do
+    {:ok, raw * 1.0}
+  rescue
+    ArithmeticError -> :error
   end
 
   # json_read_list_elem reads one unbounded array's element by its element kind
@@ -3487,18 +3574,32 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp json_read_list_elem(%{elem_kind: 1}, e, report) when is_boolean(e), do: {e, report}
 
-  defp json_read_list_elem(%{elem_kind: kind}, e, report)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19] and is_integer(e), do: {e, report}
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19] and is_integer(e),
+       do: json_clamp_elem(e, f, report)
 
-  defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac}, e, report) when kind in 20..29 do
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19] and is_float(e) do
+    if Float.floor(e) == e,
+      do: json_clamp_elem(trunc(e), f, report),
+      else: {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp json_read_list_elem(%{elem_kind: kind, elem_frac: frac} = f, e, report)
+       when kind in 20..29 do
     case fixed_raw(e, frac) do
-      {:ok, raw} -> {raw, report}
+      {:ok, raw} -> json_clamp_elem(raw, f, report)
       :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
 
-  defp json_read_list_elem(%{elem_kind: kind}, e, report) when kind in [10, 11] and is_number(e),
-    do: {e * 1.0, report}
+  defp json_read_list_elem(%{elem_kind: kind}, e, report)
+       when kind in [10, 11] and is_number(e) do
+    case json_float_in_width(e, kind_width(kind)) do
+      {:ok, v} -> {v, report}
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
 
   defp json_read_list_elem(%{elem_kind: 15} = f, e, report), do: json_read_arm(f.elem, e, report)
 
@@ -3804,7 +3905,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_string(<<c, rest::binary>>, acc) when c >= 0x20, do: json_string(rest, [<<c>> | acc])
+  # a byte past ASCII must open a well-formed UTF-8 sequence: RFC 8259 texts
+  # are UTF-8, and an ill-formed byte spells no code point, so the read refuses
+  # the text at the string site rather than replacing or clamping it
+  # (docs/SPEC-TABLES.md §16.3, conformance row str-illformed-at-bound)
+  defp json_string(<<ch::utf8, rest::binary>>, acc) when ch >= 0x80,
+    do: json_string(rest, [<<ch::utf8>> | acc])
+
+  defp json_string(<<c, rest::binary>>, acc) when c >= 0x20 and c < 0x80,
+    do: json_string(rest, [<<c>> | acc])
+
   defp json_string(_, _acc), do: :error
 
   defp hex_digit(c) when c in ?0..?9, do: {:ok, c - ?0}
@@ -3917,16 +4027,33 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     shift = power - byte_size(fraction)
     numerator = digits <<< frac
 
-    {numerator, denominator} =
-      if shift >= 0,
-        do: {numerator * Integer.pow(10, shift), 1},
-        else: {numerator, Integer.pow(10, -shift)}
+    cond do
+      # the token cap (511 bytes) bounds the digits, so an exponent past 700
+      # either way decides without the power: zero stays zero, a larger shift
+      # is past every field's range (the clamp counts it) and a smaller one is
+      # finer than 2^-F with no exact scaled integer
+      digits == 0 ->
+        {:ok, 0}
 
-    if rem(numerator, denominator) == 0 do
-      v = div(numerator, denominator)
-      {:ok, if(negative, do: -v, else: v)}
-    else
-      :error
+      shift > 700 ->
+        v = Integer.pow(10, 700)
+        {:ok, if(negative, do: -v, else: v)}
+
+      shift < -700 ->
+        :error
+
+      true ->
+        {numerator, denominator} =
+          if shift >= 0,
+            do: {numerator * Integer.pow(10, shift), 1},
+            else: {numerator, Integer.pow(10, -shift)}
+
+        if rem(numerator, denominator) == 0 do
+          v = div(numerator, denominator)
+          {:ok, if(negative, do: -v, else: v)}
+        else
+          :error
+        end
     end
   end
 
@@ -5111,6 +5238,12 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 		fmt.Fprintf(&b, ", t: :list, elem_kind: %d", elemKind)
 		if f.Type.Kind == ir.TFixed {
 			fmt.Fprintf(&b, ", elem_frac: %d", f.Type.FracBits)
+		}
+		if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed {
+			// §16.2: the declared range holds every element
+			if lo, hi, ok := ir.TableRawRange(f); ok {
+				fmt.Fprintf(&b, ", elem_min: %s, elem_max: %s", lo.String(), hi.String())
+			}
 		}
 		if fl := flagsRef(f); fl != nil {
 			// an array of flags: each element's text is its set names
