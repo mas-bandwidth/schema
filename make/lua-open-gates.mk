@@ -26,6 +26,22 @@ tables-lua-fuzz-negative-control: toolchain-lua
 		'TestLuaForgeryFuzzNegativeControl/block_extent_bounds_removed TestLuaForgeryFuzzNegativeControl/cook_scan_removed' \
 		./internal/codegen/luatable -run '^TestLuaForgeryFuzzNegativeControl$$' -count=1 -timeout 600s
 
+# I6: every module-table key the Lua table emitter spells is registered and every
+# registered Lua name is spelled, and a schema file named for a runtime module is
+# refused beside a table and kept in a table-free unit (compiler/
+# tablesluanames_test.go). The control plants an unregistered key in each
+# convention the scan reads and a registered name nothing emits.
+.PHONY: tables-lua-names tables-lua-names-negative-control
+tables-lua-names:
+	sh test/slowgate/proof tables-lua-names \
+		'TestLuaTableRuntimeNamesAreClaimed TestLuaRuntimeFileNamesAreClaimed' \
+		./compiler -run '^(TestLuaTableRuntimeNamesAreClaimed|TestLuaRuntimeFileNamesAreClaimed)$$' -count=1 -timeout 600s
+tables-lua-names-negative-control:
+	sh test/slowgate/proof tables-lua-names-negative-control \
+		'TestLuaRuntimeNameScanGoesRed' \
+		./compiler -run '^TestLuaRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
+
 # The controls ride the leg with their gates: each is seconds, and a reversed
 # witness that `make test` never ran is a witness nothing reaches.
 test-lua: tables-lua-fuzz tables-lua-fuzz-negative-control
+test-lua: tables-lua-names tables-lua-names-negative-control

@@ -144,6 +144,14 @@
       "lua": "5.4.8"
     },
     {
+      "name": "lua-open-gates-compiler",
+      "when": "pull-request",
+      "why": "the Lua port's two open-gate reversed witnesses that live in the compiler package and need no interpreter: the runtime-name scan fed a runtime module that spells an unregistered key in every convention it reads and an emitted set missing a registered name, and the zero-cost comparison fed a table that moves a packet byte, a packet file that vanishes and a non-table file that appears. Each is one go test of one function; the cost is the compiler package's test build, 1.4 s for both on the studio with a warm Go cache, so the row stays inside the 120 s rule.",
+      "targets": [
+        "tables-lua-names-negative-control"
+      ]
+    },
+    {
       "name": "base-conformance-cpp",
       "when": "pull-request",
       "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",
