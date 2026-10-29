@@ -139,9 +139,11 @@
       "when": "pull-request",
       "why": "the Lua port's open-gate reversed witnesses that run the pinned PUC-Rio 5.4.8 (make dist-lua) over the luatable package: the forgery fuzz oracle's two plants (both halves of the block's extent bound removed, and the cook Check's region scan removed; red on a read that left the buffer and on a Check that opened what the tool's cook-check refuses), the random text differential's six-digit float32 cap (red on the engine comparison), and the layout agreement gate's two moves (one block scalar four bytes, one cook pointer slot eight bytes; red on that field and on nothing else), with the runtime-home control beside them, which overlay-rebuilds the compiler with the table module named by the file that sorts first and requires the module to move when an earlier-sorting file joins the unit. Each is one go test over one package or one go build, 5 s for the four test controls and 1.5 s for the overlay build on the studio with a warm Go cache, so the row stays inside the 120 s rule.",
       "targets": [
+        "tables-lua-accessor-negative-control",
         "tables-lua-fuzz-negative-control",
         "tables-lua-json-differential-negative-control",
-        "tables-lua-runtime-home-negative-control"
+        "tables-lua-runtime-home-negative-control",
+        "tables-lua-slot-negative-control"
       ],
       "lua": "5.4.8"
     },

@@ -508,7 +508,7 @@ asserts on a foreign target.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cook.go:334-336` | ✅ `internal/codegen/ctable/ctable.go:291-293` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) | — no struct layout control in Lua; the build version is the contract (docs/PORT-LUA.md) |
+| ✅ `internal/codegen/cpptable/cook.go:334-336` | ✅ `internal/codegen/ctable/ctable.go:291-293` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) | ✅ `tables-lua-accessor-descriptor-agreement` (the Lua form: a record's layout is derived at run time from the descriptors, so there is no constant baked into generated code to assert; `B.BlockOpen` checks each array's pitch against the row's own derived size, `internal/codegen/luatable/runtime/block.lua`, and the gate holds that derivation to the compiler's, offset for offset) |
 
 ### M12 — Byte order is the reader's, not the host's
 
@@ -1479,11 +1479,24 @@ and a pointer slot is an eight-byte delta that the row getter also reads one
 byte of, which the gate pins as the low byte of the delta until the getter is
 settled.
 
+**Lua.** There is no accessor to hold against the descriptor, so the second
+derivation is the compiler's: `internal/codegen/luatable/layoutagree_test.go`
+dumps the layout the Lua runtime derives (`B.Layout` for every block projection
+and row, the descriptors' `at` for every cook record) and requires it line for
+line equal to `ir.Blocks` and `ir.RecordLayout`. `tables-lua-accessor-negative-control`
+moves `RenderCamera.camera_id` four bytes in `block.lua` and
+`tables-lua-slot-negative-control` moves `TreeNode.left`'s descriptor offset eight
+in the emitted module; each must turn the gate red on that field and on nothing
+else. Its first run found three real disagreements in `B.Layout`: a 128-bit
+integer and a 128-bit fixed were sized as one byte at one, and a `bits(N)` slot
+took its wire width where the block row holds a `uint32` (up to 32 bits) or a
+`uint64`.
+
 **Targets:** accessor-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-accessor-descriptor-agreement` `tables-accessor-negative-control` `tables-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ✅ `tables-cs-accessor-descriptor-agreement` `tables-cs-accessor-negative-control` `tables-cs-slot-negative-control` | ✅ `tables-java-accessor-agreement` `tables-java-accessor-negative-control` `tables-java-slot-negative-control` | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ✅ `tables-dart-agree` `tables-dart-accessor-negative-control` `tables-dart-slot-negative-control` | ✅ `tables-elixir-accessor-descriptor-agreement` `tables-elixir-accessor-negative-control` `tables-elixir-slot-negative-control` (plain scalar block-record fields and pointer cook slots (make/elixir.mk:279)) | ❌ #381 roadmap `port/lua/open/accessor-agreement` (the block and cook are read through the descriptors alone, `internal/codegen/luatable/runtime/block.lua:140`; no generated accessor exists to hold against them) |
+| ✅ `tables-accessor-descriptor-agreement` `tables-accessor-negative-control` `tables-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ✅ `tables-cs-accessor-descriptor-agreement` `tables-cs-accessor-negative-control` `tables-cs-slot-negative-control` | ✅ `tables-java-accessor-agreement` `tables-java-accessor-negative-control` `tables-java-slot-negative-control` | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ✅ `tables-dart-agree` `tables-dart-accessor-negative-control` `tables-dart-slot-negative-control` | ✅ `tables-elixir-accessor-descriptor-agreement` `tables-elixir-accessor-negative-control` `tables-elixir-slot-negative-control` (plain scalar block-record fields and pointer cook slots (make/elixir.mk:279)) | ✅ `tables-lua-accessor-descriptor-agreement` `tables-lua-accessor-negative-control` `tables-lua-slot-negative-control` (Lua generates no accessor: the block and cook are read through the descriptors alone, `internal/codegen/luatable/runtime/block.lua`, so what is held is the layout's two independent derivations, the compiler's model against the Lua runtime's own arithmetic, for every block projection, block row and cook record of the corpus's 33 units, 104 and 203 of them, in `internal/codegen/luatable/layoutagree_test.go`; the controls move `RenderCamera.camera_id` four bytes in `block.lua` and `TreeNode.left`'s descriptor offset eight, and each reds on that field alone. Its first run found `B.Layout` sizing a 128-bit integer, a 128-bit fixed and a `bits(N)` slot wrong, fixed in `block.lua`) |
 
 ### J2 — The runtime home, with a file-order control
 

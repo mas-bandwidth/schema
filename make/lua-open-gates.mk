@@ -110,6 +110,27 @@ tables-lua-runtime-home-negative-control: bin/schema tables-lua-runtime-home
 	 fi; \
 	 echo "runtime home negative control (Lua): the file-order rule moves the table module from $$base to $$added"
 
+# J1 and M11: the Lua form of the accessor and descriptor agreement gate
+# (layoutagree_test.go). Lua generates no accessor, so what is held is the
+# layout's two independent derivations: the compiler's model against the Lua
+# runtime's, for every block projection, block row and cook record of every unit
+# of the corpus. The two controls move one scalar's block offset four bytes
+# (RenderCamera.camera_id) and one cook pointer slot's descriptor offset eight
+# (TreeNode.left); each must red on that field and on nothing else.
+.PHONY: tables-lua-accessor-descriptor-agreement tables-lua-accessor-negative-control tables-lua-slot-negative-control
+tables-lua-accessor-descriptor-agreement: toolchain-lua
+	sh test/slowgate/proof tables-lua-accessor-descriptor-agreement \
+		'TestLuaLayoutAgreesWithTheCompiler' \
+		./internal/codegen/luatable -run '^TestLuaLayoutAgreesWithTheCompiler$$' -count=1 -timeout 600s
+tables-lua-accessor-negative-control: toolchain-lua
+	sh test/slowgate/proof tables-lua-accessor-negative-control \
+		'TestLuaLayoutAgreementNegativeControl/a_block_scalar_moved_four_bytes' \
+		./internal/codegen/luatable -run '^TestLuaLayoutAgreementNegativeControl$$/^a_block_scalar_moved_four_bytes$$' -count=1 -timeout 600s
+tables-lua-slot-negative-control: toolchain-lua
+	sh test/slowgate/proof tables-lua-slot-negative-control \
+		'TestLuaLayoutAgreementNegativeControl/a_cook_slot_moved_eight_bytes' \
+		./internal/codegen/luatable -run '^TestLuaLayoutAgreementNegativeControl$$/^a_cook_slot_moved_eight_bytes$$' -count=1 -timeout 600s
+
 # The controls ride the leg with their gates: each is seconds, and a reversed
 # witness that `make test` never ran is a witness nothing reaches.
 test-lua: tables-lua-fuzz tables-lua-fuzz-negative-control
@@ -117,3 +138,4 @@ test-lua: tables-lua-names tables-lua-names-negative-control
 test-lua: tables-lua-zero-cost tables-lua-zero-cost-negative-control
 test-lua: tables-lua-json-differential tables-lua-json-differential-negative-control
 test-lua: tables-lua-runtime-home tables-lua-runtime-home-negative-control
+test-lua: tables-lua-accessor-descriptor-agreement tables-lua-accessor-negative-control tables-lua-slot-negative-control
