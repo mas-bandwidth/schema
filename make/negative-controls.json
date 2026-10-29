@@ -705,14 +705,15 @@
     {
       "name": "java-tables-more",
       "when": "pull-request",
-      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22).",
+      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22). The hostile-corpus control (docs/HOSTILE-CORPUS.md) rides here too: it flips the generated text reader's malformed check in a scratch copy, requires the corpus runner to red naming an unexplained case, then reruns the unplanted gate green; one schema generate of eight units and two javac passes, 10 s on the studio.",
       "targets": [
         "tables-java-fuzz-negative-control",
         "tables-java-json-differential-negative-control",
         "tables-java-keyed-negative-control",
         "tables-java-runtime-home-negative-control",
         "tables-java-slot-negative-control",
-        "tables-java-soak-negative-control"
+        "tables-java-soak-negative-control",
+        "schema-java-runs-hostile-corpus-negative-control"
       ],
       "java": "21"
     },
