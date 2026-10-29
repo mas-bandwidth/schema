@@ -137,7 +137,13 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.emitRetainRuntime()
 	g.pf("%s", jsVariableCodecRuntime)
 	g.pf("%s", jsVariableArmsRuntime)
+	// THE ONE TEXT WALK (docs/PORTING.md M9): the text form and the four
+	// constructs' text arms, between markers `make tables-js-json-walk`
+	// compares byte for byte across every generated unit.
+	g.pf("\n%s\n", jsJsonWalkBegin)
 	g.pf("%s", jsVariableTextRuntime)
+	g.pf("%s", jsVariableArmsTextRuntime)
+	g.pf("%s\n", jsJsonWalkEnd)
 	g.emitDescriptors(closure)
 	for _, st := range closure {
 		g.emitTableClass(st)

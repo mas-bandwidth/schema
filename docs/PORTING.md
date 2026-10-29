@@ -436,7 +436,7 @@ offset arithmetic and requires red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 (the text walk is one runtime, byte-identical in every generated `<Package>Variable.js`, but no json-walk target compares the units) | ❌ #514 | ❌ #515 |
+| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ✅ `tables-js-json-walk` (`internal/codegen/jstable/variableform.go`, the text form and the arms' text half between the markers in every `<Package>Variable.js`; `tables-js-json-walk-negative-control`) | ❌ #514 | ❌ #515 |
 
 ### M10 — Hooks and the allocator contract
 
