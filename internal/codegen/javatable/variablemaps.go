@@ -87,6 +87,12 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		kr = strings.Replace(kr,
 			fmt.Sprintf("if (kind == %d) {", variableWireKind(&rawKey)),
 			fmt.Sprintf("if (kind == %d) { report.kindMismatch = 0;", variableWireKind(&rawKey)), 1)
+		// A string key the text rule refuses makes the MAP malformed at once:
+		// the oracle's scalarOrString stops the scan there (decode.go mapKey), so
+		// a later occurrence of the key id cannot be read as a kind mismatch.
+		kr = strings.Replace(kr,
+			"{ report.malformed = true; v.key = \"\"; } else {",
+			"{ report.malformed = true; v.key = \"\"; r.fail = true; return; } else {", 1)
 		b.WriteString(kr)
 		b.WriteString("        }else{r.skip(kind);}if(r.fail)return;}\n    }\n")
 	}
