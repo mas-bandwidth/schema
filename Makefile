@@ -6620,7 +6620,7 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 # (or in the environment) that is absent still refuses by name, and so does a
 # fetch that fails or produces no header: a gate with no blade is the exact
 # silence this refusal exists to forbid.
-SERIALIZE_PIN     ?= v2.1.2
+SERIALIZE_PIN     ?= v2.1.3
 SERIALIZE_REPO    ?= https://github.com/mas-bandwidth/serialize.git
 SERIALIZE_FETCHED := build/serialize
 SERIALIZE_RUNTIME := $(if $(wildcard $(SERIALIZE)/serialize.h),$(SERIALIZE),$(SERIALIZE_FETCHED))
