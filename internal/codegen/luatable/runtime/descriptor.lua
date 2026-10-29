@@ -344,4 +344,208 @@ function D.refuse_non_finite(T, name, v)
   return "non_finite_float: " .. hit
 end
 
+-- THE ONE POINTER WALK (docs/PORTING.md M15; docs/SPEC-TABLES.md §3.1, §6.3).
+-- The numbering of the save, of the retaining save, of the cook's layout and
+-- the pack that follows it, and of the JSON text form's reference count is ONE
+-- depth-first walk over a member's fields in DECLARATION ORDER that descends
+-- every by-value edge in place (a nested table, an element of a bounded or
+-- keyed array of them, a map entry, a union's set arm) to reach the pointer and
+-- blob fields inside it. Every consumer calls D.number_nodes and differs only
+-- in what it does with the answer, so a node's first visit is the same in all
+-- of them by construction. The shape to refuse is a second copy: it is
+-- self-consistent, the wire surface stays green, and the two numberings part
+-- the first time a by-value edge declared before a pointer reaches a shared
+-- node first (retain.lua's copy had already lost the optional's presence gate).
+
+-- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (§3: a field under a false
+-- guard is elided whatever its storage holds; §3.1: it is not an edge, so its
+-- target takes no node). fd.guard is the conjunction of the field's `if` branch
+-- conditions, each a bool field of the same body and the value it must hold
+-- (luatable.go emitDescriptor; tabletext.Guards); a field with no guard always
+-- rides. A bool not set reads false.
+function D.guard_holds(fd, v)
+  local g = fd.guard
+  if g == nil then return true end
+  for _, t in ipairs(g) do
+    if (v[t.field] == true) ~= t.want then return false end
+  end
+  return true
+end
+
+-- BYTEWISE KEY ORDER (§2.8): Lua's string < is strcoll, which is bytewise only
+-- under the C locale, so a string key is ordered by its unsigned bytes, a
+-- shorter prefix first, whatever locale the host runs.
+function D.bytes_less(a, b)
+  local n = math.min(#a, #b)
+  local i = 1
+  while i <= n do
+    local j = math.min(i + 255, n)
+    local ca, cb = a:sub(i, j), b:sub(i, j)
+    if ca ~= cb then
+      for k = 1, j - i + 1 do
+        local x, y = ca:byte(k), cb:byte(k)
+        if x ~= y then return x < y end
+      end
+    end
+    i = j + 1
+  end
+  return #a < #b
+end
+
+-- A MAP'S ENTRIES IN ASCENDING KEY ORDER (§2.8, §3.1; internal/tablewire
+-- nodes.go MapEntryOrder): one entry table per key, built once per map and
+-- shared by the numbering and the write, so both walks meet the same slots.
+function D.map_entries(cache, fd, x)
+  if x == nil then return {} end
+  local got = cache[x]
+  if got ~= nil then return got end
+  local kf = fd.key_field
+  local keys = {}
+  for key in pairs(x) do
+    keys[#keys + 1] = key
+  end
+  table.sort(keys, function(a, b)
+    if kf.shape == "string" then return D.bytes_less(a, b) end
+    if kf.signed or kf.width < 8 then return a < b end
+    return math.ult(a, b)
+  end)
+  local keyname = kf.name
+  local valname = fd.value_field.name
+  got = {}
+  for i, key in ipairs(keys) do
+    got[i] = { [keyname] = key, [valname] = x[key] }
+  end
+  cache[x] = got
+  return got
+end
+
+-- the live element count of an array field's value
+function D.count_of(fd, v)
+  local s = fd.shape
+  if s == "bytes" then return #v end
+  if fd.list then return #v end
+  if fd.fixed then return fd.bound or 0 end
+  return math.min(#v, fd.bound or 0)
+end
+
+local STRING_BLOB_ID = 0x704be0d8faaffc58
+local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
+
+local edge_value, edge_union, edges
+
+-- one value's pointer and blob edges, in the walk's order. holder/name name
+-- the slot the value occupies (a table's field or a union arm's payload);
+-- cache holds each map's entries (D.map_entries).
+edge_value = function(T, fd, val, holder, name, out, cache)
+  local s = fd.shape
+  if s == "string_blob" or s == "bytes_blob" then
+    if val ~= nil and val ~= false then
+      out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
+    end
+  elseif s == "pointer" then
+    if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
+  elseif s == "table" then
+    local d = T.Tables[fd.target]
+    if d then edges(T, d, val, out, cache) end
+  elseif s == "array" then
+    local n = D.count_of(fd, val)
+    local e = fd.elem
+    for i = 1, n do
+      edge_value(T, e, val[i], val, i, out, cache)
+    end
+  elseif s == "union" then
+    edge_union(T, T.Unions[fd.target], val, out, cache)
+  elseif s == "map" then
+    -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
+    -- entries in ascending key order, each descended before the next
+    local d = T.Tables[fd.entry]
+    for _, kv in ipairs(D.map_entries(cache, fd, val)) do
+      edges(T, d, kv, out, cache)
+    end
+  end
+end
+
+-- a union arm's payload is a field line: its pointers, blobs, tables, arrays
+-- and nested unions are edges at the arm's position (§2.6, §3.1).
+edge_union = function(T, u, val, out, cache)
+  local tag = type(val) == "table" and val.tag or 0
+  if tag == 0 or u == nil then return end
+  local arm = u.arms[tag]
+  if arm == nil or arm.field == nil then return end
+  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
+end
+
+-- the pointer and blob edges of one node's by-value closure, in the walk's
+-- order: fields in declaration order, array elements in index order. An absent
+-- by-value node (nil) holds only its declared defaults and no pointer or blob
+-- edge (§3, §4.2). AN ABSENT ?T OWNS NO NODE (§2.3): the walk gates on the
+-- presence companion, so a value made absent after it was present writes no
+-- stale node for the edges its untouched storage still holds.
+edges = function(T, desc, v, out, cache)
+  if v == nil then return out end
+  for _, fd in ipairs(desc.fields) do
+    if D.guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
+      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
+    end
+  end
+  return out
+end
+
+-- D.number_nodes numbers the nodes (§3.1, internal/tablewire/nodes.go):
+-- first-visit order of a depth-first pre-order walk from root over POINTER
+-- EDGES, every by-value edge descended in place. Node index 1 is the root and
+-- record k is index k + 1. It answers
+--   { list = { {typeId, codec, v} | {typeId, body, string, val}, ... },
+--     index = { [value or blob box] = index },
+--     refs = { [value or blob box] = how many slots name it },
+--     entries = the maps' entry tables }
+-- or nil for a DATA CYCLE (a reference to a node whose descent is still open),
+-- or nil, "blob_shared" when refuse_shared is set and a blob is named twice
+-- (§2.5, §16.7: a blob is owned by one slot; the save refuses it by name).
+-- A BLOB NODE IS NUMBERED BY IDENTITY (§3.1, §6.3): a loaded blob is the box
+-- load gave its node, so two distinct nodes with equal bytes stay two and one
+-- box named from two slots is one node.
+function D.number_nodes(T, desc, root, refuse_shared)
+  local nodes = { list = {}, index = {}, refs = {}, entries = {} }
+  local list, index, refs = nodes.list, nodes.index, nodes.refs
+  index[root] = 1
+  local open = { [root] = true }
+  local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
+  while #stack > 0 do
+    local top = stack[#stack]
+    if top.i >= #top.edges then
+      open[top.v] = nil
+      stack[#stack] = nil
+    else
+      local e = top.edges[top.i + 1]
+      top.i = top.i + 1
+      local val = e.val
+      if e.blob then
+        refs[val] = (refs[val] or 0) + 1
+        if index[val] ~= nil then
+          if refuse_shared then return nil, "blob_shared" end
+        else
+          local isstring = e.shape == "string_blob"
+          local tid = isstring and STRING_BLOB_ID or BYTES_BLOB_ID
+          local body = type(val) == "table" and val.value or val
+          list[#list + 1] = { typeId = tid, body = body, string = isstring, val = val }
+          index[val] = #list + 1
+        end
+      else
+        if open[val] then return nil end
+        refs[val] = (refs[val] or 0) + 1
+        if index[val] == nil then
+          local d = T.Tables[e.target]
+          if d == nil then return nil end
+          list[#list + 1] = { typeId = d.type_id, codec = d, v = val }
+          index[val] = #list + 1
+          open[val] = true
+          stack[#stack + 1] = { v = val, edges = edges(T, d, val, {}, nodes.entries), i = 0 }
+        end
+      end
+    end
+  end
+  return nodes
+end
+
 return D

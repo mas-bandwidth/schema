@@ -94,145 +94,14 @@ local function put_f64(w, at, v)
 end
 
 -- THE NUMBERING (§3.1, internal/tablewire/nodes.go): the depth-first pre-order
--- over pointer edges, the root first at index one. It is the save's walk
--- (runtime/save.lua), which is the wire's own numbering.
-local function guard_holds(fd, v)
-  local g = fd.guard
-  if g == nil then return true end
-  for _, t in ipairs(g) do
-    if (v[t.field] == true) ~= t.want then return false end
-  end
-  return true
-end
-
-local function bytes_less(a, b)
-  local n = math.min(#a, #b)
-  local i = 1
-  while i <= n do
-    local j = math.min(i + 255, n)
-    local ca, cb = a:sub(i, j), b:sub(i, j)
-    if ca ~= cb then
-      for k = 1, j - i + 1 do
-        local x, y = ca:byte(k), cb:byte(k)
-        if x ~= y then return x < y end
-      end
-    end
-    i = j + 1
-  end
-  return #a < #b
-end
-
-local function map_entries(cache, fd, x)
-  if x == nil then return {} end
-  local got = cache[x]
-  if got ~= nil then return got end
-  local kf = fd.key_field
-  local keys = {}
-  for key in pairs(x) do
-    keys[#keys + 1] = key
-  end
-  table.sort(keys, function(a, b)
-    if kf.shape == "string" then return bytes_less(a, b) end
-    if kf.signed or kf.width < 8 then return a < b end
-    return math.ult(a, b)
-  end)
-  local keyname = kf.name
-  local valname = fd.value_field.name
-  got = {}
-  for i, key in ipairs(keys) do
-    got[i] = { [keyname] = key, [valname] = x[key] }
-  end
-  cache[x] = got
-  return got
-end
-
-local function count_of(fd, v)
-  local s = fd.shape
-  if s == "bytes" then return #v end
-  if fd.list then return #v end
-  if fd.fixed then return fd.bound or 0 end
-  return math.min(#v, fd.bound or 0)
-end
-
-local edge_value, edge_union, edges
-
-edge_value = function(T, fd, val, holder, name, out, cache)
-  local s = fd.shape
-  if s == "string_blob" or s == "bytes_blob" then
-    if val ~= nil and val ~= false then
-      out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
-    end
-  elseif s == "pointer" then
-    if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
-  elseif s == "table" then
-    local d = T.Tables[fd.target]
-    if d then edges(T, d, val, out, cache) end
-  elseif s == "array" then
-    local n = count_of(fd, val)
-    local e = fd.elem
-    for i = 1, n do
-      edge_value(T, e, val[i], val, i, out, cache)
-    end
-  elseif s == "union" then
-    edge_union(T, T.Unions[fd.target], val, out, cache)
-  elseif s == "map" then
-    local d = T.Tables[fd.entry]
-    for _, kv in ipairs(map_entries(cache, fd, val)) do
-      edges(T, d, kv, out, cache)
-    end
-  end
-end
-
-edge_union = function(T, u, val, out, cache)
-  local tag = type(val) == "table" and val.tag or 0
-  if tag == 0 or u == nil then return end
-  local arm = u.arms[tag]
-  if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
-end
-
-edges = function(T, desc, v, out, cache)
-  if v == nil then return out end
-  for _, fd in ipairs(desc.fields) do
-    if guard_holds(fd, v) then edge_value(T, fd, v[fd.name], v, fd.name, out, cache) end
-  end
-  return out
-end
-
+-- over pointer edges, the root first at index one. It is the one pointer walk
+-- of descriptor.lua (D.number_nodes, docs/PORTING.md M15): the save's own, so
+-- the region a cook lays out is in the order the wire numbers, by construction.
+-- A blob named twice is laid out once.
 local function number_nodes(T, desc, root)
-  local nodes = { list = {}, index = {}, entries = {} }
-  nodes.index[root] = 1
-  local open = { [root] = true }
-  local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
-  while #stack > 0 do
-    local top = stack[#stack]
-    if top.i >= #top.edges then
-      open[top.v] = nil
-      stack[#stack] = nil
-    else
-      local e = top.edges[top.i + 1]
-      top.i = top.i + 1
-      if e.blob then
-        if nodes.index[e.val] == nil then
-          local tid = e.shape == "string_blob" and T.StringBlobTypeId or T.BytesBlobTypeId
-          local body = type(e.val) == "table" and e.val.value or e.val
-          nodes.list[#nodes.list + 1] = { typeId = tid, body = body, string = e.shape == "string_blob", val = e.val }
-          nodes.index[e.val] = #nodes.list + 1
-        end
-      else
-        if open[e.val] then return nil end
-        if nodes.index[e.val] == nil then
-          local d = T.Tables[e.target]
-          if d == nil then return nil end
-          nodes.list[#nodes.list + 1] = { typeId = d.type_id, desc = d, v = e.val }
-          nodes.index[e.val] = #nodes.list + 1
-          open[e.val] = true
-          stack[#stack + 1] = { v = e.val, edges = edges(T, d, e.val, {}, nodes.entries), i = 0 }
-        end
-      end
-    end
-  end
-  local entries = { { typeId = desc.type_id, desc = desc, v = root } }
+  local nodes = D.number_nodes(T, desc, root, false)
+  if nodes == nil then return nil end
+  local entries = { { typeId = desc.type_id, codec = desc, v = root } }
   for _, n in ipairs(nodes.list) do
     entries[#entries + 1] = n
   end
@@ -675,18 +544,18 @@ local function layout(T, name, v)
   local offset = 0
   local align = 8
   for _, e in ipairs(entries) do
-    if e.desc ~= nil then
-      local size = e.desc.size
-      local nodeAlign = e.desc.align
+    if e.codec ~= nil then
+      local size = e.codec.size
+      local nodeAlign = e.codec.align
       align = max(align, nodeAlign)
       offset = align_up(offset, nodeAlign)
       e.offset = offset
       local record = size
       local extent = 0
-      if record_has_extent(T, e.desc) then
+      if record_has_extent(T, e.codec) then
         record = align_up(size, 8)
         local cursor = { at = 0, index = index }
-        if not carve_extent(T, e.desc, e.v, 0, 0, cursor, nil) then return nil end
+        if not carve_extent(T, e.codec, e.v, 0, 0, cursor, nil) then return nil end
         extent = cursor.at
       end
       e.record = record
@@ -738,12 +607,12 @@ local function cook(T, name, v, capacity, order)
   if capacity ~= nil and capacity < l.total then return nil end
   local w = W()
   for _, e in ipairs(l.entries) do
-    if e.desc ~= nil then
+    if e.codec ~= nil then
       local base = HEADER_BYTES + e.offset
-      if not write_record(T, e.desc, e.v, base, w, l.index) then return nil, D.refuse_non_finite(T, name, v) end
+      if not write_record(T, e.codec, e.v, base, w, l.index) then return nil, D.refuse_non_finite(T, name, v) end
       if e.extent > 0 then
         local cursor = { at = 0, index = l.index }
-        if not carve_extent(T, e.desc, e.v, base, base + e.record, cursor, w) then
+        if not carve_extent(T, e.codec, e.v, base, base + e.record, cursor, w) then
           return nil, D.refuse_non_finite(T, name, v)
         end
         if cursor.at ~= e.extent then return nil end
