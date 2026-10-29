@@ -132,6 +132,7 @@ defmodule Bench.Table do
           cook_off: 0,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -153,6 +154,7 @@ defmodule Bench.Table do
           cook_off: 4,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 65535},
           doc: "",
@@ -173,6 +175,7 @@ defmodule Bench.Table do
           cook_off: 8,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -192,6 +195,7 @@ defmodule Bench.Table do
           cook_off: 16,
           count_off: -1,
           present_off: -1,
+          cook_width: 8,
           shape: :value,
           bound: nil,
           doc: "",
@@ -211,6 +215,7 @@ defmodule Bench.Table do
           cook_off: 24,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -232,6 +237,7 @@ defmodule Bench.Table do
           cook_off: 32,
           count_off: -1,
           present_off: -1,
+          cook_width: 8,
           shape: :value,
           bound: {0, 18_446_744_073_709_551_615},
           doc: "",
@@ -253,6 +259,7 @@ defmodule Bench.Table do
           cook_off: 40,
           count_off: -1,
           present_off: -1,
+          cook_width: 8,
           shape: :value,
           bound: {-1_000_000_000_000, 1_000_000_000_000},
           doc: "",
@@ -273,6 +280,7 @@ defmodule Bench.Table do
           cook_off: 48,
           count_off: -1,
           present_off: -1,
+          cook_width: 8,
           shape: :value,
           bound: nil,
           doc: "",
@@ -295,6 +303,7 @@ defmodule Bench.Table do
           cook_off: 56,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -363,6 +372,8 @@ defmodule Bench.Table do
           cook_off: 1224,
           count_off: -1,
           present_off: -1,
+          tag_width: 1,
+          arm_off: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -541,6 +552,7 @@ defmodule Bench.Table do
           cook_off: 1312,
           count_off: -1,
           present_off: -1,
+          cook_width: 16,
           shape: :value,
           bound: nil,
           doc: "",
@@ -562,6 +574,7 @@ defmodule Bench.Table do
           cook_off: 1328,
           count_off: -1,
           present_off: -1,
+          cook_width: 16,
           shape: :value,
           bound:
             {-1_267_650_600_228_229_401_496_703_205_376,
@@ -586,6 +599,7 @@ defmodule Bench.Table do
           cook_off: 1344,
           count_off: -1,
           present_off: -1,
+          cook_width: 2,
           shape: :value,
           bound: nil,
           doc: "",
@@ -606,6 +620,7 @@ defmodule Bench.Table do
           cook_off: 1348,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -644,6 +659,7 @@ defmodule Bench.Table do
           cook_off: 1356,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 255},
           doc: "",
@@ -665,6 +681,7 @@ defmodule Bench.Table do
           cook_off: 1360,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 15},
           doc: "",
@@ -732,6 +749,7 @@ defmodule Bench.Table do
           cook_off: 0,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 3},
           doc: "",
@@ -752,6 +770,7 @@ defmodule Bench.Table do
           cook_off: 4,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -786,6 +805,7 @@ defmodule Bench.Table do
           cook_off: 0,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -807,6 +827,7 @@ defmodule Bench.Table do
           cook_off: 4,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {-16383, 16383},
           doc: "",
@@ -828,6 +849,7 @@ defmodule Bench.Table do
           cook_off: 8,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {-16383, 16383},
           doc: "",
@@ -849,6 +871,7 @@ defmodule Bench.Table do
           cook_off: 12,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {-16383, 16383},
           doc: "",
@@ -869,6 +892,7 @@ defmodule Bench.Table do
           cook_off: 16,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -889,6 +913,7 @@ defmodule Bench.Table do
           cook_off: 20,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -910,6 +935,7 @@ defmodule Bench.Table do
           cook_off: 24,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {-2048, 2047},
           doc: "",
@@ -931,6 +957,7 @@ defmodule Bench.Table do
           cook_off: 28,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {-2048, 2047},
           doc: "",
@@ -952,6 +979,7 @@ defmodule Bench.Table do
           cook_off: 32,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {-2048, 2047},
           doc: "",
@@ -973,6 +1001,7 @@ defmodule Bench.Table do
           cook_off: 36,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 1000},
           doc: "",
@@ -1071,6 +1100,7 @@ defmodule Bench.Table do
           cook_off: 48,
           count_off: -1,
           present_off: -1,
+          cook_width: 8,
           shape: :value,
           bound: nil,
           doc: "",
@@ -1139,6 +1169,7 @@ defmodule Bench.Table do
           cook_off: 0,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -1160,6 +1191,7 @@ defmodule Bench.Table do
           cook_off: 4,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 4095},
           doc: "",
@@ -1181,6 +1213,7 @@ defmodule Bench.Table do
           cook_off: 8,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 7},
           doc: "",
@@ -1232,6 +1265,7 @@ defmodule Bench.Table do
           cook_off: 0,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -1253,6 +1287,7 @@ defmodule Bench.Table do
           cook_off: 4,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {0, 255},
           doc: "",
@@ -1287,6 +1322,7 @@ defmodule Bench.Table do
           cook_off: 0,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: nil,
           doc: "",
@@ -1308,6 +1344,7 @@ defmodule Bench.Table do
           cook_off: 4,
           count_off: -1,
           present_off: -1,
+          cook_width: 4,
           shape: :value,
           bound: {-512, 511},
           doc: "",
@@ -1409,12 +1446,19 @@ defmodule Bench.Table do
 
   # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md
   # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them
-  # (§3, §3.2, §16); the cook write and the wire-fuzz roster do not yet, so
-  # carried?/1 answers false for them there and the driver writes
-  # <case>.absent for a cook of one, and the roster sends it no mutant.
+  # (§3, §3.2, §16) and the cook write lays them out (§7.2); the wire-fuzz
+  # roster does not yet, so carried?/1 answers false for them there and the
+  # roster sends it no mutant.
   @uncarried []
 
   def carried?(table), do: table not in @uncarried
+
+  # roots that reach a map (docs/SPEC-TABLES.md §2.8, §7.2). `schema cook`
+  # refuses a map-bearing unit by name, so the cook writer does not lay out
+  # entry arrays no tool cook holds it to; cook_carried?/1 answers false.
+  @cook_uncarried []
+
+  def cook_carried?(table), do: table not in @cook_uncarried
 
   @cook_build_version 0x23753A84972A054E
   @cook_magic 0x4B4F4F434D484353
@@ -4892,18 +4936,19 @@ defmodule Bench.Table do
       end
 
       desc = Map.fetch!(@tables, table)
-      children = cook_collect(desc, value, []) |> Enum.reverse()
+      {body, children} = cook_collect(desc, value, [])
 
       root = %{
         id: desc.type_id,
+        key: {desc.type_id, value},
         kind: :table,
         string: false,
-        value: value,
+        value: body,
         elem: table,
         desc: desc
       }
 
-      {data, align, laid} = cook_lay([root | children])
+      {data, align, laid} = cook_lay([root | Enum.reverse(children)])
       total = 64 + data + length(laid) * 16
       {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
     catch
@@ -4911,56 +4956,115 @@ defmodule Bench.Table do
     end
   end
 
-  defp cook_collect(desc, value, acc) do
-    Enum.reduce(desc.fields, acc, fn f, acc ->
-      cook_collect_field(f, Map.get(value, f.name), acc)
+  # cook_collect numbers the nodes a value reaches in §3.1's depth-first
+  # first-visit order and answers the value with every blob slot replaced by
+  # the node it names, {:cook_blob, n}. A table node is its type and content,
+  # walked once however often it is named; A BLOB IS A NODE OF ITS SLOT
+  # (docs/SPEC-TABLES.md §2.5, §3.1), so two slots holding equal bytes are two
+  # nodes and the record writer finds each slot's own node by its mark.
+  defp cook_collect(desc, value, acc) when is_map(value) do
+    Enum.reduce(desc.fields, {value, acc}, fn f, {value, acc} ->
+      case Map.fetch(value, f.name) do
+        {:ok, v} ->
+          {v, acc} = cook_collect_field(f, v, acc)
+          {Map.put(value, f.name, v), acc}
+
+        :error ->
+          {value, acc}
+      end
     end)
   end
 
+  defp cook_collect(_desc, _value, _acc), do: throw(:invalid)
+
   # a cook packs the graph as it finds it (docs/SPEC-TABLES.md §2.5): a blob
-  # the tolerant read found named from a second slot is the one node
-  defp cook_collect_field(%{t: :blob} = f, {:blob_shared, v}, acc),
-    do: cook_collect_field(f, v, acc)
+  # the tolerant read found named from a second slot is the one node the
+  # earlier slot holding those bytes already numbered
+  defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, {:blob_shared, v}, acc) do
+    case Enum.find(Enum.reverse(acc), fn n -> n.kind == :blob and n.id == id and n.value == v end) do
+      nil -> cook_collect_field(f, v, acc)
+      n -> {elem(n.key, 1), acc}
+    end
+  end
 
   defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, acc) when not is_nil(v) do
     if not is_binary(v), do: throw(:invalid)
-    cook_push(acc, %{id: id, kind: :blob, string: f.blob == :string, value: v})
+    slot = {:cook_blob, length(acc)}
+    {slot, [%{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v} | acc]}
   end
 
-  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, v, acc) when is_map(v) do
-    acc = cook_push(acc, %{id: id, kind: :table, string: false, value: v, elem: elem})
-    cook_collect(Map.fetch!(@tables, elem), v, acc)
+  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, v, acc) when is_map(v),
+    do: {v, cook_push(acc, id, elem, v)}
+
+  defp cook_collect_field(%{t: :table, elem: elem}, v, acc) when is_map(v),
+    do: cook_collect(Map.fetch!(@tables, elem), v, acc)
+
+  defp cook_collect_field(%{t: :list} = f, v, acc) when is_list(v),
+    do: Enum.map_reduce(v, acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
+
+  defp cook_collect_field(%{t: :list}, v, _acc) when not is_nil(v), do: throw(:invalid)
+
+  # an enum-keyed array's slots are walked in the key enum's order (§2.4)
+  defp cook_collect_field(%{t: :keyed, item: item, key_names: names}, slots, acc)
+       when is_map(slots) do
+    Enum.reduce(names, {slots, acc}, fn name, {slots, acc} ->
+      case Map.fetch(slots, name) do
+        {:ok, v} ->
+          {v, acc} = cook_collect_field(item, v, acc)
+          {Map.put(slots, name, v), acc}
+
+        :error ->
+          {slots, acc}
+      end
+    end)
   end
 
-  defp cook_collect_field(%{t: :table, elem: elem}, v, acc) when is_map(v) do
-    cook_collect(Map.fetch!(@tables, elem), v, acc)
+  defp cook_collect_field(%{t: :union, elem: union}, v, acc), do: cook_collect_arm(union, v, acc)
+
+  defp cook_collect_field(_, v, acc), do: {v, acc}
+
+  defp cook_collect_elem(%{elem_kind: 13, elem: elem}, e, acc) when is_map(e),
+    do: cook_collect(Map.fetch!(@tables, elem), e, acc)
+
+  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, e, acc) when is_map(e),
+    do: {e, cook_push(acc, id, elem, e)}
+
+  defp cook_collect_elem(%{elem_kind: 15, elem: union}, e, acc),
+    do: cook_collect_arm(union, e, acc)
+
+  defp cook_collect_elem(_, e, acc), do: {e, acc}
+
+  # a union's set arm is a field line where the union sits (§2.6, §3.1)
+  defp cook_collect_arm(_union, nil, acc), do: {nil, acc}
+
+  defp cook_collect_arm(union, {arm, payload}, acc) do
+    {payload, acc} = cook_collect_field(cook_arm(union, arm), payload, acc)
+    {{arm, payload}, acc}
   end
 
-  defp cook_collect_field(%{t: :list} = f, v, acc) when is_list(v) do
-    Enum.reduce(v, acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
+  defp cook_collect_arm(_union, _v, _acc), do: throw(:invalid)
+
+  defp cook_arm(union, arm) do
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      {:ok, a} -> a
+      :error -> throw(:invalid)
+    end
   end
 
-  defp cook_collect_field(%{t: :list}, v, _acc) when not is_nil(v) and not is_list(v),
-    do: throw(:invalid)
+  # cook_push numbers a TABLE node once and walks its body the first time
+  # only: a node named again is the one record, blobs and all (§3.1). The node
+  # is placed before what its body reaches, then given the walked body.
+  defp cook_push(acc, id, elem, v) do
+    key = {id, v}
 
-  defp cook_collect_field(_, _, acc), do: acc
-
-  defp cook_collect_elem(%{elem_kind: 13, elem: elem}, e, acc) when is_map(e) do
-    cook_collect(Map.fetch!(@tables, elem), e, acc)
-  end
-
-  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, e, acc) when is_map(e) do
-    acc = cook_push(acc, %{id: id, kind: :table, string: false, value: e, elem: elem})
-    cook_collect(Map.fetch!(@tables, elem), e, acc)
-  end
-
-  defp cook_collect_elem(%{elem_kind: 17}, nil, acc), do: acc
-  defp cook_collect_elem(_, _, acc), do: acc
-
-  defp cook_push(acc, node) do
-    key = {node.id, node.value}
-
-    if Enum.any?(acc, fn n -> {n.id, n.value} == key end), do: acc, else: [node | acc]
+    if Enum.any?(acc, fn n -> n.key == key end) do
+      acc
+    else
+      node = %{id: id, key: key, kind: :table, string: false, value: v, elem: elem}
+      before = length(acc)
+      {body, acc} = cook_collect(Map.fetch!(@tables, elem), v, [node | acc])
+      List.update_at(acc, length(acc) - before - 1, &%{&1 | value: body})
+    end
   end
 
   defp cook_lay(nodes) do
@@ -5014,7 +5118,7 @@ defmodule Bench.Table do
   defp cook_render(plan, order) do
     try do
       data = :binary.copy(<<0>>, plan.data)
-      index = Map.new(plan.nodes, fn n -> {{n.id, n.value}, n.offset} end)
+      index = Map.new(plan.nodes, fn n -> {n.key, n.offset} end)
 
       data =
         Enum.reduce(plan.nodes, data, fn n, data ->
@@ -5069,12 +5173,11 @@ defmodule Bench.Table do
     end)
   end
 
-  defp cook_field(%{array: :keyed}, _value, _base, _index, _order, _buf), do: throw(:invalid)
-
   defp cook_field(%{array: :list}, _value, _base, _index, _order, buf), do: buf
 
   defp cook_field(f, value, base, index, order, buf) do
-    present = Map.has_key?(value, f.name)
+    # an absent optional reads nil (§2.3)
+    present = Map.get(value, f.name) != nil
 
     buf =
       if f.present_off >= 0 do
@@ -5084,14 +5187,26 @@ defmodule Bench.Table do
       end
 
     if Map.get(f, :optional, false) and not present do
-      buf
+      cook_absent(f, base, index, order, buf)
     else
       cook_value(f, Map.get(value, f.name, f.default), base, index, order, buf)
     end
   end
 
+  # WHAT THE STORAGE HOLDS IS WHAT IS WRITTEN (§7.6): an absent optional's
+  # storage is value-initialized, so a record keeps its declared defaults and
+  # an array its value-initialized slots; a scalar's is zero.
+  defp cook_absent(%{t: t} = f, base, index, order, buf) when t in [:table, :keyed],
+    do: cook_value(f, %{}, base, index, order, buf)
+
+  defp cook_absent(%{t: :list} = f, base, index, order, buf),
+    do: cook_value(f, [], base, index, order, buf)
+
+  defp cook_absent(_f, _base, _index, _order, buf), do: buf
+
+  # a blob slot holds the mark cook_collect gave it, {:cook_blob, n}: the
+  # node of this slot (§2.5)
   defp cook_value(%{t: :blob, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
-    v = with {:blob_shared, bytes} <- v, do: bytes
     cook_ref(buf, base + off, id, v, index, order)
   end
 
@@ -5130,7 +5245,9 @@ defmodule Bench.Table do
     put_uint(buf, base + off, ord, f.enum_width, order)
   end
 
-  defp cook_value(%{t: :int, cook_off: off, width: w} = f, v, base, _index, order, buf) do
+  # an integer slot is its STORAGE width (§7.2), which is not always the
+  # wire's: a bits(N) is four or eight bytes, a flags mask eight
+  defp cook_value(%{t: :int, cook_off: off, cook_width: w} = f, v, base, _index, order, buf) do
     if not is_integer(v), do: throw(:invalid)
     if Map.has_key?(f, :min) and (v < f.min or v > f.max), do: throw(:invalid)
     put_int(buf, base + off, v, w, Map.get(f, :signed, false), order)
@@ -5145,6 +5262,20 @@ defmodule Bench.Table do
     if not is_boolean(v), do: throw(:invalid)
     put_u8(buf, base + off, if(v, do: 1, else: 0))
   end
+
+  # an enum-keyed array's slots are POSITIONAL (§7.2): variant v's element at
+  # (v - 1) elements in, every slot written, a missing one at its default
+  defp cook_value(%{t: :keyed, item: item} = f, v, base, index, order, buf) do
+    slots = if(is_map(v), do: v, else: throw(:invalid))
+
+    Enum.reduce(Enum.with_index(f.key_names), buf, fn {name, i}, buf ->
+      at = base + f.cook_off + i * f.elem_size
+      cook_value(item, Map.get(slots, name, item.default), at, index, order, buf)
+    end)
+  end
+
+  defp cook_value(%{t: :union, elem: union, cook_off: off} = f, v, base, index, order, buf),
+    do: cook_union(union, f, v, base + off, index, order, buf)
 
   defp cook_value(%{t: :list, array: :counted} = f, v, base, index, order, buf) do
     cook_slots(f, v, base, index, order, buf, true)
@@ -5174,6 +5305,13 @@ defmodule Bench.Table do
       else
         buf
       end
+
+    # the storage is allocate-max (§7.2): a record slot past the live count
+    # holds the element type's declared defaults, every other one zero
+    elems =
+      if f.elem_t == :record and ceiling != nil and length(elems) < ceiling,
+        do: elems ++ List.duplicate(%{}, ceiling - length(elems)),
+        else: elems
 
     Enum.reduce(Enum.with_index(elems), buf, fn {e, i}, buf ->
       cook_elem(f, e, base + f.cook_off + i * f.elem_size, index, order, buf)
@@ -5215,11 +5353,28 @@ defmodule Bench.Table do
     put_int(buf, at, e, w, Map.get(f, :elem_signed, false), order)
   end
 
+  # string(N)'s pieces (§7.2): char[N + 1], then the int32 used length at four
   defp cook_elem(%{elem_t: :string, size: bound}, e, at, _index, order, buf) do
-    cook_text(buf, at, at + bound + 1, e, bound, order)
+    cook_text(buf, at, cook_align(at + bound + 1, 4), e, bound, order)
   end
 
+  defp cook_elem(%{elem_t: :union, elem: union} = f, e, at, index, order, buf),
+    do: cook_union(union, f, e, at, index, order, buf)
+
   defp cook_elem(_, _, _, _, _, buf), do: buf
+
+  # A UNION is a TAG beside its arms (§7.2): the tag, the set arm's ordinal
+  # plus one, at the union's base at its storage width, and only the set arm's
+  # pieces at arm_off. None is tag 0 and writes nothing.
+  defp cook_union(_union, _f, nil, _at, _index, _order, buf), do: buf
+
+  defp cook_union(union, f, {arm, payload}, at, index, order, buf) do
+    a = cook_arm(union, arm)
+    buf = put_uint(buf, at, a.ordinal + 1, f.tag_width, order)
+    cook_value(a, payload, at + f.arm_off, index, order, buf)
+  end
+
+  defp cook_union(_union, _f, _v, _at, _index, _order, _buf), do: throw(:invalid)
 
   defp cook_ord(%{ords: _ords}, nil), do: 0
 
@@ -5331,6 +5486,10 @@ defmodule Bench.Table do
   defp put_uint(buf, at, v, 4, order), do: put_u32(buf, at, v, order)
   defp put_uint(buf, at, v, 8, :little), do: put_raw(buf, at, <<v::little-unsigned-64>>)
   defp put_uint(buf, at, v, 8, :big), do: put_raw(buf, at, <<v::big-unsigned-64>>)
+  # a 128-bit slot (§7.2): the low half first in a little-endian cook, the
+  # high half first in a big-endian one, which is the 128-bit integer's order
+  defp put_uint(buf, at, v, 16, :little), do: put_raw(buf, at, <<v::little-unsigned-128>>)
+  defp put_uint(buf, at, v, 16, :big), do: put_raw(buf, at, <<v::big-unsigned-128>>)
   defp put_uint(_buf, _at, _v, _w, _order), do: throw(:invalid)
 
   defp put_int(buf, at, v, w, false, order), do: put_uint(buf, at, v, w, order)
@@ -5340,6 +5499,8 @@ defmodule Bench.Table do
   defp put_int(buf, at, v, 4, true, order), do: put_i32(buf, at, v, order)
   defp put_int(buf, at, v, 8, true, :little), do: put_raw(buf, at, <<v::little-signed-64>>)
   defp put_int(buf, at, v, 8, true, :big), do: put_raw(buf, at, <<v::big-signed-64>>)
+  defp put_int(buf, at, v, 16, true, :little), do: put_raw(buf, at, <<v::little-signed-128>>)
+  defp put_int(buf, at, v, 16, true, :big), do: put_raw(buf, at, <<v::big-signed-128>>)
   defp put_int(_buf, _at, _v, _w, _s, _order), do: throw(:invalid)
 
   defp put_float(buf, at, v, 4, :little), do: put_raw(buf, at, <<v::little-float-32>>)
