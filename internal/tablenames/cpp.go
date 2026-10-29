@@ -4,7 +4,7 @@ package tablenames
 const Cpp Backend = 1 << 0
 
 func init() {
-	define(Cpp,
+	names := []Name{
 		// the shared surface both backends define per unit
 		Name{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
 		// RETAIN-UNKNOWN's caller-owned storage (docs/SPEC-TABLES.md §6.6): the
@@ -23,8 +23,6 @@ func init() {
 		Name{Name: "previous_form", What: "a form byte this form is AHEAD of — the variable form handed to a fixed reader (§3, §3.4)"},
 		Name{Name: "no_vocabulary", What: "no table for this connection"},
 		Name{Name: "second_announcement", What: "a second announcement on a connection: it sets nothing and the connection closes"},
-		Name{Name: "build_version_mismatch", What: "a strict announcement whose build version is not this unit's (§3.3)"},
-		Name{Name: "TableBuildVersionMismatch", What: "the typed error a strict build-version refusal carries, with the endpoint's version and this unit's own (§3.3)"},
 		Name{Name: "vocabulary_too_large", What: "an announcement above the receiver's declared bound"},
 		Name{Name: "message_form_as_file", What: "a form 2 wire where a FILE was expected"},
 		// THE FILE REFUSALS (docs/SPEC-TABLES.md §6.5, §7, §11, §19.2): the one
@@ -175,10 +173,7 @@ func init() {
 		Name{Name: "TableRef", What: "C++: a pointer's eight-byte reference slot; C#: a field descriptor's nested-table factory"},
 		Name{Name: "TableSlot", What: "an arena slot"},
 		Name{Name: "TableArena", What: "the builder's segmented slab arena"},
-		Name{Name: "TableSlab", What: "one worker's privately-owned slab of it"},
 		Name{Name: "TableWorker", What: "a builder worker's allocation front"},
-		Name{Name: "TableBuilder", What: "the mutable life's base"},
-		Name{Name: "TableRegion", What: "the locked, packed region"},
 		// Lock's identity map (docs/SPEC-TABLES.md §6.2): one entry per reachable
 		// node, so a shared node is packed once and a reference to a node whose
 		// descent is still open is a cycle. Emitted into a pointered unit's header
@@ -258,5 +253,6 @@ func init() {
 		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
 		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},
 		Name{Name: "TableFixedPlanCacheInit", What: "bind caller-owned slot storage to a plan cache"},
-	)
+	}
+	define(Cpp, append(names, cppRuntimeNames()...)...)
 }

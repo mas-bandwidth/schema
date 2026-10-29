@@ -3609,6 +3609,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-cook-open-walk-negative-control
 	$(MAKE) tables-block-zero-cost
 	$(MAKE) tables-block-zero-cost-negative-control
+	$(MAKE) tables-cpp-names-negative-control
 	$(MAKE) tables-block-build-version
 	$(MAKE) tables-block-fill-refuser
 	$(MAKE) tables-block-fill-refuser-negative-control
@@ -5280,12 +5281,12 @@ tables-ref-ordinal-shared-negative-control:
 	@echo "negative control: an ordinal recorded on the MISS alone loses the field an eliding generic-key slot shares its id with"
 
 # THE CPP NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11, schema #414).
-# Every namespace-scope spelling of the C++ table runtime is either registered
-# in internal/tablenames or recorded in compiler's
-# TestCppEmittedRuntimeNamesAreClaimedOrRecorded, which holds the unregistered
-# remainder to a baseline list so the gap can only shrink. This plants one more
-# unregistered struct in the runtime through `go test -overlay` and requires
-# that test to go RED naming it. No tracked file is written to.
+# Every namespace-scope spelling of the C++ table runtime is registered in
+# internal/tablenames for the Cpp backend, and compiler's
+# TestCppTableRuntimeNamesAreClaimed holds that both ways over the emitter's
+# output. This plants one more unregistered struct in the runtime through `go
+# test -overlay` and requires that test to go RED naming it. No tracked file is
+# written to.
 .PHONY: tables-cpp-names-negative-control
 tables-cpp-names-negative-control:
 	@rm -rf build/cpp-names-nc && mkdir -p build/cpp-names-nc
@@ -5295,7 +5296,7 @@ tables-cpp-names-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpp-names-nc/cpptable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cpp-names-nc/overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppEmittedRuntimeNamesAreClaimedOrRecorded \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay build/cpp-names-nc/overlay.json -run TestCppTableRuntimeNamesAreClaimed \
 			./compiler > build/cpp-names-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the name-claim test stayed green with an unregistered runtime struct planted"; \
 		cat build/cpp-names-nc/log; exit 1; \

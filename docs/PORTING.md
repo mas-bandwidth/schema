@@ -1189,7 +1189,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
+| ✅ `TestCppTableRuntimeNamesAreClaimed` (both ways over the Table and Block sources, 624 names registered for the Cpp backend) `TestCppRuntimeNameScanGoesRed` `tables-cpp-names-negative-control`; the packet emitter's fixed vocabulary is `TestCppPacketRuntimeNamesAreAccountedFor` (its unclaimed macros and helpers are a recorded ceiling in `compiler/tablescppnames_test.go`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` |
 
 ### I7 — Cross-endian refusal as a named gate
 
