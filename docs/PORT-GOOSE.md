@@ -420,7 +420,11 @@ runtime): serialize.goose's `serialize_bits`, `serialize_bits64` and
 the mask and the shifts, and the 8-byte word moves through a slice window
 that carries no per-byte bounds check. Everything else moves through the
 runtime's own entries (`serialize_bytes`, the fixed, int128, float and
-compressed-float entries, a 64-bit write and a read past 56 bits).
+compressed-float entries, a 64-bit write and a read past 56 bits). On the
+packet-wire bench (`bench/run.sh --only goose`, intel, Core Ultra 9 285H,
+pinned, four interleaved sittings, 2026-10-29) the inline moves took
+bench_mixed from 0.89 to 1.84 M msg/s on write and from 0.34 to 0.94 M msg/s
+on round trip, the wire byte-identical.
 
 **Writes refuse in every build, and never abort.** serialize.goose aborts on
 write misuse (its U9), and Goose's `assert` aborts in every build: the
