@@ -467,6 +467,13 @@ end
 function C.Check(T, name, bytes, base_offset)
   local h, why = C.Open(T, name, bytes, base_offset)
   if h == nil then return nil, why end
+  -- the tool's header check (internal/tablecook ReadHeader, §7.1): the data
+  -- part is a whole number of the region's alignment, which is what puts the
+  -- attribution part on an aligned boundary. Open does not read it (it points
+  -- and does no arithmetic with it); the offline check owes it. The fuzz
+  -- oracle's first run found Check opening a cook whose alignment word had
+  -- been forged to a larger power of two.
+  if h.data_length % h.alignment ~= 0 then return nil, "bad_layout" end
   local dir, dw = directory(h)
   if dir == nil then return nil, dw end
   local cw = check_directory(h, dir)
