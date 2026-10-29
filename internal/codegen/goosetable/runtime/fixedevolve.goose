@@ -20,7 +20,7 @@ let FixedRefuseLayoutUnsupported: i64 = 29;
 let FixedRefuseLayoutNewer: i64 = 30;
 
 // The versioning counters a NEW-READS-OLD read reports when it returns
-// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.4, §5.9 #6): every read starts at
+// (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #6): every read starts at
 // zero, each op counts once per entry per record, and a refusal lands nothing.
 // `unknown` is once per FIELD per peer, never per record.
 struct FixedEvolveReport {
