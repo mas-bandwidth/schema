@@ -54,8 +54,20 @@ tables-lua-zero-cost-negative-control:
 		'TestLuaZeroCostGateGoesRed' \
 		./compiler -run '^TestLuaZeroCostGateGoesRed$$' -count=1 -timeout 600s
 
+# I13: the random text differential against the Go engine (textdifferential_test.go).
+.PHONY: tables-lua-json-differential tables-lua-json-differential-negative-control
+tables-lua-json-differential: toolchain-lua
+	sh test/slowgate/proof tables-lua-json-differential \
+		'TestLuaTextDifferential' \
+		./internal/codegen/luatable -run '^TestLuaTextDifferential$$' -count=1 -timeout 600s
+tables-lua-json-differential-negative-control: toolchain-lua
+	sh test/slowgate/proof tables-lua-json-differential-negative-control \
+		'TestLuaTextDifferentialNegativeControl' \
+		./internal/codegen/luatable -run '^TestLuaTextDifferentialNegativeControl$$' -count=1 -timeout 600s
+
 # The controls ride the leg with their gates: each is seconds, and a reversed
 # witness that `make test` never ran is a witness nothing reaches.
 test-lua: tables-lua-fuzz tables-lua-fuzz-negative-control
 test-lua: tables-lua-names tables-lua-names-negative-control
 test-lua: tables-lua-zero-cost tables-lua-zero-cost-negative-control
+test-lua: tables-lua-json-differential tables-lua-json-differential-negative-control
