@@ -813,6 +813,45 @@ tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
 	done
 
+# THE WIRE-FUZZ NEGATIVE CONTROL (docs/PORTING.md I15; docs/SPEC-TABLES.md
+# §2.5, §3.1): the generated node reader's range check on a pointer's or a
+# blob's node index keeps its refusal but loses its verdict — an index past the
+# node table still reads null, and the report no longer says malformed. The
+# sabotage goes through a `go build -overlay` of
+# internal/codegen/rusttable/variable.go, so no tracked file is edited; the
+# all-roots driver is rebuilt from that generator and the harness's enumerated
+# passes (--n 0) must go red on the REPORT, which is the half of the
+# differential a value comparison alone would never see.
+.PHONY: tables-rust-wire-fuzz-negative-control
+tables-rust-wire-fuzz-negative-control: build/conformance-harness
+	@rm -rf build/rust-wire-fuzz-control && mkdir -p build/rust-wire-fuzz-control
+	@sed '/index - 2 >= self.slots.len() as u64 {/{n;s|report.malformed = true;|/* SABOTAGED */|;}' \
+		internal/codegen/rusttable/variable.go > build/rust-wire-fuzz-control/variable.go.txt
+	@test "$$(grep -c SABOTAGED build/rust-wire-fuzz-control/variable.go.txt)" = 2 || \
+		{ echo "NEGATIVE CONTROL: the node-index sabotage did not apply twice"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variable.go":"%s/build/rust-wire-fuzz-control/variable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-wire-fuzz-control/overlay.json
+	go build -overlay=build/rust-wire-fuzz-control/overlay.json -o build/rust-wire-fuzz-control/schema ./cmd/schema
+	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build build/rust-wire-fuzz-control/driver build/rust-wire-fuzz-control/schema
+	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver build/rust-wire-fuzz-control/driver \
+			--n 0 --failed build/rust-wire-fuzz-control/failed.bin > build/rust-wire-fuzz-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
+		cat build/rust-wire-fuzz-control/log; exit 1; \
+	fi
+	@grep -q '^harness: FAILED after [0-9]* mutants: the report differs' build/rust-wire-fuzz-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the report"; \
+		  cat build/rust-wire-fuzz-control/log; exit 1; }
+	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
+	@echo "rust wire-fuzz negative control: an out-of-range node index read without its malformed verdict turns the differential RED on the report"
+
+test-rust: tables-rust-wire-fuzz-negative-control
+
+# THE FORGERY FUZZER (docs/PORTING.md I3; docs/SPEC-TABLES.md §19.5) runs on
+# `make test` as well as under the shared both-bounds control
+# (tables-block-fuzz-extent-negative-control), which already reds this leg: a
+# fuzzer that only ever ran sabotaged proved the control, not the reader.
+test-rust: tables-rust-fuzz
+
 # THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the generated
 # retaining load's capacity check is sabotaged to keep nothing, through a
 # `go test -overlay` of internal/codegen/rusttable/variablecodec.go so no
