@@ -3444,7 +3444,9 @@ namespace Benchtable
                     return ExtentBody(body, f.Table, ref at, ref reason);
                 }
                 if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
-                if (framed) { r.Skip(f.Kind); } else { r.Offset = r.Buffer.Length; }
+                // A value the skip cannot honour ENDS the record's scan, as the reference scan's
+                // does: the reader goes to its end rather than resuming at the bytes after it.
+                if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
                 return true;
             }
             static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
@@ -4561,8 +4563,8 @@ namespace Benchtable
             static bool Named(string name) { return name != null && name != "???"; }
             static bool DefaultRaw(ulong raw, TableFieldInfo f)
             {
-                if (f.Kind == 10) { return TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw); }
-                if (f.Kind == 11) { return TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw); }
+                // A plain float's elision compares BIT PATTERNS (docs/SPEC-TABLES.md §3.3): -0 is a value and rides under a +0 default.
+                if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
                 return raw == f.DefaultRaw;
             }
             static bool DefaultElement(object value, TableFieldInfo f, int i)

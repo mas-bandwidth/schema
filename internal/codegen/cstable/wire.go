@@ -723,8 +723,8 @@ public static partial class TableWire
     static bool Named(string name) { return name != null && name != "???"; }
     static bool DefaultRaw(ulong raw, TableFieldInfo f)
     {
-        if (f.Kind == 10) { return TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw); }
-        if (f.Kind == 11) { return TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw); }
+        // A plain float's elision compares BIT PATTERNS (docs/SPEC-TABLES.md §3.3): -0 is a value and rides under a +0 default.
+        if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
         return raw == f.DefaultRaw;
     }
     static bool DefaultElement(object value, TableFieldInfo f, int i)

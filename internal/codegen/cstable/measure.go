@@ -57,7 +57,9 @@ const tableLoadMeasureSource = `
             return ExtentBody(body, f.Table, ref at, ref reason);
         }
         if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
-        if (framed) { r.Skip(f.Kind); } else { r.Offset = r.Buffer.Length; }
+        // A value the skip cannot honour ENDS the record's scan, as the reference scan's
+        // does: the reader goes to its end rather than resuming at the bytes after it.
+        if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
         return true;
     }
     static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
