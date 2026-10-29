@@ -112,8 +112,8 @@ local function r_f64(r: any): number
 	return v
 end
 
--- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
--- as packets"): its RAW BITS are tested before they become a value, and an
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the same rule
+-- as packets): its RAW BITS are tested before they become a value, and an
 -- exponent of all ones (a NaN of any sign or payload, or an infinity) is
 -- refused as non_finite_float. Every finite float32 widens to a double
 -- exactly, so the read is the ordinary conversion; no bit surgery is owed.

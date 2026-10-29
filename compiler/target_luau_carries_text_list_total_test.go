@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 // The Luau target registers the TEXT LIST TOTAL for itself (docs/SPEC-TABLES.md
 // §2.13): the same probe units compiler/listtotalbytes_refusal_test.go refuses
 // still answer files and no error for Luau, while every other non-Go target

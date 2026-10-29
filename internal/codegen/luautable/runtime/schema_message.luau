@@ -97,8 +97,8 @@ local function skip(r: any, width: number): boolean
 	return true
 end
 
--- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
--- as packets"): a known float field's raw bits are tested as the walk steps
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the same rule
+-- as packets): a known float field's raw bits are tested as the walk steps
 -- over them, and a NaN or an infinity is recorded, the first one named
 -- <Owner>.<field>, for the batch to refuse whole as non_finite_float. A
 -- quantized float rides its step index, which cannot spell one. The walk goes

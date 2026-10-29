@@ -145,8 +145,8 @@ end
 -- one scalar slot at the width and kind the descriptors carry (§8.1, §19.2).
 -- An enum's slot holds the ORDINAL at its own derived storage width, which is
 -- why the fallback reads elem_size rather than the kind's wire width.
--- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
--- as packets"): a NaN or an infinity is not a value of the type.
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the same rule
+-- as packets): a NaN or an infinity is not a value of the type.
 -- An accessor that meets one never returns it: it latches non_finite_float on
 -- the block, naming <Owner>.<field> (the first one wins), and answers +0.
 local _block: Block? = nil

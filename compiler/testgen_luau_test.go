@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestTestgenLuau is the gate of `schema testgen --lang luau`
@@ -24,6 +25,7 @@ import (
 // for the same unit, and a saboteur that breaks the Luau save of a table makes
 // them fail.
 func TestTestgenLuau(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	paths, err := GatherPaths([]string{filepath.Join("..", "tables", "examples")})
 	if err != nil {

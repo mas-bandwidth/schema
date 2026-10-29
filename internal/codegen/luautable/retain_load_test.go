@@ -18,6 +18,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -377,6 +378,7 @@ func retainDeepJSON(bodies int) string {
 }
 
 func TestLuauLoadRetainKeepsUnknown(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	oldUnit, _ := retainCompile(t, retainOldSchema)
 	newUnit, _ := retainCompile(t, retainNewSchema)

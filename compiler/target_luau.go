@@ -1,13 +1,8 @@
-//go:build schema_leg_luau
-
 // One built-in target, registered from its own init so a target is one file
 // and a new one adds a file (docs/CONTRIBUTING.md, "Adding a language").
 //
 // Scaffolded by `schema new-leg luau`; docs/PORT-LUAU.md is the port's
-// design. The schema_leg_luau tag keeps this target out of the default nine
-// until the packet surface has claims in compiler/*_test.go;
-// `go build -tags schema_leg_luau` is `schema generate --lang luau`. Drop the
-// tag when the port joins the builtins.
+// design. The target is a builtin: `schema generate --lang luau`.
 package compiler
 
 import (

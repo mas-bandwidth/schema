@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -250,6 +251,7 @@ end
 // record by name at the root and below it, a guard-off field is not demanded,
 // and a guard-on field is.
 func TestLuauRequiredRead(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	u := requiredLoad(t)
 	cases := requiredWires(t, u)
@@ -277,6 +279,7 @@ func TestLuauRequiredRead(t *testing.T) {
 // required range-excluding-zero value refuses, and once set it saves and
 // round-trips while measure equals the saved length.
 func TestLuauRequiredSave(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	u := requiredLoad(t)
 	g := requiredFiles(t, u)

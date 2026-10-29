@@ -200,6 +200,7 @@ func fixedGoOracle(t *testing.T, schemaSrc string) map[string]fixedOracleCase {
 // fixed load, then schema_fixed.luau loads those exact bytes. plan_too_large (no plan
 // argument) and batch_too_large (F.load takes no capacity) have no Luau surface.
 func TestLuauFixedLoadNamesEveryRefusal(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	oracle := fixedGoOracle(t, fixedNamesSchema)
 	g := generateFiles(t, map[string]string{"Probe.schema": fixedNamesSchema})

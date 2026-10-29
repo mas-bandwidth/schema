@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 // The Luau target registers `timestamp` for itself (docs/SPEC-TABLES.md §2.11):
 // the same probe unit compiler/timestamp_test.go uses generates files and no
 // error for Luau, while every non-carrying target keeps refusing it by the

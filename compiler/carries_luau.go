@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 package compiler
 
 // Luau carries every construct but integrity (docs/SPEC-TABLES.md §2.14);

@@ -644,7 +644,7 @@ $(LUAU_NF)/manifest.luau: $(LUAU_NF_GEN)/.stamp
 	done; echo "}"; } > $@
 
 build/schema-luau-nightly: $(GO_SOURCES) cmd/schema/*.go
-	nice -n 19 go build -tags schema_leg_luau -o $@ ./cmd/schema
+	nice -n 19 go build -o $@ ./cmd/schema
 
 luau-nightly-fuzz: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) build/schema-luau-nightly $(LUAU_NF_GEN)/.stamp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau
 	@mkdir -p $(LUAU_NF)/findings

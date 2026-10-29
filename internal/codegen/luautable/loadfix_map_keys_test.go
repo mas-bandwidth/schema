@@ -21,6 +21,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -293,6 +294,7 @@ func loadFixDCheck(t *testing.T, c loadFixDCase) {
 // and the engine to agree on the six counters, the verdict and the re-saved
 // bytes.
 func TestLuauLoadMapKeyRulesAgreeWithTheEngine(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	for _, c := range loadFixDCases {
 		t.Run(c.what, func(t *testing.T) {

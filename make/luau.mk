@@ -201,8 +201,7 @@ tables-luau-versioning-negative-control: toolchain-luau tables-fixedform-corpus
 test-luau: tables-luau-fixed-form-negative-control tables-luau-versioning-negative-control
 
 # build/conformance-luau is the manifest's units generated for luau, one
-# directory per unit. The schema_leg_luau tag is the target's until the port
-# joins the builtins (compiler/target_luau.go). A unit the target refuses is
+# directory per unit. A unit the target refuses is
 # recorded as its refusal line, never dropped in silence.
 LUAU_MANIFEST := testdata/conformance/tables/MANIFEST.txt
 # Every .schema file the manifest's units name: a unit path is either a file or
@@ -215,7 +214,7 @@ build/conformance-luau: $(LUAU_MANIFEST) make/luau.mk \
 	$(GO_SOURCES) \
 	$(LUAU_CONFORMANCE_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
-	go build -tags schema_leg_luau -o build/schema-luau ./cmd/schema
+	go build -o build/schema-luau ./cmd/schema
 	@grep '^unit ' $(LUAU_MANIFEST) | while read -r _ key paths; do \
 		if ./build/schema-luau generate --lang luau --out $@/$$key $$paths >$@/$$key.log 2>&1; then \
 			rm -f $@/$$key.log; \
@@ -237,7 +236,7 @@ generated/bench/tables/luau/.stamp: ;
 build/packet-finite/luau/.stamp: $(GO_SOURCES) $(wildcard internal/codegen/luau/runtime/*) \
 	test/packet-finite/luau/Finite.schema test/packet-finite/luau/main.luau
 	@rm -rf build/packet-finite/luau && mkdir -p build/packet-finite/luau
-	go build -tags schema_leg_luau -o build/packet-finite/luau/schema ./cmd/schema
+	go build -o build/packet-finite/luau/schema ./cmd/schema
 	./build/packet-finite/luau/schema generate --lang luau --out build/packet-finite/luau/generated test/packet-finite/luau/Finite.schema
 	@cp test/packet-finite/luau/main.luau build/packet-finite/luau/generated/main.luau
 	@touch $@

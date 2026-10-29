@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 // The Luau target's rows in the nine-way packet claim gates
 // (countedbirth_test.go, guardspelling_test.go, packetvoidarms_test.go,
 // tagenumsurface_test.go, uniontagwrite_test.go). Each gate refuses a target

@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 // The Luau target carries the text list (docs/SPEC-TABLES.md §2.13). This is
 // the refusal test's own probe unit: Luau generates it, and every other
 // non-Go target still refuses it by the same name.

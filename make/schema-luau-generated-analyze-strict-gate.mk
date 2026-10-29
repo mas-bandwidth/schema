@@ -55,3 +55,11 @@ schema-luau-generated-analyze-strict-gate-negative-control: toolchain-luau
 	sh test/slowgate/proof schema-luau-generated-analyze-strict-gate-negative-control \
 		'TestLuauGeneratedAnalyzeStrictGatePlantedPattern/type_error TestLuauGeneratedAnalyzeStrictGatePlantedPattern/lint_warning TestLuauGeneratedAnalyzeStrictGatePlantedPattern/nolint_directive' \
 		./internal/ci -run '^TestLuauGeneratedAnalyzeStrictGatePlantedPattern$$' -count=1 -timeout 600s
+
+# The J4 register slug (docs/PORTING.md): the lens by the name every leg uses
+# for "emitted text is analyzer-clean". Luau has no formatter (see above), so
+# the whole of the check is the strict analysis and its planted control; the
+# Luau leg requires both.
+.PHONY: tables-luau-clean
+tables-luau-clean: schema-luau-generated-analyze-strict-gate schema-luau-generated-analyze-strict-gate-negative-control
+test-luau: tables-luau-clean

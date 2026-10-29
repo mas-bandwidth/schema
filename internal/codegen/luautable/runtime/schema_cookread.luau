@@ -60,8 +60,8 @@ local function i_at(b: buffer, at: number, width: number, signed: boolean): any
 	return n
 end
 
--- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
--- as packets"): a NaN or an infinity is not a value of the type.
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the same rule
+-- as packets): a NaN or an infinity is not a value of the type.
 -- Open tests each float's RAW BITS before they become a value and refuses
 -- one, non_finite_float naming <Owner>.<field>, before handing back anything.
 local f32tmp = buffer.create(4)

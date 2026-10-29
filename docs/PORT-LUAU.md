@@ -8,7 +8,7 @@ schema port is held to every surface the other legs carry. Vanilla Lua and
 Squirrel follow it, and copy this page's shape.
 
 This page fixes the design. The skeleton it describes is in the tree:
-`compiler/target_luau.go` (behind the `schema_leg_luau` build tag),
+`compiler/target_luau.go`,
 `internal/codegen/luau` (the type surface), `internal/codegen/luautable` (the
 table surface), `internal/codegen/luau/luaurun` (the test helper),
 `make/luau.mk`, `test/conformance/luau/driver` and `bench/tables/luau/leg`.
@@ -243,7 +243,7 @@ Fixed now for the pro cards; never renamed.
 
 | file | what it is | who writes it |
 |---|---|---|
-| `compiler/target_luau.go` | the target: the type surface, then the table surface, behind the `schema_leg_luau` tag until the packet surface has claims | this card; the tag is dropped when the port joins the builtins |
+| `compiler/target_luau.go` | the target: the type surface, then the table surface, a built-in target (the tag it was scaffolded behind is dropped) | this card |
 | `internal/codegen/luau/luau.go` | the TYPE emitter (`Gen`, `Slots`, `TypeRef`, the literal renderers) and `Register`, the hook a later file joins from its own `init()` | this card only |
 | `internal/codegen/luau/read.go`, `write.go` | the type wire, joined through `luau.Register` | type-wire-read, type-wire-write |
 | `internal/codegen/luau/runtime/*.luau` | the type-wire runtime, `go:embed` by glob, emitted beside the modules: `schema_runtime.luau` now, the vendored `serialize*.luau` beside it | one file per card |

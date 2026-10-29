@@ -142,7 +142,7 @@ local function narrow_f32(v: number): number
 end
 
 -- A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md §3.3;
--- Glenn, 2026-10-27, "same rule as packets"): the save and the measure answer
+-- the same rule as packets): the save and the measure answer
 -- nil and the refusal non_finite_float naming <Owner>.<field>. A float32 field
 -- tests its NARROWED bits, so a finite double past the float32 range, which
 -- narrows to an infinity, is refused too and never written.

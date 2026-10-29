@@ -112,7 +112,7 @@ func jsonStrictClass(ok bool, err error) string {
 	if errors.As(err, &m) {
 		return "missing_required: " + m.Fields
 	}
-	for _, r := range []TableRefuseReason{TableRefuseMalformed, TableRefuseBlobShared, TableRefuseClamped, TableRefuseKindMismatch, TableRefuseNonFinite} {
+	for _, r := range []TableRefuseReason{TableRefuseMalformed, TableRefuseBlobShared, TableRefuseClamped, TableRefuseKindMismatch, TableRefuseNonFiniteFloat} {
 		if errors.Is(err, r) {
 			return r.Error()
 		}

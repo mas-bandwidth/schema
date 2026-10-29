@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 // The Luau target takes the lock's lineage as data (docs/FIXED-FORM-ALGORITHM.md
 // §5.2, §5.9 #1): the same REAL LOCK compiler/fixedlineageship_test.go writes
 // with schema lock, a widening and schema lock again, generated through the

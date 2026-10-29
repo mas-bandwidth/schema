@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -381,6 +382,7 @@ func runListTotalProbe(t *testing.T, g *generatedUnit, field string, wires [3][]
 // refuses as the Go writer refuses it. Every expected line comes from
 // schema-go's generated Go engine over the same wires, never typed by hand.
 func TestLuauTextListTotalBytesBound(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	for _, tc := range listTotalCases {
 		t.Run(tc.name, func(t *testing.T) {

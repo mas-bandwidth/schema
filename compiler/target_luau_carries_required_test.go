@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 // The Luau target registers `| required` for itself (docs/SPEC-TABLES.md
 // §2.3): the same probe unit compiler/required_test.go refuses still answers
 // files and no error for Luau, while every other non-Go target keeps refusing

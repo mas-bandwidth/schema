@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 package compiler
 
 import (

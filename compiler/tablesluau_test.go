@@ -3,9 +3,8 @@
 // refusal names what it refuses and the target, so a schema author is told
 // which port lacks what.
 //
-// The target itself is behind the schema_leg_luau tag (compiler/target_luau.go),
-// so this test reads the target's Generate from its SOURCE and runs the chain
-// it calls, which needs no tag; under the tag the same constructs also go
+// This test reads the target's Generate (compiler/target_luau.go) from its
+// SOURCE and runs the chain it calls; the same constructs also go
 // through Generate("luau") whole. The Luau target ports every field construct
 // the corpus declares, so what it refuses is a FILE or a MODULE: a schema file
 // named for a runtime module, a require cycle between modules, and a file that

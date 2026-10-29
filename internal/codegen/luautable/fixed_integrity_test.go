@@ -233,6 +233,7 @@ func goFixedIntegrityOracle(t *testing.T, schema string) (keyed, keyless []byte,
 // the keyless file is unchanged, and every flip keeps the form byte's name or
 // refuses integrity_mismatch with nothing landed.
 func TestLuauFixedFormIntegrity(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	wantKeyed, wantKeyless, wantVerdicts := goFixedIntegrityOracle(t, luauFixedIntegritySchema)
 

@@ -431,8 +431,8 @@ local function put(w: any, at: number, v: any, width: number)
 	end
 end
 
--- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule
--- as packets"): a NaN or an infinity is not a value of the type.
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the same rule
+-- as packets): a NaN or an infinity is not a value of the type.
 -- The cook refuses one, non_finite_float naming <Owner>.<field>: CookMeasure
 -- answers -1 and Cook nil, each with the reason beside it. A float32 slot
 -- tests its NARROWED bits, so a double past the float32 range is refused too.

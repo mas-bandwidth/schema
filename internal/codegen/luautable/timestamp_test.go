@@ -261,6 +261,7 @@ func goTimestampOracle(t *testing.T) map[string][]byte {
 }
 
 func TestLuauTimestampBinaryForms(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	wants := goTimestampOracle(t)
 

@@ -25,7 +25,7 @@ LUAU_PACKET_STDIN  := test/packet-text/luau/stdin.sh
 
 $(LUAU_PACKET_SCHEMA): $(GO_SOURCES)
 	@mkdir -p $(dir $@)
-	go build -tags schema_leg_luau -o $@ ./cmd/schema
+	go build -o $@ ./cmd/schema
 
 # luau-packet-generate DIR SCHEMA [SCHEMA_BIN]: a fresh generated directory.
 define luau-packet-generate
@@ -49,7 +49,7 @@ packet-utf8-luau-negative-control: packet-utf8-luau
 	go run ./tools/sabotage -name packet-utf8-luau-read -out build/packet-text/luau-negative/read.gotext internal/codegen/luau/read.go
 	@printf '{"Replace":{"%s/internal/codegen/luau/read.go":"%s/build/packet-text/luau-negative/read.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-text/luau-negative/overlay.json
-	go build -tags schema_leg_luau -overlay=build/packet-text/luau-negative/overlay.json -o build/packet-text/luau-negative/schema ./cmd/schema
+	go build -overlay=build/packet-text/luau-negative/overlay.json -o build/packet-text/luau-negative/schema ./cmd/schema
 	$(call luau-packet-generate,build/packet-text/luau-negative/generated,test/packet-text/Narrow.schema,./build/packet-text/luau-negative/schema)
 	cp test/packet-text/luau/main.luau build/packet-text/luau-negative/generated/main.luau
 	@if ./build/packet-text/harness -mutations-only sh $(LUAU_PACKET_STDIN) build/packet-text/luau-negative/generated main.luau \
@@ -78,7 +78,7 @@ packet-wide-luau-negative-control: packet-wide-luau
 	go run ./tools/sabotage -name packet-wide-luau-pairing -out build/packet-wide/luau-negative/read.gotext internal/codegen/luau/read.go
 	@printf '{"Replace":{"%s/internal/codegen/luau/read.go":"%s/build/packet-wide/luau-negative/read.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-wide/luau-negative/overlay.json
-	go build -tags schema_leg_luau -overlay=build/packet-wide/luau-negative/overlay.json -o build/packet-wide/luau-negative/schema ./cmd/schema
+	go build -overlay=build/packet-wide/luau-negative/overlay.json -o build/packet-wide/luau-negative/schema ./cmd/schema
 	$(call luau-packet-generate,build/packet-wide/luau-negative/generated,build/packet-wide/source/WideText.schema,./build/packet-wide/luau-negative/schema)
 	cp test/packet-wide/luau/main.luau build/packet-wide/luau-negative/generated/main.luau
 	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver \
@@ -118,7 +118,7 @@ packet-defaults-luau-negative-control: packet-defaults-luau
 	go run ./tools/sabotage -name packet-defaults-luau-constructor-bytes -out build/packet-defaults/luau-negative/luau.gotext internal/codegen/luau/luau.go
 	@printf '{"Replace":{"%s/internal/codegen/luau/luau.go":"%s/build/packet-defaults/luau-negative/luau.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-defaults/luau-negative/overlay.json
-	go build -tags schema_leg_luau -overlay=build/packet-defaults/luau-negative/overlay.json -o build/packet-defaults/luau-negative/schema ./cmd/schema
+	go build -overlay=build/packet-defaults/luau-negative/overlay.json -o build/packet-defaults/luau-negative/schema ./cmd/schema
 	$(call luau-packet-defaults-tree,build/packet-defaults/luau-negative/generated,./build/packet-defaults/luau-negative/schema)
 	@if (cd build/packet-defaults/luau-negative/generated && $(LUAU) main.luau) > build/packet-defaults/luau-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Luau'; exit 1; fi
@@ -163,7 +163,7 @@ luau-ludicrous-negative-control: luau-ludicrous
 	go run ./tools/sabotage -name luau-ludicrous-fixed-contract -out build/luau-ludicrous-negative/write.gotext internal/codegen/luau/write.go
 	@printf '{"Replace":{"%s/internal/codegen/luau/write.go":"%s/build/luau-ludicrous-negative/write.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/luau-ludicrous-negative/overlay.json
-	go build -tags schema_leg_luau -overlay=build/luau-ludicrous-negative/overlay.json -o build/luau-ludicrous-negative/schema ./cmd/schema
+	go build -overlay=build/luau-ludicrous-negative/overlay.json -o build/luau-ludicrous-negative/schema ./cmd/schema
 	$(call luau-ludicrous-tree,build/luau-ludicrous-negative/generated,./build/luau-ludicrous-negative/schema)
 	@if (cd build/luau-ludicrous-negative/generated && $(LUAU) main.luau) > build/luau-ludicrous-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a removed fixed writer contract passed in Luau'; exit 1; fi

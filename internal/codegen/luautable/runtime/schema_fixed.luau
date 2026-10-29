@@ -73,8 +73,8 @@ local function signed(kind: number): boolean
 		(kind >= 20 and kind <= 24) or kind == 11
 end
 
--- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4; Glenn, 2026-10-27,
--- "same rule as packets"). A read tests the RAW BITS before they become a
+-- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4; the same rule
+-- as packets). A read tests the RAW BITS before they become a
 -- value, and a NaN or an infinity refuses the file as non_finite_float, naming
 -- <Owner>.<field>, before the record lands; a write refuses one the same way
 -- (a float32 tests its NARROWED bits, so a double past the float32 range is
@@ -644,7 +644,7 @@ readPair = function(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, d
 end
 
 -- THE CENSUS (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4): ONCE PER
--- PEER, at compile and never per record — an array element is visited once,
+-- WRITER-READER PAIR, at compile and never per record — an array element is visited once,
 -- whatever its count — `unknown` for a writer field no reader field names and
 -- `kind_mismatch` for a pair whose kind moved off every ladder.
 type Census = { unknown: number, kindMismatch: number }

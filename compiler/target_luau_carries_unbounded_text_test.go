@@ -1,5 +1,3 @@
-//go:build schema_leg_luau
-
 // The Luau target registers unbounded text (docs/SPEC-TABLES.md §2.13.1) for
 // itself: the same probe unit compiler/unboundedtext_refusal_test.go refuses
 // still answers files and no error for Luau, while every other non-Go target
