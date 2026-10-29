@@ -168,9 +168,9 @@ read_field = function(ctx, f, base)
     -- a flags slot is a uint64 in every target (§7.2)
     v = int_at(ctx, at, 8, false)
   elseif s == "float" then
-    -- every read refuses a NaN or an infinity on its raw bits (docs/SPEC-
-    -- TABLES.md §3.3), the uncook included: the scan Read runs first refuses
-    -- one, and this test holds the rule for a handle a caller checked itself
+    -- every read refuses a NaN or an infinity on its raw bits (SPEC-TABLES.md
+    -- §3.3), the uncook included: the scan Read runs first refuses one, and
+    -- this test holds the rule for a handle a caller checked itself
     if f.f32 then
       if string.unpack("<I4", ctx.data, at + 1) & 0x7f800000 == 0x7f800000 then ctx.nonFinite = true; return nil, false end
       v = string.unpack("<f", ctx.data, at + 1)

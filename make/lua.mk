@@ -68,7 +68,9 @@ tables-lua-finite-float: toolchain-lua
 		'TestLuaPlainFloatSpecialValuesAgreeAcrossForms' \
 		./internal/codegen/luatable -run '^TestLuaPlainFloatSpecialValuesAgreeAcrossForms$$' -count=1 -timeout 600s
 tables-lua-finite-float-negative-control: toolchain-lua
-	go test -count=1 -timeout 600s ./internal/codegen/luatable/ -run '^TestLuaFiniteFloatNegativeControl$$'
+	sh test/slowgate/proof tables-lua-finite-float-negative-control \
+		'TestLuaFiniteFloatNegativeControl' \
+		./internal/codegen/luatable -run '^TestLuaFiniteFloatNegativeControl$$' -count=1 -timeout 600s
 
 .PHONY: test-lua update-goldens-lua
 # The fixed-form tests read the shared byte-oracle corpus, so it is built first,
