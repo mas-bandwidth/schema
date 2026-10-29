@@ -116,8 +116,9 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 			}
 			fmt.Fprintf(&m, "retain %s %s %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]), f[5], f[6])
 		case f[0] == "retain-message" && len(f) >= 5:
-			// the form-2 row is the message form's: a named absence here
-			c.want["retain"][f[1]], c.unitOf["retain"][f[1]] = "absent ", f[3]
+			// the form-2 row names a plain `table` root, which rides no
+			// message form (§3.3): absent by the Go leg's reason
+			c.want["retain"][f[1]], c.unitOf["retain"][f[1]] = "absent plain table: §3.3", f[3]
 			fmt.Fprintf(&m, "retain-message %s %s %s\n", f[1], f[2], f[3])
 		}
 	}
