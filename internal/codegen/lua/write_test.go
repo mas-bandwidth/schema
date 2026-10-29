@@ -432,3 +432,66 @@ do -- joins
   print(table.concat(parts))
 end
 `
+
+// TestLuaWStringComposesTheClassicBytes holds wstring(N) to SPEC §4.12 now that
+// serialize format 2.0 removed wstring from the runtime and the generated code
+// composes it (the length over [0, N] with no alignment, then one 32-bit group
+// per UTF-16 code unit). The expected bytes are format 1.1's
+// serialize_wstring over a buffer of N + 1, the normative twin, as serialize.lua
+// v1.1 emitted them for the same values; then the Lua reader takes them back,
+// and the writer refuses a zero unit, a unit above 0xFFFF and an over-long
+// value.
+func TestLuaWStringComposesTheClassicBytes(t *testing.T) {
+	t.Parallel()
+	src := t.TempDir()
+	schema := "package wide\n\ntype Wide\n{\n    a bool\n    w wstring(4)\n    b bool\n    e wstring(4)\n}\n"
+	if err := os.WriteFile(filepath.Join(src, "Wide.schema"), []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := Generate(luarun.LoadUnit(t, src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	luarun.WriteHexProbe(t, dir)
+	probe := `local hexline = require("hexline")
+local serialize = require("serialize")
+local W = require("Wide")
+
+local function write(v)
+  local s = serialize.WriteStream.new(64)
+  local ok = W.WriteWide(s, v)
+  s:flush()
+  return ok, s:data()
+end
+
+local v = W.NewWide()
+v.A, v.W, v.B, v.E = true, { 0x41, 0xD83D, 0xDE00 }, true, {}
+local ok, wire = write(v)
+assert(ok, "write refused a well-formed wstring")
+hexline(wire)
+
+local got = W.NewWide()
+assert(W.ReadWide(serialize.ReadStream.new(wire), got), "read refused the classic bytes")
+print(#got.W, got.W[1], got.W[2], got.W[3], #got.E, tostring(got.B))
+
+for _, bad in ipairs({ { 0x41, 0 }, { 0x10000 }, { 1, 2, 3, 4, 5 } }) do
+  local b = W.NewWide()
+  b.W = bad
+  print(tostring((write(b))))
+end
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := strings.Split(strings.TrimRight(string(luarun.Run(t, dir, "main.lua", nil)), "\n"), "\n")
+	want := []string{
+		"17040000d0830d0000e00d0010",
+		"3\t65\t55357\t56832\t0\ttrue",
+		"false", "false", "false",
+	}
+	if strings.Join(out, "\n") != strings.Join(want, "\n") {
+		t.Errorf("wstring probe printed\n%s\nwant\n%s", strings.Join(out, "\n"), strings.Join(want, "\n"))
+	}
+}

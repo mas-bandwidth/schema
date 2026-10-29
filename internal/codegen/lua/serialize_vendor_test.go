@@ -14,8 +14,10 @@ import (
 // TestVendoredLuaSerializeIsThePin pins the serialize port vendored into
 // runtime/ (docs/PORT-LUA.md, THE RUNTIME LAYOUT: the type-wire cards call
 // this library rather than a private bit reader or writer). Every file
-// SERIALIZE_PIN lists exists in runtime/ with that sha256, and no
-// serialize*.lua file is there that the pin does not list; then the vendored
+// SERIALIZE_PIN lists exists in runtime/ with that sha256, no serialize*.lua
+// file is there that the pin does not list, and the pin's tag and commit are
+// make/lua-serialize.mk's SERIALIZE_LUA_PIN and SERIALIZE_LUA_COMMIT (a release
+// of serialize.lua, never a branch); then the vendored
 // entry module loads beside the generated modules under the pinned interpreter
 // and round-trips one serializeInt and one serializeFloat through WriteStream
 // and ReadStream, compared with the bytes of the two `writer canonical` records
@@ -47,6 +49,17 @@ func TestVendoredLuaSerializeIsThePin(t *testing.T) {
 	}
 	if len(pin) == 0 {
 		t.Fatal("runtime/SERIALIZE_PIN lists no files")
+	}
+	// The pin names a RELEASE: its tag and commit are the ones
+	// make/lua-serialize.mk clones and refuses to vendor anything else at.
+	tag, commit := makeVar(t, "SERIALIZE_LUA_PIN"), makeVar(t, "SERIALIZE_LUA_COMMIT")
+	if !strings.HasPrefix(tag, "v") || len(commit) != 40 {
+		t.Fatalf("make/lua-serialize.mk: SERIALIZE_LUA_PIN %q is not a release tag or SERIALIZE_LUA_COMMIT %q is not a full commit", tag, commit)
+	}
+	for _, want := range []string{"# tag " + tag + "\n", "# commit " + commit + "\n"} {
+		if !strings.Contains(string(pinBytes), want) {
+			t.Errorf("runtime/SERIALIZE_PIN does not carry %q from make/lua-serialize.mk; rewrite it with make vendor-serialize-lua", strings.TrimSpace(want))
+		}
 	}
 	for _, r := range pin {
 		b, err := os.ReadFile(filepath.Join("runtime", r.file))
@@ -129,4 +142,21 @@ print(string.format("%.9g", fv.value))
 	if lines[3] != "3.14159274" {
 		t.Errorf("round-tripped float = %q, want 3.14159274", lines[3])
 	}
+}
+
+// makeVar reads one `NAME := value` line of make/lua-serialize.mk.
+func makeVar(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "make", "lua-serialize.mk"))
+	if err != nil {
+		t.Fatalf("read make/lua-serialize.mk: %v", err)
+	}
+	for line := range strings.SplitSeq(string(b), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 3 && f[0] == name && f[1] == ":=" {
+			return f[2]
+		}
+	}
+	t.Fatalf("make/lua-serialize.mk has no %s := line", name)
+	return ""
 }

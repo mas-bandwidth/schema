@@ -203,7 +203,7 @@ var catalog = []Entry{
 	e("test/js-view", "JS view listing program", "make tables-js-view", "make tables-js-view"),
 	e("test/lua", "Lua interpreter harness", "make test-lua", "make test-lua"),
 	e("test/packet-defaults", "packet default-value gates", "make test", "make test"),
-	e("test/packet-finite", "packet finite-float gates", "make test-go, make test-dart, make test-elixir", "make packet-finite-go packet-finite-dart packet-finite-elixir"),
+	e("test/packet-finite", "packet finite-float gates", "make test-go, make test-dart, make test-elixir, make test-lua", "make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua"),
 	e("test/packet-text", "packet UTF-8 gates", "make test", "make test"),
 	e("test/packet-void", "packet void-arm gates", "make test", "make test"),
 	e("test/packet-wide", "packet wide-text gates", "make test", "make test"),

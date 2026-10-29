@@ -72,22 +72,15 @@ toolchain-luacheck:
 # seconds-scale.
 # The serialize*.lua files are pinned
 # vendored runtime: any warning there needs a justified per-file override and
-# a named follow-up FIX-CARD, never an edit to the vendored bytes.
-# FIX-CARD: serialize_bytes.lua — drop unused string_format import in upstream vendor source, then update SERIALIZE_PIN.
-# FIX-CARD: serialize_compressed_float.lua — remove unused derive results and precomputed min, then update SERIALIZE_PIN.
-# FIX-CARD: serialize_float.lua — drop unused type import and rename mantissa M to avoid module M shadow, then update SERIALIZE_PIN.
+# a named follow-up FIX-CARD, never an edit to the vendored bytes. None is
+# open: serialize.lua v2.1.1 (SERIALIZE_PIN) fixed the three the 1.x vendor
+# carried upstream, and lints clean there under a stricter .luacheckrc.
 $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 	@mkdir -p $(dir $@)
 	@printf '%s\n' \
 		'std = "lua54"' \
 		'max_line_length = false' \
 		'ignore = { "212", "213", "581" }' \
-		'-- Vendored serialize bytes: unused string_format import, pinned by SERIALIZE_PIN.' \
-		'files["build/lua-luacheck-corpus/unique/*-serialize_bytes.lua"] = { ignore = { "212", "213", "581", "211/string_format" } }' \
-		'-- Vendored compressed float: unused derivation results and precomputed min, pinned by SERIALIZE_PIN.' \
-		'files["build/lua-luacheck-corpus/unique/*-serialize_compressed_float.lua"] = { ignore = { "212", "213", "581", "211/maxInt", "211/delta", "211/mn" } }' \
-		'-- Vendored float: unused type alias and intentional mantissa M shadow of module M, pinned by SERIALIZE_PIN.' \
-		'files["build/lua-luacheck-corpus/unique/*-serialize_float.lua"] = { ignore = { "212", "213", "581", "211/type", "431/M" } }' \
 		> $@
 
 # generate the corpus exactly as the other legs generate theirs: one directory

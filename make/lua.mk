@@ -80,7 +80,7 @@ tables-lua-finite-float-negative-control: toolchain-lua
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp
+test-lua: toolchain-lua tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
@@ -110,6 +110,41 @@ build/conformance-lua: build/schema-lua testdata/conformance/tables/MANIFEST.txt
 	@echo "conformance-lua: $$(ls -d $@/*/ 2>/dev/null | wc -l | tr -d " ") units generated, $$(ls $@/*.refused 2>/dev/null | wc -l | tr -d " ") refused by name"
 
 generated/bench/tables/lua/.stamp: ;
+
+# PACKET FINITE FLOATS (SPEC §4.3, serialize format 2.0). The Lua packet target
+# enforces the rule through its vendored serialize.lua runtime: a NaN or an
+# infinity traps on write naming non_finite_float, refuses on read on its raw
+# bits, and -0 and the subnormals ride bit exact. test/packet-finite/lua/main.lua
+# runs every bare-float position of Finite.schema at both widths, plus the
+# quantized float's write refusal. The generator emits the runtime beside the
+# module, so each control sabotages that emitted copy (tools/sabotage, one
+# direction at a time) and must fail exactly the vectors its .expected names.
+build/packet-finite/lua/.stamp: build/schema-lua test/packet-finite/lua/Finite.schema
+	@rm -rf build/packet-finite/lua && mkdir -p build/packet-finite/lua
+	./build/schema-lua generate --lang lua --out build/packet-finite/lua/generated test/packet-finite/lua/Finite.schema
+	@touch $@
+
+.PHONY: packet-finite-lua packet-finite-lua-negative-control
+packet-finite-lua: toolchain-lua build/packet-finite/lua/.stamp
+	$(LUA) test/packet-finite/lua/main.lua build/packet-finite/lua/generated
+
+# $(1) is the direction: read or write.
+define packet-finite-lua-control
+	@rm -rf build/packet-finite/lua-negative-$(1) && mkdir -p build/packet-finite/lua-negative-$(1)
+	@cp -R build/packet-finite/lua/generated build/packet-finite/lua-negative-$(1)/generated
+	go run ./tools/sabotage -name packet-finite-lua-$(1) \
+		-out build/packet-finite/lua-negative-$(1)/generated/serialize_float.lua build/packet-finite/lua/generated/serialize_float.lua
+	@if $(LUA) test/packet-finite/lua/main.lua build/packet-finite/lua-negative-$(1)/generated > build/packet-finite/lua-negative-$(1)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the Lua runtime float $(1) check was removed and the finite gate stayed green'; exit 1; fi
+	@sed -n 's|^FAILED: \([^:]*\):.*|\1|p' build/packet-finite/lua-negative-$(1)/log | LC_ALL=C sort > build/packet-finite/lua-negative-$(1)/failed
+	@diff -u test/packet-finite/lua/$(1).expected build/packet-finite/lua-negative-$(1)/failed || \
+		{ echo 'NEGATIVE CONTROL FAILED: the Lua float $(1) sabotage did not fail exactly its vectors'; cat build/packet-finite/lua-negative-$(1)/log; exit 1; }
+	@echo "packet finite Lua negative control ($(1)): the removed runtime check fails exactly $$(wc -l < build/packet-finite/lua-negative-$(1)/failed | tr -d ' ') vectors"
+endef
+
+packet-finite-lua-negative-control: packet-finite-lua
+	$(call packet-finite-lua-control,read)
+	$(call packet-finite-lua-control,write)
 
 TEST_LEGS         += test-lua
 CONFORMANCE_LEGS  += $(call unless_skipped,lua,build/conformance-lua)
