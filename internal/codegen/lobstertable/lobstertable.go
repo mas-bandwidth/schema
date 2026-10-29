@@ -275,6 +275,11 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	g.Pf("    place_tables: [%s]::string,\n", strings.Join(placeable, ", "))
 	g.Pf("    place_str: %v,\n", stringEdge)
 	g.Pf("    place_bytes: %v,\n", bytesEdge)
+	// THE REGION FACTS (docs/SPEC-TABLES.md §6.5, §20.3): the C ABI record
+	// size and the unit's region alignment, which load_measure reads to
+	// state the region a C reader of this wire would ask for
+	g.Pf("    rsize: %d,\n", ir.RecordLayout(g.Unit, t).Size)
+	g.Pf("    ralign: %d,\n", ir.TableRegionAlign(g.Unit))
 	g.Pf("    fields: [\n")
 	guards := fieldGuards(t)
 	for i, f := range t.Fields {
@@ -369,6 +374,15 @@ func fieldDesc(g *lobster.Gen, f *ir.Field, ordinal, tag int) string {
 	}
 	if f.Deprecated {
 		parts = append(parts, "deprecated: true")
+	}
+	// a list's or map's element storage in the C ABI region (§6.5): what
+	// load_measure adds per element the wire counts
+	if f.IsMap() {
+		ml := ir.RecordLayout(g.Unit, f.MapEntry)
+		parts = append(parts, fmt.Sprintf("lsize: %d", ml.Size), fmt.Sprintf("lalign: %d", ml.Align))
+	} else if f.IsList() {
+		size, align := ir.ListElementLayout(g.Unit, f)
+		parts = append(parts, fmt.Sprintf("lsize: %d", size), fmt.Sprintf("lalign: %d", align))
 	}
 	switch {
 	case f.IsMap():

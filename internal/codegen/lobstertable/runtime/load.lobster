@@ -168,6 +168,14 @@ class RetainCapture:
         return
     def lost() -> void:
         return
+    // built sees every map entry body a map occurrence decoded, landed or
+    // not, and forget_built discards the retained fields under the ones the
+    // slot's earlier occurrences built (Go's builtMapEntry and forgetMap): a
+    // map a damaged key emptied still held bodies a later occurrence replaces
+    def built(sl:Slot, rec:Record) -> void:
+        return
+    def forget_built(sl:Slot) -> void:
+        return
 
 let retain_captures:[RetainCapture] = []
 
@@ -474,6 +482,22 @@ def float_owner(fd:FieldDescriptor) -> string:
                 return u.name + "." + a.name
     return fd.name
 
+// retained_payload_finite is whether a retained unknown scalar of a float
+// kind holds a finite value: kind 10 a float32's bits, kind 11 a float64's.
+def retained_payload_finite(kind:int, payload:string) -> bool:
+    if kind == 10 and length(payload) == 4:
+        return (read_int32_le(payload, 0) & 0x7F800000) != 0x7F800000
+    if kind == 11 and length(payload) == 8:
+        let hi = (read_int64_le(payload, 0) >> 52) & 0x7FF
+        return hi != 0x7FF
+    return true
+
+// hex64 is a 64-bit pattern as sixteen lowercase hex digits
+def hex64(v:int) -> string:
+    let hi = (v >> 32) & 0xFFFFFFFF
+    let lo = v & 0xFFFFFFFF
+    return lowercase(number_to_string(hi, 16, 8) + number_to_string(lo, 16, 8))
+
 // refuse_non_finite records the first non-finite float a read met; the read
 // walks on, so its framing verdict is a finite wire's, and refuses at its end.
 def refuse_non_finite(rep:LoadReport, fd:FieldDescriptor):
@@ -661,11 +685,48 @@ def field_default(f:FieldDescriptor) -> Value:
         return Value { tab: new_record(table_of(f.t)) }
     return Value {}
 
+// forget discards every retained field under a body the wire is reading
+// AGAIN (Go's retainState.forget, docs/SPEC-TABLES.md §6.6): the body's own,
+// and every body it holds by value, through tables, arms, elements and map
+// entries, never through a pointer. A discard moves no counter. A body reset
+// by DAMAGE is not forgotten: its retained fields stand, and a save writes
+// them, or counts them lost when it never reaches the body.
+def forget(rec:Record?) -> void:
+    let work:[Record] = []
+    if rec:
+        push(work, rec)
+    while length(work) > 0:
+        let r = pop(work)
+        r.retained = []
+        for(r.fields) sl:
+            forget_slot(work, sl)
+
+def forget_slot(work:[Record], sl:Slot) -> void:
+    forget_cell(work, sl.cell)
+    for(sl.elems) v:
+        forget_cell(work, v)
+    for(sl.entries) v:
+        forget_cell(work, v)
+
+def forget_cell(work:[Record], v:Value) -> void:
+    let t = v.tab
+    if t:
+        push(work, t)
+    let a = v.arm
+    if a:
+        forget_slot(work, a)
+
+// forget_value is forget over one cell
+def forget_value(v:Value) -> void:
+    let work:[Record] = []
+    forget_cell(work, v)
+    for(work) r:
+        forget(r)
+
 // refill re-establishes a record's defaults IN PLACE, keeping every nested
 // record it holds (Go's Model.Refill): a by-value body is a member of its
 // parent, reset rather than replaced.
 def refill(rec:Record) -> void:
-    rec.retained = []
     for(rec.fields) sl:
         let held = sl.cell.tab
         let elems:[Record?] = []
@@ -989,6 +1050,10 @@ def nested_body(r:Reader, sl:Slot, i:int) -> bool:
     let held = if i < 0: sl.cell.tab else: sl.elems[i].tab
     var rec = new_record(table_of(if i < 0: sl.fd.t else: elem_of(sl.fd).t))
     if held:
+        if i >= 0:
+            // an element read again takes its discard once its L frames
+            // (Go's element); a field took its own at the field id
+            forget(held)
         refill(held)
         rec = held
     if i < 0:
@@ -1098,6 +1163,10 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
                 r.off = end
                 return true, false
             rep.widened++
+        // THE READ COMMITS TO REPLACE HERE (Go's arrayBody, §6.6): the
+        // retained fields under the elements go with the value it loses
+        for(sl.elems) old:
+            forget_value(old)
         var keep = count
         if f.array == "list":
             sl.elems = []
@@ -1221,6 +1290,7 @@ class KeyedShape : Shape
                 let held = sl.elems[slot].tab
                 var rec = new_record(table_of(e.t))
                 if held:
+                    forget(held)
                     refill(held)
                     rec = held
                 sl.elems[slot].tab = rec
@@ -1289,6 +1359,9 @@ def arm_read(r:Reader, cell:Value, a:FieldDescriptor, tag:int, n:int) -> bool:
     return true
 
 def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
+    // A UNION WRITTEN AGAIN takes the earlier arm's retained fields with it
+    // (Go's forgetArm), and the discard moves no counter
+    forget_value(cell)
     let rep = r.st.report
     let un = lookup_union(fd.t)
     assert un
@@ -1475,6 +1548,11 @@ class MapShape : Shape
                 rep.kind_mismatch++
                 r.off = end
                 return true
+            let keep = active_retain_capture()
+            if keep:
+                keep.forget_built(sl)
+            for(sl.entries) old:
+                forget_value(old)
             sl.entries = []
             if count < 0 or count > 0x7FFFFFFF:
                 r.off = end
@@ -1518,9 +1596,12 @@ class MapShape : Shape
                 let whole = Reader { b: body.b, lo: body.lo, off: body.lo, hi: body.hi, st: body.st }
                 let decoded = new_record(ed)
                 body_at(whole, decoded, true, true)
+                if keep:
+                    keep.built(sl, decoded)
                 if r.st.count_refused:
                     return false
                 if order == 0:
+                    forget_value(sl.entries[length(sl.entries) - 1])
                     sl.entries[length(sl.entries) - 1] = Value { tab: decoded }
                     rep.duplicate++
                     continue
@@ -1615,7 +1696,16 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
                 return false
             let retain = active_retain_capture()
             if retain:
-                retain.capture(rec, id, kind, substring(r.b, at0, r.off - at0), r.st.ids)
+                let payload = substring(r.b, at0, r.off - at0)
+                if not retained_payload_finite(kind, payload):
+                    // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE
+                    // (docs/SPEC-TABLES.md §3.3, §6.6; Go's
+                    // retainedPayloadFinite): a NaN or an infinity refuses
+                    // the read, named <Table>.0x<id>
+                    if rep.non_finite_float == "":
+                        rep.non_finite_float = rec.d.name + ".0x" + hex64(id)
+                    continue
+                retain.capture(rec, id, kind, payload, r.st.ids)
             continue
         let sl = found
         let f = sl.fd
@@ -1635,6 +1725,10 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
                 return false
             continue
         mark_seen(rec, sl, seen)
+        if f.s == "tab" or f.s == "union":
+            // THE FIELD IS BEING READ AGAIN, whole (Go's discardsWhole and
+            // forgetField): every retained field under it goes first
+            forget_value(sl.cell)
         if not shape(shape_key(f)).field(r, sl):
             return false
         if f.present != "" and f.s != "arr":

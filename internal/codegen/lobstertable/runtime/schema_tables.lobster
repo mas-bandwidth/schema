@@ -39,6 +39,9 @@ class FieldDescriptor:
     required:bool = false
     deprecated:bool = false
     when:[string] = []
+    // a list's or map's element size and alignment in the C ABI region
+    lsize:int = 0
+    lalign:int = 1
     t:string = ""
     ek:int = 0
     e:FieldDescriptor? = nil
@@ -81,6 +84,10 @@ class TableDescriptor:
     place_tables:[string]
     place_str:bool
     place_bytes:bool
+    // the C ABI record size and the unit's region alignment (§6.5), which
+    // load_measure reads
+    rsize:int = 0
+    ralign:int = 8
     fields:[FieldDescriptor]
 
 // A UnionDescriptor is one union: its arms in tag order, each a field line
