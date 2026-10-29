@@ -1508,7 +1508,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ❌ #381 roadmap `port/lua/open/runtime-home` (the table module is named by the package, `internal/codegen/luatable/luatable.go:70`, and a schema file of that name is refused, but no gate adds an earlier-sorting file and requires nothing to move) |
+| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ✅ `tables-lua-runtime-home` `tables-lua-runtime-home-negative-control` (`make/lua-open-gates.mk`: the table module stays `TabledemoTables.lua` and every embedded runtime file stays byte-identical when an earlier-sorting schema file joins the unit; the control puts the file-order rule back through `go build -overlay` and the module moves from `GuardedTables.lua` to `AaaTables.lua`) |
 
 ### J3 — The release tier
 

@@ -65,9 +65,55 @@ tables-lua-json-differential-negative-control: toolchain-lua
 		'TestLuaTextDifferentialNegativeControl' \
 		./internal/codegen/luatable -run '^TestLuaTextDifferentialNegativeControl$$' -count=1 -timeout 600s
 
+# J2: the runtime home. A unit's table module lives in one file named by the
+# PACKAGE (<Package>Tables.lua), never by the schema file that sorts first, so a
+# file that sorts earlier relocates nothing: the module keeps its name and the
+# embedded runtime files (load.lua, block.lua, ...) are byte-identical across the
+# two trees.
+.PHONY: tables-lua-runtime-home
+tables-lua-runtime-home: bin/schema
+	@rm -rf build/runtime-home-lua && mkdir -p build/runtime-home-lua/src
+	@cp tables/examples/*.schema build/runtime-home-lua/src/
+	@printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > build/runtime-home-lua/src/Aaa.schema
+	@./bin/schema generate --lang lua --out build/runtime-home-lua/base tables/examples 2>/dev/null
+	@./bin/schema generate --lang lua --out build/runtime-home-lua/added build/runtime-home-lua/src 2>/dev/null
+	@for tree in base added; do \
+		test -f build/runtime-home-lua/$$tree/TabledemoTables.lua || \
+			{ echo "RUNTIME HOME GATE FAILED: the $$tree tree has no TabledemoTables.lua (the table module is named by the package)"; ls build/runtime-home-lua/$$tree/*Tables.lua; exit 1; }; \
+	done
+	@for f in internal/codegen/luatable/runtime/*.lua; do \
+		n=$$(basename $$f); \
+		cmp -s build/runtime-home-lua/base/$$n build/runtime-home-lua/added/$$n || \
+			{ echo "RUNTIME HOME GATE FAILED: the table runtime file $$n moved when the unit gained an earlier-sorting file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Lua): the table module stays TabledemoTables.lua and the table runtime files stay byte-identical when an earlier-sorting file joins the unit"
+
+# Its NEGATIVE CONTROL: put the file-order rule back (the module named by the
+# file that sorts first, ir.ProtocolIdHome) and the home must MOVE when the
+# earlier-sorting file joins. A gate that has never gone red is watching nothing.
+.PHONY: tables-lua-runtime-home-negative-control
+tables-lua-runtime-home-negative-control: bin/schema tables-lua-runtime-home
+	@sed 's|return strings.ToUpper(u.Package\[:1\]) + u.Package\[1:\] + "Tables"|return ir.ProtocolIdHome(u) + "Tables" // SABOTAGED: back to the file order|' \
+		internal/codegen/luatable/luatable.go > build/lua-runtime-home-fileorder.gotext
+	@grep -q SABOTAGED build/lua-runtime-home-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/luatable/luatable.go":"%s/build/lua-runtime-home-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/lua-runtime-home-overlay.json
+	@go build -overlay=build/lua-runtime-home-overlay.json -o build/schema-lua-runtime-home-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-lua/base-sabotage build/runtime-home-lua/added-sabotage
+	@./build/schema-lua-runtime-home-sabotaged generate --lang lua --out build/runtime-home-lua/base-sabotage tables/examples 2>/dev/null
+	@./build/schema-lua-runtime-home-sabotaged generate --lang lua --out build/runtime-home-lua/added-sabotage build/runtime-home-lua/src 2>/dev/null
+	@base=$$(cd build/runtime-home-lua/base-sabotage && ls *Tables.lua | grep -v '^Tables.lua$$'); \
+	 added=$$(cd build/runtime-home-lua/added-sabotage && ls *Tables.lua | grep -v '^Tables.lua$$'); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the table module in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Lua): the file-order rule moves the table module from $$base to $$added"
+
 # The controls ride the leg with their gates: each is seconds, and a reversed
 # witness that `make test` never ran is a witness nothing reaches.
 test-lua: tables-lua-fuzz tables-lua-fuzz-negative-control
 test-lua: tables-lua-names tables-lua-names-negative-control
 test-lua: tables-lua-zero-cost tables-lua-zero-cost-negative-control
 test-lua: tables-lua-json-differential tables-lua-json-differential-negative-control
+test-lua: tables-lua-runtime-home tables-lua-runtime-home-negative-control
