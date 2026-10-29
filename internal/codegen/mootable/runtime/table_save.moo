@@ -511,14 +511,25 @@ local function write_float(c: any, w: any, e: any, val: any, named: any): boolea
 	return true
 end
 
--- one body: its fields in declaration order, then the one-byte zero reference
--- that terminates it (§3)
+-- RETAIN-UNKNOWN's hook (docs/SPEC-TABLES.md §6.6; table_retain.moo): nil on
+-- every plain save. A retaining save sets it for the one walk, and the kept
+-- records go back AT THE END OF THEIR OWN BODY, through the id table this
+-- save interns into (RETAIN_API).
+local _retain: any = nil
+local RETAIN_API = table.freeze({ ref = ref, mark = mark, rollback = rollback, str = w_str })
+
+-- one body: its fields in declaration order, the retained tail when a
+-- retaining save is on, then the one-byte zero reference that terminates it
+-- (§3)
 local function write_body(c: any, d: any, w: any, v: any): boolean
 	if type(v) ~= "table" then
 		return refuse(c, "invalid_value", nil)
 	end
 	if not write_fields(c, d, w, v) then
 		return false
+	end
+	if _retain ~= nil then
+		_retain.tail(c, w, v, RETAIN_API)
 	end
 	w_u8(w, 0)
 	return true
@@ -1095,6 +1106,10 @@ local function walk(d: any, v: any, count: boolean): (any, any?)
 	if not write_fields(c, d, w, v) then
 		return nil, c.why
 	end
+	-- in the ROOT body the retained tail sits BEFORE the node table (§6.6)
+	if _retain ~= nil then
+		_retain.tail(c, w, v, RETAIN_API)
+	end
 	if #nodes.list > 0 then
 		w_leb(w, ref(c.ids, NodeTableId))
 		w_u8(w, 12)
@@ -1227,5 +1242,11 @@ end
 -- number is the numbering (§3.1), shared with the message form's writer
 -- (table_message.moo), so both forms number one graph one way
 S.number = number
+
+-- setRetain installs (or, with nil, clears) RETAIN-UNKNOWN's save hook
+-- (table_retain.moo).
+function S.setRetain(h: any)
+	_retain = h
+end
 
 return table.freeze(S)
