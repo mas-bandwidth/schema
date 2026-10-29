@@ -40,9 +40,14 @@ defmodule SchemaTablesBenchElixirForm1 do
 
   @num_records 64
   @max_iterations 2_147_483_584
-  @iters 400_000
+  # The BEAM's variable-form Load and Save build the whole map graph and a
+  # fresh binary per call: about 6 thousand records a second written and 2
+  # thousand round-tripped on a fleet bench. The standard 400000 would take
+  # over an hour a sitting, so 12800 keeps seven measured runs near a minute.
+  # The count is a column of every row.
+  @iters 12_800
   # --quick only, the iteration instrument and never the certification one
-  @quick_iters 40_000
+  @quick_iters 3_200
   @name "bench_table"
   @csv_suffix "table,beam,contract,default,unknown"
   @mask64 0xFFFFFFFFFFFFFFFF
