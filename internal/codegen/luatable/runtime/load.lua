@@ -24,26 +24,24 @@ local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 
 -- CRC-32C, the Castagnoli polynomial reflected (0x82F63B78) with the initial
--- value and final XOR §2.14 names. ONE TABLE, built once on first use, is the
--- check save.lua seals and load.lua and refusal.lua verify (docs/SPEC-TABLES.md
--- §2.14, §3.4).
-local crc_table = nil
-
-function L.crc32c(bytes)
-  if crc_table == nil then
-    crc_table = {}
-    for i = 0, 255 do
-      local c = i
-      for _ = 1, 8 do
-        if c & 1 == 1 then
-          c = (c >> 1) ~ 0x82f63b78
-        else
-          c = c >> 1
-        end
-      end
-      crc_table[i] = c
+-- value and final XOR §2.14 names. ONE TABLE, built once when the file is
+-- required (a constant: docs/PORTING.md M13 bans the read-a-static, build-on-nil,
+-- store-back cache), is the check save.lua seals and load.lua and refusal.lua
+-- verify (docs/SPEC-TABLES.md §2.14, §3.4).
+local crc_table = {}
+for i = 0, 255 do
+  local c = i
+  for _ = 1, 8 do
+    if c & 1 == 1 then
+      c = (c >> 1) ~ 0x82f63b78
+    else
+      c = c >> 1
     end
   end
+  crc_table[i] = c
+end
+
+function L.crc32c(bytes)
   local crc = 0xffffffff
   for i = 1, #bytes do
     crc = crc_table[(crc ~ bytes:byte(i)) & 0xff] ~ (crc >> 8)
@@ -1785,10 +1783,7 @@ function L.LoadTolerant(T, name, bytes, report)
       elseif rec.tid == BYTES_BLOB_ID then
         ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = rec.body, box = { value = rec.body } }
       else
-        local subdesc = nil
-        for _, d in pairs(T.Tables) do
-          if d.type_id == rec.tid then subdesc = d end
-        end
+        local subdesc = T.TypeIds[rec.tid]
         if subdesc == nil then
           report.unknown = report.unknown + 1
           -- §3.1: numbering is positional in the table, so a node this reader
@@ -2077,7 +2072,8 @@ function L.LoadMeasure(T, name, bytes)
   if not ok then return nil end
   local raw = node_scan(bytes, o, {}, desc.variable)
   if raw == nil then return nil end
-  local nodes, string_blob, bytes_blob = D.pointer_reachable(T, desc)
+  local reach = desc.reach
+  local nodes, string_blob, bytes_blob = reach.nodes, reach.string_blob, reach.bytes_blob
   for _, rec in ipairs(raw) do
     local st = nodes[rec.tid]
     if st ~= nil then

@@ -604,4 +604,90 @@ function D.keyed(T, tname, fname)
   }
 end
 
+-- THE DESCRIPTORS ARE CONSTANTS (docs/PORTING.md M13). The generated module
+-- ends with D.seal(_M): first D.prepare builds, once, every fact the runtime
+-- derives from the descriptors (a table's pointer reachability, the type-id
+-- index, the fixed form's layout trees), then every data table the module
+-- holds is frozen against NEW KEYS by a metatable whose __newindex refuses, so
+-- a read-a-static, build-on-nil, store-back cache written into a descriptor
+-- fails where it is written. Lua has no way to refuse the overwrite of a key
+-- that is already there without moving the table behind a proxy (a function
+-- call on every descriptor read), so the second half of the rule is a gate:
+-- D.fingerprint(T) is the whole tree as one string and the test that runs
+-- every surface requires it unchanged (TestLuaDescriptorsAreConstants).
+local SEALED = {
+  __newindex = function(t, k)
+    error("a descriptor is a constant: refusing to write key " .. tostring(k) .. " into it (docs/PORTING.md M13)", 2)
+  end,
+  __metatable = false,
+}
+
+local function seal_tree(t, seen)
+  if seen[t] then return end
+  seen[t] = true
+  for _, v in pairs(t) do
+    if type(v) == "table" then seal_tree(v, seen) end
+  end
+  setmetatable(t, SEALED)
+end
+
+function D.prepare(T)
+  local ids = {}
+  for _, d in pairs(T.Tables) do
+    ids[d.type_id] = d
+    local nodes, string_blob, bytes_blob = D.pointer_reachable(T, d)
+    d.reach = { nodes = nodes, string_blob = string_blob, bytes_blob = bytes_blob }
+  end
+  T.TypeIds = ids
+  if T.Fixed ~= nil then require("fixed").prepare(T) end
+end
+
+function D.seal(T)
+  D.prepare(T)
+  local seen = {}
+  for _, v in pairs(T) do
+    if type(v) == "table" then seal_tree(v, seen) end
+  end
+end
+
+-- D.fingerprint answers the module's data as one string: every key and scalar
+-- of every table the module holds, in sorted key order, a table reached twice
+-- named by its first visit. Two calls on an unmodified module answer the same
+-- string.
+function D.fingerprint(T)
+  local out, seen, n = {}, {}, 0
+  local function walk(t, path)
+    n = n + 1
+    seen[t] = n
+    local keys = {}
+    for k in pairs(t) do
+      keys[#keys + 1] = k
+    end
+    table.sort(keys, function(a, b)
+      local ta, tb = type(a), type(b)
+      if ta ~= tb then return ta < tb end
+      if ta == "number" or ta == "string" then return a < b end
+      return tostring(a) < tostring(b)
+    end)
+    for _, k in ipairs(keys) do
+      local v = t[k]
+      local at = path .. "." .. tostring(k)
+      if type(v) == "table" then
+        if seen[v] then
+          out[#out + 1] = at .. "=@" .. seen[v]
+        else
+          out[#out + 1] = at .. "=#"
+          walk(v, at)
+        end
+      elseif math.type(v) == "float" then
+        out[#out + 1] = at .. "=float:" .. string.format("%a", v)
+      elseif type(v) ~= "function" then
+        out[#out + 1] = at .. "=" .. type(v) .. ":" .. tostring(v)
+      end
+    end
+  end
+  walk(T, "")
+  return table.concat(out, "\n")
+end
+
 return D

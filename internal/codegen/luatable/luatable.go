@@ -136,13 +136,19 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
-// emitTail closes the module: the keyed accessor's entry (docs/PORTING.md M5).
+// emitTail closes the module: the keyed accessor's entry (docs/PORTING.md M5),
+// then the seal (M13), which builds every derived descriptor fact once and
+// freezes the module's data against new keys. It is the last thing the module
+// runs before it returns, so every pass's descriptors are in it.
 func emitTail(m *Module) {
 	m.Printf("-- the accessor of an enum-keyed array field (docs/PORTING.md M5): get, set and\n")
 	m.Printf("-- each take the key and refuse None and any key past the enum's last variant\n")
 	m.Printf("function _M.Keyed(table_name, field)\n")
 	m.Printf("  return require(\"descriptor\").keyed(_M, table_name, field)\n")
 	m.Printf("end\n\n")
+	m.Printf("-- THE DESCRIPTORS ARE CONSTANTS (docs/PORTING.md M13): every derived fact is\n")
+	m.Printf("-- built here, once, and the module's data is frozen against new keys\n")
+	m.Printf("require(\"descriptor\").seal(_M)\n\n")
 	m.Printf("return _M\n")
 }
 
