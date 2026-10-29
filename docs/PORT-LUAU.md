@@ -254,7 +254,7 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/luau/luaurun` | THE HARNESS's helper | this card |
 | `test/conformance/luau/driver`, `ci.json`, `main.luau` | the conformance leg | this card (driver); conformance-leg (`main.luau`) |
 | `make/luau.mk` | the leg's build: `dist-luau`, `toolchain-luau`, `test-luau`, `build/conformance-luau` | this card; later cards add their own `make/luau-*.mk` |
-| `bench/tables/luau/leg` | the tables-bench leg, ABSENT until a codec exists | the bench card, when carded |
+| `bench/luau/*`, `bench/tables/luau/*`, `make/luau-bench.mk` | the packet and tables bench legs (THE BENCH LEGS below) | the bench card |
 
 **The vendored serialize.luau port.** `runtime/serialize*.luau` is the port's
 `src/` directory copied verbatim at the commit `runtime/SERIALIZE_PIN` names,
@@ -390,7 +390,7 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `luau.go` or
 Not yet carded, and named so in the register: the block row walk by
 stride (M7) and the base-alignment gate (I5) — the conformance leg opens,
 dumps and refuses both accelerators, and M8 is carried — the allocation
-instrument and its pin (I1, I14), the soak (I9), the bench leg (I8, J5), the release tier (J3), the documented
+instrument and its pin (I1, I14), the soak (I9), the committed board's pairing label (I8), the release tier (J3), the documented
 surface (I12), accessor and descriptor agreement (J1), a node larger than a
 slab (M17) and the formatter half of J4.
 

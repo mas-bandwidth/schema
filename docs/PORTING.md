@@ -1241,7 +1241,7 @@ the reference on the same numbers; a sitting on the box is what certifies.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the tables bench leg |
+| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 — the leg is built (docs/PORT-LUAU.md, THE BENCH LEGS); no committed board carries the pairing-check label yet |
 
 ### I9 — The soak is gated on the allocation count or a floor
 
@@ -1585,7 +1585,7 @@ the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ❌ #381 — not yet carded in the schema-luau stream (docs/PORT-LUAU.md, THE CARD MAP); the tables bench leg |
+| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ✅ `bench-luau-gate` (both legs, no clock: `bench/luau/run --gate`, `bench/tables/luau/leg run --gate`) `bench-luau-gate-negative-control` |
 
 ### J6 — The card conformance check
 

@@ -222,7 +222,22 @@ build/conformance-luau: $(LUAU_MANIFEST) make/luau.mk \
 			echo "luau refuses $$key: $$(head -1 $@/$$key.log)"; mv $@/$$key.log $@/$$key.refused; \
 		fi; \
 	done
-generated/bench/tables/luau/.stamp: ;
+# THE BENCH UNITS (bench/README.md, bench/tables/README.md; docs/PORT-LUAU.md,
+# THE HARNESS). The packet leg (bench/luau/run) measures BenchMixed through
+# generated/bench/luau; the tables leg (bench/tables/luau/leg) measures
+# TableMixed on the tolerant wire through generated/bench/tables/luau. Each unit
+# is self-contained: the runtime modules are emitted beside it. The trees are
+# committed, like every port's, and test/generated-tree/verify holds them to the
+# compiler. The gate and its control are make/luau-bench.mk's.
+generated/bench/luau/.stamp: bin/schema $(SCHEMAS_BENCH)
+	@mkdir -p generated/bench/luau
+	./bin/schema generate --lang luau --out generated/bench/luau bench/corpus/Bench.schema
+	@touch $@
+
+generated/bench/tables/luau/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/luau
+	./bin/schema generate --lang luau --out generated/bench/tables/luau bench/corpus/BenchTable.schema
+	@touch $@
 
 # PACKET FINITE FLOATS (SPEC §4.3, serialize format 2.0). The Luau packet target
 # enforces the rule through its vendored serialize.luau runtime (v2.1.1): a NaN
