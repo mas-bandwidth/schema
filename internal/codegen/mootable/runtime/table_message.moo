@@ -1904,7 +1904,7 @@ local function pend(t: any, holder: any, key: any, idx: number, d: any, null: an
 	t.pending[#t.pending + 1] = { holder = holder, key = key, index = idx, d = d, null = null }
 end
 
-local function decodeElementKept(t: any, fd: any, shape: any, dst: any, i: number, keep: boolean): boolean
+local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, keep: boolean): boolean
 	local e = fd.e
 	local ek = shape.elem
 	local inner = shape.inner or {}
@@ -1966,16 +1966,14 @@ end
 -- build's slots, an element past this build's bound) is DECODED into a sink,
 -- because a bit stream has to be walked past: nothing in it is a field of this
 -- region, so it runs with RETENTION OFF and the slot or element that was
--- excluded took everything under it with it (§6.6)
-local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, keep: boolean): boolean
-	if keep or t.retain == nil then
-		return decodeElementKept(t, fd, shape, dst, i, keep)
-	end
+-- excluded took everything under it with it (§6.6). Only the callers of a
+-- dropped element come here, so the plain walk pays nothing per element.
+local function decodeDropped(t: any, fd: any, shape: any, dst: any, i: number): boolean
 	local was = t.retain
 	t.retain = nil
-	local ok = decodeElementKept(t, fd, shape, dst, i, keep)
+	local done = decodeElement(t, fd, shape, dst, i, false)
 	t.retain = was
-	return ok
+	return done
 end
 
 -- a positional array (array): the count, the align, the elements; a count past
@@ -2025,7 +2023,13 @@ local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 		walk = kept
 	end
 	for i = 1, walk do
-		if not decodeElement(t, fd, shape, dst, i, i <= kept) then
+		local elemOk: boolean
+		if i <= kept or t.retain == nil then
+			elemOk = decodeElement(t, fd, shape, dst, i, i <= kept)
+		else
+			elemOk = decodeDropped(t, fd, shape, dst, i)
+		end
+		if not elemOk then
 			return false
 		end
 	end
@@ -2076,7 +2080,13 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 			t.report.clamped += 1
 			keep = false
 		end
-		if not decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep) then
+		local elemOk: boolean
+		if keep or t.retain == nil then
+			elemOk = decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep)
+		else
+			elemOk = decodeDropped(t, fd, shape, {}, 1)
+		end
+		if not elemOk then
 			return false
 		end
 	end

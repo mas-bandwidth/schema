@@ -462,6 +462,17 @@
       ]
     },
     {
+      "name": "moo-tables",
+      "when": "pull-request",
+      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), the message form's capture call planted out of table_message.moo (retain_message_tail's counters move), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
+      "targets": [
+        "tables-moo-retain-message-negative-control",
+        "tables-moo-retain-negative-control",
+        "tables-moo-retain-refusal-negative-control"
+      ],
+      "moo": "pin"
+    },
+    {
       "name": "block-fuzz",
       "when": "pull-request",
       "why": "the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner.",
