@@ -117,11 +117,6 @@ func wideLit(class string, v *big.Int) string {
 func (l *literal) scalarExpr(f *ir.Field, cell *tabletext.Cell) string {
 	t := f.Type
 	switch {
-	case t.Pointer && t.Blob() && t.Kind == ir.TString:
-		if cell.Blob == nil {
-			return "nil"
-		}
-		return mooString(cell.Blob.Data)
 	case t.Pointer && t.Blob():
 		if cell.Blob == nil {
 			return "nil"

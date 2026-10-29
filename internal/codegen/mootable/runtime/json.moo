@@ -3055,7 +3055,8 @@ readField = function(r: Reader, d: any, fd: any, rec: any, depth: number): boole
 		if not ok then
 			return false
 		end
-		rec[slot] = out
+		-- a *string blob is a buffer, one node of identity (values.go)
+		rec[slot] = if out == nil then nil else buffer.fromstring(out)
 		return true
 	elseif s == "bblob" then
 		rec[slot] = nil
@@ -3679,7 +3680,7 @@ writeField = function(w: W, d: any, fd: any, rec: any, depth: number): boolean
 		if v == nil then
 			emit(w, "null")
 		else
-			writeString(w :: any, v)
+			writeString(w :: any, buffer.tostring(v))
 		end
 		return true
 	elseif s == "bblob" then
