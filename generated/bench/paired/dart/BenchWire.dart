@@ -63,6 +63,7 @@ final class WireState {
   final List<List<int>> nodes = <List<int>>[];
   final List<Object?> nodeObjs = <Object?>[];
   final Map<Object, int> _objIndex = <Object, int>{};
+  final Map<Object, int> _blobIndex = Map<Object, int>.identity();
   TableRetain? retain;
   TableWireReport? report;
   bool lost = false;
@@ -109,46 +110,30 @@ final class WireState {
     return refFor(id);
   }
 
-  // nodeIndexForBlob numbers one *bytes/*string blob node (§3.1): record k =
-  // node index k + 1, keyed by the blob's reserved type id and its bytes. A
-  // blob reached twice is one record — two fields that loaded the same node,
-  // and so hold the same type and bytes, save the same index, matching the
-  // reference backends' first-visit numbering byte for byte (§3.1). A *bytes
-  // blob and a *string blob of equal bytes are two nodes: the type id tells
-  // them apart.
-  int? _findBlob(int typeId, List<int> bytes) {
-    for (var i = 0; i < nodes.length; i++) {
-      if (nodeObjs[i] != null || nodeTypes[i] != typeId) continue;
-      final existing = nodes[i];
-      if (existing.length != bytes.length) continue;
-      var same = true;
-      for (var j = 0; j < bytes.length; j++) {
-        if (existing[j] != bytes[j]) {
-          same = false;
-          break;
-        }
-      }
-      if (same) return i + 2;
-    }
-    return null;
-  }
-
-  // noteBlob numbers one *bytes/*string blob (§3.1). A blob reached twice with
-  // the same type id and the same bytes is one record. Numbering does not
-  // intern ids — the node-table write does, in record order (§3).
-  int noteBlob(int typeId, List<int> bytes) {
-    final found = _findBlob(typeId, bytes);
+  // noteBlob numbers one *bytes/*string blob node (§3.1): record k = node
+  // index k + 1, keyed by the blob's IDENTITY — the String or byte list the
+  // field holds — never by its content and never per slot (§2.5, §3.1). A
+  // blob reached twice is one record, because two fields that loaded the same
+  // node hold the same object; two distinct blobs carrying equal bytes are two
+  // records, as the reference numbers them by pointer
+  // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
+  // ids — the node-table write does, in record order (§3). On the web a
+  // String is a value, so two equal strings there are one blob.
+  int noteBlob(int typeId, Object blob) {
+    final found = _blobIndex[blob];
     if (found != null) return found;
     nodeTypes.add(typeId);
-    nodes.add(List<int>.from(bytes));
+    nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
-    return nodes.length + 1;
+    final idx = nodes.length + 1;
+    _blobIndex[blob] = idx;
+    return idx;
   }
 
-  int nodeIndexForBlob(int typeId, List<int> bytes) => noteBlob(typeId, bytes);
+  int nodeIndexForBlob(int typeId, Object blob) => noteBlob(typeId, blob);
 
-  int blobIndex(int typeId, List<int> bytes) {
-    final found = _findBlob(typeId, bytes);
+  int blobIndex(int typeId, Object blob) {
+    final found = _blobIndex[blob];
     if (found == null) {
       throw StateError('blob was not numbered (docs/SPEC-TABLES.md §3.1)');
     }
@@ -726,12 +711,32 @@ final class TableWireReader {
     return Uint8List.fromList(nodes[rec]);
   }
 
+  // A blob record resolves to ONE object however many slots name it (§3.1):
+  // the first resolve stores it in decoded, so a save numbers it once again
+  // by identity and two distinct records of equal bytes stay two.
   String? resolveString(int idx) {
+    final rec = idx - 2;
+    if (rec >= 0 && rec < decoded.length) {
+      final have = decoded[rec];
+      if (have is String) return have;
+    }
     final b = resolveBlob(idx, _kStringBlobId, stringBlob);
-    return b == null ? null : utf8.decode(b);
+    if (b == null) return null;
+    final s = utf8.decode(b);
+    decoded[rec] = s;
+    return s;
   }
 
-  Uint8List? resolveBytes(int idx) => resolveBlob(idx, _kBytesBlobId, bytesBlob);
+  Uint8List? resolveBytes(int idx) {
+    final rec = idx - 2;
+    if (rec >= 0 && rec < decoded.length) {
+      final have = decoded[rec];
+      if (have is Uint8List) return have;
+    }
+    final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
+    if (b != null) decoded[rec] = b;
+    return b;
+  }
 
   // _placedNode is true for a node record the node table scan placed: a
   // table this root can name, or a blob of a kind some pointer below the root

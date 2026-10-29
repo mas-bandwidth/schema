@@ -761,10 +761,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 	switch {
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			g.needConvert = true
-			g.pf("%sfinal %s = %s;\n", ind, dartName(f.Name)+"Text", expr)
-			g.pf("%sc.blob(\n%s  at + %d,\n%s  %s,\n%s  %s == null ? null : utf8.encode(%s),\n%s);\n",
-				ind, ind, offset, ind, dartU64Literal(ir.StringWireTypeId), ind, dartName(f.Name)+"Text", dartName(f.Name)+"Text", ind)
+			g.pf("%sc.blob(at + %d, %s, %s);\n", ind, offset, dartU64Literal(ir.StringWireTypeId), expr)
 		} else {
 			g.pf("%sc.blob(at + %d, %s, %s);\n", ind, offset, dartU64Literal(ir.BytesWireTypeId), expr)
 		}
@@ -912,7 +909,7 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, List<int> bytes) blobIndex;
+  final int Function(int id, Object blob) blobIndex;
   ByteData? out;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
@@ -928,12 +925,13 @@ final class TableCookGraph {
     out.setInt64(slot, delta, order);
   }
 
-  // A blob is a node of its own reserved type id, numbered by its bytes (§3.1).
-  void blob(int slot, int id, List<int>? bytes) {
+  // A blob is a node of its own reserved type id, numbered by its identity
+  // (§3.1): the String or byte list the field holds.
+  void blob(int slot, int id, Object? blob) {
     final out = this.out;
     if (out == null) return;
     var delta = 0;
-    if (bytes != null) delta = 64 + offsets[blobIndex(id, bytes) - 1] - slot;
+    if (blob != null) delta = 64 + offsets[blobIndex(id, blob) - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }
