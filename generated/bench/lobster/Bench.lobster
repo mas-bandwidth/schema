@@ -706,7 +706,7 @@ def ReadBenchMixed(stream:serialize_read_stream, value:BenchMixed) -> bool:
     rw, rok = stream.serialize_int128(rw, serialize_int128 { lo: 0x0000000000000000, hi: 0xfffffff000000000 }, serialize_int128 { lo: 0x0000000000000000, hi: 0x0000001000000000 }) // the offset from min; past max is refused (SPEC §4.3)
     if not rok: return false
     value.Flux = schema_rt.Int128 { lo: rw.lo, hi: rw.hi }
-    rv, rok = stream.serialize_fixed64(rv, 56, 8, 0, 250) // the Q format's raw offset (SPEC §4.3)
+    rv, rok = stream.serialize_fixed32(rv, 24, 8, 0, 250) // the Q format's raw offset (SPEC §4.3)
     if not rok: return false
     value.Ping = rv
     rv, rok = stream.serialize_bits(rv, 4)
@@ -902,7 +902,7 @@ def WriteBenchMixed(s:serialize_write_stream, v:BenchMixed) -> bool:
     s.serialize_double(v.Drift) // finite only: NaN and ±inf trap (SPEC §4.3)
     s.serialize_uint128(serialize_uint128 { lo: v.WideKey.lo, hi: v.WideKey.hi }) // uint128 raw (SPEC §4.3)
     s.serialize_int128(serialize_int128 { lo: v.Flux.lo, hi: v.Flux.hi }, serialize_int128 { lo: 0x0000000000000000, hi: 0xfffffff000000000 }, serialize_int128 { lo: 0x0000000000000000, hi: 0x0000001000000000 }) // int128, offset from min (SPEC §4.3)
-    s.serialize_fixed64(v.Ping, 56, 8, 0, 250) // the Q format's raw offset (SPEC §4.3)
+    s.serialize_fixed32(v.Ping, 24, 8, 0, 250) // the Q format's raw offset (SPEC §4.3)
     s.serialize_bits(0, 4) // reserved(4) (SPEC §4.3)
     s.serialize_align() // align (SPEC §4.3)
     s.serialize_bits(v.CrcHint, 24) // the declared bit width (SPEC §4.3)

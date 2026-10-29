@@ -384,11 +384,12 @@ func emitWriteFixed(g *Gen, val string, f *ir.Field, indent string) {
 // fraction bits and the raw bounds (min << F, max << F), never on
 // integer_bits, so a ufixed(I, F) (SPEC §4.3) is passed as the widest signed
 // declaration of the same F that holds its raw values, and the bytes are the
-// same: storage 64 (integer_bits 64 - F) while its raw maximum stays below
-// 2^63, else storage 128 (integer_bits 128 - F) with the 64-bit pattern
-// zero-extended. Every ufixed of storage 64 or less takes the 64-bit
-// operation, because the 32-bit one answers its raw value sign-extended from
-// bit 31. A signed fixed passes its own declaration.
+// same: storage 32 (integer_bits 32 - F) while its raw maximum stays below
+// 2^31, so the common narrow ufixed keeps the 32-bit operation; storage 64
+// (integer_bits 64 - F) while it stays below 2^63; else storage 128
+// (integer_bits 128 - F) with the 64-bit pattern zero-extended. A raw value
+// from 2^31 up never takes the 32-bit operation, because it answers the raw
+// value sign-extended from bit 31. A signed fixed passes its own declaration.
 func fixedDeclaration(f *ir.Field) (fn string, intBits int, widened bool) {
 	t := f.Type
 	switch {
@@ -400,6 +401,9 @@ func fixedDeclaration(f *ir.Field) (fn string, intBits int, widened bool) {
 		return "serialize_fixed32", t.IntBits, false
 	}
 	rawMax := new(big.Int).Lsh(f.IntMax, uint(t.FracBits))
+	if rawMax.Cmp(big.NewInt(math.MaxInt32)) <= 0 && t.FracBits < 32 {
+		return "serialize_fixed32", 32 - t.FracBits, false
+	}
 	if rawMax.Cmp(big.NewInt(math.MaxInt64)) <= 0 {
 		return "serialize_fixed64", 64 - t.FracBits, false
 	}

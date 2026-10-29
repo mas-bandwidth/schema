@@ -110,8 +110,8 @@ func TestLobsterUnsignedFixedGoldens(t *testing.T) {
 // ufixedOwnDeclaration is the planted bug: every unsigned call site passes the
 // field's own (I, F), as the emitter did before fixedDeclaration.
 var ufixedOwnDeclaration = []struct{ from, to string }{
-	{"serialize_fixed64(rv, 56, 8, 0, 250)", "serialize_fixed32(rv, 8, 8, 0, 250)"},
-	{"serialize_fixed64(v.Ping, 56, 8, 0, 250)", "serialize_fixed32(v.Ping, 8, 8, 0, 250)"},
+	{"serialize_fixed32(rv, 24, 8, 0, 250)", "serialize_fixed32(rv, 8, 8, 0, 250)"},
+	{"serialize_fixed32(v.Ping, 24, 8, 0, 250)", "serialize_fixed32(v.Ping, 8, 8, 0, 250)"},
 	{"rw, rok = stream.serialize_fixed128(rw, 112, 16, 0, 281474976710655) // the Q format's raw offset, unsigned (SPEC §4.3)", "rv, rok = stream.serialize_fixed64(rv, 48, 16, 0, 281474976710655)"},
 }
 

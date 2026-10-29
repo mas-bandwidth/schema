@@ -198,7 +198,7 @@ def ReadUnsignedProbe(stream:serialize_read_stream, value:UnsignedProbe) -> bool
     var rv = 0
     var rok = true
     var rw = serialize_int128 { lo: 0, hi: 0 }
-    rv, rok = stream.serialize_fixed64(rv, 48, 16, 0, 360) // the Q format's raw offset (SPEC §4.3)
+    rv, rok = stream.serialize_fixed32(rv, 16, 16, 0, 360) // the Q format's raw offset (SPEC §4.3)
     if not rok: return false
     value.Angle = rv
     rw, rok = stream.serialize_fixed128(rw, 112, 16, 0, 281474976710655) // the Q format's raw offset, unsigned (SPEC §4.3)
@@ -207,11 +207,11 @@ def ReadUnsignedProbe(stream:serialize_read_stream, value:UnsignedProbe) -> bool
     rw, rok = stream.serialize_fixed128(rw, 112, 16, 0, 2000000) // the Q format's raw offset (SPEC §4.3)
     if not rok: return false
     value.Reach = schema_rt.Int128 { lo: rw.lo, hi: rw.hi }
-    rv, rok = stream.serialize_fixed64(rv, 64, 0, 0, 1000000) // the Q format's raw offset (SPEC §4.3)
+    rv, rok = stream.serialize_fixed32(rv, 32, 0, 0, 1000000) // the Q format's raw offset (SPEC §4.3)
     if not rok: return false
     value.Ticks = rv
     for(2) i:
-        rv, rok = stream.serialize_fixed64(rv, 48, 16, 0, 16) // the Q format's raw offset (SPEC §4.3)
+        rv, rok = stream.serialize_fixed32(rv, 16, 16, 0, 16) // the Q format's raw offset (SPEC §4.3)
         if not rok: return false
         value.Samples[i] = rv
     value.Locked = 196608 // a degenerate range: zero wire bits (SPEC §4.6)
@@ -340,12 +340,12 @@ def WriteFixedProbe(s:serialize_write_stream, v:FixedProbe) -> bool:
 // WriteUnsignedProbe writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteUnsignedProbe(s:serialize_write_stream, v:UnsignedProbe) -> bool:
-    s.serialize_fixed64(v.Angle, 48, 16, 0, 360) // the Q format's raw offset (SPEC §4.3)
+    s.serialize_fixed32(v.Angle, 16, 16, 0, 360) // the Q format's raw offset (SPEC §4.3)
     s.serialize_fixed128(serialize_int128 { lo: v.Span, hi: 0 }, 112, 16, 0, 281474976710655) // the Q format's raw offset, unsigned (SPEC §4.3)
     s.serialize_fixed128(serialize_int128 { lo: v.Reach.lo, hi: v.Reach.hi }, 112, 16, 0, 2000000) // the Q format's raw offset (SPEC §4.3)
-    s.serialize_fixed64(v.Ticks, 64, 0, 0, 1000000) // the Q format's raw offset (SPEC §4.3)
+    s.serialize_fixed32(v.Ticks, 32, 0, 0, 1000000) // the Q format's raw offset (SPEC §4.3)
     for(2) _i:
-        s.serialize_fixed64(v.Samples[_i], 48, 16, 0, 16) // the Q format's raw offset (SPEC §4.3)
+        s.serialize_fixed32(v.Samples[_i], 16, 16, 0, 16) // the Q format's raw offset (SPEC §4.3)
     assert v.Locked == 196608 // the degenerate range's one raw value (SPEC §4.6)
     s.serialize_bits(v.Tail, 8) // the storage width (SPEC §4.3)
     return true
