@@ -62,5 +62,12 @@ func luauTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]luautable.
 }
 
 func init() {
-	registerBuiltin(luauTarget{}, false, false, false, false)
+	registerPacketValueDefaultCarrier("luau")
+	valueDefaultTargets = append(valueDefaultTargets, "luau")
+	wasRowTargets = append(wasRowTargets, "luau")
+	registerWideTextCarrier("luau")
+	registerListCarrier("luau")
+	registerMapCarrier("luau")
+	registerOptionalArrayCarrier("luau")
+	registerBuiltin(luauTarget{}, true, true, true, true)
 }

@@ -197,6 +197,7 @@ var catalog = []Entry{
 	e("test/java", "Java packet tests", "make test-java", "make test-java"),
 	e("test/java-fixedform", "Java fixed-form tests", "make test-java", "make test-java"),
 	e("test/java-ludicrous", "Java int128 tests", "make test-java", "make test-java"),
+	e("test/luau-ludicrous", "Luau int128 tests", "make test-luau", "make test-luau"),
 	e("test/java-tables", "Java table tests", "make test-java", "make test-java"),
 	e("test/java-view", "Java unit-view listing", "make tables-java-view", "make tables-java-view"),
 	e("test/js", "JS packet tests", "make test-js", "make test-js"),
