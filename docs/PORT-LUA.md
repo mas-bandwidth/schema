@@ -220,7 +220,7 @@ names no reason stays `damaged`.
 
 The lua column of [PORTING.md](PORTING.md) is checked against the tree, cell by
 cell (2026-10-28). Carried, each naming its proof: M4b, M5, M6, M7, M8, M9, M12,
-M13, M14, M15, M16, M19, M20, I4, I5, I7, I15 and J4. `—`, the platform's reason stated:
+M13, M14, M15, M16, M18, M19, M20, I4, I5, I7, I15 and J4. `—`, the platform's reason stated:
 M2 and M3 (a Lua 5.4 integer and float are unboxed values), M4 (no inlining
 directive or aliasing qualifier), M10 (the VM owns allocation), M11 (no struct
 layout), M17 (no arena: a blob is one string of its own length), M21 (retired by
@@ -265,12 +265,12 @@ refusal of a plain `table` root (`message-form-plain-table`: `loadMessages`
 does not check `MessageRoots`, so `graph_tree` on the plain `Scene` answers
 bytes where the Go reference answers absent, and the refusal needs a reason
 name SPEC-TABLES §11 does not yet give); a caller-owned load with its
-allocation gate and soak; the arm read
-through the field reader; a typed save;
+allocation gate and soak; a typed save;
 block and cook accessors; the
 forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
 the random text differential; the runtime-home control; the bench and release
-tier; and the card facade.
+tier; the card facade; and a union arm named `tag`, whose payload shares the
+discriminator's key (`arm-named-tag`, found by the M18 gate).
 
 ## DEEPEN
 
