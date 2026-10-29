@@ -58,12 +58,12 @@ concurrency:
 # The sibling pins ci-full.yml, ci-fast.yml and certify.yml carry; the four
 # files move together.
 env:
-  SERIALIZE_TAG: v1.16.2
-  SERIALIZE_C_TAG: v1.10.0
-  SERIALIZE_GO_TAG: v1.15.1
-  SERIALIZE_RS_TAG: v2.4.0
-  SERIALIZE_CS_TAG: v1.9.1
-  SERIALIZE_JS_TAG: v1.4.2
+  SERIALIZE_TAG: v2.1.0
+  SERIALIZE_C_TAG: v2.0.2
+  SERIALIZE_GO_TAG: v2.0.1
+  SERIALIZE_RS_TAG: v3.1.0
+  SERIALIZE_CS_TAG: v2.0.1
+  SERIALIZE_JS_TAG: v2.0.1
   # The harness is built with every leg's tag, because a target behind a tag
   # registers what it carries only in a binary built with it, and the claim
   # check refuses a leg it has no registration for rather than enforcing
