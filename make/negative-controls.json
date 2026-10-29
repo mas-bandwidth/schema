@@ -148,7 +148,8 @@
       "when": "pull-request",
       "why": "the Lua port's two open-gate reversed witnesses that live in the compiler package and need no interpreter: the runtime-name scan fed a runtime module that spells an unregistered key in every convention it reads and an emitted set missing a registered name, and the zero-cost comparison fed a table that moves a packet byte, a packet file that vanishes and a non-table file that appears. Each is one go test of one function; the cost is the compiler package's test build, 1.4 s for both on the studio with a warm Go cache, so the row stays inside the 120 s rule.",
       "targets": [
-        "tables-lua-names-negative-control"
+        "tables-lua-names-negative-control",
+        "tables-lua-zero-cost-negative-control"
       ]
     },
     {

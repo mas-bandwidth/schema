@@ -41,7 +41,21 @@ tables-lua-names-negative-control:
 		'TestLuaRuntimeNameScanGoesRed' \
 		./compiler -run '^TestLuaRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
 
+# I10: the zero-cost gate (compiler/tableslua_test.go): adding a table moves not
+# one byte of the non-table output, a table-free unit emits none of the table
+# sources, and the unit's table module spells no accelerator symbol.
+.PHONY: tables-lua-zero-cost tables-lua-zero-cost-negative-control
+tables-lua-zero-cost:
+	sh test/slowgate/proof tables-lua-zero-cost \
+		'TestLuaTablesMoveNoGeneratedPacketByte' \
+		./compiler -run '^TestLuaTablesMoveNoGeneratedPacketByte$$' -count=1 -timeout 600s
+tables-lua-zero-cost-negative-control:
+	sh test/slowgate/proof tables-lua-zero-cost-negative-control \
+		'TestLuaZeroCostGateGoesRed' \
+		./compiler -run '^TestLuaZeroCostGateGoesRed$$' -count=1 -timeout 600s
+
 # The controls ride the leg with their gates: each is seconds, and a reversed
 # witness that `make test` never ran is a witness nothing reaches.
 test-lua: tables-lua-fuzz tables-lua-fuzz-negative-control
 test-lua: tables-lua-names tables-lua-names-negative-control
+test-lua: tables-lua-zero-cost tables-lua-zero-cost-negative-control
