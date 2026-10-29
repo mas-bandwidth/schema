@@ -63,6 +63,7 @@ var catalog = []Entry{
 	e("bench/dart", "Dart runner", "bench/run.sh --only dart", "bench/run.sh --only dart"),
 	e("bench/elixir", "Elixir runner", "bench/run.sh --only elixir", "bench/run.sh --only elixir"),
 	e("bench/go", "Go runner", "bench/run.sh --only go", "bench/run.sh --only go"),
+	e("bench/goose", "Goose runner", "bench/run.sh --only goose", "bench/run.sh --only goose"),
 	e("bench/java", "Java runner", "bench/run.sh --only java", "bench/run.sh --only java"),
 	e("bench/js", "JavaScript runner", "bench/run.sh --only js", "bench/run.sh --only js"),
 	e("bench/paired", "paired before/after + fixed-form bytes", "make bench-paired-check", "make bench-paired-gate"),
