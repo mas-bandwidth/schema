@@ -15,9 +15,11 @@ package jstable
 
 import (
 	"bufio"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -52,7 +54,7 @@ func TestWireRowsConformanceJavaScript(t *testing.T) {
 	t.Run("reversed_witness", func(t *testing.T) {
 		t.Parallel()
 		for _, dropped := range []string{"streamdemo/Feed", "listdemo/Save", "tbla2/Root", "backenddemo/LoginRequest"} {
-			if !containsString(driver, dropped) {
+			if !slices.Contains(driver, dropped) {
 				t.Fatalf("the witness pair %s is not in the driver's wireRows table", dropped)
 			}
 			var planted []string
@@ -66,9 +68,7 @@ func TestWireRowsConformanceJavaScript(t *testing.T) {
 			}
 		}
 		stale := map[string]string{"streamdemo/Feed": "planted"}
-		for k, v := range wireRowsUncarried {
-			stale[k] = v
-		}
+		maps.Copy(stale, wireRowsUncarried)
 		if len(wireRowGaps(manifest, driver, stale)) == 0 {
 			t.Error("an uncarried line naming a pair the driver binds was not caught")
 		}
@@ -166,13 +166,4 @@ func driverWireRoots(t *testing.T) []string {
 		t.Fatal("the wireRows table carries no row (test/conformance/js/main.mjs)")
 	}
 	return roots
-}
-
-func containsString(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
