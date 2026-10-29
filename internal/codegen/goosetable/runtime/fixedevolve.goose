@@ -11,6 +11,7 @@ namespace schema_rt;
 
 import .schema_rt;
 import .schema_tables;
+import .fixed;
 
 // The TWO lineage refusals the fixed form's base runtime does not name
 // (docs/SPEC-TABLES.md §21.3, docs/FIXED-FORM-ALGORITHM.md §5.3):
