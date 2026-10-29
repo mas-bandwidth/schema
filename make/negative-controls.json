@@ -753,7 +753,8 @@
         "tables-elixir-keyed-none-negative-control",
         "tables-elixir-runtime-pin-negative-control",
         "tables-elixir-slot-negative-control",
-        "tables-elixir-cook-blob-negative-control"
+        "tables-elixir-cook-blob-negative-control",
+        "tables-elixir-retain-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"

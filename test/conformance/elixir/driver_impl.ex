@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -561,6 +561,57 @@ defmodule Driver do
   defp run("wire", rows, outdir) do
     for [name, unit, root, wire | _] <- rows(rows, "instance") do
       answer_load_save(table_module(unit), root, wire, outdir, name)
+    end
+  end
+
+  # ---- retain and retain-save (docs/SPEC-TABLES.md §6.6): RT1's Node loaded
+  # with retention at the row's two capacities, measured and saved back. `retain`
+  # answers `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
+  # saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
+  # what this port's own records cost, and the second load gets one byte less
+  # (test/conformance/README.md). The id list's capacity is a count. A
+  # retain-message row's root is a plain `table`, which carries no message verbs
+  # (§3.3), so the driver answers ABSENT for it.
+  defp run(surface, rows, outdir) when surface in ["retain", "retain-save"] do
+    saves = surface == "retain-save"
+
+    for row <- rows(rows, "retain"), not (saves and List.last(row) == "-") do
+      retain_row(row, saves, outdir)
+    end
+
+    for [name | _] = row <- rows(rows, "retain-message"), not (saves and List.last(row) == "-") do
+      write_absent(outdir, name)
+    end
+  end
+
+  defp retain_row([name, unit, root, wire, capacity, ids | _], saves, outdir) do
+    mod = table_module(unit)
+    data = File.read!(wire)
+    roomy = 1_048_576
+    id_cap = if ids == "full", do: div(roomy, 8), else: String.to_integer(ids)
+    fresh = fn cap -> %{records: [], used: 0, cap: cap, ids: [], id_cap: id_cap} end
+    empty = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+
+    cap =
+      if capacity == "short" do
+        {:ok, _v, _r, probe} = mod.load_retain(root, data, fresh.(roomy), empty)
+        max(probe.used - 1, 0)
+      else
+        roomy
+      end
+
+    {:ok, value, report, retain} = mod.load_retain(root, data, fresh.(cap), empty)
+    size = mod.measure_retain(root, value, retain)
+    {:ok, out, save, retain} = mod.save_retain(root, value, retain, empty)
+
+    if byte_size(out) != size, do: raise("#{name}: retaining measure and save disagree")
+    {:ok, again, second, _} = mod.save_retain(root, value, retain, empty)
+    if again != out or second.retain_lost != save.retain_lost, do: raise("#{name}: retaining save is not repeatable")
+
+    if saves do
+      write(outdir, name, out)
+    else
+      write(outdir, name, "#{report.retained},#{report.retain_lost},#{report.unknown} #{save.retain_lost}\n")
     end
   end
 
