@@ -199,7 +199,7 @@ func guardInteger(g *Gen, indent, val string, lo, hi *big.Int, signed bool) {
 			cond += fmt.Sprintf(" or integer.ugt(%s, %s)", val, IntegerLit(hi))
 		}
 	default:
-		if !(signed && lo.Cmp(minInt64) == 0) {
+		if !signed || lo.Cmp(minInt64) != 0 {
 			cond += fmt.Sprintf(" or integer.lt(%s, %s)", val, IntegerLit(lo))
 		}
 		cond += fmt.Sprintf(" or integer.gt(%s, %s)", val, IntegerLit(hi))
