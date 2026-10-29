@@ -241,6 +241,11 @@ local _nodes: { any } = {}
 local _rootValue: any = nil
 local _rootDesc: any = nil
 local _report: any = nil
+-- RETAIN-UNKNOWN's hook (docs/SPEC-TABLES.md §6.6; table_retain.moo): nil on
+-- every plain read, so nothing below reads a byte or moves a counter
+-- differently because retention is on. A retaining read sets it for the one
+-- walk and clears it after.
+local _retain: any = nil
 local _numberingGood: boolean = true
 -- the builder-path storage refusal (Go CountRefusal): a collection count past
 -- the int32 cap discards the partial value and is NOT a malformed event
@@ -260,6 +265,8 @@ local function non_finite(report: any, named: any)
 		end
 	end
 end
+
+L.nonFinite = non_finite
 
 -- scalar_at reads one scalar of wire kind `kind` for the field (or element)
 -- fd: the raw value, widened into fd's kind (§4), clamped to its declared
@@ -376,6 +383,9 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 		end
 	end
 	report.unknown += 1
+	if _retain ~= nil then
+		_retain.lost(report) -- an enum variant this build cannot name (§6.6)
+	end
 	return 0, true
 end
 
@@ -516,6 +526,11 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 			r.at = endpos
 			return true
 		end
+		if _retain ~= nil and v ~= nil and fd.slot ~= nil then
+			-- THE READ COMMITS TO REPLACE THE MAP HERE (§6.6): every body the
+			-- earlier occurrence built goes with it, moving neither counter
+			_retain.supersede(v, fd.slot, fd)
+		end
 		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap)
 		if count > 0x7FFFFFFF then
 			_countRefused = true
@@ -591,9 +606,13 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 					local efd = entryFields[id]
 					if efd == nil then
 						report.unknown += 1
+						local from = body.at
 						if not skip(body, kind) then
 							report.malformed = true
 							break
+						end
+						if _retain ~= nil then
+							_retain.capture(vals, entry, id, kind, body.b, from, body.at, _table, report)
 						end
 					elseif id == MapKeyId and keyfd ~= nil then
 						if kind ~= keyfd.k then
@@ -634,8 +653,14 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 						break
 					end
 				end
+				if _retain ~= nil and v ~= nil and fd.slot ~= nil then
+					_retain.builtMap(v, fd.slot, entry, vals)
+				end
 				if order == 0 then
 					report.duplicate += 1
+					if _retain ~= nil then
+						_retain.forgetBody(entry, landed[#landed]) -- last wins WHOLE (§2.8, §6.6)
+					end
 					landed[#landed] = vals
 				else
 					landed[#landed + 1] = vals
@@ -710,6 +735,9 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			end
 			if at == 0 then
 				report.unknown += 1
+				if _retain ~= nil then
+					_retain.lost(report) -- a keyed slot this build cannot name (§6.6)
+				end
 				sub.at += elemLen
 				continue
 			end
@@ -719,12 +747,19 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			if e.s == "tab" then
 				local d = S.lookup(e.t)
 				local inst = d.new()
+				if _retain ~= nil and dst ~= nil and type(dst) == "table" then
+					_retain.forgetBody(d, dst[at]) -- the slot written again (§3.2, §6.6)
+				end
 				read_body(d, payload, inst, true)
 				if payload.at ~= payload.e then
 					-- A SLOT WHOSE BODY DID NOT SPEND ITS L RESETS TO ITS DECLARED
 					-- DEFAULTS (§3.2, §5)
 					report.malformed = true
-					inst = d.new()
+					local fresh = d.new()
+					if _retain ~= nil then
+						_retain.rekey(inst, fresh) -- damage is not a later occurrence (§6.6)
+					end
+					inst = fresh
 				end
 				x = inst
 			elseif e.s == "enum" then
@@ -795,6 +830,11 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 			return false
 		end
 		report.widened += 1
+	end
+	if _retain ~= nil and v ~= nil and fd.slot ~= nil and fd.slot ~= "" then
+		-- THE READ COMMITS TO REPLACE HERE (§6.6): the records under this
+		-- field go with the value it is about to lose
+		_retain.supersede(v, fd.slot, fd)
 	end
 	local keep = count
 	if fd.array == "list" then
@@ -932,7 +972,11 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
 			report.malformed = true
-			inst = d.new()
+			local fresh = d.new()
+			if _retain ~= nil then
+				_retain.rekey(inst, fresh) -- damage is not a later occurrence (§6.6)
+			end
+			inst = fresh
 		end
 		r.at += n
 		dst[i] = inst
@@ -943,7 +987,7 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		if fd.array ~= "list" then
 			dst[i] = S.lookup(e.t).new()
 		end
-		local x, ok = read_union(e, r, report)
+		local x, ok = read_union(e, r, report, dst, i)
 		if not ok then
 			return false
 		end
@@ -1087,7 +1131,7 @@ end
 -- AN ARM HEADER IS A FIELD HEADER (§3, §2.6): the arm id reference, the
 -- arm's kind byte, L, then L bytes of payload. An arm this reader cannot name
 -- is unknown and the union reads None; a retyped arm is a kind mismatch.
-read_union = function(fd: any, r: any, report: any): (any, boolean)
+read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any, boolean)
 	local un = S.lookup(fd.t)
 	local u = un.new()
 	local ref = r_leb(r)
@@ -1120,6 +1164,9 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	local want = if arm == nil then 0 elseif arm.s == "void" then 32 else arm.k
 	if arm == nil then
 		report.unknown += 1
+		if _retain ~= nil then
+			_retain.lost(report) -- a union arm this build cannot name (§6.6)
+		end
 	elseif kind ~= want then
 		if V.widens(kind, want) then
 			if n == V.width(kind) then
@@ -1138,6 +1185,9 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	elseif arm.s == "tab" then
 		local d = S.lookup(arm.t)
 		local inst = d.new()
+		if _retain ~= nil and holder ~= nil then
+			_retain.builtArm(holder, key, d, inst) -- the occurrence's own body, whatever becomes of it (§6.6)
+		end
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
 			report.malformed = true
@@ -1253,6 +1303,11 @@ read_field = function(fd: any, r: any, v: any): ...any
 		local d = S.lookup(fd.t)
 		local inst = d.new()
 		if fd.slot ~= nil and v ~= nil then
+			if _retain ~= nil then
+				-- a second occurrence replaces the body whole: what the first
+				-- retained goes with it, moving neither counter (§6.6)
+				_retain.forgetBody(d, v[fd.slot])
+			end
 			v[fd.slot] = inst
 		end
 		read_body(d, sub, inst, true)
@@ -1260,7 +1315,11 @@ read_field = function(fd: any, r: any, v: any): ...any
 			-- A NESTED BODY THAT DID NOT SPEND ITS L FALLS BACK ON ITS DECLARED
 			-- DEFAULTS (§3, §5)
 			_report.malformed = true
-			inst = d.new()
+			local fresh = d.new()
+			if _retain ~= nil then
+				_retain.rekey(inst, fresh) -- damage is not a later occurrence (§6.6)
+			end
+			inst = fresh
 			if fd.slot ~= nil and v ~= nil then
 				v[fd.slot] = inst
 			end
@@ -1268,7 +1327,11 @@ read_field = function(fd: any, r: any, v: any): ...any
 		r.at += n
 		return true
 	elseif s == "union" then
-		local x, ok = read_union(fd, r, _report)
+		if _retain ~= nil and fd.slot ~= nil and v ~= nil then
+			-- the union written again, the same arm or another (§6.6)
+			_retain.supersede(v, fd.slot, fd)
+		end
+		local x, ok = read_union(fd, r, _report, v, fd.slot)
 		if not ok then
 			return false
 		end
@@ -1417,9 +1480,13 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 			local fd = byId[id]
 			if fd == nil then
 				_report.unknown += 1
+				local from = r.at
 				if not skip(r, kind) then
 					_report.malformed = true
 					return false
+				end
+				if _retain ~= nil then
+					_retain.capture(v, desc, id, kind, r.b, from, r.at, _table, _report)
 				end
 			elseif kind ~= fd.k then
 				if V.widens(kind, fd.k) then
@@ -1461,6 +1528,8 @@ end
 -- a report at rest (docs/SPEC-TABLES.md §4)
 local function reset(report: any)
 	report.malformed = false
+	report.retained = 0
+	report.retainLost = 0
 	report.refused = 0
 	report.unknown = 0
 	report.kindMismatch = 0
@@ -1488,6 +1557,12 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	end
 	if report.blobShared == nil then
 		report.blobShared = 0
+	end
+	if report.retained == nil then
+		report.retained = 0
+	end
+	if report.retainLost == nil then
+		report.retainLost = 0
 	end
 	local prior = report.nonFiniteField
 	report.nonFiniteField = nil
@@ -1552,6 +1627,9 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 				local nc = place[tid]
 				if nc == nil then
 					report.unknown += 1
+					if _retain ~= nil then
+						_retain.lost(report) -- a node record of a type this build cannot place (§6.6)
+					end
 					_nodes[#_nodes + 1] = { kind = "x" }
 				else
 					_nodes[#_nodes + 1] = { kind = "t", desc = nc, v = nc.new(), body = rec.body }
@@ -1977,6 +2055,12 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.duplicateField = witness(root, b, "duplicate")
 	end
 	return v
+end
+
+-- setRetain installs (or, with nil, clears) RETAIN-UNKNOWN's hook for the
+-- next walk (table_retain.moo, docs/SPEC-TABLES.md §6.6).
+function L.setRetain(h: any)
+	_retain = h
 end
 
 -- resetReport is the report at rest, shared with refusal.moo's fixed path.
