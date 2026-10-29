@@ -19,8 +19,8 @@
 use strict;
 use warnings;
 
-my ($manifest, $surface, $stage) = @ARGV;
-die "usage: stage.pl <manifest> <surface> <stage>\n" unless defined $stage;
+my ($manifest, $surface, $stage, $generated) = @ARGV;
+die "usage: stage.pl <manifest> <surface> <stage> <generated>\n" unless defined $stage;
 
 open(my $in, "<:raw", $manifest) or die "stage.pl: $manifest: $!\n";
 my $text = do { local $/; <$in> };
@@ -53,6 +53,19 @@ closedir $dh;
 @plugins = grep { $_ ne "main" } @plugins;
 emit("$stage/plugins.moo",
 	"--!strict\n-- written by test/conformance/moo/stage.pl: the surface modules beside main.moo\nreturn table.freeze({" . join(", ", map { "\"$_\"" } @plugins) . "})\n");
+
+# the table modules each generated unit carries (<Base>Table.moo): requiring one
+# registers its descriptors, and moo cannot list a directory, so the shim does
+my @units;
+if (defined $generated && opendir(my $gd, $generated)) {
+	for my $u (sort grep { !/^\./ && -d "$generated/$_" } readdir($gd)) {
+		my @mods = sort map { /^(.*Table)\.moo$/ ? $1 : () } do { opendir(my $ud, "$generated/$u") or die "stage.pl: $generated/$u: $!\n"; readdir($ud) };
+		push @units, "\t[\"$u\"] = {" . join(", ", map { "\"$_\"" } @mods) . "},\n";
+	}
+	closedir $gd;
+}
+emit("$stage/tables.moo",
+	"--!strict\n-- written by test/conformance/moo/stage.pl: each unit's <Base>Table modules\nreturn table.freeze({\n" . join("", @units) . "})\n");
 
 my %kinds = (
 	"list"          => [],
