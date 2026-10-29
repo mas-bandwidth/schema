@@ -136,7 +136,15 @@ if surface ~= "list" then
 	inputs = load(stage .. "inputs")
 end
 
+local tableModules: { [string]: { string } } = load(stage .. "tables")
+
 local ctx = {
+	-- require every <Base>Table module of a unit, which registers its descriptors
+	tables = function(key: string)
+		for _, name in tableModules[key] or {} do
+			load(ROOT .. generated .. "/" .. key .. "/" .. name)
+		end
+	end,
 	kind = kind,
 	module = function(key: string, name: string): any?
 		local ok, mod = pcall(load, ROOT .. generated .. "/" .. key .. "/" .. name)
@@ -147,6 +155,10 @@ local ctx = {
 	end,
 	inputs = function(path: string): buffer
 		return inputs[path] or fail("no staged fixture " .. path)
+	end,
+	-- a named absence: the case the leg cannot write for a reason the corpus names
+	refuse = function(case: string, reason: string)
+		print(case .. " absent " .. reason)
 	end,
 	say = function(case: string, text: string?)
 		if text == nil then

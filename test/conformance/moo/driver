@@ -43,7 +43,7 @@ case "$surface" in
 esac
 stage=build/conformance-moo-driver/$surface
 mkdir -p "$stage" || exit 1
-perl test/conformance/moo/stage.pl "$1" "$surface" "$stage" || exit 1
+perl test/conformance/moo/stage.pl "$1" "$surface" "$stage" "$generated" || exit 1
 if [ "$surface" = list ]; then
 	exec "$moo" "$main" -a list "$generated"
 fi
