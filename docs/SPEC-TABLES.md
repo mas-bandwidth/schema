@@ -6589,10 +6589,17 @@ appearance gave it, and the same name at a SECOND kind or shape takes a second
 slot. Two entries that agree on all three parts are malformed, and both engines
 enforce that at `AnnounceRead` rather than leaving it to a writer's good
 behavior. **An element kind of `12` or `33` in an announced array or keyed
-shape is malformed there too**, because no declaration this language accepts is
-an array of `string(N)` or of `wstring(N)`, so such a shape is refused once at
-the announcement rather than accepted there and refused again by the skip that
-would meet it.
+shape is a shape like any other**, and its own shape is the `max` the kind
+names. A text list (§2.13) is a kind `14` array of element kind `12`, so a unit
+that declares one announces one, and an announcement that carried the shape
+would otherwise be refused whole: the unit's own would be (a Go unit with a text
+list refused its own announcement until this rule was written down). The
+element's `max` is the list's `M`, and `0` for the unbounded spelling, the value
+the element record's own `value` entry gives it. Such an element is framed, so
+a skip steps it one element at a time and never by width. A target that does not
+yet carry text lists (§2.13) reads the shape all the same: it can never meet the
+field in a body, because the form is fixed-only (§3.3), and refusing the entry
+would refuse the announcement.
 
 **THREE PROPERTIES FOLLOW from announcing the unit rather than the message.**
 
