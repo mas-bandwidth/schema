@@ -2,6 +2,7 @@ package javatable
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -110,9 +111,7 @@ func TestJavaOptionalVariableClosureG1(t *testing.T) {
 	plant := func(file, from, to string) map[string][]byte {
 		t.Helper()
 		out := make(map[string][]byte, len(files))
-		for k, v := range files {
-			out[k] = v
-		}
+		maps.Copy(out, files)
 		out[file] = bytes.Replace(files[file], []byte(from), []byte(to), 1)
 		return out
 	}
