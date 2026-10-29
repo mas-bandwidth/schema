@@ -307,17 +307,18 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		elem := javaRecordType(f.Type)
 		elemSize := pieces[0].Size / f.ArrayBound
-		if isClassRef(f.Type) {
+		switch {
+		case isClassRef(f.Type):
 			g.f("    /** [%d]%s: the element's own offset — read it with %sRow's accessors. */\n",
 				f.ArrayBound, f.Type.Name, f.Type.Name)
 			g.f("    public static int %sAt(int at, int i) { return at + %d + i * %d; }\n\n", name, pieces[0].Offset, elemSize)
-		} else if isWide(f.Type) {
+		case isWide(f.Type):
 			g.f("    /** element i's low and high 64-bit halves (§7.2). */\n")
 			g.f("    public static long %sLo(byte[] data, int at, int i) { return TableBytes.i64(data, at + %d + i * %d); }\n",
 				name, pieces[0].Offset, elemSize)
 			g.f("    public static long %sHi(byte[] data, int at, int i) { return TableBytes.i64(data, at + %d + i * %d); }\n",
 				name, pieces[0].Offset+8, elemSize)
-		} else {
+		default:
 			g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n",
 				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
 		}
