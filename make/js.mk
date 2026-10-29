@@ -142,15 +142,15 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	# tblk1.Root, tblk2.Root, tblp2.Chain): the harness's default wire-fuzz
 	# roster (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md
 	# §4.2) names them, and the driver's fuzzUnits binds them for
-	# tables-js-wire-fuzz-all alone. tblg1.Guarded is NOT generated here: G1
-	# declares `optional ?Wrapped`, an optional over a variable closure, which
-	# this target refuses until its turn (§2.3; roadmap
-	# sprint-out/js-carries-optional-over-a-variable-closure), so its four
-	# seeds answer absent.
+	# tables-js-wire-fuzz-all alone. tblg1.Guarded (G1) declares `optional
+	# ?Wrapped`, an optional over a variable closure, which this target carries
+	# (§2.3; compiler/carries_javascript.go): its wire rows and its four roster
+	# seeds answer through the driver's wireRows.
 	./bin/schema generate --lang js --out build/tables-generated-js/a2 test/tables/A2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/k1 test/tables/K1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/k2 test/tables/K2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p2 test/tables/P2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/g1 test/tables/G1.schema
 	# THE RETAIN-UNKNOWN TRIO (§6.6): the reader RT1 and the two newer builds
 	# whose unknown fields it retains across. The conformance driver's retain and
 	# retain-save surfaces load RT2's and RT3's wires through RT1's retaining
@@ -1020,11 +1020,11 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # absent are the message-form (form-2) entries, which this leg's wire-fuzz arm
 # does not bind: backenddemo LoginRequest, MatchResult and StorePurchase,
 # vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, graphdemo Scene
-# and blobdemo Catalog, 19 seeds, and tblg1 Guarded's four (an optional over a
-# variable closure, which this target does not carry yet), 23 in all. The count is pinned exactly, so a root
+# and blobdemo Catalog, 19 seeds. tblg1 Guarded's four answer since the target
+# carries an optional over a variable closure (§2.3). The count is pinned exactly, so a root
 # that drops to absent (or a new message-form root) fails the target by name
 # rather than shrinking the run unseen; it does not depend on SEED or N.
-TABLES_JS_WIRE_FUZZ_ABSENT := 23
+TABLES_JS_WIRE_FUZZ_ABSENT := 19
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
