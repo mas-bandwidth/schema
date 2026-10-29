@@ -206,6 +206,7 @@ var catalog = []Entry{
 	e("test/packet-wide", "packet wide-text gates", "make test", "make test"),
 	e("test/py-packet", "python packet rows", "make tables-py-packet", "make tables-py-packet"),
 	e("test/rust", "Rust packet tests", "make test-rust", "make test-rust"),
+	e("test/rust-agree", "Rust accessor/descriptor agreement gate", "make tables-rust-accessor-descriptor-agreement", "make tables-rust-accessor-descriptor-agreement"),
 	e("test/rust-fixedform", "Rust fixed-form tests", "make test-rust", "make test-rust"),
 	e("test/rust-fuzz", "Rust fuzz driver", "make test-rust", "make test-rust"),
 	e("test/rust-ludicrous", "Rust int128 tests", "make test-rust", "make test-rust"),
