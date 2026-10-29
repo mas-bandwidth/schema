@@ -1,6 +1,6 @@
 // Package moo emits the moo target's packet surface: one .moo module per
 // schema file (Constants.schema -> Constants.moo), deterministic to the byte
-// (SPEC §6.1), with serialize.moo v2.1.1, the port's runtime, emitted beside
+// (SPEC §6.1), with serialize.moo v2.1.2, the port's runtime, emitted beside
 // the modules from runtime/. docs/PORT-MOO.md is the port's design: THE VALUE
 // MAPPING is what each field kind stores as, THE WIRE is how each one rides.
 //
