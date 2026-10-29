@@ -68,3 +68,49 @@ table Outer
 		t.Error("the cook writer must be behind the `cook` feature, as every piece of the cooked form is")
 	}
 }
+
+// TestCookDescriptorCompanionIsNeverTheFieldItself pins the cook descriptor's
+// count and presence columns to the field's COMPANIONS (docs/SPEC-TABLES.md
+// §7.5, §7.6): a scalar whose own name ends in _count, _length or _present is
+// not a companion, so its count_offset and present_offset are -1. Found by the
+// Rust allocation gate (`tables-rust-alloc`): Keyed.schema's spawn_count read
+// itself as its count, and every non-zero value cooked to a refusal against a
+// bound of zero. The control is the field's real companion: a counted array
+// named the same way keeps its count column.
+func TestCookDescriptorCompanionIsNeverTheFieldItself(t *testing.T) {
+	const src = `package probe
+
+fixed table Team
+{
+    spawn_count int32 = 4 | min = 0, max = 64
+    last_length uint16
+    was_present bool
+    hits_count  [..4]int32
+}
+`
+	var all strings.Builder
+	for name, data := range generate(t, src) {
+		if strings.HasSuffix(name, "_cook.rs") {
+			all.Write(data)
+		}
+	}
+	got := all.String()
+	field := func(name string) string {
+		at := strings.Index(got, "name: \""+name+"\",")
+		if at < 0 {
+			t.Fatalf("no cook descriptor row for %s", name)
+		}
+		end := strings.Index(got[at:], "},")
+		return got[at : at+end]
+	}
+	for _, name := range []string{"spawn_count", "last_length", "was_present"} {
+		row := field(name)
+		if !strings.Contains(row, "count_offset: -1,") || !strings.Contains(row, "present_offset: -1,") {
+			t.Errorf("%s names itself as its own companion:\n%s", name, row)
+		}
+	}
+	// THE CONTROL: a counted array's real companion, hits_count_count, is kept
+	if row := field("hits_count"); strings.Contains(row, "count_offset: -1,") {
+		t.Errorf("the counted array lost its count companion:\n%s", row)
+	}
+}

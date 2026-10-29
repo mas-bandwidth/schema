@@ -502,6 +502,62 @@ tables-rust-soak-negative-control: build/tables-generated-rust/.stamp build/fixe
 	@grep -m1 "SOAK FAILED" build/rust-soak-sabotage/log
 	@echo "negative control: a matched alloc/free pair per iteration is INVISIBLE to the drift gate and turns the Rust soak's CALL COUNT red"
 
+# THE RUST ALLOCATION GATE (docs/PORTING.md M1 and I1), the twin of Go's
+# TestLoadAllocatesNothing and C++'s tables-cpp-alloc: a counting
+# #[global_allocator] (test/rust-alloc/src/main.rs) over the generated code's
+# read paths, ONE ROW PER PATH — the fixed form's load, measure and save into
+# caller storage, the block open and row walk, the cook write, open and deref
+# chain walk, and the variable wire's load of scalar-only records — each gated
+# at exactly zero allocator calls. A path that allocates by its struct's own
+# declaration (a String or Vec field, a save that answers a Vec) is REPORTED
+# with its count and the reason printed at the row. Where the soak above
+# watches the count over time, this gate names the PATH. RELEASE, the build a
+# caller ships; copied into build/ like the soak so the checkout stays clean.
+RUST_ALLOC_SRCS := test/rust-alloc/Cargo.toml test/rust-alloc/src/main.rs
+
+.PHONY: tables-rust-alloc
+tables-rust-alloc: build/tables-generated-rust/.stamp build/cook-fuzz/.stamp $(RUST_ALLOC_SRCS)
+	@mkdir -p build/rust-alloc/src
+	@cp test/rust-alloc/Cargo.toml build/rust-alloc/Cargo.toml
+	@cp test/rust-alloc/src/main.rs build/rust-alloc/src/main.rs
+	cd build/rust-alloc && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet --release -- -D warnings
+	cd build/rust-alloc && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release
+	./build/rust-alloc/target/release/rust-alloc build/cook-fuzz
+
+# THE ALLOCATION GATE'S NEGATIVE CONTROL: LOCALIZATION, as Java's
+# tables-java-alloc-negative-control. The crate's `negative-control` feature
+# (a cfg flag in the gate binary, never a change to generated code) plants one
+# Box per row of the block row walk — 192 rows a call. The run must exit
+# non-zero, that row must be red on EXACTLY 192 allocations per call, and it
+# must be the ONLY red row: the open beside it, and every other path, stay
+# green.
+.PHONY: tables-rust-alloc-negative-control
+tables-rust-alloc-negative-control: build/tables-generated-rust/.stamp build/cook-fuzz/.stamp $(RUST_ALLOC_SRCS)
+	@mkdir -p build/rust-alloc-sabotage/src
+	@cp test/rust-alloc/Cargo.toml build/rust-alloc-sabotage/Cargo.toml
+	@cp test/rust-alloc/src/main.rs build/rust-alloc-sabotage/src/main.rs
+	@grep -q '#\[cfg(feature = "negative-control")\]' build/rust-alloc-sabotage/src/main.rs || \
+		{ echo "NEGATIVE CONTROL: the gate carries no planted allocation to turn on"; exit 1; }
+	cd build/rust-alloc-sabotage && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --features negative-control
+	@if ./build/rust-alloc-sabotage/target/release/rust-alloc build/cook-fuzz > build/rust-alloc-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one Box per walked row left the Rust allocation gate green"; \
+		cat build/rust-alloc-sabotage/log; exit 1; \
+	fi
+	@grep -q "SABOTAGED build" build/rust-alloc-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the negative-control feature did not reach the binary"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@grep -q "ALLOC FAILED: block.RenderFrame row walk (ships, lasers): .* (192 per call; ceiling 0)" build/rust-alloc-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the row walk did not go red on exactly the planted 192 per call"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@[ "$$(grep -c 'ALLOC FAILED' build/rust-alloc-sabotage/log)" = "1" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: a row beside the planted one went red too - the gate does not localize"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@grep -q "ok   block.RenderFrame open:" build/rust-alloc-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the block open beside the planted row is not green"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@grep "ALLOC FAILED" build/rust-alloc-sabotage/log
+	@echo "negative control: one Box per walked row turns the Rust allocation gate RED on the row walk alone"
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
@@ -525,6 +581,10 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# and the control that watches the count go red on a planted pair
 	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=4194304
 	$(MAKE) tables-rust-soak-negative-control
+	# THE ALLOCATION GATE (docs/PORTING.md M1, I1): every read path at zero
+	# allocator calls, row by row, and the control that localizes a plant
+	$(MAKE) tables-rust-alloc
+	$(MAKE) tables-rust-alloc-negative-control
 	$(MAKE) tables-rust-runtime-home
 	$(MAKE) tables-rust-runtime-home-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
