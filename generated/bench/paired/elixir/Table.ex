@@ -2735,10 +2735,20 @@ defmodule Bench.Table do
                   {l, content} when byte_size(content) >= l and k == a.arm_kind ->
                     inner = binary_part(content, 0, l)
                     framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
-                    read_arm_payload(a, name, inner, framed, nodes, ids, report)
+
+                    if arm_framing_damaged?(a, inner) do
+                      # a fixed-width arm whose L is not its kind's width, a
+                      # payload-free arm with an L, and a reference-shaped arm
+                      # whose L is not its reference's own length are that
+                      # arm's own framing damage: the union reads None and the
+                      # parent reads on past L (§3)
+                      {:cont, nil, %{report | malformed: true}}
+                    else
+                      read_arm_payload(a, name, inner, framed, nodes, ids, report)
+                    end
 
                   {l, content} when byte_size(content) >= l ->
-                    {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+                    retyped_arm(a, name, k, binary_part(content, 0, l), report)
 
                   _ ->
                     {:cont, nil, %{report | malformed: true}}
@@ -2761,6 +2771,28 @@ defmodule Bench.Table do
       {:halt, v, report} -> {:halt, {name, v}, report}
     end
   end
+
+  # arm_framing_damaged? is §3's length rule for an arm whose kind byte
+  # agreed: a payload-free arm carries nothing, a reference-shaped arm (a
+  # pointer, an enum) is exactly its reference, and a fixed-width arm is
+  # exactly its kind's width. The length-shaped kinds frame themselves.
+  defp arm_framing_damaged?(a, inner) do
+    cond do
+      a.arm_kind == 32 -> inner != <<>>
+      a.arm_kind in [17, 30] -> not match?({_, <<>>}, leb(inner))
+      a.arm_kind == 1 -> byte_size(inner) != 1
+      kind_width(a.arm_kind) > 0 -> byte_size(inner) != kind_width(a.arm_kind)
+      true -> false
+    end
+  end
+
+  # retyped_arm judges an arm that arrived under a kind the reader does not
+  # declare for it by the field rules (docs/SPEC-TABLES.md §3, §4): a kind the
+  # arm's own kind WIDENS decodes at the wire kind's width and counts one
+  # widened, an L that is not that width is the arm's own framing damage, and
+  # any other kind is a kind mismatch — the union None, the parent reading on.
+  defp retyped_arm(_a, _name, _k, _inner, report),
+    do: {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
   defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
 
@@ -2808,16 +2840,21 @@ defmodule Bench.Table do
 
   defp clamp_count(result, _f), do: result
 
-  # widens? reports whether a wire kind decodes EXACTLY into this int field
-  # (docs/SPEC-TABLES.md §4): a smaller signed integer into a wider one of the
-  # same signedness. The card declares int32 and int64 only, so the ladder is
-  # kinds 2, 3, 4, 5 and every kind below the declared one widens.
-  defp widens?(kind, %{t: :int, signed: true} = f), do: kind >= 2 and kind < f.kind
+  # widens? reports whether a wire kind decodes EXACTLY into this field
+  # (docs/SPEC-TABLES.md §4): a smaller integer into a wider one of the same
+  # signedness, the 128-bit kinds included, and float32 into float64 — the
+  # ladder kind_widens? spells, the same one an array's element kind climbs.
+  defp widens?(kind, %{t: :int} = f), do: kind_widens?(kind, f.kind)
+  defp widens?(kind, %{t: :float} = f), do: kind_widens?(kind, f.kind)
   defp widens?(_kind, _f), do: false
 
-  # read_widened decodes an int field whose wire kind widened (§4): the value
+  # read_widened decodes a field whose wire kind widened (§4): the value
   # reads at the wire kind's own width and lands, one widened event counts, and an
   # out-of-range value clamps as always.
+  defp read_widened(%{t: :float}, kind, payload, report) do
+    {float_of(payload, kind_width(kind)), %{report | widened: report.widened + 1}}
+  end
+
   defp read_widened(f, kind, payload, report) do
     v = int_of(payload, kind_width(kind), f.signed)
     {clamped, report} = clamp_int(v, f, report)
@@ -2888,11 +2925,21 @@ defmodule Bench.Table do
       {0, after_sub} ->
         read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
 
+      {1, after_sub} ->
+        # node index 1 is the ROOT, as at a pointer field
+        report = %{report | kind_mismatch: report.kind_mismatch + 1}
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
+
       {idx, after_sub} ->
-        value =
+        # a SLOT resolves the way a pointer field does (§3.1): an index above
+        # the node count is malformed and THAT slot reads null, the array kept
+        # at its count; a blob node under a *T slot is a kind mismatch
+        {value, report} =
           case node_value(nodes, idx, ids) do
-            {:value, v} when is_map(v) -> v
-            _ -> nil
+            {:value, v} when is_map(v) -> {v, report}
+            {:value, _} -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+            :out_of_range -> {nil, %{report | malformed: true}}
+            :null -> {nil, report}
           end
 
         read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
