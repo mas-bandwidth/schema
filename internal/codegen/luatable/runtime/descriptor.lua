@@ -270,8 +270,8 @@ function D.refuse_deprecated(T, name, v)
   return "invalid_value: " .. hit .. " holds a deprecated enum variant"
 end
 
--- THE FINITE RULE ON WRITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
--- "tables go finite-only too, same rule as packets"): every writer refuses a
+-- THE FINITE RULE ON WRITE (docs/SPEC-TABLES.md §3.3):
+-- every writer refuses a
 -- float holding a NaN or an infinity, and the encoders test each float as they
 -- write it (x - x is NaN for both and zero for every finite x). This walk is
 -- the cold path that NAMES the refusal once an encoder has refused: the first

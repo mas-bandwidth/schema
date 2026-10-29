@@ -8,7 +8,9 @@ local _M = {}
 
 local function build(n, make)
   local t = {}
-  for i = 1, n do t[i] = make() end
+  for i = 1, n do
+    t[i] = make()
+  end
   return t
 end
 
@@ -34,7 +36,9 @@ function _M.NewRenderBlock()
   return {
     WorkerIndex = 0,
     SpriteCountHint = 0,
-    Sprites = build(64, function() return _M.NewRenderSprite() end),
+    Sprites = build(64, function()
+      return _M.NewRenderSprite()
+    end),
     SpritesCount = 0,
   }
 end
@@ -51,25 +55,15 @@ end
 -- ReadRenderSprite reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadRenderSprite(stream, value)
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.SortKey = BIG.value
-  if not stream:serializeBits(BITS, 32) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 32) then return false end
   value.MeshId = BITS.value
-  if not stream:serializeBits(BITS, 32) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 32) then return false end
   value.MaterialId = BITS.value
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.Layer = BITS.value
-  if not stream:serializeInt(BITS, 0, 2) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 2) then return false end
   value.Team = BITS.value
   return true
 end
@@ -78,29 +72,25 @@ end
 function _M.ZeroRenderBlock(value)
   value.WorkerIndex = 0
   value.SpriteCountHint = 0
-  for i = 1, 64 do _M.ZeroRenderSprite(value.Sprites[i]) end
+  for i = 1, 64 do
+    _M.ZeroRenderSprite(value.Sprites[i])
+  end
   value.SpritesCount = 0
 end
 
 -- ReadRenderBlock reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadRenderBlock(stream, value)
-  if not stream:serializeBits(BITS, 32) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 32) then return false end
   value.WorkerIndex = BITS.value
-  if not stream:serializeBits(BITS, 32) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 32) then return false end
   value.SpriteCountHint = BITS.value
   if not stream:serializeInt(BITS, 0, 64) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.SpritesCount = BITS.value
   for i = 1, value.SpritesCount do
-    if not _M.ReadRenderSprite(stream, value.Sprites[i]) then
-      return false
-    end
+    if not _M.ReadRenderSprite(stream, value.Sprites[i]) then return false end
   end
   return true
 end
@@ -126,7 +116,8 @@ function _M.WriteRenderBlock(stream, v)
   if not stream:serializeBits({ value = v.WorkerIndex }, 32) then return false end -- the storage width
   if math.type(v.SpriteCountHint) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.SpriteCountHint }, 32) then return false end -- the storage width
-  if type(v.SpritesCount) ~= "number" or v.SpritesCount < 0 or v.SpritesCount > 64 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.SpritesCount) ~= "number" or v.SpritesCount < 0 or v.SpritesCount > 64 then return false end
   if not stream:serializeBits({ value = v.SpritesCount }, 7) then return false end -- the count
   for _i = 1, v.SpritesCount do
     if not _M.WriteRenderSprite(stream, v.Sprites[_i]) then return false end

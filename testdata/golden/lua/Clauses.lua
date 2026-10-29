@@ -8,13 +8,17 @@ local _M = {}
 
 local function build(n, make)
   local t = {}
-  for i = 1, n do t[i] = make() end
+  for i = 1, n do
+    t[i] = make()
+  end
   return t
 end
 
 local function fill(n, v)
   local t = {}
-  for i = 1, n do t[i] = v end
+  for i = 1, n do
+    t[i] = v
+  end
   return t
 end
 
@@ -31,10 +35,15 @@ local function utf8valid(s)
     i = i + 1
     if b >= 0x80 then
       local rem, point
-      if b >= 0xC0 and b <= 0xDF then rem, point = 1, b & 0x1F
-      elseif b >= 0xE0 and b <= 0xEF then rem, point = 2, b & 0x0F
-      elseif b >= 0xF0 and b <= 0xF7 then rem, point = 3, b & 0x07
-      else return false end
+      if b >= 0xC0 and b <= 0xDF then
+        rem, point = 1, b & 0x1F
+      elseif b >= 0xE0 and b <= 0xEF then
+        rem, point = 2, b & 0x0F
+      elseif b >= 0xF0 and b <= 0xF7 then
+        rem, point = 3, b & 0x07
+      else
+        return false
+      end
       if rem > n - i + 1 then return false end
       for _ = 1, rem do
         local c = string.byte(s, i)
@@ -116,7 +125,9 @@ end
 -- type ArrTri3
 function _M.NewArrTri3()
   return {
-    Items = build(10, function() return _M.NewTri3() end),
+    Items = build(10, function()
+      return _M.NewTri3()
+    end),
     ItemsCount = 0,
   }
 end
@@ -132,7 +143,9 @@ end
 -- type ArrEleven
 function _M.NewArrEleven()
   return {
-    Items = build(9, function() return _M.NewEleven() end),
+    Items = build(9, function()
+      return _M.NewEleven()
+    end),
   }
 end
 
@@ -198,7 +211,9 @@ end
 function _M.NewArrNested()
   return {
     Lead = 0,
-    Items = build(4, function() return _M.NewEleven() end),
+    Items = build(4, function()
+      return _M.NewEleven()
+    end),
     ItemsCount = 0,
     Tail = 0,
   }
@@ -213,7 +228,9 @@ end
 
 -- ZeroW13 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroW13(value)
-  for i = 1, 12 do value.Items[i] = 0 end
+  for i = 1, 12 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
 end
 
@@ -225,9 +242,7 @@ function _M.ReadW13(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt(BITS, 0, 8191) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 8191) then return false end
     value.Items[i] = BITS.value
   end
   return true
@@ -235,7 +250,9 @@ end
 
 -- ZeroW17 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroW17(value)
-  for i = 1, 9 do value.Items[i] = 0 end
+  for i = 1, 9 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
 end
 
@@ -247,9 +264,7 @@ function _M.ReadW17(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt(BITS, 0, 131071) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 131071) then return false end
     value.Items[i] = BITS.value
   end
   return true
@@ -257,7 +272,9 @@ end
 
 -- ZeroW26 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroW26(value)
-  for i = 1, 6 do value.Items[i] = 0 end
+  for i = 1, 6 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
 end
 
@@ -269,9 +286,7 @@ function _M.ReadW26(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt(BITS, 0, 67108863) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 67108863) then return false end
     value.Items[i] = BITS.value
   end
   return true
@@ -279,7 +294,9 @@ end
 
 -- ZeroW1 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroW1(value)
-  for i = 1, 20 do value.Items[i] = 0 end
+  for i = 1, 20 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
 end
 
@@ -291,9 +308,7 @@ function _M.ReadW1(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt(BITS, 0, 1) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 1) then return false end
     value.Items[i] = BITS.value
   end
   return true
@@ -301,7 +316,9 @@ end
 
 -- ZeroW52 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroW52(value)
-  for i = 1, 3 do value.Items[i] = 0 end
+  for i = 1, 3 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
 end
 
@@ -313,9 +330,7 @@ function _M.ReadW52(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt64(BIG, 0, 4503599627370495) then
-      return false
-    end
+    if not stream:serializeInt64(BIG, 0, 4503599627370495) then return false end
     value.Items[i] = BIG.value
   end
   return true
@@ -323,7 +338,9 @@ end
 
 -- ZeroW50 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroW50(value)
-  for i = 1, 3 do value.Items[i] = 0 end
+  for i = 1, 3 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
 end
 
@@ -335,9 +352,7 @@ function _M.ReadW50(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt64(BIG, 0, 1125899906842623) then
-      return false
-    end
+    if not stream:serializeInt64(BIG, 0, 1125899906842623) then return false end
     value.Items[i] = BIG.value
   end
   return true
@@ -345,16 +360,16 @@ end
 
 -- ZeroF13 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroF13(value)
-  for i = 1, 7 do value.Items[i] = 0 end
+  for i = 1, 7 do
+    value.Items[i] = 0
+  end
 end
 
 -- ReadF13 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadF13(stream, value)
   for i = 1, 7 do
-    if not stream:serializeInt(BITS, 0, 8191) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 8191) then return false end
     value.Items[i] = BITS.value
   end
   return true
@@ -369,20 +384,18 @@ end
 -- ReadTri3 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadTri3(stream, value)
-  if not stream:serializeBits(BITS, 1) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 1) then return false end
   value.A = BITS.value
-  if not stream:serializeBits(BITS, 2) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 2) then return false end
   value.B = BITS.value
   return true
 end
 
 -- ZeroArrTri3 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroArrTri3(value)
-  for i = 1, 10 do _M.ZeroTri3(value.Items[i]) end
+  for i = 1, 10 do
+    _M.ZeroTri3(value.Items[i])
+  end
   value.ItemsCount = 0
 end
 
@@ -394,9 +407,7 @@ function _M.ReadArrTri3(stream, value)
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not _M.ReadTri3(stream, value.Items[i]) then
-      return false
-    end
+    if not _M.ReadTri3(stream, value.Items[i]) then return false end
   end
   return true
 end
@@ -410,53 +421,49 @@ end
 -- ReadEleven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadEleven(stream, value)
-  if not stream:serializeBits(BITS, 3) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 3) then return false end
   value.A = BITS.value
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.B = BITS.value
   return true
 end
 
 -- ZeroArrEleven resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroArrEleven(value)
-  for i = 1, 9 do _M.ZeroEleven(value.Items[i]) end
+  for i = 1, 9 do
+    _M.ZeroEleven(value.Items[i])
+  end
 end
 
 -- ReadArrEleven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArrEleven(stream, value)
   for i = 1, 9 do
-    if not _M.ReadEleven(stream, value.Items[i]) then
-      return false
-    end
+    if not _M.ReadEleven(stream, value.Items[i]) then return false end
   end
   return true
 end
 
 -- ZeroEmptyA resets the §5 ZERO form: all-zero storage, without declared defaults.
-function _M.ZeroEmptyA(value)
+function _M.ZeroEmptyA(_value)
   -- empty body — nothing to reset (SPEC §4.6)
 end
 
 -- ReadEmptyA reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
-function _M.ReadEmptyA(stream, value)
+function _M.ReadEmptyA(_stream, _value)
   -- empty body — presence is the payload (SPEC §4.6)
   return true
 end
 
 -- ZeroEmptyB resets the §5 ZERO form: all-zero storage, without declared defaults.
-function _M.ZeroEmptyB(value)
+function _M.ZeroEmptyB(_value)
   -- empty body — nothing to reset (SPEC §4.6)
 end
 
 -- ReadEmptyB reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
-function _M.ReadEmptyB(stream, value)
+function _M.ReadEmptyB(_stream, _value)
   -- empty body — presence is the payload (SPEC §4.6)
   return true
 end
@@ -492,16 +499,10 @@ end
 -- ReadHoldsEmptyUnion reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadHoldsEmptyUnion(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not _M.ReadEmptyUnion(stream, value.U) then
-    return false
-  end
-  if not stream:serializeBits(BITS, 7) then
-    return false
-  end
+  if not _M.ReadEmptyUnion(stream, value.U) then return false end
+  if not stream:serializeBits(BITS, 7) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -517,18 +518,14 @@ end
 -- ReadStrs reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadStrs(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   do
     if not stream:serializeInt(BITS, 0, 8) then -- the length guards the payload (§6.3)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.S = BYTES.value
     if not utf8valid(value.S) then return false end -- malformed UTF-8 (SPEC §4.7)
     if string.find(value.S, "\0", 1, true) then return false end -- interior null (SPEC §4.7)
@@ -538,14 +535,10 @@ function _M.ReadStrs(stream, value)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.B = BYTES.value
   end
-  if not stream:serializeBits(BITS, 3) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 3) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -553,7 +546,9 @@ end
 -- ZeroArrNested resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroArrNested(value)
   value.Lead = 0
-  for i = 1, 4 do _M.ZeroEleven(value.Items[i]) end
+  for i = 1, 4 do
+    _M.ZeroEleven(value.Items[i])
+  end
   value.ItemsCount = 0
   value.Tail = 0
 end
@@ -561,22 +556,16 @@ end
 -- ReadArrNested reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArrNested(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeInt(BITS, 0, 4) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not _M.ReadEleven(stream, value.Items[i]) then
-      return false
-    end
+    if not _M.ReadEleven(stream, value.Items[i]) then return false end
   end
-  if not stream:serializeBits(BITS, 3) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 3) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -589,75 +578,79 @@ end
 -- ReadSole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadSole(stream, value)
-  if not stream:serializeBits(BITS, 13) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 13) then return false end
   value.Only = BITS.value
   return true
 end
 
 -- type W13 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW13(stream, v)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
-    if not stream:serializeBits({ value = v.Items[_i] - (0) }, 13) then return false end -- the offset from min
+    if not stream:serializeBits({ value = v.Items[_i] - 0 }, 13) then return false end -- the offset from min
   end
   return true
 end
 
 -- type W17 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW17(stream, v)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 131071 then return false end
-    if not stream:serializeBits({ value = v.Items[_i] - (0) }, 17) then return false end -- the offset from min
+    if not stream:serializeBits({ value = v.Items[_i] - 0 }, 17) then return false end -- the offset from min
   end
   return true
 end
 
 -- type W26 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW26(stream, v)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 67108863 then return false end
-    if not stream:serializeBits({ value = v.Items[_i] - (0) }, 26) then return false end -- the offset from min
+    if not stream:serializeBits({ value = v.Items[_i] - 0 }, 26) then return false end -- the offset from min
   end
   return true
 end
 
 -- type W1 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW1(stream, v)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 1 then return false end
-    if not stream:serializeBits({ value = v.Items[_i] - (0) }, 1) then return false end -- the offset from min
+    if not stream:serializeBits({ value = v.Items[_i] - 0 }, 1) then return false end -- the offset from min
   end
   return true
 end
 
 -- type W52 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW52(stream, v)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 4503599627370495 then return false end
-    if not stream:serializeBits64({ value = v.Items[_i] - (0) }, 52) then return false end -- the offset from min
+    if not stream:serializeBits64({ value = v.Items[_i] - 0 }, 52) then return false end -- the offset from min
   end
   return true
 end
 
 -- type W50 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW50(stream, v)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 1125899906842623 then return false end
-    if not stream:serializeBits64({ value = v.Items[_i] - (0) }, 50) then return false end -- the offset from min
+    if not stream:serializeBits64({ value = v.Items[_i] - 0 }, 50) then return false end -- the offset from min
   end
   return true
 end
@@ -666,7 +659,7 @@ end
 function _M.WriteF13(stream, v)
   for _i = 1, 7 do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
-    if not stream:serializeBits({ value = v.Items[_i] - (0) }, 13) then return false end -- the offset from min
+    if not stream:serializeBits({ value = v.Items[_i] - 0 }, 13) then return false end -- the offset from min
   end
   return true
 end
@@ -682,7 +675,8 @@ end
 
 -- type ArrTri3 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrTri3(stream, v)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteTri3(stream, v.Items[_i]) then return false end
@@ -708,12 +702,12 @@ function _M.WriteArrEleven(stream, v)
 end
 
 -- type EmptyA (SPEC §6.1: the wire order is the declared order)
-function _M.WriteEmptyA(stream, v)
+function _M.WriteEmptyA(_stream, _v)
   return true
 end
 
 -- type EmptyB (SPEC §6.1: the wire order is the declared order)
-function _M.WriteEmptyB(stream, v)
+function _M.WriteEmptyB(_stream, _v)
   return true
 end
 
@@ -746,10 +740,12 @@ function _M.WriteStrs(stream, v)
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if type(v.S) ~= "string" or #v.S > 8 then return false end
   if not stream:serializeBits({ value = #v.S }, 4) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end
   if type(v.B) ~= "string" or #v.B > 8 then return false end
   if not stream:serializeBits({ value = #v.B }, 4) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.B, 1, #v.B) }, #v.B) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.B, 1, #v.B) }, #v.B) then return false end
   if math.type(v.Tail) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Tail }, 3) then return false end -- the declared bit width
   return true
@@ -759,7 +755,8 @@ end
 function _M.WriteArrNested(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end

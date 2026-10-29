@@ -76,7 +76,15 @@ _M.PropType = {
 -- EnumNamePropType: debug/log/tooling name for any PropType wire value;
 -- out-of-set values (wire-legal up to the declared max) name as "???"
 do
-  local names = { [0] = "None", [1] = "Asteroid", [2] = "Chunk", [3] = "Fragment", [4] = "Sphere", [5] = "BlackHole", [6] = "DysonPanel" }
+  local names = {
+    [0] = "None",
+    [1] = "Asteroid",
+    [2] = "Chunk",
+    [3] = "Fragment",
+    [4] = "Sphere",
+    [5] = "BlackHole",
+    [6] = "DysonPanel",
+  }
   function _M.EnumNamePropType(value)
     return names[value] or "???"
   end

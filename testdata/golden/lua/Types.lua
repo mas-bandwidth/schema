@@ -8,7 +8,9 @@ local _M = {}
 
 local function build(n, make)
   local t = {}
-  for i = 1, n do t[i] = make() end
+  for i = 1, n do
+    t[i] = make()
+  end
   return t
 end
 
@@ -112,7 +114,9 @@ function _M.NewInputPacket()
     SynchronizeSequence = 0,
     CurrentFrame = 0,
     StartFrame = 0,
-    Inputs = build(16, function() return _M.NewInput() end),
+    Inputs = build(16, function()
+      return _M.NewInput()
+    end),
     InputsCount = 0,
   }
 end
@@ -177,17 +181,11 @@ end
 -- ReadVec3 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadVec3(stream, value)
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.X = BYTES.value
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.Y = BYTES.value
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.Z = BYTES.value
   return true
 end
@@ -203,21 +201,13 @@ end
 -- ReadQuat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadQuat(stream, value)
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.X = BYTES.value
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.Y = BYTES.value
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.Z = BYTES.value
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.W = BYTES.value
   return true
 end
@@ -231,13 +221,9 @@ end
 -- ReadHandle reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadHandle(stream, value)
-  if not stream:serializeInt(BITS, 0, 9999) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 9999) then return false end
   value.ObjectId = BITS.value
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.ObjectSequence = BITS.value
   return true
 end
@@ -252,17 +238,11 @@ end
 -- ReadQuantizedPosition reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadQuantizedPosition(stream, value)
-  if not stream:serializeInt(BITS, -8388608, 8388608) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -8388608, 8388608) then return false end
   value.X = BITS.value
-  if not stream:serializeInt(BITS, -8388608, 8388608) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -8388608, 8388608) then return false end
   value.Y = BITS.value
-  if not stream:serializeInt(BITS, -8388608, 8388608) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -8388608, 8388608) then return false end
   value.Z = BITS.value
   return true
 end
@@ -277,17 +257,11 @@ end
 -- ReadQuantizedVelocity reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadQuantizedVelocity(stream, value)
-  if not stream:serializeInt(BITS, -2097152, 2097152) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -2097152, 2097152) then return false end
   value.X = BITS.value
-  if not stream:serializeInt(BITS, -2097152, 2097152) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -2097152, 2097152) then return false end
   value.Y = BITS.value
-  if not stream:serializeInt(BITS, -2097152, 2097152) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -2097152, 2097152) then return false end
   value.Z = BITS.value
   return true
 end
@@ -303,21 +277,13 @@ end
 -- ReadQuantizedRotation reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadQuantizedRotation(stream, value)
-  if not stream:serializeInt(BITS, -1024, 1024) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -1024, 1024) then return false end
   value.X = BITS.value
-  if not stream:serializeInt(BITS, -1024, 1024) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -1024, 1024) then return false end
   value.Y = BITS.value
-  if not stream:serializeInt(BITS, -1024, 1024) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -1024, 1024) then return false end
   value.Z = BITS.value
-  if not stream:serializeInt(BITS, -1024, 1024) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -1024, 1024) then return false end
   value.W = BITS.value
   return true
 end
@@ -334,23 +300,13 @@ end
 -- ReadRigidBody reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadRigidBody(stream, value)
-  if not _M.ReadVec3(stream, value.Position) then
-    return false
-  end
-  if not _M.ReadQuat(stream, value.Orientation) then
-    return false
-  end
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not _M.ReadVec3(stream, value.Position) then return false end
+  if not _M.ReadQuat(stream, value.Orientation) then return false end
+  if not stream:serializeBool(BOOL) then return false end
   value.AtRest = BOOL.value
   if not value.AtRest then
-    if not _M.ReadVec3(stream, value.LinearVelocity) then
-      return false
-    end
-    if not _M.ReadVec3(stream, value.AngularVelocity) then
-      return false
-    end
+    if not _M.ReadVec3(stream, value.LinearVelocity) then return false end
+    if not _M.ReadVec3(stream, value.AngularVelocity) then return false end
   else
     _M.ZeroVec3(value.LinearVelocity)
     _M.ZeroVec3(value.AngularVelocity)
@@ -378,57 +334,31 @@ end
 -- ReadInput reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadInput(stream, value)
-  if not stream:serializeFloat(BYTES) then
-    return false
-  end
+  if not stream:serializeFloat(BYTES) then return false end
   value.StickX = BYTES.value
-  if not stream:serializeFloat(BYTES) then
-    return false
-  end
+  if not stream:serializeFloat(BYTES) then return false end
   value.StickY = BYTES.value
-  if not stream:serializeFloat(BYTES) then
-    return false
-  end
+  if not stream:serializeFloat(BYTES) then return false end
   value.Throttle = BYTES.value
-  if not stream:serializeFloat(BYTES) then
-    return false
-  end
+  if not stream:serializeFloat(BYTES) then return false end
   value.Yaw = BYTES.value
-  if not stream:serializeFloat(BYTES) then
-    return false
-  end
+  if not stream:serializeFloat(BYTES) then return false end
   value.Pitch = BYTES.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Fire = BOOL.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.AltFire = BOOL.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Boost = BOOL.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Brake = BOOL.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Aim = BOOL.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.LockOn = BOOL.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Zoom = BOOL.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Ping = BOOL.value
   return true
 end
@@ -438,33 +368,27 @@ function _M.ZeroInputPacket(value)
   value.SynchronizeSequence = 0
   value.CurrentFrame = 0
   value.StartFrame = 0
-  for i = 1, 16 do _M.ZeroInput(value.Inputs[i]) end
+  for i = 1, 16 do
+    _M.ZeroInput(value.Inputs[i])
+  end
   value.InputsCount = 0
 end
 
 -- ReadInputPacket reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadInputPacket(stream, value)
-  if not stream:serializeBits(BITS, 16) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 16) then return false end
   value.SynchronizeSequence = BITS.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.CurrentFrame = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.StartFrame = BIG.value
   if not stream:serializeInt(BITS, 0, 16) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.InputsCount = BITS.value
   for i = 1, value.InputsCount do
-    if not _M.ReadInput(stream, value.Inputs[i]) then
-      return false
-    end
+    if not _M.ReadInput(stream, value.Inputs[i]) then return false end
   end
   return true
 end
@@ -486,46 +410,26 @@ end
 -- ReadShipCreate reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadShipCreate(stream, value)
-  if not stream:serializeInt(BITS, 0, 5) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 5) then return false end
   value.ShipType = BITS.value
-  if not _M.ReadQuantizedPosition(stream, value.Position) then
-    return false
-  end
-  if not _M.ReadQuantizedRotation(stream, value.Rotation) then
-    return false
-  end
-  if not _M.ReadQuantizedVelocity(stream, value.LinearVelocity) then
-    return false
-  end
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not _M.ReadQuantizedPosition(stream, value.Position) then return false end
+  if not _M.ReadQuantizedRotation(stream, value.Rotation) then return false end
+  if not _M.ReadQuantizedVelocity(stream, value.LinearVelocity) then return false end
+  if not stream:serializeBool(BOOL) then return false end
   value.HasFlags = BOOL.value
   if value.HasFlags then
-    if not stream:serializeBits(BITS, 4) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 4) then return false end
     value.Flags = BITS.value
   else
     value.Flags = 0
   end
-  if not stream:serializeInt(BITS, 0, 2) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 2) then return false end
   value.Team = BITS.value
-  if not stream:serializeInt(BITS, 0, 1000) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 1000) then return false end
   value.Health = BITS.value
-  if not stream:serializeInt(BITS, 0, 100) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 100) then return false end
   value.Thrust = BITS.value
-  if not stream:serializeInt(BITS, 0, 0) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 0) then return false end
   value.Pending = BITS.value
   return true
 end
@@ -539,13 +443,9 @@ end
 -- ReadExpressionProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadExpressionProbe(stream, value)
-  if not stream:serializeInt(BITS, 0, 31) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 31) then return false end
   value.HardpointIndex = BITS.value
-  if not stream:serializeInt(BITS, 1024, 2048) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 1024, 2048) then return false end
   value.SpinRate = BITS.value
   return true
 end
@@ -562,28 +462,18 @@ end
 -- ReadExtremeProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadExtremeProbe(stream, value)
-  if not stream:serializeInt64(BIG, math.mininteger, 100) then
-    return false
-  end
+  if not stream:serializeInt64(BIG, math.mininteger, 100) then return false end
   value.FloorBound = BIG.value
-  if not stream:serializeInt64(BIG, math.mininteger, 100) then
-    return false
-  end
+  if not stream:serializeInt64(BIG, math.mininteger, 100) then return false end
   value.DoubledFloor = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   if math.ult(0xfffffffffffffffe, BIG.value) then -- a read rejects out-of-range (SPEC §5)
     return false
   end
   value.CeilingRange = BIG.value + 1
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.FloorDefault = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.CeilingDefault = BIG.value
   return true
 end
@@ -599,24 +489,16 @@ end
 -- ReadExtremeRow reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadExtremeRow(stream, value)
-  if not stream:serializeInt64(BIG, math.mininteger, 100) then
-    return false
-  end
+  if not stream:serializeInt64(BIG, math.mininteger, 100) then return false end
   value.ClampedFloor = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   if math.ult(0xfffffffffffffffd, BIG.value) then -- a read rejects out-of-range (SPEC §5)
     return false
   end
   value.ClampedCeiling = BIG.value + 1
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.FloorDef = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.CeilingDef = BIG.value
   return true
 end
@@ -641,7 +523,7 @@ end
 -- type Handle (SPEC §6.1: the wire order is the declared order)
 function _M.WriteHandle(stream, v)
   if math.type(v.ObjectId) ~= "integer" or v.ObjectId < 0 or v.ObjectId > 9999 then return false end
-  if not stream:serializeBits({ value = v.ObjectId - (0) }, 14) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.ObjectId - 0 }, 14) then return false end -- the offset from min
   if math.type(v.ObjectSequence) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.ObjectSequence }, 8) then return false end -- the storage width
   return true
@@ -650,35 +532,35 @@ end
 -- type QuantizedPosition (SPEC §6.1: the wire order is the declared order)
 function _M.WriteQuantizedPosition(stream, v)
   if math.type(v.X) ~= "integer" or v.X < -8388608 or v.X > 8388608 then return false end
-  if not stream:serializeBits({ value = v.X - (-8388608) }, 25) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.X - -8388608 }, 25) then return false end -- the offset from min
   if math.type(v.Y) ~= "integer" or v.Y < -8388608 or v.Y > 8388608 then return false end
-  if not stream:serializeBits({ value = v.Y - (-8388608) }, 25) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Y - -8388608 }, 25) then return false end -- the offset from min
   if math.type(v.Z) ~= "integer" or v.Z < -8388608 or v.Z > 8388608 then return false end
-  if not stream:serializeBits({ value = v.Z - (-8388608) }, 25) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Z - -8388608 }, 25) then return false end -- the offset from min
   return true
 end
 
 -- type QuantizedVelocity (SPEC §6.1: the wire order is the declared order)
 function _M.WriteQuantizedVelocity(stream, v)
   if math.type(v.X) ~= "integer" or v.X < -2097152 or v.X > 2097152 then return false end
-  if not stream:serializeBits({ value = v.X - (-2097152) }, 23) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.X - -2097152 }, 23) then return false end -- the offset from min
   if math.type(v.Y) ~= "integer" or v.Y < -2097152 or v.Y > 2097152 then return false end
-  if not stream:serializeBits({ value = v.Y - (-2097152) }, 23) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Y - -2097152 }, 23) then return false end -- the offset from min
   if math.type(v.Z) ~= "integer" or v.Z < -2097152 or v.Z > 2097152 then return false end
-  if not stream:serializeBits({ value = v.Z - (-2097152) }, 23) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Z - -2097152 }, 23) then return false end -- the offset from min
   return true
 end
 
 -- type QuantizedRotation (SPEC §6.1: the wire order is the declared order)
 function _M.WriteQuantizedRotation(stream, v)
   if math.type(v.X) ~= "integer" or v.X < -1024 or v.X > 1024 then return false end
-  if not stream:serializeBits({ value = v.X - (-1024) }, 12) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.X - -1024 }, 12) then return false end -- the offset from min
   if math.type(v.Y) ~= "integer" or v.Y < -1024 or v.Y > 1024 then return false end
-  if not stream:serializeBits({ value = v.Y - (-1024) }, 12) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Y - -1024 }, 12) then return false end -- the offset from min
   if math.type(v.Z) ~= "integer" or v.Z < -1024 or v.Z > 1024 then return false end
-  if not stream:serializeBits({ value = v.Z - (-1024) }, 12) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Z - -1024 }, 12) then return false end -- the offset from min
   if math.type(v.W) ~= "integer" or v.W < -1024 or v.W > 1024 then return false end
-  if not stream:serializeBits({ value = v.W - (-1024) }, 12) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.W - -1024 }, 12) then return false end -- the offset from min
   return true
 end
 
@@ -720,7 +602,8 @@ function _M.WriteInputPacket(stream, v)
   if not stream:serializeBits64({ value = v.CurrentFrame }, 64) then return false end -- the storage width
   if math.type(v.StartFrame) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.StartFrame }, 64) then return false end -- the storage width
-  if type(v.InputsCount) ~= "number" or v.InputsCount < 0 or v.InputsCount > 16 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.InputsCount) ~= "number" or v.InputsCount < 0 or v.InputsCount > 16 then return false end
   if not stream:serializeBits({ value = v.InputsCount }, 5) then return false end -- the count
   for _i = 1, v.InputsCount do
     if not _M.WriteInput(stream, v.Inputs[_i]) then return false end
@@ -743,9 +626,9 @@ function _M.WriteShipCreate(stream, v)
   if math.type(v.Team) ~= "integer" or v.Team < 0 or v.Team > 2 then return false end
   if not stream:serializeBits({ value = v.Team }, 2) then return false end -- the enum value
   if math.type(v.Health) ~= "integer" or v.Health < 0 or v.Health > 1000 then return false end
-  if not stream:serializeBits({ value = v.Health - (0) }, 10) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Health - 0 }, 10) then return false end -- the offset from min
   if math.type(v.Thrust) ~= "integer" or v.Thrust < 0 or v.Thrust > 100 then return false end
-  if not stream:serializeBits({ value = v.Thrust - (0) }, 7) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Thrust - 0 }, 7) then return false end -- the offset from min
   if math.type(v.Pending) ~= "integer" or v.Pending < 0 or v.Pending > 0 then return false end
   return true
 end
@@ -753,20 +636,30 @@ end
 -- type ExpressionProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteExpressionProbe(stream, v)
   if math.type(v.HardpointIndex) ~= "integer" or v.HardpointIndex < 0 or v.HardpointIndex > 31 then return false end
-  if not stream:serializeBits({ value = v.HardpointIndex - (0) }, 5) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.HardpointIndex - 0 }, 5) then return false end -- the offset from min
   if math.type(v.SpinRate) ~= "integer" or v.SpinRate < 1024 or v.SpinRate > 2048 then return false end
-  if not stream:serializeBits({ value = v.SpinRate - (1024) }, 11) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.SpinRate - 1024 }, 11) then return false end -- the offset from min
   return true
 end
 
 -- type ExtremeProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteExtremeProbe(stream, v)
   if math.type(v.FloorBound) ~= "integer" or v.FloorBound < math.mininteger or v.FloorBound > 100 then return false end
-  if not stream:serializeBits64({ value = v.FloorBound - (math.mininteger) }, 64) then return false end -- the offset from min
-  if math.type(v.DoubledFloor) ~= "integer" or v.DoubledFloor < math.mininteger or v.DoubledFloor > 100 then return false end
-  if not stream:serializeBits64({ value = v.DoubledFloor - (math.mininteger) }, 64) then return false end -- the offset from min
-  if math.type(v.CeilingRange) ~= "integer" or math.ult(v.CeilingRange, 1) or math.ult(0xffffffffffffffff, v.CeilingRange) then return false end
-  if not stream:serializeBits64({ value = v.CeilingRange - (1) }, 64) then return false end -- the offset from min
+  -- the offset from min
+  if not stream:serializeBits64({ value = v.FloorBound - math.mininteger }, 64) then return false end
+  if math.type(v.DoubledFloor) ~= "integer" or v.DoubledFloor < math.mininteger or v.DoubledFloor > 100 then
+    return false
+  end
+  -- the offset from min
+  if not stream:serializeBits64({ value = v.DoubledFloor - math.mininteger }, 64) then return false end
+  if
+    math.type(v.CeilingRange) ~= "integer"
+    or math.ult(v.CeilingRange, 1)
+    or math.ult(0xffffffffffffffff, v.CeilingRange)
+  then
+    return false
+  end
+  if not stream:serializeBits64({ value = v.CeilingRange - 1 }, 64) then return false end -- the offset from min
   if math.type(v.FloorDefault) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.FloorDefault }, 64) then return false end -- the storage width
   if math.type(v.CeilingDefault) ~= "integer" then return false end
@@ -776,10 +669,19 @@ end
 
 -- type ExtremeRow (SPEC §6.1: the wire order is the declared order)
 function _M.WriteExtremeRow(stream, v)
-  if math.type(v.ClampedFloor) ~= "integer" or v.ClampedFloor < math.mininteger or v.ClampedFloor > 100 then return false end
-  if not stream:serializeBits64({ value = v.ClampedFloor - (math.mininteger) }, 64) then return false end -- the offset from min
-  if math.type(v.ClampedCeiling) ~= "integer" or math.ult(v.ClampedCeiling, 1) or math.ult(0xfffffffffffffffe, v.ClampedCeiling) then return false end
-  if not stream:serializeBits64({ value = v.ClampedCeiling - (1) }, 64) then return false end -- the offset from min
+  if math.type(v.ClampedFloor) ~= "integer" or v.ClampedFloor < math.mininteger or v.ClampedFloor > 100 then
+    return false
+  end
+  -- the offset from min
+  if not stream:serializeBits64({ value = v.ClampedFloor - math.mininteger }, 64) then return false end
+  if
+    math.type(v.ClampedCeiling) ~= "integer"
+    or math.ult(v.ClampedCeiling, 1)
+    or math.ult(0xfffffffffffffffe, v.ClampedCeiling)
+  then
+    return false
+  end
+  if not stream:serializeBits64({ value = v.ClampedCeiling - 1 }, 64) then return false end -- the offset from min
   if math.type(v.FloorDef) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.FloorDef }, 64) then return false end -- the storage width
   if math.type(v.CeilingDef) ~= "integer" then return false end

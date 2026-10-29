@@ -16,7 +16,7 @@
 
 local stream = require("serialize_stream")
 
-local VALUE_OUT_OF_RANGE = stream.SerializeError.ValueOutOfRange
+local VALUE_OUT_OF_RANGE = stream.Refusal.ValueOutOfRange
 local PANIC_MIN_MAX = "serialize: min must not be greater than max"
 
 local INT32_MIN = -2147483648
@@ -54,19 +54,19 @@ local function bitsRequired64(min, max)
   return len64(max - min)
 end
 
-local function checkIntBounds(name, min, max)
-  if math_type(min) ~= "integer" or math_type(max) ~= "integer" then
-    error("serialize: " .. name .. " takes integer bounds", 0)
-  end
-  if min < INT32_MIN or min > INT32_MAX or max < INT32_MIN or max > INT32_MAX then
-    error("serialize: " .. name .. " bounds must be in int32", 0)
-  end
-end
-
+-- A declaration check returns the rule's message, or nil (serialize_stream.lua,
+-- M.method: write and measure raise it, a read refuses value_out_of_range;
+-- IMPLEMENTING.md U5, U16).
 local int = {
   check = function(min, max)
-    checkIntBounds("serializeInt", min, max)
-    if min > max then error(PANIC_MIN_MAX, 0) end
+    if math_type(min) ~= "integer" or math_type(max) ~= "integer" then
+      return "serialize: serializeInt takes integer bounds"
+    end
+    if min < INT32_MIN or min > INT32_MAX or max < INT32_MIN or max > INT32_MAX then
+      return "serialize: serializeInt bounds must be in int32"
+    end
+    if min > max then return PANIC_MIN_MAX end
+    return nil
   end,
   checkValue = function(value)
     if math_type(value) ~= "integer" or value < INT32_MIN or value > INT32_MAX then
@@ -74,7 +74,7 @@ local int = {
     end
   end,
   -- STANDARD.md, int (ranged): value - min in the uint32 domain, in the bits
-  -- the range needs. A value outside [min,max] latches ValueOutOfRange
+  -- the range needs. A value outside [min,max] traps (IMPLEMENTING.md U9)
   -- (serialize.go WriteStream.SerializeInt).
   write = function(s, value, min, max)
     if value < min or value > max then
@@ -110,9 +110,10 @@ local int = {
 local int64 = {
   check = function(min, max)
     if math_type(min) ~= "integer" or math_type(max) ~= "integer" then
-      error("serialize: serializeInt64 takes integer bounds", 0)
+      return "serialize: serializeInt64 takes integer bounds"
     end
-    if min > max then error(PANIC_MIN_MAX, 0) end
+    if min > max then return PANIC_MIN_MAX end
+    return nil
   end,
   checkValue = function(value)
     if math_type(value) ~= "integer" then

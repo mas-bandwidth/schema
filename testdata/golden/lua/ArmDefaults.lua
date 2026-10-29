@@ -10,7 +10,9 @@ local _M = {}
 
 local function build(n, make)
   local t = {}
-  for i = 1, n do t[i] = make() end
+  for i = 1, n do
+    t[i] = make()
+  end
   return t
 end
 
@@ -21,7 +23,9 @@ local BYTES = { value = "" }
 -- type DefaultArm
 function _M.NewDefaultArm()
   return {
-    Entries = build(2, function() return Wire_.NewProbeConfig() end),
+    Entries = build(2, function()
+      return Wire_.NewProbeConfig()
+    end),
     EntriesCount = 0,
     Marker = 0, -- wire [0, 7]
   }
@@ -98,7 +102,9 @@ end
 
 -- ZeroDefaultArm resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroDefaultArm(value)
-  for i = 1, 2 do Wire_.ZeroProbeConfig(value.Entries[i]) end
+  for i = 1, 2 do
+    Wire_.ZeroProbeConfig(value.Entries[i])
+  end
   value.EntriesCount = 0
   value.Marker = 0
 end
@@ -111,13 +117,9 @@ function _M.ReadDefaultArm(stream, value)
   end
   value.EntriesCount = BITS.value
   for i = 1, value.EntriesCount do
-    if not Wire_.ReadProbeConfig(stream, value.Entries[i]) then
-      return false
-    end
+    if not Wire_.ReadProbeConfig(stream, value.Entries[i]) then return false end
   end
-  if not stream:serializeInt(BITS, 0, 7) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 7) then return false end
   value.Marker = BITS.value
   return true
 end
@@ -151,9 +153,7 @@ end
 -- ReadDefaultChoicePacket reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadDefaultChoicePacket(stream, value)
-  if not _M.ReadDefaultChoice(stream, value.Choice) then
-    return false
-  end
+  if not _M.ReadDefaultChoice(stream, value.Choice) then return false end
   return true
 end
 
@@ -166,17 +166,13 @@ end
 -- ReadDefaultBulkArm reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadDefaultBulkArm(stream, value)
-  if not _M.ReadDefaultArm(stream, value.Payload) then
-    return false
-  end
+  if not _M.ReadDefaultArm(stream, value.Payload) then return false end
   do
     if not stream:serializeInt(BITS, 0, 2) then -- the length guards the payload (§6.3)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.Data = BYTES.value
   end
   return true
@@ -205,13 +201,14 @@ end
 
 -- type DefaultArm (SPEC §6.1: the wire order is the declared order)
 function _M.WriteDefaultArm(stream, v)
-  if type(v.EntriesCount) ~= "number" or v.EntriesCount < 0 or v.EntriesCount > 2 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.EntriesCount) ~= "number" or v.EntriesCount < 0 or v.EntriesCount > 2 then return false end
   if not stream:serializeBits({ value = v.EntriesCount }, 2) then return false end -- the count
   for _i = 1, v.EntriesCount do
     if not Wire_.WriteProbeConfig(stream, v.Entries[_i]) then return false end
   end
   if math.type(v.Marker) ~= "integer" or v.Marker < 0 or v.Marker > 7 then return false end
-  if not stream:serializeBits({ value = v.Marker - (0) }, 3) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Marker - 0 }, 3) then return false end -- the offset from min
   return true
 end
 
@@ -239,7 +236,8 @@ function _M.WriteDefaultBulkArm(stream, v)
   if not _M.WriteDefaultArm(stream, v.Payload) then return false end
   if type(v.Data) ~= "string" or #v.Data > 2 then return false end
   if not stream:serializeBits({ value = #v.Data }, 2) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.Data, 1, #v.Data) }, #v.Data) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.Data, 1, #v.Data) }, #v.Data) then return false end
   return true
 end
 

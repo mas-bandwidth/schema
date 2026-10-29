@@ -16,8 +16,8 @@
 
 local stream = require("serialize_stream")
 
-local VALUE_OUT_OF_RANGE = stream.SerializeError.ValueOutOfRange
-local OVERFLOW = stream.SerializeError.Overflow
+local VALUE_OUT_OF_RANGE = stream.Refusal.ValueOutOfRange
+local PAST_END = stream.Refusal.PastEnd
 local PANIC_MIN_MAX = "serialize: min must not be greater than max"
 
 local math_type = math.type
@@ -347,9 +347,14 @@ local function readGroups128(s, numBits)
 end
 
 local int128 = {
+  -- A declaration check returns the rule's message, or nil (serialize_stream.lua,
+  -- M.method; IMPLEMENTING.md U16).
   check = function(min, max)
-    if not (checkPair(min) and checkPair(max)) then pairMisuse("serializeInt128") end
-    if I.cmp(min, max) > 0 then error(PANIC_MIN_MAX, 0) end
+    if not (checkPair(min) and checkPair(max)) then
+      return "serialize: serializeInt128 takes a { lo, hi } value"
+    end
+    if I.cmp(min, max) > 0 then return PANIC_MIN_MAX end
+    return nil
   end,
   checkValue = function(value)
     if not checkPair(value) then pairMisuse("serializeInt128") end
@@ -364,7 +369,7 @@ local int128 = {
     local numBits = bitsRequired128(min, max)
     if numBits == 0 then return true end
     if s._bits + numBits > s._numBits then
-      return s:_fail(OVERFLOW)
+      return s:_fail(PAST_END)
     end
     local offset = U.sub(value, min)
     return writeGroups128(s, offset, numBits)
@@ -400,7 +405,7 @@ local uint128 = {
   -- half, each half as 64 bits (serialize.go WriteStream.SerializeUint128).
   write = function(s, value)
     if s._bits + 128 > s._numBits then
-      return s:_fail(OVERFLOW)
+      return s:_fail(PAST_END)
     end
     if not s:_writeBits(value.lo, 64) then return false end
     return s:_writeBits(value.hi, 64)
@@ -412,7 +417,7 @@ local uint128 = {
     if hi == nil then return false end
     return true, { lo = lo, hi = hi }
   end,
-  measure = function(s, value)
+  measure = function(s, _value)
     return s:_measure(128)
   end,
 }

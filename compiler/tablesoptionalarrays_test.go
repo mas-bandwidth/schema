@@ -130,7 +130,12 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			code := string(files["ProbeTables.lua"])
 			for _, f := range []string{"entries", "weights", "grades"} {
-				if !strings.Contains(code, `optional = true, present = "`+f+`_present"`) {
+				i := strings.Index(code, `name = "`+f+`"`)
+				if i < 0 {
+					t.Fatalf("--lang lua: no descriptor row for %s", f)
+				}
+				row, _, _ := strings.Cut(code[i:], "\n    },") // one descriptor row, as the formatter lays it out
+				if !strings.Contains(row, "optional = true,\n      present = \""+f+"_present\"") {
 					t.Errorf("--lang lua: %s is not an optional array row with its presence companion", f)
 				}
 			}

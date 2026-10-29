@@ -21,10 +21,15 @@ local function utf8valid(s)
     i = i + 1
     if b >= 0x80 then
       local rem, point
-      if b >= 0xC0 and b <= 0xDF then rem, point = 1, b & 0x1F
-      elseif b >= 0xE0 and b <= 0xEF then rem, point = 2, b & 0x0F
-      elseif b >= 0xF0 and b <= 0xF7 then rem, point = 3, b & 0x07
-      else return false end
+      if b >= 0xC0 and b <= 0xDF then
+        rem, point = 1, b & 0x1F
+      elseif b >= 0xE0 and b <= 0xEF then
+        rem, point = 2, b & 0x0F
+      elseif b >= 0xF0 and b <= 0xF7 then
+        rem, point = 3, b & 0x07
+      else
+        return false
+      end
       if rem > n - i + 1 then return false end
       for _ = 1, rem do
         local c = string.byte(s, i)
@@ -88,9 +93,7 @@ function _M.ReadWideSeven(stream, value)
     value.Text = {}
     local expectLow = false
     for i = 1, len do
-      if not stream:serializeBits(BITS, 32) then
-        return false
-      end
+      if not stream:serializeBits(BITS, 32) then return false end
       local group = BITS.value
       if group == 0 or group > 0xFFFF then return false end -- UTF-16 code unit (SPEC §4.12)
       local high = group >= 0xD800 and group <= 0xDBFF
@@ -120,9 +123,7 @@ function _M.ReadWideFour(stream, value)
     value.Text = {}
     local expectLow = false
     for i = 1, len do
-      if not stream:serializeBits(BITS, 32) then
-        return false
-      end
+      if not stream:serializeBits(BITS, 32) then return false end
       local group = BITS.value
       if group == 0 or group > 0xFFFF then return false end -- UTF-16 code unit (SPEC §4.12)
       local high = group >= 0xD800 and group <= 0xDBFF
@@ -149,9 +150,7 @@ function _M.ReadNarrowFifteen(stream, value)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.Text = BYTES.value
     if not utf8valid(value.Text) then return false end -- malformed UTF-8 (SPEC §4.7)
     if string.find(value.Text, "\0", 1, true) then return false end -- interior null (SPEC §4.7)
@@ -175,9 +174,7 @@ function _M.ReadWideInterop(stream, value)
     value.Caption = {}
     local expectLow = false
     for i = 1, len do
-      if not stream:serializeBits(BITS, 32) then
-        return false
-      end
+      if not stream:serializeBits(BITS, 32) then return false end
       local group = BITS.value
       if group == 0 or group > 0xFFFF then return false end -- UTF-16 code unit (SPEC §4.12)
       local high = group >= 0xD800 and group <= 0xDBFF
@@ -193,13 +190,25 @@ end
 
 -- type WideSeven (SPEC §6.1: the wire order is the declared order)
 function _M.WriteWideSeven(stream, v)
-  if not stream:serializeWideString({ value = v.Text }, 7) then return false end -- UTF-16 code units (SPEC §4.12)
+  if type(v.Text) ~= "table" or #v.Text > 7 then return false end -- the length in [0, 7] (SPEC §4.12)
+  if not stream:serializeBits({ value = #v.Text }, 3) then return false end -- the length, no alignment (SPEC §4.12)
+  for _u = 1, #v.Text do
+    local unit = v.Text[_u]
+    if math.type(unit) ~= "integer" or unit < 1 or unit > 0xFFFF then return false end
+    if not stream:serializeBits({ value = unit }, 32) then return false end -- one 32-bit group per code unit
+  end
   return true
 end
 
 -- type WideFour (SPEC §6.1: the wire order is the declared order)
 function _M.WriteWideFour(stream, v)
-  if not stream:serializeWideString({ value = v.Text }, 4) then return false end -- UTF-16 code units (SPEC §4.12)
+  if type(v.Text) ~= "table" or #v.Text > 4 then return false end -- the length in [0, 4] (SPEC §4.12)
+  if not stream:serializeBits({ value = #v.Text }, 3) then return false end -- the length, no alignment (SPEC §4.12)
+  for _u = 1, #v.Text do
+    local unit = v.Text[_u]
+    if math.type(unit) ~= "integer" or unit < 1 or unit > 0xFFFF then return false end
+    if not stream:serializeBits({ value = unit }, 32) then return false end -- one 32-bit group per code unit
+  end
   return true
 end
 
@@ -207,13 +216,20 @@ end
 function _M.WriteNarrowFifteen(stream, v)
   if type(v.Text) ~= "string" or #v.Text > 15 then return false end
   if not stream:serializeBits({ value = #v.Text }, 4) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end
   return true
 end
 
 -- type WideInterop (SPEC §6.1: the wire order is the declared order)
 function _M.WriteWideInterop(stream, v)
-  if not stream:serializeWideString({ value = v.Caption }, 7) then return false end -- UTF-16 code units (SPEC §4.12)
+  if type(v.Caption) ~= "table" or #v.Caption > 7 then return false end -- the length in [0, 7] (SPEC §4.12)
+  if not stream:serializeBits({ value = #v.Caption }, 3) then return false end -- the length, no alignment (SPEC §4.12)
+  for _u = 1, #v.Caption do
+    local unit = v.Caption[_u]
+    if math.type(unit) ~= "integer" or unit < 1 or unit > 0xFFFF then return false end
+    if not stream:serializeBits({ value = unit }, 32) then return false end -- one 32-bit group per code unit
+  end
   return true
 end
 
