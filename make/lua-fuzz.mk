@@ -1,4 +1,4 @@
-# make/checks/lua-fuzz.mk — the LUA leg's wire-fuzz gate (docs/PORT-LUA.md, THE CARD
+# make/lua-fuzz.mk — the LUA leg's wire-fuzz gate (docs/PORT-LUA.md, THE CARD
 # MAP: schema-lua-fuzz-differential; test/conformance/README.md, "The wire-fuzz
 # driver"; docs/SPEC-TABLES.md §4.2). Included by the Makefile's wildcard
 # include.
