@@ -1196,6 +1196,14 @@ function TableVariableUnionBodyExtent(u, r, ids, at) {
 }
 `
 
+// The json-walk markers (docs/PORTING.md M9): everything between them is the
+// one text walk, byte-identical in every unit's <Package>Variable.js. The
+// package name never appears between them, so the gate normalises nothing.
+const (
+	jsJsonWalkBegin = "// ---- json walk: begin ----"
+	jsJsonWalkEnd   = "// ---- json walk: end ----"
+)
+
 // jsVariableTextRuntime is the TEXT FORM (docs/SPEC-TABLES.md §16), a port of
 // internal/tabletext's write.go and read.go: every field in declaration order,
 // defaults included, two-space indent, a float at the shortest precision that

@@ -618,11 +618,14 @@ test-js: tables-js-variable-class
 # widedemo and the messagedemo instances, with wide text's read report and its
 # write refusal (TestFixedPointAndWideTextOnTheTableWireJavaScript); and the
 # refusal test no longer names those constructs
-# (TestOtherVariableConstructsAreRefusedByName).
+# (TestOtherVariableConstructsAreRefusedByName); and the map WRITER holds the
+# sort: a Map built out of key order saves, measures and writes text in
+# ascending key order, with a reversed witness that drops the sort
+# (TestMapWriterSortJavaScript, docs/PORTING.md M19).
 # SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestFixedPointAndWideTextOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestFixedPointAndWideTextOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
 	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars and wstring(N) round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
@@ -1278,6 +1281,65 @@ conformance-negative-control-js-walk: build/conformance-harness build/tables-gen
 	sh test/conformance/js/negative-control walk
 
 test-js: conformance-negative-control-js-walk
+
+# THE GENERIC-WALK GATE, JavaScript side (docs/PORTING.md M9, docs/SPEC-TABLES.md
+# §16). The text form is one walk over the descriptors, emitted between the
+# `---- json walk: begin/end ----` markers into each unit's <Package>Variable.js
+# (the module that already carries the unit's variable runtime). The gate holds
+# the shape cs holds: exactly one walker per unit directory, and every walker in
+# the corpus the same bytes. The package name never enters the markers, so
+# nothing is normalised away. js_json_walk_compare is the comparison alone, over
+# a directory of extracted walkers, so the negative control runs the same lines.
+define js_json_walk_compare
+	@if [ -z "$$(ls $(1) 2>/dev/null)" ]; then \
+		echo "GENERIC-WALK GATE FAILED: no walker in any generated Variable.js"; exit 1; fi
+	@first=""; for f in $(1)/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
+		fi; \
+	done
+endef
+
+.PHONY: tables-js-json-walk-extract tables-js-json-walk tables-js-json-walk-compare tables-js-json-walk-negative-control
+tables-js-json-walk-extract: build/tables-generated-js/.stamp
+	@rm -rf build/json-walk-js && mkdir -p build/json-walk-js
+	@for d in build/tables-generated-js/*/; do \
+		unit=$$(basename $$d); n=0; \
+		for f in $$d*.js; do \
+			[ -e "$$f" ] || continue; \
+			out=build/json-walk-js/$$unit.$$(basename $$f); \
+			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+			if [ -s $$out ]; then n=$$((n+1)); else rm -f $$out; fi; \
+		done; \
+		if [ -n "$$(ls $$d*Variable.js 2>/dev/null)" ] && [ $$n -ne 1 ]; then \
+			echo "GENERIC-WALK GATE FAILED: unit $$unit carries $$n walkers, not one"; exit 1; \
+		fi; \
+	done
+
+tables-js-json-walk-compare:
+	$(call js_json_walk_compare,$(JS_JSON_WALK_DIR))
+
+tables-js-json-walk: tables-js-json-walk-extract
+	$(call js_json_walk_compare,build/json-walk-js)
+	@echo "tables JavaScript generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-js | wc -l | tr -d ' ') units"
+
+# The control: one unit's walker, copied aside with one line of the text
+# writer's indent changed (the shape a per-unit specialisation of the walk would
+# take), must turn the comparison red. A comparison that matched nothing, or one
+# that compared a walker to itself, stays green here and fails the control.
+tables-js-json-walk-negative-control: tables-js-json-walk-extract
+	@rm -rf build/json-walk-js-control && cp -R build/json-walk-js build/json-walk-js-control
+	@victim=$$(ls build/json-walk-js-control | tail -1); \
+	grep -q 'TableVariableBase64' build/json-walk-js-control/$$victim || { echo "negative control: the planted line is gone from the walker"; exit 1; }; \
+	sed 's/TableVariableBase64Text(data) {/TableVariableBase64Text(data) { \/\/ specialised/' build/json-walk-js-control/$$victim > build/json-walk-js-control/$$victim.tmp && \
+	mv build/json-walk-js-control/$$victim.tmp build/json-walk-js-control/$$victim; \
+	cmp -s build/json-walk-js/$$victim build/json-walk-js-control/$$victim && { echo "negative control: the sabotage did not apply"; exit 1; }; \
+	if $(MAKE) --no-print-directory tables-js-json-walk-compare JS_JSON_WALK_DIR=build/json-walk-js-control > build/json-walk-js-control.log 2>&1; then \
+		echo "JavaScript json-walk negative control FAILED: a specialised walker in one unit passed the gate"; exit 1; fi; \
+	grep -q 'GENERIC-WALK GATE FAILED: the walker in' build/json-walk-js-control.log || { cat build/json-walk-js-control.log; echo "negative control: red for the wrong reason"; exit 1; }
+	@echo "JavaScript json-walk negative control: a specialised walker in one unit turns the gate red"
+
+test-js: tables-js-json-walk tables-js-json-walk-negative-control
 
 # M5 (docs/PORTING.md, "Keyed arrays index by key, refused at both ends"): a
 # keyed array [E]T takes the KEY on every JavaScript form that stores one — the
