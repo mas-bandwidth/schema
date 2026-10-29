@@ -580,9 +580,10 @@ control puts the start-only bound back and requires the gate to go red.
 **DART emits two libraries per unit file**: `<Base>Block.dart` and
 `<Base>Cook.dart` (the two accelerators, §19 and §7) — plus one runtime home
 per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`, which
-every other library of the unit imports. It emits no `<Base>Table.dart`: the
-Dart port of the table wire wrote the form that preceded the id-table wire and
-was removed rather than carried (schema#514 brings the current wire to Dart). A Dart library IS a file, so a runtime shared across a unit's
+every other library of the unit imports. The id-table wire (§3) and the text
+form (§16) ride one library per unit, `<Package>Wire.dart`; the fixed form
+(§3.4) rides `<Base>Fixed.dart` with its runtime home `<Package>Fixed.dart`;
+reflection (§8) rides the optional `<Package>View.dart`. A Dart library IS a file, so a runtime shared across a unit's
 files has to be PUBLIC, and every spelling of it is claimed by the front end
 (§11); the backend spells NO PRIVATE LIBRARY-SCOPE NAME AT ALL, because a schema
 identifier may begin with an underscore and a private top-level name would be a

@@ -1404,3 +1404,35 @@ test-dart: tables-dart-agree tables-dart-accessor-negative-control tables-dart-s
 # see the header of the included file for the corpus, the pinned SDK and the
 # negative control.
 include make/schema-dart-generated-strict-analyze-gate.mk
+
+# THE DART LEG's EMITTER-SIDE CONFORMANCE NEGATIVE CONTROLS (docs/PORTING.md
+# I11). Each sabotages internal/codegen/darttable through a Go overlay
+# (tools/sabotage), generates every unit the driver reads afresh into
+# build/conformance-dart-negative-<mode>, compiles the driver against that tree
+# and requires the matrix red on exactly one surface: `walk` negates the text
+# reader's bool arm (dart / json-read red, json-write and wire green); `zero`
+# removes the text_holds_zero refusal (docs/SPEC-TABLES.md §16.3) and turns
+# exactly the two carried json-hostile zero rows red. Nothing tracked is written.
+.PHONY: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
+conformance-negative-control-dart-walk: build/conformance-harness
+	sh test/conformance/dart/negative-control walk "$(DART)"
+
+conformance-negative-control-dart-zero: build/conformance-harness
+	sh test/conformance/dart/negative-control zero "$(DART)"
+
+test-dart: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
+
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Dart side:
+# docs/USAGE.md's dart-table-usage fragment, generated against tables/pointers
+# afresh, analyzed with infos fatal and run over the graph_tree corpus wire
+# (test/dart-tables/usage). Its control renames the page's entry point in the
+# generated library and requires the gate red, naming it; the control runs the
+# gate first, so the pull-request negative-control row carries both halves.
+.PHONY: tables-dart-usage tables-dart-usage-negative-control
+tables-dart-usage: bin/schema docs/USAGE.md
+	sh test/dart-tables/usage "$(DART)"
+
+tables-dart-usage-negative-control: tables-dart-usage
+	sh test/dart-tables/usage "$(DART)" control
+
+test-dart: tables-dart-usage tables-dart-usage-negative-control

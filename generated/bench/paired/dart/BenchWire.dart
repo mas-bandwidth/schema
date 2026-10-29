@@ -4300,6 +4300,16 @@ String _jsonEnum(int v, String Function(int) name, String where) {
   return _jsonString(n);
 }
 
+// _jsonText is the ZERO RULE (§16.3, text_holds_zero), one helper for every
+// place the read stores text: a string(N) or wstring(N) value, a *string
+// value, a text-list element, a map key. A stored string that decodes to
+// U+0000 refuses the read, because no wire carries a zero in text. A string
+// the read only SKIPS (an unknown key's value) never reaches here.
+String _jsonText(String s) {
+  if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
+  return s;
+}
+
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
 // mismatch; a string past N is clamped at a CODE POINT boundary and counted,
 // never cut through a multi-byte character (§16.3).
@@ -4308,7 +4318,7 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r) {
     r.kindMismatch++;
     return '';
   }
-  if (utf8.encode(val).length <= bound) return val;
+  if (utf8.encode(_jsonText(val)).length <= bound) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -5003,7 +5013,7 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
 
 String? _jsonStringBlob(dynamic val, TableTextReport r) {
   if (val == null) return null;
-  if (val is String) return val;
+  if (val is String) return _jsonText(val);
   r.kindMismatch++;
   return null;
 }
@@ -5028,7 +5038,7 @@ String _jsonWStringField(dynamic val, int bound, TableTextReport r) {
     r.kindMismatch++;
     return '';
   }
-  if (val.length <= bound) return val;
+  if (_jsonText(val).length <= bound) return val;
   var keep = bound;
   if (keep > 0) {
     final u = val.codeUnitAt(keep - 1);
