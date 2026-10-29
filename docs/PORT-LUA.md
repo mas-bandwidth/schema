@@ -216,12 +216,14 @@ names no reason stays `damaged`.
 ## THE REGISTER
 
 The lua column of [PORTING.md](PORTING.md) is checked against the tree, cell by
-cell (2026-10-28). Carried, each naming its proof: M4b, M6, M7, M8, M9, M12,
-M14, M16, M19, M20, I4, I5, I7, I15 and J4. `—`, the platform's reason stated:
-M2 and M3 (a Lua 5.4 integer and float are unboxed values), M4 (no inlining
-directive or aliasing qualifier), M10 (the VM owns allocation), M11 (no struct
-layout), M17 (no arena: a blob is one string of its own length) and J5 (no
-table-wire bench). Every other cell is `❌`: the register's grammar requires a
+cell (2026-10-28). Carried, each naming its proof: M4b, M6, M7, M8, M9, M11, M12,
+M14, M16, M19, M20, I3, I4, I5, I6, I7, I10, I13, I15, J1, J2 and J4. `—`, the
+platform's reason stated: M2 and M3 (a Lua 5.4 integer and float are unboxed
+values), M4 (no inlining directive or aliasing qualifier), M10 (the VM owns
+allocation), M17 (no arena: a blob is one string of its own length) and J5 (no
+table-wire bench). M11 and J1 are carried in the Lua form (2026-10-29): Lua has
+no generated accessor, so the gate holds the runtime's layout derivation to the
+compiler's rather than an accessor to a descriptor. Every other cell is `❌`: the register's grammar requires a
 `#NNN`, the only issue that names the Lua port is #381 (closed, the language
 list), so the cells cite it beside the `port/lua/open/*` roadmap entry that
 carries the work (roadmap entries, never new issues). I2 and I11 are the
@@ -263,10 +265,8 @@ bytes where the Go reference answers absent, and the refusal needs a reason
 name SPEC-TABLES §11 does not yet give); a caller-owned load with its
 allocation gate and soak; the keyed accessor; frozen descriptors; one pointer
 walk shared by save and cook; the arm read through the field reader; float32
-bit surgery on the table wire; a typed save; block and cook accessors; the
-forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
-the random text differential; the runtime-home control; the bench and release
-tier; and the card facade.
+bit surgery on the table wire; a typed save; the USAGE example; the
+bench and release tier; and the card facade.
 
 ## DEEPEN
 
