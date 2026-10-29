@@ -1035,7 +1035,7 @@ tables-go-subsets:
 		./internal/codegen/gotable -run '^TestGoTableCompilesWithAnySubsetOfItsForms$$' -count=1 -timeout 600s
 test-go: tables-go-subsets
 
-# I13 (docs/PORTING.md:1278): the go leg's text differential against a third
+# I13 (docs/PORTING.md, the text differential): the go leg's text differential against a third
 # implementation. The test generates N random float-only instances with the
 # generated setters, writes each as (wire, text), then byte-compares the leg's
 # text against internal/tabletext's text and packs the leg's text back to wire
@@ -1048,7 +1048,7 @@ tables-go-text-differential:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
 tables-go-text-differential-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
-test-go: tables-go-text-differential
+test-go: tables-go-text-differential tables-go-text-differential-negative-control
 
 # FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
 # finite-only too, same rule as packets"): every read refuses a NaN or an
