@@ -1,8 +1,11 @@
 // schema_wire.goose — the packet wire's bit moves (docs/PORT-GOOSE.md, THE
 // PACKET WIRE): serialize.goose's serialize_bits, serialize_bits64 and
 // serialize_bool for the generated codec, the same checks in the same order
-// with the same refusals, over the same stream state, written so that they
-// inline into every call site. The generated writers and readers move every
+// with the same refusals over the same state machine, written so that they
+// inline into every call site. A writer carries the packer's state in a
+// WireW local its entry owns (wire_open, wire_close), so the state lives in
+// registers rather than behind the stream pointer that every byte store may
+// alias; a reader moves the stream itself. The generated writers and readers move every
 // plain bit field through these; everything else (fixed, int128, float,
 // compressed float, bytes, text, align) goes to serialize.goose itself.
 //
@@ -19,22 +22,50 @@ namespace schema_rt;
 
 import .serialize_stream;
 
-// wire_put packs the low `bits` bits of value, bits in [1,63]: the stream's
-// capacity check, then the packer (serialize_packer_write's state machine,
-// whose scratch holds no bit above scratch_bits).
-inline fn wire_put(s: WriteStream&, value: u64, bits: i64) {
-    if bits > s.num_bits - s.bits_written { serialize_write_past_end(s, bits); }
-    let filled = s.scratch_bits;
-    s.scratch = s.scratch | (value << (filled as! u64));
-    s.bits_written += bits;
+// WireW is a writer's packer state while a generated Write<T> runs: the
+// stream's scratch, scratch_bits, bits_written and word_index.
+struct WireW { scratch: u64, filled: i64, written: i64, word: i64 }
+
+inline fn wire_open(s: WriteStream&) -> WireW {
+    return WireW { scratch: s.scratch, filled: s.scratch_bits, written: s.bits_written, word: s.word_index };
+}
+
+// wire_reopen reads the state back after a runtime call moved the stream.
+inline fn wire_reopen(s: WriteStream&, l: WireW&) {
+    l.scratch = s.scratch;
+    l.filled = s.scratch_bits;
+    l.written = s.bits_written;
+    l.word = s.word_index;
+}
+
+// wire_close puts the state back into the stream.
+inline fn wire_close(s: WriteStream&, l: WireW&) {
+    s.scratch = l.scratch;
+    s.scratch_bits = l.filled;
+    s.bits_written = l.written;
+    s.word_index = l.word;
+}
+
+// wire_put packs the low `bits` bits of value, bits in [1,63]: the capacity
+// check (an overrun puts the state back and aborts, as serialize.goose's
+// write check does), then serialize_packer_write's state machine, whose
+// scratch holds no bit above the filled count.
+inline fn wire_put(s: WriteStream&, l: WireW&, value: u64, bits: i64) {
+    if bits > s.num_bits - l.written {
+        wire_close(s, l);
+        serialize_write_past_end(s, bits);
+    }
+    let filled = l.filled;
+    l.scratch = l.scratch | (value << (filled as! u64));
+    l.written += bits;
     let total = filled + bits;
     if total < 64 {
-        s.scratch_bits = total;
+        l.filled = total;
         return;
     }
-    let at = s.word_index * 8;
+    let at = l.word * 8;
     let window = s.data[at..at + 8];
-    let word = s.scratch;
+    let word = l.scratch;
     window[0] = word as! u8;
     window[1] = (word >> 8) as! u8;
     window[2] = (word >> 16) as! u8;
@@ -43,10 +74,10 @@ inline fn wire_put(s: WriteStream&, value: u64, bits: i64) {
     window[5] = (word >> 40) as! u8;
     window[6] = (word >> 48) as! u8;
     window[7] = (word >> 56) as! u8;
-    s.word_index += 1;
+    l.word += 1;
     let spill = total - 64;
-    s.scratch_bits = spill;
-    s.scratch = if spill == 0 { 0 } else { value >> ((bits - spill) as! u64) };
+    l.filled = spill;
+    l.scratch = if spill == 0 { 0 } else { value >> ((bits - spill) as! u64) };
 }
 
 // wire_fits is serialize_bits_write_check: a count outside [1, width] or a
@@ -83,9 +114,9 @@ inline fn wire_take(s: ReadStream&, bits: i64) -> u64 {
 
 // wire_bits is serialize_bits: bits in [1,32], value < 2^bits (a write that
 // breaks either aborts, as serialize_bits does; U8, U9).
-inline fn wire_bits(s: WriteStream&, value: u32, bits: i64) -> bool {
+inline fn wire_bits(s: WriteStream&, l: WireW&, value: u32, bits: i64) -> bool {
     wire_fits(value, bits, 32);
-    wire_put(s, value, bits);
+    wire_put(s, l, value, bits);
     return true;
 }
 
@@ -98,10 +129,15 @@ inline fn wire_bits(s: ReadStream&, value: u32&, bits: i64) -> bool {
 
 // wire_bits64 is serialize_bits64: bits in [1,64]. A full 64-bit write and a
 // read wider than one window (57 to 64 bits) are serialize.goose's own.
-inline fn wire_bits64(s: WriteStream&, value: u64, bits: i64) -> bool {
-    if bits == 64 { return serialize_bits64(s, value, bits); }
+inline fn wire_bits64(s: WriteStream&, l: WireW&, value: u64, bits: i64) -> bool {
+    if bits == 64 {
+        wire_close(s, l);
+        let ok = serialize_bits64(s, value, bits);
+        wire_reopen(s, l);
+        return ok;
+    }
     wire_fits(value, bits, 64);
-    wire_put(s, value, bits);
+    wire_put(s, l, value, bits);
     return true;
 }
 
@@ -114,8 +150,8 @@ inline fn wire_bits64(s: ReadStream&, value: u64&, bits: i64) -> bool {
 }
 
 // wire_bool is serialize_bool: one bit, 1 for true.
-inline fn wire_bool(s: WriteStream&, value: bool) -> bool {
-    wire_put(s, if value { 1 } else { 0 }, 1);
+inline fn wire_bool(s: WriteStream&, l: WireW&, value: bool) -> bool {
+    wire_put(s, l, if value { 1 } else { 0 }, 1);
     return true;
 }
 

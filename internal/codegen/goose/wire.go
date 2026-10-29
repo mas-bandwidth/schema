@@ -125,7 +125,8 @@ func (w *wgen) emitStruct(st *ir.Struct) error {
 	w.Pf("// Write%s writes value in wire order. It returns SERIALIZE_ERROR_NONE, or the\n", st.Name)
 	w.Pf("// refusal kind of the first value the wire cannot carry; the size written is\n")
 	w.Pf("// serialize_bits_processed(s).\n")
-	w.Pf("fn Write%s(s: WriteStream&, value: %s&) -> i32 {\n", st.Name, st.Name)
+	w.emitWriteEntry(st.Name)
+	w.Pf("inline fn _Write%s(s: WriteStream&, l: schema_rt::WireW&, value: %s&) -> i32 {\n", st.Name, st.Name)
 	w.n = 0
 	if err := w.emitWriteItems(st.Items, "    "); err != nil {
 		return fmt.Errorf("%s: %w", st.Name, err)
@@ -166,14 +167,15 @@ func (w *wgen) emitUnion(d *ir.Union) error {
 	w.Declare("Write" + d.Name)
 	w.Pf("// Write%s writes the tag, then the selected arm's payload (SPEC §4.8). The\n", d.Name)
 	w.Pf("// tag validates BEFORE it rides: an out-of-set tag writes nothing.\n")
-	w.Pf("fn Write%s(s: WriteStream&, value: %s&) -> i32 {\n", d.Name, d.Name)
+	w.emitWriteEntry(d.Name)
+	w.Pf("inline fn _Write%s(s: WriteStream&, l: schema_rt::WireW&, value: %s&) -> i32 {\n", d.Name, d.Name)
 	if d.Max == 0 {
 		w.Pf("    // an empty union holds only None; its degenerate tag range [0, 0] costs zero bits\n")
 		w.Pf("    if value.Type != %sNone { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }\n", tag)
 		w.Pf("    return SERIALIZE_ERROR_NONE;\n}\n\n")
 	} else {
 		w.Pf("    if value.Type > %sMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; } // the tag validates BEFORE it rides\n", tag)
-		w.Pf("    schema_rt::wire_bits(s, value.Type, %d);\n", bits)
+		w.Pf("    schema_rt::wire_bits(s, l, value.Type, %d);\n", bits)
 		for _, v := range d.Variants {
 			if v.Void() {
 				continue // a payload-free arm: the tag is the whole wire
@@ -182,7 +184,9 @@ func (w *wgen) emitUnion(d *ir.Union) error {
 				return fmt.Errorf("union %s arm %s carries no type payload, which the packet wire has no encoding for", d.Name, v.Name)
 			}
 			arm := ir.GoExportName(v.Name)
-			w.Pf("    if value.Type == %s%s { return Write%s(s, value.%s); }\n", tag, arm, w.TypeRef(v.Type, false), arm)
+			w.Pf("    if value.Type == %s%s {\n", tag, arm)
+			w.Pf("        return %s;\n", w.nestedWrite(v.Ref, w.TypeRef(v.Type, false), "value."+arm, "        "))
+			w.Pf("    }\n")
 		}
 		w.Pf("    return SERIALIZE_ERROR_NONE; // None or a payload-free arm: the tag is the whole wire\n}\n\n")
 	}
@@ -335,7 +339,7 @@ func (w *wgen) emitWriteItems(items []ir.Item, ind string) error {
 		case *ir.ReservedItem:
 			w.Pf("%s%s // reserved(%d): zeros on the wire\n", ind, bitsCall("0", it.Bits), it.Bits)
 		case *ir.AlignItem:
-			w.Pf("%sserialize_align(s);\n", ind)
+			w.streamCall(ind, "%sserialize_align(s);\n", ind)
 		case *ir.Branch:
 			w.Pf("%sif %s {\n", ind, condExpr(it))
 			if err := w.emitWriteItems(it.Then, ind+"    "); err != nil {
@@ -407,9 +411,9 @@ func bitsCall(expr string, bits int64) string {
 		return ""
 	}
 	if bits <= 32 {
-		return fmt.Sprintf("schema_rt::wire_bits(s, %s, %d);", narrow32(expr), bits)
+		return fmt.Sprintf("schema_rt::wire_bits(s, l, %s, %d);", narrow32(expr), bits)
 	}
-	return fmt.Sprintf("schema_rt::wire_bits64(s, %s, %d);", expr, bits)
+	return fmt.Sprintf("schema_rt::wire_bits64(s, l, %s, %d);", expr, bits)
 }
 
 // narrow32 spells a value known to fit 32 bits as a u32 argument: a literal
@@ -458,4 +462,102 @@ func floatLit32(v float32) string {
 		return "(" + s + ")"
 	}
 	return s
+}
+
+// ---- the writer's packer state in locals --------------------------------------
+
+// Every Write<T> is a thin entry over an `inline fn _Write<T>` that carries the
+// packer's state (scratch, scratch_bits, bits_written, word_index) in a
+// schema_rt::WireW the entry owns: the bit moves update locals, which the C
+// compiler keeps in registers, rather than the stream's fields through a
+// pointer that every byte store may alias (runtime/schema_wire.goose). The
+// entry puts the state back into the stream before it returns, and every
+// runtime call that takes the stream gets it put back first and read back
+// after (streamCall), so the stream is exactly what serialize.goose's own
+// entries would have left.
+func (w *wgen) emitWriteEntry(name string) {
+	w.Pf("fn Write%s(s: WriteStream&, value: %s&) -> i32 {\n", name, name)
+	w.Pf("    var l = schema_rt::wire_open(s);\n")
+	w.Pf("    let refusal = _Write%s(s, l, value);\n", name)
+	w.Pf("    schema_rt::wire_close(s, l);\n")
+	w.Pf("    return refusal;\n}\n\n")
+}
+
+// streamCall emits a runtime call that takes the stream, the packer state put
+// back into it first and read back after.
+func (w *wgen) streamCall(ind, format string, args ...any) {
+	w.Pf("%sschema_rt::wire_close(s, l);\n", ind)
+	w.Pf(format, args...)
+	w.Pf("%sschema_rt::wire_reopen(s, l);\n", ind)
+}
+
+// inlineWriteLimit bounds the code a nested type's writer may add at each
+// call site: a type whose flattened write is larger is called through its
+// entry, its state put back around the call, so nesting never multiplies
+// code without bound.
+const inlineWriteLimit = 256
+
+// nestedWrite is the expression that writes a nested type or union: its
+// inline body over this writer's state when it is small, else its entry.
+func (w *wgen) nestedWrite(ref any, typ, expr, ind string) string {
+	if writeCost(ref, map[any]int{}) <= inlineWriteLimit {
+		return fmt.Sprintf("_Write%s(s, l, %s)", typ, expr)
+	}
+	w.Pf("%sschema_rt::wire_close(s, l);\n", ind)
+	t := w.tmp("nested")
+	w.Pf("%slet %s = Write%s(s, %s);\n", ind, t, typ, expr)
+	w.Pf("%sschema_rt::wire_reopen(s, l);\n", ind)
+	return t
+}
+
+// writeCost is the flattened size of a type's write, in fields: a nested type
+// small enough to inline counts its own cost, a larger one counts one call.
+func writeCost(ref any, memo map[any]int) int {
+	if c, ok := memo[ref]; ok {
+		return c
+	}
+	memo[ref] = inlineWriteLimit + 1 // a cycle never inlines
+	nested := func(t ir.FieldType) int {
+		if t.Kind == ir.TNamed {
+			switch r := t.Ref.(type) {
+			case *ir.Struct, *ir.Union:
+				if c := writeCost(r, memo); c <= inlineWriteLimit {
+					return c
+				}
+			}
+		}
+		return 1
+	}
+	var items func([]ir.Item) int
+	items = func(list []ir.Item) int {
+		n := 0
+		for _, item := range list {
+			switch it := item.(type) {
+			case *ir.FieldItem:
+				n += nested(it.F.Type)
+			case *ir.Branch:
+				n += 1 + items(it.Then) + items(it.Else)
+			default:
+				n++
+			}
+		}
+		return n
+	}
+	c := 1
+	switch r := ref.(type) {
+	case *ir.Struct:
+		c = items(r.Items)
+	case *ir.Union:
+		for _, v := range r.Variants {
+			if v.Ref == nil {
+				c++
+			} else if a := writeCost(v.Ref, memo); a <= inlineWriteLimit {
+				c += a
+			} else {
+				c++
+			}
+		}
+	}
+	memo[ref] = c
+	return c
 }

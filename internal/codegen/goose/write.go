@@ -29,7 +29,7 @@ func (w *wgen) emitWriteField(f *ir.Field, ind string) error {
 			if f.ArrayMin != 0 {
 				off = fmt.Sprintf("%sCount - %d", name, f.ArrayMin)
 			}
-			w.Pf("%sschema_rt::wire_bits(s, (%s) as! u32, %d); // the count, offset from %d\n", ind, off, bits, f.ArrayMin)
+			w.Pf("%sschema_rt::wire_bits(s, l, (%s) as! u32, %d); // the count, offset from %d\n", ind, off, bits, f.ArrayMin)
 		}
 		limit = name + "Count"
 	}
@@ -48,7 +48,7 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 	t := f.Type
 	switch t.Kind {
 	case ir.TBool:
-		w.Pf("%sschema_rt::wire_bool(s, %s);\n", ind, expr)
+		w.Pf("%sschema_rt::wire_bool(s, l, %s);\n", ind, expr)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			w.emitWriteCompressed(f, expr, ind)
@@ -57,19 +57,19 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 		b := w.tmp("bits")
 		w.Pf("%slet %s = serialize_f32_bits(%s);\n", ind, b, expr)
 		w.Pf("%sif !serialize_float_bits_are_finite(%s) { return SERIALIZE_ERROR_NON_FINITE_FLOAT; } // NaN and the infinities are not values of the type (SPEC §4.3)\n", ind, b)
-		w.Pf("%sschema_rt::wire_bits(s, %s, 32);\n", ind, b)
+		w.Pf("%sschema_rt::wire_bits(s, l, %s, 32);\n", ind, b)
 	case ir.TFloat64:
 		b := w.tmp("bits")
 		w.Pf("%slet %s = serialize_f64_bits(%s);\n", ind, b, expr)
 		w.Pf("%sif !serialize_double_bits_are_finite(%s) { return SERIALIZE_ERROR_NON_FINITE_FLOAT; } // NaN and the infinities are not values of the type (SPEC §4.3)\n", ind, b)
-		w.Pf("%sschema_rt::wire_bits64(s, %s, 64);\n", ind, b)
+		w.Pf("%sschema_rt::wire_bits64(s, l, %s, 64);\n", ind, b)
 	case ir.TString, ir.TBytes:
 		bits := ir.BitsRequired(big.NewInt(0), big.NewInt(t.Size))
 		// length in [0, N], align, then the used bytes: the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7)
 		w.Pf("%sif %s < 0 || %s > %d { %s }\n", ind, length, length, t.Size, refuseRange)
-		w.Pf("%sschema_rt::wire_bits(s, %s as! u32, %d);\n", ind, length, bits)
-		w.Pf("%sserialize_bytes(s, %s[0..%s]);\n", ind, expr, length)
+		w.Pf("%sschema_rt::wire_bits(s, l, %s as! u32, %d);\n", ind, length, bits)
+		w.streamCall(ind, "%sserialize_bytes(s, %s[0..%s]);\n", ind, expr, length)
 	case ir.TWString:
 		w.emitWriteWString(f, expr, length, ind)
 	case ir.TFixed:
@@ -93,9 +93,9 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 			w.Pf("%sif %s > %s { %s } // a value wider than bits(%d) cannot ride\n", ind, expr, mask, refuseRange, t.Width)
 		}
 		if t.Width <= 32 {
-			w.Pf("%sschema_rt::wire_bits(s, %s, %d);\n", ind, expr, t.Width)
+			w.Pf("%sschema_rt::wire_bits(s, l, %s, %d);\n", ind, expr, t.Width)
 		} else {
-			w.Pf("%sschema_rt::wire_bits64(s, %s, %d);\n", ind, expr, t.Width)
+			w.Pf("%sschema_rt::wire_bits64(s, l, %s, %d);\n", ind, expr, t.Width)
 		}
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
@@ -108,9 +108,9 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 			switch {
 			case bits == 0:
 			case storage <= 32:
-				w.Pf("%sschema_rt::wire_bits(s, %s, %d);\n", ind, expr, bits)
+				w.Pf("%sschema_rt::wire_bits(s, l, %s, %d);\n", ind, expr, bits)
 			default:
-				w.Pf("%sschema_rt::wire_bits64(s, %s, %d);\n", ind, expr, bits)
+				w.Pf("%sschema_rt::wire_bits64(s, l, %s, %d);\n", ind, expr, bits)
 			}
 		case *ir.Flags:
 			if ref.WireBits < 64 {
@@ -118,13 +118,13 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 				w.Pf("%sif %s > %s { %s } // a mask bit above the flags wire width cannot ride\n", ind, expr, mask, refuseRange)
 			}
 			if ref.WireBits <= 32 {
-				w.Pf("%sschema_rt::wire_bits(s, %s as! u32, %d);\n", ind, expr, ref.WireBits)
+				w.Pf("%sschema_rt::wire_bits(s, l, %s as! u32, %d);\n", ind, expr, ref.WireBits)
 			} else {
-				w.Pf("%sschema_rt::wire_bits64(s, %s, %d);\n", ind, expr, ref.WireBits)
+				w.Pf("%sschema_rt::wire_bits64(s, l, %s, %d);\n", ind, expr, ref.WireBits)
 			}
 		case *ir.Struct, *ir.Union:
 			e := w.tmp("refusal")
-			w.Pf("%slet %s = Write%s(s, %s);\n", ind, e, w.TypeRef(t.Name, false), expr)
+			w.Pf("%slet %s = %s;\n", ind, e, w.nestedWrite(ref, w.TypeRef(t.Name, false), expr, ind))
 			w.Pf("%sif %s != SERIALIZE_ERROR_NONE { return %s; }\n", ind, e, e)
 		default:
 			return fmt.Errorf("field %s names %s, which has no packet wire", f.Name, t.Name)
@@ -175,10 +175,10 @@ func (w *wgen) emitWriteRanged(signed bool, width int, lo, hi *big.Int, expr, in
 		off = fmt.Sprintf("%s - %s", o, u64Lit(lo))
 	}
 	if bits <= 32 {
-		w.Pf("%sschema_rt::wire_bits(s, (%s) as! u32, %d);\n", ind, off, bits)
+		w.Pf("%sschema_rt::wire_bits(s, l, (%s) as! u32, %d);\n", ind, off, bits)
 		return
 	}
-	w.Pf("%sschema_rt::wire_bits64(s, %s, %d);\n", ind, off, bits)
+	w.Pf("%sschema_rt::wire_bits64(s, l, %s, %d);\n", ind, off, bits)
 }
 
 // emitWriteBareInt writes a bare integer at its declared width; a signed
@@ -188,13 +188,13 @@ func (w *wgen) emitWriteBareInt(f *ir.Field, expr, ind string) {
 	t := f.Type
 	switch {
 	case t.Width == 64 && t.Signed:
-		w.Pf("%sschema_rt::wire_bits64(s, %s as! u64, 64);\n", ind, expr)
+		w.Pf("%sschema_rt::wire_bits64(s, l, %s as! u64, 64);\n", ind, expr)
 	case t.Width == 64:
-		w.Pf("%sschema_rt::wire_bits64(s, %s, 64);\n", ind, expr)
+		w.Pf("%sschema_rt::wire_bits64(s, l, %s, 64);\n", ind, expr)
 	case t.Signed:
-		w.Pf("%sschema_rt::wire_bits(s, %s as! u%d, %d);\n", ind, expr, t.Width, t.Width)
+		w.Pf("%sschema_rt::wire_bits(s, l, %s as! u%d, %d);\n", ind, expr, t.Width, t.Width)
 	default:
-		w.Pf("%sschema_rt::wire_bits(s, %s, %d);\n", ind, expr, t.Width)
+		w.Pf("%sschema_rt::wire_bits(s, l, %s, %d);\n", ind, expr, t.Width)
 	}
 }
 
@@ -208,7 +208,7 @@ func (w *wgen) emitWriteCompressed(f *ir.Field, expr, ind string) {
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
 	w.Pf("%sif !serialize_float_bits_are_finite(serialize_f32_bits(%s)) { return SERIALIZE_ERROR_NON_FINITE_FLOAT; } // NaN and the infinities are not values of the type (SPEC §4.3)\n", ind, expr)
-	w.Pf("%sserialize_compressed_float_precomputed(s, %s, %d, %d, %s, %s);\n", ind, expr, steps, bits, floatLit32(delta), floatLit32(min32))
+	w.streamCall(ind, "%sserialize_compressed_float_precomputed(s, %s, %d, %d, %s, %s);\n", ind, expr, steps, bits, floatLit32(delta), floatLit32(min32))
 }
 
 // emitWriteWString writes wide text (SPEC §4.12): the length in [0, N], then
@@ -217,11 +217,11 @@ func (w *wgen) emitWriteCompressed(f *ir.Field, expr, ind string) {
 func (w *wgen) emitWriteWString(f *ir.Field, expr, length, ind string) {
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
 	w.Pf("%sif %s < 0 || %s > %d { %s }\n", ind, length, length, f.Type.Size, refuseRange)
-	w.Pf("%sschema_rt::wire_bits(s, %s as! u32, %d);\n", ind, length, bits)
+	w.Pf("%sschema_rt::wire_bits(s, l, %s as! u32, %d);\n", ind, length, bits)
 	i := w.tmp("unit")
 	w.Pf("%sfor %s in %s {\n", ind, i, length)
 	w.Pf("%s    if %s[%s] == 0 { %s } // an interior null is not text (SPEC §4.12)\n", ind, expr, i, refuseRange)
-	w.Pf("%s    schema_rt::wire_bits(s, %s[%s], 32);\n", ind, expr, i)
+	w.Pf("%s    schema_rt::wire_bits(s, l, %s[%s], 32);\n", ind, expr, i)
 	w.Pf("%s}\n", ind)
 }
 
@@ -297,7 +297,7 @@ func (w *wgen) emitWriteFixed(f *ir.Field, expr, ind string) error {
 		if !t.Signed {
 			arg = lanes(v)
 		}
-		w.Pf("%sserialize_fixed128(s, %s, %d, %d, %s, %s);\n", ind, arg, ib, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
+		w.streamCall(ind, "%sserialize_fixed128(s, %s, %d, %d, %s, %s);\n", ind, arg, ib, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
 		return nil
 	}
 	w.emitRangeRefusal(t.Signed, t.Width, rawMin, rawMax, expr, ind)
@@ -309,14 +309,14 @@ func (w *wgen) emitWriteFixed(f *ir.Field, expr, ind string) error {
 	if entry == "128" { // unsigned 64-bit storage, zero extended
 		arg = fmt.Sprintf("Int128 { lo: %s, hi: 0 }", expr)
 	}
-	w.Pf("%sserialize_fixed%s(s, %s, %d, %d, %s, %s);\n", ind, entry, arg, ib, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
+	w.streamCall(ind, "%sserialize_fixed%s(s, %s, %d, %d, %s, %s);\n", ind, entry, arg, ib, t.FracBits, IntLit(f.IntMin), IntLit(f.IntMax))
 	return nil
 }
 
 func (w *wgen) emitWrite128(f *ir.Field, expr, ind string) error {
 	if !f.HasIntRange {
 		// uint128 is the raw field: 128 bits, the low half first
-		w.Pf("%sserialize_uint128(s, Uint128 { lo: %s.lo, hi: %s.hi });\n", ind, expr, expr)
+		w.streamCall(ind, "%sserialize_uint128(s, Uint128 { lo: %s.lo, hi: %s.hi });\n", ind, expr, expr)
 		return nil
 	}
 	if f.IntMin == nil || f.IntMax == nil {
@@ -330,6 +330,6 @@ func (w *wgen) emitWrite128(f *ir.Field, expr, ind string) error {
 	}
 	w.Pf("%sif serialize_int128_compare(%s, %s) < 0 || serialize_int128_compare(%s, %s) > 0 { %s }\n",
 		ind, v, int128Lit(f.IntMin), v, int128Lit(f.IntMax), refuseRange)
-	w.Pf("%sserialize_int128(s, %s, %s, %s);\n", ind, v, int128Lit(f.IntMin), int128Lit(f.IntMax))
+	w.streamCall(ind, "%sserialize_int128(s, %s, %s, %s);\n", ind, v, int128Lit(f.IntMin), int128Lit(f.IntMax))
 	return nil
 }
