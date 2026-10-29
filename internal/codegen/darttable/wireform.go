@@ -318,6 +318,10 @@ type wireGen struct {
 	roots   []*ir.Struct
 	body    strings.Builder
 	cur     *ir.Struct // the table whose load body is being emitted
+	// lenientPayload is set while a keyed array's element reader is emitted
+	lenientPayload bool
+	// optHad names the presence local of the optional field being emitted
+	optHad string
 	// enums are the packet enums this library spells by name: their
 	// extension types are imported, with `show`, from the declaring library
 	enums map[string]bool
@@ -574,6 +578,9 @@ final class WireState {
   final List<Object?> nodeObjs = <Object?>[];
   final Map<Object, int> _objIndex = <Object, int>{};
   final Map<Object, int> _blobIndex = Map<Object, int>.identity();
+  // A save is STRICT about a blob two slots name (§2.5): the wire writer
+  // refuses it by name, blob_shared. The cook numbers the same graph and does not.
+  bool refuseSharedBlob = false;
   TableRetain? retain;
   TableWireReport? report;
   bool lost = false;
@@ -631,7 +638,12 @@ final class WireState {
   // String is a value, so two equal strings there are one blob.
   int noteBlob(int typeId, Object blob) {
     final found = _blobIndex[blob];
-    if (found != null) return found;
+    if (found != null) {
+      if (refuseSharedBlob) {
+        throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
+      }
+      return found;
+    }
     nodeTypes.add(typeId);
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
@@ -1047,6 +1059,15 @@ final class TableWireReader {
     return v;
   }
 
+  // readBool reads a bool payload: any nonzero byte reads true, and a byte
+  // above 1 is malformed (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
+  bool readBool() {
+    final v = data[pos];
+    pos++;
+    if (v > 1) report.malformed = true;
+    return v != 0;
+  }
+
   // readLeb decodes one canonical LEB128; null on a truncated, over-long or
   // non-minimal encoding (§3). On any of those the cursor does not move, so a
   // nested body that ends short of its own length is seen to do so (§4), the
@@ -1421,8 +1442,13 @@ final class TableWireReader {
       nodeTableGood = false;
       return;
     }
+    // THE SCAN IS FRAMING ONLY (scanNodeRecords): a record's type is judged
+    // after the whole payload has framed, so a table that cannot be read whole
+    // counts nothing unknown and resolves nothing.
     var read = 0;
     var framed = true;
+    final scanTypes = <int>[];
+    final scanBytes = <Uint8List>[];
     while (pos < tableEnd) {
       final typeRef = readLeb();
       if (typeRef == null || typeRef < 1 || typeRef > entryCount) {
@@ -1434,32 +1460,37 @@ final class TableWireReader {
         framed = false;
         break;
       }
-      final bytes = Uint8List.fromList(data.sublist(pos, pos + blen));
+      scanBytes.add(Uint8List.fromList(data.sublist(pos, pos + blen)));
       pos += blen;
-      final typeId = refToId[typeRef] ?? 0;
-      if (typeId == _kStringBlobId && stringBlob) {
-        if (_lebValid(bytes, 0, bytes.length)) {
-          nodeTypes.add(typeId);
-        } else {
-          report.malformed = true;
-          nodeTypes.add(0);
-        }
-      } else if (typeId == _kBytesBlobId && bytesBlob) {
-        nodeTypes.add(typeId);
-      } else if (knownTypes.contains(typeId)) {
-        nodeTypes.add(typeId);
-      } else {
-        report.unknown++;
-        if (retain != null) report.retainLost++;
-        nodeTypes.add(typeId);
-      }
-      nodes.add(bytes);
-      decoded.add(null);
+      scanTypes.add(refToId[typeRef] ?? 0);
       read++;
     }
     if (!framed || pos != tableEnd || read != count) {
       report.malformed = true;
       nodeTableGood = false;
+    } else {
+      for (var i = 0; i < scanTypes.length; i++) {
+        final typeId = scanTypes[i];
+        final bytes = scanBytes[i];
+        if (typeId == _kStringBlobId && stringBlob) {
+          if (_lebValid(bytes, 0, bytes.length)) {
+            nodeTypes.add(typeId);
+          } else {
+            report.malformed = true;
+            nodeTypes.add(0);
+          }
+        } else if (typeId == _kBytesBlobId && bytesBlob) {
+          nodeTypes.add(typeId);
+        } else if (knownTypes.contains(typeId)) {
+          nodeTypes.add(typeId);
+        } else {
+          report.unknown++;
+          if (retain != null) report.retainLost++;
+          nodeTypes.add(typeId);
+        }
+        nodes.add(bytes);
+        decoded.add(null);
+      }
     }
     pos = tableEnd;
     limit = bodyLimit;
@@ -1498,6 +1529,8 @@ final class TableWireReader {
 bool _kindWidens(int from, int to) {
   return (from >= 2 && from <= 5 && to > from && to <= 5) ||
       (from >= 6 && from <= 9 && to > from && to <= 9) ||
+      (from >= 2 && from <= 5 && to == 18) ||
+      (from >= 6 && from <= 9 && to == 19) ||
       (from == 10 && to == 11);
 }
 
@@ -1615,8 +1648,18 @@ func (g *wireGen) emitSaveBody(st *ir.Struct) {
 	n := st.Name
 	fields := dartName(n) + "WireSaveBodyFields"
 	g.pf("void %s(TableWireWriter w, %s v) {\n", fields, n)
+	guards := wireGuards(st)
 	for i, f := range st.Fields {
-		g.emitSaveField(f, "\t", i)
+		cond := g.guardCond(st, guards[f.Name])
+		if cond == "" {
+			g.emitSaveField(f, "\t", i)
+			continue
+		}
+		// A FIELD UNDER A FALSE GUARD IS NOT WRITTEN (§3.1, §4): the wire says
+		// what the value says, whatever a tolerant read left in the slot.
+		g.pf("\tif (%s) {\n", cond)
+		g.emitSaveField(f, "\t\t", i)
+		g.pf("\t}\n")
 	}
 	g.pf("\t_retainTail(w);\n")
 	g.pf("}\n\n")
@@ -1751,15 +1794,16 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%sif (%s != %s) {\n", ind, expr, g.enumDefault(f))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindEnum)
-		g.pf("%s\tint vid;\n", ind)
+		// The value is the variant's id reference; the zero variant (None) has
+		// none and rides as reference 0 (§2.9, §3), and the fields after it
+		// still follow.
 		g.pf("%s\tswitch (%s) {\n", ind, expr)
 		for i := range e.Variants {
 			vid := ir.TableWireId(e.VariantWireName(i))
-			g.pf("%s\t\tcase %d: vid = %s;\n", ind, i+1, dartU64Literal(vid))
+			g.pf("%s\t\tcase %d: w.putLeb(w.refFor(%s));\n", ind, i+1, dartU64Literal(vid))
 		}
-		g.pf("%s\t\tdefault: return;\n", ind)
+		g.pf("%s\t\tdefault: w.putLeb(0);\n", ind)
 		g.pf("%s\t}\n", ind)
-		g.pf("%s\tw.putLeb(w.refFor(vid));\n", ind)
 		g.pf("%s}\n", ind)
 	default:
 		// No other construct reaches this emitter: checkUnsupportedConstructs
@@ -1905,6 +1949,15 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.cur = st
 	g.emitArrayHelpers(st)
 	g.pf("void %s(TableWireReader r, %s v, bool nested) {\n", fn, n)
+	// A BY-VALUE BODY IS THE SAME STORAGE across occurrences and is RESET when
+	// its id comes round again (internal/tablewire field, Refill): the last
+	// occurrence wins whole, so a field only the earlier one carried does not
+	// stand. One flag a body field, local to this read.
+	for _, f := range st.Fields {
+		if isByValueTable(nonOptionalOf(f)) {
+			g.pf("\tvar %s = false;\n", seenName(f))
+		}
+	}
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null) { r.report.malformed = true; return; }\n")
@@ -1914,11 +1967,20 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\tif (!r.has(1)) { r.report.malformed = true; return; }\n")
 	g.pf("\t\tfinal kind = r.readByte();\n")
 	g.pf("\t\tif (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }\n")
-	g.pf("\t\tif (id == _kNodeTableId) {\n")
-	g.pf("\t\t\tif (nested) { r.report.malformed = true; return; }\n")
-	g.pf("\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
-	g.pf("\t\t\tcontinue;\n")
-	g.pf("\t\t}\n")
+	// The reserved node-table id is a VARIABLE-class root's own (§3.1): it
+	// steps over it and never counts it unknown. A reader that cannot name it
+	// (a fixed-class body) counts it unknown like any other id it does not
+	// know, which is §4's counter, so it falls to the switch below; inside a
+	// nested body it is malformed in either class.
+	if ir.VariableTables(g.unit)[n] {
+		g.pf("\t\tif (id == _kNodeTableId) {\n")
+		g.pf("\t\t\tif (nested) { r.report.malformed = true; return; }\n")
+		g.pf("\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
+		g.pf("\t\t\tcontinue;\n")
+		g.pf("\t\t}\n")
+	} else {
+		g.pf("\t\tif (id == _kNodeTableId && nested) { r.report.malformed = true; return; }\n")
+	}
 	g.pf("\t\tswitch (id) {\n")
 	for i, f := range st.Fields {
 		g.emitLoadField(f, "\t\t\t", i)
@@ -1964,16 +2026,29 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// declared default, which for an optional is ABSENT
 		// (internal/tablewire arrayBody, readFields)
 		has := hasMember(f)
-		g.pf("%s\tv.%s = true;\n", ind, has)
 		start := g.body.Len()
+		g.optHad = hadName(f)
 		g.emitLoadField(nonOptional(f), ind, ordinal)
+		g.optHad = ""
 		caseText := g.body.String()[start:]
 		// the bare field's own case line is dropped: this case already opened
 		caseText = caseText[strings.Index(caseText, "\n")+1:]
-		caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = false;")
+		had := hadName(f)
+		// an occurrence under a kind the field does not take leaves the field
+		// standing, so it comes back to the presence it had (§4)
+		caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = "+had+";")
 		rest := g.body.String()[:start]
 		g.body.Reset()
 		g.body.WriteString(rest)
+		// A READ THAT STOPS THE BODY (framing damage it cannot get past) never
+		// reached the field's value: presence is the READ's to set, so the body
+		// stops with the presence it had (internal/tablewire readFields sets it
+		// only after the field's read returned).
+		caseText = strings.ReplaceAll(caseText, "return;", "{ v."+has+" = "+had+"; return; }")
+		if strings.Contains(caseText, had) {
+			g.pf("%s\tfinal %s = v.%s;\n", ind, had, has)
+		}
+		g.pf("%s\tv.%s = true;\n", ind, has)
 		g.body.WriteString(caseText)
 		return
 	}
@@ -2014,6 +2089,8 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal sub = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
+		g.pf("%s\t\tif (%s) v.%s = %s();\n", ind, seenName(f), name, ref.Name)
+		g.pf("%s\t\t%s = true;\n", ind, seenName(f))
 		g.pf("%s\t\t%s(sub, v.%s, true);\n", ind, dartName(ref.Name)+"WireLoadBody", name)
 		g.pf("%s\t\tif (sub.pos != sub.limit) { r.report.malformed = true; v.%s = %s(); }\n", ind, name, ref.Name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
@@ -2135,7 +2212,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	case f.Type.Kind == ir.TBool:
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindBool)
 		g.pf("%s\tif (!r.has(1)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\tv.%s = r.readByte() != 0;\n", ind, name)
+		g.pf("%s\tv.%s = r.readBool();\n", ind, name)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || isFlags(f):
 		// An int/bits field's declared kind is §3's integer kind for its width
@@ -2148,7 +2225,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		declWidth := ir.TableKindWidth(declKind)
 		signed := f.Type.Kind == ir.TInt && f.Type.Signed
 		g.pf("%s\t{\n", ind)
-		g.pf("%s\t\tvar value = 0;\n", ind)
+		// A kind this field does not take is skipped and the field KEEPS the value
+		// it holds (its default on a fresh read), as the engine's read does (§4).
+		g.pf("%s\t\tvar value = v.%s;\n", ind, name)
 		g.pf("%s\t\tswitch (kind) {\n", ind)
 		for _, wk := range widenKinds(declKind, signed) {
 			g.pf("%s\t\t\tcase %d:\n", ind, wk.k)
@@ -2229,7 +2308,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			declKind = wireKindF32
 		}
 		g.pf("%s\t{\n", ind)
-		g.pf("%s\t\tvar d = 0.0;\n", ind)
+		g.pf("%s\t\tvar d = v.%s;\n", ind, name)
 		g.pf("%s\t\tswitch (kind) {\n", ind)
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
 		if f.Type.Kind == ir.TFloat64 {
@@ -2275,7 +2354,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
 		g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindU8)
 		g.pf("%s\t\tvar keep = count;\n", ind)
-		g.pf("%s\t\tif (keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s\t\tif (keep > %d || keep < 0) { keep = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
 		g.pf("%s\t\tvar take = keep;\n", ind)
 		g.pf("%s\t\tif (take > arr.limit - arr.pos) take = arr.limit - arr.pos;\n", ind)
@@ -2340,7 +2419,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\t}\n", ind)
 	case wireKindBool:
 		g.pf("%s\t\t\tif (!%s.has(1)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\t%s.add(%s.readByte() != 0);\n", ind, dest, arr)
+		g.pf("%s\t\t\t%s.add(%s.readBool());\n", ind, dest, arr)
 	case wireKindF32:
 		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
@@ -2356,9 +2435,12 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 	default:
 		if ir.TableKindWide(elemKind) {
 			w := ir.TableKindWidth(elemKind)
-			g.pf("%s\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
+			// a 128-bit element may arrive WIDENED from a narrower kind of its
+			// ladder (§4): it reads at the wire kind's width
+			g.pf("%s\t\t\tfinal kw = elemKind == %d ? %d : _kindWidth(elemKind);\n", ind, elemKind, w)
+			g.pf("%s\t\t\tif (!%s.has(kw)) { r.report.malformed = true; break; }\n", ind, arr)
 			g.pf("%s\t\t\t{\n", ind)
-			g.pf("%s\t\t\t\tvar x = _getWide(%s, %d, %v);\n", ind, arr, w, ir.TableKindSigned(elemKind))
+			g.pf("%s\t\t\t\tvar x = _getWide(%s, kw, %v);\n", ind, arr, ir.TableKindSigned(elemKind))
 			g.emitWideClamp(f, "x", "r", ind+"\t\t\t\t")
 			g.pf("%s\t\t\t\t%s.add(x);\n", ind, dest)
 			g.pf("%s\t\t\t}\n", ind)
@@ -2381,29 +2463,19 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 			g.pf("%s\t\t\t\tif (!%s.has(%d)) { r.report.malformed = true; break; }\n", ind, arr, w)
 			switch w {
 			case 1:
-				if signed {
-					g.pf("%s\t\t\t\t%s.add(_signExtend(%s.readByte(), 1));\n", ind, dest, arr)
-				} else {
-					g.pf("%s\t\t\t\t%s.add(%s.readByte());\n", ind, dest, arr)
-				}
+				g.emitElemInt(f, fmt.Sprintf("_signExtend(%s.readByte(), 1)", arr), signed, dest, "r", ind+"\t\t\t\t", fmt.Sprintf("%s.readByte()", arr))
 			case 2:
 				g.pf("%s\t\t\t\tvar raw = 0;\n", ind)
 				for b := range 2 {
 					g.pf("%s\t\t\t\traw |= %s.readByte() << %d;\n", ind, arr, 8*b)
 				}
-				if signed {
-					g.pf("%s\t\t\t\t%s.add(_signExtend(raw, 2));\n", ind, dest)
-				} else {
-					g.pf("%s\t\t\t\t%s.add(raw);\n", ind, dest)
-				}
+				g.emitElemInt(f, "_signExtend(raw, 2)", signed, dest, "r", ind+"\t\t\t\t", "raw")
 			case 4:
-				if signed {
-					g.pf("%s\t\t\t\t%s.add(_signExtend(readU32(%s.data, %s.pos), 4)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
-				} else {
-					g.pf("%s\t\t\t\t%s.add(readU32(%s.data, %s.pos)); %s.pos += 4;\n", ind, dest, arr, arr, arr)
-				}
+				g.pf("%s\t\t\t\tfinal raw = readU32(%s.data, %s.pos); %s.pos += 4;\n", ind, arr, arr, arr)
+				g.emitElemInt(f, "_signExtend(raw, 4)", signed, dest, "r", ind+"\t\t\t\t", "raw")
 			default:
-				g.pf("%s\t\t\t\t%s.add(readU64(%s.data, %s.pos)); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+				g.pf("%s\t\t\t\tfinal raw = readU64(%s.data, %s.pos); %s.pos += 8;\n", ind, arr, arr, arr)
+				g.emitElemInt(f, "raw", signed, dest, "r", ind+"\t\t\t\t", "raw")
 			}
 		}
 		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
@@ -2432,10 +2504,72 @@ func (g *wireGen) emitKnownTypes(st *ir.Struct, recv, root string) {
 
 func (g *wireGen) emitNumber(st *ir.Struct) {
 	g.pf("void %sNumber(WireState s, %s v, Set<Object> open) {\n", dartName(st.Name), st.Name)
+	guards := wireGuards(st)
 	for _, f := range st.Fields {
-		g.emitNumberField(f, "\t")
+		cond := g.guardCond(st, guards[f.Name])
+		if cond == "" {
+			g.emitNumberField(f, "\t")
+			continue
+		}
+		// A POINTER UNDER A FALSE GUARD IS NOT AN EDGE (§3.1, schema#440)
+		g.pf("\tif (%s) {\n", cond)
+		g.emitNumberField(f, "\t\t")
+		g.pf("\t}\n")
 	}
 	g.pf("}\n\n")
+}
+
+// wireGuardTerm is one conjunct of a guarded field's branch condition: a bool
+// field of the same body and the value it must hold.
+type wireGuardTerm struct {
+	field string
+	want  bool
+}
+
+// wireGuards maps each guarded field's name to its branch condition, composed
+// through nesting (docs/SPEC-TABLES.md §4: a field under a false guard is not
+// written). A field with no entry is unguarded and always rides.
+func wireGuards(st *ir.Struct) map[string][]wireGuardTerm {
+	out := map[string][]wireGuardTerm{}
+	var walk func(items []ir.Item, cond []wireGuardTerm)
+	walk = func(items []ir.Item, cond []wireGuardTerm) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(cond) > 0 {
+					out[item.F.Name] = append([]wireGuardTerm(nil), cond...)
+				}
+			case *ir.Branch:
+				then, other := true, false
+				if item.Neg {
+					then, other = false, true
+				}
+				walk(item.Then, append(cond[:len(cond):len(cond)], wireGuardTerm{item.Cond, then}))
+				walk(item.Else, append(cond[:len(cond):len(cond)], wireGuardTerm{item.Cond, other}))
+			}
+		}
+	}
+	walk(st.Items, nil)
+	return out
+}
+
+// guardCond is the Dart condition under which a guarded field rides: every
+// term's bool field holding its wanted value. "" is an unguarded field.
+func (g *wireGen) guardCond(st *ir.Struct, terms []wireGuardTerm) string {
+	var parts []string
+	for _, t := range terms {
+		for _, gf := range st.Fields {
+			if gf.Name != t.field {
+				continue
+			}
+			if t.want {
+				parts = append(parts, "v."+fieldMember(gf))
+			} else {
+				parts = append(parts, "!v."+fieldMember(gf))
+			}
+		}
+	}
+	return strings.Join(parts, " && ")
 }
 
 func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
@@ -2554,7 +2688,7 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireSave"
 	g.pf("Uint8List %s(%s v) {\n", fn, n)
-	g.pf("\tfinal state = WireState();\n")
+	g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
 	g.pf("\tstate.indexRoot(v);\n")
 	g.pf("\tfinal open = <Object>{v};\n")
 	g.pf("\t%sNumber(state, v, open);\n", dartName(n))
@@ -2591,7 +2725,9 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
-	g.pf("\tr.scanNodeTable();\n")
+	if ir.VariableTables(g.unit)[n] {
+		g.pf("\tr.scanNodeTable();\n")
+	}
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\t%s(r, v, false);\n", dartName(n)+"WireLoadBody")
 	g.pf("\treturn v;\n")
@@ -2875,4 +3011,20 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 // !widened`).
 func (g *wireGen) isMapKey(f *ir.Field) bool {
 	return g.cur != nil && g.cur.IsMapEntry() && f.Name == ir.MapKeyFieldName
+}
+
+// nonOptionalOf is the bare field under an optional one (a field that is not
+// optional is its own bare field).
+func nonOptionalOf(f *ir.Field) *ir.Field {
+	if f.Type.Optional {
+		return nonOptional(f)
+	}
+	return f
+}
+
+// seenName names the local that records a by-value body field has been read in
+// this body already.
+func seenName(f *ir.Field) string {
+	m := fieldMember(f)
+	return "seen" + strings.ToUpper(m[:1]) + m[1:]
 }

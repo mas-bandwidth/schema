@@ -636,11 +636,13 @@
     {
       "name": "dart-conformance",
       "when": "pull-request",
-      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, and the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout.",
+      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, and the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host.",
       "dart": "3.13.2",
       "targets": [
         "conformance-negative-control-dart-walk",
         "conformance-negative-control-dart-zero",
+        "conformance-negative-control-dart-block",
+        "tables-dart-wire-fuzz-negative-control",
         "tables-dart-usage-negative-control"
       ]
     },
@@ -675,7 +677,8 @@
         "tables-dart-float-jit-sdk-negative-control",
         "tables-dart-float-jit-boxing-negative-control",
         "tables-dart-text-differential-negative-control",
-        "tables-dart-cookwrite-negative-control"
+        "tables-dart-cookwrite-negative-control",
+        "tables-dart-clean-negative-control"
       ],
       "dart": "3.13.2"
     },

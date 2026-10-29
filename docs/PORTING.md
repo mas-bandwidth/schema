@@ -1329,7 +1329,7 @@ table of controls.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ✅ `conformance-negative-control-dart-walk` `conformance-negative-control-dart-zero` | ❌ #515 |
+| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ✅ `conformance-negative-control-dart-walk` `conformance-negative-control-dart-zero` `conformance-negative-control-dart-block` | ❌ #515 |
 
 ### I12 — The documented surface compiles and runs
 
@@ -1441,7 +1441,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ✅ `tables-dart-wire-fuzz` `tables-dart-wire-fuzz-negative-control` (`test/conformance/dart/main.dart`, the `wire-fuzz` mode: 54 file roots bound by unit and root, the message arm through the message codecs, a refused Save answered as the `-1`; 159,457 enumerated and 100,000 random mutants, 0 divergences; the `--retain` arm is bound but not gated, red at its first `graph_tree` mutant) | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 
@@ -1563,7 +1563,7 @@ below.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) |
+| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` `tables-dart-clean-negative-control` (a planted off-format unused declaration: the formatter rewrites it, the analyzer names `unused_element`) | ✅ `tables-elixir-clean` (`mix format`) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 

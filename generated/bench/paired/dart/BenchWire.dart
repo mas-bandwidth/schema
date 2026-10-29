@@ -64,6 +64,9 @@ final class WireState {
   final List<Object?> nodeObjs = <Object?>[];
   final Map<Object, int> _objIndex = <Object, int>{};
   final Map<Object, int> _blobIndex = Map<Object, int>.identity();
+  // A save is STRICT about a blob two slots name (§2.5): the wire writer
+  // refuses it by name, blob_shared. The cook numbers the same graph and does not.
+  bool refuseSharedBlob = false;
   TableRetain? retain;
   TableWireReport? report;
   bool lost = false;
@@ -121,7 +124,12 @@ final class WireState {
   // String is a value, so two equal strings there are one blob.
   int noteBlob(int typeId, Object blob) {
     final found = _blobIndex[blob];
-    if (found != null) return found;
+    if (found != null) {
+      if (refuseSharedBlob) {
+        throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
+      }
+      return found;
+    }
     nodeTypes.add(typeId);
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
@@ -537,6 +545,15 @@ final class TableWireReader {
     return v;
   }
 
+  // readBool reads a bool payload: any nonzero byte reads true, and a byte
+  // above 1 is malformed (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
+  bool readBool() {
+    final v = data[pos];
+    pos++;
+    if (v > 1) report.malformed = true;
+    return v != 0;
+  }
+
   // readLeb decodes one canonical LEB128; null on a truncated, over-long or
   // non-minimal encoding (§3). On any of those the cursor does not move, so a
   // nested body that ends short of its own length is seen to do so (§4), the
@@ -911,8 +928,13 @@ final class TableWireReader {
       nodeTableGood = false;
       return;
     }
+    // THE SCAN IS FRAMING ONLY (scanNodeRecords): a record's type is judged
+    // after the whole payload has framed, so a table that cannot be read whole
+    // counts nothing unknown and resolves nothing.
     var read = 0;
     var framed = true;
+    final scanTypes = <int>[];
+    final scanBytes = <Uint8List>[];
     while (pos < tableEnd) {
       final typeRef = readLeb();
       if (typeRef == null || typeRef < 1 || typeRef > entryCount) {
@@ -924,32 +946,37 @@ final class TableWireReader {
         framed = false;
         break;
       }
-      final bytes = Uint8List.fromList(data.sublist(pos, pos + blen));
+      scanBytes.add(Uint8List.fromList(data.sublist(pos, pos + blen)));
       pos += blen;
-      final typeId = refToId[typeRef] ?? 0;
-      if (typeId == _kStringBlobId && stringBlob) {
-        if (_lebValid(bytes, 0, bytes.length)) {
-          nodeTypes.add(typeId);
-        } else {
-          report.malformed = true;
-          nodeTypes.add(0);
-        }
-      } else if (typeId == _kBytesBlobId && bytesBlob) {
-        nodeTypes.add(typeId);
-      } else if (knownTypes.contains(typeId)) {
-        nodeTypes.add(typeId);
-      } else {
-        report.unknown++;
-        if (retain != null) report.retainLost++;
-        nodeTypes.add(typeId);
-      }
-      nodes.add(bytes);
-      decoded.add(null);
+      scanTypes.add(refToId[typeRef] ?? 0);
       read++;
     }
     if (!framed || pos != tableEnd || read != count) {
       report.malformed = true;
       nodeTableGood = false;
+    } else {
+      for (var i = 0; i < scanTypes.length; i++) {
+        final typeId = scanTypes[i];
+        final bytes = scanBytes[i];
+        if (typeId == _kStringBlobId && stringBlob) {
+          if (_lebValid(bytes, 0, bytes.length)) {
+            nodeTypes.add(typeId);
+          } else {
+            report.malformed = true;
+            nodeTypes.add(0);
+          }
+        } else if (typeId == _kBytesBlobId && bytesBlob) {
+          nodeTypes.add(typeId);
+        } else if (knownTypes.contains(typeId)) {
+          nodeTypes.add(typeId);
+        } else {
+          report.unknown++;
+          if (retain != null) report.retainLost++;
+          nodeTypes.add(typeId);
+        }
+        nodes.add(bytes);
+        decoded.add(null);
+      }
     }
     pos = tableEnd;
     limit = bodyLimit;
@@ -988,6 +1015,8 @@ final class TableWireReader {
 bool _kindWidens(int from, int to) {
   return (from >= 2 && from <= 5 && to > from && to <= 5) ||
       (from >= 6 && from <= 9 && to > from && to <= 9) ||
+      (from >= 2 && from <= 5 && to == 18) ||
+      (from >= 6 && from <= 9 && to == 19) ||
       (from == 10 && to == 11);
 }
 
@@ -1780,13 +1809,13 @@ bool _mixedEventArm3(TableWireReader p, MixedEvent v, int kind) {
 bool _mixedEventLoadArm(TableWireReader r, MixedEvent v) {
   final ref = r.readLeb();
   if (ref == null) { r.report.malformed = true; return false; }
-  v.armTag = 0;
-  if (ref == 0) return true;
+  if (ref == 0) { v.armTag = 0; return true; }
   final armId = r.refToId[ref];
   if (armId == null || !r.has(1)) { r.report.malformed = true; return false; }
   final kind = r.readByte();
   final n = r.readLeb();
   if (n == null || !r.has(n)) { r.report.malformed = true; return false; }
+  v.armTag = 0;
   final p = TableWireReader.sub(r, r.pos, r.pos + n);
   switch (armId) {
     case 3707351006901076138:
@@ -1886,26 +1915,24 @@ void mixedEntityWireSaveBodyFields(TableWireWriter w, MixedEntity v) {
   if (v.weapon != MixedWeapon.none) {
     w.putLeb(w.refFor(-6866282850657997311));
     w.putByte(30);
-    int vid;
     switch (v.weapon) {
-      case 1: vid = -6372330821933150452;
-      case 2: vid = -6935561395390217098;
-      case 3: vid = 1768712988339112597;
-      case 4: vid = 3185847833948484337;
-      case 5: vid = 912176952613754358;
-      case 6: vid = -7467029643251279282;
-      case 7: vid = 2494154474894420565;
-      case 8: vid = 80074449652715421;
-      case 9: vid = -8505234340531936929;
-      case 10: vid = -8250835097599916951;
-      case 11: vid = -2752528626751932394;
-      case 12: vid = 350179810443481718;
-      case 13: vid = 3883575963473318423;
-      case 14: vid = 3226873318306908209;
-      case 15: vid = 2358437193313989428;
-      default: return;
+      case 1: w.putLeb(w.refFor(-6372330821933150452));
+      case 2: w.putLeb(w.refFor(-6935561395390217098));
+      case 3: w.putLeb(w.refFor(1768712988339112597));
+      case 4: w.putLeb(w.refFor(3185847833948484337));
+      case 5: w.putLeb(w.refFor(912176952613754358));
+      case 6: w.putLeb(w.refFor(-7467029643251279282));
+      case 7: w.putLeb(w.refFor(2494154474894420565));
+      case 8: w.putLeb(w.refFor(80074449652715421));
+      case 9: w.putLeb(w.refFor(-8505234340531936929));
+      case 10: w.putLeb(w.refFor(-8250835097599916951));
+      case 11: w.putLeb(w.refFor(-2752528626751932394));
+      case 12: w.putLeb(w.refFor(350179810443481718));
+      case 13: w.putLeb(w.refFor(3883575963473318423));
+      case 14: w.putLeb(w.refFor(3226873318306908209));
+      case 15: w.putLeb(w.refFor(2358437193313989428));
+      default: w.putLeb(0);
     }
-    w.putLeb(w.refFor(vid));
   }
   if (v.damage != 0) {
     w.putLeb(w.refFor(9179190079975030720));
@@ -2236,15 +2263,11 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case 2593226102015223570:
         {
-          var value = 0;
+          var value = v.entityId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2271,7 +2294,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -3797881157997612786:
         {
-          var value = 0;
+          var value = v.posX;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2304,7 +2327,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -3797880058485984575:
         {
-          var value = 0;
+          var value = v.posY;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2337,7 +2360,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -3797883357020869208:
         {
-          var value = 0;
+          var value = v.posZ;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2370,7 +2393,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -5382489739573192984:
         {
-          var value = 0;
+          var value = v.yaw;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2397,7 +2420,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 6028620492700434865:
         {
-          var value = 0;
+          var value = v.pitch;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2424,7 +2447,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 7849183398884077159:
         {
-          var value = 0;
+          var value = v.velX;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2457,7 +2480,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 7849182299372448948:
         {
-          var value = 0;
+          var value = v.velY;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2490,7 +2513,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 7849185597907333581:
         {
-          var value = 0;
+          var value = v.velZ;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2523,7 +2546,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 9181103189905877455:
         {
-          var value = 0;
+          var value = v.health;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2584,7 +2607,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 9179190079975030720:
         {
-          var value = 0;
+          var value = v.damage;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2626,12 +2649,12 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
       case 1271228688681418151:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.moving = r.readByte() != 0;
+        v.moving = r.readBool();
         break;
       case 8535675692938965450:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.firing = r.readByte() != 0;
+        v.firing = r.readBool();
         break;
       default:
         r.report.unknown++;
@@ -2673,15 +2696,11 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -9175110139929313435:
         {
-          var value = 0;
+          var value = v.statId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2698,7 +2717,7 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
         break;
       case 5910805692604981441:
         {
-          var value = 0;
+          var value = v.delta;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2769,15 +2788,11 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -5207116919359778736:
         {
-          var value = 0;
+          var value = v.targetId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2804,7 +2819,7 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
         break;
       case 9179190079975030720:
         {
-          var value = 0;
+          var value = v.damage;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2837,7 +2852,7 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
         break;
       case 142922654710085925:
         {
-          var value = 0;
+          var value = v.hitKind;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2871,7 +2886,7 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
       case 1324453635955533101:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.crit = r.readByte() != 0;
+        v.crit = r.readBool();
         break;
       default:
         r.report.unknown++;
@@ -2913,15 +2928,11 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -6556890747741999708:
         {
-          var value = 0;
+          var value = v.channel;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2954,7 +2965,7 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
         break;
       case -292263051557875678:
         {
-          var value = 0;
+          var value = v.speaker;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3019,15 +3030,11 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -7025667724851298986:
         {
-          var value = 0;
+          var value = v.itemId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3054,7 +3061,7 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
         break;
       case -9145686598410475159:
         {
-          var value = 0;
+          var value = v.amount;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3119,19 +3126,17 @@ bool _benchMixedLoadoutFixed(TableWireReader p, BenchMixed v, int elemKind, int 
   if (elemKind != 6) { p.report.kindMismatch++; return true; }
   final out = <int>[];
   var keep = count;
-  if (keep > 4) { keep = 4; p.report.clamped++; }
+  if (keep > 4 || keep < 0) { keep = 4; p.report.clamped++; }
   for (var i = 0; i < keep; i++) {
-    if (!p.has(1)) { p.report.malformed = true; return false; }
+    if (!p.has(1)) { p.report.malformed = true; break; }
     var raw = 0;
     for (var b = 0; b < 1; b++) { raw |= p.readByte() << (8 * b); }
     out.add(raw);
   }
-  if (keep == count && p.pos != p.limit) { p.report.malformed = true; return false; }
-  final fresh = List<int>.generate(4, (_) => 0);
+  final slots = v.loadout;
   for (var i = 0; i < out.length && i < 4; i++) {
-    fresh[i] = out[i];
+    slots[i] = out[i];
   }
-  v.loadout = fresh;
   return true;
 }
 
@@ -3145,15 +3150,11 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -6181000666011064152:
         {
-          var value = 0;
+          var value = v.sequence;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3180,7 +3181,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 990229364654832702:
         {
-          var value = 0;
+          var value = v.ackSequence;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3213,7 +3214,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -7228825333587644925:
         {
-          var value = 0;
+          var value = v.ackBits;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3245,7 +3246,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -5199487799206016251:
         {
-          var value = 0;
+          var value = v.sessionId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3286,7 +3287,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 7889067272199050878:
         {
-          var value = 0;
+          var value = v.clientId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3317,7 +3318,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 8334276637232054488:
         {
-          var value = 0;
+          var value = v.nonce;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3360,7 +3361,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 4534679873638431877:
         {
-          var value = 0;
+          var value = v.worldTime;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3403,7 +3404,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 8916005070914257170:
         {
-          var value = 0;
+          var value = v.frameTick;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3564,7 +3565,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 6) { r.report.kindMismatch++; r.pos = end; break; }
           var keep = count;
-          if (keep > 16) { keep = 16; r.report.clamped++; }
+          if (keep > 16 || keep < 0) { keep = 16; r.report.clamped++; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           var take = keep;
           if (take > arr.limit - arr.pos) take = arr.limit - arr.pos;
@@ -3575,7 +3576,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -2616736631205226807:
         {
-          var d = 0.0;
+          var d = v.aimX;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
@@ -3593,7 +3594,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -2616737730716855018:
         {
-          var d = 0.0;
+          var d = v.aimY;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
@@ -3611,7 +3612,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -2616738830228483229:
         {
-          var d = 0.0;
+          var d = v.aimZ;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
@@ -3629,7 +3630,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -7138431908913683369:
         {
-          var d = 0.0;
+          var d = v.recoil;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
@@ -3645,7 +3646,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 6535842126802938884:
         {
-          var d = 0.0;
+          var d = v.drift;
           switch (kind) {
             case 11:
               if (!r.has(8)) { r.report.malformed = true; return; }
@@ -3767,7 +3768,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 6200723483573899615:
         {
-          var value = 0;
+          var value = v.crcHint;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3800,11 +3801,11 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
       case -4574933642144545166:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.hasExtra = r.readByte() != 0;
+        v.hasExtra = r.readBool();
         break;
       case -204370544148493463:
         {
-          var value = 0;
+          var value = v.extra;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3837,7 +3838,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 8651444298976115966:
         {
-          var value = 0;
+          var value = v.idleTicks;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3899,6 +3900,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
 }
 
 void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
+  var seenValue = false;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.malformed = true; return; }
@@ -3908,11 +3910,7 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case 8999596768310594794:
         if (kind != 13) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
@@ -3920,6 +3918,8 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.malformed = true; return; }
           final sub = TableWireReader.sub(r, r.pos, r.pos + len);
+          if (seenValue) v.value = BenchMixed();
+          seenValue = true;
           benchMixedWireLoadBody(sub, v.value, true);
           if (sub.pos != sub.limit) { r.report.malformed = true; v.value = BenchMixed(); }
           r.pos += len;
@@ -3985,7 +3985,7 @@ void fixedTableNumber(WireState s, FixedTable v, Set<Object> open) {
 }
 
 Uint8List fixedTableWireSave(FixedTable v) {
-  final state = WireState();
+  final state = WireState()..refuseSharedBlob = true;
   state.indexRoot(v);
   final open = <Object>{v};
   fixedTableNumber(state, v, open);
@@ -4011,7 +4011,6 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
-  r.scanNodeTable();
   r.pos = 1;
   fixedTableWireLoadBody(r, v, false);
   return v;
@@ -4203,7 +4202,7 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
 
 Uint8List fixedTableWireSaveRetain(FixedTable v, TableRetain retain, TableWireReport report) {
   retain.idUsed = 0;
-  final state = WireState();
+  final state = WireState()..refuseSharedBlob = true;
   state.retain = retain;
   state.report = report;
   state.indexRoot(v);
