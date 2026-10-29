@@ -38,4 +38,37 @@ tables-goose-accel-negative-control: build/conformance-harness build/conformance
 	sh test/conformance/goose/negative-control-accel block-pitch
 	sh test/conformance/goose/negative-control-accel cook-order
 
-test-goose: tables-goose-block-lead
+# THE FORGERY FUZZER (docs/PORTING.md I3): valid block images and the Go
+# reference's cooks, mutated (a word of the prologue or a triple, a bit, the
+# caller's claimed extent, the base's lead), each refused or opened and held
+# WHOLE by an oracle that re-derives every bound from the records as data and
+# reads every byte of every row, region and reached node
+# (test/conformance/goose/accel.goose, block-fuzz and cook-fuzz). The cook
+# half's images are the ones the harness materialises (build/conformance/
+# fixtures, the Go leg's tables-go-fuzz shape). SEED and N are the knobs and
+# each line prints the seed it ran. Measured 2026-10-29 on the author's
+# machine at N=20000: the block half under a second, the cook half 12 s.
+GOOSE_ACCEL_FUZZ_SEED ?= $(SEED)
+GOOSE_ACCEL_FUZZ_N    ?= 20000
+
+.PHONY: tables-goose-fuzz
+tables-goose-fuzz: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
+	./test/conformance/goose/driver $(GOOSE_MANIFEST) block-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
+	./test/conformance/goose/driver $(GOOSE_MANIFEST) cook-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N) build/conformance/fixtures
+
+# ITS NEGATIVE CONTROLS (group goose-blockcook): BOTH halves of one
+# accelerator's extent bound removed from a copy of the generated units — the
+# block's rows and padding bounds, the cook's data and attribution lengths —
+# and the fuzzer must go red on the oracle's extent finding
+# (test/conformance/goose/negative-control-fuzz says why one half is not a
+# control: the other refuses the same forgery, measured).
+.PHONY: tables-goose-fuzz-negative-control
+tables-goose-fuzz-negative-control: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
+	sh test/conformance/goose/negative-control-fuzz block-extent $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
+	sh test/conformance/goose/negative-control-fuzz cook-extent $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
+
+test-goose: tables-goose-block-lead tables-goose-fuzz tables-goose-fuzz-negative-control
