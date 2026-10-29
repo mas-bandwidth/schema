@@ -112,6 +112,9 @@ func emitTableWireUnit(g *goose.Gen) error {
 	if g.File.Base != firstModule(g.Unit) {
 		return nil
 	}
+	// KeyDesc, LoadUnit and the rest of the unit's types live in the load
+	// walk's module: import it, so this module checks on its own
+	g.Import("wire_load")
 	structs, unions := unitDecls(g.Unit)
 	var tables, unionRefs, keys, deprecated, guards []string
 	for _, st := range structs {

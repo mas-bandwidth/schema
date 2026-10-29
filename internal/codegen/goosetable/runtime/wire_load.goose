@@ -120,11 +120,9 @@ struct LoadUnit {
     known: const u64[:],      // every id this unit can spell, ascending (§6.6)
 }
 
-// LoadReg is one row of THE LOAD DISPATCH TABLE (registry/tablewire.goosereg,
-// assembled onto schema_tables.goose as `load_registry`): the descriptor facts
-// it matches — the shape, the array kind (0: any) and wstring — and the
-// Loader it selects. The first row that matches wins.
-struct LoadReg { shape: u8, array: u8, wide: bool, loader: Loader }
+// LoadReg, a row of THE LOAD DISPATCH TABLE, is declared in
+// schema_tables.goose beside the `load_registry` it types, so that module
+// checks on its own (make/goose-strict.sh).
 
 // LoadVal is one loaded value (docs/PORT-GOOSE.md, THE LOADED VALUE). Every
 // shape uses the same record:
