@@ -122,12 +122,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for name, data := range blockMods {
-		if _, taken := out[name]; taken {
-			return nil, fmt.Errorf("luau block form: %s is already a module of this unit", name)
-		}
-		out[name] = data
-	}
+	maps.Copy(out, blockMods)
 	// SPEC-TABLES.md §2.12: a unit with no table carrying json, block or
 	// cook omits those runtime surfaces. Fixed, view, message and retain are
 	// governed by surface, not forms.
@@ -456,6 +451,9 @@ func Refuse(u *ir.Unit) error {
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {
 			return fmt.Errorf("schema files %s and %sTable collide — the Luau table surface writes %sTable.luau as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
+		}
+		if bases[strings.ToLower(f.Base+"Block")] {
+			return fmt.Errorf("schema files %s and %sBlock collide — the Luau block form writes %sBlock.luau as %s's block descriptors; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 		if bases[strings.ToLower(f.Base+"View")] {
 			return fmt.Errorf("schema files %s and %sView collide — the Luau view surface writes %sView.luau as %s's view module; rename one file", f.Base, f.Base, f.Base, f.Base)
