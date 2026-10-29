@@ -424,7 +424,14 @@ as lines (lowercase hex for bytes).**
   has no blocking stdin read. The oracle is the Go engine
   (internal/tablewire). The budget is a count: `test-lobster` runs the
   enumerated pass and a small random count, `tables-lobster-release` the
-  release count. `test/conformance/lobster/wirefuzz-known-leaks.txt` is empty:
+  release count. Four arms run: the ordinary one over every form-1 root
+  (variable roots answer `load_measure`, a port of `FileRegionMeasure`),
+  `--builder`, `--retain` over the variable roots, and `--message` over the
+  fixed message roots. A VARIABLE message root is not carried: the port's
+  message form is fixed roots only, as Go's is (§3.3), so the arm answers 0
+  for it. Each of the retain and message arms has a pinned-vector replay and a
+  negative control in `tables-lobster-wire-fuzz-negative-control`.
+  `test/conformance/lobster/wirefuzz-known-leaks.txt` is empty:
   a loaded cyclic graph releases every node. The packet wire's hostile bytes
   are `packet-text-fuzz[lobster]`, and the shared hostile corpus runs through
   the port's own readers in `schema-lobster-runs-hostile-corpus`
@@ -509,7 +516,7 @@ stands:
 | the JSON text form both ways | `lobstertable/json.go` | landed |
 | the hand-editable text form | `lobstertable/text_form.go` | landed |
 | the conformance leg, every surface answered | `test/conformance/lobster/` | landed |
-| the wire-fuzz differential and the hostile corpus | `make/lobster-fuzz.mk`, `make/lobster-hostile.mk` | landed; message-form and retain roots in the differential are owed |
+| the wire-fuzz differential and the hostile corpus | `make/lobster-fuzz.mk`, `make/lobster-hostile.mk` | landed, with the retain and message arms; a variable message root is not carried (as Go) |
 | the strict gate, CI, the register column, the roadmap column | `make/schema-lobster-generated-strict-gate.mk`, `.github/workflows/*`, `docs/PORTING.md`, `docs/roadmap.sexp` | landed |
 | the integrity trailer and the `forms` declaration (§2.12, §2.14) | — | owed |
 | the bench legs, JIT (packet and tables, golden-gated, `bench-lobster-gate`) | `bench/lobster/`, `bench/tables/lobster/`, `make/lobster-bench.mk` | landed; the first sitting is a fleet pass |
