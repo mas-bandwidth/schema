@@ -44,7 +44,6 @@ func TestMooGeneratedCodeIsAnalyzerClean(t *testing.T) {
 	slowtest.Gate(t, "moo-analyze (it analyzes the generated modules)")
 	t.Parallel()
 	for _, c := range analyzeCorpora {
-		c := c
 		t.Run(strings.Join(c, "/"), func(t *testing.T) {
 			t.Parallel()
 			paths, _ := filepath.Glob(filepath.Join(repo(c...), "*.schema"))
@@ -101,7 +100,7 @@ func TestMooRuntimeIsTheVendoredPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{}
-	for _, line := range strings.Split(string(pin), "\n") {
+	for line := range strings.SplitSeq(string(pin), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 2 && len(f[0]) == 64 {
 			want[f[1]] = f[0]
