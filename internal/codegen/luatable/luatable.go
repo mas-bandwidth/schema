@@ -103,7 +103,7 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, err
 		}
 	}
-	m.Body.WriteString("return _M\n")
+	emitTail(m)
 	out := map[string][]byte{name + ".lua": lua.Format([]byte(m.Body.String()))}
 	names, err := fs.Glob(runtime, "runtime/*.lua")
 	if err != nil {
@@ -134,6 +134,16 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 		out[base] = data
 	}
 	return out, nil
+}
+
+// emitTail closes the module: the keyed accessor's entry (docs/PORTING.md M5).
+func emitTail(m *Module) {
+	m.Printf("-- the accessor of an enum-keyed array field (docs/PORTING.md M5): get, set and\n")
+	m.Printf("-- each take the key and refuse None and any key past the enum's last variant\n")
+	m.Printf("function _M.Keyed(table_name, field)\n")
+	m.Printf("  return require(\"descriptor\").keyed(_M, table_name, field)\n")
+	m.Printf("end\n\n")
+	m.Printf("return _M\n")
 }
 
 // unitDeclaresForms reports whether any declared table of u carries an

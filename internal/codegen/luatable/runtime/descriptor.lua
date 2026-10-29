@@ -548,4 +548,60 @@ function D.number_nodes(T, desc, root, refuse_shared)
   return nodes
 end
 
+-- THE KEYED ACCESSOR (docs/PORTING.md M5; docs/SPEC-TABLES.md §2.4, §3.2). An
+-- enum-keyed array has one slot per NAMED variant: key 1 lives at index 1 and
+-- E.Max at the last, and None (key 0) has no slot. D.keyed(T, table, field)
+-- resolves the field once and answers the accessor:
+--   get(array, key), set(array, key, value)   one unsigned compare covers both
+--     ends, so None, a negative key and any key past E.Max are refused in the
+--     one place the key is spelled; a Lua error always runs, and a bare
+--     `array[key]` is nil for all three and refuses nothing;
+--   each(array)    for key, element in acc.each(array): the key beside the
+--     element, so the caller never does the shift;
+--   key(name)      the key of a variant NAME (the table wire's own identity,
+--     §5), refused by name when the enum has no such variant;
+--   max            E.Max.
+function D.keyed(T, tname, fname)
+  local desc = T.Tables[tname]
+  if desc == nil then error("keyed: no table " .. tostring(tname), 2) end
+  local f = D.field(desc, fname)
+  if f == nil or f.keyed == nil then error("keyed: " .. tname .. "." .. tostring(fname) .. " is not an enum-keyed array", 2) end
+  local n = #f.keyed
+  local where = tname .. "." .. fname
+  local function refuse(key)
+    error(
+      string.format("keyed_refused: key %s names no variant of %s (1 through %d; 0 is None)", tostring(key), where, n),
+      3
+    )
+  end
+  local by_name = {}
+  for i, v in ipairs(f.keyed) do
+    by_name[v[1]] = i
+  end
+  local function step(array, i)
+    i = i + 1
+    if i > n then return nil end
+    return i, array[i]
+  end
+  return {
+    max = n,
+    get = function(array, key)
+      if math.type(key) ~= "integer" or not math.ult(key - 1, n) then refuse(key) end
+      return array[key]
+    end,
+    set = function(array, key, value)
+      if math.type(key) ~= "integer" or not math.ult(key - 1, n) then refuse(key) end
+      array[key] = value
+    end,
+    each = function(array)
+      return step, array, 0
+    end,
+    key = function(name)
+      local k = by_name[name]
+      if k == nil then error(string.format("keyed_refused: %s names no variant of %s", tostring(name), where), 2) end
+      return k
+    end,
+  }
+end
+
 return D

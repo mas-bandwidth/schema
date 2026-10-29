@@ -216,7 +216,7 @@ names no reason stays `damaged`.
 ## THE REGISTER
 
 The lua column of [PORTING.md](PORTING.md) is checked against the tree, cell by
-cell (2026-10-28). Carried, each naming its proof: M4b, M6, M7, M8, M9, M12,
+cell (2026-10-28). Carried, each naming its proof: M4b, M5, M6, M7, M8, M9, M12,
 M14, M15, M16, M19, M20, I4, I5, I7, I15 and J4. `—`, the platform's reason stated:
 M2 and M3 (a Lua 5.4 integer and float are unboxed values), M4 (no inlining
 directive or aliasing qualifier), M10 (the VM owns allocation), M11 (no struct
@@ -261,7 +261,7 @@ refusal of a plain `table` root (`message-form-plain-table`: `loadMessages`
 does not check `MessageRoots`, so `graph_tree` on the plain `Scene` answers
 bytes where the Go reference answers absent, and the refusal needs a reason
 name SPEC-TABLES §11 does not yet give); a caller-owned load with its
-allocation gate and soak; the keyed accessor; frozen descriptors; the arm read
+allocation gate and soak; frozen descriptors; the arm read
 through the field reader; float32 bit surgery on the table wire; a typed save;
 block and cook accessors; the
 forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
