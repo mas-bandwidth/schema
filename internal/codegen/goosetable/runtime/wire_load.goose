@@ -621,8 +621,12 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
         value = ((raw << shift) as! i64) >> shift;
     }
     if kind_wide(declared) {
-        // an integer kind WIDENED into a 128-bit declaration (§4)
-        out.bits = clamp_wide(rep, i128_of(value), declared_signed, d);
+        // an integer kind WIDENED into a 128-bit declaration (§4): sixteen
+        // bytes extended by the WIRE kind's signedness (a uint64 of all ones
+        // is 2^64 - 1, never -1), then read as the declared kind and held to
+        // its range on the raw scale (tablewire.decode's widen)
+        let ext = if signed { i128_of(value) } else { Int128 { lo: raw, hi: 0 } };
+        out.bits = clamp_wide(rep, ext, declared_signed, d);
         return true;
     }
     var uraw = raw;
