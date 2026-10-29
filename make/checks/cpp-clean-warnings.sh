@@ -2,7 +2,7 @@
 # THE C++ WARNING GATE's engine (make/cpp.mk tables-cpp-clean, PORTING.md J4).
 #
 # Every generated C++ file under the trees named on the command line is
-# compiled by clang++ with -Weverything minus the c++98-compat family (the
+# compiled by clang++ with -Weverything minus the c++98-compat family and the unsafe-buffer-usage pair (the
 # generated code is C++17 by design, so a warning that it is not C++98 is not
 # a finding). Headers are compiled as the one-line translation unit a consumer
 # writes, `#include "X.h"`, so a header is judged as its consumers see it (a
@@ -43,9 +43,19 @@ export CLANGXX SERIALIZE_DIR OUT incs
 find "$@" \( -name '*.h' -o -name '*.cpp' \) | sort > "$OUT/files.txt"
 if [ ! -s "$OUT/files.txt" ]; then echo "tables-cpp-clean: no generated C++ under $*"; exit 1; fi
 
-# the c++98-compat family is the only thing dropped; CPATH is unset so the
-# -isystem order below is what the compiler sees on every host
-export WFLAGS="-std=c++17 -fsyntax-only -fno-caret-diagnostics -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic"
+# two families are dropped, each for a stated reason; CPATH is unset so the
+# -isystem order below is what the compiler sees on every host:
+#   c++98-compat      the code is C++17 by design.
+#   unsafe-buffer-usage, unsafe-buffer-usage-in-libc-call
+#                     clang 20+'s opt-in "Safe Buffers" model, which refuses every
+#                     raw-pointer subscript and every memcpy and wants std::span.
+#                     The emitted C++ is C-like on purpose (pointer, length, loop;
+#                     serialize.h is written the same way), so the warning is
+#                     the style the code deliberately does not have, not a
+#                     defect in it. Older clang does not know either kind, so
+#                     leaving them in would make the ratchet depend on the
+#                     version of the host's clang.
+export WFLAGS="-std=c++17 -fsyntax-only -fno-caret-diagnostics -Weverything -Wno-c++98-compat -Wno-c++98-compat-pedantic -Wno-unsafe-buffer-usage -Wno-unsafe-buffer-usage-in-libc-call"
 export CPATH=
 
 xargs -P "$JOBS" -n 1 sh "$here/cpp-clean-one.sh" < "$OUT/files.txt"
