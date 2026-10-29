@@ -374,11 +374,11 @@ func TestMooRetainMessageNegativeControl(t *testing.T) {
 	}
 	path := filepath.Join(g.dir, "table_message.moo")
 	src := string(g.files["table_message.moo"])
-	const anchor = "\t\t\t\tt.retain.captureMessage(t, v, d, entry, at, t.r.off)\n"
+	const anchor = "\t\t\t\t_retain.captureMessage(t, v, d, entry, at, t.r.off)\n"
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the capture call is not in table_message.moo exactly once")
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "\t\t\t\tt.retain.lost(t.report)\n", 1)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "\t\t\t\t_retain.lost(t.report)\n", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := mooRetainMessages(t, g, row.root, conn, batch, retainFull, -1); got.counters() == row.counters {
