@@ -953,7 +953,7 @@ write_union = function(T, ids, nodes, u, val, w, path, ord, retain, report)
   w_leb(w, id_ref(ids, arm.id))
   w_u8(w, f.kind)
   local body = W()
-  if not write_union_at(T, ids, nodes, f, val[arm.name], body, path_step(path, ord, tag), ord, retain, report) then
+  if not write_union_at(T, ids, nodes, f, val[arm.slot], body, path_step(path, ord, tag), ord, retain, report) then
     return false
   end
   w_leb(w, body.n)

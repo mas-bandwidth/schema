@@ -335,7 +335,7 @@ read_union = function(ctx, target, at)
   local f = arm.field
   if f ~= nil then
     local v, present = read_field(ctx, f, at + un.arm_offset)
-    if present and v ~= nil then out[arm.name] = v end
+    if present and v ~= nil then out[arm.slot] = v end
   end
   return out
 end

@@ -1726,7 +1726,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
     out.tag = tag
-    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false, table_name, field_name) then
+    if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false, table_name, field_name) then
       return nil
     end
   end
@@ -2571,7 +2571,7 @@ local function write_union(T, u, val, depth, g, w)
   if arm.field == nil then
     raw(w, "null")
   else
-    if not write_value(T, arm.field, val[arm.name], depth + 1, g, w, false) then return false end
+    if not write_value(T, arm.field, val[arm.slot], depth + 1, g, w, false) then return false end
   end
   line(w, depth)
   put(w, "}")

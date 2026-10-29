@@ -437,6 +437,7 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 	m.Printf("  tag = %d,\n", tag)
 	m.Printf("  arm_offset = %d,\n", armOffset)
 	m.Printf("  arms = {\n")
+	slots := armSlots(un)
 	for i, v := range un.Variants {
 		wire := v.Name
 		if v.WasName != "" {
@@ -446,10 +447,35 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 		if v.F != nil {
 			field = fieldDescriptorAt(m.Unit, v.F, i+1, fieldPieces(m.Unit, v.F))
 		}
-		m.Printf("    { name = %q, tag = %d, id = %s, field = %s },\n", v.Name, i+1, idLit(ir.TableWireId(wire)), field)
+		m.Printf("    { name = %q, slot = %q, tag = %d, id = %s, field = %s },\n", v.Name, slots[i], i+1, idLit(ir.TableWireId(wire)), field)
 	}
 	m.Printf("  },\n")
 	m.Printf("}\n\n")
+}
+
+// armSlots answers, per arm, the key of the union VALUE that holds the arm's
+// payload. A Lua union value is { tag = <arm index>, <slot> = <payload> }, so
+// an arm named like the discriminator (`tag`) must not store its payload under
+// the discriminator's key: its slot is the name with underscores appended
+// until it names no arm (docs/SPEC-TABLES.md §2.6). Every other arm's slot is
+// its name; the wire, the text and the JSON still name the arm, never the slot.
+func armSlots(un *ir.Union) []string {
+	taken := map[string]bool{"tag": true}
+	for _, v := range un.Variants {
+		taken[v.Name] = true
+	}
+	out := make([]string, len(un.Variants))
+	for i, v := range un.Variants {
+		slot := v.Name
+		for slot == "tag" {
+			slot += "_"
+			for taken[slot] {
+				slot += "_"
+			}
+		}
+		out[i] = slot
+	}
+	return out
 }
 
 // guardTerm is one conjunct of a guarded field's branch condition: a bool

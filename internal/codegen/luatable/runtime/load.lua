@@ -1741,14 +1741,14 @@ read_arm_payload = function(T, ctx, u, arm, armkind, sub, n)
     if widens(armkind, f.kind) then
       -- the same payload reader, at the kind the header carried
       local out = { tag = arm.tag }
-      local x, st = read_payload(T, ctx, f, sub, n, out, arm.name, armkind)
+      local x, st = read_payload(T, ctx, f, sub, n, out, arm.slot, armkind)
       if st ~= OK then return { tag = 0 } end
       if sub.at ~= sub.lim then
         report.malformed = true
         return { tag = 0 }
       end
       report.widened = report.widened + 1
-      out[arm.name] = x
+      out[arm.slot] = x
       return out
     end
     report.kindMismatch = report.kindMismatch + 1
@@ -1760,12 +1760,12 @@ read_arm_payload = function(T, ctx, u, arm, armkind, sub, n)
   -- field would default or stop on, the union reads None, and the parent reads
   -- on past L.
   local out = { tag = arm.tag }
-  local x, st = read_payload(T, ctx, f, sub, n, out, arm.name, armkind)
+  local x, st = read_payload(T, ctx, f, sub, n, out, arm.slot, armkind)
   if st == OK then
-    out[arm.name] = x
+    out[arm.slot] = x
   elseif st == INERT then
     -- shorter than its own header, it is inert and the arm holds its zero
-    out[arm.name] = zero_array(T, f)
+    out[arm.slot] = zero_array(T, f)
   else
     return { tag = 0 }
   end

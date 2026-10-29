@@ -145,7 +145,7 @@ local function encode_union(T, d, v, size)
   local arm = ud.arms[tag]
   if arm ~= nil and tag ~= 0 then
     local fd = T.Unions[d.target].arms[tag].field
-    local payload = encode_value(T, fd, v[arm.name], arm.size)
+    local payload = encode_value(T, fd, v[arm.slot], arm.size)
     parts[#parts + 1] = payload
   else
     parts[#parts + 1] = zeros(size - ud.tag)
@@ -281,7 +281,7 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     if tag ~= 0 then
       local arm = ud.arms[tag]
       local fd = T.Unions[d.target].arms[tag].field
-      v[arm.name] = decode_value(T, fd, buf, pos + ud.tag, arm.size)
+      v[arm.slot] = decode_value(T, fd, buf, pos + ud.tag, arm.size)
     end
     return v, pos + size
   elseif s == "array" then
@@ -445,7 +445,7 @@ decode_old_value = function(T, d, node, buf, pos)
       local armNode = node.children[1 + tag]
       local arm = T.Unions[d.target].arms[tag]
       if armNode ~= nil and arm.field ~= nil then
-        v[arm.name] = decode_old_value(T, arm.field, armNode, buf, pos + w)
+        v[arm.slot] = decode_old_value(T, arm.field, armNode, buf, pos + w)
       end
     end
     return v
@@ -498,7 +498,7 @@ local function strict_value(T, d, v)
     local un = T.Unions[d.target]
     if tag ~= 0 and un ~= nil then
       local arm = un.arms[tag]
-      if arm ~= nil and arm.field ~= nil then strict_value(T, arm.field, v[arm.name]) end
+      if arm ~= nil and arm.field ~= nil then strict_value(T, arm.field, v[arm.slot]) end
     end
   elseif s == "array" then
     for i = 1, #v do

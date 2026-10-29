@@ -83,8 +83,8 @@ func TestLuaArmIsAFieldLine(t *testing.T) {
 		t.Errorf("an arm is not a field line: %s", strings.Join(v, "; "))
 	}
 	// the reversed witness: a per-shape string reader planted into read_arm
-	planted := strings.Replace(string(src), "  local out = { tag = arm.tag }\n  local x, st = read_payload(T, ctx, f, sub, n, out, arm.name, armkind)\n",
-		"  if f.shape == \"string\" then\n    local raw = string.sub(sub.b, sub.at + 1, sub.lim)\n    return { tag = arm.tag, [arm.name] = raw }\n  end\n  local out = { tag = arm.tag }\n  local x, st = read_payload(T, ctx, f, sub, n, out, arm.name, armkind)\n", 1)
+	planted := strings.Replace(string(src), "  local out = { tag = arm.tag }\n  local x, st = read_payload(T, ctx, f, sub, n, out, arm.slot, armkind)\n",
+		"  if f.shape == \"string\" then\n    local raw = string.sub(sub.b, sub.at + 1, sub.lim)\n    return { tag = arm.tag, [arm.slot] = raw }\n  end\n  local out = { tag = arm.tag }\n  local x, st = read_payload(T, ctx, f, sub, n, out, arm.slot, armkind)\n", 1)
 	if planted == string(src) {
 		t.Fatal("the plant's anchor is absent")
 	}

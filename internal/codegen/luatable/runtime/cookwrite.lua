@@ -281,7 +281,7 @@ write_field_value = function(T, f, x, at, w, index)
     if arm.field ~= nil then
       local af = arm.field
       local armAt = at + u.arm_offset + (af.at or 0)
-      local ax = type(x) == "table" and x[arm.name] or nil
+      local ax = type(x) == "table" and x[arm.slot] or nil
       if af.shape == "table" then
         local d = T.Tables[af.target]
         if d == nil then return nil end
@@ -487,7 +487,7 @@ carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
     return carve_field(
       T,
       arm.field,
-      type(x) == "table" and x[arm.name] or nil,
+      type(x) == "table" and x[arm.slot] or nil,
       at + u.arm_offset,
       extentBase,
       cursor,
@@ -515,7 +515,7 @@ carve_element = function(T, e, x, at, extentBase, cursor, w)
     return carve_field(
       T,
       arm.field,
-      type(x) == "table" and x[arm.name] or nil,
+      type(x) == "table" and x[arm.slot] or nil,
       at + u.arm_offset,
       extentBase,
       cursor,

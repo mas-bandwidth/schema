@@ -238,7 +238,7 @@ local function deprecated_value(T, d, val, where, seen)
     if u ~= nil and type(val) == "table" then
       local arm = u.arms[val.tag or 0]
       if arm ~= nil and arm.field ~= nil then
-        return deprecated_value(T, arm.field, val[arm.name], u.name .. "." .. arm.name, seen)
+        return deprecated_value(T, arm.field, val[arm.slot], u.name .. "." .. arm.name, seen)
       end
     end
   end
@@ -316,7 +316,7 @@ local function non_finite_value(T, d, val, where, seen)
     if u ~= nil and type(val) == "table" then
       local arm = u.arms[val.tag or 0]
       if arm ~= nil and arm.field ~= nil then
-        return non_finite_value(T, arm.field, val[arm.name], u.name .. "." .. arm.name, seen)
+        return non_finite_value(T, arm.field, val[arm.slot], u.name .. "." .. arm.name, seen)
       end
     end
   end
@@ -472,7 +472,7 @@ edge_union = function(T, u, val, out, cache)
   if tag == 0 or u == nil then return end
   local arm = u.arms[tag]
   if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
+  edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache)
 end
 
 -- the pointer and blob edges of one node's by-value closure, in the walk's
