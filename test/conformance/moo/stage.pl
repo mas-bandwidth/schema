@@ -45,6 +45,15 @@ sub emit {
 emit("$stage/manifest.moo",
 	"--!strict\n-- written by test/conformance/moo/stage.pl: the derived manifest\nreturn " . literal($text) . "\n");
 
+# the surface modules beside main.moo (block.moo, ...), one per table form: a
+# form lands its answers by adding its file, never by editing main.moo
+opendir(my $dh, "test/conformance/moo") or die "stage.pl: test/conformance/moo: $!\n";
+my @plugins = sort grep { /^[a-z][a-z0-9_]*$/ } map { /^(.*)\.moo$/ ? $1 : () } readdir($dh);
+closedir $dh;
+@plugins = grep { $_ ne "main" } @plugins;
+emit("$stage/plugins.moo",
+	"--!strict\n-- written by test/conformance/moo/stage.pl: the surface modules beside main.moo\nreturn table.freeze({" . join(", ", map { "\"$_\"" } @plugins) . "})\n");
+
 my %kinds = (
 	"list"          => [],
 	"wire"          => ["instance"],
@@ -63,8 +72,8 @@ my %kinds = (
 	"block-dump"    => ["block"],
 	"forgery"       => ["forgery"],
 	"cook-forgery"  => ["forgery"],
-	"block-reason"  => ["refusal"],
-	"cook-reason"   => ["refusal"],
+	"block-reason"  => ["refusal", "forgery"],
+	"cook-reason"   => ["refusal", "forgery"],
 );
 my %want = map { $_ => 1 } @{ $kinds{$surface} || [] };
 
