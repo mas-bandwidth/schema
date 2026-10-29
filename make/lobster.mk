@@ -10,7 +10,7 @@
 # same pin and may override with LOBSTER=<path>. To populate dist/
 # (gitignored), run `make dist-lobster`, which takes the host's release archive
 # from https://github.com/aardappel/lobster/releases/tag/v2026.8 and unzips it
-# into dist/lobster-v2026.8/ (bin/lobster, modules/ beside it). One sha256 per
+# into dist/lobster-v2026.8/ (bin/lobster, with modules/ and data/ beside it; --pak reads data/shaders). One sha256 per
 # archive, each the release's own published digest:
 #   lobster_linux_release.zip    2f03fb96fdaf6935469c99e43ffb182cab0d797faec7b26eccc9a732df32ad31
 #   lobster_osx_arm_release.zip  18088b1bfdfa4e93f972b806e240aa2eece6528a183124884e74b698c8218f31
@@ -44,7 +44,7 @@ dist-lobster:
 	if [ "$$got" != "$(LOBSTER_ZIP_SHA)" ]; then \
 		echo "dist-lobster REFUSES: $(LOBSTER_ZIP) sha256 $$got is not the pin $(LOBSTER_ZIP_SHA)"; \
 		rm -f build/dist-lobster/$(LOBSTER_ZIP); exit 1; fi
-	@unzip -o -q build/dist-lobster/$(LOBSTER_ZIP) 'bin/*' 'modules/*' -d $(LOBSTER_DIST)
+	@unzip -o -q build/dist-lobster/$(LOBSTER_ZIP) 'bin/*' 'modules/*' 'data/*' -d $(LOBSTER_DIST)
 	@chmod +x $(LOBSTER_DIST)/bin/lobster
 	@echo "dist-lobster: lobster $(LOBSTER_VERSION) at $(LOBSTER_DIST) sha256 $(LOBSTER_ZIP_SHA)"
 

@@ -1554,8 +1554,8 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 
 // ---- The Read-Side Finite Pass ----------------------------------------------
 //
-// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
-// finite-only too, same rule as packets"; finite-tables #2226's Go shape):
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as
+// packets; finite-tables #2226's Go shape):
 // every fixed read refuses a NaN or an infinity as non_finite_float, naming
 // the field, tolerant and strict alike. It runs over STORAGE after the record
 // lands, so one pass covers the identity copy and a lineage plan's widenF,

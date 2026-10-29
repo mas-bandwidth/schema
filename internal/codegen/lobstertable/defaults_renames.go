@@ -42,7 +42,7 @@ func emitDefaultsRenames(g *lobster.Gen) error {
 		return nil
 	}
 	g.Pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20):\n")
-	g.Pf("// the one digest a block carries, a peer announces and the cook names.\n")
+	g.Pf("// the one digest a block carries, a sender announces and the cook names.\n")
 	g.Pf("let BuildVersion = %s\n\n", lobster.IntLit(new(big.Int).SetUint64(ir.BuildVersion(g.Unit))))
 
 	names := make([]string, 0, len(g.Unit.Enums))

@@ -439,8 +439,8 @@ def read_raw(r:Reader, width:int, signed:bool) -> Int128:
     let hi = if signed and v < 0: -1 else: 0
     return Int128 { v, hi }
 
-// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables
-// go finite-only too, same rule as packets"): the test is on the RAW BITS,
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as
+// packets): the test is on the RAW BITS,
 // before they become a value. -0 and the subnormals are finite and ride bit
 // for bit; every finite float32 widens exactly through the ordinary
 // conversion, so no bit surgery is left.
