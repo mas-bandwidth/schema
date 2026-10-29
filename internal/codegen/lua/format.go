@@ -102,7 +102,7 @@ func formatComment(indent, comment string) []string {
 	var out []string
 	cur := indent + prefix
 	empty := true
-	for _, word := range strings.Fields(text) {
+	for word := range strings.FieldsSeq(text) {
 		if !empty && width(cur)+1+width(word) > MaxLineLength {
 			out = append(out, cur)
 			cur = indent + prefix
