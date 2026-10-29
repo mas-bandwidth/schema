@@ -776,6 +776,32 @@ tables-rust-view: bin/schema test/rust-view/src/main.rs test/rust-view/Cargo.tom
 
 test-rust: tables-rust-view
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md J1; issue #421). Every
+# row of the block images, every node of the cook images and every record type
+# either descriptor graph reaches is read through the generated row struct (and
+# the generated `<record>_at` for a reference slot) and through the
+# descriptor's offset and width, and the two must agree. It prints the counts it
+# read: a gate that read nothing says so and fails.
+#
+# Its two negative controls build the compiler from a sabotaged COPY of
+# rusttable/cook.go (tools/sabotage, go build -overlay) and require the gate to
+# turn red on the named fields and on nothing else: the ACCESSOR control swaps
+# RenderCamera's camera_id and camera_type declarations (and withdraws the
+# compile-time offset_of! asserts that would stop the build first), the SLOT
+# control describes TreeNode.left one reference slot on.
+.PHONY: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
+tables-rust-accessor-descriptor-agreement: build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
+	cd test/rust-agree && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
+	./test/rust-agree/target/debug/rust-agree
+
+tables-rust-accessor-negative-control: bin/schema
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control accessor
+
+tables-rust-slot-negative-control: bin/schema
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control slot
+
+test-rust: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
+
 # THE RUST LEG OVER EVERY ROOT (docs/SPEC-TABLES.md §3, §4, §4.2, §6.6): the
 # wire fuzzer and retain-unknown over every variable-class FILE root of the
 # harness's default roster whose unit the Rust generator gives a codec, not the
