@@ -1,6 +1,7 @@
 package luatable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -52,9 +53,7 @@ func buildManifestUnit(t *testing.T, key string) builtUnit {
 func (b builtUnit) patched(t *testing.T, file, from, to string) map[string][]byte {
 	t.Helper()
 	out := map[string][]byte{}
-	for k, v := range b.files {
-		out[k] = v
-	}
+	maps.Copy(out, b.files)
 	src, ok := out[file]
 	if !ok {
 		t.Fatalf("the emitted unit has no %s", file)

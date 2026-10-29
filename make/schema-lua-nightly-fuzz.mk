@@ -109,7 +109,7 @@ schema-lua-nightly-fuzz: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)/.stamp
 	fi
 
 # THE PLANTED-BAD-PATTERN CONTROL. A scratch copy of the generated tree has the
-# short-file guard in load.lua's open removed (`if #bytes < 9` becomes
+# short-file guard in load.lua's open removed (`if blen < 9` becomes
 # `if false`), which turns a truncated body into a raw string.unpack error.
 # The fuzzer must find it inside a bounded run, the saved case must then FAIL
 # replay against the sabotage, and the same case must PASS replay against the
@@ -121,7 +121,7 @@ schema-lua-fuzz-negative-control: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED
 	nc=build/lua-fuzz-negative-control; \
 	rm -rf $$nc && mkdir -p $$nc/generated $$nc/findings $(LUA_FUZZ_REGRESS); \
 	cp -r $(LUA_FUZZ_GENERATED)/. $$nc/generated/; \
-	sed -i 's/^  if #bytes < 9 then$$/  if false then -- lua-fuzz-plant/' $$nc/generated/examples/load.lua; \
+	sed -i 's/^  if blen < 9 then$$/  if false then -- lua-fuzz-plant/' $$nc/generated/examples/load.lua; \
 	grep -q '^  if false then -- lua-fuzz-plant$$' $$nc/generated/examples/load.lua || \
 		{ echo "negative control: the plant did not land"; exit 1; }; \
 	if ! $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $$nc/generated \

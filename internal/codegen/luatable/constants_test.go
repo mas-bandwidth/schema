@@ -33,6 +33,7 @@ end
 local load, save = require("load"), require("save")
 local json, cookwrite, text = opt("json"), opt("cookwrite"), opt("text")
 local before = D.fingerprint(T)
+local state = load.NewState()
 -- a surface may refuse a wire; it may not write into a descriptor
 local function try(f, ...)
   local ok, err = pcall(f, ...)
@@ -52,6 +53,14 @@ end
 for i, root in ipairs(roots) do
   local wire = inputs["w" .. i]
   local v = load.LoadTolerant(T, root, wire, report())
+  -- the caller-owned form reads into one value, twice: the second read puts the
+  -- value the first left back to its defaults IN PLACE, which must never reach
+  -- a table a descriptor owns (a clamped wide bound was one)
+  do
+    local into = T["New" .. root]()
+    load.LoadTolerant(T, root, wire, report(), state, into)
+    load.LoadTolerant(T, root, wire, report(), state, into)
+  end
   try(load.Load, T, root, wire, report())
   try(load.LoadMeasure, T, root, wire)
   if T.ReadFixed then try(T.ReadFixed, root, wire) end
@@ -65,6 +74,27 @@ for i, root in ipairs(roots) do
       try(cookwrite.Cook, T, root, v)
     end
     if T.WriteFixed then try(T.WriteFixed, root, v) end
+  end
+end
+-- a value past its declared range is clamped to the bound, and a wide bound is a
+-- table of the descriptor's: write one out of range both ways, read it into a
+-- kept value twice, and the bound must still be what it was
+for name, d in pairs(T.Tables) do
+  if T["New" .. name] then
+    for _, fd in ipairs(d.fields) do
+      if fd.shape == "wide" and fd.lo ~= nil then
+        for _, big in ipairs({ math.maxinteger, math.mininteger }) do
+          local v = T["New" .. name]()
+          v[fd.name] = { lo = 0, hi = big }
+          local ok, wire = pcall(save.Save, T, name, v)
+          if ok and wire ~= nil then
+            local into = T["New" .. name]()
+            load.LoadTolerant(T, name, wire, report(), state, into)
+            load.LoadTolerant(T, name, wire, report(), state, into)
+          end
+        end
+      end
+    end
   end
 end
 if D.fingerprint(T) ~= before then print("changed") else print("constant") end
@@ -131,7 +161,7 @@ func TestLuaDescriptorsConstantNegativeControl(t *testing.T) {
 	b := buildManifestUnit(t, "tabledemo")
 	inputs, roots, _ := instanceWires(t, "tabledemo")
 	probe := constantsProbe(b.module, roots)
-	anchor := "  local desc = T.Tables[name]\n  report.nonFiniteFloat = nil\n"
+	anchor := "  local desc = T.Tables[name]\n  state = state or L.NewState()\n  report.nonFiniteFloat = nil\n"
 	cases := []struct {
 		name  string
 		plant string
@@ -159,13 +189,26 @@ func TestLuaDescriptorsConstantNegativeControl(t *testing.T) {
 			t.Errorf("negative control %q: the gate did not go red: out=%q err=%v\n%s", c.name, out, err, stderr)
 		}
 	}
+	// the plant the differential found: a clamp that hands the value the
+	// descriptor's own wide bound, which the next read into a kept value then
+	// writes through
+	{
+		sb := buildManifestUnit(t, "scalars")
+		sinputs, sroots, _ := instanceWires(t, "scalars")
+		files := sb.patched(t, "load.lua", "x = bound_value(d.lo)", "x = d.lo")
+		files["load.lua"] = []byte(strings.ReplaceAll(string(files["load.lua"]), "x = bound_value(d.hi)", "x = d.hi"))
+		out, stderr, err := try(t, files, constantsProbe(sb.module, sroots), sinputs)
+		if err != nil || strings.TrimSpace(out) != "changed" {
+			t.Errorf("a clamp that aliases the descriptor's wide bound did not turn the gate: out=%q err=%v\n%s", out, err, stderr)
+		}
+	}
 	// and the gate REACHES every surface it claims: an overwrite planted at
 	// each entry point turns the fingerprint, so a surface the probe never
 	// calls would leave its plant green and be named here
 	bump := "T.Tables[name].size = T.Tables[name].size + 1\n"
 	entries := []struct{ file, anchor string }{
 		{"load.lua", "function L.LoadMeasure(T, name, bytes)\n"},
-		{"load.lua", "function L.Load(T, name, bytes, report)\n"},
+		{"load.lua", "function L.Load(T, name, bytes, report, state, into)\n"},
 		{"save.lua", "function S.Save(T, name, v)\n"},
 		{"json.lua", "function J.ToJson(T, name, v)\n"},
 		{"text.lua", "function Text.SaveText(T, name, v)\n"},

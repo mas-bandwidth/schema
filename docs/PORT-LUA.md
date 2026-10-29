@@ -216,20 +216,58 @@ a report's named reason before it calls the answer `damaged`, so
 `wire-count-refusal` lands the manifest's `refuse/count_refusal`; damage that
 names no reason stays `damaged`.
 
+## THE CALLER-OWNED LOAD, THE KEYED ACCESSOR, THE TYPED SAVE
+
+The table runtime's open techniques (2026-10-29; PORTING.md M1, M5, M13, M15,
+M18, M21, M22), each held by its own gate.
+
+**The load fills storage the caller owns** (M1, I1, I9, I14).
+`load.Load(T, name, bytes, report, state, into)` and
+`load.LoadTolerant(...)` take, after the report, an optional loader `state`
+(`load.NewState()`: the readers, the id table and its seen-set, the queue of
+pointer slots, the context) and an optional `into`, the caller's value, which
+the load puts back to its declared defaults IN PLACE (`D.reset`, deep-equal to
+the constructor over every table) and reads into. A caller that loads many
+records keeps one of each. Both are nil in the plain form, which answers what it
+always answered. A nested body, an arm, an array body, a map entry and a keyed
+slot are bounded by narrowing the one reader's limit (`narrow`, `restore`), never
+by building a view. What a Lua load cannot read into is a counted or unbounded
+array, a list, a map, a union arm, a pointer's node, a wide integer and a string
+past 40 bytes: each is a table or an object the load builds, and each row of the
+allocation gate says what it licenses (`internal/codegen/luatable/alloc_test.go`,
+`make tables-lua-alloc`): the by-value rows are held to exact zero bytes a load.
+The soak (`make tables-lua-soak`) is a pass count, `TABLES_LUA_SOAK_ITERATIONS`,
+never a clock. A load never writes through a table a descriptor owns: a clamped
+wide bound is copied.
+
+**Keyed arrays are indexed by key** (M5). `T.Keyed(table, field)` answers
+`get(array, key)`, `set(array, key, value)`, `each(array)` and `key(name)`; one
+unsigned compare refuses None and any key past `E.Max`.
+
+**The descriptors are constants** (M13). The module ends with `D.seal`: derived
+facts built once at require, every data table frozen against new keys; the
+overwrite of an existing key is the fingerprint gate's.
+
+**One pointer walk** (M15): `D.number_nodes`, shared by the save, the retaining
+save, the cook and the text form. **A union arm is a field line** (M18):
+`read_payload`, called by `read_field` and by the arm. **The typed save**
+(M22): `T.SaveTyped<Name>(value)` and `save.SaveTyped`, the scalar leaves written
+straight from the value.
+
 ## THE REGISTER
 
 The lua column of [PORTING.md](PORTING.md) is checked against the tree, cell by
-cell (2026-10-28). Carried, each naming its proof: M4b, M5, M6, M7, M8, M9, M12,
-M13, M14, M15, M16, M18, M19, M20, M22, I4, I5, I7, I15 and J4. `—`, the platform's reason stated:
-M2 and M3 (a Lua 5.4 integer and float are unboxed values), M4 (no inlining
-directive or aliasing qualifier), M10 (the VM owns allocation), M11 (no struct
-layout), M17 (no arena: a blob is one string of its own length), M21 (retired by
-the finite-only rule: the conversion only ever sees a finite float32) and J5
-(no table-wire bench). Every other cell is `❌`: the register's grammar requires a
-`#NNN`, the only issue that names the Lua port is #381 (closed, the language
-list), so the cells cite it beside the `port/lua/open/*` roadmap entry that
-carries the work (roadmap entries, never new issues). I2 and I11 are the
-negative controls, which the gates work carries.
+cell (2026-10-29). Carried, each naming its proof: M1, M4b, M5, M6, M7, M8, M9,
+M12, M13, M14, M15, M16, M18, M19, M20, M22, I1, I4, I5, I7, I9, I14, I15 and
+J4. `—`, the platform's reason stated: M2 and M3 (a Lua 5.4 integer and float
+are unboxed values), M4 (no inlining directive or aliasing qualifier), M10 (the
+VM owns allocation), M11 (no struct layout), M17 (no arena: a blob is one string
+of its own length), M21 (retired by the finite-only rule: the conversion only
+ever sees a finite float32) and J5 (no table-wire bench). Every other cell is
+`❌`: the register's grammar requires a `#NNN`, the only issue that names the
+Lua port is #381 (closed, the language list), so the cells cite it beside the
+`port/lua/open/*` roadmap entry that carries the work (roadmap entries, never new
+issues). I2 and I11 are the negative controls, which the gates work carries.
 
 ## THE CARD MAP
 
@@ -264,9 +302,7 @@ announcement read above (`retain-message-cross-build`); the message form's
 refusal of a plain `table` root (`message-form-plain-table`: `loadMessages`
 does not check `MessageRoots`, so `graph_tree` on the plain `Scene` answers
 bytes where the Go reference answers absent, and the refusal needs a reason
-name SPEC-TABLES §11 does not yet give); a caller-owned load with its
-allocation gate and soak;
-block and cook accessors; the
+name SPEC-TABLES §11 does not yet give); block and cook accessors; the
 forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
 the random text differential; the runtime-home control; the bench and release
 tier; the card facade; and a union arm named `tag`, whose payload shares the

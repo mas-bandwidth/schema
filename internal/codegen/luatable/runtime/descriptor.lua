@@ -548,6 +548,146 @@ function D.number_nodes(T, desc, root, refuse_shared)
   return nodes
 end
 
+-- THE DEFAULTS IN PLACE (docs/PORTING.md M1; docs/SPEC-TABLES.md §3, §4). A
+-- load fills caller-owned storage, so the caller's value is put back to the
+-- declared defaults IN PLACE and read into: D.reset(T, desc, v) leaves v
+-- deep-equal to the module's New<Name>() and allocates nothing where v already
+-- has the shape (a nested table, a fixed array, a union value, a wide integer
+-- and a wide string are reused; a list, a map and a counted array are emptied
+-- to their born length). TestLuaResetEqualsTheConstructor holds it to the
+-- constructor over every table.
+local reset_value, reset_union, reset_array, reset_clear
+
+-- empties a table of every key
+reset_clear = function(t)
+  for k in pairs(t) do
+    t[k] = nil
+  end
+end
+
+-- one array element's zero (§2.9): a record's own defaults, a union's tag 0,
+-- None as false, and a scalar's zero; x is the slot's present value
+local function reset_elem(T, e, x)
+  local s = e.shape
+  if s == "table" then
+    local d = T.Tables[e.target]
+    if type(x) == "table" then
+      D.reset(T, d, x)
+      return x
+    end
+    return D.fresh(T, d)
+  elseif s == "union" then
+    return reset_union(x)
+  elseif s == "bool" or s == "enum" or s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+    return false
+  elseif s == "float" then
+    return 0.0
+  elseif s == "string" or s == "bytes" then
+    return ""
+  elseif s == "wstring" then
+    if type(x) == "table" then
+      reset_clear(x)
+      return x
+    end
+    return {}
+  elseif s == "wide" then
+    if type(x) == "table" then
+      x.lo, x.hi = 0, 0
+      return x
+    end
+    return { lo = 0, hi = 0 }
+  end
+  return 0
+end
+
+reset_union = function(x)
+  if type(x) == "table" then
+    reset_clear(x)
+    x.tag = 0
+    return x
+  end
+  return { tag = 0 }
+end
+
+reset_array = function(T, fd, x)
+  local n
+  if fd.list then
+    n = 0
+  elseif fd.fixed or fd.keyed ~= nil then
+    n = fd.bound
+  else
+    n = fd.min or 0
+  end
+  if type(x) ~= "table" then x = {} end
+  local e = fd.elem
+  for i = 1, n do
+    x[i] = reset_elem(T, e, x[i])
+  end
+  for i = #x, n + 1, -1 do
+    x[i] = nil
+  end
+  return x
+end
+
+reset_value = function(T, fd, v)
+  local name, s = fd.name, fd.shape
+  if s == "array" then
+    v[name] = reset_array(T, fd, v[name])
+  elseif s == "map" or s == "wstring" then
+    local x = v[name]
+    if type(x) == "table" then
+      reset_clear(x)
+    else
+      v[name] = {}
+    end
+  elseif s == "table" then
+    local d = T.Tables[fd.target]
+    local x = v[name]
+    if type(x) == "table" then
+      D.reset(T, d, x)
+    else
+      v[name] = D.fresh(T, d)
+    end
+  elseif s == "union" then
+    v[name] = reset_union(v[name])
+  elseif s == "wide" then
+    local x, def = v[name], fd.default
+    if type(x) == "table" then
+      x.lo, x.hi = def.lo, def.hi
+    else
+      v[name] = { lo = def.lo, hi = def.hi }
+    end
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+    v[name] = nil
+  elseif s == "enum" then
+    v[name] = fd.default
+  else
+    v[name] = fd.default
+  end
+  if fd.optional then v[fd.pkey] = false end
+end
+
+-- one array element's zero, put in place into the slot x holds (a union's
+-- table is emptied and tagged 0, a record reset), for a load that reads a fixed
+-- array into the array it already holds
+D.reset_elem = reset_elem
+
+-- D.fresh builds one table's defaults, the descriptor's own constructor: the
+-- module's New<Name>() where it has one (it always does), else the walk's.
+function D.fresh(T, desc)
+  local ctor = desc.ctor
+  if ctor ~= nil then return ctor() end
+  return D.reset(T, desc, {})
+end
+
+-- D.reset puts v back to desc's declared defaults in place and answers it.
+function D.reset(T, desc, v)
+  for _, fd in ipairs(desc.fields) do
+    reset_value(T, fd, v)
+  end
+  return v
+end
+
 -- THE KEYED ACCESSOR (docs/PORTING.md M5; docs/SPEC-TABLES.md §2.4, §3.2). An
 -- enum-keyed array has one slot per NAMED variant: key 1 lives at index 1 and
 -- E.Max at the last, and None (key 0) has no slot. D.keyed(T, table, field)
@@ -639,6 +779,26 @@ function D.prepare(T)
     ids[d.type_id] = d
     local nodes, string_blob, bytes_blob = D.pointer_reachable(T, d)
     d.reach = { nodes = nodes, string_blob = string_blob, bytes_blob = bytes_blob }
+    -- the field of each wire id, the `| required` fields (false when there are
+    -- none, so a load tracks arrivals only where a field is demanded) and each
+    -- optional's presence key, so the load never scans a field list, builds
+    -- a name or allocates a set per body
+    local byid, required = {}, {}
+    for _, f in ipairs(d.fields) do
+      byid[f.id] = f
+      if f.required then required[#required + 1] = f end
+      if f.optional then f.pkey = f.name .. "_present" end
+    end
+    d.byid = byid
+    d.required = #required > 0 and required or false
+    d.ctor = T["New" .. d.name]
+  end
+  for _, u in pairs(T.Unions) do
+    local byid = {}
+    for _, a in ipairs(u.arms) do
+      byid[a.id] = a
+    end
+    u.byid = byid
   end
   T.TypeIds = ids
   if T.Fixed ~= nil then require("fixed").prepare(T) end

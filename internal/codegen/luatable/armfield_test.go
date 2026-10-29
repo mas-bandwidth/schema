@@ -53,8 +53,8 @@ func luaFunctionBody(src, opening string) (string, bool) {
 func armFieldViolations(src string) []string {
 	var out []string
 	for _, fn := range []struct{ name, opening string }{
-		{"read_field", "read_field = function(T, ctx, fd, r, v)"},
-		{"read_arm", "read_arm = function(T, ctx, u, r)"},
+		{"read_field", "read_field = function(T, ctx, fd, r, v, first)"},
+		{"read_arm_payload", "read_arm_payload = function(T, ctx, u, arm, armkind, sub, n)"},
 	} {
 		body, ok := luaFunctionBody(src, fn.opening)
 		if !ok {
@@ -219,8 +219,8 @@ func TestLuaArmFramingNegativeControl(t *testing.T) {
 	}{
 		{"the scalar width check removed", "if w == 0 or n ~= w then", "if false then",
 			[]string{"plain arm one long"}},
-		{"the body terminator check removed", "    if body.at ~= body.lim then\n      report.malformed = true\n      return fresh(T, d), DAMAGED",
-			"    if false then\n      report.malformed = true\n      return fresh(T, d), DAMAGED",
+		{"the body terminator check removed", "    if not clean then\n      report.malformed = true\n      discard(ctx, np0)\n      return renew(T, d, inst), DAMAGED",
+			"    if false then\n      report.malformed = true\n      discard(ctx, np0)\n      return renew(T, d, inst), DAMAGED",
 			[]string{"leaf arm with slack after its terminator"}},
 	}
 	for _, c := range cases {
