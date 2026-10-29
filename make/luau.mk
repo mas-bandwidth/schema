@@ -225,7 +225,7 @@ build/conformance-luau: $(LUAU_MANIFEST) make/luau.mk \
 generated/bench/tables/luau/.stamp: ;
 
 # PACKET FINITE FLOATS (SPEC §4.3, serialize format 2.0). The Luau packet target
-# enforces the rule through its vendored serialize.luau runtime (v2.1.1): a NaN
+# enforces the rule through its vendored serialize.luau runtime (v2.1.3): a NaN
 # or an infinity traps on write (IMPLEMENTING.md U9, "must be finite"), refuses
 # on read on its raw bits as non_finite_float, and -0 and the subnormals ride
 # bit exact. test/packet-finite/luau/main.luau runs every bare-float position

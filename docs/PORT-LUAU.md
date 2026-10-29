@@ -258,8 +258,8 @@ Fixed now for the pro cards; never renamed.
 
 **The vendored serialize.luau port.** `runtime/serialize*.luau` is the port's
 `src/` directory copied verbatim at the commit `runtime/SERIALIZE_PIN` names,
-which also carries one sha256 per file: serialize.luau v2.1.1 (serialize
-format 2.0) since 2026-10-28. The type wire calls this library rather than a
+which also carries one sha256 per file: serialize.luau v2.1.3 (serialize
+format 2.0) since 2026-10-29. The type wire calls this library rather than a
 private bit reader or writer; a gap in it is fixed in serialize.luau and
 re-vendored, never worked around here.
 

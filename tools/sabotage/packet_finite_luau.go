@@ -1,7 +1,7 @@
 package main
 
 // The Luau packet target enforces SPEC §4.3's finite-float rule through its
-// vendored serialize.luau runtime (internal/codegen/luau/runtime, v2.1.1). Each
+// vendored serialize.luau runtime (internal/codegen/luau/runtime, v2.1.3). Each
 // control removes one direction of serialize_float.luau's check at both
 // widths, in a COPY of the runtime the generator emitted beside the generated
 // module: test/packet-finite/luau/main.luau must fail exactly the bare-float
