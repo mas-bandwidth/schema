@@ -118,16 +118,61 @@ end
 -- None is carried until the moo table layers land (docs/PORT-MOO.md, THE
 -- LAYERS 3 and 4): until then every surface is ABSENT at the surface grain,
 -- which is the honest answer for a leg with no table runtime.
-type Surface = { carried: (Unit) -> boolean, run: () -> () }
+type Surface = { carried: (Unit, string) -> boolean, run: () -> () }
 local SURFACES: { [string]: Surface } = {}
 local ORDER: { string } = {}
+
+-- ---- the surface modules beside this file
+--
+-- A table form answers its surfaces from its own module, test/conformance/moo/
+-- <name>.moo (block.moo, ...): a function of ctx that returns the surfaces it
+-- carries, name -> Surface. stage.pl lists the modules that exist (plugins.moo),
+-- so a module that exists and fails to load fails the driver, and one that does
+-- not exist is simply not there. ctx hands over the manifest's lines, the unit
+-- modules, the staged fixtures and the answer line.
+local plugins: { string } = load(stage .. "plugins")
+local inputs: { [string]: buffer } = {}
+if surface ~= "list" then
+	inputs = load(stage .. "inputs")
+end
+
+local ctx = {
+	kind = kind,
+	module = function(key: string, name: string): any?
+		local ok, mod = pcall(load, ROOT .. generated .. "/" .. key .. "/" .. name)
+		if ok and type(mod) == "table" then
+			return mod
+		end
+		return nil
+	end,
+	inputs = function(path: string): buffer
+		return inputs[path] or fail("no staged fixture " .. path)
+	end,
+	say = function(case: string, text: string?)
+		if text == nil then
+			print(case .. " absent")
+		else
+			sayText(case, text)
+		end
+	end,
+}
+
+for _, name in plugins do
+	local carried: (any) -> { [string]: Surface } = load("./" .. name)
+	for surfaceName, s in carried(ctx) do
+		SURFACES[surfaceName] = s
+		ORDER[#ORDER + 1] = surfaceName
+	end
+end
+
+table.sort(ORDER)
 
 if surface == "list" then
 	for _, name in ORDER do
 		local s = SURFACES[name]
 		for _, u in kind("unit") do
 			local m = unit(u[2])
-			if m ~= nil and s.carried(m) then
+			if m ~= nil and s.carried(m, u[2]) then
 				print(name)
 				break
 			end
