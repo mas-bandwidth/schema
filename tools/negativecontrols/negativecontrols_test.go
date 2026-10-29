@@ -686,7 +686,7 @@ func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	pin := ""
-	for _, line := range strings.Split(string(mk), "\n") {
+	for line := range strings.SplitSeq(string(mk), "\n") {
 		if rest, ok := strings.CutPrefix(line, "GOLANGCI_LINT_VERSION ?="); ok {
 			pin = strings.TrimSpace(rest)
 		}
