@@ -565,7 +565,9 @@ function D.keyed(T, tname, fname)
   local desc = T.Tables[tname]
   if desc == nil then error("keyed: no table " .. tostring(tname), 2) end
   local f = D.field(desc, fname)
-  if f == nil or f.keyed == nil then error("keyed: " .. tname .. "." .. tostring(fname) .. " is not an enum-keyed array", 2) end
+  if f == nil or f.keyed == nil then
+    error("keyed: " .. tname .. "." .. tostring(fname) .. " is not an enum-keyed array", 2)
+  end
   local n = #f.keyed
   local where = tname .. "." .. fname
   local function refuse(key)
@@ -616,7 +618,7 @@ end
 -- D.fingerprint(T) is the whole tree as one string and the test that runs
 -- every surface requires it unchanged (TestLuaDescriptorsAreConstants).
 local SEALED = {
-  __newindex = function(t, k)
+  __newindex = function(_, k)
     error("a descriptor is a constant: refusing to write key " .. tostring(k) .. " into it (docs/PORTING.md M13)", 2)
   end,
   __metatable = false,

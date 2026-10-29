@@ -220,11 +220,20 @@ func LoadUnit(t testing.TB, paths ...string) *ir.Unit {
 	return u
 }
 
-// WriteFiles writes generated files into dir.
+// WriteFiles writes generated files into dir, in byte order of their names. On
+// a case-insensitive filesystem a unit's Save.lua and the runtime's save.lua
+// are one file, and map order would pick the winner at random; byte order
+// writes the capitalized module first and the runtime after it, so the
+// runtime a table module requires is the one that is there, on every host.
 func WriteFiles(t testing.TB, dir string, files map[string][]byte) {
 	t.Helper()
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), files[name], 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

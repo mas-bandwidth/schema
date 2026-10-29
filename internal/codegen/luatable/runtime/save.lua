@@ -32,12 +32,24 @@ local function w_raw(w, s)
   w.n = w.n + #s
 end
 
-local function w_u8(w, v)
-  w_raw(w, string.char(v & 0xff))
+-- one string per byte value, built once, so a byte or a one-byte LEB128 is a
+-- table read and not a call
+local CH = {}
+for i = 0, 255 do
+  CH[i] = string.char(i)
 end
 
--- CANONICAL LEB128 (§3), unsigned, of a Lua integer's low 64 bits.
+local function w_u8(w, v)
+  w_raw(w, CH[v & 0xff])
+end
+
+-- CANONICAL LEB128 (§3), unsigned, of a Lua integer's low 64 bits. The common
+-- value, a reference or a length under 128, is one byte.
 local function w_leb(w, v)
+  if v >= 0 and v < 0x80 then
+    w_raw(w, CH[v])
+    return
+  end
   v = v & MAX64
   local out = {}
   repeat
@@ -209,19 +221,26 @@ local function at_default(fd, v)
   return x == fd.default
 end
 
+-- THE ID TABLE (§3): ids.list is the wire's table in first-use order and
+-- ids.map its inverse, so a reference is one lookup however many ids the unit
+-- has (a scan of the list was quadratic in the fields a body names).
 local function id_ref(ids, id)
-  for i, v in ipairs(ids.list) do
-    if v == id then return i end
-  end
-  ids.list[#ids.list + 1] = id
-  return #ids.list
+  local ref = ids.map[id]
+  if ref ~= nil then return ref end
+  local list = ids.list
+  ref = #list + 1
+  list[ref] = id
+  ids.map[id] = ref
+  return ref
 end
 
 -- AN ENUM-KEYED ELEMENT (§2.4, §3.2): its payload is bare — the key's L
 -- frames it — and a zero element does not ride, so the pair is absent.
 local function id_rollback(ids, keep)
-  for i = #ids.list, keep + 1, -1 do
-    ids.list[i] = nil
+  local list = ids.list
+  for i = #list, keep + 1, -1 do
+    ids.map[list[i]] = nil
+    list[i] = nil
   end
 end
 
@@ -398,7 +417,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     local ok = write_body(T, ids, nodes, d, x, body)
     if not ok then return false end
     if not fd.required and not fd.optional and body.n <= 1 then
-      ids.list[mark + 1] = nil
+      id_rollback(ids, mark)
       return true
     end
     w_leb(w, ref)
@@ -579,8 +598,14 @@ end
 -- default is elided in form 1, leaving the terminator byte (§3, §4.2).
 write_body = function(T, ids, nodes, desc, v, w)
   if v ~= nil then
-    for _, fd in ipairs(desc.fields) do
-      if not write_field(T, ids, nodes, fd, v, w) then return false end
+    local typed = ids.typed
+    typed = typed and typed[desc.name]
+    if typed ~= nil then
+      if not typed(ids, nodes, v, w) then return false end
+    else
+      for _, fd in ipairs(desc.fields) do
+        if not write_field(T, ids, nodes, fd, v, w) then return false end
+      end
     end
   end
   w_u8(w, 0)
@@ -682,8 +707,11 @@ end
 -- THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 -- the node table LAST in the root body under the reserved id at kind 12, the
 -- terminator, then the id table and its count. A data cycle or a value with no
--- wire identity refuses the save (nil).
-function S.Save(T, name, v)
+-- wire identity refuses the save (nil). It is the walk S.Save drives by the
+-- descriptors alone and S.SaveTyped drives through the unit's typed bodies
+-- (docs/PORTING.md M22); the numbering, the node table, the id table and the
+-- trailer are this one function either way.
+local function save_with(T, name, v, typed)
   -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
@@ -692,10 +720,15 @@ function S.Save(T, name, v)
   local nodes, why = number_nodes(T, desc, v)
   if nodes == nil then return nil, why end
   local idx = W()
-  local ids = { list = {} }
+  local ids = { list = {}, map = {}, typed = typed }
   w_u8(idx, 1)
-  for _, fd in ipairs(desc.fields) do
-    if not write_field(T, ids, nodes, fd, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+  local root = typed and typed[name]
+  if root ~= nil then
+    if not root(ids, nodes, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+  else
+    for _, fd in ipairs(desc.fields) do
+      if not write_field(T, ids, nodes, fd, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+    end
   end
   if #nodes.list > 0 then
     w_leb(idx, id_ref(ids, NODE_TABLE_ID))
@@ -730,6 +763,47 @@ function S.Save(T, name, v)
   if desc.integrity ~= nil then out = out .. string.pack("<I4", crc32c(out)) end
   return out
 end
+
+function S.Save(T, name, v)
+  return save_with(T, name, v, nil)
+end
+
+-- THE TYPED SAVE (docs/PORTING.md M22). The unit's generated module carries,
+-- per table, a typed body (T.TypedBodies[name], runtime/save.lua's S.Typed the
+-- helpers it is written against): the scalar leaves, bool, integer, float and
+-- string fields with no guard, presence or `required`, are written straight
+-- from the value with their ids, kinds, widths and defaults as constants in the
+-- body, and every other field goes through the descriptor walk's write_field.
+-- S.Save above stays the descriptor-driven entry that reads the descriptors
+-- on every field; S.SaveTyped writes the same bytes (TestLuaTypedSave...).
+function S.SaveTyped(T, name, v)
+  local typed = T.TypedBodies
+  if typed == nil then error("SaveTyped: this module carries no typed save bodies", 2) end
+  return save_with(T, name, v, typed)
+end
+
+-- what a generated typed body is written against: the writer's pieces, the id
+-- reference, the default compare of a float, and the descriptor walk for the
+-- fields it does not type
+S.Typed = {
+  leb = w_leb,
+  raw = w_raw,
+  float = w_float,
+  same_float = same_float,
+  id_ref = id_ref,
+  field = write_field,
+  -- a field header, the reference to its id then its kind byte: one call, and
+  -- one string when the reference is under 128
+  head = function(w, ids, id, kind)
+    local ref = ids.map[id] or id_ref(ids, id)
+    if ref < 0x80 then
+      w_raw(w, CH[ref] .. CH[kind])
+    else
+      w_leb(w, ref)
+      w_raw(w, CH[kind])
+    end
+  end,
+}
 
 -- THE MEASURE: the length of what Save would write — the saved length.
 -- It mirrors jstable (variableform.go emitRootCodec: Measure is the length

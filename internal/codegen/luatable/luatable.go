@@ -143,8 +143,8 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 func emitTail(m *Module) {
 	m.Printf("-- the accessor of an enum-keyed array field (docs/PORTING.md M5): get, set and\n")
 	m.Printf("-- each take the key and refuse None and any key past the enum's last variant\n")
-	m.Printf("function _M.Keyed(table_name, field)\n")
-	m.Printf("  return require(\"descriptor\").keyed(_M, table_name, field)\n")
+	m.Printf("function _M.Keyed(table_name, field_name)\n")
+	m.Printf("  return require(\"descriptor\").keyed(_M, table_name, field_name)\n")
 	m.Printf("end\n\n")
 	m.Printf("-- THE DESCRIPTORS ARE CONSTANTS (docs/PORTING.md M13): every derived fact is\n")
 	m.Printf("-- built here, once, and the module's data is frozen against new keys\n")
