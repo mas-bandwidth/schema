@@ -647,7 +647,7 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
+      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7. The form-1 cook writer's control adds two driver compiles and two dart-only harness runs, about 30 s.",
       "targets": [
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
@@ -674,7 +674,8 @@
         "tables-dart-float-jit-negative-control",
         "tables-dart-float-jit-sdk-negative-control",
         "tables-dart-float-jit-boxing-negative-control",
-        "tables-dart-text-differential-negative-control"
+        "tables-dart-text-differential-negative-control",
+        "tables-dart-cookwrite-negative-control"
       ],
       "dart": "3.13.2"
     },

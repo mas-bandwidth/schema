@@ -243,6 +243,11 @@ type cookGen struct {
 	// form1 is set while a fixed root's FORM-1 cook writer is emitted
 	// (cookwrite_form1.go): the variable walk over the wire library's class
 	form1 bool
+	// form1Unions queues the unions the form-1 cook writes as ARRAY ELEMENTS
+	// (§2.6, §3): each gets one element writer, `_cook<Union>`, in the
+	// namespace the record writers share with every declared type name
+	form1Unions     []*ir.Union
+	form1UnionsSeen map[*ir.Union]bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }
