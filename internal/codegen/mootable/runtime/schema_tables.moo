@@ -162,6 +162,22 @@ function S.lookup(name: string): any
 	return d
 end
 
+-- THE IDS THIS UNIT CAN SPELL (ir.TableWireIds): every table module
+-- registers the unit's set, so RETAIN-UNKNOWN's save knows which retained ids
+-- the generated id table already holds and which take the caller's own list
+-- (docs/SPEC-TABLES.md §6.6).
+local knownIds: { [string]: boolean } = {}
+
+function S.known(ids: { string })
+	for _, id in ids do
+		knownIds[id] = true
+	end
+end
+
+function S.isKnown(id: string): boolean
+	return knownIds[id] == true
+end
+
 -- find is lookup without the raise: nil when nothing is registered by name.
 function S.find(name: string): any
 	return registry[name]
