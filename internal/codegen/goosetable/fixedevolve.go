@@ -78,6 +78,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedEvolutionEntry) (map[
 // fixedEvolvePart is the [Register]ed part.
 func fixedEvolvePart(g *goose.Gen) error {
 	roots := fixedRootsOf(g)
+	if len(roots) > 0 {
+		g.Import("fixedevolve") // schema_rt::FixedEvolveReport and the plan walk
+	}
 	for _, st := range roots {
 		e := &fixedEvolveEmit{g: g}
 		e.emitRoot(st)
@@ -235,7 +238,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("        k += 1;\n")
 	e.p("    }\n")
 	// THE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, ON A READ THAT RETURNS
-	// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.4, §5.8 row 11). It is per FIELD
+	// (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 11). It is per FIELD
 	// per PEER, never per record; a refusal has already returned and counted
 	// nothing.
 	for i, plan := range plans {
@@ -335,8 +338,8 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			}
 		case nodeCountGuard:
 			// A COUNTED ARRAY NEVER LANDS THE WRITER'S COUNT WORD UNCHECKED
-			// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4; docs/SPEC-
-			// TABLES.md §3.4): a word below zero or past the plan's bound — the
+			// (docs/FIXED-FORM-ALGORITHM.md §5.8 row 4; docs/SPEC-TABLES.md
+			// §3.4): a word below zero or past the plan's bound — the
 			// writer's min(their_n, my_n) — refuses count_over_bound before the
 			// count word or any destination byte lands, as gotable's
 			// tableFixedTextRefusal does.
@@ -669,7 +672,7 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 	var out []evolveNode
 	if head == 4 {
 		// THE COUNT WORD IS HELD TO THE PLAN'S BOUND, NEVER COPIED FIRST
-		// (docs/FIXED-FORM-VERSIONING-TESTS.md §5.8 row 4; docs/SPEC-TABLES.md
+		// (docs/FIXED-FORM-ALGORITHM.md §5.8 row 4; docs/SPEC-TABLES.md
 		// §3.4): a forged word refuses count_over_bound before any destination
 		// byte. Only a lawful count lands, and it lands verbatim.
 		out = append(out, evolveNode{op: nodeCountGuard, oldOff: oldOff, count: n})
