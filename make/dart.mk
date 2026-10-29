@@ -104,6 +104,24 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 	@touch $@
 
  
+# THE TABLES BOARD UNIT, for bench/tables/dart/leg (bench/tables/README.md): the
+# VARIABLE form (form 1) of TableMixed, the board's representative corpus.
+# Committed, like every other language's generated/bench/tables/<lang>.
+generated/bench/tables/dart/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/dart
+	./bin/schema generate --lang dart --out generated/bench/tables/dart bench/corpus/BenchTable.schema
+	@touch $@
+
+# THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK, with no clock at all: the
+# golden, all 64 variants load clean and re-save byte-identically, and two
+# rotations (docs/PORTING.md J5).
+.PHONY: tables-dart-bench-gate
+tables-dart-bench-gate: generated/bench/tables/dart/.stamp
+	bench/tables/dart/leg build
+	bench/tables/dart/leg run --gate
+test-dart: tables-dart-bench-gate
+BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
+
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is

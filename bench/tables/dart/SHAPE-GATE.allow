@@ -3,3 +3,5 @@
 # Paths are repository-relative.
 
 names bench/tables/dart/table_main.dart 9 shape-blind leg: `FixedTable` at its generated import site and the FIXED form's storage declarations (docs/SPEC-TABLES.md §3.4), plus `BenchMixed` at the read arm's packet import and storage declaration (BENCH-STANDARD.md §1.10, `bench_mixed_read`); no field, no pinned value, no wire size (callsite)
+
+names bench/tables/dart/table_form1_main.dart 3 shape-blind leg: `TableMixed` named in the header comment and at its generated import site and the instances' storage declaration; no field, no pinned value, no wire size (comment, callsite)
