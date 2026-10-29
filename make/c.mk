@@ -1057,7 +1057,25 @@ tables-c-slot-negative-control: bin/schema test/c-tables/accessor_descriptor_mai
 		  cat build/c-slot-sabotage/log; exit 1; }
 	@echo "negative control: a pointer slot eight bytes off turns the C accessor/descriptor gate RED"
 
-test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negative-control tables-c-slot-negative-control
+test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negative-control tables-c-slot-negative-control tables-c-text-differential tables-c-text-differential-negative-control
+
+# I13 (docs/PORTING.md): the C leg's text differential against a third
+# implementation. A C probe (compiled with the generated ProbeTable.c) draws 200
+# random float-only instances of a root (seed 24845619678, splitmix64, the Go
+# cell's schema and draw order) and writes each as (wire, text) with the
+# generated root_save and root_to_json; the Go engine (internal/tabletext,
+# internal/tablepack) writes its own text from the leg's wire, byte-compared,
+# and packs the leg's text back to wire, byte-compared. The control caps the
+# emitted float32 writer at six significant digits in memory and must go red on
+# the text comparison. SCHEMA_REQUIRE_CORPUS=1 makes a missing C compiler a
+# FAILURE rather than a skip.
+.PHONY: tables-c-text-differential tables-c-text-differential-negative-control
+tables-c-text-differential:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialAgainstTheGoEngine$$'
+	@echo 'tables C text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
+tables-c-text-differential-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialNegativeControl$$'
+	@echo 'tables C text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C LEG of `make test` (docs/SPEC-TABLES.md; test/conformance/README.md):
 # the same corpus in C, with the two gates that hold the emitter honest, the

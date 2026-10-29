@@ -23,6 +23,7 @@
         "tables-accessor-negative-control",
         "tables-block-race-negative-control",
         "tables-c-accessor-negative-control",
+        "tables-c-text-differential-negative-control",
         "tables-cpp-names-negative-control",
         "tables-fixedform-run-copy-negative-control",
         "tables-json-list-walk-negative-controls",
