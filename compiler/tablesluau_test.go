@@ -199,6 +199,8 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 			}, "A -> B -> A"},
 		{"luautable.Refuse", "a file and its own table module",
 			map[string]string{"Game.schema": table, "GameTable.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameTable"},
+		{"luautable.Refuse", "a file and its own block module",
+			map[string]string{"Game.schema": table, "GameBlock.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameBlock"},
 	}
 	var c *Compiler
 	for _, g := range builtins() {

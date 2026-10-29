@@ -134,6 +134,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, views)
+	// the block form's descriptors ride ON THE SIDE, <Base>Block.luau
+	// (blockform.go), and name no module this unit already emits
+	blockMods, err := GenerateBlock(u)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, blockMods)
 	// SPEC-TABLES.md §2.12: a unit with no table carrying json, block or
 	// cook omits those runtime surfaces. Fixed, view, message and retain are
 	// governed by surface, not forms.
@@ -462,6 +469,9 @@ func Refuse(u *ir.Unit) error {
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {
 			return fmt.Errorf("schema files %s and %sTable collide — the Luau table surface writes %sTable.luau as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
+		}
+		if bases[strings.ToLower(f.Base+"Block")] {
+			return fmt.Errorf("schema files %s and %sBlock collide — the Luau block form writes %sBlock.luau as %s's block descriptors; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 		if bases[strings.ToLower(f.Base+"View")] {
 			return fmt.Errorf("schema files %s and %sView collide — the Luau view surface writes %sView.luau as %s's view module; rename one file", f.Base, f.Base, f.Base, f.Base)
@@ -1103,8 +1113,8 @@ func gateDeclaredFormsRuntime(name string, data []byte) []byte {
 		)
 	case "schema_cookread.luau":
 		replaceOnce(
-			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
-			"function C.open(root: string, bytes: buffer?, build: integer?): (any, string?)\n\tlocal d0 = S.lookup(root)\n\tif d0 ~= nil and d0.table and d0.forms ~= nil and d0.forms.cook ~= true then\n\t\terror(\"schema: table \" .. root .. \" does not carry cook (forms declaration)\")\n\tend\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
+			"function C.Check(root: string, bytes: buffer?, build: integer?, base: number?, extent: number?): string?\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
+			"function C.Check(root: string, bytes: buffer?, build: integer?, base: number?, extent: number?): string?\n\tlocal d0 = S.lookup(root)\n\tif d0 ~= nil and d0.table and d0.forms ~= nil and d0.forms.cook ~= true then\n\t\terror(\"schema: table \" .. root .. \" does not carry cook (forms declaration)\")\n\tend\n\tif bytes == nil or typeof(bytes) ~= \"buffer\" then",
 		)
 	case "schema_cook.luau":
 		replaceOnce(
