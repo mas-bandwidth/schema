@@ -119,8 +119,19 @@ public final class TableCookWrite {
         for (TableCookFieldInfo f : info.fields) { discoverField(p, value, f); }
     }
 
+    // §2.3: an ABSENT optional owns no node. Its storage may still hold a
+    // stale value (a cleared ?T keeps what it held), so the numbering never
+    // descends it, and the store writes it as a load leaves it: the
+    // value-initialized record, every reference null.
+    private static boolean absentRecord(Object value, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        return f.presentOffset >= 0 && f.storage == TableCookStorage.RECORD
+                && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"));
+    }
+
     private static void discoverField(Plan p, Object value, TableCookFieldInfo f)
             throws ReflectiveOperationException {
+        if (absentRecord(value, f)) { return; }
         Object source = field(value, f.sourceName);
         if (f.isArray) {
             int used = count(value, f, source);
@@ -254,6 +265,12 @@ public final class TableCookWrite {
             put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
         }
         long dest = at + f.offset;
+        if (absentRecord(source, f)) {
+            if (f.countOffset >= 0) { put(out, order, at + f.countOffset, 0, 4); }
+            int slots = f.isArray ? f.arrayBound : 1;
+            for (int i = 0; i < slots; i++) { value(p, out, order, dest + (long) i * f.elemSize, null, f); }
+            return;
+        }
         if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
             byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
                     : (byte[]) v;
