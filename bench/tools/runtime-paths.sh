@@ -190,7 +190,7 @@ EOF
     fi
 }
 
-# verify_runtime <cpp|c|go|rust|cs|js|java|dart|elixir> — the §3.5
+# verify_runtime <cpp|c|go|rust|cs|js|java|dart|elixir|luau> — the §3.5
 # fail-closed check.
 #   stdout: the toolchain-resolved absolute runtime path (verified)
 #   return: 0 verified; 2 nothing to verify in this invocation — the leg
@@ -326,7 +326,7 @@ EOF
         echo "$got"
         ;;
 
-    java|dart|elixir)
+    java|dart|elixir|luau)
         # The codegen-only legs. schema's backends for these languages emit
         # self-contained code with no runtime library, so the legs build from
         # the repo's own generated sources with no runtime checkout — there
