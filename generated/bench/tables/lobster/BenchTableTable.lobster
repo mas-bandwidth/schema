@@ -673,7 +673,7 @@ let TableEventCookUnion = schema_rt.cook_union_of(schema_rt.CookUnion {
 })
 
 // BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20):
-// the one digest a block carries, a peer announces and the cook names.
+// the one digest a block carries, a sender announces and the cook names.
 let BuildVersion = 3224074231052672865
 
 schema_rt.set_unit("benchtable", 0x0926221bcb6f475f)

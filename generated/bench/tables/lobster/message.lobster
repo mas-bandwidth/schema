@@ -184,7 +184,7 @@ def own_vocabulary() -> MessageVocabulary:
     return v
 
 // message_entries_here is the unit's own entry count, the exact capacity a
-// receiver that talks only to peers of its own schema declares (§3.3).
+// receiver that talks only to senders of its own schema declares (§3.3).
 def message_entries_here() -> int:
     return own_vocabulary().count
 
@@ -488,7 +488,7 @@ def announce_inner(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
     v.announced = true
     return true
 
-// announce_read reads a peer's announcement into this direction's vocabulary
+// announce_read reads the sender's announcement into this direction's vocabulary
 // (§3.3, Go's AnnounceRead). THE FIRST ANNOUNCEMENT SETS THE VOCABULARY, AND
 // IT IS THE ONLY ONE THAT CAN; REFUSAL IS TERMINAL.
 def announce_read(v:MessageVocabulary, data:string, rep:LoadReport) -> bool:
