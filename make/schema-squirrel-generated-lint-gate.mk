@@ -93,6 +93,12 @@ schema-squirrel-generated-lint-gate-negative-control: dist-squirrel generated/sq
 	@cat $(SQUIRREL_LINT_NC_DIR)/findings.log
 	@echo 'negative control: a refused statement, a trailing space and a blank-line run planted in real generated files red the Squirrel lint gate by file and rule, and nothing else'
 
+# PORTING J4 names this leg's table-tree gate tables-<lang>-clean, as the nine
+# do (tables-dart-clean, tables-go-clean); the lint gate above IS it, over the
+# table corpora as well as the packet trees, so the name is the same target.
+.PHONY: tables-squirrel-clean
+tables-squirrel-clean: schema-squirrel-generated-lint-gate
+
 # The port's normal unit target includes the gate, as test-dart includes its
 # analyze and format pass.
-test-squirrel: schema-squirrel-generated-lint-gate
+test-squirrel: tables-squirrel-clean
