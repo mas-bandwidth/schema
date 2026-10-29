@@ -1441,7 +1441,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 — `tables-java-wire-fuzz` `tables-java-wire-fuzz-negative-control` run every root over the enumerated passes and the pinned vectors (0 divergences); the seeded random pass and the retention arm are owed (roadmap `java/java-wire-fuzz-every-root`) | ❌ #492 | ❌ #492 | ❌ #492 |
 
 ### J1 — Accessor and descriptor agreement
 

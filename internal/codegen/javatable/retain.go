@@ -237,7 +237,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        TableVariable.NodeGraph graph = nodes;\n")
 	for i, f := range st.Fields {
+		open := openGuard(&b, st, f)
 		writeFieldSaveRetain(&b, u, st, f, i)
+		closeGuard(&b, open)
 	}
 	b.WriteString("    }\n\n")
 

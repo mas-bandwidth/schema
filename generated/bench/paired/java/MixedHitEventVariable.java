@@ -339,7 +339,11 @@ public final class MixedHitEventVariable {
             } else if (id == F_crit) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.crit = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.crit = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
