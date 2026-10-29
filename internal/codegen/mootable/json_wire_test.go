@@ -22,10 +22,7 @@ import (
 // wireOwed is each unit whose wire half is not yet the value mapping's, with
 // the defect, owned by the tables layer: the test requires each to still
 // fail, so the list cannot outlive the fix.
-var wireOwed = map[string]string{
-	"blobdemo": "table_load.moo lands a *string blob as a buffer; values.go stores *string as string?",
-	"mapdemo":  "table_load.moo lands a *string blob as a buffer; values.go stores *string as string?",
-}
+var wireOwed = map[string]string{}
 
 func TestMooJsonWireSurfaces(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the generated text form over the moo wire)")
