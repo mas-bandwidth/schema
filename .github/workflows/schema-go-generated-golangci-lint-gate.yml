@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SERIALIZE_GO_TAG: v2.0.1
+  SERIALIZE_GO_TAG: v2.1.1
 
 jobs:
   gate:
