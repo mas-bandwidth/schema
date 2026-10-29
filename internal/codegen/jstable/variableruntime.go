@@ -110,6 +110,23 @@ function TableVariableLink(codecs, unions) {
   }
 }
 
+// THE FREEZE (docs/PORTING.md M13: descriptors are constants): once the link
+// has filled every descriptor, the whole graph is frozen, every object and
+// array reachable from it, so nothing after module load can change how a
+// table saves, loads or writes text. A Map the link built is frozen as an
+// object and its values are frozen; its entries are written by the link alone.
+// A function (a codec's make) and a typed array are left as they are.
+function TableVariableFreeze(x) {
+  if (x === null || typeof x !== "object" || ArrayBuffer.isView(x) || Object.isFrozen(x)) { return x; }
+  Object.freeze(x);
+  if (x instanceof Map) {
+    for (const v of x.values()) { TableVariableFreeze(v); }
+    return x;
+  }
+  for (const k of Object.keys(x)) { TableVariableFreeze(x[k]); }
+  return x;
+}
+
 // the live count of an array: a bounded array never writes past its bound
 function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return fd.list ? val.length : Math.min(val.length, fd.bound); }
 

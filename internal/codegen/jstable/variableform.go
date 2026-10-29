@@ -580,7 +580,7 @@ func fieldBound(f *ir.Field) int64 {
 func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
 	for _, st := range closure {
 		layout := ir.RecordLayout(g.unit, st)
-		g.pf("export const %sTableType = {\n", st.Name)
+		g.pf("export const %sTableType = TableVariableFreeze({\n", st.Name)
 		g.pf("  name: %q,\n", st.Name)
 		g.pf("  sz: %d, al: %d,\n", layout.Size, layout.Align)
 		g.pf("  fields: [\n")
@@ -589,16 +589,16 @@ func (g *variableGen) emitDescriptors(closure []*ir.Struct) {
 				f.Name, ir.TableWireFieldKind(f), fieldShape(f), fieldBound(f))
 		}
 		g.pf("  ],\n")
-		g.pf("};\n\n")
+		g.pf("});\n\n")
 	}
-	g.pf("export const %sUnitRegistry = {\n", capitalize(g.unit.Package))
+	g.pf("export const %sUnitRegistry = TableVariableFreeze({\n", capitalize(g.unit.Package))
 	g.pf("  package: %q,\n", g.unit.Package)
 	g.pf("  tables: [\n")
 	for _, st := range closure {
 		g.pf("    %sTableType,\n", st.Name)
 	}
 	g.pf("  ],\n")
-	g.pf("};\n\n")
+	g.pf("});\n\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -861,7 +861,9 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("  },\n")
 	}
 	g.pf("};\n")
-	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n\n")
+	g.pf("TableVariableLink(TableVariableCodecs, TableVariableUnions);\n")
+	g.pf("TableVariableFreeze(TableVariableCodecs);\n")
+	g.pf("TableVariableFreeze(TableVariableUnions);\n\n")
 }
 
 // fieldDesc renders one field's descriptor: its property name, its text key,

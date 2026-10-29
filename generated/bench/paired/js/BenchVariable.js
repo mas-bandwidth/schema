@@ -355,7 +355,7 @@ function TableVariableJsonString(s) {
   }
   return out + '"';
 }
-export const TableRetainKnown = [0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc16aea8ff5276n,0x0ca8b41b00d755f6n,0x0dbe005c56697c3en,0x11a44fc1d1243da7n,0x126167908c9aa52dn,0x13a62f542cf8e86en,0x188bbb1783928a95n,0x20bada21bc8cb334n,0x229d0447c3086a55n,0x23fcfd6678e36712n,0x2c3667b9c2f272f1n,0x2cc8282fb0de8831n,0x2e35dc5321aa5790n,0x2f2ec0474f1c4fe4n,0x33732819300680aan,0x35e53bc341129217n,0x3c460475f9be69c6n,0x3d827cb76b809d8cn,0x3eee6b51be54fc85n,0x52076675ec13a0c1n,0x53a9f665a90cc1b1n,0x560d6527ccd8515fn,0x5759ce7586bbb5a3n,0x5ab3f9c9341f6c04n,0x6cede5b6eb60ecb4n,0x6cede6b6eb60ee67n,0x6cede8b6eb60f1cdn,0x6d7b98e2d095967en,0x704be0d8faaffc58n,0x73a94c71d60dc0d8n,0x7674cfd19b9031can,0x78101ac0aa8cbcfen,0x7bbc035f7b6d0112n,0x7ce4fd9430e80cean,0x7f6308be8ab37fc0n,0x7f69d4b5288ba9cfn,0x80ab75f0866dbf65n,0x8113fe7ea2b16969n,0x85df369cdca746b3n,0x89f7566e1123e15fn,0x8d7f25318b3b4469n,0x935d0fb07bb3822an,0x9367b84cab99cdc3n,0x985fc819fab21a4en,0x9bae0da8b829ee03n,0x9cef31fff7e2e457n,0x9e7fd06d864fbd56n,0x9f2c9da926a7408an,0x9fa3a41c86ecb765n,0x9fbfefa835da8476n,0xa0b610205f2c6e01n,0xa3348580461faf16n,0xa5013e9ad5caeda4n,0xa790eee12766cf0cn,0xaa38aca481f528a8n,0xac9fe3b25a77f1d7n,0xb54d8e19798e16e8n,0xb7bc9ac015a25050n,0xb7d7b5650a590b05n,0xbf30e00dc53307a9n,0xc08292176cfd8672n,0xc42975bfe5e07baan,0xcb4b353576672da8n,0xcb4b37357667310en,0xcb4b3835766732c1n,0xcfb8a9d063b5e9e5n,0xd61bdd7908af2642n,0xd9cd0dcc285b7816n,0xdbaf79e5e2429363n,0xdbaf7ae5e2429516n,0xdbaf7be5e24296c9n,0xeb80cfd516eb3d5cn,0xee639cad45b1994cn,0xf2a38d910b5b348bn,0xfbf1ac4d96ebd022n,0xfd29ee12a979cb69n,0xffffffffffffffffn,];
+export const TableRetainKnown = Object.freeze([0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc16aea8ff5276n,0x0ca8b41b00d755f6n,0x0dbe005c56697c3en,0x11a44fc1d1243da7n,0x126167908c9aa52dn,0x13a62f542cf8e86en,0x188bbb1783928a95n,0x20bada21bc8cb334n,0x229d0447c3086a55n,0x23fcfd6678e36712n,0x2c3667b9c2f272f1n,0x2cc8282fb0de8831n,0x2e35dc5321aa5790n,0x2f2ec0474f1c4fe4n,0x33732819300680aan,0x35e53bc341129217n,0x3c460475f9be69c6n,0x3d827cb76b809d8cn,0x3eee6b51be54fc85n,0x52076675ec13a0c1n,0x53a9f665a90cc1b1n,0x560d6527ccd8515fn,0x5759ce7586bbb5a3n,0x5ab3f9c9341f6c04n,0x6cede5b6eb60ecb4n,0x6cede6b6eb60ee67n,0x6cede8b6eb60f1cdn,0x6d7b98e2d095967en,0x704be0d8faaffc58n,0x73a94c71d60dc0d8n,0x7674cfd19b9031can,0x78101ac0aa8cbcfen,0x7bbc035f7b6d0112n,0x7ce4fd9430e80cean,0x7f6308be8ab37fc0n,0x7f69d4b5288ba9cfn,0x80ab75f0866dbf65n,0x8113fe7ea2b16969n,0x85df369cdca746b3n,0x89f7566e1123e15fn,0x8d7f25318b3b4469n,0x935d0fb07bb3822an,0x9367b84cab99cdc3n,0x985fc819fab21a4en,0x9bae0da8b829ee03n,0x9cef31fff7e2e457n,0x9e7fd06d864fbd56n,0x9f2c9da926a7408an,0x9fa3a41c86ecb765n,0x9fbfefa835da8476n,0xa0b610205f2c6e01n,0xa3348580461faf16n,0xa5013e9ad5caeda4n,0xa790eee12766cf0cn,0xaa38aca481f528a8n,0xac9fe3b25a77f1d7n,0xb54d8e19798e16e8n,0xb7bc9ac015a25050n,0xb7d7b5650a590b05n,0xbf30e00dc53307a9n,0xc08292176cfd8672n,0xc42975bfe5e07baan,0xcb4b353576672da8n,0xcb4b37357667310en,0xcb4b3835766732c1n,0xcfb8a9d063b5e9e5n,0xd61bdd7908af2642n,0xd9cd0dcc285b7816n,0xdbaf79e5e2429363n,0xdbaf7ae5e2429516n,0xdbaf7be5e24296c9n,0xeb80cfd516eb3d5cn,0xee639cad45b1994cn,0xf2a38d910b5b348bn,0xfbf1ac4d96ebd022n,0xfd29ee12a979cb69n,0xffffffffffffffffn,]);
 
 
 // ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
@@ -834,6 +834,23 @@ function TableVariableLink(codecs, unions) {
     p.byType = new Map();
     for (const t of p.tables) { p.byType.set(codecs[t].typeId, codecs[t]); }
   }
+}
+
+// THE FREEZE (docs/PORTING.md M13: descriptors are constants): once the link
+// has filled every descriptor, the whole graph is frozen, every object and
+// array reachable from it, so nothing after module load can change how a
+// table saves, loads or writes text. A Map the link built is frozen as an
+// object and its values are frozen; its entries are written by the link alone.
+// A function (a codec's make) and a typed array are left as they are.
+function TableVariableFreeze(x) {
+  if (x === null || typeof x !== "object" || ArrayBuffer.isView(x) || Object.isFrozen(x)) { return x; }
+  Object.freeze(x);
+  if (x instanceof Map) {
+    for (const v of x.values()) { TableVariableFreeze(v); }
+    return x;
+  }
+  for (const k of Object.keys(x)) { TableVariableFreeze(x[k]); }
+  return x;
 }
 
 // the live count of an array: a bounded array never writes past its bound
@@ -3675,7 +3692,7 @@ function TableVariableTextInt(d, inp, holder, key, report) {
   holder[key] = d.big ? x : Number(x);
   return true;
 }
-export const MixedEntityTableType = {
+export const MixedEntityTableType = TableVariableFreeze({
   name: "MixedEntity",
   sz: 64, al: 8,
   fields: [
@@ -3694,18 +3711,18 @@ export const MixedEntityTableType = {
     { name: "moving", kind: 1, shape: "value", bound: 0 },
     { name: "firing", kind: 1, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedStatTableType = {
+export const MixedStatTableType = TableVariableFreeze({
   name: "MixedStat",
   sz: 8, al: 4,
   fields: [
     { name: "stat_id", kind: 6, shape: "value", bound: 0 },
     { name: "delta", kind: 4, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedHitEventTableType = {
+export const MixedHitEventTableType = TableVariableFreeze({
   name: "MixedHitEvent",
   sz: 16, al: 4,
   fields: [
@@ -3714,27 +3731,27 @@ export const MixedHitEventTableType = {
     { name: "hit_kind", kind: 4, shape: "value", bound: 0 },
     { name: "crit", kind: 1, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedChatEventTableType = {
+export const MixedChatEventTableType = TableVariableFreeze({
   name: "MixedChatEvent",
   sz: 8, al: 4,
   fields: [
     { name: "channel", kind: 4, shape: "value", bound: 0 },
     { name: "speaker", kind: 7, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedPickupEventTableType = {
+export const MixedPickupEventTableType = TableVariableFreeze({
   name: "MixedPickupEvent",
   sz: 8, al: 4,
   fields: [
     { name: "item_id", kind: 7, shape: "value", bound: 0 },
     { name: "amount", kind: 4, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const BenchMixedTableType = {
+export const BenchMixedTableType = TableVariableFreeze({
   name: "BenchMixed",
   sz: 1376, al: 16,
   fields: [
@@ -3766,17 +3783,17 @@ export const BenchMixedTableType = {
     { name: "extra", kind: 4, shape: "value", bound: 0 },
     { name: "idle_ticks", kind: 4, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const FixedTableTableType = {
+export const FixedTableTableType = TableVariableFreeze({
   name: "FixedTable",
   sz: 1376, al: 16,
   fields: [
     { name: "value", kind: 13, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const BenchUnitRegistry = {
+export const BenchUnitRegistry = TableVariableFreeze({
   package: "bench",
   tables: [
     MixedEntityTableType,
@@ -3787,7 +3804,7 @@ export const BenchUnitRegistry = {
     BenchMixedTableType,
     FixedTableTableType,
   ],
-};
+});
 
 export class MixedEntity {
   constructor() {
@@ -4019,6 +4036,8 @@ const TableVariableCodecs = {
   },
 };
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
+TableVariableFreeze(TableVariableCodecs);
+TableVariableFreeze(TableVariableUnions);
 
 // Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
 export const TableCookWrite = (() => {
