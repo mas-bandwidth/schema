@@ -36,7 +36,8 @@ const jsVariableCodecRuntime = `
 // THE CODEC WALK (docs/SPEC-TABLES.md §3, §3.1), driven by TableVariableCodecs
 // ---------------------------------------------------------------------------
 
-const TableVariableScratch = new DataView(new ArrayBuffer(8));
+const TableVariableScratch = new DataView(new ArrayBuffer(16));
+const TableVariableScratchBytes = new Uint8Array(TableVariableScratch.buffer);
 
 // A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN (§3, internal/tablewire NarrowF32
 // and WidenF32): a float32 NaN's payload rides in the top of the double's
@@ -89,13 +90,23 @@ function TableVariableSameBytes(a, b) {
 }
 
 // THE LINK: each descriptor learns its fields by id and by text key, and each
-// table reference its codec, once, when the module loads.
+// table reference its codec, once, when the module loads. It numbers every id
+// (TableVariableDense) and works out which tables can have a pointer or a blob
+// edge at all, so a save of one that cannot never numbers a node.
+let TableVariableDenseNodeTable = -1;
+let TableVariableDenseStringBlob = -1;
+let TableVariableDenseBytesBlob = -1;
+
 function TableVariableLink(codecs, unions) {
+  TableVariableDenseNodeTable = TableVariableDense(TableNodeTableId);
+  TableVariableDenseStringBlob = TableVariableDense(TableStringBlobId);
+  TableVariableDenseBytesBlob = TableVariableDense(TableBytesBlobId);
   TableVariableLinkUnions(codecs, unions);
   for (const name of Object.keys(codecs)) {
     const c = codecs[name];
     c.byId = new Map();
     c.byKey = new Map();
+    c.tn = TableVariableDense(c.typeId);
     for (const fd of c.fields) {
       c.byId.set(fd.id, fd);
       c.byKey.set(fd.key, fd);
@@ -108,6 +119,40 @@ function TableVariableLink(codecs, unions) {
     p.byType = new Map();
     for (const t of p.tables) { p.byType.set(codecs[t].typeId, codecs[t]); }
   }
+  for (const name of Object.keys(codecs)) { codecs[name].nf = TableVariableCodecNoEdges(codecs[name]); }
+  TableVariableDenseSeal();
+}
+
+// whether a table's by-value closure holds a pointer, a blob or a union or map
+// that does: the edges the numbering walks (TableVariableFieldEdges)
+function TableVariableCodecNoEdges(c) {
+  if (c.nf !== undefined) { return c.nf; }
+  for (const fd of c.fields) { if (!TableVariableDescNoEdges(fd)) { return false; } }
+  return true;
+}
+
+function TableVariableDescNoEdges(fd) {
+  switch (fd.s) {
+    case "ptr": case "sblob": case "bblob": return false;
+    case "tab": case "map": return TableVariableCodecNoEdges(fd.c);
+    case "keyed": return fd.e.s !== "tab" || TableVariableCodecNoEdges(fd.e.c);
+    case "union": return TableVariableUnionNoEdges(fd.u);
+    case "arr":
+      if (fd.e.s === "ptr") { return false; }
+      if (fd.e.s === "tab") { return TableVariableCodecNoEdges(fd.e.c); }
+      if (fd.e.s === "union") { return TableVariableUnionNoEdges(fd.e.u); }
+      return true;
+  }
+  return true;
+}
+
+function TableVariableUnionNoEdges(u) {
+  for (const arm of u.arms) {
+    if (arm.void) { continue; }
+    if (arm.body) { if (!TableVariableCodecNoEdges(arm.c)) { return false; } continue; }
+    if (!TableVariableDescNoEdges(arm.f)) { return false; }
+  }
+  return true;
 }
 
 // the live count of an array: a bounded array never writes past its bound
@@ -115,8 +160,9 @@ function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return
 
 // a field guarded by bool fields rides only when every guard holds (§2.4)
 function TableVariableGuardHolds(fd, v) {
-  if (fd.g !== undefined) {
-    for (const [k, want] of fd.g) { if (Boolean(v[k]) !== want) { return false; } }
+  const g = fd.g;
+  if (g !== undefined) {
+    for (let i = 0; i < g.length; i++) { if (Boolean(v[g[i][0]]) !== g[i][1]) { return false; } }
   }
   return true;
 }
@@ -137,6 +183,8 @@ class TableVariableNodes {
   constructor() { this.list = []; this.index = new Map(); this.slots = new Map(); }
   slot(holder, name) { return this.slots.get(holder).get(name); }
 }
+// THE EMPTY NUMBERING every save of a table with no edges shares: read, never written
+const TableVariableNoNodes = Object.freeze({ list: Object.freeze([]), index: new Map(), slots: new Map() });
 
 // RETENTION'S NODE STEP (§6.6): a record retained inside a node record names
 // which node it belongs to by the object's own identity, so the same record
@@ -205,6 +253,8 @@ function TableVariableFieldEdges(fd, v, out) {
 // write the edge or a copy per slot. A cook packs the graph as it finds it and
 // passes false.
 function TableVariableNumber(c, root, refuseShared, why) {
+  // a table that cannot reach a pointer or a blob has no node to number
+  if (c.nf === true) { return TableVariableNoNodes; }
   const nodes = new TableVariableNodes();
   nodes.index.set(root, 1);
   const open = new Set([root]);
@@ -222,7 +272,7 @@ function TableVariableNumber(c, root, refuseShared, why) {
     }
     if (open.has(e.val)) { return null; }
     if (nodes.index.has(e.val)) { continue; }
-    nodes.list.push({ typeId: e.c.typeId, codec: e.c, v: e.val });
+    nodes.list.push({ typeId: e.c.typeId, tn: e.c.tn, codec: e.c, v: e.val });
     nodes.index.set(e.val, nodes.list.length + 1);
     open.add(e.val);
     stack.push({ v: e.val, edges: TableVariableEdges(e.c, e.val, []), i: 0 });
@@ -232,25 +282,32 @@ function TableVariableNumber(c, root, refuseShared, why) {
 
 function TableVariableBlobNode(nodes, holder, fd, val) {
   const typeId = fd.s === "sblob" ? TableStringBlobId : TableBytesBlobId;
+  const tn = fd.s === "sblob" ? TableVariableDenseStringBlob : TableVariableDenseBytesBlob;
   if (fd.s === "sblob" && typeof val === "string") {
     let m = nodes.slots.get(holder);
     if (m === undefined) { m = new Map(); nodes.slots.set(holder, m); }
     if (!m.has(fd.n)) {
-      nodes.list.push({ typeId, body: TableVariableUtf8Encode(val) });
+      nodes.list.push({ typeId, tn, body: TableVariableUtf8Encode(val) });
       m.set(fd.n, nodes.list.length + 1);
     }
     return true;
   }
   // a blob OBJECT already numbered is one blob a second slot names: shared
   if (nodes.index.has(val)) { return false; }
-  nodes.list.push({ typeId, body: fd.s === "sblob" ? TableVariableUtf8Encode(String(val)) : val });
+  nodes.list.push({ typeId, tn, body: fd.s === "sblob" ? TableVariableUtf8Encode(String(val)) : val });
   nodes.index.set(val, nodes.list.length + 1);
   return true;
 }
 
 // ---- THE SAVE WALK (docs/SPEC-TABLES.md §3; internal/tablewire/encode.go) ---
+//
+// ONE PASS, IN PLACE. The walk writes into the one scratch writer the save
+// owns, every nested body under a reserved length byte that close settles
+// (TableVariableWriter), every id interned by dense number (TableVariableIds),
+// and the returned bytes are the walk's only allocation. A walk with no
+// retention store carries no path at all.
 
-function TableVariableHeader(w, ids, fd, kind) { w.leb(ids.ref(fd.id)); w.u8(kind); }
+function TableVariableHeader(w, ids, fd, kind) { w.leb(ids.refd(fd.idn)); w.u8(kind); }
 
 function TableVariableWriteInt(w, width, v) {
   switch (width) {
@@ -258,7 +315,7 @@ function TableVariableWriteInt(w, width, v) {
     case 2: w.u16(v); break;
     case 4: w.u32(v); break;
     case 16: w.u128(v); break;
-    default: w.u64(BigInt.asUintN(64, v));
+    default: w.u64(v);
   }
 }
 
@@ -266,13 +323,15 @@ function TableVariableWriteInt(w, width, v) {
 // value no variant names, which the save refuses (§5)
 function TableVariableEnumRef(e, ids, val) {
   if (val === null || val === "None") { return 0; }
-  for (const [name, id] of e.vs) { if (name === val) { return ids.ref(id); } }
+  const vs = e.vs;
+  for (let k = 0; k < vs.length; k++) { if (vs[k][0] === val) { return ids.refd(e.vn[k]); } }
   return -1;
 }
 
 function TableVariableWriteFields(c, w, ids, nodes, v, retain, path) {
-  for (const fd of c.fields) {
-    if (!TableVariableWriteField(fd, w, ids, nodes, v, retain, path)) { return false; }
+  const fields = c.fields;
+  for (let i = 0; i < fields.length; i++) {
+    if (!TableVariableWriteField(fields[i], w, ids, nodes, v, retain, path)) { return false; }
   }
   return true;
 }
@@ -280,8 +339,10 @@ function TableVariableWriteFields(c, w, ids, nodes, v, retain, path) {
 // one body: its fields in declaration order, the retained tail (§6.6), then
 // the one-byte zero reference that terminates it
 function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
+  // a save with no retention store writes through the table's typed body
+  if (retain === null && c.wt !== undefined) { return c.wt(w, ids, nodes, v); }
   if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return false; }
-  if (!TableVariableRetainTail(w, ids, retain, path)) { return false; }
+  if (retain !== null && !TableVariableRetainTail(w, ids, retain, path)) { return false; }
   w.u8(0);
   return true;
 }
@@ -291,7 +352,7 @@ function TableVariableWriteBody(c, w, ids, nodes, v, retain, path) {
 // alone — the field's id rolled back with it, so an elided field costs the id
 // table nothing either.
 function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
-  if (!TableVariableGuardHolds(fd, v)) { return true; }
+  if (fd.g !== undefined && !TableVariableGuardHolds(fd, v)) { return true; }
   const val = v[fd.n];
   if (fd.opt) {
     // ABSENT IS NOT WRITTEN; PRESENT ALWAYS RIDES (§2.3)
@@ -304,7 +365,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
     case "union":
       // None elides: the absence of the field is the None (§3)
       if (val === null) { return true; }
-      w.leb(ids.ref(fd.id));
+      w.leb(ids.refd(fd.idn));
       w.u8(15);
       return TableVariableArmWrite(fd.u, w, ids, nodes, val, retain, path, fd.o);
     case "bool":
@@ -316,15 +377,15 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
     case "float":
       if (fd.f32 ? Math.fround(val) !== Math.fround(fd.def) : val !== fd.def) {
         TableVariableHeader(w, ids, fd, fd.k);
-        if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
+        if (fd.f32) { w.f32(val); } else { w.f64(val); }
       }
       return true;
     case "str":
       if (val !== fd.def) {
-        const b = TableVariableUtf8Encode(val);
         TableVariableHeader(w, ids, fd, 12);
-        w.leb(b.length);
-        w.raw(b);
+        const m = w.open();
+        w.utf8(val);
+        w.close(m);
       }
       return true;
     case "wstr":
@@ -345,17 +406,16 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         // LEB128 is two bytes from 128 on, so L is never a constant plus the
         // byte count (internal/tablewire encode.go)
         TableVariableHeader(w, ids, fd, 14);
-        const body = new TableVariableWriter();
-        body.u8(6);
-        body.leb(val.length);
-        body.raw(val);
-        w.leb(body.len);
-        w.raw(body.b);
+        const m = w.open();
+        w.u8(6);
+        w.leb(val.length);
+        w.raw(val);
+        w.close(m);
       }
       return true;
     case "enum":
       if (val !== fd.def) {
-        const ref = ids.ref(fd.id);
+        const ref = ids.refd(fd.idn);
         const vref = TableVariableEnumRef(fd, ids, val);
         if (vref < 0) { return false; }
         w.leb(ref); w.u8(30); w.leb(vref);
@@ -373,14 +433,15 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "tab": {
       const mark = ids.mark();
-      const ref = ids.ref(fd.id);
-      const body = new TableVariableWriter();
-      path.push({ o: fd.o, i: 0 });
-      const ok = TableVariableWriteBody(fd.c, body, ids, nodes, val, retain, path);
-      path.pop();
+      const start = w.n;
+      w.leb(ids.refd(fd.idn)); w.u8(13);
+      const m = w.open();
+      if (path !== null) { path.push({ o: fd.o, i: 0 }); }
+      const ok = TableVariableWriteBody(fd.c, w, ids, nodes, val, retain, path);
+      if (path !== null) { path.pop(); }
       if (!ok) { return false; }
-      if (body.len <= 1) { ids.rollback(mark); return true; }
-      w.leb(ref); w.u8(13); w.leb(body.len); w.raw(body.b);
+      if (w.n - m - 1 <= 1) { ids.rollback(mark); w.n = start; return true; }
+      w.close(m);
       return true;
     }
     case "arr": {
@@ -393,16 +454,15 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         }
         if (allDef) { return true; }
       }
-      w.leb(ids.ref(fd.id));
+      w.leb(ids.refd(fd.idn));
       w.u8(14);
-      const body = new TableVariableWriter();
-      body.u8(fd.ek);
-      body.leb(n);
+      const m = w.open();
+      w.u8(fd.ek);
+      w.leb(n);
       for (let i = 0; i < n; i++) {
-        if (!TableVariableWriteElement(fd, body, ids, nodes, val[i], retain, path, i)) { return false; }
+        if (!TableVariableWriteElement(fd, w, ids, nodes, val[i], retain, path, i)) { return false; }
       }
-      w.leb(body.len);
-      w.raw(body.b);
+      w.close(m);
       return true;
     }
   }
@@ -418,7 +478,7 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
     case "bool": w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableWriteInt(w, e.kw, val); return true;
     case "float":
-      if (e.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
+      if (e.f32) { w.f32(val); } else { w.f64(val); }
       return true;
     case "enum": {
       const vref = TableVariableEnumRef(e, ids, val);
@@ -438,13 +498,12 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
       return okU;
     }
     case "tab": {
-      const body = new TableVariableWriter();
-      path.push({ o: fd.o, i: i });
-      const ok = TableVariableWriteBody(e.c, body, ids, nodes, val, retain, path);
-      path.pop();
+      const m = w.open();
+      if (path !== null) { path.push({ o: fd.o, i: i }); }
+      const ok = TableVariableWriteBody(e.c, w, ids, nodes, val, retain, path);
+      if (path !== null) { path.pop(); }
       if (!ok) { return false; }
-      w.leb(body.len);
-      w.raw(body.b);
+      w.close(m);
       return true;
     }
   }
@@ -457,12 +516,40 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // or a value with no wire identity refuses the save (null), and so does one
 // blob two slots name, blob_shared (§2.5): every writer refuses it.
 function TableVariableSave(c, v, retain, why) {
+  return TableVariableSaveRun(c, v, retain, why, false);
+}
+
+// THE MEASURE: the length Save would return, -1 where it would refuse, and no
+// byte copied out
+function TableVariableMeasure(c, v, retain, why) {
+  return TableVariableSaveRun(c, v, retain, why, true);
+}
+
+function TableVariableSaveRun(c, v, retain, why, measure) {
+  const st = TableVariableSaveState;
+  const own = !st.busy;
+  let w, ids;
+  if (own) {
+    st.busy = true;
+    w = st.w;
+    ids = st.ids;
+  } else {
+    w = new TableVariableWriter();
+    ids = new TableVariableIds(TableVariableDenseBig.length);
+  }
+  w.n = 0;
+  ids.begin(retain);
   const outer = TableVariableEntryCache;
-  TableVariableEntryCache = new Map();
+  TableVariableEntryCache = TableVariableLazy;
   try {
-    return TableVariableSaveWalk(c, v, retain, why);
+    return TableVariableSaveWalk(c, v, retain === undefined ? null : retain, why, w, ids, measure);
   } finally {
     TableVariableEntryCache = outer;
+    if (own) {
+      st.busy = false;
+      // a save that grew the scratch past a megabyte does not keep it
+      if (w.a.length > 1048576) { st.w = new TableVariableWriter(); }
+    }
   }
 }
 
@@ -472,45 +559,44 @@ function TableVariableSave(c, v, retain, why) {
 // writer's contract (a data cycle, §3.1; an enum value no variant names, §5).
 function TableVariableMeasureReason(c, v) {
   const why = { reason: null };
-  const b = TableVariableSave(c, v, null, why);
-  if (b !== null) { return [b.length, null]; }
+  const n = TableVariableMeasure(c, v, null, why);
+  if (n >= 0) { return [n, null]; }
   return [-1, why.reason === null ? "invalid_value" : why.reason];
 }
 
-function TableVariableSaveWalk(c, v, retain, why) {
+function TableVariableSaveWalk(c, v, retain, why, w, ids, measure) {
+  const fail = measure ? -1 : null;
   const nodes = TableVariableNumber(c, v, true, why);
-  if (nodes === null) { return null; }
-  const w = new TableVariableWriter();
+  if (nodes === null) { return fail; }
   w.u8(TableVariableForm);
-  const ids = new TableVariableIds(retain);
-  const path = TableVariableRetainRootPath();
-  if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return null; }
-  if (!TableVariableRetainTail(w, ids, retain, path)) { return null; }
-  if (nodes.list.length > 0) {
-    w.leb(ids.ref(TableNodeTableId));
+  const path = retain === null ? null : TableVariableRetainRootPath();
+  if (!TableVariableWriteFields(c, w, ids, nodes, v, retain, path)) { return fail; }
+  if (retain !== null && !TableVariableRetainTail(w, ids, retain, path)) { return fail; }
+  const list = nodes.list;
+  if (list.length > 0) {
+    w.leb(ids.refd(TableVariableDenseNodeTable));
     w.u8(12);
-    const sub = new TableVariableWriter();
-    sub.leb(nodes.list.length);
-    for (const n of nodes.list) {
-      sub.leb(ids.ref(n.typeId));
+    const m = w.open();
+    w.leb(list.length);
+    for (let i = 0; i < list.length; i++) {
+      const n = list[i];
+      w.leb(ids.refd(n.tn));
       if (n.codec === undefined) {
         // a BYTE BUFFER's record is the bytes themselves (§2.5)
-        sub.leb(n.body.length);
-        sub.raw(n.body);
+        w.leb(n.body.length);
+        w.raw(n.body);
         continue;
       }
-      const body = new TableVariableWriter();
-      if (!TableVariableWriteBody(n.codec, body, ids, nodes, n.v, retain, TableVariableRetainNodePath(n.v))) { return null; }
-      sub.leb(body.len);
-      sub.raw(body.b);
+      const bm = w.open();
+      if (!TableVariableWriteBody(n.codec, w, ids, nodes, n.v, retain, retain === null ? null : TableVariableRetainNodePath(n.v))) { return fail; }
+      w.close(bm);
     }
-    w.leb(sub.len);
-    w.raw(sub.b);
+    w.close(m);
   }
   w.u8(0);
-  for (const id of ids.list) { w.u64(id); }
-  w.u64(BigInt(ids.list.length));
-  return w.toArray();
+  ids.writeTrailer(w);
+  w.u64n(ids.n, 0);
+  return measure ? w.n : w.toArray();
 }
 
 // ---- THE LOAD WALK (docs/SPEC-TABLES.md §3, §3.1, §4; internal/tablewire

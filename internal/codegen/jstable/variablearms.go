@@ -148,6 +148,8 @@ const jsVariableArmsRuntime = `
 // or text write so the numbering, the body walk and a *string slot's identity
 // all see the same entry (§3.1)
 let TableVariableEntryCache = null;
+// the cache of a walk that has not met a map yet: the Map is made on first need
+const TableVariableLazy = {};
 
 function TableVariableUtf8Compare(a, b) {
   const x = TableVariableUtf8Encode(a), y = TableVariableUtf8Encode(b);
@@ -164,6 +166,7 @@ function TableVariableKeyOrder(fd, a, b) {
 }
 
 function TableVariableMapEntries(fd, m) {
+  if (TableVariableEntryCache === TableVariableLazy) { TableVariableEntryCache = new Map(); }
   if (TableVariableEntryCache !== null) {
     const hit = TableVariableEntryCache.get(m);
     if (hit !== undefined) { return hit; }
@@ -182,6 +185,9 @@ function TableVariableMapEntries(fd, m) {
 
 // THE LINK of one descriptor: its table, its union, its element, its slots
 function TableVariableLinkDesc(d, codecs, unions) {
+  if (d.id !== undefined) { d.idn = TableVariableDense(d.id); }
+  if (d.s === "enum" && d.vs !== undefined) { d.vn = d.vs.map((x) => TableVariableDense(x[1])); }
+  if (d.slots !== undefined) { d.sn = d.slots.map((x) => (x === null ? -1 : TableVariableDense(x[1]))); }
   if (d.t !== undefined) { d.c = codecs[d.t]; }
   if (d.un !== undefined) { d.u = unions[d.un]; }
   if (d.e !== undefined) { TableVariableLinkDesc(d.e, codecs, unions); }
@@ -199,6 +205,7 @@ function TableVariableLinkUnions(codecs, unions) {
     u.byName = new Map();
     for (const arm of u.arms) {
       u.byId.set(arm.id, arm);
+      arm.idn = TableVariableDense(arm.id);
       u.byName.set(arm.name, arm);
       if (arm.t !== undefined) { arm.c = codecs[arm.t]; }
       if (arm.f !== undefined) { TableVariableLinkDesc(arm.f, codecs, unions); }
@@ -252,54 +259,52 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
       TableVariableHeader(w, ids, fd, fd.k);
-      if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
+      if (fd.f32) { w.f32(val); } else { w.f64(val); }
       return true;
     case "str": {
-      const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
-      w.leb(b.length);
-      w.raw(b);
+      const m = w.open();
+      w.utf8(val);
+      w.close(m);
       return true;
     }
     case "bytes": {
       TableVariableHeader(w, ids, fd, 14);
-      const body = new TableVariableWriter();
-      body.u8(6);
-      body.leb(val.length);
-      body.raw(val);
-      w.leb(body.len);
-      w.raw(body.b);
+      const m = w.open();
+      w.u8(6);
+      w.leb(val.length);
+      w.raw(val);
+      w.close(m);
       return true;
     }
     case "enum": {
-      const ref = ids.ref(fd.id);
+      const ref = ids.refd(fd.idn);
       const vref = TableVariableEnumRef(fd, ids, val);
       if (vref < 0) { return false; }
       w.leb(ref); w.u8(30); w.leb(vref);
       return true;
     }
     case "tab": {
-      const ref = ids.ref(fd.id);
-      const body = new TableVariableWriter();
-      path.push({ o: fd.o, i: 0 });
-      const ok = TableVariableWriteBody(fd.c, body, ids, nodes, val, retain, path);
-      path.pop();
+      w.leb(ids.refd(fd.idn)); w.u8(13);
+      const m = w.open();
+      if (path !== null) { path.push({ o: fd.o, i: 0 }); }
+      const ok = TableVariableWriteBody(fd.c, w, ids, nodes, val, retain, path);
+      if (path !== null) { path.pop(); }
       if (!ok) { return false; }
-      w.leb(ref); w.u8(13); w.leb(body.len); w.raw(body.b);
+      w.close(m);
       return true;
     }
     case "arr": {
       const n = TableVariableCount(fd, val);
-      w.leb(ids.ref(fd.id));
+      w.leb(ids.refd(fd.idn));
       w.u8(14);
-      const body = new TableVariableWriter();
-      body.u8(fd.ek);
-      body.leb(n);
+      const m = w.open();
+      w.u8(fd.ek);
+      w.leb(n);
       for (let i = 0; i < n; i++) {
-        if (!TableVariableWriteElement(fd, body, ids, nodes, val[i], retain, path, i)) { return false; }
+        if (!TableVariableWriteElement(fd, w, ids, nodes, val[i], retain, path, i)) { return false; }
       }
-      w.leb(body.len);
-      w.raw(body.b);
+      w.close(m);
       return true;
     }
   }
@@ -311,22 +316,20 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
   if (val.size === 0) { return true; }
   const ents = TableVariableMapEntries(fd, val);
-  w.leb(ids.ref(fd.id));
+  w.leb(ids.refd(fd.idn));
   w.u8(14);
-  const body = new TableVariableWriter();
-  body.u8(13);
-  body.leb(ents.length);
+  const m = w.open();
+  w.u8(13);
+  w.leb(ents.length);
   for (let i = 0; i < ents.length; i++) {
-    const eb = new TableVariableWriter();
-    path.push({ o: fd.o, i: i });
-    const ok = TableVariableWriteBody(fd.c, eb, ids, nodes, ents[i], retain, path);
-    path.pop();
+    const em = w.open();
+    if (path !== null) { path.push({ o: fd.o, i: i }); }
+    const ok = TableVariableWriteBody(fd.c, w, ids, nodes, ents[i], retain, path);
+    if (path !== null) { path.pop(); }
     if (!ok) { return false; }
-    body.leb(eb.len);
-    body.raw(eb.b);
+    w.close(em);
   }
-  w.leb(body.len);
-  w.raw(body.b);
+  w.close(m);
   return true;
 }
 
@@ -335,40 +338,37 @@ function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
 // elides the field and its id
 function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
   const mark = ids.mark();
-  const ref = ids.ref(fd.id);
-  const body = new TableVariableWriter();
+  const start = w.n;
+  w.leb(ids.refd(fd.idn));
+  w.u8(16);
+  const m = w.open();
+  w.u8(fd.ek);
+  const cm = w.open();
   let pairs = 0;
-  for (let s = 0; s < fd.slots.length; s++) {
-    const slot = fd.slots[s];
-    if (slot === null) { return false; }
+  const slots = fd.slots;
+  for (let s = 0; s < slots.length; s++) {
+    if (slots[s] === null) { return false; }
     const sm = ids.mark();
-    const kref = ids.ref(slot[1]);
+    const at = w.n;
+    w.leb(ids.refd(fd.sn[s]));
     const x = val[s];
-    const eb = new TableVariableWriter();
+    const em = w.open();
     if (fd.e.s === "tab") {
-      path.push({ o: fd.o, i: s });
-      const ok = TableVariableWriteBody(fd.e.c, eb, ids, nodes, x, retain, path);
-      path.pop();
+      if (path !== null) { path.push({ o: fd.o, i: s }); }
+      const ok = TableVariableWriteBody(fd.e.c, w, ids, nodes, x, retain, path);
+      if (path !== null) { path.pop(); }
       if (!ok) { return false; }
-      if (eb.len <= 1) { ids.rollback(sm); continue; }
+      if (w.n - em - 1 <= 1) { ids.rollback(sm); w.n = at; continue; }
     } else {
-      if (TableVariableElemIsDefault(fd.e, x)) { ids.rollback(sm); continue; }
-      if (!TableVariableWriteElement(fd, eb, ids, nodes, x, retain, path, s)) { return false; }
+      if (TableVariableElemIsDefault(fd.e, x)) { ids.rollback(sm); w.n = at; continue; }
+      if (!TableVariableWriteElement(fd, w, ids, nodes, x, retain, path, s)) { return false; }
     }
-    body.leb(kref);
-    body.leb(eb.len);
-    body.raw(eb.b);
+    w.close(em);
     pairs++;
   }
-  if (pairs === 0) { ids.rollback(mark); return true; }
-  w.leb(ref);
-  w.u8(16);
-  const inner = new TableVariableWriter();
-  inner.u8(fd.ek);
-  inner.leb(pairs);
-  inner.raw(body.b);
-  w.leb(inner.len);
-  w.raw(inner.b);
+  if (pairs === 0) { ids.rollback(mark); w.n = start; return true; }
+  w.fit(cm, pairs, 1);
+  w.close(m);
   return true;
 }
 
@@ -377,12 +377,11 @@ function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
 function TableVariableArmWrite(u, w, ids, nodes, val, retain, path, o) {
   const arm = u.byName.get(val.arm);
   if (arm === undefined) { return false; }
-  w.leb(ids.ref(arm.id));
+  w.leb(ids.refd(arm.idn));
   w.u8(arm.k);
-  const body = new TableVariableWriter();
-  if (!TableVariableArmPayload(arm, body, ids, nodes, val, retain, path, o)) { return false; }
-  w.leb(body.len);
-  w.raw(body.b);
+  const m = w.open();
+  if (!TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o)) { return false; }
+  w.close(m);
   return true;
 }
 
@@ -391,9 +390,9 @@ function TableVariableArmWrite(u, w, ids, nodes, val, retain, path, o) {
 function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   if (arm.void) { return true; }
   if (arm.body) {
-    path.push({ o: o, i: 0 });
+    if (path !== null) { path.push({ o: o, i: 0 }); }
     const ok = TableVariableWriteBody(arm.c, w, ids, nodes, val.value, retain, path);
-    path.pop();
+    if (path !== null) { path.pop(); }
     return ok;
   }
   const f = arm.f, x = val.value;
@@ -401,9 +400,9 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
     case "bool": w.u8(x ? 1 : 0); return true;
     case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
     case "float":
-      if (f.f32) { w.u32(TableVariableNarrowF32(x)); } else { w.f64(x); }
+      if (f.f32) { w.f32(x); } else { w.f64(x); }
       return true;
-    case "str": w.raw(TableVariableUtf8Encode(x)); return true;
+    case "str": w.utf8(x); return true;
     // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table): the
     // units ride under it with no length of their own; past N units refuses
     case "wstr": return TableVariableWideWrite(w, x, f.bound);

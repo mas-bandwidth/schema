@@ -47,8 +47,7 @@ func (g *variableGen) emitRetainMember(st *ir.Struct) {
 	// and a record the measure placed must not mask one the save never emitted.
 	g.pf("export function %sMeasureRetain(v, retain) {\n", st.Name)
 	g.pf("  if (retain !== null) { retain.idUsed = 0; retain.clearPlaced(); }\n")
-	g.pf("  const b = TableVariableSave(%s, v, retain);\n", c)
-	g.pf("  return b === null ? -1 : b.length;\n")
+	g.pf("  return TableVariableMeasure(%s, v, retain);\n", c)
 	g.pf("}\n\n")
 	g.pf("export function %sSaveRetain(v, retain, report) {\n", st.Name)
 	g.pf("  if (report === null) { return null; }\n")

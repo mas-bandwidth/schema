@@ -138,11 +138,13 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.pf("%s", jsVariableCodecRuntime)
 	g.pf("%s", jsVariableArmsRuntime)
 	g.pf("%s", jsVariableTextRuntime)
+	typed := g.emitTypedSaves(closure)
 	g.emitDescriptors(closure)
 	for _, st := range closure {
 		g.emitTableClass(st)
 	}
 	g.emitCodecs(closure)
+	g.pf("%s", typed)
 	// Cook write runs after the codecs: variableMeasure calls
 	// TableVariableNumber and TableVariableCodecs (docs/SPEC-TABLES.md §7.6).
 	g.emitVariableCookWrite(roots)
@@ -157,6 +159,9 @@ type variableGen struct {
 	unit     *ir.Unit
 	variable map[string]bool
 	body     strings.Builder
+	// the typed save's dense id numbering (variabletyped.go), in first-use order
+	dense     map[uint64]int
+	denseList []uint64
 }
 
 func (g *variableGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
@@ -237,56 +242,281 @@ export class TableVariableReport {
   }
 }
 
-// Ids intern a writer's ids in FIRST-USE order (docs/SPEC-TABLES.md §3), each a
-// BigInt, returning the 1-based reference. First-use order follows the write
-// order, so byte-identical output against the reference requires the same walk.
-// With a retention store attached, a NON-NAMEABLE id (docs/SPEC-TABLES.md §6.6)
-// first used here takes an entry from the caller's id list, and a full list
-// answers -1 rather than growing. mark and rollback are how a writer decides
-// ELISION without spending an entry (internal/tablewire ids.go).
+// THE DENSE NUMBERING. Every id a descriptor names (a field, an enum variant, a
+// keyed slot, a union arm, a table's wire type) is numbered 0..D-1 ONCE, when
+// the unit links, and a save interns by that number: a stamp array indexed by
+// the number, never a Map keyed by a BigInt, so the interner allocates nothing
+// per save. The 64-bit id itself is kept as two 32-bit halves for the trailer.
+// An id the link never saw (a retained unknown field's, §6.6) has no number and
+// rides the interner's short extras list instead.
+const TableVariableDenseMap = new Map();
+const TableVariableDenseBig = [];
+let TableVariableDenseLo = new Uint32Array(0);
+let TableVariableDenseHi = new Uint32Array(0);
+
+// the number of an id, made on first sight: LINK TIME ONLY
+function TableVariableDense(id) {
+  let d = TableVariableDenseMap.get(id);
+  if (d === undefined) {
+    d = TableVariableDenseBig.length;
+    TableVariableDenseBig.push(id);
+    TableVariableDenseMap.set(id, d);
+  }
+  return d;
+}
+
+// the ids a typed save names by number, numbered first and in the generator's
+// order, so the number a body spells is the number the link gives the id
+function TableVariableDensePreset(ids) {
+  for (const id of ids) { TableVariableDense(id); }
+}
+
+// the link is done: the halves, and the one save interner sized to the numbering
+function TableVariableDenseSeal() {
+  const n = TableVariableDenseBig.length;
+  TableVariableDenseLo = new Uint32Array(n);
+  TableVariableDenseHi = new Uint32Array(n);
+  for (let d = 0; d < n; d++) {
+    const id = TableVariableDenseBig[d];
+    TableVariableDenseLo[d] = Number(id & 0xffffffffn);
+    TableVariableDenseHi[d] = Number(id >> 32n);
+  }
+  TableVariableSaveState.ids = new TableVariableIds(n);
+}
+
+// Ids intern a writer's ids in FIRST-USE order (docs/SPEC-TABLES.md §3),
+// returning the 1-based reference. First-use order follows the write order, so
+// byte-identical output against the reference requires the same walk. With a
+// retention store attached, a NON-NAMEABLE id (docs/SPEC-TABLES.md §6.6) first
+// used here takes an entry from the caller's id list, and a full list answers
+// -1 rather than growing. mark and rollback are how a writer decides ELISION
+// without spending an entry (internal/tablewire ids.go).
+//
+// ONE INTERNER SERVES EVERY SAVE (begin resets it by moving the epoch, which
+// makes every stamp stale at once): refd is the walk's path, by dense number;
+// ref is the generic one, by BigInt, for the retained walk.
 class TableVariableIds {
-  constructor(retain) { this.list = []; this.index = new Map(); this.retain = retain || null; }
+  constructor(size) {
+    this.retain = null;
+    this.n = 0;
+    this.epoch = 1;
+    this.stamp = new Uint32Array(size);
+    this.slot = new Int32Array(size);
+    this.dn = new Int32Array(64);
+    this.bigs = [];
+    this.ex = [];
+  }
+  begin(retain) {
+    this.retain = retain || null;
+    this.n = 0;
+    if (this.ex.length > 0) { this.ex.length = 0; this.bigs.length = 0; }
+    if (++this.epoch >= 0xfffffff0) { this.stamp.fill(0); this.epoch = 1; }
+  }
+  push(d, id) {
+    const n = this.n;
+    if (n === this.dn.length) {
+      const t = new Int32Array(n * 2);
+      t.set(this.dn);
+      this.dn = t;
+    }
+    this.dn[n] = d;
+    this.n = n + 1;
+    if (d < 0) { this.bigs[n] = id; this.ex.push({ id, slot: n + 1 }); } else { this.stamp[d] = this.epoch; this.slot[d] = n + 1; }
+    return n + 1;
+  }
+  refd(d) {
+    if (this.stamp[d] === this.epoch) { return this.slot[d]; }
+    return this.push(d, 0n);
+  }
   ref(id, retained) {
-    const r = this.index.get(id);
-    if (r !== undefined) { return r; }
+    const d = TableVariableDenseMap.get(id);
+    if (d !== undefined) {
+      if (this.stamp[d] === this.epoch) { return this.slot[d]; }
+    } else {
+      for (let i = 0; i < this.ex.length; i++) { if (this.ex[i].id === id) { return this.ex[i].slot; } }
+    }
     const isRetained = !!retained && !tableRetainNameable(id);
     if (isRetained && this.retain !== null && this.retain.idUsed >= this.retain.ids.length) { return -1; }
-    this.list.push(id);
-    const n = this.list.length;
-    this.index.set(id, n);
+    const n = this.push(d === undefined ? -1 : d, id);
     if (isRetained && this.retain !== null) { this.retain.ids[this.retain.idUsed++] = { id, slot: n }; }
     return n;
   }
-  mark() { return { n: this.list.length, used: this.retain === null ? 0 : this.retain.idUsed }; }
+  mark() {
+    if (this.retain === null) { return this.n; }
+    return { n: this.n, used: this.retain.idUsed };
+  }
   rollback(m) {
-    while (this.list.length > m.n) { this.index.delete(this.list.pop()); }
-    if (this.retain !== null) { this.retain.idUsed = m.used; }
+    const target = typeof m === "number" ? m : m.n;
+    while (this.n > target) {
+      this.n--;
+      const d = this.dn[this.n];
+      if (d >= 0) { this.stamp[d] = 0; } else { this.ex.pop(); }
+    }
+    if (this.retain !== null && typeof m !== "number") { this.retain.idUsed = m.used; }
+  }
+  // the trailer: every interned id, eight bytes each, in reference order
+  writeTrailer(w) {
+    w.need(this.n * 8 + 8);
+    const lo = TableVariableDenseLo, hi = TableVariableDenseHi;
+    for (let k = 0; k < this.n; k++) {
+      const d = this.dn[k];
+      if (d >= 0) {
+        const a = w.a;
+        let p = w.n;
+        const l = lo[d], h = hi[d];
+        a[p] = l; a[p + 1] = l >>> 8; a[p + 2] = l >>> 16; a[p + 3] = l >>> 24;
+        a[p + 4] = h; a[p + 5] = h >>> 8; a[p + 6] = h >>> 16; a[p + 7] = h >>> 24;
+        w.n = p + 8;
+      } else {
+        w.u64(this.bigs[k]);
+      }
+    }
   }
 }
 
-// THE WRITER: a growable byte list. Offsets and lengths are LEB128 (§3).
+// THE WRITER: a growable byte buffer. Offsets and lengths are LEB128 (§3). A
+// nested body is written IN PLACE: open reserves its one-byte length, close
+// settles it, shifting the body up only when the length needs more than one
+// byte, so no body is ever built twice.
 class TableVariableWriter {
-  constructor() { this.b = []; }
-  get len() { return this.b.length; }
-  u8(v) { this.b.push(v & 0xff); }
-  u16(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff); }
+  constructor() { this.a = new Uint8Array(512); this.n = 0; }
+  get len() { return this.n; }
+  get b() { return this.a.subarray(0, this.n); }
+  need(k) {
+    if (this.n + k <= this.a.length) { return; }
+    let c = this.a.length * 2;
+    while (c < this.n + k) { c *= 2; }
+    const t = new Uint8Array(c);
+    t.set(this.a);
+    this.a = t;
+  }
+  u8(v) { this.need(1); this.a[this.n++] = v; }
+  u16(v) { this.need(2); const a = this.a, n = this.n; a[n] = v; a[n + 1] = v >>> 8; this.n = n + 2; }
+  u32(v) {
+    this.need(4);
+    const a = this.a, n = this.n;
+    a[n] = v; a[n + 1] = v >>> 8; a[n + 2] = v >>> 16; a[n + 3] = v >>> 24;
+    this.n = n + 4;
+  }
+  i32(v) { this.u32(v | 0); }
   leb(v) {
     v = Number(v);
-    while (v >= 128) { this.b.push((v & 0x7f) | 0x80); v = Math.floor(v / 128); }
-    this.b.push(v & 0x7f);
+    this.need(10);
+    const a = this.a;
+    let n = this.n;
+    while (v >= 128) { a[n++] = (v & 0x7f) | 0x80; v = Math.floor(v / 128); }
+    a[n++] = v & 0x7f;
+    this.n = n;
   }
-  raw(bytes) { for (let i = 0; i < bytes.length; i++) { this.b.push(bytes[i]); } }
-  u32(v) { this.b.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff); }
-  i32(v) { this.u32(v | 0); }
-  u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
-  u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  raw(bytes) { const k = bytes.length; this.need(k); this.a.set(bytes, this.n); this.n += k; }
+  // eight bytes from two halves, and from a BigInt through the scratch view: no
+  // BigInt is made to write one
+  u64n(lo, hi) {
+    this.need(8);
+    const a = this.a, n = this.n;
+    a[n] = lo; a[n + 1] = lo >>> 8; a[n + 2] = lo >>> 16; a[n + 3] = lo >>> 24;
+    a[n + 4] = hi; a[n + 5] = hi >>> 8; a[n + 6] = hi >>> 16; a[n + 7] = hi >>> 24;
+    this.n = n + 8;
+  }
+  u64(v) {
+    TableVariableScratch.setBigUint64(0, v, true);
+    this.scratch(8);
+  }
+  u128(v) {
+    TableVariableScratch.setBigUint64(0, v, true);
+    TableVariableScratch.setBigUint64(8, v >> 64n, true);
+    this.scratch(16);
+  }
   f64(v) {
-    const d = TableVariableScratch;
-    d.setFloat64(0, v, true);
-    for (let i = 0; i < 8; i++) { this.b.push(d.getUint8(i)); }
+    TableVariableScratch.setFloat64(0, v, true);
+    this.scratch(8);
   }
-  toArray() { return new Uint8Array(this.b); }
+  // a float32 rides as its bits (TableVariableNarrowF32), written without the
+  // bits ever crossing a call as a number: a NaN keeps its payload by the slow
+  // path, every other value is the view's own conversion
+  f32(v) {
+    if (v !== v) { this.u32(TableVariableNarrowF32(v)); return; }
+    TableVariableScratch.setFloat32(0, v, true);
+    this.scratch(4);
+  }
+  // a string as UTF-8, byte for byte as TableVariableUtf8Encode writes it: a
+  // lone surrogate is three bytes, a pair is one four-byte code point
+  utf8(s) {
+    const len = s.length;
+    this.need(len * 3);
+    const a = this.a;
+    let n = this.n;
+    for (let i = 0; i < len; i++) {
+      let c = s.charCodeAt(i);
+      if (c < 0x80) { a[n++] = c; continue; }
+      if (c < 0x800) { a[n++] = 0xc0 | (c >> 6); a[n++] = 0x80 | (c & 0x3f); continue; }
+      if (c >= 0xd800 && c <= 0xdbff && i + 1 < len) {
+        const d = s.charCodeAt(i + 1);
+        if (d >= 0xdc00 && d <= 0xdfff) {
+          c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00);
+          i++;
+          a[n++] = 0xf0 | (c >> 18); a[n++] = 0x80 | ((c >> 12) & 0x3f); a[n++] = 0x80 | ((c >> 6) & 0x3f); a[n++] = 0x80 | (c & 0x3f);
+          continue;
+        }
+      }
+      a[n++] = 0xe0 | (c >> 12); a[n++] = 0x80 | ((c >> 6) & 0x3f); a[n++] = 0x80 | (c & 0x3f);
+    }
+    this.n = n;
+  }
+  // the first k bytes of the scratch view, appended
+  scratch(k) {
+    this.need(k);
+    const a = this.a, s = TableVariableScratchBytes;
+    let n = this.n;
+    for (let i = 0; i < k; i++) { a[n++] = s[i]; }
+    this.n = n;
+  }
+  // a field header: the id reference, then the kind byte
+  head(ref, kind) {
+    if (ref < 128) {
+      this.need(2);
+      const a = this.a, n = this.n;
+      a[n] = ref; a[n + 1] = kind;
+      this.n = n + 2;
+    } else {
+      this.leb(ref);
+      this.u8(kind);
+    }
+  }
+  // a body of unknown length: reserve its one length byte, write the body, then
+  // close it
+  open() { this.need(1); return this.n++; }
+  close(mark) {
+    const len = this.n - mark - 1;
+    if (len < 128) { this.a[mark] = len; return; }
+    this.fit(mark, len, 1);
+  }
+  // settle a count or a length written LATER than its place: the value goes
+  // into the one byte reserved at mark, and the bytes after it move up when the
+  // value needs more
+  fit(mark, value, width) {
+    let k = 1;
+    for (let t = value; t >= 128; t = Math.floor(t / 128)) { k++; }
+    if (k > width) {
+      this.need(k - width);
+      this.a.copyWithin(mark + k, mark + width, this.n);
+      this.n += k - width;
+    }
+    const a = this.a;
+    let p = mark;
+    let v = value;
+    while (v >= 128) { a[p++] = (v & 0x7f) | 0x80; v = Math.floor(v / 128); }
+    a[p] = v;
+  }
+  // the bytes written, copied out: the one allocation a save makes
+  toArray() { return this.a.slice(0, this.n); }
 }
+
+// THE SCRATCH EVERY SAVE SHARES: one writer and one interner, taken for the
+// length of a save and put back after, so a save allocates only the bytes it
+// returns. A save that finds them taken (it cannot, but a throw in a getter
+// could leave one) runs on fresh ones.
+const TableVariableSaveState = { w: new TableVariableWriter(), ids: null, busy: false };
 
 // THE READER: a cursor over the wire, everything little-endian (§3).
 class TableVariableReader {
@@ -833,12 +1063,19 @@ func intDefault(f *ir.Field) string {
 // targets and the blob kinds below it (decodenodes.go's placeable set).
 func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 	g.emitUnionDescriptors(closure)
+	// the ids the typed save spells as numbers, numbered before the link
+	g.pf("TableVariableDensePreset([")
+	for _, id := range g.denseList {
+		g.pf("%s,", jsId(id))
+	}
+	g.pf("]);\n")
 	g.pf("const TableVariableCodecs = {\n")
 	for _, st := range closure {
 		guards := structGuards(st)
 		g.pf("  %s: {\n", st.Name)
 		g.pf("    name: %s,\n", jsStr(st.Name))
 		g.pf("    make: () => new %s(),\n", st.Name)
+		g.pf("    wt: %s,\n", typedFnName(st))
 		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
 		g.pf("    variable: %v,\n", g.variable[st.Name])
 		layout := ir.RecordLayout(g.unit, st)
@@ -1051,8 +1288,7 @@ func intProps(f *ir.Field) string {
 func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	c := "TableVariableCodecs." + st.Name
 	g.pf("export function %sMeasure(v) {\n", st.Name)
-	g.pf("  const b = TableVariableSave(%s, v, null);\n", c)
-	g.pf("  return b === null ? -1 : b.length;\n")
+	g.pf("  return TableVariableMeasure(%s, v, null);\n", c)
 	g.pf("}\n\n")
 	g.pf("export function %sMeasureReason(v) {\n", st.Name)
 	g.pf("  return TableVariableMeasureReason(%s, v);\n", c)
