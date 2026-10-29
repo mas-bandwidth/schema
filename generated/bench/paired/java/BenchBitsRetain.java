@@ -47,6 +47,7 @@ public final class BenchBitsRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }
@@ -101,6 +102,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if ((v.b7 & -128) != 0) {
+                        v.b7 = 127;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -122,6 +127,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b13 & -8192) != 0) {
+                        v.b13 = 8191;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -153,6 +162,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if ((v.b23 & -8388608) != 0) {
+                        v.b23 = 8388607;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -166,6 +179,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b3 & -8) != 0) {
+                        v.b3 = 7;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -219,6 +236,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if ((v.b11 & -2048) != 0) {
+                        v.b11 = 2047;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -248,6 +269,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b19 & -524288) != 0) {
+                        v.b19 = 524287;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -286,6 +311,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b48 & 0xffff000000000000L) != 0) {
+                        v.b48 = 0xffffffffffffL;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

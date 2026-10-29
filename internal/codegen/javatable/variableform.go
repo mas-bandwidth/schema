@@ -2883,9 +2883,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	}
 	b.WriteString("        return null;\n    }\n\n")
 
-	b.WriteString("    static void decodeNodeBody(TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {\n")
+	b.WriteString("    static void decodeNodeBody(TableVariable.Reader r, Object val, long typeId, TableVariable.NodeTable nt, TableVariable.Report report) {\n")
 	for _, t := range tables {
-		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sVariable.readFields(r, (%sVariable.Value) val, null, report); return; }\n", t.Name, t.Name, t.Name)
+		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sVariable.readFields(r, (%sVariable.Value) val, nt, report); return; }\n", t.Name, t.Name, t.Name)
 	}
 	b.WriteString("    }\n\n")
 
@@ -3073,7 +3073,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
 		fmt.Fprintf(&b, "                if (rec.table != null) {\n")
 		fmt.Fprintf(&b, "                    TableVariable.Reader br = new TableVariable.Reader(rec.body, r.ids, report);\n")
-		fmt.Fprintf(&b, "                    decodeNodeBody(br, rec.table, rec.typeId, report);\n")
+		fmt.Fprintf(&b, "                    decodeNodeBody(br, rec.table, rec.typeId, nt, report);\n")
 		fmt.Fprintf(&b, "                }\n")
 		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "        }\n")
@@ -4191,16 +4191,31 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the array still decoded its slots, so the value list stays as long
 		// as the index list and a save writes one null per slot, as the fixed
 		// struct-array read below already does.
+		// an array of pointers named twice resolves BOTH occurrences, as the
+		// engine resolves each slot as it reads it: what the later one
+		// overwrites still counts what it named (a kind mismatch, a damaged
+		// index)
+		ptrTarget, _ := f.Type.Ref.(*ir.Struct)
+		touchOld := func(list, old string) string {
+			if ptrTarget == nil {
+				return ""
+			}
+			return fmt.Sprintf("if (nt != null && !nt.bad && %s != null && %s.longValue() != 1) { TableVariable.resolveTable(nt.recs, %s.longValue(), %sVariable.TYPE_ID, null, 0, report); }", old, old, old, ptrTarget.Name)
+		}
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
 			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
 			if f.Array != ir.ArrayFixed {
+				fmt.Fprintf(b, "                                for (Long old : v.%sIdx) { %s }\n", m, touchOld("", "old"))
 				fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 				fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 			}
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			if f.Array == ir.ArrayFixed {
+				fmt.Fprintf(b, "                                    if (i < v.%sIdx.size()) { Long old = v.%sIdx.get((int) i); %s }\n", m, m, touchOld("", "old"))
+			}
 			for _, member := range []string{m, m + "Idx"} {
 				if f.Array == ir.ArrayFixed {
 					fmt.Fprintf(b, "                                    TableVariable.put(v.%s, (int) i, %s);\n", member, map[bool]string{true: "null", false: "idx"}[member == m])
@@ -4212,6 +4227,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                            }\n")
 		} else {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)) {\n")
+			fmt.Fprintf(b, "                                for (Long old : v.%sIdx) { %s }\n", m, touchOld("", "old"))
 			fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 			fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
@@ -4277,8 +4293,23 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	case isScalarArray(f):
 		writeArrayFieldRead(b, u, st, f)
 	case f.Type.Blob() || (f.Type.Pointer && isStruct(f)):
-		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
-		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
+		// a pointer field named twice resolves BOTH occurrences, as the engine
+		// resolves each as it reads it (the later one wins, the earlier one
+		// still counts what it names: a kind mismatch or a damaged index)
+		var touch string
+		switch {
+		case f.Type.Blob() && f.Type.Kind == ir.TString:
+			touch = fmt.Sprintf("TableVariable.resolveString(nt.recs, v.%sIdx, report);", m)
+		case f.Type.Blob():
+			touch = fmt.Sprintf("TableVariable.resolveBytes(nt.recs, v.%sIdx, report);", m)
+		default:
+			target := f.Type.Ref.(*ir.Struct)
+			touch = fmt.Sprintf("if (v.%sIdx != 1) { TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, null, 0, report); }", m, m, target.Name)
+		}
+		fmt.Fprintf(b, "                if (kind == 17) {\n")
+		fmt.Fprintf(b, "                    if (v.%sIdx != 0 && nt != null && !nt.bad) { %s }\n", m, touch)
+		fmt.Fprintf(b, "                    v.%sIdx = r.leb();\n", m)
+		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "                if (kind == 13) {\n")
@@ -4501,6 +4532,18 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 				}
 				fmt.Fprintf(b, "                    if (!r.fail && (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0)) { if (Long.compareUnsigned(v.%s, %s) < 0) { v.%s = %s; } else { v.%s = %s; } report.clamped++; }\n", m, min, m, max, m, min, m, min, m, max)
 			}
+		}
+	}
+	if f.Type.Kind == ir.TBits && width < 8*ir.TableKindWidth(k) {
+		// a bits(N) field is stored in its declared kind's storage, so a
+		// payload past N bits clamps to the mask and counts, as the engine
+		// clamps it after the declared range (internal/tablewire scalarAt)
+		max := (uint64(1) << uint(width)) - 1
+		if width <= 32 {
+			// one AND and one branch: no bit past N may be set
+			fmt.Fprintf(b, "                    if ((v.%s & %d) != 0) { v.%s = %d; report.clamped++; }\n", m, int32(^uint32(max)), m, max)
+		} else {
+			fmt.Fprintf(b, "                    if ((v.%s & 0x%xL) != 0) { v.%s = 0x%xL; report.clamped++; }\n", m, ^max, m, max)
 		}
 	}
 	b.WriteString("                } else { r.skip(kind); report.kindMismatch++; }\n")

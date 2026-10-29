@@ -97,7 +97,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("                    if (rec.table == null) { report.unknown++; report.retainLost++; rec.typeId = 0; }\n")
 		b.WriteString("                }\n            }\n")
 		b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
-		fmt.Fprintf(&b, "                if (rec.table != null) { %sVariable.decodeNodeBody(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, report); }\n", st.Name)
+		fmt.Fprintf(&b, "                if (rec.table != null) { %sVariable.decodeNodeBody(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, nt, report); }\n", st.Name)
 		b.WriteString("            }\n        }\n")
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
 		b.WriteString("        if (report.refused) { return null; }\n")

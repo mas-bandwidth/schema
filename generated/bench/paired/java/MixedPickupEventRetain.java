@@ -47,6 +47,7 @@ public final class MixedPickupEventRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }
@@ -108,6 +109,10 @@ public final class MixedPickupEventRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.itemId & -1024) != 0) {
+                        v.itemId = 1023;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

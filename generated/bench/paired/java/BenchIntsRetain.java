@@ -47,6 +47,7 @@ public final class BenchIntsRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }

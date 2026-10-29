@@ -47,6 +47,7 @@ public final class MixedChatEventRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }
@@ -146,6 +147,10 @@ public final class MixedChatEventRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.speaker & -4096) != 0) {
+                        v.speaker = 4095;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

@@ -49,6 +49,7 @@ public final class BenchMixedRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }
@@ -379,6 +380,10 @@ public final class BenchMixedRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.frameTick & 0xffff000000000000L) != 0) {
+                        v.frameTick = 0xffffffffffffL;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -735,6 +740,10 @@ public final class BenchMixedRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.crcHint & -16777216) != 0) {
+                        v.crcHint = 16777215;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

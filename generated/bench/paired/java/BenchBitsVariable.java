@@ -70,46 +70,50 @@ public final class BenchBitsVariable {
     }
 
     static void decodeNodeBody(
-            TableVariable.Reader r, Object val, long typeId, TableVariable.Report report) {
+            TableVariable.Reader r,
+            Object val,
+            long typeId,
+            TableVariable.NodeTable nt,
+            TableVariable.Report report) {
         if (typeId == BenchBitsVariable.TYPE_ID) {
-            BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, null, report);
+            BenchBitsVariable.readFields(r, (BenchBitsVariable.Value) val, nt, report);
             return;
         }
         if (typeId == BenchIntsVariable.TYPE_ID) {
-            BenchIntsVariable.readFields(r, (BenchIntsVariable.Value) val, null, report);
+            BenchIntsVariable.readFields(r, (BenchIntsVariable.Value) val, nt, report);
             return;
         }
         if (typeId == BenchMixedVariable.TYPE_ID) {
-            BenchMixedVariable.readFields(r, (BenchMixedVariable.Value) val, null, report);
+            BenchMixedVariable.readFields(r, (BenchMixedVariable.Value) val, nt, report);
             return;
         }
         if (typeId == BenchPacketVariable.TYPE_ID) {
-            BenchPacketVariable.readFields(r, (BenchPacketVariable.Value) val, null, report);
+            BenchPacketVariable.readFields(r, (BenchPacketVariable.Value) val, nt, report);
             return;
         }
         if (typeId == FixedTableVariable.TYPE_ID) {
-            FixedTableVariable.readFields(r, (FixedTableVariable.Value) val, null, report);
+            FixedTableVariable.readFields(r, (FixedTableVariable.Value) val, nt, report);
             return;
         }
         if (typeId == MixedChatEventVariable.TYPE_ID) {
-            MixedChatEventVariable.readFields(r, (MixedChatEventVariable.Value) val, null, report);
+            MixedChatEventVariable.readFields(r, (MixedChatEventVariable.Value) val, nt, report);
             return;
         }
         if (typeId == MixedEntityVariable.TYPE_ID) {
-            MixedEntityVariable.readFields(r, (MixedEntityVariable.Value) val, null, report);
+            MixedEntityVariable.readFields(r, (MixedEntityVariable.Value) val, nt, report);
             return;
         }
         if (typeId == MixedHitEventVariable.TYPE_ID) {
-            MixedHitEventVariable.readFields(r, (MixedHitEventVariable.Value) val, null, report);
+            MixedHitEventVariable.readFields(r, (MixedHitEventVariable.Value) val, nt, report);
             return;
         }
         if (typeId == MixedPickupEventVariable.TYPE_ID) {
             MixedPickupEventVariable.readFields(
-                    r, (MixedPickupEventVariable.Value) val, null, report);
+                    r, (MixedPickupEventVariable.Value) val, nt, report);
             return;
         }
         if (typeId == MixedStatVariable.TYPE_ID) {
-            MixedStatVariable.readFields(r, (MixedStatVariable.Value) val, null, report);
+            MixedStatVariable.readFields(r, (MixedStatVariable.Value) val, nt, report);
             return;
         }
     }
@@ -256,6 +260,10 @@ public final class BenchBitsVariable {
                             r.fail = true;
                         }
                     }
+                    if ((v.b7 & -128) != 0) {
+                        v.b7 = 127;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -277,6 +285,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b13 & -8192) != 0) {
+                        v.b13 = 8191;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -308,6 +320,10 @@ public final class BenchBitsVariable {
                             r.fail = true;
                         }
                     }
+                    if ((v.b23 & -8388608) != 0) {
+                        v.b23 = 8388607;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -321,6 +337,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b3 & -8) != 0) {
+                        v.b3 = 7;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -374,6 +394,10 @@ public final class BenchBitsVariable {
                             r.fail = true;
                         }
                     }
+                    if ((v.b11 & -2048) != 0) {
+                        v.b11 = 2047;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -403,6 +427,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b19 & -524288) != 0) {
+                        v.b19 = 524287;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -441,6 +469,10 @@ public final class BenchBitsVariable {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.b48 & 0xffff000000000000L) != 0) {
+                        v.b48 = 0xffffffffffffL;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -615,7 +647,7 @@ public final class BenchBitsVariable {
             for (TableVariable.NodeRecord rec : nt.recs) {
                 if (rec.table != null) {
                     TableVariable.Reader br = new TableVariable.Reader(rec.body, r.ids, report);
-                    decodeNodeBody(br, rec.table, rec.typeId, report);
+                    decodeNodeBody(br, rec.table, rec.typeId, nt, report);
                 }
             }
         }

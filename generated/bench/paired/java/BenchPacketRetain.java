@@ -47,6 +47,7 @@ public final class BenchPacketRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }
@@ -215,6 +216,10 @@ public final class BenchPacketRetain {
                             r.fail = true;
                         }
                     }
+                    if ((v.bits7 & -128) != 0) {
+                        v.bits7 = 127;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -236,6 +241,10 @@ public final class BenchPacketRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.bits13 & -8192) != 0) {
+                        v.bits13 = 8191;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -266,6 +275,10 @@ public final class BenchPacketRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.bits23 & -8388608) != 0) {
+                        v.bits23 = 8388607;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

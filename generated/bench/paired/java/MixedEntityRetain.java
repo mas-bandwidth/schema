@@ -98,6 +98,7 @@ public final class MixedEntityRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }
@@ -159,6 +160,10 @@ public final class MixedEntityRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.entityId & -4096) != 0) {
+                        v.entityId = 4095;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -296,6 +301,10 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
+                    if ((v.yaw & -512) != 0) {
+                        v.yaw = 511;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -317,6 +326,10 @@ public final class MixedEntityRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.pitch & -512) != 0) {
+                        v.pitch = 511;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

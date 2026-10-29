@@ -47,6 +47,7 @@ public final class MixedHitEventRetain {
                             new TableVariable.Reader(rec.body, r.ids, report),
                             rec.table,
                             rec.typeId,
+                            nt,
                             report);
                 }
             }
@@ -108,6 +109,10 @@ public final class MixedHitEventRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if ((v.targetId & -4096) != 0) {
+                        v.targetId = 4095;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

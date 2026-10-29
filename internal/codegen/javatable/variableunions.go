@@ -178,7 +178,17 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				}
 			}
 			fmt.Fprintf(&b, "        if(!(%s)){report.kindMismatch++;return v;}\n", condition.String())
-			if len(widenKinds) > 0 {
+			if w := ir.ArmWireFixedWidth(&one); w > 0 {
+				// a fixed-width arm's L is its kind's width, the declared kind's
+				// included, and is judged BEFORE the payload is read, so a value
+				// the L does not frame is neither clamped nor counted (§3,
+				// internal/tablewire arm)
+				widthExpr := fmt.Sprintf("%d", w)
+				for _, k := range widenKinds {
+					widthExpr = fmt.Sprintf("(kind==%d?%d:%s)", k, ir.TableKindWidth(k), widthExpr)
+				}
+				fmt.Fprintf(&b, "        if((body.limit-body.off)!=%s){report.malformed=true;return v;}\n", widthExpr)
+			} else if len(widenKinds) > 0 {
 				widthExpr := "0"
 				for _, k := range widenKinds {
 					widthExpr = fmt.Sprintf("(kind==%d?%d:%s)", k, ir.TableKindWidth(k), widthExpr)
