@@ -16,11 +16,12 @@
 -- the claimed extent long, its base `lead` bytes into it (or no buffer at
 -- all), what fits copied and the rest zero.
 --
+-- main.moo's Surface.carried is handed the unit's module and its key.
 -- ctx is { kind: (string) -> {{string}}, module: (unit, name) -> any?,
 -- inputs: (path) -> buffer, say: (case, text?) -> () } (a nil text is the
 -- case's named absence).
 
-type Surface = { carried: (any) -> boolean, run: () -> () }
+type Surface = { carried: (any, string) -> boolean, run: () -> () }
 
 -- the table each block fixture is an image of, by the fixture's name
 -- (test/conformance/go/blocks.go answers it the same way), and the generated
@@ -195,8 +196,10 @@ return function(ctx: any): { [string]: Surface }
 	end
 
 	local surfaces: { [string]: Surface } = {}
-	local function carried(unit: any): boolean
-		return unit ~= nil
+	-- a unit carries the block surfaces when its tree carries the block runtime
+	-- (the emitter writes it only for a unit with a block-form table, §2.12)
+	local function carried(_: any, key: string): boolean
+		return ctx.module(key, "table_blockread") ~= nil
 	end
 
 	surfaces["block"] = {
