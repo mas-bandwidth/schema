@@ -1047,6 +1047,61 @@ tables-rust-wide-text-negative-control: build/conformance-harness build/conforma
 
 test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-rust-json-hostile-negative-control
 
+# THE CONFORMANCE WALK CONTROL (docs/PORTING.md I11): the Rust leg's json-read
+# is the table JSON READER's walk, which the EMITTER writes (variabletext.go).
+# tools/sabotage guards every field-key arm of the emitted reader with
+# `if false` in a COPY of that source; `go build -overlay` makes a private
+# compiler from it (I2), every unit the driver reads is regenerated with that
+# compiler into build/rust-conformance-walk-control/generated, the conformance
+# driver is rebuilt against them (its own target directory, so the normal driver
+# is not touched) and the matrix must go red on `rust / json-read` while
+# `json-write` and `wire` stay green: the break is the reader's, and the matrix
+# localizes it. No tracked file is written to.
+RUST_CONFORMANCE_WALK := build/rust-conformance-walk-control
+.PHONY: conformance-negative-control-rust-walk
+conformance-negative-control-rust-walk: build/conformance-harness
+	@rm -rf $(RUST_CONFORMANCE_WALK) && mkdir -p $(RUST_CONFORMANCE_WALK)/driver
+	@go run ./tools/sabotage -name rust-text-walk-field-match \
+		-out $(RUST_CONFORMANCE_WALK)/variabletext.go.txt internal/codegen/rusttable/variabletext.go
+	@cmp -s internal/codegen/rusttable/variabletext.go $(RUST_CONFORMANCE_WALK)/variabletext.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust text-walk sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variabletext.go":"%s/$(RUST_CONFORMANCE_WALK)/variabletext.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_CONFORMANCE_WALK)/overlay.json
+	go build -overlay=$(RUST_CONFORMANCE_WALK)/overlay.json -o $(RUST_CONFORMANCE_WALK)/schema ./cmd/schema
+	@for unit in $(RUST_TABLE_UNITS) tblrt1:test/tables/RT1.schema; do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(RUST_CONFORMANCE_WALK)/schema generate --lang rust --out $(RUST_CONFORMANCE_WALK)/generated/$$name/src $$path || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$name \
+			> $(RUST_CONFORMANCE_WALK)/generated/$$name/Cargo.toml; \
+	done
+	@grep -rlq 'SABOTAGED: no field key ever matches' $(RUST_CONFORMANCE_WALK)/generated/*/src || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged reader"; exit 1; }
+	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|build/tables-generated-rust/|$(RUST_CONFORMANCE_WALK)/generated/|' \
+		test/conformance/rust/Cargo.toml > $(RUST_CONFORMANCE_WALK)/driver/Cargo.toml
+	cd $(RUST_CONFORMANCE_WALK)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_CONFORMANCE_WALK)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(RUST_CONFORMANCE_WALK)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(RUST_CONFORMANCE_WALK)/driver/driver && chmod +x $(RUST_CONFORMANCE_WALK)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(RUST_CONFORMANCE_WALK)" > $(RUST_CONFORMANCE_WALK)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(RUST_CONFORMANCE_WALK)/drivers.txt \
+			--work $(RUST_CONFORMANCE_WALK)/work > $(RUST_CONFORMANCE_WALK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the sabotaged reader walk left the Rust matrix green"; \
+		cat $(RUST_CONFORMANCE_WALK)/log; exit 1; \
+	fi
+	@cat $(RUST_CONFORMANCE_WALK)/log
+	@grep -q 'rust / json-read' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on rust / json-read"; exit 1; }
+	@grep -q 'json-read     FAIL' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-read is not marked FAIL"; exit 1; }
+	@grep -Eq '^ *json-write +pass' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write did not stay green"; exit 1; }
+	@grep -Eq '^ *wire +pass' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: wire did not stay green"; exit 1; }
+	@echo "Rust walk negative control: a reader that matches no field key is detected by rust / json-read, and by no other surface"
+
+test-rust: conformance-negative-control-rust-walk
+
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
