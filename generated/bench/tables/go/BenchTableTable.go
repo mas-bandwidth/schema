@@ -4923,12 +4923,12 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				mark := w.Ids.Count
 				payload16 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := range arrayLengths[:value.EntitiesCount] {
+				for i := range int(value.EntitiesCount) {
 					n := TableEntityMeasureBody(&value.Entities[i], payload16.Ids)
 					if n < 0 {
 						return false
 					}
-					arrayLengths[i] = n
+					arrayLengths[i] = n // #nosec G602 -- i < count <= len(arrayLengths)
 					if !payload16.putLebPair(uint64(n)) {
 						payload16.putLebWide(uint64(n))
 					}
@@ -4950,9 +4950,10 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := range arrayLengths[:value.EntitiesCount] {
-						if !w.putLebPair(uint64(arrayLengths[i])) {
-							w.putLebWide(uint64(arrayLengths[i]))
+					for i := range int(value.EntitiesCount) {
+						length := uint64(arrayLengths[i]) // #nosec G602 -- i < count <= len(arrayLengths)
+						if !w.putLebPair(length) {
+							w.putLebWide(length)
 						}
 						if !TableEntitySaveBody(w, &value.Entities[i]) {
 							return false
@@ -4977,12 +4978,12 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				mark := w.Ids.Count
 				payload19 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := range arrayLengths[:value.StatsCount] {
+				for i := range int(value.StatsCount) {
 					n := TableStatMeasureBody(&value.Stats[i], payload19.Ids)
 					if n < 0 {
 						return false
 					}
-					arrayLengths[i] = n
+					arrayLengths[i] = n // #nosec G602 -- i < count <= len(arrayLengths)
 					if !payload19.putLebPair(uint64(n)) {
 						payload19.putLebWide(uint64(n))
 					}
@@ -5004,9 +5005,10 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := range arrayLengths[:value.StatsCount] {
-						if !w.putLebPair(uint64(arrayLengths[i])) {
-							w.putLebWide(uint64(arrayLengths[i]))
+					for i := range int(value.StatsCount) {
+						length := uint64(arrayLengths[i]) // #nosec G602 -- i < count <= len(arrayLengths)
+						if !w.putLebPair(length) {
+							w.putLebWide(length)
 						}
 						if !TableStatSaveBody(w, &value.Stats[i]) {
 							return false

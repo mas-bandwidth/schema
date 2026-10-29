@@ -154,18 +154,6 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
 }
 
-// arrayLoopRange is what follows `for i := range` in the loops that index the
-// arrayLengths scratch. gosec G602 cannot bound `range int(n)` against a
-// fixed-size array and flags every arrayLengths[i]; ranging over the scratch
-// sliced to the count gives it the bound (the slice panics on a count above the
-// scratch exactly as value[i] would), and modernize accepts it as a range loop.
-func (g *tableGen) arrayLoopRange(cacheLengths bool, count string) string {
-	if cacheLengths {
-		return "arrayLengths[:" + count + "]"
-	}
-	return "int(" + count + ")"
-}
-
 func (g *tableGen) emitTableWrite(st *ir.Struct) {
 	g.pf("func %sSaveBody(w *TableWriter, value *%s) bool {\n", st.Name, g.storageName(st.Name))
 	var scratchSlots int64
@@ -471,10 +459,10 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	g.pf("%smark := %s.Ids.Count\n%s%s := TableWriter{Measuring:true, Ids:%s.Ids}; pairs := uint64(0)\n", i, writer, i, body, writer)
-	g.pf("%sfor i := range %s {\n", i, g.arrayLoopRange(cacheLengths, count))
+	g.pf("%sfor i := range int(%s) {\n", i, count)
 	if cacheLengths {
 		g.wireSerial++ // Preserve the skipped element emitter's temporary-name slot.
-		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n\n", i, f.Type.Name, expr, body)
+		g.pf("%s n := %sMeasureBody(&%s[i],%s.Ids); if n < 0 { return false }; arrayLengths[i] = n // #nosec G602 -- i < count <= len(arrayLengths)\n", i, f.Type.Name, expr, body)
 		g.emitPutLeb(i+" ", body, "uint64(n)")
 		g.pf("%s %s.Advance(n)\n", i, body)
 	} else {
@@ -487,13 +475,14 @@ func (g *tableGen) emitWireArray(f *ir.Field, expr, writer, ind string, framed b
 	}
 	g.pf("%sif %s.Measuring { %s.Advance(n) } else {\n%s %s.Ids.Truncate(mark); %s.Put8(%d)\n", i, writer, writer, i, writer, writer, kind)
 	g.emitPutLeb(i+" ", writer, "pairs")
-	g.pf("%s for i := range %s {\n", i, g.arrayLoopRange(cacheLengths, count))
+	g.pf("%s for i := range int(%s) {\n", i, count)
 	if cacheLengths {
 		g.wireSerial++
 		// The unchanged outer truncation replays the first pass's vocabulary in
 		// the same element order. Its saved lengths therefore include the same
 		// reference widths, without another MeasureBody before each SaveBody.
-		g.emitPutLeb(i+"  ", writer, "uint64(arrayLengths[i])")
+		g.pf("%s  length := uint64(arrayLengths[i]) // #nosec G602 -- i < count <= len(arrayLengths)\n", i)
+		g.emitPutLeb(i+"  ", writer, "length")
 		g.pf("%s  if !%sSaveBody(%s,&%s[i]) { return false }\n", i, f.Type.Name, writerPointer(writer), expr)
 	} else {
 		g.emitWireArrayElement(f, expr+"[i]", writer, i+"\t\t")
