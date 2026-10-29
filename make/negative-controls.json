@@ -137,8 +137,9 @@
     {
       "name": "lua-docs",
       "when": "pull-request",
-      "why": "the Lua port's documented-surface control: two edited copies of docs/USAGE.md, one calling a renamed runtime function and one walking nothing, each required to fail the usage gate. It needs the pinned interpreter (make dist-lua), bin/schema and the cookgen fixture, and no compile weight of its own.",
+      "why": "the Lua port's documented-surface control (two edited copies of docs/USAGE.md, each required to fail the usage gate) and the bench leg's corpus control (a flipped golden byte and a flipped variant byte, each required to fail the bench correctness gate by name). They need the pinned interpreter (make dist-lua) and bin/schema, and no compile weight of their own.",
       "targets": [
+        "tables-lua-bench-gate-negative-control",
         "tables-lua-usage-negative-control"
       ],
       "lua": "5.4.8"

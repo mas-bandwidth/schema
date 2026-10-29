@@ -1241,7 +1241,7 @@ the reference on the same numbers; a sitting on the box is what certifies.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 roadmap `port/lua/open/release-tier` (no Lua bench leg yet) |
+| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 roadmap `port/lua/open/bench-board` (the leg `bench/tables/lua` and its gate `tables-lua-bench-gate` are in; the labelled board needs a measured sitting, which only a certify run takes) |
 
 ### I9 — The soak is gated on the allocation count or a floor
 
@@ -1534,7 +1534,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ❌ #381 roadmap `port/lua/open/release-tier` (no `tables-lua-release` yet) |
+| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ✅ `tables-lua-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 

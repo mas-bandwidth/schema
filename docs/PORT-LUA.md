@@ -265,12 +265,14 @@ allocation gate and soak; the keyed accessor; frozen descriptors; one pointer
 walk shared by save and cook; the arm read through the field reader; float32
 bit surgery on the table wire; a typed save; block and cook accessors; the
 forgery fuzz; the runtime-name scan; the zero-cost gate; the random text
-differential; the runtime-home control; the bench and release tier; and the
-card facade.
+differential; the runtime-home control; the labelled bench board (`bench-board`:
+the leg and its gate are in, a measured sitting is not); and the card facade.
 
 Closed 2026-10-29: the USAGE example (`tables-lua-usage`, docs/USAGE.md's
 `lua-table-usage` fragment run against `tables/pointers`, with a two-witness
-control).
+control); and the bench leg and the release tier (`bench/tables/lua`,
+`tables-lua-bench-gate`, `tables-lua-release`, which certify.yml derives from
+the Makefile).
 
 
 ## DEEPEN

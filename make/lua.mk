@@ -94,7 +94,7 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua lua-generated-loads tables-lua-usage tables-lua-usage-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control
+test-lua: toolchain-lua lua-generated-loads tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
@@ -215,6 +215,65 @@ tables-lua-usage-negative-control:
 			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Lua usage gate"; exit 1; fi; \
 		echo "tables-lua-usage negative control: the $$c copy fails the gate"; \
 	done
+
+# I8 (docs/PORTING.md) — THE BENCH LEG's CORRECTNESS GATE. bench/tables/lua is
+# the tables bench's Lua leg (bench/tables/README.md): the committed 64-record
+# variant corpus is loaded and re-saved through the generated table module and
+# must come back byte-identical, and variant 0 must be the pinned golden,
+# BEFORE any clock starts. `--gate` runs exactly that and no timing, so it is
+# cheap enough for `make test`; the measured rows are the release tier's
+# (tables-lua-release), never a local run.
+.PHONY: tables-lua-bench-gate tables-lua-bench-gate-negative-control
+tables-lua-bench-gate: toolchain-lua bin/schema
+	bench/tables/run.sh --gate --only lua
+
+# THE REVERSED WITNESSES: the corpus with one byte of variant 0 flipped must
+# fail the golden gate by name, and the corpus with one byte of a later variant
+# flipped must fail the round-trip gate. A bench that measured a codec that no
+# longer reproduces the corpus would report a rate for the wrong work.
+tables-lua-bench-gate-negative-control: toolchain-lua bin/schema
+	@rm -rf build/lua-bench-negative && mkdir -p build/lua-bench-negative/golden build/lua-bench-negative/roundtrip
+	@cp bench/corpus/variants/bench_table.variants.bin build/lua-bench-negative/golden/
+	@cp bench/corpus/variants/bench_table.variants.bin build/lua-bench-negative/roundtrip/
+	@printf '\377' | dd of=build/lua-bench-negative/golden/bench_table.variants.bin bs=1 seek=100 conv=notrunc 2>/dev/null
+	@printf '\377' | dd of=build/lua-bench-negative/roundtrip/bench_table.variants.bin bs=1 seek=$$((2147 * 3 + 100)) conv=notrunc 2>/dev/null
+	@LUA_BENCH_GEN=build/lua-bench-negative/gen bench/tables/lua/leg build
+	@if LUA_BENCH_GEN=build/lua-bench-negative/gen bench/tables/lua/leg run --gate --variant-dir build/lua-bench-negative/golden > build/lua-bench-negative/golden.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a corpus whose variant 0 is not the pinned golden passed the Lua bench gate"; exit 1; fi
+	@grep -q 'WIRE GOLDEN MISMATCH' build/lua-bench-negative/golden.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the golden corpus went red, but not on the golden gate"; cat build/lua-bench-negative/golden.log; exit 1; }
+	@if LUA_BENCH_GEN=build/lua-bench-negative/gen bench/tables/lua/leg run --gate --variant-dir build/lua-bench-negative/roundtrip > build/lua-bench-negative/roundtrip.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a corpus whose variant 3 does not round-trip passed the Lua bench gate"; exit 1; fi
+	@grep -q 'FAILED: bench_table' build/lua-bench-negative/roundtrip.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the round-trip corpus went red, but not on the variant gate"; cat build/lua-bench-negative/roundtrip.log; exit 1; }
+	@echo "tables-lua-bench-gate negative control: a flipped golden byte and a flipped variant byte each fail the gate by name"
+
+# J3 (docs/PORTING.md) — THE RELEASE TIER. The expensive half of the leg, behind
+# one target certify.yml finds BY NAME (its release-targets job derives the list
+# from the Makefile, so landing it is this target and the interpreter step):
+# every instrument is the PR tier's scaled, none is new.
+#
+#   the wire-fuzz differential against the Go engine at ten times the PR count
+#   and a second seed, because a divergence escapes by depth of search;
+#   the documented surface (tables-lua-usage) and its reversed witnesses;
+#   the bench leg's gate and its witnesses, then the MEASURED pass: one
+#   interleaved round of the tables bench, the rows only (--bare), so the
+#   certification run's log carries the leg's write and round-trip rates beside
+#   the other ports'. A bench on a hosted runner is a PAIRING CHECK, not a
+#   sitting (PORTING.md I8): it shows the leg runs and roughly where it stands,
+#   and certifies nothing.
+LUA_RELEASE_FUZZ_N ?= 20000
+
+.PHONY: tables-lua-release
+tables-lua-release: toolchain-lua build/conformance-harness build/conformance-lua
+	$(MAKE) tables-lua-wire-fuzz LUA_FUZZ_N=$(LUA_RELEASE_FUZZ_N)
+	$(MAKE) tables-lua-wire-fuzz LUA_FUZZ_N=$(LUA_RELEASE_FUZZ_N) LUA_FUZZ_SEED=2
+	$(MAKE) tables-lua-usage
+	$(MAKE) tables-lua-usage-negative-control
+	$(MAKE) tables-lua-bench-gate
+	$(MAKE) tables-lua-bench-gate-negative-control
+	bench/tables/run.sh --only lua --bare
+	@echo "tables Lua release gate: the wire fuzz at depth on two seeds, the page's example, and the bench leg's gate and measured pass"
 
 TEST_LEGS         += test-lua
 CONFORMANCE_LEGS  += $(call unless_skipped,lua,build/conformance-lua)
