@@ -4189,6 +4189,10 @@ func (c *checker) checkClaimedNames() {
 			// including against the implicit NONE
 			add(name+"None", fmt.Sprintf("enum %s's generated None constant", name), d.Pos)
 			add(name+"Max", fmt.Sprintf("enum %s's generated Max extent (Go form)", name), d.Pos)
+			// the Squirrel debug-name function: a module binds it on its export
+			// table beside every declaration, so a declaration of that name
+			// would be a second binding for it
+			add("EnumName"+name, fmt.Sprintf("enum %s's generated debug-name function (Squirrel form)", name), d.Pos)
 			assoc := map[string]string{
 				"NONE": "the implicit None variant",
 				"MAX":  "the generated Max extent",
@@ -4264,6 +4268,7 @@ func (c *checker) checkClaimedNames() {
 			whyTag := fmt.Sprintf("union %s's generated tag enum", name)
 			add(name+"Type", whyTag, d.Pos)
 			add(name+"TypeNone", whyTag, d.Pos)
+			add("EnumName"+name+"Type", whyTag+" debug-name function (Squirrel form)", d.Pos)
 			add(name+"TypeMax", whyTag, d.Pos)
 			for _, v := range d.Variants {
 				add(name+"Type"+ir.GoExportName(v.Name), fmt.Sprintf("union %s's generated tag constant", name), v.Pos)

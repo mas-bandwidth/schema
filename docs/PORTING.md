@@ -1189,7 +1189,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | squirrel |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ❌ #366 (no claimed-name scan of the emitted modules and no control yet) |
+| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ✅ `TestSquirrelTableModuleScopeNamesAreClaimed` `TestSquirrelRegistryNamesAreEmitted` `TestSquirrelModuleScopeScanSeesEveryConvention` (the scan reads every column-zero `_M.<Name> <-` the unit module and its packet modules bind, with no list: a schema declaring one is refused, and every registered Squirrel name is spelled by the emitter; the first run found 39 unclaimed names, among them `Cook`, `Roots`, `Package` and `EnumName<Enum>`, now claimed) |
 
 ### I7 — Cross-endian refusal as a named gate
 

@@ -13883,6 +13883,7 @@ in build version (§20.5).
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
   FixedKnown  FixedFloor  FixedLineagePlans
+  Descriptor  FixedDecodeBody  FixedDeprecated  FixedRecord
   ```
 
   The Go templates also use Add, Erase, Each, Insert, Find,
