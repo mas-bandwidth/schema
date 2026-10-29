@@ -223,7 +223,7 @@ jobs:
               internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk) add_leg c ;;
             esac
             case "$f" in
-              internal/codegen/cpptable/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h) add_leg cpp ;;
+              internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
             esac
             case "$f" in
               internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk) add_leg rust ;;
@@ -623,11 +623,11 @@ jobs:
           otp-version: '27'
           elixir-version: '1.18'
 
-      # THE C FORMAT GATE's formatter, pinned: clang-format from PyPI at the
-      # version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
+      # THE C AND C++ FORMAT GATES' formatter, pinned: clang-format from PyPI at
+      # the version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
       # runner's temp so a self-hosted runner keeps nothing between runs.
-      - name: the pinned clang-format (C leg)
-        if: matrix.leg == 'c'
+      - name: the pinned clang-format (C and C++ legs)
+        if: matrix.leg == 'c' || matrix.leg == 'cpp'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
@@ -644,7 +644,8 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ matrix.leg }}" in
-            cpp)    make tables-fixedform ;;
+            cpp)    make tables-fixedform
+                    make tables-cpp-clean tables-cpp-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
                     make tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;

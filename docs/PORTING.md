@@ -1557,13 +1557,13 @@ below.
 
 **Measured effect.** Structural.
 
-**Negative control.** None; the formatter is its own oracle.
+**Negative control.** None for the C-family formatter, which is its own oracle. The C++ gate's two halves each go red on a planted fault in the packet emitter, built under a Go overlay: one K&R struct brace for the format half, one C-style placement-new cast for the warnings half (`tools/sabotage/cpp_clean.go`; both registered in `make/negative-controls.json`), each behind a guard that the unsabotaged output is green.
 
 **Targets:** clean
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) |
+| ✅ `tables-cpp-clean` (`clang-format` in the repo's `.clang-format`, and `clang++ -Weverything` less the c++98-compat family only, over every generated C++ file: the table corpus, the wide corpus and the committed `generated/` tables and packets; required by `make test` and by the cpp leg of `ci-fast`; the packet emitter's files are format-clean and carry only the three kinds that cannot be cleared without altering the packet wire (`padded`, and the contradictory `switch-default` / `covered-switch-default` pair), the table emitter's ride the shrink-only ratchets `make/cpp-format-allow.txt` and `make/cpp-warn-allow.txt`) | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) |
 
 ### J5 — The bench leg's golden gate runs before the clock
 

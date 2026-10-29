@@ -14,7 +14,8 @@
 namespace example {
 
 // type Vec3
-struct Vec3 {
+struct Vec3
+{
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
@@ -24,7 +25,8 @@ inline constexpr int64_t Vec3MaxBits = 192; // longest wire path; align pads at 
 inline constexpr int64_t Vec3MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type Quat
-struct Quat {
+struct Quat
+{
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
@@ -35,7 +37,8 @@ inline constexpr int64_t QuatMaxBits = 256; // longest wire path; align pads at 
 inline constexpr int64_t QuatMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type Handle
-struct Handle {
+struct Handle
+{
     int32_t object_id = 0; // wire [0, 9999]
     uint8_t object_sequence = 0;
 };
@@ -44,7 +47,8 @@ inline constexpr int64_t HandleMaxBits = 22; // longest wire path; align pads at
 inline constexpr int64_t HandleMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type QuantizedPosition
-struct QuantizedPosition {
+struct QuantizedPosition
+{
     int32_t x = 0; // wire [-8388608, 8388608]
     int32_t y = 0; // wire [-8388608, 8388608]
     int32_t z = 0; // wire [-8388608, 8388608]
@@ -54,7 +58,8 @@ inline constexpr int64_t QuantizedPositionMaxBits = 75; // longest wire path; al
 inline constexpr int64_t QuantizedPositionMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type QuantizedVelocity
-struct QuantizedVelocity {
+struct QuantizedVelocity
+{
     int32_t x = 0; // wire [-2097152, 2097152]
     int32_t y = 0; // wire [-2097152, 2097152]
     int32_t z = 0; // wire [-2097152, 2097152]
@@ -64,7 +69,8 @@ inline constexpr int64_t QuantizedVelocityMaxBits = 69; // longest wire path; al
 inline constexpr int64_t QuantizedVelocityMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type QuantizedRotation
-struct QuantizedRotation {
+struct QuantizedRotation
+{
     int16_t x = 0; // wire [-1024, 1024]
     int16_t y = 0; // wire [-1024, 1024]
     int16_t z = 0; // wire [-1024, 1024]
@@ -75,7 +81,8 @@ inline constexpr int64_t QuantizedRotationMaxBits = 48; // longest wire path; al
 inline constexpr int64_t QuantizedRotationMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type RigidBody
-struct RigidBody {
+struct RigidBody
+{
     Vec3 position;
     Quat orientation;
     bool at_rest = false;
@@ -90,7 +97,8 @@ inline constexpr int64_t RigidBodyMaxBits = 833; // longest wire path; align pad
 inline constexpr int64_t RigidBodyMaxBytes = 112; // 8-byte write granularity; read slack per the contract above
 
 // type Input
-struct Input {
+struct Input
+{
     float stick_x = 0.0f;
     float stick_y = 0.0f;
     float throttle = 0.0f;
@@ -110,7 +118,8 @@ inline constexpr int64_t InputMaxBits = 168; // longest wire path; align pads at
 inline constexpr int64_t InputMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type InputPacket
-struct InputPacket {
+struct InputPacket
+{
     uint16_t synchronize_sequence = 0;
     uint64_t current_frame = 0;
     uint64_t start_frame = 0;
@@ -122,7 +131,8 @@ inline constexpr int64_t InputPacketMaxBits = 2837; // longest wire path; align 
 inline constexpr int64_t InputPacketMaxBytes = 360; // 8-byte write granularity; read slack per the contract above
 
 // type ShipCreate
-struct ShipCreate {
+struct ShipCreate
+{
     ShipType ship_type = ShipType::None;
     QuantizedPosition position;
     QuantizedRotation rotation;
@@ -143,7 +153,8 @@ inline constexpr int64_t ShipCreateMaxBits = 219; // longest wire path; align pa
 inline constexpr int64_t ShipCreateMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type ExpressionProbe
-struct ExpressionProbe {
+struct ExpressionProbe
+{
     int32_t hardpoint_index = 0; // wire [0, 31]
     int32_t spin_rate = RotationUnits; // wire [1024, 2048]
 };
@@ -154,7 +165,8 @@ inline constexpr int64_t ExpressionProbeMaxBytes = 8; // 8-byte write granularit
 inline constexpr int64_t FloorLimit = ( -9223372036854775807ll - 1 );
 inline constexpr uint64_t CeilingCount = 18446744073709551615ull; // = 18446744073709551615
 // type ExtremeProbe
-struct ExtremeProbe {
+struct ExtremeProbe
+{
     int64_t floor_bound = 0; // wire [-9223372036854775808, 100]
     int64_t doubled_floor = 0; // wire [-9223372036854775808, 100]
     uint64_t ceiling_range = 1; // wire [1, 18446744073709551615]
@@ -166,7 +178,8 @@ inline constexpr int64_t ExtremeProbeMaxBits = 320; // longest wire path; align 
 inline constexpr int64_t ExtremeProbeMaxBytes = 40; // 8-byte write granularity; read slack per the contract above
 
 // type ExtremeRow
-struct ExtremeRow {
+struct ExtremeRow
+{
     int64_t clamped_floor = 0; // wire [-9223372036854775808, 100]
     uint64_t clamped_ceiling = 1; // wire [1, 18446744073709551614]
     int64_t floor_def = ( -9223372036854775807ll - 1 );

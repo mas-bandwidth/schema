@@ -114,7 +114,7 @@ func (g *gen) emitUnionWire(d *ir.Union) {
 			continue
 		}
 		g.needsNew = true
-		g.pf("            ::new ( (void*) &value.%s ) %s{};\n", v.Name, v.Type)
+		g.pf("            ::new ( static_cast<void *>( &value.%s ) ) %s{};\n", v.Name, v.Type)
 		g.pf("            return Read%s( stream, value.%s );\n", v.Type, v.Name)
 	}
 	g.pf("    }\n    return false;\n}\n\n")
