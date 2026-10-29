@@ -233,6 +233,11 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end)
   end
 
+  # a cook packs the graph as it finds it (docs/SPEC-TABLES.md §2.5): a blob
+  # the tolerant read found named from a second slot is the one node
+  defp cook_collect_field(%{t: :blob} = f, {:blob_shared, v}, acc),
+    do: cook_collect_field(f, v, acc)
+
   defp cook_collect_field(%{t: :blob, cook_type_id: id} = f, v, acc) when not is_nil(v) do
     if not is_binary(v), do: throw(:invalid)
     cook_push(acc, %{id: id, kind: :blob, string: f.blob == :string, value: v})
@@ -432,6 +437,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   end
 
   defp cook_value(%{t: :blob, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
+    v = with {:blob_shared, bytes} <- v, do: bytes
     cook_ref(buf, base + off, id, v, index, order)
   end
 
