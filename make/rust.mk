@@ -863,6 +863,32 @@ tables-rust-usage:
 
 test-rust: tables-rust-usage
 
+# I13 (docs/PORTING.md): the Rust leg's text differential against a third
+# implementation. A Rust probe (rustc, no cargo) draws 200 random float instances
+# per seed (splitmix64, seeds 24845619678 and 1, the Go, Dart and Java cells'
+# draw order) of a VARIABLE root and of a fixed-class unit's root, and writes each
+# as (wire, text) with the generated root_save and root_to_json_checked; the Go
+# engine (internal/tabletext, internal/tablepack) writes its own text from the
+# leg's wire, byte-compared, packs the leg's text back to wire, byte-compared, and
+# the leg's root_from_json_bytes reads the engine's text back to the same wire
+# (TestTextDifferentialRust). The control caps the emitted float32 window at six
+# significant digits in memory and must go red on the TEXT comparison
+# (TestTextDifferentialRustNegativeControl). SCHEMA_REQUIRE_CORPUS=1 makes a
+# missing rustc a FAILURE rather than a skip.
+.PHONY: tables-rust-json-differential tables-rust-json-differential-negative-control
+tables-rust-json-differential:
+	@mkdir -p build
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRust$$' -v 2>&1 | tee build/rust-json-differential.log
+	@grep -q -- '--- PASS: TestTextDifferentialRust ' build/rust-json-differential.log || { echo 'tables-rust-json-differential: TestTextDifferentialRust did not pass'; exit 1; }
+	@echo 'tables Rust text differential: 200 random float instances at each of two seeds, variable and fixed-class roots, agree with the Go engine byte for byte, both directions'
+tables-rust-json-differential-negative-control:
+	@mkdir -p build
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRustNegativeControl$$' -v 2>&1 | tee build/rust-json-differential-control.log
+	@grep -q -- '--- PASS: TestTextDifferentialRustNegativeControl' build/rust-json-differential-control.log || { echo 'tables-rust-json-differential-negative-control: the control did not pass'; exit 1; }
+	@echo 'tables Rust text differential negative control: a six-digit float32 writer is red on the text comparison'
+
+test-rust: tables-rust-json-differential tables-rust-json-differential-negative-control
+
 # THE RELEASE TIER (docs/PORTING.md J3): certify.yml derives every
 # tables-<lang>-release target from the Makefile and runs it under its 60-minute
 # cap. This SCALES the PR-tier instruments and adds none: the all-roots wire
