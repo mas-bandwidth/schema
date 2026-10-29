@@ -95,6 +95,7 @@ func emitMessageFormPart(g *goose.Gen) error {
 		return nil
 	}
 	vocabulary := ir.TableVocabulary(g.Unit)
+	g.Import("message")
 	e := &msgEmit{g: g, fx: &fixedEmit{g: g}, slots: ir.TableVocabularySlots(g.Unit), refBits: ir.TableMessageRefBits(len(vocabulary))}
 	var mine []string
 	for _, t := range g.File.Tables {
