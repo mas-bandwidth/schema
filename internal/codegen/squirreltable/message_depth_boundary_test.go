@@ -13,6 +13,7 @@ package squirreltable_test
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -186,9 +187,7 @@ func runDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []depthBo
 	if err != nil {
 		t.Fatalf("the table surface refused: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	if edit != nil {
 		edit(files)
 	}
