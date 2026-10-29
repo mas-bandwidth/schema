@@ -67,7 +67,7 @@ func (w *wgen) emitReadScalar(f *ir.Field, expr, length, ind string) error {
 	t := f.Type
 	switch t.Kind {
 	case ir.TBool:
-		w.Pf("%sguard serialize_bool(s, %s) else { return false; }\n", ind, expr)
+		w.Pf("%sguard schema_rt::wire_bool(s, %s) else { return false; }\n", ind, expr)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
@@ -108,9 +108,9 @@ func (w *wgen) emitReadScalar(f *ir.Field, expr, length, ind string) error {
 		w.emitReadRanged(f.IntMin, f.IntMax, typ, expr, ind)
 	case ir.TBits:
 		if t.Width <= 32 {
-			w.Pf("%sguard serialize_bits(s, %s, %d) else { return false; }\n", ind, expr, t.Width)
+			w.Pf("%sguard schema_rt::wire_bits(s, %s, %d) else { return false; }\n", ind, expr, t.Width)
 		} else {
-			w.Pf("%sguard serialize_bits64(s, %s, %d) else { return false; }\n", ind, expr, t.Width)
+			w.Pf("%sguard schema_rt::wire_bits64(s, %s, %d) else { return false; }\n", ind, expr, t.Width)
 		}
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
@@ -134,9 +134,9 @@ func (w *wgen) emitReadBareInt(f *ir.Field, expr, typ, ind string) {
 	t := f.Type
 	switch {
 	case t.Width == 64 && !t.Signed:
-		w.Pf("%sguard serialize_bits64(s, %s, 64) else { return false; }\n", ind, expr)
+		w.Pf("%sguard schema_rt::wire_bits64(s, %s, 64) else { return false; }\n", ind, expr)
 	case t.Width == 32 && !t.Signed:
-		w.Pf("%sguard serialize_bits(s, %s, 32) else { return false; }\n", ind, expr)
+		w.Pf("%sguard schema_rt::wire_bits(s, %s, 32) else { return false; }\n", ind, expr)
 	default:
 		raw := w.readRaw(int64(t.Width), ind)
 		if t.Signed && t.Width < 64 {
@@ -157,7 +157,7 @@ func (w *wgen) emitReadWString(f *ir.Field, expr, length, ind string) {
 	w.Pf("%svar %s = false;\n", ind, el)
 	w.Pf("%sfor %s in %s {\n", ind, i, length)
 	w.Pf("%s    var %s: u32 = 0;\n", ind, g)
-	w.Pf("%s    guard serialize_bits(s, %s, 32) else { return false; }\n", ind, g)
+	w.Pf("%s    guard schema_rt::wire_bits(s, %s, 32) else { return false; }\n", ind, g)
 	w.Pf("%s    guard %s != 0 && %s <= 0xFFFF else { %s }\n", ind, g, g, failRange)
 	w.Pf("%s    let high%s = %s >= 0xD800 && %s <= 0xDBFF;\n", ind, g, g, g)
 	w.Pf("%s    let low%s = %s >= 0xDC00 && %s <= 0xDFFF;\n", ind, g, g, g)

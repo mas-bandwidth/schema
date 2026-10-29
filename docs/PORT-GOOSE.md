@@ -410,9 +410,17 @@ fn Read<T>(s: ReadStream&, value: <T>&) -> bool  // false: the reason is seriali
 ```
 
 Every bit count is folded at generation time from the declaration, as the
-Go and C targets fold it, and every value moves through the runtime's bit
-primitives (`serialize_bits`, `serialize_bits64`, `serialize_bytes`, the
-fixed, int128, float and compressed-float entries).
+Go and C targets fold it. A plain bit field (bits, bool, a ranged or bare
+integer, an enum, a flags set, a count, a length, a union tag) moves through
+`schema_rt::wire_bits`, `wire_bits64` and `wire_bool`
+(`runtime/schema_wire.goose`, schema's own, emitted beside the vendored
+runtime): serialize.goose's `serialize_bits`, `serialize_bits64` and
+`serialize_bool` with the same checks, refusals and stream state, declared
+`inline fn` so that each call site's constant width folds the count checks,
+the mask and the shifts, and the 8-byte word moves through a slice window
+that carries no per-byte bounds check. Everything else moves through the
+runtime's own entries (`serialize_bytes`, the fixed, int128, float and
+compressed-float entries, a 64-bit write and a read past 56 bits).
 
 **Writes refuse in every build, and never abort.** serialize.goose aborts on
 write misuse (its U9), and Goose's `assert` aborts in every build: the

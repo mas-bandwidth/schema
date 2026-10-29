@@ -45,6 +45,12 @@ import (
 // packet codec imports (`import .serialize;`).
 const SerializeModule = "serialize"
 
+// WireModule is the emitted runtime file of the codec's own bit moves
+// (runtime/schema_wire.goose, namespace schema_rt): serialize_bits,
+// serialize_bits64 and serialize_bool written to inline at every call site,
+// where each field's constant width folds them to a few instructions.
+const WireModule = "schema_wire"
+
 func init() {
 	Register("wire", emitWire)
 }
@@ -71,6 +77,7 @@ func emitWire(g *Gen) error {
 		case *ir.Struct:
 			if !any {
 				g.Import(SerializeModule)
+				g.Import(WireModule)
 				any = true
 			}
 			if err := w.emitStruct(d); err != nil {
@@ -79,6 +86,7 @@ func emitWire(g *Gen) error {
 		case *ir.Union:
 			if !any {
 				g.Import(SerializeModule)
+				g.Import(WireModule)
 				any = true
 			}
 			if err := w.emitUnion(d); err != nil {
@@ -165,7 +173,7 @@ func (w *wgen) emitUnion(d *ir.Union) error {
 		w.Pf("    return SERIALIZE_ERROR_NONE;\n}\n\n")
 	} else {
 		w.Pf("    if value.Type > %sMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; } // the tag validates BEFORE it rides\n", tag)
-		w.Pf("    serialize_bits(s, value.Type, %d);\n", bits)
+		w.Pf("    schema_rt::wire_bits(s, value.Type, %d);\n", bits)
 		for _, v := range d.Variants {
 			if v.Void() {
 				continue // a payload-free arm: the tag is the whole wire
@@ -189,7 +197,7 @@ func (w *wgen) emitUnion(d *ir.Union) error {
 		return nil
 	}
 	w.Pf("    var tag: u32 = 0;\n")
-	w.Pf("    guard serialize_bits(s, tag, %d) else { return false; }\n", bits)
+	w.Pf("    guard schema_rt::wire_bits(s, tag, %d) else { return false; }\n", bits)
 	if !fills(big.NewInt(d.Max), bits) {
 		w.Pf("    guard tag <= %d else { return serialize_fail(s, SERIALIZE_ERROR_VALUE_OUT_OF_RANGE); } // not a wire-legal tag\n", d.Max)
 	}
@@ -392,16 +400,16 @@ func (w *wgen) emitZeroItems(items []ir.Item, ind string) {
 }
 
 // bitsCall is the write of a u64-valued expression in `bits` wire bits: one
-// call of 32 bits or fewer, else serialize_bits64, whose low 32 bits go first
+// call of 32 bits or fewer, else wire_bits64, whose low 32 bits go first
 // (STANDARD.md, bits). A zero-bit write is nothing.
 func bitsCall(expr string, bits int64) string {
 	if bits == 0 {
 		return ""
 	}
 	if bits <= 32 {
-		return fmt.Sprintf("serialize_bits(s, %s, %d);", narrow32(expr), bits)
+		return fmt.Sprintf("schema_rt::wire_bits(s, %s, %d);", narrow32(expr), bits)
 	}
-	return fmt.Sprintf("serialize_bits64(s, %s, %d);", expr, bits)
+	return fmt.Sprintf("schema_rt::wire_bits64(s, %s, %d);", expr, bits)
 }
 
 // narrow32 spells a value known to fit 32 bits as a u32 argument: a literal
@@ -421,12 +429,12 @@ func (w *wgen) readRaw(bits int64, ind string) string {
 	if bits <= 32 {
 		n := w.tmp("narrow")
 		w.Pf("%svar %s: u32 = 0;\n", ind, n)
-		w.Pf("%sguard serialize_bits(s, %s, %d) else { return false; }\n", ind, n, bits)
+		w.Pf("%sguard schema_rt::wire_bits(s, %s, %d) else { return false; }\n", ind, n, bits)
 		w.Pf("%slet %s: u64 = %s;\n", ind, v, n)
 		return v
 	}
 	w.Pf("%svar %s: u64 = 0;\n", ind, v)
-	w.Pf("%sguard serialize_bits64(s, %s, %d) else { return false; }\n", ind, v, bits)
+	w.Pf("%sguard schema_rt::wire_bits64(s, %s, %d) else { return false; }\n", ind, v, bits)
 	return v
 }
 
