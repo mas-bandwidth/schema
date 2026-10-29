@@ -397,18 +397,19 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 				fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
 			}
 			fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
-			b.WriteString("            TableVariable.Writer aw = w.sub(new byte[1 << 20]);\n")
-			fmt.Fprintf(b, "            aw.put8(13); aw.putLeb(v.%s.size());\n", m)
+			// written IN PLACE and framed after, as the variable codec writes it
+			// (no scratch per array, none per element: a 1 MiB scratch per element
+			// made the retaining save of eighty-eight bodies 60 times slower)
+			b.WriteString("            int list = w.off;\n")
+			fmt.Fprintf(b, "            w.put8(13); w.putLeb(v.%s.size());\n", m)
 			fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
 			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", elem.Name, m)
-			b.WriteString("                TableVariable.Writer ew = aw.sub(new byte[1 << 20]);\n")
+			b.WriteString("                int body = w.off;\n")
 			fmt.Fprintf(b, "                path[2 * depth] = %d; path[2 * depth + 1] = i;\n", ordinal)
-			fmt.Fprintf(b, "                %sRetain.writeBodyRetain(ew, nodes, e, retain, report, path, depth + 1);\n", elem.Name)
-			b.WriteString("                aw.putLeb(ew.off);\n")
-			b.WriteString("                aw.putBytes(ew.buf, 0, ew.off);\n")
+			fmt.Fprintf(b, "                %sRetain.writeBodyRetain(w, nodes, e, retain, report, path, depth + 1);\n", elem.Name)
+			b.WriteString("                w.frame(body);\n")
 			b.WriteString("            }\n")
-			b.WriteString("            w.putLeb(aw.off);\n")
-			b.WriteString("            w.putBytes(aw.buf, 0, aw.off);\n")
+			b.WriteString("            w.frame(list);\n")
 			b.WriteString("        }\n")
 		}
 	}
