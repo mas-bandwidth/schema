@@ -259,6 +259,9 @@ public final class TableJson {
         int p;
         final TableVariable.Report rep;
         boolean bad;
+        // rejected: the last number read was the wrong shape for its kind (counted
+        // kind_mismatch); the caller leaves the field's current value standing.
+        boolean rejected;
 
         In(byte[] t, TableVariable.Report rep) {
             this.t = t;
@@ -322,6 +325,7 @@ public final class TableJson {
         }
 
         public double number() {
+            rejected = false;
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
             if (bad || tok == null) {
@@ -339,6 +343,7 @@ public final class TableJson {
             // would refuse.
             if (!Double.isFinite(value)) {
                 rep.kindMismatch++;
+                rejected = true;
                 return 0.0;
             }
             return value;
@@ -350,6 +355,7 @@ public final class TableJson {
         // rounds twice, and the nearest double to a decimal just off a float32
         // midpoint can BE that midpoint (§16.2).
         public float number32() {
+            rejected = false;
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
             if (bad || tok == null) {
@@ -367,6 +373,7 @@ public final class TableJson {
             // is the wrong shape for the kind (§16.3).
             if (!Float.isFinite(value)) {
                 rep.kindMismatch++;
+                rejected = true;
                 return 0.0f;
             }
             return value;
@@ -516,10 +523,15 @@ public final class TableJson {
                 } else {
                     int cp = utf8(c);
                     if (cp < 0) {
-                        b.append('\ufffd');
-                    } else {
-                        b.appendCodePoint(cp);
+                        // §16.3: a raw ill-formed byte refuses the read by name; a
+                        // silent U+FFFD would make two different texts one value.
+                        bad = true;
+                        if (rep.reason == null) {
+                            rep.reason = "string_not_utf8: <root>";
+                        }
+                        return null;
                     }
+                    b.appendCodePoint(cp);
                 }
             }
         }
@@ -551,7 +563,7 @@ public final class TableJson {
                 cp = (cp << 6) | (n & 0x3f);
             }
             p += want - 1;
-            if (want == 3 && cp < 0x800) {
+            if (want == 3 && (cp < 0x800 || (cp >= 0xd800 && cp <= 0xdfff))) {
                 return -1;
             }
             if (want == 4 && cp < 0x10000) {
@@ -619,6 +631,7 @@ public final class TableJson {
         // range and counting a genuinely fractional value as a kind mismatch
         // (never coerced), a value past the range as a clamp (§16.2).
         public long integer(boolean signed, long min, long max) {
+            rejected = false;
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
             if (bad) {
@@ -662,12 +675,14 @@ public final class TableJson {
                 if (signed) {
                     if (!Double.isFinite(d) || d != (double) (long) d) {
                         rep.kindMismatch++;
+                        rejected = true;
                         return 0;
                     }
                     v = (long) d;
                 } else {
                     if (!Double.isFinite(d) || Math.rint(d) != d) {
                         rep.kindMismatch++;
+                        rejected = true;
                         return 0;
                     }
                     if (d < 0.0) {
@@ -706,11 +721,27 @@ public final class TableJson {
             return v;
         }
 
+        // scanStored reads a string the walk PLACES in text storage (a string(N)
+        // or *string value, a text-list element, a map key). A stored string that
+        // decodes to U+0000 refuses the read (§16.3): no wire carries a zero in
+        // text. A string only compared or skipped goes through scanString.
+        public String scanStored() {
+            String s = scanString();
+            if (s != null && s.indexOf('\0') >= 0) {
+                bad = true;
+                if (rep.reason == null) {
+                    rep.reason = "text_holds_zero";
+                }
+                return null;
+            }
+            return s;
+        }
+
         // readString reads one string and clamps it at the bound, counting the
         // clamp (§16.2). The cut lands at a code point boundary, never through
         // a multi-byte character.
         public String readString(int bound) {
-            String s = scanString();
+            String s = scanStored();
             if (s == null) {
                 return "";
             }

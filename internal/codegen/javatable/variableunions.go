@@ -295,7 +295,7 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// A BOUNDED or FIXED array of unions keeps its first bound elements and
 	// counts one clamp, as every other bounded array does (docs/SPEC-TABLES.md
 	// §3, §4); only an unbounded count past what a list can hold is refused.
-	countCheck := "else if(count<0||count>0x7fffffffL){report.refused=true;}else{"
+	countCheck := "else if(count<0||count>0x7fffffffL){report.refused=true;report.reason=\"count_refusal\";}else{"
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.clamped++;}", f.ArrayBound, f.ArrayBound)
 	}
