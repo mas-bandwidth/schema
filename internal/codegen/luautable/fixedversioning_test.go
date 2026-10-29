@@ -123,12 +123,27 @@ check(v.LinkPresent == true, "a T read into ?T is present")`},
 func TestLuauFixedVersioningNewReadsOld(t *testing.T) {
 	t.Parallel()
 	corpus := luauFixedCorpus(t)
+	nonFinite := fixedManifestNonFinite(t, corpus)
 	for _, r := range luauVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
 			reader := luauVersionUnit(t, "VNEW_"+r.row)
 			root := luauVersionRoot(t, reader)
 			file := "old_" + r.row + ".bin"
+			if leaf := nonFinite[file]; leaf != "" {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung);
+				// under the finite rule of 2026-10-27 the newer reader refuses
+				// it by name, naming the field, before the bounds pass
+				// (docs/SPEC-TABLES.md §3.3): a must-refuse vector until the
+				// finite-tables plan's C++ card regenerates the corpus, and an
+				// ordinary row after (the manifest decides)
+				body := fmt.Sprintf(`local report: any = {}
+check(LOAD("file", report) == nil and report.reason == "non_finite_float", "the non-finite float the older writer wrote was not refused by name: " .. why(report))
+check(report.field ~= nil and string.sub(report.field, -%d) == %q, "the refusal does not name the field: " .. tostring(report.field))
+`, len(leaf)+1, "."+leaf)
+				luauVersionProbe(t, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0, map[string][]byte{"file": luauCorpusFile(t, corpus, file)}, body)
+				return
+			}
 			counters := `check(report.widened == 0, "widened " .. report.widened .. ", and an append is not an event")`
 			switch {
 			case r.widenedExact > 0:

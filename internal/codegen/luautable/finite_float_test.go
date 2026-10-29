@@ -323,8 +323,8 @@ var finiteControls = []finiteControl{
 		[]string{"msg/write"}},
 	{"fixed-read", "schema_fixed.luau",
 		[][2]string{
-			{"local bits = buffer.readu32(buf, off)\n\t\t\tif bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end", "local bits = buffer.readu32(buf, off)"},
-			{"if bit32.band(buffer.readu32(buf, off + 4), 0x7FF00000) == 0x7FF00000 then error(nonFinite(f), 0) end", "-- SABOTAGED"},
+			{"local bits = buffer.readu32(buf, at)\n\t\t\tif bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end", "local bits = buffer.readu32(buf, at)"},
+			{"if bit32.band(buffer.readu32(buf, at + 4), 0x7FF00000) == 0x7FF00000 then error(nonFinite(f), 0) end", "-- SABOTAGED"},
 		},
 		[]string{"fixed/read/f", "fixed/read/d"}},
 	{"fixed-write", "schema_fixed.luau",

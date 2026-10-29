@@ -218,6 +218,7 @@ func fixedBoundsOracle(t *testing.T, schemaSrc string) ([]byte, string, map[stri
 // docs/SPEC-TABLES.md §3.4, THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER).
 func TestLuauFixedLayoutBounds(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	valid, wantValues, oracle := fixedBoundsOracle(t, fixedBoundsSchema)
 	g := generateFiles(t, map[string]string{"Probe.schema": fixedBoundsSchema})
 	if g.err != nil {
