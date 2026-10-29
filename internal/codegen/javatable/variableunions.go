@@ -158,7 +158,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		// the arm's `L` cannot be read, and only the field's own None, unknown
 		// or arm damage resets it. null says "leave the previous arm": the
 		// field caller keeps it, an array element takes None (§3, §2.8).
-		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail)return null;if(ref==0)return v;long id=input.resolve(ref);if(input.fail)return null;if(!input.has(1)){report.malformed=true;return null;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return null;\n", suffix, args)
+		fmt.Fprintf(&b, "    static Value readPayload%s(TableVariable.Reader input,TableVariable.NodeTable nt,TableVariable.Report report%s){Value v=new Value();long ref=input.leb();if(input.fail)return null;if(ref==0)return v;long id=input.resolve(ref);if(input.fail)return null;if(!input.has(1)){report.malformed=true;input.fail=true;return null;}int kind=input.get8();TableVariable.Reader body=input.body();if(body==null)return null;\n", suffix, args)
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(id==0x%016xL){\n", ir.TableWireId(arm.WireName()))
 			if arm.Void() {
@@ -190,7 +190,18 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			if directText {
 				b.WriteString("TableVariable.Report parentReport=report;report=new TableVariable.Report();TableVariable.Reader textReader=new TableVariable.Reader(r.buf,r.ids,report);textReader.off=r.off;textReader.limit=r.limit;r=textReader;\n")
 			}
+			// AN ARRAY ARM IS SELECTED ONLY WHEN ITS HEADER READS AS ITS OWN
+			// (the engine's arrayBody, §3): an element kind that neither is nor
+			// widens to the declared one, or a damaged count, is that arm's own
+			// damage, and the union reads None after the read has counted it.
+			arrayArm := (one.Array != ir.ArrayNone || one.Type.Kind == ir.TBytes) && !one.Type.Pointer && !one.IsMap() && expected == 14
+			if arrayArm {
+				fmt.Fprintf(&b, "        boolean armOwn=true;{TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader pa=probe.body();if(pa!=null&&pa.has(2)){int pk=pa.get8();%s;armOwn=(%s)&&!pa.fail;}}\n", countRead(&one, "pa"), variableCompatibleKinds(variableElemWireKind(&one), "pk"))
+			}
 			writeFieldRead(&b, u, st, &one, retaining, i, true)
+			if arrayArm {
+				b.WriteString("        if(!armOwn)return new Value();\n")
+			}
 			if directText {
 				b.WriteString("parentReport.clamped+=report.clamped;parentReport.malformed|=report.malformed;if(report.malformed)return new Value();report=parentReport;\n")
 			}
@@ -281,7 +292,14 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		fmt.Fprintf(b, "%sVariable.Value read=%sVariable.%s(r,nt,report%s);if(read!=null)v.%s=read;}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
 		return
 	}
-	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(ek!=15){report.kindMismatch++;}else if(count<0||count>0x7fffffffL){report.refused=true;}else{v.%s.clear();", m)
+	// A BOUNDED or FIXED array of unions keeps its first bound elements and
+	// counts one clamp, as every other bounded array does (docs/SPEC-TABLES.md
+	// §3, §4); only an unbounded count past what a list can hold is refused.
+	countCheck := "else if(count<0||count>0x7fffffffL){report.refused=true;}else{"
+	if f.ArrayBound > 0 {
+		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.clamped++;}", f.ArrayBound, f.ArrayBound)
+	}
+	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(ek!=15){report.kindMismatch++;}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
 	if retain {
 		fmt.Fprintf(b, "retain.discardField(path,depth,%d);", ordinal)
 	}
@@ -289,9 +307,15 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if retain {
 		fmt.Fprintf(b, "path[2*depth]=%d;path[2*depth+1]=(int)i;", ordinal)
 	}
-	// An ARRAY ELEMENT is reset the moment its arm id is read (§3, §4), so a
-	// null header answer there is None rather than a kept previous element.
-	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);v.%s.add(elem==null?new %sVariable.Value():elem);if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, un.Name)
+	// An ARRAY ELEMENT is reset the moment its arm id is read (§3, §4). A null
+	// answer is an element whose header never read whole: a positional [N]
+	// array keeps the slot at its default, and a counted or unbounded array
+	// keeps only the prefix that decoded (the engine's arrayBody, §4).
+	if f.Array == ir.ArrayFixed {
+		fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);v.%s.add(elem==null?new %sVariable.Value():elem);if(elem==null||ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m, un.Name)
+		return
+	}
+	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);if(elem==null)break;v.%s.add(elem);if(ar.fail)break;}}}}}else{r.skip(kind);report.kindMismatch++;}\n", un.Name, un.Name, method, args, m)
 
 }
 

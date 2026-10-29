@@ -439,7 +439,11 @@ public final class BenchPacketVariable {
             } else if (id == F_flag) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.flag = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.flag = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -528,28 +532,26 @@ public final class BenchPacketVariable {
                     if (ar != null) {
                         if (ar.has(2)) {
                             int ek = ar.get8();
-                            if (ek == 6) {
-                                long n = ar.leb();
-                                if (ar.fail) {
-                                } else {
-                                    if (n < 0 || n > 17) {
-                                        n = 17;
-                                        report.clamped++;
-                                    }
-                                    if (ek != 6) {
-                                        report.widened++;
-                                    }
-                                    {
-                                        for (long i = 0; i < n; i++) {
-                                            java.math.BigInteger raw =
-                                                    TableVariable.readInteger(ar, ek);
-                                            if (raw == null) break;
-                                            TableVariable.put(v.blob, (int) i, raw.intValue());
-                                        }
+                            long n = ar.count(r.limit);
+                            if (ar.fail) {
+                            } else if (!(ek == 6)) {
+                                report.kindMismatch++;
+                            } else {
+                                if (n < 0 || n > 17) {
+                                    n = 17;
+                                    report.clamped++;
+                                }
+                                if (ek != 6) {
+                                    report.widened++;
+                                }
+                                {
+                                    for (long i = 0; i < n; i++) {
+                                        java.math.BigInteger raw =
+                                                TableVariable.readInteger(ar, ek);
+                                        if (raw == null) break;
+                                        TableVariable.put(v.blob, (int) i, raw.intValue());
                                     }
                                 }
-                            } else {
-                                report.kindMismatch++;
                             }
                         }
                     }

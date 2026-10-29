@@ -1362,7 +1362,7 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 # on this classpath and does not need to be; the tables-java-compile gate is
 # what proves it builds.
 .PHONY: build-conformance-java
-build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java
+build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
@@ -1383,7 +1383,60 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
-		test/conformance/java/src/Driver.java
+		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+
+# THE JAVA LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (docs/PORTING.md
+# I15; test/conformance/README.md, "The wire-fuzz driver"). One JVM on a pipe,
+# test/conformance/java/src/TablesWireFuzz.java on the conformance classpath:
+# every manifest root the leg carries, its file form (load/loadMeasure/save),
+# its message form against the unit's own announced vocabulary, and the
+# retention arm's pair. The harness owns the mutants and the oracle
+# (internal/tablewire, the compiler's own engine).
+#
+# The gate runs every ENUMERATED pass and every pinned vector (159,457 mutants
+# over 188 seeds and 63 roots, 0 divergences, about 15 s). The seeded RANDOM
+# pass and the retention arm are OWED (roadmap java/wire-fuzz-random): both
+# still find divergences — a bounded count that runs past its collection's L,
+# a nested union arm's clamp, and the retaining save over a shared node — so
+# JAVA_WIRE_FUZZ_N stays 0 until they are closed, and raising it is the change
+# that closes the card.
+JAVA_WIRE_FUZZ_N ?= 0
+JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
+.PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control
+tables-java-wire-fuzz: build/conformance-harness build-conformance-java
+	@mkdir -p build/wire-fuzz
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
+		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
+
+test-java: tables-java-wire-fuzz
+
+# Its negative control (docs/PORTING.md I2, I15): a scratch copy of the
+# generated units whose LEB128 reader accepts a non-minimal spelling, compiled
+# with the same leg. The ENUMERATED canonical pass plants exactly those
+# spellings, so the differential must go red on the read report, and the
+# unplanted gate above must be green.
+JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 messages wide stream lists rt1 \
+	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9
+JAVA_WIRE_FUZZ_SABOTAGE := build/java-wire-sabotage
+tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_WIRE_FUZZ_SABOTAGE) && mkdir -p $(JAVA_WIRE_FUZZ_SABOTAGE)/generated $(JAVA_WIRE_FUZZ_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_WIRE_FUZZ_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_WIRE_FUZZ_SABOTAGE)/generated/*/TableVariable.java; do \
+		sed 's/if (i > 0 \&\& b == 0) {/if (false) { \/\/ SABOTAGED canonical LEB128/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED canonical LEB128' $(JAVA_WIRE_FUZZ_SABOTAGE)/generated/examples/TableVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java canonical LEB128 sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_WIRE_FUZZ_SABOTAGE)/classes \
+		$(JAVA_WIRE_FUZZ_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_WIRE_FUZZ_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
+			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
+	fi
+	@grep -q 'the report differs' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
+	@echo 'Java wire negative control: accepting noncanonical LEB128 changes the read report'
+
+test-java: tables-java-wire-fuzz-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
