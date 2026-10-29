@@ -216,6 +216,66 @@ tables-lua-usage-negative-control:
 		echo "tables-lua-usage negative control: the $$c copy fails the gate"; \
 	done
 
+# J6 (docs/PORTING.md) — THE CARD CONFORMANCE CHECK, this leg's half
+# (tables/cards/conformance/FORMAT.md). tables/cards/lua is the facade
+# (cards.lua) and its driver (driver, driver.lua) over the generated Card unit:
+#
+#   cards-lua-generate                    the Card unit generated for Lua, the
+#                                         runtime modules beside it
+#   cards-lua-test                        the facade's unit tests (no clock, no
+#                                         socket, no process)
+#   cards-lua-conformance                 the harness `cards` subcommand over
+#                                         the Lua driver, all nine surfaces
+#   cards-lua-conformance-negative-control, -upgrade-, -hash-
+#                                         one damaged answer each, through the
+#                                         driver's test-only switches, and the
+#                                         check must go red on that surface and
+#                                         on no other
+#
+# They live in make/lua.mk (NOT a make/cards-lua.mk): the wide-scalar refusal
+# gate discovers every make/*.mk as a live port (docs/SPEC-TABLES.md §11). The
+# unit is a STAMP, not a phony name: the targets that read it run side by side
+# under -j and in sub-makes, and a phony rule's rm -rf would empty the directory
+# under a sibling's driver mid-read.
+CARDS_LUA_GENERATED := build/tables-generated-lua/cards
+CARDS_REQUIRE_LUA := load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+.PHONY: cards-lua-generate cards-lua-test cards-lua-conformance cards-lua-conformance-negative-control cards-lua-conformance-upgrade-negative-control cards-lua-conformance-hash-negative-control
+cards-lua-generate: $(CARDS_LUA_GENERATED)/.stamp
+
+$(CARDS_LUA_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/cards/schema.lock
+	@rm -rf $(CARDS_LUA_GENERATED)
+	@mkdir -p $(CARDS_LUA_GENERATED)
+	./bin/schema generate --lang lua --out $(CARDS_LUA_GENERATED) tables/cards
+	@touch $@
+
+cards-lua-test: toolchain-lua cards-lua-generate tables/cards/lua/cards.lua tables/cards/lua/cards_test.lua
+	$(LUA) tables/cards/lua/cards_test.lua
+
+cards-lua-conformance: toolchain-lua build/conformance-harness cards-lua-generate
+	./build/conformance-harness cards --work build/cards-lua-conformance --corpus tables/cards/conformance --driver 'tables/cards/lua/driver' --require $(CARDS_REQUIRE_LUA)
+
+# $(1) the sabotage switch, $(2) the surface that must go red, $(3) the
+# surfaces that must stay green, $(4) the work and log name.
+define cards-lua-control
+	@if $(1)=1 ./build/conformance-harness cards --work build/cards-lua-conformance-$(4) --corpus tables/cards/conformance --driver 'tables/cards/lua/driver' --require $(CARDS_REQUIRE_LUA) > build/cards-lua-conformance-$(4).log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the damaged $(2) answer left the card conformance check green'; exit 1; fi
+	@grep -qE 'cards $(2) .*FAIL' build/cards-lua-conformance-$(4).log || { echo 'NEGATIVE CONTROL FAILED: $(2) did not go red'; cat build/cards-lua-conformance-$(4).log; exit 1; }
+	@grep -qE 'cards ($(3)) pass' build/cards-lua-conformance-$(4).log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-lua-conformance-$(4).log; exit 1; }
+	@echo "cards Lua negative control ($(2)): the damaged answer fails $(2) and no other surface"
+endef
+
+cards-lua-conformance-negative-control: toolchain-lua build/conformance-harness cards-lua-generate
+	$(call cards-lua-control,CARDS_LUA_SABOTAGE_RENDER,render,load|save|parse|bounds|upgrade|edit|taskhash|view,neg)
+
+cards-lua-conformance-upgrade-negative-control: toolchain-lua build/conformance-harness cards-lua-generate
+	$(call cards-lua-control,CARDS_LUA_SABOTAGE_UPGRADE,upgrade,load|save|render|parse|bounds|edit|taskhash|view,upgrade-neg)
+
+cards-lua-conformance-hash-negative-control: toolchain-lua build/conformance-harness cards-lua-generate
+	$(call cards-lua-control,CARDS_LUA_SABOTAGE_HASH,taskhash,load|save|render|parse|bounds|upgrade|edit|view,hash-neg)
+
+test-lua: cards-lua-test cards-lua-conformance cards-lua-conformance-negative-control cards-lua-conformance-upgrade-negative-control cards-lua-conformance-hash-negative-control
+
 # I8 (docs/PORTING.md) — THE BENCH LEG's CORRECTNESS GATE. bench/tables/lua is
 # the tables bench's Lua leg (bench/tables/README.md): the committed 64-record
 # variant corpus is loaded and re-saved through the generated table module and

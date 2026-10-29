@@ -135,10 +135,13 @@
       "lua": "5.4.8"
     },
     {
-      "name": "lua-docs",
+      "name": "lua-cards-docs",
       "when": "pull-request",
-      "why": "the Lua port's documented-surface control (two edited copies of docs/USAGE.md, each required to fail the usage gate) and the bench leg's corpus control (a flipped golden byte and a flipped variant byte, each required to fail the bench correctness gate by name). They need the pinned interpreter (make dist-lua) and bin/schema, and no compile weight of their own.",
+      "why": "the Lua port's card driver controls (render, upgrade and taskhash each damaged through a test-only switch, the harness required red on that surface and on no other), the documented-surface control (two edited copies of docs/USAGE.md, one calling a renamed runtime function and one walking nothing, each required to fail the usage gate) and the bench leg's corpus control (a flipped golden byte and a flipped variant byte, each required to fail the bench correctness gate by name). They need the pinned interpreter (make dist-lua), bin/schema, the harness and the Card unit generated for Lua, and no compile weight of their own: the card controls are three harness runs over 43 small cases.",
       "targets": [
+        "cards-lua-conformance-hash-negative-control",
+        "cards-lua-conformance-negative-control",
+        "cards-lua-conformance-upgrade-negative-control",
         "tables-lua-bench-gate-negative-control",
         "tables-lua-usage-negative-control"
       ],
