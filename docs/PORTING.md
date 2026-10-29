@@ -1352,7 +1352,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ✅ `tables-rust-usage` `TestUsageRust` (docs/USAGE.md's `rust-table-usage` example compiled against `tables/examples` and run) | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` |
 
 ### I13 — The text differential against a third implementation
 

@@ -852,6 +852,17 @@ test-rust: tables-rust-wire-fuzz-negative-control
 # fuzzer that only ever ran sabotaged proved the control, not the reader.
 test-rust: tables-rust-fuzz
 
+# THE DOCUMENTED SURFACE (docs/PORTING.md I12): docs/USAGE.md's Rust table
+# example, between its rust-table-usage markers, compiled against the
+# tables/examples crate and run. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip
+# into a failure, so the target never passes on a SKIP.
+.PHONY: tables-rust-usage
+tables-rust-usage:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$'
+	@echo "tables Rust usage: docs/USAGE.md's Rust example compiles and runs"
+
+test-rust: tables-rust-usage
+
 # THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the generated
 # retaining load's capacity check is sabotaged to keep nothing, through a
 # `go test -overlay` of internal/codegen/rusttable/variablecodec.go so no
