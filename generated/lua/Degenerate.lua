@@ -10,7 +10,9 @@ local _M = {}
 
 local function fill(n, v)
   local t = {}
-  for i = 1, n do t[i] = v end
+  for i = 1, n do
+    t[i] = v
+  end
   return t
 end
 
@@ -132,29 +134,25 @@ end
 -- ReadVec2 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadVec2(stream, value)
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.X = BYTES.value
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.Y = BYTES.value
   return true
 end
 
 -- ZeroSpanF64 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroSpanF64(value)
-  for i = 1, 2 do value.Values[i] = 0.0 end
+  for i = 1, 2 do
+    value.Values[i] = 0.0
+  end
 end
 
 -- ReadSpanF64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadSpanF64(stream, value)
   for i = 1, 2 do
-    if not stream:serializeDouble(BYTES) then
-      return false
-    end
+    if not stream:serializeDouble(BYTES) then return false end
     value.Values[i] = BYTES.value
   end
   return true
@@ -162,16 +160,16 @@ end
 
 -- ZeroSpanU64 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroSpanU64(value)
-  for i = 1, 2 do value.Values[i] = 0 end
+  for i = 1, 2 do
+    value.Values[i] = 0
+  end
 end
 
 -- ReadSpanU64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadSpanU64(stream, value)
   for i = 1, 2 do
-    if not stream:serializeBits64(BIG, 64) then
-      return false
-    end
+    if not stream:serializeBits64(BIG, 64) then return false end
     value.Values[i] = BIG.value
   end
   return true
@@ -179,16 +177,16 @@ end
 
 -- ZeroSpanI64 resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroSpanI64(value)
-  for i = 1, 2 do value.Values[i] = 0 end
+  for i = 1, 2 do
+    value.Values[i] = 0
+  end
 end
 
 -- ReadSpanI64 reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadSpanI64(stream, value)
   for i = 1, 2 do
-    if not stream:serializeBits64(BIG, 64) then
-      return false
-    end
+    if not stream:serializeBits64(BIG, 64) then return false end
     value.Values[i] = BIG.value
   end
   return true
@@ -196,16 +194,16 @@ end
 
 -- ZeroSpanOne resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroSpanOne(value)
-  for i = 1, 1 do value.Values[i] = 0 end
+  for i = 1, 1 do
+    value.Values[i] = 0
+  end
 end
 
 -- ReadSpanOne reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadSpanOne(stream, value)
   for i = 1, 1 do
-    if not stream:serializeBits64(BIG, 64) then
-      return false
-    end
+    if not stream:serializeBits64(BIG, 64) then return false end
     value.Values[i] = BIG.value
   end
   return true
@@ -213,16 +211,16 @@ end
 
 -- ZeroSpanChunk resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroSpanChunk(value)
-  for i = 1, 4 do value.Values[i] = 0 end
+  for i = 1, 4 do
+    value.Values[i] = 0
+  end
 end
 
 -- ReadSpanChunk reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadSpanChunk(stream, value)
   for i = 1, 4 do
-    if not stream:serializeBits(BITS, 16) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 16) then return false end
     value.Values[i] = BITS.value
   end
   return true
@@ -230,7 +228,9 @@ end
 
 -- ZeroSpanTail resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroSpanTail(value)
-  for i = 1, 2 do value.Values[i] = 0.0 end
+  for i = 1, 2 do
+    value.Values[i] = 0.0
+  end
   value.Tail = 0
 end
 
@@ -238,37 +238,33 @@ end
 -- (a stream overflow rides stream:error()).
 function _M.ReadSpanTail(stream, value)
   for i = 1, 2 do
-    if not stream:serializeDouble(BYTES) then
-      return false
-    end
+    if not stream:serializeDouble(BYTES) then return false end
     value.Values[i] = BYTES.value
   end
-  if not stream:serializeBits(BITS, 32) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 32) then return false end
   value.Tail = BITS.value
   return true
 end
 
 -- ZeroSpanTwice resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroSpanTwice(value)
-  for i = 1, 2 do value.A[i] = 0.0 end
-  for i = 1, 2 do value.B[i] = 0.0 end
+  for i = 1, 2 do
+    value.A[i] = 0.0
+  end
+  for i = 1, 2 do
+    value.B[i] = 0.0
+  end
 end
 
 -- ReadSpanTwice reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadSpanTwice(stream, value)
   for i = 1, 2 do
-    if not stream:serializeDouble(BYTES) then
-      return false
-    end
+    if not stream:serializeDouble(BYTES) then return false end
     value.A[i] = BYTES.value
   end
   for i = 1, 2 do
-    if not stream:serializeDouble(BYTES) then
-      return false
-    end
+    if not stream:serializeDouble(BYTES) then return false end
     value.B[i] = BYTES.value
   end
   return true
@@ -284,17 +280,11 @@ end
 -- ReadTrio reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadTrio(stream, value)
-  if not stream:serializeBits(BITS, 20) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 20) then return false end
   value.A = BITS.value
-  if not stream:serializeBits(BITS, 20) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 20) then return false end
   value.B = BITS.value
-  if not stream:serializeBits(BITS, 24) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 24) then return false end
   value.C = BITS.value
   return true
 end
@@ -307,9 +297,7 @@ end
 -- ReadTrioSole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadTrioSole(stream, value)
-  if not _M.ReadTrio(stream, value.Inner) then
-    return false
-  end
+  if not _M.ReadTrio(stream, value.Inner) then return false end
   return true
 end
 
@@ -321,9 +309,7 @@ end
 -- ReadVec3Sole reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadVec3Sole(stream, value)
-  if not Types_.ReadVec3(stream, value.V) then
-    return false
-  end
+  if not Types_.ReadVec3(stream, value.V) then return false end
   return true
 end
 
@@ -336,12 +322,8 @@ end
 -- ReadTrioFirst reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadTrioFirst(stream, value)
-  if not _M.ReadTrio(stream, value.Inner) then
-    return false
-  end
-  if not stream:serializeBits(BITS, 16) then
-    return false
-  end
+  if not _M.ReadTrio(stream, value.Inner) then return false end
+  if not stream:serializeBits(BITS, 16) then return false end
   value.Trailer = BITS.value
   return true
 end
@@ -360,33 +342,19 @@ end
 -- ReadTrioStraddle reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadTrioStraddle(stream, value)
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Pad0 = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Pad1 = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Pad2 = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Pad3 = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Pad4 = BIG.value
-  if not stream:serializeBits(BITS, 24) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 24) then return false end
   value.Pad5 = BITS.value
-  if not _M.ReadTrio(stream, value.Inner) then
-    return false
-  end
+  if not _M.ReadTrio(stream, value.Inner) then return false end
   return true
 end
 

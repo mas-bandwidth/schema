@@ -8,13 +8,17 @@ local _M = {}
 
 local function build(n, make)
   local t = {}
-  for i = 1, n do t[i] = make() end
+  for i = 1, n do
+    t[i] = make()
+  end
   return t
 end
 
 local function fill(n, v)
   local t = {}
-  for i = 1, n do t[i] = v end
+  for i = 1, n do
+    t[i] = v
+  end
   return t
 end
 
@@ -33,10 +37,15 @@ local function utf8valid(s)
     i = i + 1
     if b >= 0x80 then
       local rem, point
-      if b >= 0xC0 and b <= 0xDF then rem, point = 1, b & 0x1F
-      elseif b >= 0xE0 and b <= 0xEF then rem, point = 2, b & 0x0F
-      elseif b >= 0xF0 and b <= 0xF7 then rem, point = 3, b & 0x07
-      else return false end
+      if b >= 0xC0 and b <= 0xDF then
+        rem, point = 1, b & 0x1F
+      elseif b >= 0xE0 and b <= 0xEF then
+        rem, point = 2, b & 0x0F
+      elseif b >= 0xF0 and b <= 0xF7 then
+        rem, point = 3, b & 0x07
+      else
+        return false
+      end
       if rem > n - i + 1 then return false end
       for _ = 1, rem do
         local c = string.byte(s, i)
@@ -191,7 +200,9 @@ function _M.NewProbeCollider()
     Armor = 0,
     Shape = _M.NewProbeShape(),
     Backup = _M.NewProbeShape(),
-    Extras = build(2, function() return _M.NewProbeShape() end),
+    Extras = build(2, function()
+      return _M.NewProbeShape()
+    end),
     ExtrasCount = 0,
   }
 end
@@ -207,7 +218,9 @@ end
 -- type ProbeArray
 function _M.NewProbeArray()
   return {
-    Samples = build(2, function() return _M.NewProbeSample() end),
+    Samples = build(2, function()
+      return _M.NewProbeSample()
+    end),
     Config = _M.NewProbeConfig(),
   }
 end
@@ -296,28 +309,20 @@ end
 -- ReadProbeHeader reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeHeader(stream, value)
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   if BITS.value ~= 171 then -- const(171, 8): a read rejects any other value (SPEC §4.3)
     return false
   end
-  if not stream:serializeBits(BITS, 3) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 3) then return false end
   value.Version = BITS.value
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   if BITS.value ~= 0 then -- reserved(5): a read rejects nonzero (SPEC §4.3)
     return false
   end
   if not stream:serializeAlign() then -- rejects nonzero padding (SPEC §4.3)
     return false
   end
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.ProbeId = BIG.value
   return true
 end
@@ -334,25 +339,15 @@ end
 -- ReadProbeBits reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeBits(stream, value)
-  if not stream:serializeBits(BITS, 9) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 9) then return false end
   value.Small = BITS.value
-  if not stream:serializeBits64(BIG, 33) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 33) then return false end
   value.Boundary = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Wide = BIG.value
-  if not stream:serializeInt64(BIG, 0, 4294967295) then
-    return false
-  end
+  if not stream:serializeInt64(BIG, 0, 4294967295) then return false end
   value.Sensor = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Nonce = BIG.value
   return true
 end
@@ -367,55 +362,41 @@ function _M.ZeroProbeSample(value)
   value.HasTarget = false
   value.TargetId = 0
   value.IdleTicks = 0
-  for i = 1, 8 do value.Samples[i] = 0 end
+  for i = 1, 8 do
+    value.Samples[i] = 0
+  end
   value.SamplesCount = 0
 end
 
 -- ReadProbeSample reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeSample(stream, value)
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Active = BOOL.value
-  if not stream:serializeCompressedFloat(BYTES, -180.0, 180.0, 0.01) then
-    return false
-  end
+  if not stream:serializeCompressedFloat(BYTES, -180.0, 180.0, 0.01) then return false end
   value.Orientation = BYTES.value
   do
-    if not stream:serializeBits(BITS, 32) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 32) then return false end
     local raw = BITS.value
     if raw >= 2147483648 then raw = raw - 4294967296 end
     value.RawDelta = raw
   end
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.BigDelta = BIG.value
   if value.Active then
-    if not stream:serializeInt(BITS, 0, 15) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 15) then return false end
     value.Weapon = BITS.value
-    if not stream:serializeBool(BOOL) then
-      return false
-    end
+    if not stream:serializeBool(BOOL) then return false end
     value.HasTarget = BOOL.value
     if value.HasTarget then
-      if not stream:serializeBits(BITS, 16) then
-        return false
-      end
+      if not stream:serializeBits(BITS, 16) then return false end
       value.TargetId = BITS.value
     else
       value.TargetId = 0
     end
     value.IdleTicks = 0
   else
-    if not stream:serializeBits(BITS, 32) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 32) then return false end
     value.IdleTicks = BITS.value
     value.Weapon = 0
     value.HasTarget = false
@@ -426,9 +407,7 @@ function _M.ReadProbeSample(stream, value)
   end
   value.SamplesCount = BITS.value
   for i = 1, value.SamplesCount do
-    if not stream:serializeBits(BITS, 16) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 16) then return false end
     value.Samples[i] = BITS.value
   end
   return true
@@ -442,9 +421,7 @@ end
 -- ReadProbeRing reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeRing(stream, value)
-  if not stream:serializeBits(BITS, 16) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 16) then return false end
   value.Radius = BITS.value
   return true
 end
@@ -458,13 +435,9 @@ end
 -- ReadProbeSlab reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeSlab(stream, value)
-  if not stream:serializeInt(BITS, 0, 100) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 100) then return false end
   value.Width = BITS.value
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.Height = BITS.value
   return true
 end
@@ -495,31 +468,25 @@ function _M.ZeroProbeCollider(value)
   value.Armor = 0
   _M.ZeroProbeShape(value.Shape)
   _M.ZeroProbeShape(value.Backup)
-  for i = 1, 2 do _M.ZeroProbeShape(value.Extras[i]) end
+  for i = 1, 2 do
+    _M.ZeroProbeShape(value.Extras[i])
+  end
   value.ExtrasCount = 0
 end
 
 -- ReadProbeCollider reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeCollider(stream, value)
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.Armor = BITS.value
-  if not _M.ReadProbeShape(stream, value.Shape) then
-    return false
-  end
-  if not _M.ReadProbeShape(stream, value.Backup) then
-    return false
-  end
+  if not _M.ReadProbeShape(stream, value.Shape) then return false end
+  if not _M.ReadProbeShape(stream, value.Backup) then return false end
   if not stream:serializeInt(BITS, 0, 2) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.ExtrasCount = BITS.value
   for i = 1, value.ExtrasCount do
-    if not _M.ReadProbeShape(stream, value.Extras[i]) then
-      return false
-    end
+    if not _M.ReadProbeShape(stream, value.Extras[i]) then return false end
   end
   return true
 end
@@ -534,23 +501,21 @@ end
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeConfig(stream, value)
   do
-    if not stream:serializeBits(BITS, 32) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 32) then return false end
     local raw = BITS.value
     if raw >= 2147483648 then raw = raw - 4294967296 end
     value.Retries = raw
   end
-  if not stream:serializeInt(BITS, 0, 15) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 15) then return false end
   value.Preferred = BITS.value
   return true
 end
 
 -- ZeroProbeArray resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroProbeArray(value)
-  for i = 1, 2 do _M.ZeroProbeSample(value.Samples[i]) end
+  for i = 1, 2 do
+    _M.ZeroProbeSample(value.Samples[i])
+  end
   _M.ZeroProbeConfig(value.Config)
 end
 
@@ -558,24 +523,20 @@ end
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeArray(stream, value)
   for i = 1, 2 do
-    if not _M.ReadProbeSample(stream, value.Samples[i]) then
-      return false
-    end
+    if not _M.ReadProbeSample(stream, value.Samples[i]) then return false end
   end
-  if not _M.ReadProbeConfig(stream, value.Config) then
-    return false
-  end
+  if not _M.ReadProbeConfig(stream, value.Config) then return false end
   return true
 end
 
 -- ZeroHeartbeat resets the §5 ZERO form: all-zero storage, without declared defaults.
-function _M.ZeroHeartbeat(value)
+function _M.ZeroHeartbeat(_value)
   -- empty body — nothing to reset (SPEC §4.6)
 end
 
 -- ReadHeartbeat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
-function _M.ReadHeartbeat(stream, value)
+function _M.ReadHeartbeat(_stream, _value)
   -- empty body — presence is the payload (SPEC §4.6)
   return true
 end
@@ -591,21 +552,13 @@ end
 -- ReadTest reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadTest(stream, value)
-  if not stream:serializeBits(BITS, 16) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 16) then return false end
   value.TestA = BITS.value
-  if not stream:serializeInt(BITS, 0, 1000) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 1000) then return false end
   value.TestB = BITS.value
-  if not stream:serializeInt(BITS, 0, 1000) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 1000) then return false end
   value.TestC = BITS.value
-  if not stream:serializeInt(BITS, 0, 1000) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 1000) then return false end
   value.TestD = BITS.value
   return true
 end
@@ -623,9 +576,7 @@ function _M.ReadBlock(stream, value)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.Data = BYTES.value
   end
   return true
@@ -644,9 +595,7 @@ function _M.ReadChat(stream, value)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.Text = BYTES.value
     if not utf8valid(value.Text) then return false end -- malformed UTF-8 (SPEC §4.7)
     if string.find(value.Text, "\0", 1, true) then return false end -- interior null (SPEC §4.7)
@@ -664,16 +613,10 @@ end
 -- ReadProbeReport reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadProbeReport(stream, value)
-  if not _M.ReadProbeHeader(stream, value.Header) then
-    return false
-  end
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not _M.ReadProbeHeader(stream, value.Header) then return false end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.Flags = BITS.value
-  if not _M.ReadTest(stream, value.Echo) then
-    return false
-  end
+  if not _M.ReadTest(stream, value.Echo) then return false end
   return true
 end
 
@@ -686,7 +629,9 @@ function _M.ZeroTestData(value)
   value.E = 0
   value.F = 0
   value.G = false
-  for i = 1, 16 do value.Items[i] = 0 end
+  for i = 1, 16 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
   value.FloatValue = 0.0
   value.CompressedFloatValue = 0.0
@@ -699,110 +644,72 @@ function _M.ZeroTestData(value)
   value.Uint64Value = 0
   value.Int64Full = 0
   value.Int64Range = 0
-  for i = 1, 17 do value.FixedBytes[i] = 0 end
+  for i = 1, 17 do
+    value.FixedBytes[i] = 0
+  end
   value.Text = ""
 end
 
 -- ReadTestData reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadTestData(stream, value)
-  if not stream:serializeInt(BITS, -100, 100) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -100, 100) then return false end
   value.A = BITS.value
-  if not stream:serializeInt(BITS, -100, 100) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -100, 100) then return false end
   value.B = BITS.value
-  if not stream:serializeInt(BITS, -100, 150) then
-    return false
-  end
+  if not stream:serializeInt(BITS, -100, 150) then return false end
   value.C = BITS.value
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.D = BITS.value
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.E = BITS.value
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.F = BITS.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.G = BOOL.value
   if not stream:serializeInt(BITS, 0, 16) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt(BITS, 0, 255) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 255) then return false end
     value.Items[i] = BITS.value
   end
-  if not stream:serializeFloat(BYTES) then
-    return false
-  end
+  if not stream:serializeFloat(BYTES) then return false end
   value.FloatValue = BYTES.value
-  if not stream:serializeCompressedFloat(BYTES, 0.0, 10.0, 0.01) then
-    return false
-  end
+  if not stream:serializeCompressedFloat(BYTES, 0.0, 10.0, 0.01) then return false end
   value.CompressedFloatValue = BYTES.value
-  if not stream:serializeDouble(BYTES) then
-    return false
-  end
+  if not stream:serializeDouble(BYTES) then return false end
   value.DoubleValue = BYTES.value
   do
-    if not stream:serializeBits(BITS, 8) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 8) then return false end
     local raw = BITS.value
     if raw >= 128 then raw = raw - 256 end
     value.Int8Value = raw
   end
   do
-    if not stream:serializeBits(BITS, 16) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 16) then return false end
     local raw = BITS.value
     if raw >= 32768 then raw = raw - 65536 end
     value.Int16Value = raw
   end
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.Uint8Value = BITS.value
-  if not stream:serializeBits(BITS, 16) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 16) then return false end
   value.Uint16Value = BITS.value
-  if not stream:serializeBits(BITS, 32) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 32) then return false end
   value.Uint32Value = BITS.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Uint64Value = BIG.value
-  if not stream:serializeBits64(BIG, 64) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 64) then return false end
   value.Int64Full = BIG.value
-  if not stream:serializeInt64(BIG, -1000000000000, 1000000000000) then
-    return false
-  end
+  if not stream:serializeInt64(BIG, -1000000000000, 1000000000000) then return false end
   value.Int64Range = BIG.value
   if not stream:serializeAlign() then -- rejects nonzero padding (SPEC §4.3)
     return false
   end
   for i = 1, 17 do
-    if not stream:serializeBits(BITS, 8) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 8) then return false end
     value.FixedBytes[i] = BITS.value
   end
   do
@@ -810,9 +717,7 @@ function _M.ReadTestData(stream, value)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.Text = BYTES.value
     if not utf8valid(value.Text) then return false end -- malformed UTF-8 (SPEC §4.7)
     if string.find(value.Text, "\0", 1, true) then return false end -- interior null (SPEC §4.7)
@@ -829,13 +734,9 @@ end
 -- ReadCompressedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadCompressedProbe(stream, value)
-  if not stream:serializeCompressedFloat(BYTES, 0.0, 10.0, 0.01) then
-    return false
-  end
+  if not stream:serializeCompressedFloat(BYTES, 0.0, 10.0, 0.01) then return false end
   value.Boundary = BYTES.value
-  if not stream:serializeCompressedFloat(BYTES, -5.0, 5.0, 0.001) then
-    return false
-  end
+  if not stream:serializeCompressedFloat(BYTES, -5.0, 5.0, 0.001) then return false end
   value.Offset = BYTES.value
   return true
 end
@@ -861,16 +762,19 @@ function _M.WriteProbeBits(stream, v)
   if math.type(v.Wide) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.Wide }, 64) then return false end -- the declared bit width
   if math.type(v.Sensor) ~= "integer" or v.Sensor < 0 or v.Sensor > 4294967295 then return false end
-  if not stream:serializeBits({ value = v.Sensor - (0) }, 32) then return false end -- the offset from min
-  if math.type(v.Nonce) ~= "integer" or math.ult(v.Nonce, 0) or math.ult(0xffffffffffffffff, v.Nonce) then return false end
-  if not stream:serializeBits64({ value = v.Nonce - (0) }, 64) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Sensor - 0 }, 32) then return false end -- the offset from min
+  if math.type(v.Nonce) ~= "integer" or math.ult(v.Nonce, 0) or math.ult(0xffffffffffffffff, v.Nonce) then
+    return false
+  end
+  if not stream:serializeBits64({ value = v.Nonce - 0 }, 64) then return false end -- the offset from min
   return true
 end
 
 -- type ProbeSample (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeSample(stream, v)
   if not stream:serializeBool({ value = v.Active }) then return false end -- SPEC §4.3
-  if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  -- the step index (SPEC §4.3)
+  if not stream:serializeCompressedFloat({ value = v.Orientation }, -180.0, 180.0, 0.01) then return false end
   if math.type(v.RawDelta) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.RawDelta & 0xffffffff }, 32) then return false end -- the storage width
   if math.type(v.BigDelta) ~= "integer" then return false end
@@ -887,8 +791,9 @@ function _M.WriteProbeSample(stream, v)
     if math.type(v.IdleTicks) ~= "integer" then return false end
     if not stream:serializeBits({ value = v.IdleTicks }, 32) then return false end -- the storage width
   end
-  if type(v.SamplesCount) ~= "number" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end -- the count guards the loop (SPEC §6.3)
-  if not stream:serializeBits({ value = v.SamplesCount - (1) }, 3) then return false end -- the count
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.SamplesCount) ~= "number" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
+  if not stream:serializeBits({ value = v.SamplesCount - 1 }, 3) then return false end -- the count
   for _i = 1, v.SamplesCount do
     if math.type(v.Samples[_i]) ~= "integer" then return false end
     if not stream:serializeBits({ value = v.Samples[_i] }, 16) then return false end -- the storage width
@@ -906,7 +811,7 @@ end
 -- type ProbeSlab (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeSlab(stream, v)
   if math.type(v.Width) ~= "integer" or v.Width < 0 or v.Width > 100 then return false end
-  if not stream:serializeBits({ value = v.Width - (0) }, 7) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.Width - 0 }, 7) then return false end -- the offset from min
   if math.type(v.Height) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Height }, 8) then return false end -- the storage width
   return true
@@ -931,7 +836,8 @@ function _M.WriteProbeCollider(stream, v)
   if not stream:serializeBits({ value = v.Armor }, 8) then return false end -- the storage width
   if not _M.WriteProbeShape(stream, v.Shape) then return false end
   if not _M.WriteProbeShape(stream, v.Backup) then return false end
-  if type(v.ExtrasCount) ~= "number" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ExtrasCount) ~= "number" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
   if not stream:serializeBits({ value = v.ExtrasCount }, 2) then return false end -- the count
   for _i = 1, v.ExtrasCount do
     if not _M.WriteProbeShape(stream, v.Extras[_i]) then return false end
@@ -958,7 +864,7 @@ function _M.WriteProbeArray(stream, v)
 end
 
 -- type Heartbeat (SPEC §6.1: the wire order is the declared order)
-function _M.WriteHeartbeat(stream, v)
+function _M.WriteHeartbeat(_stream, _v)
   return true
 end
 
@@ -967,11 +873,11 @@ function _M.WriteTest(stream, v)
   if math.type(v.TestA) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.TestA }, 16) then return false end -- the storage width
   if math.type(v.TestB) ~= "integer" or v.TestB < 0 or v.TestB > 1000 then return false end
-  if not stream:serializeBits({ value = v.TestB - (0) }, 10) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.TestB - 0 }, 10) then return false end -- the offset from min
   if math.type(v.TestC) ~= "integer" or v.TestC < 0 or v.TestC > 1000 then return false end
-  if not stream:serializeBits({ value = v.TestC - (0) }, 10) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.TestC - 0 }, 10) then return false end -- the offset from min
   if math.type(v.TestD) ~= "integer" or v.TestD < 0 or v.TestD > 1000 then return false end
-  if not stream:serializeBits({ value = v.TestD - (0) }, 10) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.TestD - 0 }, 10) then return false end -- the offset from min
   return true
 end
 
@@ -979,7 +885,8 @@ end
 function _M.WriteBlock(stream, v)
   if type(v.Data) ~= "string" or #v.Data > 2000 then return false end
   if not stream:serializeBits({ value = #v.Data }, 11) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.Data, 1, #v.Data) }, #v.Data) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.Data, 1, #v.Data) }, #v.Data) then return false end
   return true
 end
 
@@ -987,7 +894,8 @@ end
 function _M.WriteChat(stream, v)
   if type(v.Text) ~= "string" or #v.Text > 256 then return false end
   if not stream:serializeBits({ value = #v.Text }, 9) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end
   return true
 end
 
@@ -1003,11 +911,11 @@ end
 -- type TestData (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTestData(stream, v)
   if math.type(v.A) ~= "integer" or v.A < -100 or v.A > 100 then return false end
-  if not stream:serializeBits({ value = v.A - (-100) }, 8) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.A - -100 }, 8) then return false end -- the offset from min
   if math.type(v.B) ~= "integer" or v.B < -100 or v.B > 100 then return false end
-  if not stream:serializeBits({ value = v.B - (-100) }, 8) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.B - -100 }, 8) then return false end -- the offset from min
   if math.type(v.C) ~= "integer" or v.C < -100 or v.C > 150 then return false end
-  if not stream:serializeBits({ value = v.C - (-100) }, 8) then return false end -- the offset from min
+  if not stream:serializeBits({ value = v.C - -100 }, 8) then return false end -- the offset from min
   if math.type(v.D) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.D }, 8) then return false end -- the declared bit width
   if math.type(v.E) ~= "integer" then return false end
@@ -1015,14 +923,16 @@ function _M.WriteTestData(stream, v)
   if math.type(v.F) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.F }, 8) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.G }) then return false end -- SPEC §4.3
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 255 then return false end
-    if not stream:serializeBits({ value = v.Items[_i] - (0) }, 8) then return false end -- the offset from min
+    if not stream:serializeBits({ value = v.Items[_i] - 0 }, 8) then return false end -- the offset from min
   end
   if not stream:serializeFloat({ value = v.FloatValue }) then return false end
-  if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
+  -- the step index (SPEC §4.3)
+  if not stream:serializeCompressedFloat({ value = v.CompressedFloatValue }, 0.0, 10.0, 0.01) then return false end
   if not stream:serializeDouble({ value = v.DoubleValue }) then return false end
   if math.type(v.Int8Value) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Int8Value & 0xff }, 8) then return false end -- the storage width
@@ -1038,8 +948,11 @@ function _M.WriteTestData(stream, v)
   if not stream:serializeBits64({ value = v.Uint64Value }, 64) then return false end -- the storage width
   if math.type(v.Int64Full) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.Int64Full }, 64) then return false end -- the storage width
-  if math.type(v.Int64Range) ~= "integer" or v.Int64Range < -1000000000000 or v.Int64Range > 1000000000000 then return false end
-  if not stream:serializeBits64({ value = v.Int64Range - (-1000000000000) }, 41) then return false end -- the offset from min
+  if math.type(v.Int64Range) ~= "integer" or v.Int64Range < -1000000000000 or v.Int64Range > 1000000000000 then
+    return false
+  end
+  -- the offset from min
+  if not stream:serializeBits64({ value = v.Int64Range - -1000000000000 }, 41) then return false end
   if not stream:serializeAlign() then return false end -- SPEC §4.3
   for _i = 1, 17 do
     if math.type(v.FixedBytes[_i]) ~= "integer" then return false end
@@ -1047,14 +960,17 @@ function _M.WriteTestData(stream, v)
   end
   if type(v.Text) ~= "string" or #v.Text > 255 then return false end
   if not stream:serializeBits({ value = #v.Text }, 8) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.Text, 1, #v.Text) }, #v.Text) then return false end
   return true
 end
 
 -- type CompressedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteCompressedProbe(stream, v)
-  if not stream:serializeCompressedFloat({ value = v.Boundary }, 0.0, 10.0, 0.01) then return false end -- the step index (SPEC §4.3)
-  if not stream:serializeCompressedFloat({ value = v.Offset }, -5.0, 5.0, 0.001) then return false end -- the step index (SPEC §4.3)
+  -- the step index (SPEC §4.3)
+  if not stream:serializeCompressedFloat({ value = v.Boundary }, 0.0, 10.0, 0.01) then return false end
+  -- the step index (SPEC §4.3)
+  if not stream:serializeCompressedFloat({ value = v.Offset }, -5.0, 5.0, 0.001) then return false end
   return true
 end
 

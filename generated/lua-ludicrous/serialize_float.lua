@@ -7,17 +7,37 @@
     provided that the conditions of the BSD 3-Clause license are met (see the LICENSE file).
 
     float and double (STANDARD.md, "Floating Point"): the 32 and 64 bits of the
-    IEEE-754 patterns, bit transparent both ways — every NaN payload, signalling
-    NaN, infinity, negative zero and denormal is legal and reproduced exactly,
-    and a reader never canonicalizes or refuses a pattern. float32 rounding
-    (DESIGN.md (e)) is Go's float32() conversion: round to nearest, ties to
-    even, subnormal rounding, overflow to signed infinity, infinities to
-    themselves, and NaN as the conversion instruction produces.
+    IEEE-754 patterns, FINITE ONLY (STANDARD.md, "Finite values only, every one
+    bit exact"). A pattern whose exponent field is all ones (NaN with any
+    payload, either infinity) is refused on read as non_finite_float, tested on
+    the RAW BITS before any conversion, and the destination is left unwritten.
+    A non-finite value is write misuse: the writer and the measure trap on it
+    (IMPLEMENTING.md U9, U6), tested on the bits after the float32 narrowing,
+    so a finite double above FLT_MAX that narrows to infinity traps too. Negative zero and every subnormal are
+    finite and reproduced exactly. float32 rounding (DESIGN.md (e)) is Go's
+    float32() conversion: round to nearest, ties to even, subnormal rounding,
+    overflow to signed infinity.
 ]]
+
+local stream = require("serialize_stream")
+
+local NON_FINITE_FLOAT = stream.Refusal.NonFiniteFloat
 
 local M = {}
 
-local type, error, math, string = type, error, math, string
+local error, math, string = error, math, string
+
+-- STANDARD.md, "Finite values only": the exponent field all ones.
+local FLOAT_EXPONENT = 0x7F800000
+local DOUBLE_EXPONENT = 0x7FF0000000000000
+
+local function floatBitsAreFinite(bits)
+  return (bits & FLOAT_EXPONENT) ~= FLOAT_EXPONENT
+end
+
+local function doubleBitsAreFinite(bits)
+  return (bits & DOUBLE_EXPONENT) ~= DOUBLE_EXPONENT
+end
 
 -- number of bits of a non-negative integer (0 for 0); only used on the rare
 -- subnormal paths, so a loop is fine
@@ -35,12 +55,12 @@ local function doubleBits(v)
   return string.unpack("<i8", string.pack("<d", v))
 end
 
--- roundDivByPow2(M, d): M / 2^d rounded to the nearest integer, ties to even
+-- roundDivByPow2(sig, d): sig / 2^d rounded to the nearest integer, ties to even
 -- (d >= 1). Used only on the rare subnormal path.
-local function roundDivByPow2(M, d)
+local function roundDivByPow2(sig, d)
   if d >= 54 then return 0 end
-  local q = M >> d
-  local r = M & ((1 << d) - 1)
+  local q = sig >> d
+  local r = sig & ((1 << d) - 1)
   local half = 1 << (d - 1)
   if r == half then
     if (q & 1) == 1 then q = q + 1 end
@@ -59,45 +79,37 @@ local function float32Bits(v)
   local e = (b >> 52) & 0x7FF
   local m = b & 0xFFFFFFFFFFFFF
 
-  -- infinity and NaN: bit transparency (STANDARD.md, float). A NaN that is
-  -- exactly a float32 moves its bits; any other NaN becomes the quiet NaN with
-  -- its sign and its top 22 payload bits, as Go's conversion instruction makes.
+  -- infinity and NaN: the format carries neither (STANDARD.md, "Finite values
+  -- only"), so the writer refuses the pattern this returns. An infinity keeps
+  -- its sign; every NaN becomes the quiet NaN with its sign.
   if e == 0x7FF then
-    local fm
-    if m == 0 then
-      fm = 0
-    elseif (m & 0x1FFFFFFF) == 0 then
-      fm = m >> 29
-    else
-      fm = (m >> 29) | 0x400000
-    end
-    return (s << 31) | 0x7F800000 | fm
+    return (s << 31) | 0x7F800000 | (m ~= 0 and 0x400000 or 0)
   end
 
-  -- zero, sign included (STANDARD.md, "Bit transparency": negative zero is legal)
+  -- zero, sign included (STANDARD.md, "Finite values only": negative zero is finite)
   if e == 0 and m == 0 then
     return s << 31
   end
 
-  -- value magnitude = M * 2^p, with the leading bit of M at position k
-  local M, p, k
+  -- value magnitude = sig * 2^p, with the leading bit of sig at position k
+  local sig, p, k
   if e == 0 then
-    M = m
+    sig = m
     p = -1074
     k = bitlen(m) - 1
   else
-    M = (1 << 52) | m
+    sig = (1 << 52) | m
     p = e - 1075
     k = 52
   end
 
-  -- normalize M to a 24-bit significand t at the MSB, rounding to nearest,
+  -- normalize sig to a 24-bit significand t at the MSB, rounding to nearest,
   -- ties to even on the discarded bits; value = t * 2^q (DESIGN.md (e))
   local shift = k - 23
   local t, q
   if shift > 0 then
-    t = M >> shift
-    local r = M & ((1 << shift) - 1)
+    t = sig >> shift
+    local r = sig & ((1 << shift) - 1)
     local half = 1 << (shift - 1)
     if r == half then
       if (t & 1) == 1 then t = t + 1 end
@@ -106,7 +118,7 @@ local function float32Bits(v)
     end
     q = p + shift
   else
-    t = M << (-shift)
+    t = sig << (-shift)
     q = p + shift
   end
 
@@ -124,11 +136,11 @@ local function float32Bits(v)
     return (s << 31) | ((E + 127) << 23) | (t - (1 << 23))
   end
 
-  -- subnormal single: the exact value M*2^p rounded straight onto the 2^-149
-  -- grid, ties to even, in one rounding from the exact M (DESIGN.md (e)).
+  -- subnormal single: the exact value sig*2^p rounded straight onto the 2^-149
+  -- grid, ties to even, in one rounding from the exact sig (DESIGN.md (e)).
   -- Rounding the pre-rounded 24-bit t instead would double-round and pick the
   -- wrong neighbor (JOB.md attempt 2). d = (p+149) negation > 0.
-  local m23 = roundDivByPow2(M, -p - 149)
+  local m23 = roundDivByPow2(sig, -p - 149)
   if m23 >= (1 << 23) then
     return (s << 31) | (1 << 23)
   end
@@ -166,6 +178,8 @@ end
 M.fround = function(v) return float32FromBits(float32Bits(v)) end
 M.float32Bits = float32Bits
 M.float32FromBits = float32FromBits
+M.floatBitsAreFinite = floatBitsAreFinite
+M.doubleBitsAreFinite = doubleBitsAreFinite
 
 -- DESIGN.md (c): a float holder value is a Lua float (1.0, never 1); an
 -- integer is API misuse and raises.
@@ -177,34 +191,43 @@ end
 
 M.methods = {
   -- STANDARD.md, float: the 32 bits of the IEEE-754 single pattern, one 32-bit
-  -- group. No conversion beyond Go's float32 rounding of the double.
+  -- group, finite only. No conversion beyond Go's float32 rounding of the double.
   serializeFloat = {
     checkValue = function(value) checkFloat(value) end,
-    write = function(stream, value)
-      return stream:_writeBits(float32Bits(value), 32)
+    write = function(s, value)
+      local bits = float32Bits(value)
+      if not floatBitsAreFinite(bits) then return s:_fail(NON_FINITE_FLOAT) end
+      return s:_writeBits(bits, 32)
     end,
-    read = function(stream)
-      local bits = stream:_readBits(32)
+    read = function(s)
+      local bits = s:_readBits(32)
       if bits == nil then return false end
+      if not floatBitsAreFinite(bits) then return s:_fail(NON_FINITE_FLOAT) end
       return true, float32FromBits(bits)
     end,
-    measure = function(stream)
-      return stream:_measure(32)
+    measure = function(s, value)
+      if not floatBitsAreFinite(float32Bits(value)) then return s:_fail(NON_FINITE_FLOAT) end
+      return s:_measure(32)
     end,
   },
-  -- STANDARD.md, double: the 64 bits, one 64-bit group (low 32 first).
+  -- STANDARD.md, double: the 64 bits, one 64-bit group (low 32 first), finite
+  -- only.
   serializeDouble = {
     checkValue = function(value) checkFloat(value) end,
-    write = function(stream, value)
-      return stream:_writeBits(doubleBits(value), 64)
+    write = function(s, value)
+      local bits = doubleBits(value)
+      if not doubleBitsAreFinite(bits) then return s:_fail(NON_FINITE_FLOAT) end
+      return s:_writeBits(bits, 64)
     end,
-    read = function(stream)
-      local bits = stream:_readBits(64)
+    read = function(s)
+      local bits = s:_readBits(64)
       if bits == nil then return false end
+      if not doubleBitsAreFinite(bits) then return s:_fail(NON_FINITE_FLOAT) end
       return true, string.unpack("<d", string.pack("<i8", bits))
     end,
-    measure = function(stream)
-      return stream:_measure(64)
+    measure = function(s, value)
+      if not doubleBitsAreFinite(doubleBits(value)) then return s:_fail(NON_FINITE_FLOAT) end
+      return s:_measure(64)
     end,
   },
 }

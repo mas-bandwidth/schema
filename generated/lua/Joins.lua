@@ -8,13 +8,17 @@ local _M = {}
 
 local function build(n, make)
   local t = {}
-  for i = 1, n do t[i] = make() end
+  for i = 1, n do
+    t[i] = make()
+  end
   return t
 end
 
 local function fill(n, v)
   local t = {}
-  for i = 1, n do t[i] = v end
+  for i = 1, n do
+    t[i] = v
+  end
   return t
 end
 
@@ -33,10 +37,15 @@ local function utf8valid(s)
     i = i + 1
     if b >= 0x80 then
       local rem, point
-      if b >= 0xC0 and b <= 0xDF then rem, point = 1, b & 0x1F
-      elseif b >= 0xE0 and b <= 0xEF then rem, point = 2, b & 0x0F
-      elseif b >= 0xF0 and b <= 0xF7 then rem, point = 3, b & 0x07
-      else return false end
+      if b >= 0xC0 and b <= 0xDF then
+        rem, point = 1, b & 0x1F
+      elseif b >= 0xE0 and b <= 0xEF then
+        rem, point = 2, b & 0x0F
+      elseif b >= 0xF0 and b <= 0xF7 then
+        rem, point = 3, b & 0x07
+      else
+        return false
+      end
       if rem > n - i + 1 then return false end
       for _ = 1, rem do
         local c = string.byte(s, i)
@@ -187,7 +196,9 @@ end
 function _M.NewArrUneven()
   return {
     Lead = 0,
-    Items = build(3, function() return _M.NewUneven() end),
+    Items = build(3, function()
+      return _M.NewUneven()
+    end),
     ItemsCount = 0,
     Tail = 0,
   }
@@ -219,30 +230,20 @@ end
 -- ReadArmsAgree reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArmsAgree(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Flag = BOOL.value
   if value.Flag then
-    if not stream:serializeBits(BITS, 11) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 11) then return false end
     value.A = BITS.value
     value.B = 0
   else
-    if not stream:serializeBits(BITS, 11) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 11) then return false end
     value.B = BITS.value
     value.A = 0
   end
-  if not stream:serializeBits(BITS, 7) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 7) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -259,30 +260,20 @@ end
 -- ReadArmsDisagree reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArmsDisagree(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Flag = BOOL.value
   if value.Flag then
-    if not stream:serializeBits(BITS, 11) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 11) then return false end
     value.A = BITS.value
     value.B = 0
   else
-    if not stream:serializeBits(BITS, 3) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 3) then return false end
     value.B = BITS.value
     value.A = 0
   end
-  if not stream:serializeBits(BITS, 7) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 7) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -298,25 +289,17 @@ end
 -- ReadArmEmpty reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArmEmpty(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Flag = BOOL.value
   if value.Flag then
-    if not stream:serializeBits(BITS, 19) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 19) then return false end
     value.A = BITS.value
   else
     value.A = 0
   end
-  if not stream:serializeBits(BITS, 7) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 7) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -335,45 +318,31 @@ end
 -- ReadArmsNested reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArmsNested(stream, value)
-  if not stream:serializeBits(BITS, 3) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 3) then return false end
   value.Lead = BITS.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Outer = BOOL.value
   if value.Outer then
-    if not stream:serializeBool(BOOL) then
-      return false
-    end
+    if not stream:serializeBool(BOOL) then return false end
     value.Inner = BOOL.value
     if value.Inner then
-      if not stream:serializeBits(BITS, 29) then
-        return false
-      end
+      if not stream:serializeBits(BITS, 29) then return false end
       value.X = BITS.value
       value.Y = 0
     else
-      if not stream:serializeBits(BITS, 5) then
-        return false
-      end
+      if not stream:serializeBits(BITS, 5) then return false end
       value.Y = BITS.value
       value.X = 0
     end
     value.Z = 0
   else
-    if not stream:serializeBits(BITS, 13) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 13) then return false end
     value.Z = BITS.value
     value.Inner = false
     value.X = 0
     value.Y = 0
   end
-  if not stream:serializeBits(BITS, 6) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 6) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -390,13 +359,9 @@ end
 -- ReadArmAlign reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArmAlign(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Flag = BOOL.value
   if value.Flag then
     do
@@ -404,24 +369,18 @@ function _M.ReadArmAlign(stream, value)
         return false
       end
       local len = BITS.value
-      if not stream:serializeBytes(BYTES, len) then
-        return false
-      end
+      if not stream:serializeBytes(BYTES, len) then return false end
       value.S = BYTES.value
       if not utf8valid(value.S) then return false end -- malformed UTF-8 (SPEC §4.7)
       if string.find(value.S, "\0", 1, true) then return false end -- interior null (SPEC §4.7)
     end
     value.B = 0
   else
-    if not stream:serializeBits(BITS, 10) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 10) then return false end
     value.B = BITS.value
     value.S = ""
   end
-  if not stream:serializeBits(BITS, 7) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 7) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -430,7 +389,9 @@ end
 function _M.ZeroArmArray(value)
   value.Lead = 0
   value.Flag = false
-  for i = 1, 3 do value.Items[i] = 0 end
+  for i = 1, 3 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
   value.B = 0
   value.Tail = 0
@@ -439,13 +400,9 @@ end
 -- ReadArmArray reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArmArray(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.Flag = BOOL.value
   if value.Flag then
     if not stream:serializeInt(BITS, 0, 3) then -- the count guards the loop (SPEC §6.3)
@@ -453,23 +410,19 @@ function _M.ReadArmArray(stream, value)
     end
     value.ItemsCount = BITS.value
     for i = 1, value.ItemsCount do
-      if not stream:serializeInt(BITS, 0, 8191) then
-        return false
-      end
+      if not stream:serializeInt(BITS, 0, 8191) then return false end
       value.Items[i] = BITS.value
     end
     value.B = 0
   else
-    if not stream:serializeBits(BITS, 9) then
-      return false
-    end
+    if not stream:serializeBits(BITS, 9) then return false end
     value.B = BITS.value
-    for i = 1, 3 do value.Items[i] = 0 end
+    for i = 1, 3 do
+      value.Items[i] = 0
+    end
     value.ItemsCount = 0
   end
-  if not stream:serializeBits(BITS, 7) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 7) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -482,9 +435,7 @@ end
 -- ReadNarrow reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadNarrow(stream, value)
-  if not stream:serializeBits(BITS, 3) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 3) then return false end
   value.N = BITS.value
   return true
 end
@@ -497,9 +448,7 @@ end
 -- ReadWide reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadWide(stream, value)
-  if not stream:serializeBits64(BIG, 37) then
-    return false
-  end
+  if not stream:serializeBits64(BIG, 37) then return false end
   value.W = BIG.value
   return true
 end
@@ -535,16 +484,10 @@ end
 -- ReadHoldsUneven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadHoldsUneven(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
-  if not _M.ReadUneven(stream, value.U) then
-    return false
-  end
-  if not stream:serializeBits(BITS, 11) then
-    return false
-  end
+  if not _M.ReadUneven(stream, value.U) then return false end
+  if not stream:serializeBits(BITS, 11) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -552,7 +495,9 @@ end
 -- ZeroArrUneven resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroArrUneven(value)
   value.Lead = 0
-  for i = 1, 3 do _M.ZeroUneven(value.Items[i]) end
+  for i = 1, 3 do
+    _M.ZeroUneven(value.Items[i])
+  end
   value.ItemsCount = 0
   value.Tail = 0
 end
@@ -560,22 +505,16 @@ end
 -- ReadArrUneven reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadArrUneven(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeInt(BITS, 0, 3) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not _M.ReadUneven(stream, value.Items[i]) then
-      return false
-    end
+    if not _M.ReadUneven(stream, value.Items[i]) then return false end
   end
-  if not stream:serializeBits(BITS, 3) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 3) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -583,7 +522,9 @@ end
 -- ZeroRegainAfterAlign resets the §5 ZERO form: all-zero storage, without declared defaults.
 function _M.ZeroRegainAfterAlign(value)
   value.Lead = 0
-  for i = 1, 3 do value.Items[i] = 0 end
+  for i = 1, 3 do
+    value.Items[i] = 0
+  end
   value.ItemsCount = 0
   value.S = ""
   value.P = 0
@@ -595,18 +536,14 @@ end
 -- ReadRegainAfterAlign reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadRegainAfterAlign(stream, value)
-  if not stream:serializeBits(BITS, 5) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 5) then return false end
   value.Lead = BITS.value
   if not stream:serializeInt(BITS, 0, 3) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.ItemsCount = BITS.value
   for i = 1, value.ItemsCount do
-    if not stream:serializeInt(BITS, 0, 8191) then
-      return false
-    end
+    if not stream:serializeInt(BITS, 0, 8191) then return false end
     value.Items[i] = BITS.value
   end
   do
@@ -614,28 +551,18 @@ function _M.ReadRegainAfterAlign(stream, value)
       return false
     end
     local len = BITS.value
-    if not stream:serializeBytes(BYTES, len) then
-      return false
-    end
+    if not stream:serializeBytes(BYTES, len) then return false end
     value.S = BYTES.value
     if not utf8valid(value.S) then return false end -- malformed UTF-8 (SPEC §4.7)
     if string.find(value.S, "\0", 1, true) then return false end -- interior null (SPEC §4.7)
   end
-  if not stream:serializeBits(BITS, 32) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 32) then return false end
   value.P = BITS.value
-  if not stream:serializeBits(BITS, 29) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 29) then return false end
   value.Q = BITS.value
-  if not stream:serializeBits(BITS, 19) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 19) then return false end
   value.R = BITS.value
-  if not stream:serializeBits(BITS, 4) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 4) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -719,7 +646,8 @@ function _M.WriteArmAlign(stream, v)
   if v.Flag then
     if type(v.S) ~= "string" or #v.S > 4 then return false end
     if not stream:serializeBits({ value = #v.S }, 3) then return false end -- the length
-    if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end -- align, then the used bytes (SPEC §4.7)
+    -- align, then the used bytes (SPEC §4.7)
+    if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end
   else
     if math.type(v.B) ~= "integer" then return false end
     if not stream:serializeBits({ value = v.B }, 10) then return false end -- the declared bit width
@@ -735,11 +663,12 @@ function _M.WriteArmArray(stream, v)
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.Flag }) then return false end -- SPEC §4.3
   if v.Flag then
-    if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end -- the count guards the loop (SPEC §6.3)
+    -- the count guards the loop (SPEC §6.3)
+    if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
     if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
     for _i = 1, v.ItemsCount do
       if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
-      if not stream:serializeBits({ value = v.Items[_i] - (0) }, 13) then return false end -- the offset from min
+      if not stream:serializeBits({ value = v.Items[_i] - 0 }, 13) then return false end -- the offset from min
     end
   else
     if math.type(v.B) ~= "integer" then return false end
@@ -791,7 +720,8 @@ end
 function _M.WriteArrUneven(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteUneven(stream, v.Items[_i]) then return false end
@@ -805,15 +735,17 @@ end
 function _M.WriteRegainAfterAlign(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
-    if not stream:serializeBits({ value = v.Items[_i] - (0) }, 13) then return false end -- the offset from min
+    if not stream:serializeBits({ value = v.Items[_i] - 0 }, 13) then return false end -- the offset from min
   end
   if type(v.S) ~= "string" or #v.S > 4 then return false end
   if not stream:serializeBits({ value = #v.S }, 3) then return false end -- the length
-  if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end -- align, then the used bytes (SPEC §4.7)
+  -- align, then the used bytes (SPEC §4.7)
+  if not stream:serializeBytes({ value = string.sub(v.S, 1, #v.S) }, #v.S) then return false end
   if math.type(v.P) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.P }, 32) then return false end -- the declared bit width
   if math.type(v.Q) ~= "integer" then return false end

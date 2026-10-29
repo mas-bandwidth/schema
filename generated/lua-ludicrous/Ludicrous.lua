@@ -12,13 +12,17 @@ local _M = {}
 
 local function build(n, make)
   local t = {}
-  for i = 1, n do t[i] = make() end
+  for i = 1, n do
+    t[i] = make()
+  end
   return t
 end
 
 local function fill(n, v)
   local t = {}
-  for i = 1, n do t[i] = v end
+  for i = 1, n do
+    t[i] = v
+  end
   return t
 end
 
@@ -95,7 +99,9 @@ function _M.NewLudicrousState()
     Mode = 0,
     Probe = _M.NewFixedProbe(),
     Wide = _M.NewWideProbe(),
-    Keys = build(4, function() return { lo = 0, hi = 0 } end),
+    Keys = build(4, function()
+      return { lo = 0, hi = 0 }
+    end),
     KeysCount = 0,
     HasTarget = false,
     -- has_target — wire branch; storage holds both sides (SPEC §5)
@@ -138,32 +144,34 @@ function _M.ZeroFixedProbe(value)
   value.Position = 0
   value.Reach = { lo = 0, hi = 0 }
   value.Ticks = 0
-  for i = 1, 2 do value.Samples[i] = 0 end
+  for i = 1, 2 do
+    value.Samples[i] = 0
+  end
 end
 
 -- ReadFixedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadFixedProbe(stream, value)
-  if not stream:serializeFixed(BITS, 16, 16, -180, 180) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 16, 16, -180, 180) then return false end
   value.Angle = BITS.value
-  if not stream:serializeFixed(BIG, 48, 16, -30000, 30000) then
-    return false
-  end
+  if not stream:serializeFixed(BIG, 48, 16, -30000, 30000) then return false end
   value.Position = BIG.value
-  if not stream:serializeFixed(WIDE, 112, 16, { lo = 0xfffffffffff0bdc0, hi = 0xffffffffffffffff }, { lo = 0x00000000000f4240, hi = 0x0000000000000000 }) then
+  if
+    not stream:serializeFixed(
+      WIDE,
+      112,
+      16,
+      { lo = 0xfffffffffff0bdc0, hi = 0xffffffffffffffff },
+      { lo = 0x00000000000f4240, hi = 0x0000000000000000 }
+    )
+  then
     return false
   end
   value.Reach = WIDE.value
-  if not stream:serializeFixed(BITS, 32, 0, 0, 1000000) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 32, 0, 0, 1000000) then return false end
   value.Ticks = BITS.value
   for i = 1, 2 do
-    if not stream:serializeFixed(BITS, 16, 16, -8, 8) then
-      return false
-    end
+    if not stream:serializeFixed(BITS, 16, 16, -8, 8) then return false end
     value.Samples[i] = BITS.value
   end
   return true
@@ -175,7 +183,9 @@ function _M.ZeroUnsignedProbe(value)
   value.Span = 0
   value.Reach = { lo = 0, hi = 0 }
   value.Ticks = 0
-  for i = 1, 2 do value.Samples[i] = 0 end
+  for i = 1, 2 do
+    value.Samples[i] = 0
+  end
   value.Locked = 0
   value.Tail = 0
 end
@@ -183,32 +193,30 @@ end
 -- ReadUnsignedProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadUnsignedProbe(stream, value)
-  if not stream:serializeFixed(BITS, 16, 16, 0, 360) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 16, 16, 0, 360) then return false end
   value.Angle = BITS.value
-  if not stream:serializeFixed(BIG, 48, 16, 0, 281474976710655) then
-    return false
-  end
+  if not stream:serializeFixed(BIG, 48, 16, 0, 281474976710655) then return false end
   value.Span = BIG.value
-  if not stream:serializeFixed(WIDE, 112, 16, { lo = 0x0000000000000000, hi = 0x0000000000000000 }, { lo = 0x00000000001e8480, hi = 0x0000000000000000 }) then
+  if
+    not stream:serializeFixed(
+      WIDE,
+      112,
+      16,
+      { lo = 0x0000000000000000, hi = 0x0000000000000000 },
+      { lo = 0x00000000001e8480, hi = 0x0000000000000000 }
+    )
+  then
     return false
   end
   value.Reach = WIDE.value
-  if not stream:serializeFixed(BITS, 32, 0, 0, 1000000) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 32, 0, 0, 1000000) then return false end
   value.Ticks = BITS.value
   for i = 1, 2 do
-    if not stream:serializeFixed(BITS, 16, 16, 0, 16) then
-      return false
-    end
+    if not stream:serializeFixed(BITS, 16, 16, 0, 16) then return false end
     value.Samples[i] = BITS.value
   end
   value.Locked = 196608 -- degenerate range: zero bits (SPEC §4.6)
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -225,25 +233,39 @@ end
 -- ReadWideProbe reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadWideProbe(stream, value)
-  if not stream:serializeUint128(WIDE) then
-    return false
-  end
+  if not stream:serializeUint128(WIDE) then return false end
   value.EntityId = WIDE.value
-  if not stream:serializeInt128(WIDE, { lo = 0xfffffffed5fa0e00, hi = 0xffffffffffffffff }, { lo = 0x000000012a05f200, hi = 0x0000000000000000 }) then
+  if
+    not stream:serializeInt128(
+      WIDE,
+      { lo = 0xfffffffed5fa0e00, hi = 0xffffffffffffffff },
+      { lo = 0x000000012a05f200, hi = 0x0000000000000000 }
+    )
+  then
     return false
   end
   value.Energy = WIDE.value
-  if not stream:serializeInt128(WIDE, { lo = 0x0000000000000000, hi = 0xfffffff000000000 }, { lo = 0x0000000000000000, hi = 0x0000001000000000 }) then
+  if
+    not stream:serializeInt128(
+      WIDE,
+      { lo = 0x0000000000000000, hi = 0xfffffff000000000 },
+      { lo = 0x0000000000000000, hi = 0x0000001000000000 }
+    )
+  then
     return false
   end
   value.Flux = WIDE.value
-  if not stream:serializeInt128(WIDE, { lo = 0xfffffffffffffc18, hi = 0xffffffffffffffff }, { lo = 0x00000000000003e8, hi = 0x0000000000000000 }) then
+  if
+    not stream:serializeInt128(
+      WIDE,
+      { lo = 0xfffffffffffffc18, hi = 0xffffffffffffffff },
+      { lo = 0x00000000000003e8, hi = 0x0000000000000000 }
+    )
+  then
     return false
   end
   value.Bias = WIDE.value
-  if not stream:serializeUint128(WIDE) then
-    return false
-  end
+  if not stream:serializeUint128(WIDE) then return false end
   value.Seed = WIDE.value
   return true
 end
@@ -253,7 +275,9 @@ function _M.ZeroLudicrousState(value)
   value.Mode = 0
   _M.ZeroFixedProbe(value.Probe)
   _M.ZeroWideProbe(value.Wide)
-  for i = 1, 4 do value.Keys[i] = { lo = 0, hi = 0 } end
+  for i = 1, 4 do
+    value.Keys[i] = { lo = 0, hi = 0 }
+  end
   value.KeysCount = 0
   value.HasTarget = false
   value.TargetId = { lo = 0, hi = 0 }
@@ -262,34 +286,22 @@ end
 -- ReadLudicrousState reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadLudicrousState(stream, value)
-  if not stream:serializeInt(BITS, 0, 3) then
-    return false
-  end
+  if not stream:serializeInt(BITS, 0, 3) then return false end
   value.Mode = BITS.value
-  if not _M.ReadFixedProbe(stream, value.Probe) then
-    return false
-  end
-  if not _M.ReadWideProbe(stream, value.Wide) then
-    return false
-  end
+  if not _M.ReadFixedProbe(stream, value.Probe) then return false end
+  if not _M.ReadWideProbe(stream, value.Wide) then return false end
   if not stream:serializeInt(BITS, 0, 4) then -- the count guards the loop (SPEC §6.3)
     return false
   end
   value.KeysCount = BITS.value
   for i = 1, value.KeysCount do
-    if not stream:serializeUint128(WIDE) then
-      return false
-    end
+    if not stream:serializeUint128(WIDE) then return false end
     value.Keys[i] = WIDE.value
   end
-  if not stream:serializeBool(BOOL) then
-    return false
-  end
+  if not stream:serializeBool(BOOL) then return false end
   value.HasTarget = BOOL.value
   if value.HasTarget then
-    if not stream:serializeUint128(WIDE) then
-      return false
-    end
+    if not stream:serializeUint128(WIDE) then return false end
     value.TargetId = WIDE.value
   else
     value.TargetId = { lo = 0, hi = 0 }
@@ -311,9 +323,7 @@ function _M.ReadDegenerateProbe(stream, value)
   value.LockedFixed = -196608 -- degenerate range: zero bits (SPEC §4.6)
   value.LockedInt = 7 -- degenerate range: zero bits (SPEC §4.6)
   value.LockedWide = { lo = 0xfffff4c58c31d00e, hi = 0xffffffffffffffff } -- degenerate range: zero bits (SPEC §4.6)
-  if not stream:serializeBits(BITS, 8) then
-    return false
-  end
+  if not stream:serializeBits(BITS, 8) then return false end
   value.Tail = BITS.value
   return true
 end
@@ -328,17 +338,11 @@ end
 -- ReadFixedVec reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadFixedVec(stream, value)
-  if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then
-    return false
-  end
+  if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then return false end
   value.X = BIG.value
-  if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then
-    return false
-  end
+  if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then return false end
   value.Y = BIG.value
-  if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then
-    return false
-  end
+  if not stream:serializeFixed(BIG, 48, 16, -100000, 100000) then return false end
   value.Z = BIG.value
   return true
 end
@@ -354,47 +358,50 @@ end
 -- ReadFixedQuat reads the type wire (SPEC §4.3, §6.1); false refuses without a latch
 -- (a stream overflow rides stream:error()).
 function _M.ReadFixedQuat(stream, value)
-  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then return false end
   value.X = BITS.value
-  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then return false end
   value.Y = BITS.value
-  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then return false end
   value.Z = BITS.value
-  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then
-    return false
-  end
+  if not stream:serializeFixed(BITS, 2, 30, -1, 1) then return false end
   value.W = BITS.value
   return true
 end
 
 -- type FixedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteFixedProbe(stream, v)
-  if not stream:serializeFixed({ value = v.Angle }, 16, 16, -180, 180) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Position }, 48, 16, -30000, 30000) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Reach }, 112, 16, -1000000, 1000000) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end -- the Q format's raw offset (SPEC §4.3)
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Angle }, 16, 16, -180, 180) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Position }, 48, 16, -30000, 30000) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Reach }, 112, 16, -1000000, 1000000) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end
   for _i = 1, 2 do
-    if not stream:serializeFixed({ value = v.Samples[_i] }, 16, 16, -8, 8) then return false end -- the Q format's raw offset (SPEC §4.3)
+    -- the Q format's raw offset (SPEC §4.3)
+    if not stream:serializeFixed({ value = v.Samples[_i] }, 16, 16, -8, 8) then return false end
   end
   return true
 end
 
 -- type UnsignedProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteUnsignedProbe(stream, v)
-  if not stream:serializeFixed({ value = v.Angle }, 16, 16, 0, 360) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Span }, 48, 16, 0, 281474976710655) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Reach }, 112, 16, 0, 2000000) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end -- the Q format's raw offset (SPEC §4.3)
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Angle }, 16, 16, 0, 360) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Span }, 48, 16, 0, 281474976710655) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Reach }, 112, 16, 0, 2000000) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Ticks }, 32, 0, 0, 1000000) then return false end
   for _i = 1, 2 do
-    if not stream:serializeFixed({ value = v.Samples[_i] }, 16, 16, 0, 16) then return false end -- the Q format's raw offset (SPEC §4.3)
+    -- the Q format's raw offset (SPEC §4.3)
+    if not stream:serializeFixed({ value = v.Samples[_i] }, 16, 16, 0, 16) then return false end
   end
-  if not stream:serializeFixed({ value = v.Locked }, 16, 16, 3, 3) then return false end -- the Q format's raw offset (SPEC §4.3)
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Locked }, 16, 16, 3, 3) then return false end
   if math.type(v.Tail) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Tail }, 8) then return false end -- the storage width
   return true
@@ -403,9 +410,36 @@ end
 -- type WideProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteWideProbe(stream, v)
   if not stream:serializeUint128({ value = v.EntityId }) then return false end -- uint128 raw (SPEC §4.3)
-  if not stream:serializeInt128({ value = v.Energy }, { lo = 0xfffffffed5fa0e00, hi = 0xffffffffffffffff }, { lo = 0x000000012a05f200, hi = 0x0000000000000000 }) then return false end -- int128, offset from min (SPEC §4.3)
-  if not stream:serializeInt128({ value = v.Flux }, { lo = 0x0000000000000000, hi = 0xfffffff000000000 }, { lo = 0x0000000000000000, hi = 0x0000001000000000 }) then return false end -- int128, offset from min (SPEC §4.3)
-  if not stream:serializeInt128({ value = v.Bias }, { lo = 0xfffffffffffffc18, hi = 0xffffffffffffffff }, { lo = 0x00000000000003e8, hi = 0x0000000000000000 }) then return false end -- int128, offset from min (SPEC §4.3)
+  -- int128, offset from min (SPEC §4.3)
+  if
+    not stream:serializeInt128(
+      { value = v.Energy },
+      { lo = 0xfffffffed5fa0e00, hi = 0xffffffffffffffff },
+      { lo = 0x000000012a05f200, hi = 0x0000000000000000 }
+    )
+  then
+    return false
+  end
+  -- int128, offset from min (SPEC §4.3)
+  if
+    not stream:serializeInt128(
+      { value = v.Flux },
+      { lo = 0x0000000000000000, hi = 0xfffffff000000000 },
+      { lo = 0x0000000000000000, hi = 0x0000001000000000 }
+    )
+  then
+    return false
+  end
+  -- int128, offset from min (SPEC §4.3)
+  if
+    not stream:serializeInt128(
+      { value = v.Bias },
+      { lo = 0xfffffffffffffc18, hi = 0xffffffffffffffff },
+      { lo = 0x00000000000003e8, hi = 0x0000000000000000 }
+    )
+  then
+    return false
+  end
   if not stream:serializeUint128({ value = v.Seed }) then return false end -- uint128 raw (SPEC §4.3)
   return true
 end
@@ -416,7 +450,8 @@ function _M.WriteLudicrousState(stream, v)
   if not stream:serializeBits({ value = v.Mode }, 2) then return false end -- the enum value
   if not _M.WriteFixedProbe(stream, v.Probe) then return false end
   if not _M.WriteWideProbe(stream, v.Wide) then return false end
-  if type(v.KeysCount) ~= "number" or v.KeysCount < 0 or v.KeysCount > 4 then return false end -- the count guards the loop (SPEC §6.3)
+  -- the count guards the loop (SPEC §6.3)
+  if type(v.KeysCount) ~= "number" or v.KeysCount < 0 or v.KeysCount > 4 then return false end
   if not stream:serializeBits({ value = v.KeysCount }, 3) then return false end -- the count
   for _i = 1, v.KeysCount do
     if not stream:serializeUint128({ value = v.Keys[_i] }) then return false end -- uint128 raw (SPEC §4.3)
@@ -430,9 +465,19 @@ end
 
 -- type DegenerateProbe (SPEC §6.1: the wire order is the declared order)
 function _M.WriteDegenerateProbe(stream, v)
-  if not stream:serializeFixed({ value = v.LockedFixed }, 16, 16, -3, -3) then return false end -- the Q format's raw offset (SPEC §4.3)
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.LockedFixed }, 16, 16, -3, -3) then return false end
   if math.type(v.LockedInt) ~= "integer" or v.LockedInt < 7 or v.LockedInt > 7 then return false end
-  if not stream:serializeInt128({ value = v.LockedWide }, { lo = 0xfffff4c58c31d00e, hi = 0xffffffffffffffff }, { lo = 0xfffff4c58c31d00e, hi = 0xffffffffffffffff }) then return false end -- int128, offset from min (SPEC §4.3)
+  -- int128, offset from min (SPEC §4.3)
+  if
+    not stream:serializeInt128(
+      { value = v.LockedWide },
+      { lo = 0xfffff4c58c31d00e, hi = 0xffffffffffffffff },
+      { lo = 0xfffff4c58c31d00e, hi = 0xffffffffffffffff }
+    )
+  then
+    return false
+  end
   if math.type(v.Tail) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Tail }, 8) then return false end -- the storage width
   return true
@@ -440,18 +485,25 @@ end
 
 -- type FixedVec (SPEC §6.1: the wire order is the declared order)
 function _M.WriteFixedVec(stream, v)
-  if not stream:serializeFixed({ value = v.X }, 48, 16, -100000, 100000) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Y }, 48, 16, -100000, 100000) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Z }, 48, 16, -100000, 100000) then return false end -- the Q format's raw offset (SPEC §4.3)
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.X }, 48, 16, -100000, 100000) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Y }, 48, 16, -100000, 100000) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Z }, 48, 16, -100000, 100000) then return false end
   return true
 end
 
 -- type FixedQuat (SPEC §6.1: the wire order is the declared order)
 function _M.WriteFixedQuat(stream, v)
-  if not stream:serializeFixed({ value = v.X }, 2, 30, -1, 1) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Y }, 2, 30, -1, 1) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.Z }, 2, 30, -1, 1) then return false end -- the Q format's raw offset (SPEC §4.3)
-  if not stream:serializeFixed({ value = v.W }, 2, 30, -1, 1) then return false end -- the Q format's raw offset (SPEC §4.3)
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.X }, 2, 30, -1, 1) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Y }, 2, 30, -1, 1) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.Z }, 2, 30, -1, 1) then return false end
+  -- the Q format's raw offset (SPEC §4.3)
+  if not stream:serializeFixed({ value = v.W }, 2, 30, -1, 1) then return false end
   return true
 end
 

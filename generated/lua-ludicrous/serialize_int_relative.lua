@@ -17,13 +17,19 @@
 
 local M = {}
 
+local serializeStream = require("serialize_stream")
+
+local VALUE_OUT_OF_RANGE = serializeStream.Refusal.ValueOutOfRange
+local NON_CANONICAL = serializeStream.Refusal.NonCanonical
+
 local mathtype = math.type
 local PANIC_INT_RELATIVE_DOMAIN = "serialize: int relative previous must be in [0,2147483647]"
 local PANIC_INT_RELATIVE_CURRENT = "serialize: int relative current must be in [-2147483648,2147483647]"
 
 -- The int_relative domain is the non-negative int32 range (STANDARD.md int_relative).
 -- The operation's API type is the signed int32 (DESIGN.md (c)): a current inside
--- that type but outside the domain latches ValueOutOfRange in the write arm.
+-- that type but outside the domain traps in the write and measure arms
+-- (IMPLEMENTING.md U9).
 local INT32_MIN = -2147483648
 local RANGE_MAX = 2147483647
 
@@ -38,6 +44,9 @@ local BUCKETS = {
   { min = 4378, max = 69914, bits = 17 },
 }
 
+-- The largest difference a bounded tier carries: the absolute tier starts one past it.
+local LAST_BOUNDED_MAX = BUCKETS[#BUCKETS].max
+
 local function checkDomain(v, msg, min)
   if mathtype(v) ~= "integer" or v < (min or 0) or v > RANGE_MAX then
     error(msg, 0)
@@ -48,21 +57,27 @@ end
 -- is checked, refuses a value outside the domain or not greater than previous).
 local function result(stream, previous, reconstructed)
   if reconstructed > RANGE_MAX or reconstructed <= previous then
-    return stream:_fail("value_out_of_range")
+    return stream:_fail(VALUE_OUT_OF_RANGE)
   end
   return true, reconstructed
 end
 
 local methods = {}
 
+-- A declaration check returns the rule's message, or nil (serialize_stream.lua,
+-- M.method: write and measure raise it, a read refuses value_out_of_range;
+-- IMPLEMENTING.md U16: previous is judged before anything narrows it).
 methods.check = function(previous)
-  checkDomain(previous, PANIC_INT_RELATIVE_DOMAIN)
+  if mathtype(previous) ~= "integer" or previous < 0 or previous > RANGE_MAX then
+    return PANIC_INT_RELATIVE_DOMAIN
+  end
+  return nil
 end
 
 -- The value check is over the Go int32 type, not the operation's non-negative
 -- domain (DESIGN.md (c), (h)): a negative current is inside the type and the
--- write/measure arm latches it as ValueOutOfRange, as serialize.go does.
-methods.checkValue = function(previous, current)
+-- write/measure arm traps on it (IMPLEMENTING.md U9).
+methods.checkValue = function(_previous, current)
   checkDomain(current, PANIC_INT_RELATIVE_CURRENT, INT32_MIN)
 end
 
@@ -71,7 +86,7 @@ end
 -- contract; DESIGN.md (g) strict writer, (h) arm shape).
 methods.write = function(stream, previous, current)
   if previous >= current then
-    return stream:_fail("value_out_of_range")
+    return stream:_fail(VALUE_OUT_OF_RANGE)
   end
   local difference = current - previous
   if not stream:_writeBits(difference == 1 and 1 or 0, 1) then return false end
@@ -103,21 +118,31 @@ methods.read = function(stream, previous)
       local offset = stream:_readBits(b.bits)
       if offset == nil then return false end
       if offset > b.max - b.min then
-        return stream:_fail("value_out_of_range")
+        return stream:_fail(VALUE_OUT_OF_RANGE)
       end
       return result(stream, previous, previous + b.min + offset)
     end
   end
   local v = stream:_readBits(32)
   if v == nil then return false end
-  return result(stream, previous, v)
+  -- STANDARD.md int_relative, "The absolute tier is canonical too": the domain
+  -- and ordering rule first (value_out_of_range), then a difference a bounded
+  -- tier carries is a second encoding (non_canonical). v is the unsigned 32-bit
+  -- group in a 64-bit integer, so v - previous cannot wrap.
+  if v > RANGE_MAX or v <= previous then
+    return stream:_fail(VALUE_OUT_OF_RANGE)
+  end
+  if v - previous <= LAST_BOUNDED_MAX then
+    return stream:_fail(NON_CANONICAL)
+  end
+  return true, v
 end
 
 -- Measure (STANDARD.md, The Measure Stream: exact width for non-alignment operations;
 -- serialize.go measure_stream.go SerializeIntRelative; DESIGN.md (h) arm shape).
 methods.measure = function(stream, previous, current)
   if previous >= current then
-    return stream:_fail("value_out_of_range")
+    return stream:_fail(VALUE_OUT_OF_RANGE)
   end
   local difference = current - previous
   local bits = 1
