@@ -863,6 +863,22 @@ tables-rust-usage:
 
 test-rust: tables-rust-usage
 
+# THE RELEASE TIER (docs/PORTING.md J3): certify.yml derives every
+# tables-<lang>-release target from the Makefile and runs it under its 60-minute
+# cap. This SCALES the PR-tier instruments and adds none: the all-roots wire
+# fuzzer and the forgery fuzzer at ten times the random pass on a second seed,
+# the wire fuzzer's control, and the soak at four times make test's count with
+# its control beside it.
+RUST_RELEASE_SEED ?= 68719476731
+RUST_RELEASE_N ?= 1000000
+TABLES_RUST_RELEASE_SOAK_ITERATIONS ?= 16777216
+.PHONY: tables-rust-release
+tables-rust-release:
+	$(MAKE) tables-rust-wire-fuzz-all tables-rust-fuzz N=$(RUST_RELEASE_N) SEED=$(RUST_RELEASE_SEED)
+	$(MAKE) tables-rust-wire-fuzz-negative-control
+	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=$(TABLES_RUST_RELEASE_SOAK_ITERATIONS)
+	$(MAKE) tables-rust-soak-negative-control
+
 # THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the generated
 # retaining load's capacity check is sabotaged to keep nothing, through a
 # `go test -overlay` of internal/codegen/rusttable/variablecodec.go so no

@@ -1508,7 +1508,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 |
+| ❌ #422 | ❌ #422 | ✅ `tables-rust-runtime-home` `tables-rust-runtime-home-negative-control` (a crate is the package: the homes are module constants off the crate, and a file that sorts first moves nothing) | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 |
 
 ### J3 — The release tier
 
@@ -1534,7 +1534,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
+| ❌ #423 | ✅ `tables-c-release` | ✅ `tables-rust-release` (the all-roots wire fuzzer and the forgery fuzzer at N=1,000,000 on a second seed, the wire fuzzer's control, the soak at 16,777,216 passes and its control) | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
