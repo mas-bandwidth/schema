@@ -73,7 +73,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 		"matrix":      `"lang":"zz"`,
 		"matrix-keys": `"zztool":""`, // every row carries every key
 		"bench":       "zz,bench_table,write",
-		"make":        "test: test-c test-cs test-dart test-elixir test-go test-java test-js test-rust test-zz",
+		"make":        "test: test-c test-cs test-dart test-elixir test-go test-java test-js test-lua test-rust test-zz",
 		"make-conf":   "build/conformance-zz",
 		"make-bench":  "generated/bench/tables/zz/.stamp",
 		"make-golden": "update-goldens-zz",
