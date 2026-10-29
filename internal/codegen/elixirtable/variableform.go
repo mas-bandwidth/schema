@@ -5313,9 +5313,13 @@ func fieldDescriptor(u *ir.Unit, f *ir.Field, ordinal int, fl *ir.FieldLayout) s
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
 		b.WriteString(", t: :int")
 		width := (f.Type.Width + 7) / 8
-		if f.Type.Kind == ir.TFixed || f.Type.Width == 128 {
+		if f.Type.Kind == ir.TFixed || f.Type.Kind == ir.TBits || f.Type.Width == 128 {
 			// SPEC-TABLES §3, §4.12: the fixed-point and 128-bit kinds take
 			// their storage width from the kind, never from the bit count.
+			// So does bits(N): it rides as the narrowest unsigned kind that
+			// holds it (4 bytes up to 32 bits, 8 above), so bits(24) and
+			// bits(48) are 4 and 8 on the wire, not the 3 and 6 that
+			// (N+7)/8 spells. int_bytes/int_of have no clause for those.
 			width = ir.TableKindWidth(ir.TableScalarKind(f))
 		}
 		fmt.Fprintf(&b, ", width: %d, signed: %v", width, f.Type.Signed)
