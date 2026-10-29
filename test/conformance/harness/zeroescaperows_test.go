@@ -11,8 +11,8 @@ import (
 // battery to docs/SPEC-TABLES.md §16.3's zero rule: a string the read would
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
-// held first in Go and carried by C, so the two refusals state the standard's
-// answer with `carried-by=go,c` and every other port keeps its BASE counters; the skipped
+// held first in Go and carried by C and Elixir, so the two refusals state the standard's
+// answer with `carried-by=go,c,elixir` and every other port keeps its BASE counters; the skipped
 // value is the clean §4 report with the unknown key counted.
 //
 // A Go answer of the clean counters on the value row must score red, because
@@ -36,8 +36,8 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if strings.Join(row.CarriedBy, ",") != "go,c" {
-			t.Fatalf("%s: carried-by=%v; Go held the rule first, C carries it, and every other port keeps its behaviour", caseName, row.CarriedBy)
+		if strings.Join(row.CarriedBy, ",") != "go,c,elixir" {
+			t.Fatalf("%s: carried-by=%v; Go held the rule first, C and Elixir carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)
@@ -47,6 +47,9 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		}
 		if got := row.VerdictFor("c"); got != "refused" {
 			t.Fatalf("%s: C owes %q, got %q", caseName, "refused", got)
+		}
+		if got := row.VerdictFor("elixir"); got != "refused" {
+			t.Fatalf("%s: Elixir owes %q, got %q", caseName, "refused", got)
 		}
 		if got := row.VerdictFor("cpp"); got != baseCounters {
 			t.Fatalf("%s: cpp owes %q, got %q", caseName, baseCounters, got)
