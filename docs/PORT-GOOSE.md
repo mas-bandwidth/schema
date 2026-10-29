@@ -438,8 +438,8 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `goosetable/fixedform.go`, `goosetable/runtime/fixed.goose` |
 | schema-goose-fixed-form-evolution | fixed tables: versioning, widening and every refusal by Go's name | `goosetable/fixedevolve.go`, its runtime file |
 | schema-goose-message-form | the message form, form byte 2, against its goldens | `goosetable/messageform.go`, `goosetable/runtime/message.goose` |
-| schema-goose-block-form | the block form: builder and reflective read (M7, I5) | `goosetable/block_form.go`, its runtime file |
-| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook.go`, its runtime file |
+| schema-goose-block-form | the block form: builder and reflective read (M7, I5) | `goosetable/block_form.go`, `goosetable/accel.go` (shared with the cook), `goosetable/runtime/block_form.goose`, `test/conformance/goose/accel.goose`, `make/goose-blockcook.mk` |
+| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook_form.go`, `goosetable/cook_write.go`, `goosetable/runtime/cook_form.goose` |
 | schema-goose-json-form | the JSON text form and base64 text (I13) | `goosetable/json_form.go`, its runtime file, `compiler/carries_goose_json_form.go` |
 | schema-goose-text-form | the hand-editable text form (M9, M14) | `goosetable/text_form.go`, its runtime file |
 | schema-goose-conformance-leg | `main.goose`, `make conformance` and the hostile corpus (M4b, I2, I11, J2) | `test/conformance/goose/main.goose`, `make/goose-conformance.mk` |
