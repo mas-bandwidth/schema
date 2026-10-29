@@ -7,12 +7,9 @@
 # stops an arm at its first divergence, so a known row also hides whatever
 # that arm would have found after it; the fix's own run says what that is.
 #
-# All three are one defect of the table wire's load (schema-goose-table-wire-
-# load): a value-only body whose walk STOPS on framing damage keeps less than
-# the engine keeps (tablewire.DecodeRegion: "the instance keeps what it
-# decoded"), so the re-save differs. Replay each with the line the gate prints.
+# None is held today: the three value-only arms held here on 2026-10-28
+# (scalars, tblm1, widedemo) went green on the table wire's union framing
+# before reset and its zero-extended widening of an unsigned kind into a
+# 128-bit field (rowan/port-goose-tablewire).
 #
 # unit	arm	first divergence	owed by
-scalars	fixed	the decoded value differs: the leg saves 254 bytes, the oracle 254, first difference at byte 133	schema-goose-table-wire-load
-tblm1	fixed	the decoded value differs: the leg saves 24 bytes, the oracle 72, first difference at byte 7	schema-goose-table-wire-load
-widedemo	fixed	the decoded value differs: the leg saves 10 bytes, the oracle 33, first difference at byte 1	schema-goose-table-wire-load
