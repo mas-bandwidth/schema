@@ -156,40 +156,37 @@ func t04R20(t *testing.T) {
 		"R20 a count past the writer's bound clamps and counts")
 }
 
-// t04R21: R21 [weak] "widenf is the bit-exact widening — signalling NaNs kept,
-// the quiet bit carried as the writer wrote it". ALGORITHM §4.2: "widenf is the
-// f32 at src as an f64 at dst ... exact by construction, NaN payloads
-// included". The widening is BY THE PATTERN and never through the hardware's
-// own conversion, which SETS THE QUIET BIT on a signalling NaN.
+// t04R21: R21 holds §4's float rung under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3, §21.2): widenf is the ordinary conversion, exact
+// for every finite f32, and a NaN or an infinity stays one for the root load's
+// finite pass (<T>FixedFiniteBody, over storage after the run) to refuse as
+// non_finite_float. The NaN payload surgery that used to carry a signalling
+// NaN's quiet bit is gone, at both call sites: the scalar widenf and the
+// folded flat-array widen.
 func t04R21(t *testing.T) {
 	n := t04Runtime(t)
 	t04Has(t, n, "case WidenF:", "R21 the widenf op exists")
-	t04Has(t, n, "BitConverter.SingleToInt32Bits(f)",
-		"R21 the f32 rides as its bits, not through the conversion")
-	t04Has(t, n, "((ulong)(fbits & 0x7FFFFFu) << 29)",
-		"R21 the NaN payload is carried by the shift, the quiet bit as the writer wrote it")
-	t04Has(t, n, "BitConverter.Int64BitsToDouble",
-		"R21 the widened pattern lands as the f64 value")
-	// The FOLDED flat-array widening (FlatWiden, sign 2 = f32 into f64) is the
-	// SAME rung and owes the SAME bit-exact widening: the one helper is the
-	// scalar's and the folded run's only road to a widened f64, as the C++
-	// reference's one TableWidenF32 is for every call site, arrays included.
-	t04Has(t, n, "case FlatWiden:",
-		"R21 the folded flat-array widen op exists")
-	t04Has(t, n, "double d2 = WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));",
-		"R21 the folded flat-array f32->f64 widen rides the same bit-exact helper")
-	t04Has(t, n, "public static double WidenF32(float f)",
-		"R21 the one float-rung helper both call sites share")
-	// A plain hardware cast is the defect this clause names: an sNaN's quiet
-	// bit would be set by it, which the pattern widening above must not do. Both
-	// call sites — the scalar's `(double)f` and the folded run's cast of the
-	// little-endian read — must be absent.
-	if strings.Contains(n, "double d = (double)f;") {
-		t.Error("R21: widenf goes through the hardware's own conversion, which sets the quiet bit on a signalling NaN")
+	t04Has(t, n, "slots[(int)p.Dst].SetDouble?.Invoke(dst, (double)f);",
+		"R21 the scalar rung is the ordinary conversion")
+	t04Has(t, n, "case FlatWiden:", "R21 the folded flat-array widen op exists")
+	t04Has(t, n, "double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));",
+		"R21 the folded flat-array rung is the ordinary conversion")
+	for _, retired := range []string{"WidenF32", "<< 29", "0x7FF0000000000000UL"} {
+		if strings.Contains(n, retired) {
+			t.Errorf("R21: the retired NaN payload surgery is back (%q)", retired)
+		}
 	}
-	if strings.Contains(n, "(double)BinaryPrimitives.ReadSingleLittleEndian") {
-		t.Error("R21: the folded flat-array widen goes through the hardware's own conversion, which sets the quiet bit on a signalling NaN")
-	}
+	// The finite pass is what refuses a non-finite rung, and it runs on the
+	// root's load before the bounds pass.
+	src := t04Norm(generateCS(t, `package probe
+
+fixed table T
+{
+    x float32
+}
+`))
+	t04Has(t, src, "string finite_why = ", "R21 the root load runs the finite pass")
+	t04Has(t, src, "report.Reason = \"non_finite_float: \" + finite_why;", "R21 the refusal is non_finite_float, by name")
 }
 
 // t04R29: R29 [owed] "the band case: the widening across the 65536 ceiling, and
