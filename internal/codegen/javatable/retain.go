@@ -371,18 +371,24 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.index(v.%s)); }\n", m, fieldRef, m)
 	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", m, m, fieldRef)
+		// the field's DECLARED default decides the elision, as the variable codec's
+		// own save does (writeFieldSave): a string = "x" written empty is not default
+		test := fmt.Sprintf("!v.%s.isEmpty()", m)
+		if def := variableDefault(f); def != "\"\"" {
+			test = fmt.Sprintf("!%s.equals(v.%s)", def, m)
+		}
+		fmt.Fprintf(b, "        if (%s) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", test, m, fieldRef)
 	case f.Type.Kind == ir.TBool:
-		fmt.Fprintf(b, "        if (v.%s) { w.putLeb(w.ref(%s)); w.put8(1); w.put8(1); }\n", m, fieldRef)
+		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(%s)); w.put8(1); w.put8(v.%s ? 1 : 0); }\n", m, variableDefault(f), fieldRef, m)
 	case f.Type.Kind == ir.TInt && f.Type.Width <= 32:
 		k := variableWireKind(f)
-		fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(%d); w.put%d(v.%s); }\n", m, fieldRef, k, ir.TableKindWidth(k)*8, m)
+		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(%s)); w.put8(%d); w.put%d(v.%s); }\n", m, variableDefault(f), fieldRef, k, ir.TableKindWidth(k)*8, m)
 	case f.Type.Kind == ir.TInt:
 		k := variableWireKind(f)
-		fmt.Fprintf(b, "        if (v.%s != 0L) { w.putLeb(w.ref(%s)); w.put8(%d); w.put64(v.%s); }\n", m, fieldRef, k, m)
+		fmt.Fprintf(b, "        if (v.%s != %s) { w.putLeb(w.ref(%s)); w.put8(%d); w.put64(v.%s); }\n", m, variableDefault(f), fieldRef, k, m)
 	case f.Type.Kind == ir.TNamed:
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
-			fmt.Fprintf(b, "        if (v.%s != 0) {\n            w.putLeb(w.ref(%s));\n            w.put8(30);\n            switch (v.%s) {\n", m, fieldRef, m)
+			fmt.Fprintf(b, "        if (v.%s != %s) {\n            w.putLeb(w.ref(%s));\n            w.put8(30);\n            switch (v.%s) {\n", m, variableDefault(f), fieldRef, m)
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "                case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
 			}
