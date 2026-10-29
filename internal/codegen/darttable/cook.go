@@ -126,6 +126,27 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 	seen := map[string]bool{}
 	var walk func(string)
+	var walkUnion func(*ir.Union)
+	seenUnion := map[*ir.Union]bool{}
+	// a union's set arm rides in its holder's node: the arm's by-value table
+	// body and its pointer target are members of the same region (§3.1, §7.6),
+	// and so is whatever an arm that is itself a union holds, however deep
+	walkUnion = func(un *ir.Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				continue
+			}
+			if t := tableRef(arm.F); t != nil {
+				walk(t.Name)
+			} else if inner := unionRef(arm.F); inner != nil {
+				walkUnion(inner)
+			}
+		}
+	}
 	walk = func(n string) {
 		if seen[n] {
 			return
@@ -144,17 +165,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 			case *ir.Struct:
 				walk(ref.Name)
 			case *ir.Union:
-				// a union's SET arm rides in its holder's node: the arm's
-				// by-value table body and its pointer target are members of
-				// the same region (§3.1, §7.6)
-				for _, arm := range ref.Variants {
-					if arm.Void() {
-						continue
-					}
-					if t := tableRef(arm.F); t != nil {
-						walk(t.Name)
-					}
-				}
+				walkUnion(ref)
 			}
 		}
 	}
