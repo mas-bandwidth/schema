@@ -135,6 +135,15 @@
       "lua": "5.4.8"
     },
     {
+      "name": "lua-docs",
+      "when": "pull-request",
+      "why": "the Lua port's documented-surface control: two edited copies of docs/USAGE.md, one calling a renamed runtime function and one walking nothing, each required to fail the usage gate. It needs the pinned interpreter (make dist-lua), bin/schema and the cookgen fixture, and no compile weight of its own.",
+      "targets": [
+        "tables-lua-usage-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
       "name": "base-conformance-cpp",
       "when": "pull-request",
       "why": "The C++ reference's emitter-side conformance control, alone: it overlay-rebuilds the compiler, regenerates the whole C++ table tree through it and rebuilds the reference driver, which is the compile weight of a complete-driver rebuild. The driver-flip control in base-conformance shares a job with the harness controls; this one is the emitter rebuild they deliberately do not carry.",

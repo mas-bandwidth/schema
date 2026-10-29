@@ -94,7 +94,7 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua lua-generated-loads conformance-negative-control-lua conformance-negative-control-lua-walk tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control
+test-lua: toolchain-lua lua-generated-loads tables-lua-usage tables-lua-usage-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
@@ -169,6 +169,52 @@ endef
 packet-finite-lua-negative-control: packet-finite-lua
 	$(call packet-finite-lua-control,read)
 	$(call packet-finite-lua-control,write)
+
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Lua side.
+# The cook example in docs/USAGE.md is not a sketch beside the code: the gate
+# pulls the marked fragment out of the page, wraps it in a script that reads the
+# fixture cook off disk and supplies the one helper the page leaves to the
+# caller, and runs it under the pinned interpreter against the generated
+# `tables/pointers` modules it requires, so the day the emitted surface moves
+# the page goes red with it. USAGE_DOC names the page; the control points it at
+# a sabotaged copy. The fixture is the small synthetic Scene cook of
+# test/cookgen, checked by `schema cook-check` before the example reads it.
+USAGE_DOC ?= docs/USAGE.md
+USAGE_LUA_DIR ?= build/lua-usage
+.PHONY: tables-lua-usage tables-lua-usage-negative-control
+tables-lua-usage: toolchain-lua bin/schema $(USAGE_DOC) $(SCHEMAS_TABLES_POINTERS)
+	@rm -rf $(USAGE_LUA_DIR) && mkdir -p $(USAGE_LUA_DIR)
+	./bin/schema generate --lang lua --out $(USAGE_LUA_DIR) tables/pointers
+	go run ./test/cookgen --bytes 4096 --root Scene --ref head --chain ListNode --next next --out $(USAGE_LUA_DIR)/Scene.cook
+	./bin/schema cook-check --root Scene $(USAGE_LUA_DIR)/Scene.cook tables/pointers
+	printf 'package.path = "./?.lua;" .. package.path\n' > $(USAGE_LUA_DIR)/usage.lua
+	printf 'local file = assert(io.open(arg[1], "rb"))\nlocal bytes = file:read("a")\nfile:close()\n' >> $(USAGE_LUA_DIR)/usage.lua
+	printf 'local used = 0\nlocal function use(_) used = used + 1 end\n' >> $(USAGE_LUA_DIR)/usage.lua
+	sed -n '/<!-- lua-table-usage -->/,/<!-- \/lua-table-usage -->/p' $(USAGE_DOC) \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(USAGE_LUA_DIR)/usage.lua
+	printf 'if used == 0 then error("the cook walk read no node") end\n' >> $(USAGE_LUA_DIR)/usage.lua
+	printf 'print("usage: docs/USAGE.md Lua cook example opened the Scene cook and walked " .. used .. " node(s)")\n' >> $(USAGE_LUA_DIR)/usage.lua
+	grep -q 'cook.Open' $(USAGE_LUA_DIR)/usage.lua || \
+		{ echo "MISSING: $(USAGE_DOC) carries no lua-table-usage example"; exit 1; }
+	cd $(USAGE_LUA_DIR) && $(LUA) usage.lua Scene.cook
+
+# THE REVERSED WITNESSES: two edited copies of the page, each checked to have
+# changed, must each turn the gate red, so a gate that ran no fragment, or one
+# that stopped looking at what the fragment walks, is caught. The first renames
+# the uncook read the page calls (the surface moved: the run errors); the second
+# walks a field the Scene does not have (the example runs but reads no node:
+# the used-count refusal).
+tables-lua-usage-negative-control:
+	@rm -rf build/lua-usage-negative && mkdir -p build/lua-usage-negative
+	sed 's/uncook\.Read(/uncook.Reed(/' docs/USAGE.md > build/lua-usage-negative/renamed.md
+	sed 's/local node = scene\.head/local node = scene.tail/' docs/USAGE.md > build/lua-usage-negative/walks-nothing.md
+	@for c in renamed walks-nothing; do \
+		if cmp -s docs/USAGE.md build/lua-usage-negative/$$c.md; then \
+			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \
+		if $(MAKE) tables-lua-usage USAGE_DOC=build/lua-usage-negative/$$c.md USAGE_LUA_DIR=build/lua-usage-negative/$$c > build/lua-usage-negative/$$c.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Lua usage gate"; exit 1; fi; \
+		echo "tables-lua-usage negative control: the $$c copy fails the gate"; \
+	done
 
 TEST_LEGS         += test-lua
 CONFORMANCE_LEGS  += $(call unless_skipped,lua,build/conformance-lua)

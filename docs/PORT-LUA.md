@@ -264,9 +264,14 @@ name SPEC-TABLES §11 does not yet give); a caller-owned load with its
 allocation gate and soak; the keyed accessor; frozen descriptors; one pointer
 walk shared by save and cook; the arm read through the field reader; float32
 bit surgery on the table wire; a typed save; block and cook accessors; the
-forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
-the random text differential; the runtime-home control; the bench and release
-tier; and the card facade.
+forgery fuzz; the runtime-name scan; the zero-cost gate; the random text
+differential; the runtime-home control; the bench and release tier; and the
+card facade.
+
+Closed 2026-10-29: the USAGE example (`tables-lua-usage`, docs/USAGE.md's
+`lua-table-usage` fragment run against `tables/pointers`, with a two-witness
+control).
+
 
 ## DEEPEN
 

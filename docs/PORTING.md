@@ -1352,7 +1352,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` | ❌ #381 roadmap `port/lua/open/usage` (docs/USAGE.md has no Lua example yet) |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` | ✅ `tables-lua-usage` `tables-lua-usage-negative-control` |
 
 ### I13 — The text differential against a third implementation
 
