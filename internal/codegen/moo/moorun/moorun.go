@@ -147,7 +147,7 @@ func HexLines(t testing.TB, out []byte) [][]byte {
 	if text == "" {
 		return nil
 	}
-	for _, l := range strings.Split(text, "\n") {
+	for l := range strings.SplitSeq(text, "\n") {
 		b, err := hex.DecodeString(l)
 		if err != nil {
 			t.Fatalf("moorun: output line %q is not hex: %v", l, err)
