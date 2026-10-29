@@ -56,7 +56,11 @@ import '../../../generated/bench/tables/dart/BenchTableWire.dart'
 
 const int maxNumRuns = 7; // median of 7 (N >= 5), after 1 warmup run
 const int numVariants = 64;
-const int defaultIterations = 400000; // the tables bench's standard count
+// Dart's variable-form Save and Load allocate a fresh buffer and object graph
+// per call (about 10 thousand records a second on a fleet bench), so the
+// standard 400000 would take eleven minutes per sitting. 32000 keeps a full
+// seven-run measurement near a minute. The count is a column of every row.
+const int defaultIterations = 32000;
 
 int gNumRuns = maxNumRuns; // --round K drops this to 1 (§2.4)
 int gIterations = 0;
