@@ -139,3 +139,87 @@ tables-cpp-soak-negative-control: build/tables-generated/.stamp test/tables/soak
 	@grep -m1 "drift flat" build/cpp-soak-sabotage/log
 	@echo "negative control: a matched new/delete pair per iteration leaves the drift line flat and turns the C++ soak's ALLOCATION COUNT red"
 
+
+# THE C++ PORT'S RELEASE BATTERY (docs/PORTING.md J3), run by the Makefile's
+# `tables-cpp-release`, which certify.yml DERIVES by name (that target also
+# carries the long wire fuzz and the INT32_MAX reproduction). The release tier is the same battery built the way a game ships it:
+# -O2 -DNDEBUG, which removes every assert() in the generated headers and the
+# runtime and lets the optimizer use undefined behaviour the -O0 `make test`
+# builds never reach. It reuses the PR tier's own test sources, unchanged:
+#   - the tables suite, maps, lists, arms and retain, each compiled release and
+#     run (their CHECK macros are not assert(), so NDEBUG cannot blind them);
+#   - the soak, release-built, at TABLES_CPP_SOAK_RELEASE_ITERATIONS passes
+#     (`make test` runs 4096; 250000 is about 16 minutes against the 60 minute
+#     job cap, the default 1,000,000 would not fit it);
+#   - the block fuzzer at five times the PR scale under a second seed;
+#   - the two NDEBUG refusal gates and the soak's controls the PR tier carries.
+# tables-cpp-release-flags-negative-control proves the release flags are on.
+TABLES_CPP_SOAK_RELEASE_ITERATIONS ?= 250000
+TABLES_CXXFLAGS_RELEASE = $(TABLES_CXXFLAGS) -O2 -DNDEBUG
+CPP_RELEASE_DIR := build/cpp-release
+
+$(CPP_RELEASE_DIR)/tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/maps: build/tables-generated/.stamp test/tables/maps_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/maps_main.cpp $(MAPS_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/lists: build/tables-generated/.stamp test/tables/lists_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/lists_main.cpp $(LISTS_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/arms: build/tables-generated/.stamp test/tables/arms_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/retain: build/tables-generated/.stamp test/tables/retain_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/retain_main.cpp -o $@
+
+$(CPP_RELEASE_DIR)/soak: build/tables-generated/.stamp test/tables/soak_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) $(TABLES_CPP_SOAK_SRCS) -o $@
+
+$(CPP_RELEASE_DIR)/block_fuzz: build/tables-generated/.stamp test/tables/block_fuzz_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(BLOCK_CXXFLAGS) -O2 -DNDEBUG $(BLOCK_FUZZ_INCLUDES) test/tables/block_fuzz_main.cpp \
+		$(BLOCK_FUZZ_SOURCES) -o $@
+
+.PHONY: tables-cpp-release-battery
+tables-cpp-release-battery: $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
+		$(CPP_RELEASE_DIR)/arms $(CPP_RELEASE_DIR)/retain $(CPP_RELEASE_DIR)/soak \
+		$(CPP_RELEASE_DIR)/block_fuzz
+	$(MAKE) tables-cpp-release-flags-negative-control
+	./$(CPP_RELEASE_DIR)/tables
+	./$(CPP_RELEASE_DIR)/maps
+	./$(CPP_RELEASE_DIR)/lists
+	./$(CPP_RELEASE_DIR)/arms
+	./$(CPP_RELEASE_DIR)/retain
+	./$(CPP_RELEASE_DIR)/soak $(TABLES_CPP_SOAK_RELEASE_ITERATIONS)
+	$(MAKE) tables-cpp-soak-negative-control
+	SEED=$(SEED) N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz
+	SEED=2 N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz
+	$(MAKE) tables-keyed-none-refusal-ndebug
+	$(MAKE) tables-keyed-none-refusal-negative-control
+	$(MAKE) tables-keyed-max-refusal-ndebug
+	$(MAKE) tables-keyed-max-refusal-negative-control
+
+# THE RELEASE TIER'S NEGATIVE CONTROL. The whole point of the tier is that the
+# battery runs with asserts compiled out and the optimizer on, so a flag
+# variable that quietly lost -DNDEBUG or -O2 would turn the tier back into a
+# second copy of `make test` and stay green. This compiles one probe that
+# refuses to build unless NDEBUG and __OPTIMIZE__ are both defined, with the
+# release flags (must build) and with the PR tier's flags (must be refused).
+.PHONY: tables-cpp-release-flags-negative-control
+tables-cpp-release-flags-negative-control:
+	@rm -rf build/cpp-release-flags && mkdir -p build/cpp-release-flags
+	@printf '#if !defined(NDEBUG) || !defined(__OPTIMIZE__)\n#error release flags are off\n#endif\nint main( void ) { return 0; }\n' > build/cpp-release-flags/probe.cpp
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) build/cpp-release-flags/probe.cpp -o build/cpp-release-flags/probe
+	@if $(CXX) $(TABLES_CXXFLAGS) build/cpp-release-flags/probe.cpp -o build/cpp-release-flags/refused > build/cpp-release-flags/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the PR tier's flags passed the release probe"; exit 1; \
+	fi
+	@grep -q "release flags are off" build/cpp-release-flags/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the probe went red, but not on the flags"; cat build/cpp-release-flags/log; exit 1; }
+	@echo "negative control: without -O2 -DNDEBUG the release probe is refused"
