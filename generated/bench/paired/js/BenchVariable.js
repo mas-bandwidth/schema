@@ -2516,226 +2516,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
   return holder;
 }
 
-// ---- the text (write.go, read.go) -------------------------------------------
-
-function TableVariableJsonMap(fd, val, depth, g, out) {
-  if (val.size === 0) { out.push("{}"); return true; }
-  const ents = TableVariableMapEntries(fd, val);
-  const vd = fd.c.fields[1];
-  const ind = "\n" + "  ".repeat(depth + 1);
-  out.push("{");
-  for (let i = 0; i < ents.length; i++) {
-    if (i > 0) { out.push(","); }
-    out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
-    if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
-  }
-  out.push("\n" + "  ".repeat(depth) + "}");
-  return true;
-}
-
-function TableVariableJsonKeyed(fd, val, depth, g, out) {
-  if (fd.slots.length === 0) { out.push("{}"); return true; }
-  const ind = "\n" + "  ".repeat(depth + 1);
-  out.push("{");
-  for (let s = 0; s < fd.slots.length; s++) {
-    if (fd.slots[s] === null) { return false; }
-    if (s > 0) { out.push(","); }
-    out.push(ind + TableVariableJsonString(fd.slots[s][0]) + ": ");
-    if (!TableVariableJsonScalar(fd.e, val[s], depth + 1, g, out)) { return false; }
-  }
-  out.push("\n" + "  ".repeat(depth) + "}");
-  return true;
-}
-
-// a union is an object with ONE key, the arm's name; None is {} (§16.2)
-function TableVariableJsonUnion(u, val, depth, g, out) {
-  if (val === null) { out.push("{}"); return true; }
-  const arm = u.byName.get(val.arm);
-  if (arm === undefined) { return false; }
-  out.push("{\n" + "  ".repeat(depth + 1) + TableVariableJsonString(arm.name) + ": ");
-  if (arm.void) {
-    out.push("null");
-  } else if (arm.body) {
-    if (!TableVariableJsonValue(arm.c, val.value, depth + 1, g, out)) { return false; }
-  } else if (!TableVariableJsonField(arm.f, val.value, depth + 1, g, out)) {
-    return false;
-  }
-  out.push("\n" + "  ".repeat(depth) + "}");
-  return true;
-}
-
-// a map key's text (placeMapKey): a string key is the key; an integer key is
-// ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
-// key kind's range — anything else of that shape is a kind mismatch, and a
-// token that is not one JSON number is malformed
-function TableVariableMapKeyNumber(kd, s) {
-  const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
-  if (m === null) { return { status: "malformed" }; }
-  const frac = m[3] === undefined ? "" : m[3];
-  let digits = BigInt(m[2] + frac);
-  let exp = (m[4] === undefined ? 0 : parseInt(m[4], 10)) - frac.length;
-  if (digits !== 0n) {
-    if (exp > 40) { return { status: "mismatch" }; }
-    if (exp >= 0) { digits *= 10n ** BigInt(exp); }
-    else {
-      if (-exp > 400) { return { status: "mismatch" }; }
-      const p = 10n ** BigInt(-exp);
-      if (digits % p !== 0n) { return { status: "mismatch" }; }
-      digits /= p;
-    }
-  }
-  const x = m[1] === "-" ? -digits : digits;
-  if (x < kd.dlo || x > kd.dhi) { return { status: "mismatch" }; }
-  return { status: "ok", key: kd.big ? x : Number(x) };
-}
-
-// one field read at a holder WITHOUT the key walk's shape gate: what a map's
-// value takes (readMap calls readField directly), null placing a pointer's null
-function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
-  if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
-    if (!inp.literal("null")) { return false; }
-    holder[fd.n] = null;
-    return true;
-  }
-  if (inp.shape() !== fd.js) { inp.bad = true; return false; }
-  return TableVariableTextField(fd, inp, holder, depth, graph, report);
-}
-
-function TableVariableTextMap(fd, inp, v, depth, graph, report) {
-  if (inp.peek() !== "{") { inp.bad = true; return false; }
-  inp.p++;
-  const kd = fd.c.fields[0], vd = fd.c.fields[1];
-  const ents = [];
-  v[fd.n] = new Map();
-  for (;;) {
-    let ch = inp.peek();
-    if (ch === "}") { inp.p++; break; }
-    if (ch === "") { inp.bad = true; return false; }
-    const ks = inp.str();
-    if (ks === null) { return false; }
-    if (inp.peek() !== ":") { inp.bad = true; return false; }
-    inp.p++;
-    let key = ks, status = "ok";
-    if (!fd.ks) {
-      const res = TableVariableMapKeyNumber(kd, ks);
-      status = res.status;
-      key = res.key;
-    }
-    if (status === "malformed") { report.malformed = true; inp.bad = true; return false; }
-    if (status === "mismatch") {
-      report.kindMismatch++;
-      if (!inp.skip(depth, graph)) { return false; }
-    } else if (fd.ks && TableVariableUtf8Encode(key).length > fd.kb) {
-      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
-      report.clamped++;
-      if (!inp.skip(depth, graph)) { return false; }
-    } else {
-      const entry = fd.c.make();
-      entry.key = key;
-      if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
-      const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
-      if (at >= 0) { report.duplicate++; ents[at] = entry; } else { ents.push(entry); }
-    }
-    ch = inp.peek();
-    if (ch === ",") { inp.p++; continue; }
-    if (ch === "}") { inp.p++; break; }
-    inp.bad = true;
-    return false;
-  }
-  ents.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
-  for (const e of ents) { v[fd.n].set(e.key, e.value); }
-  return true;
-}
-
-function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
-  if (inp.peek() !== "{") { inp.bad = true; return false; }
-  inp.p++;
-  const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
-  v[fd.n] = arr;
-  const seen = new Set();
-  for (;;) {
-    let ch = inp.peek();
-    if (ch === "}") { inp.p++; return true; }
-    if (ch === "") { inp.bad = true; return false; }
-    const key = inp.str();
-    if (key === null) { return false; }
-    if (inp.peek() !== ":") { inp.bad = true; return false; }
-    inp.p++;
-    const slot = fd.slotByName.get(key);
-    if (slot !== undefined) {
-      if (seen.has(slot)) { report.duplicate++; }
-      seen.add(slot);
-    }
-    if (slot === undefined) {
-      report.unknown++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else if (inp.shape() !== fd.e.js) {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
-      return false;
-    }
-    ch = inp.peek();
-    if (ch === ",") { inp.p++; continue; }
-    if (ch === "}") { inp.p++; return true; }
-    inp.bad = true;
-    return false;
-  }
-}
-
-// a union's text (readUnion): {} is None, one key names the arm, and a second
-// key is a text this walk will not guess at
-function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
-  if (inp.peek() !== "{") { inp.bad = true; return false; }
-  inp.p++;
-  holder[key] = null;
-  if (inp.peek() === "}") { inp.p++; return true; }
-  const k = inp.str();
-  if (k === null) { return false; }
-  if (inp.peek() !== ":") { inp.bad = true; return false; }
-  inp.p++;
-  const arm = d.u.byName.get(k);
-  if (arm === undefined) {
-    report.unknown++;
-    if (!inp.skip(depth + 1, graph)) { return false; }
-  } else if (arm.void) {
-    if (inp.shape() !== "z") {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else {
-      if (!inp.literal("null")) { return false; }
-      holder[key] = { arm: arm.name, value: null };
-    }
-  } else if (arm.body) {
-    if (inp.shape() !== "o") {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else {
-      const inst = arm.c.make();
-      if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
-      holder[key] = { arm: arm.name, value: inst };
-    }
-  } else {
-    const h = { arm: arm.name, value: TableVariableFieldDefault(arm.f) };
-    const shape = inp.shape();
-    if (shape === "z" && (arm.f.s === "ptr" || arm.f.s === "sblob" || arm.f.s === "bblob")) {
-      if (!inp.literal("null")) { return false; }
-      h.value = null;
-      holder[key] = h;
-    } else if (shape !== arm.f.js) {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else {
-      if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
-      holder[key] = h;
-    }
-  }
-  let c = inp.peek();
-  if (c === ",") { inp.p++; c = inp.peek(); }
-  if (c === "}") { inp.p++; return true; }
-  inp.bad = true;
-  return false;
-}
+// ---- json walk: begin ----
 
 // ---------------------------------------------------------------------------
 // THE TEXT FORM (docs/SPEC-TABLES.md §16)
@@ -3692,6 +3473,228 @@ function TableVariableTextInt(d, inp, holder, key, report) {
   holder[key] = d.big ? x : Number(x);
   return true;
 }
+
+// ---- the text (write.go, read.go) -------------------------------------------
+
+function TableVariableJsonMap(fd, val, depth, g, out) {
+  if (val.size === 0) { out.push("{}"); return true; }
+  const ents = TableVariableMapEntries(fd, val);
+  const vd = fd.c.fields[1];
+  const ind = "\n" + "  ".repeat(depth + 1);
+  out.push("{");
+  for (let i = 0; i < ents.length; i++) {
+    if (i > 0) { out.push(","); }
+    out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
+    if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
+  }
+  out.push("\n" + "  ".repeat(depth) + "}");
+  return true;
+}
+
+function TableVariableJsonKeyed(fd, val, depth, g, out) {
+  if (fd.slots.length === 0) { out.push("{}"); return true; }
+  const ind = "\n" + "  ".repeat(depth + 1);
+  out.push("{");
+  for (let s = 0; s < fd.slots.length; s++) {
+    if (fd.slots[s] === null) { return false; }
+    if (s > 0) { out.push(","); }
+    out.push(ind + TableVariableJsonString(fd.slots[s][0]) + ": ");
+    if (!TableVariableJsonScalar(fd.e, val[s], depth + 1, g, out)) { return false; }
+  }
+  out.push("\n" + "  ".repeat(depth) + "}");
+  return true;
+}
+
+// a union is an object with ONE key, the arm's name; None is {} (§16.2)
+function TableVariableJsonUnion(u, val, depth, g, out) {
+  if (val === null) { out.push("{}"); return true; }
+  const arm = u.byName.get(val.arm);
+  if (arm === undefined) { return false; }
+  out.push("{\n" + "  ".repeat(depth + 1) + TableVariableJsonString(arm.name) + ": ");
+  if (arm.void) {
+    out.push("null");
+  } else if (arm.body) {
+    if (!TableVariableJsonValue(arm.c, val.value, depth + 1, g, out)) { return false; }
+  } else if (!TableVariableJsonField(arm.f, val.value, depth + 1, g, out)) {
+    return false;
+  }
+  out.push("\n" + "  ".repeat(depth) + "}");
+  return true;
+}
+
+// a map key's text (placeMapKey): a string key is the key; an integer key is
+// ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
+// key kind's range — anything else of that shape is a kind mismatch, and a
+// token that is not one JSON number is malformed
+function TableVariableMapKeyNumber(kd, s) {
+  const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
+  if (m === null) { return { status: "malformed" }; }
+  const frac = m[3] === undefined ? "" : m[3];
+  let digits = BigInt(m[2] + frac);
+  let exp = (m[4] === undefined ? 0 : parseInt(m[4], 10)) - frac.length;
+  if (digits !== 0n) {
+    if (exp > 40) { return { status: "mismatch" }; }
+    if (exp >= 0) { digits *= 10n ** BigInt(exp); }
+    else {
+      if (-exp > 400) { return { status: "mismatch" }; }
+      const p = 10n ** BigInt(-exp);
+      if (digits % p !== 0n) { return { status: "mismatch" }; }
+      digits /= p;
+    }
+  }
+  const x = m[1] === "-" ? -digits : digits;
+  if (x < kd.dlo || x > kd.dhi) { return { status: "mismatch" }; }
+  return { status: "ok", key: kd.big ? x : Number(x) };
+}
+
+// one field read at a holder WITHOUT the key walk's shape gate: what a map's
+// value takes (readMap calls readField directly), null placing a pointer's null
+function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
+  if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
+    if (!inp.literal("null")) { return false; }
+    holder[fd.n] = null;
+    return true;
+  }
+  if (inp.shape() !== fd.js) { inp.bad = true; return false; }
+  return TableVariableTextField(fd, inp, holder, depth, graph, report);
+}
+
+function TableVariableTextMap(fd, inp, v, depth, graph, report) {
+  if (inp.peek() !== "{") { inp.bad = true; return false; }
+  inp.p++;
+  const kd = fd.c.fields[0], vd = fd.c.fields[1];
+  const ents = [];
+  v[fd.n] = new Map();
+  for (;;) {
+    let ch = inp.peek();
+    if (ch === "}") { inp.p++; break; }
+    if (ch === "") { inp.bad = true; return false; }
+    const ks = inp.str();
+    if (ks === null) { return false; }
+    if (inp.peek() !== ":") { inp.bad = true; return false; }
+    inp.p++;
+    let key = ks, status = "ok";
+    if (!fd.ks) {
+      const res = TableVariableMapKeyNumber(kd, ks);
+      status = res.status;
+      key = res.key;
+    }
+    if (status === "malformed") { report.malformed = true; inp.bad = true; return false; }
+    if (status === "mismatch") {
+      report.kindMismatch++;
+      if (!inp.skip(depth, graph)) { return false; }
+    } else if (fd.ks && TableVariableUtf8Encode(key).length > fd.kb) {
+      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
+      report.clamped++;
+      if (!inp.skip(depth, graph)) { return false; }
+    } else {
+      const entry = fd.c.make();
+      entry.key = key;
+      if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
+      const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
+      if (at >= 0) { report.duplicate++; ents[at] = entry; } else { ents.push(entry); }
+    }
+    ch = inp.peek();
+    if (ch === ",") { inp.p++; continue; }
+    if (ch === "}") { inp.p++; break; }
+    inp.bad = true;
+    return false;
+  }
+  ents.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  for (const e of ents) { v[fd.n].set(e.key, e.value); }
+  return true;
+}
+
+function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
+  if (inp.peek() !== "{") { inp.bad = true; return false; }
+  inp.p++;
+  const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
+  v[fd.n] = arr;
+  const seen = new Set();
+  for (;;) {
+    let ch = inp.peek();
+    if (ch === "}") { inp.p++; return true; }
+    if (ch === "") { inp.bad = true; return false; }
+    const key = inp.str();
+    if (key === null) { return false; }
+    if (inp.peek() !== ":") { inp.bad = true; return false; }
+    inp.p++;
+    const slot = fd.slotByName.get(key);
+    if (slot !== undefined) {
+      if (seen.has(slot)) { report.duplicate++; }
+      seen.add(slot);
+    }
+    if (slot === undefined) {
+      report.unknown++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else if (inp.shape() !== fd.e.js) {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
+      return false;
+    }
+    ch = inp.peek();
+    if (ch === ",") { inp.p++; continue; }
+    if (ch === "}") { inp.p++; return true; }
+    inp.bad = true;
+    return false;
+  }
+}
+
+// a union's text (readUnion): {} is None, one key names the arm, and a second
+// key is a text this walk will not guess at
+function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
+  if (inp.peek() !== "{") { inp.bad = true; return false; }
+  inp.p++;
+  holder[key] = null;
+  if (inp.peek() === "}") { inp.p++; return true; }
+  const k = inp.str();
+  if (k === null) { return false; }
+  if (inp.peek() !== ":") { inp.bad = true; return false; }
+  inp.p++;
+  const arm = d.u.byName.get(k);
+  if (arm === undefined) {
+    report.unknown++;
+    if (!inp.skip(depth + 1, graph)) { return false; }
+  } else if (arm.void) {
+    if (inp.shape() !== "z") {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else {
+      if (!inp.literal("null")) { return false; }
+      holder[key] = { arm: arm.name, value: null };
+    }
+  } else if (arm.body) {
+    if (inp.shape() !== "o") {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else {
+      const inst = arm.c.make();
+      if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
+      holder[key] = { arm: arm.name, value: inst };
+    }
+  } else {
+    const h = { arm: arm.name, value: TableVariableFieldDefault(arm.f) };
+    const shape = inp.shape();
+    if (shape === "z" && (arm.f.s === "ptr" || arm.f.s === "sblob" || arm.f.s === "bblob")) {
+      if (!inp.literal("null")) { return false; }
+      h.value = null;
+      holder[key] = h;
+    } else if (shape !== arm.f.js) {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else {
+      if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
+      holder[key] = h;
+    }
+  }
+  let c = inp.peek();
+  if (c === ",") { inp.p++; c = inp.peek(); }
+  if (c === "}") { inp.p++; return true; }
+  inp.bad = true;
+  return false;
+}
+// ---- json walk: end ----
 export const MixedEntityTableType = TableVariableFreeze({
   name: "MixedEntity",
   sz: 64, al: 8,

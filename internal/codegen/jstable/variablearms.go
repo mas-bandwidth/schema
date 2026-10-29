@@ -716,7 +716,12 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
   holder.value = x;
   return holder;
 }
+`
 
+// jsVariableArmsTextRuntime is the text half of the four constructs' walk,
+// called from the text walk's own switches (jsVariableTextRuntime). It is
+// emitted inside the json-walk markers with that walk (docs/PORTING.md M9).
+const jsVariableArmsTextRuntime = `
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
