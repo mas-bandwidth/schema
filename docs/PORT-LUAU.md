@@ -349,6 +349,51 @@ hex lines.**
   on its stdin (the REPL reads stdin; a script cannot), decided by that card
   with the timing in hand.
 
+## THE BENCH LEGS
+
+`bench/luau/` (the type wire, BenchMixed, family `gen`) and
+`bench/tables/luau/` (the tolerant table wire, TableMixed, family `table`)
+plug into the shared harnesses (`bench/run.sh --only luau`,
+`bench/tables/run.sh --only luau`) over the same committed corpus and
+goldens as every other leg; their units are `generated/bench/luau` and
+`generated/bench/tables/luau`, registered in `make/luau.mk` so the
+committed-tree check holds them to the compiler.
+
+- **The interpreter, native codegen OFF.** The pinned stock `luau` CLI runs the
+  runner; no `--codegen` row is measured or estimated. The rows read
+  `linkage=pkg`, `checks=always`, `opt=default`, `inline=unknown`. A codegen
+  row would be a different build, labelled as one.
+- **No io, so the corpus rides in as source.** `bench/luau/route.sh` stages
+  `build/bench-luau/<leg>/` (the unit, `harness.luau`, the runner, and
+  `inputs.luau`, the goldens and variants as `\x` strings), runs the runner
+  there and routes its tagged lines; the staged tree is outside `generated/`
+  and nothing outside it can resolve a require. The `corpus_id` the harness
+  folds is the one every leg prints (`fd0748942dc6ae09` packet,
+  `b51387f36d9b59c4` table).
+- **The gate is `make bench-luau-gate`, with no clock**: variant 0 against the
+  C++-pinned golden, all 64 variants decoded and re-encoded byte-identically,
+  and one reused holder twice over; its control
+  (`make bench-luau-gate-negative-control`, in the `luau` group of
+  `make/negative-controls.json`) flips each golden, plants a stray line, and
+  plants an `os.clock()` clock and a corpus name for the shape gate, which
+  scans `.luau` and refuses `os.clock` outside the runner directories.
+- **The iteration count is rescaled and recorded in `iters`**: 12,800 packet and
+  6,400 table operations (the others' 4,000,000 and 400,000), because the
+  interpreter writes one message in about 0.27 ms and round-trips it in about
+  0.82 ms. The elixir leg set the precedent (BENCH-STANDARD.md, §2.8).
+- **Where the time goes, from one sampled run of the same runner** (`luau
+  --profile`, hulk, 2026-10-29; a diagnostic, not a row): on the packet wire the
+  read side is two thirds `serialize_bitpacker.luau`'s `BitReader.readBits`
+  alone, a loop of one `buffer.readu8`, a `math.floor`, a `2 ^ n` and a modulo
+  per BIT; the write side is spread over `writerPack` (about 17%),
+  `serialize_bits.luau`'s `writeBits` (15%), the stream's `_writeBits` and
+  `_latched`/`_available`/`family` indirections (about 20% together) and the
+  bitpacker's `writeBits` (8%). The generated module's own code is under a
+  fifth of either side. On the table wire the save is 70% of the profile and
+  is spread over `write_field`, `reserve` and the byte writers of
+  `schema_save.luau`. These are serialize.luau's and the table runtime's costs,
+  to be fixed there and re-measured by this leg.
+
 ## THE REGISTER
 
 The `luau` column of docs/PORTING.md is filled, every cell with its reason:
