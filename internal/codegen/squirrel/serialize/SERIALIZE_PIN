@@ -4,8 +4,8 @@
 # test TestVendoredSquirrelSerializeIsThePin pins this file; make/squirrel-serialize.mk's
 # vendor-serialize-squirrel rewrites it on a bump (edit release and commit, then run it).
 repository https://github.com/mas-bandwidth/serialize.nut
-release v2.1.1
-commit d5fc46fe2adee1a4a299c14e7744ee09098e7a92
+release v2.1.2
+commit 2f0775f3a11d8b141cf2c3b4930e5c2a8c848dc1
 sha256 16dfb43629e05f6d5685d3104cfb1af717653202b51623c99f76575a7288b3af serialize.nut
 sha256 4a77fff383c2c4df895dfa46e8a95634b29fee3fd3773b7e9fa38b1f5ccea1e0 serialize_bitpacker.nut
 sha256 0ddb32128835857f75c6f0c437e3fcef12126f060f0d78b09da10a1332f928fe serialize_bits.nut
