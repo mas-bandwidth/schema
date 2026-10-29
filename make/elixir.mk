@@ -965,6 +965,25 @@ generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench
 		build/paired/elixir-src/Bench.schema build/paired/elixir-src/Wrap.schema
 	@touch $@
 
+# THE TABLES BOARD UNIT, for bench/tables/elixir/leg (bench/tables/README.md):
+# the VARIABLE form (form 1) of the board's representative corpus. Committed,
+# like every other language's generated/bench/tables/<lang>. The file's
+# declaration and basename do not collide (docs/SPEC-TABLES.md §11), so no copy.
+generated/bench/tables/elixir/.stamp: bin/schema bench/corpus/BenchTable.schema make/elixir.mk
+	@mkdir -p generated/bench/tables/elixir
+	./bin/schema generate --lang elixir --out generated/bench/tables/elixir bench/corpus/BenchTable.schema
+	@touch $@
+
+# THE BENCH LEG's golden gate, with no clock: the golden, all 64 variants load
+# clean and re-save byte-identically, and two rotations (docs/PORTING.md J5).
+.PHONY: tables-elixir-bench-gate
+tables-elixir-bench-gate: generated/bench/tables/elixir/.stamp
+	$(MIX) format --check-formatted bench/tables/elixir/form1_*.exs
+	BEAM_PATH="$(BEAM_PATH)" bench/tables/elixir/leg build
+	BEAM_PATH="$(BEAM_PATH)" bench/tables/elixir/leg run --gate
+test-elixir: tables-elixir-bench-gate
+BENCH_TABLES_LEGS += generated/bench/tables/elixir/.stamp
+
 # THE PAIRED LEG's own gate, with no clock: the fixed corpus's layout compared
 # byte for byte against this build's, the file loaded clean, saved back and
 # compared, and then loaded and saved twice more into fresh terms. It is

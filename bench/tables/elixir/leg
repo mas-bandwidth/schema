@@ -1,0 +1,45 @@
+#!/bin/sh
+# THE ELIXIR LEG of the tables bench (bench/tables/README.md): the VARIABLE
+# form, form byte 1, over the board's table corpus. Run from the repository root.
+#
+#   leg build        compile the generated unit to BEAM files
+#   leg run [args]   run bench/tables/elixir/form1_main.exs against them
+#
+# The compiled BEAM files are the form the generated Elixir ships in, so they
+# are what is timed; the runner compiles nothing at start-up. The FIXED form's
+# leg for bench/paired is the other runner in this directory (main.exs) and
+# is built and run by that driver, not by this script. BEAM_PATH names the
+# toolchain directories, as make/elixir.mk's does; without it the repo-local
+# dist/ pin is used when present and PATH otherwise.
+set -e
+
+GEN=generated/bench/tables/elixir
+EBIN=build/schema_tables_bench_elixir/ebin
+
+if [ -z "$BEAM_PATH" ] && [ -d dist/otp-29.0.5/bin ]; then
+    BEAM_PATH="$PWD/dist/otp-29.0.5/bin:$PWD/dist/elixir-1.20.4/bin"
+fi
+[ -z "$BEAM_PATH" ] || PATH="$BEAM_PATH:$PATH"
+export PATH
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/Table.ex" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    command -v elixirc > /dev/null 2>&1 || { echo "no elixir toolchain" >&2; exit 2; }
+    rm -rf "$EBIN"
+    mkdir -p "$EBIN"
+    # make/elixir-strict.sh: this elixirc exits 0 on a warning, so the wrapper is the gate
+    sh make/elixir-strict.sh elixirc -o "$EBIN" "$GEN"/*.ex > /dev/null
+    ;;
+run)
+    shift
+    exec elixir -pa "$EBIN" bench/tables/elixir/form1_main.exs "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac
