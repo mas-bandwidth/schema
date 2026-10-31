@@ -4957,6 +4957,49 @@ end
 ```
 <!-- /lua-table-usage -->
 
+**Squirrel** — Squirrel 3.2, no dependencies. Generated code is self-contained: a
+module per schema file beside the serialize runtime, and for tables a
+`<Package>Tables.nut` of classes and descriptors with the runtime modules
+(`schema_table_load`, `schema_table_save`, `schema_table_json`, ...) beside
+it, all reached through the directory's `schema_module.nut` loader, so the
+directory is the whole program. A table is a class whose members are
+UpperCamelCase (`scene.Head`, `node.Value`); a field's wire name and a JSON key
+stay the schema's own spelling. A pointer is a reference to another instance,
+so two slots naming one node are one node on the wire. `<Table>Save` answers the
+bytes or `null` for a writer's refusal; `<Table>Load` is the strict read, and
+answers the value or `null` with the refusal's name in `report.reason`. An
+enum-keyed array is a plain array with key k at slot k-1, and the module's
+`Keyed(table, field)` takes the key and refuses None and any key past the last
+variant by name. This fragment is compiled and run against the
+`tables/pointers` unit by `make tables-squirrel-usage`:
+
+<!-- squirrel-table-usage -->
+```squirrel
+local T = dofile("schema_module.nut", true).require("GraphdemoTables");
+
+// a two-node list, its tail also named by `alias`: one node on the wire
+local tail = T.ListNode();
+tail.Value = 2;
+local head = T.ListNode();
+head.Value = 1;
+head.Next = tail;
+local scene = T.Scene();
+scene.Name = "intro";
+scene.Head = head;
+scene.Alias = tail;
+
+local bytes = T.SceneSave(scene);              // null: the writer refused
+local report = {};
+local back = T.SceneLoad(bytes, report);       // null: report.reason names why
+if (back == null) throw "the Scene did not load: " + report.reason;
+local node = back.Head;
+while (node != null) {
+  use(node.Value);
+  node = node.Next;                            // null is the null reference
+}
+```
+<!-- /squirrel-table-usage -->
+
 **Luau** — Luau 0.741, no dependencies. Generated code is self-contained: a
 `<Base>Table.luau` of descriptors per schema file, with the runtime modules
 (`schema_tables`, `schema_load`, `schema_save`, `schema_cookread`, ...) beside

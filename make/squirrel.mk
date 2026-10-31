@@ -86,7 +86,7 @@ test-squirrel: toolchain-squirrel dist-squirrel build/fixedform-corpus/.stamp $(
 		'TestSkeletonFixture TestSqrunFailsAScriptThatThrows TestSqrunRoundTripsInputs TestSquirrelFileNamesNeverShadowModuleLocals TestSquirrelLoaderResolvesOnlyItsDirectory TestSquirrelPacketFiniteNegativeControl TestSquirrelPacketFloatsAreFinite TestSquirrelTypeWireReadNegativeControl TestSquirrelTypeWireReadsTheGoldens TestSquirrelTypeWireWideTextVectors TestSquirrelTypeWireWriteNegativeControl TestSquirrelTypeWireWritesTheGoldens TestSquirrelTypesConstructAtTheirDefaults TestVendoredSquirrelSerializeIsThePin' \
 		-count=1 -timeout 600s ./internal/codegen/squirrel/
 	sh test/slowgate/proof test-squirrel \
-		'TestDeprecatedVariantReadsDefaultWriteRefused TestJSONRefusesIllFormedAtBound TestSquirrelAnnounceHonorsReceiverBounds TestSquirrelAnnounceReadsFormBeforeLength TestSquirrelBase64TextNegativeControl TestSquirrelBase64TextRoundTripsEveryInstance TestSquirrelBlobNamedTwice TestSquirrelBlobSharedMutantMatchesGo TestSquirrelBlockBuilderMatchesTheCorpus TestSquirrelBlockReadMatchesTheCorpus TestSquirrelBytesMessagePairs TestSquirrelCompressedFloatClampNegativeControl TestSquirrelCompressedFloatClampsLikeGo TestSquirrelCookMeasureNegativeControl TestSquirrelCookMeasureRefusesLikeCook TestSquirrelCookReadMatchesTheCorpus TestSquirrelCookWriterMatchesTheCorpus TestSquirrelDriverListsItsSurfaces TestSquirrelFixedForm128BitLeaves TestSquirrelFixedFormAgreesWithTheByteOracle TestSquirrelFixedFormNegativeControl TestSquirrelFixedLoadNamesEveryRefusal TestSquirrelFixedReadsItsLineage TestSquirrelJsonAgreesWithTheCorpus TestSquirrelJsonGuardedGroupsElide TestSquirrelJsonNegativeControl TestSquirrelJsonTextZeroByteTakesOneRule TestSquirrelKeyedArraysAreHeldAtBothEnds TestSquirrelLoadTextRefusesNonCanonicalBase64 TestSquirrelMapPresence TestSquirrelMapWireCountRefusal TestSquirrelMapsInJson TestSquirrelMapsMatchTheWire TestSquirrelMessageDepthBoundary TestSquirrelMessageFormMatchesTheGoldens TestSquirrelMessageFormNegativeControl TestSquirrelMessageFormSetsPresentOptionalField TestSquirrelMessageQuantizerIsGos TestSquirrelMessageQuantizerNegativeControl TestSquirrelMessageUnsignedRangeClampAcrossSignBit TestSquirrelMessageWidenArrayElements TestSquirrelMessageWidenFloat32ToFloat64 TestSquirrelMessageWidensAndSignExtends TestSquirrelRequiredInJson TestSquirrelRequiredOnTheWire TestSquirrelRetainMatchesIndependentRewrite TestSquirrelStrictReadNamesNestedPointerArrayElement TestSquirrelStrictReadReadsFormOneAtFixedRoot TestSquirrelStrictReadRefusesByName TestSquirrelTableDescriptorsLoad TestSquirrelTableEmitsOnlyItsDeclaredForms TestSquirrelTableFiniteFloatForms TestSquirrelTableFiniteFloatFormsNegativeControl TestSquirrelTableFiniteFloatNegativeControl TestSquirrelTableFloatsAreFinite TestSquirrelTableLoadMatchesTheReports TestSquirrelTableLoadNegativeControl TestSquirrelTableSaveNegativeControl TestSquirrelTableSaveRoundTripsEveryInstance TestSquirrelTimestampStrictRFC3339 TestSquirrelViewMatchesTheGoView TestSquirrelWideTextMatchesTheWire TestSquirrelWideTextNegativeControl TestSquirrelWireCountRefusalNamesCountRefusal TestSquirrelWireFuzzNegativeControl TestSquirrelWireGuardedGroupsElide TestSquirrelWireIntegrityFixedForm' \
+		'TestDeprecatedVariantReadsDefaultWriteRefused TestJSONRefusesIllFormedAtBound TestSquirrelAnnounceHonorsReceiverBounds TestSquirrelAnnounceReadsFormBeforeLength TestSquirrelBase64TextNegativeControl TestSquirrelBase64TextRoundTripsEveryInstance TestSquirrelBlobNamedTwice TestSquirrelBlobSharedMutantMatchesGo TestSquirrelBlockBuilderMatchesTheCorpus TestSquirrelBlockReadMatchesTheCorpus TestSquirrelBytesMessagePairs TestSquirrelCompressedFloatClampNegativeControl TestSquirrelCompressedFloatClampsLikeGo TestSquirrelCookMeasureNegativeControl TestSquirrelCookMeasureRefusesLikeCook TestSquirrelCookReadMatchesTheCorpus TestSquirrelCookWriterMatchesTheCorpus TestSquirrelDriverListsItsSurfaces TestSquirrelFixedForm128BitLeaves TestSquirrelFixedFormAgreesWithTheByteOracle TestSquirrelFixedFormNegativeControl TestSquirrelFixedLoadNamesEveryRefusal TestSquirrelFixedReadsItsLineage TestSquirrelJsonAgreesWithTheCorpus TestSquirrelJsonGuardedGroupsElide TestSquirrelJsonNegativeControl TestSquirrelJsonTextZeroByteTakesOneRule TestSquirrelKeyedArraysAreHeldAtBothEnds TestSquirrelKeyedAccessorCoversBothEnds TestSquirrelKeyedNegativeControls TestSquirrelMapWriterSort TestSquirrelMapWriterSortNegativeControl TestSquirrelJsonLabelNegativeControl TestSquirrelTableSaveIdentityNegativeControl TestSquirrelBlockByteOrderNegativeControl TestSquirrelBlockOrderWordNegativeControl TestSquirrelTextDifferentialAgainstTheGoEngine TestSquirrelTextDifferentialNegativeControl TestSquirrelCountRefusalStopsTheBuilder TestSquirrelCountRefusalStopsTheBuilderNegativeControl TestSquirrelLoadTextRefusesNonCanonicalBase64 TestSquirrelMapPresence TestSquirrelMapWireCountRefusal TestSquirrelMapsInJson TestSquirrelMapsMatchTheWire TestSquirrelMessageDepthBoundary TestSquirrelMessageFormMatchesTheGoldens TestSquirrelMessageFormNegativeControl TestSquirrelMessageFormSetsPresentOptionalField TestSquirrelMessageQuantizerIsGos TestSquirrelMessageQuantizerNegativeControl TestSquirrelMessageUnsignedRangeClampAcrossSignBit TestSquirrelMessageWidenArrayElements TestSquirrelMessageWidenFloat32ToFloat64 TestSquirrelMessageWidensAndSignExtends TestSquirrelRequiredInJson TestSquirrelRequiredOnTheWire TestSquirrelRetainMatchesIndependentRewrite TestSquirrelStrictReadNamesNestedPointerArrayElement TestSquirrelStrictReadReadsFormOneAtFixedRoot TestSquirrelStrictReadRefusesByName TestSquirrelTableDescriptorsLoad TestSquirrelTableEmitsOnlyItsDeclaredForms TestSquirrelTableFiniteFloatForms TestSquirrelTableFiniteFloatFormsNegativeControl TestSquirrelTableFiniteFloatNegativeControl TestSquirrelTableFloatsAreFinite TestSquirrelTableLoadMatchesTheReports TestSquirrelTableLoadNegativeControl TestSquirrelTableSaveNegativeControl TestSquirrelTableSaveRoundTripsEveryInstance TestSquirrelTimestampStrictRFC3339 TestSquirrelViewMatchesTheGoView TestSquirrelWideTextMatchesTheWire TestSquirrelWideTextNegativeControl TestSquirrelWireCountRefusalNamesCountRefusal TestSquirrelWireFuzzNegativeControl TestSquirrelWireGuardedGroupsElide TestSquirrelWireIntegrityFixedForm' \
 		-count=1 -timeout 600s -skip 'NightlyFuzz' ./internal/codegen/squirreltable/
 update-goldens-squirrel: ;
 
@@ -138,3 +138,91 @@ BENCH_TABLES_LEGS += generated/bench/tables/squirrel/.stamp
 GOLDENS_LEGS      += update-goldens-squirrel
 TOOLCHAIN_LEGS          += squirrel
 TOOLCHAIN_PINS_squirrel := SQ
+
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Squirrel
+# side. The gate pulls the marked fragment out of docs/USAGE.md, wraps it in a
+# script that supplies the one helper the page leaves to the caller, and runs
+# it under the pinned interpreter against the generated `tables/pointers`
+# modules, so the day the emitted surface moves the page goes red with it. The
+# fragment saves a two-node list and walks it back: it must reach both nodes.
+# USAGE_DOC names the page; the control points it at a sabotaged copy.
+USAGE_DOC ?= docs/USAGE.md
+USAGE_SQUIRREL_DIR ?= build/squirrel-usage
+.PHONY: tables-squirrel-usage tables-squirrel-usage-negative-control
+tables-squirrel-usage: toolchain-squirrel bin/schema $(USAGE_DOC)
+	@rm -rf $(USAGE_SQUIRREL_DIR) && mkdir -p $(USAGE_SQUIRREL_DIR)
+	./bin/schema generate --lang squirrel --out $(USAGE_SQUIRREL_DIR) tables/pointers
+	printf 'local used = { n = 0 };\nlocal use = function(x) { used.n++; };\n' > $(USAGE_SQUIRREL_DIR)/usage.nut
+	sed -n '/<!-- squirrel-table-usage -->/,/<!-- \/squirrel-table-usage -->/p' $(USAGE_DOC) \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(USAGE_SQUIRREL_DIR)/usage.nut
+	printf 'if (used.n != 2) throw "the walk reached " + used.n + " node(s), want 2";\n' >> $(USAGE_SQUIRREL_DIR)/usage.nut
+	printf 'print("usage: docs/USAGE.md Squirrel example saved the Scene and walked " + used.n + " node(s)\\n");\n' >> $(USAGE_SQUIRREL_DIR)/usage.nut
+	grep -q 'SceneLoad' $(USAGE_SQUIRREL_DIR)/usage.nut || \
+		{ echo "MISSING: $(USAGE_DOC) carries no squirrel-table-usage example"; exit 1; }
+	cd $(USAGE_SQUIRREL_DIR) && $(SQ) usage.nut > usage.out 2> usage.err; cat usage.out; \
+		if [ -s usage.err ]; then cat usage.err; exit 1; fi; grep -q '^usage: ' usage.out
+
+# THE REVERSED WITNESSES: two edited copies of the page, each checked to have
+# changed, must each turn the gate red. The first renames the strict read the
+# page calls (the surface moved: the run errors); the second walks a member the
+# Scene does not carry (the example runs but reaches the wrong count).
+tables-squirrel-usage-negative-control:
+	@rm -rf build/squirrel-usage-negative && mkdir -p build/squirrel-usage-negative
+	sed 's/T\.SceneLoad(/T.SceneLaod(/' docs/USAGE.md > build/squirrel-usage-negative/renamed.md
+	sed 's/local node = back\.Head;/local node = back.Alias;/' docs/USAGE.md > build/squirrel-usage-negative/walks-one.md
+	@for c in renamed walks-one; do \
+		if cmp -s docs/USAGE.md build/squirrel-usage-negative/$$c.md; then \
+			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \
+		if $(MAKE) tables-squirrel-usage USAGE_DOC=build/squirrel-usage-negative/$$c.md USAGE_SQUIRREL_DIR=build/squirrel-usage-negative/$$c > build/squirrel-usage-negative/$$c.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Squirrel usage gate"; exit 1; fi; \
+		echo "tables-squirrel-usage negative control: the $$c copy fails the gate"; \
+	done
+
+test-squirrel: tables-squirrel-usage
+
+# J2 (docs/PORTING.md) — THE RUNTIME HOME. A unit's table module lives in one
+# file named by the PACKAGE (<Package>Tables.nut, squirreltable.ModuleName),
+# never by the schema file that sorts first, so a file that sorts earlier
+# relocates nothing: the module keeps its name and the embedded runtime files
+# (schema_table_load.nut, ...) are byte-identical across the two trees.
+.PHONY: tables-squirrel-runtime-home tables-squirrel-runtime-home-negative-control
+tables-squirrel-runtime-home: bin/schema
+	@rm -rf build/runtime-home-squirrel && mkdir -p build/runtime-home-squirrel/src
+	@cp tables/examples/*.schema build/runtime-home-squirrel/src/
+	@printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > build/runtime-home-squirrel/src/Aaa.schema
+	@./bin/schema generate --lang squirrel --out build/runtime-home-squirrel/base tables/examples 2>/dev/null
+	@./bin/schema generate --lang squirrel --out build/runtime-home-squirrel/added build/runtime-home-squirrel/src 2>/dev/null
+	@for tree in base added; do \
+		test -f build/runtime-home-squirrel/$$tree/TabledemoTables.nut || \
+			{ echo "RUNTIME HOME GATE FAILED: the $$tree tree has no TabledemoTables.nut (the table module is named by the package)"; ls build/runtime-home-squirrel/$$tree/*Tables.nut; exit 1; }; \
+	done
+	@for f in internal/codegen/squirreltable/runtime/*.nut; do \
+		n=schema_table_$$(basename $$f); \
+		test -f build/runtime-home-squirrel/base/$$n || { echo "RUNTIME HOME GATE FAILED: the base tree carries no $$n"; exit 1; }; \
+		cmp -s build/runtime-home-squirrel/base/$$n build/runtime-home-squirrel/added/$$n || \
+			{ echo "RUNTIME HOME GATE FAILED: the table runtime file $$n moved when the unit gained an earlier-sorting file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Squirrel): the table module stays TabledemoTables.nut and the table runtime files stay byte-identical when an earlier-sorting file joins the unit"
+
+# Its NEGATIVE CONTROL: put the file-order rule back (the module named by the
+# file that sorts first, ir.ProtocolIdHome) and the home must MOVE when the
+# earlier-sorting file joins.
+tables-squirrel-runtime-home-negative-control: bin/schema tables-squirrel-runtime-home
+	@sed 's|return p + "Tables"|return ir.ProtocolIdHome(u) + "Tables" // SABOTAGED: back to the file order|' \
+		internal/codegen/squirreltable/squirreltable.go > build/squirrel-runtime-home-fileorder.gotext
+	@grep -q SABOTAGED build/squirrel-runtime-home-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/squirreltable/squirreltable.go":"%s/build/squirrel-runtime-home-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/squirrel-runtime-home-overlay.json
+	@go build -overlay=build/squirrel-runtime-home-overlay.json -o build/schema-squirrel-runtime-home-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-squirrel/base-sabotage build/runtime-home-squirrel/added-sabotage
+	@./build/schema-squirrel-runtime-home-sabotaged generate --lang squirrel --out build/runtime-home-squirrel/base-sabotage tables/examples 2>/dev/null
+	@./build/schema-squirrel-runtime-home-sabotaged generate --lang squirrel --out build/runtime-home-squirrel/added-sabotage build/runtime-home-squirrel/src 2>/dev/null
+	@base=$$(cd build/runtime-home-squirrel/base-sabotage && ls *Tables.nut | grep -v '^Tables.nut$$'); \
+	 added=$$(cd build/runtime-home-squirrel/added-sabotage && ls *Tables.nut | grep -v '^Tables.nut$$'); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the table module in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Squirrel): the file-order rule moves the table module from $$base to $$added"
+
+test-squirrel: tables-squirrel-runtime-home
