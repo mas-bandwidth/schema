@@ -180,6 +180,8 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 			floor = i + 2
 		}
 	}
+	e.g.Declare(n + "FixedEvolveFloor")
+	e.g.Declare(n + "FixedEvolveLoad")
 	e.p("let %sFixedEvolveFloor: i64 = %d;\n", n, floor)
 	for i, en := range olds {
 		e.emitEntry(n, i+1, en, st)
@@ -801,6 +803,8 @@ func collectArmDefaults(st *ir.Struct, seen map[string]bool, out map[uint64]stri
 func (e *fixedEvolveEmit) emitEntry(root string, idx int, en FixedEvolutionEntry, st *ir.Struct) {
 	curLayout, _, _ := fixedRootFacts(st)
 	plan := compileEvolvePlan(st, en.Layout, curLayout)
+	e.g.Declare(fmt.Sprintf("%sFixedEvolveLayout%d", root, idx))
+	e.g.Declare(fmt.Sprintf("%sFixedEvolveSupported%d", root, idx))
 	e.p("let %sFixedEvolveLayout%d: const u8[:] = \"%s\";\n", root, idx, fixedGooseBytes(en.Layout))
 	e.p("let %sFixedEvolveSupported%d: bool = %t;\n", root, idx, plan.supported)
 	if !plan.supported {
