@@ -389,7 +389,7 @@ func TestBytesAfterPad(t *testing.T) {
 	storage := make([]Root, 1)
 	var report TableReport
 	count, ok := RootLoadMessages(storage, vocab, padded, &report)
-	if ok || count != 1 || report != (TableReport{Malformed: true}) {
+	if ok || count != 0 || report != (TableReport{Malformed: true}) { // damage discards the whole batch (docs/SPEC-TABLES.md §4)
 		t.Fatalf("bytes after the pad: count=%d ok=%v %+v", count, ok, report)
 	}
 }
