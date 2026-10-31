@@ -120,3 +120,16 @@ tables-luau-maps-negative-control: toolchain-luau
 	go test ./internal/codegen/luautable/ -run '^TestLuauMapWriterSortNegativeControl$$' -count=1 -timeout 600s -v
 
 test-luau: tables-luau-maps tables-luau-maps-negative-control
+
+# J1: the accessor and descriptor agreement, in its Luau form
+# (layoutagree_test.go): the cook reader's own layout arithmetic against the
+# compiler's ir.RecordLayout for every record of every cook-carrying unit; the
+# control widens the pointer slot by eight and requires exactly the records
+# that hold one to turn.
+.PHONY: tables-luau-accessor-descriptor-agreement tables-luau-accessor-negative-control
+tables-luau-accessor-descriptor-agreement: toolchain-luau
+	go test ./internal/codegen/luautable/ -run '^TestLuauLayoutAgreesWithTheCompiler$$' -count=1 -timeout 600s -v
+tables-luau-accessor-negative-control: toolchain-luau
+	go test ./internal/codegen/luautable/ -run '^TestLuauLayoutAgreementNegativeControl$$' -count=1 -timeout 600s -v
+
+test-luau: tables-luau-accessor-descriptor-agreement tables-luau-accessor-negative-control

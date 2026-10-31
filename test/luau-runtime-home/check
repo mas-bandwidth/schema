@@ -4,7 +4,8 @@
 # The added tree is the base tree's unit with one earlier-sorting schema file,
 # <joining base>.schema, joined. Every file of the base tree is in the added
 # tree under the same name, and the added tree has no file the base tree lacks
-# but the joining file's own modules (<joining base>Table.luau, View, Block).
+# but the joining file's own modules (<joining base>.luau, its type surface,
+# and <joining base>Table.luau, View and Block).
 # Every schema_*.luau runtime module is byte-identical across the two trees,
 # except schema_view.luau (the unit's own declarations, held to its name).
 set -eu
@@ -26,7 +27,7 @@ for f in "$added"/*.luau; do
 	n=$(basename "$f")
 	test -f "$base/$n" && continue
 	case "$n" in
-	"$joining"Table.luau | "$joining"View.luau | "$joining"Block.luau) ;;
+	"$joining".luau | "$joining"Table.luau | "$joining"View.luau | "$joining"Block.luau) ;;
 	*) echo "RUNTIME HOME GATE FAILED: the module $n appeared when the unit gained an earlier-sorting file"; exit 1 ;;
 	esac
 done

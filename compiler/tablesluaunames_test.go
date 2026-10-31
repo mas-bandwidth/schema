@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -105,8 +104,8 @@ func luauManifestUnits(t *testing.T) []*ir.Unit {
 
 // luauEmittedKeys is the union, over the units the Luau table backend
 // generates, of every module-table key its emitted table sources spell (every
-// table, view and block module and every runtime file), minus the spellings
-// the emitter writes per declaration.
+// schema_*.luau runtime module, and every <Base>Table, View and Block module),
+// minus the spellings the emitter writes per declaration in the latter.
 func luauEmittedKeys(t *testing.T, units []*ir.Unit) map[string]bool {
 	t.Helper()
 	emitted := map[string]bool{}
@@ -115,25 +114,35 @@ func luauEmittedKeys(t *testing.T, units []*ir.Unit) map[string]bool {
 		if err != nil {
 			continue // a unit the backend refuses by name spells nothing
 		}
-		// the type surface the table modules require beside them
-		if types, err := luau.Generate(u); err == nil {
-			maps.Copy(files, types)
-		}
-		perDecl := map[string]bool{}
+		decls := make([]string, 0, len(u.DeclFile))
 		for name := range u.DeclFile {
-			perDecl[name] = true
-			perDecl["New"+name] = true
-			perDecl[name+"Descriptor"] = true
+			decls = append(decls, name)
 		}
-		for _, data := range files {
+		for file, data := range files {
 			for _, k := range luauModuleKeys(string(data)) {
-				if !perDecl[k] {
-					emitted[k] = true
+				if !strings.HasPrefix(file, "schema_") && perDeclaration(k, decls) {
+					continue
 				}
+				emitted[k] = true
 			}
 		}
 	}
 	return emitted
+}
+
+// perDeclaration reports whether a key of a generated <Base>*.luau module is
+// one the emitter spells from a declaration's own name: the name itself,
+// New<Name>, or the name followed by a suffix (<Name>Descriptor,
+// <Name>FixedLayout, <Name>MaxBits, <Name>Block, a flags set's <Name><Variant>).
+// A schema reaches a module table through these and nothing else, so they
+// claim nothing a schema does not already own.
+func perDeclaration(key string, decls []string) bool {
+	for _, d := range decls {
+		if key == d || key == "New"+d || strings.HasPrefix(key, d) {
+			return true
+		}
+	}
+	return false
 }
 
 // luauNameFindings holds one emitted key set against the Luau backend's list

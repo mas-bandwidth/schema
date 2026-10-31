@@ -25,7 +25,9 @@
 # the repository: every top-level entry linked, except test/ (the mirror holds
 # a copy of the leg's driver and main.luau only) and build/, whose entries are
 # linked one by one but for the two the mirror owns: build/conformance-luau
-# (the regenerated units and the driver's staging) and build/luau-driver.
+# (the regenerated units and the driver's staging) and build/luau-driver. The
+# harness's work directory sits under this control's own build directory, so
+# that one is linked too: the forgery lines name fixtures it wrote there.
 #
 # usage: test/conformance/luau/negative-control <report|walk>
 set -eu
@@ -63,7 +65,7 @@ for entry in "$root"/* "$root"/.[!.]*; do
 done
 for entry in "$root"/build/*; do
 	name=$(basename "$entry")
-	case "$name" in conformance-luau | luau-driver | luau-table-control-*) continue ;; esac
+	case "$name" in conformance-luau | luau-driver) continue ;; esac
 	ln -s "$entry" "$mirror/build/$name"
 done
 cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
