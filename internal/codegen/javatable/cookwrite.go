@@ -57,7 +57,9 @@ public final class TableCookWrite {
             // region's floor of eight, then its extent (§7.6)
             return info.hasExtent ? aligned(info.size, FLOOR) + extent : info.size;
         }
-        long align() { return info != null ? Math.max(8, info.align) : 8; }
+        // a record node starts at its own type's alignment, a blob at eight, its
+        // header's (internal/tablecook/region.go)
+        long align() { return info != null ? info.align : 8; }
     }
 
     public static final class Plan {
