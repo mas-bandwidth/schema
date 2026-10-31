@@ -229,21 +229,24 @@ A bounded LAYOUT model of the table wire's record scan
 (docs/LAYERS/1-framing.md; docs/SPEC-TABLES.md §3, §4, §2.9): one parent body
 of `N` bytes walked by a cursor, one length-framed field at a time, carrying
 the arithmetic the readers carry — the field's start, its end `start + L`, the
-header read AGAINST THE PARENT buffer rather than the field's own end, the
-element span clamped at zero when the header crossed `L`, and the resume point
-after a field read whole. Damage ends the scan: DAMAGE DISCARDS THE WHOLE LOAD
-(docs/SPEC-TABLES.md §4), so nothing resumes after it.
-It is a model, not a codec: the reference, the kind byte and the element
-values are folded away and only offsets remain, which is what a layout model
-is for (Glenn, 2026-10-29: the bugs live in the mapping to memory).
+header that must lie inside `[start, end)`, and the resume point after a field
+read whole — and the one identity fact framing owns, each field's reference
+against the set its body already carried. INPUT NO WRITER PRODUCES IS DAMAGE
+(docs/SPEC-TABLES.md §4; Glenn, #391: "Table reads are not trusted, they will
+come over the network."), and damage ends the scan: DAMAGE DISCARDS THE WHOLE
+LOAD, so nothing resumes after it. It is a model, not a codec: the kind byte
+and the element values are folded away and only offsets and references
+remain, which is what a layout model is for (Glenn, 2026-10-29: the bugs live
+in the mapping to memory).
 
 ## The finite instance
 
-`N = 6`, `MaxL = 7`, `HeaderBytes = {1, 2, 3}`. Every field chooses every `L`
-in `0..MaxL` and every header width (the element kind byte plus a count of one
-or more LEB128 bytes), so TLC walks every placement of a header against every
-`L` and every buffer end, including `L` exactly at the buffer, one past it, a
-header that crosses `L` inside the buffer, and one that crosses the buffer.
+`N = 6`, `MaxL = 7`, `HeaderBytes = {1, 2, 3}`, `Refs = {1, 2}`. Every field
+chooses every reference, every `L` in `0..MaxL` and every header width (the
+element kind byte plus a count of one or more LEB128 bytes), so TLC walks every
+placement of a header against every `L` and every buffer end, including `L`
+exactly at the buffer, one past it, a header that crosses `L` inside the
+buffer and one that crosses the buffer, and every order of two references.
 
 ## Actions
 
@@ -251,7 +254,7 @@ header that crosses `L` inside the buffer, and one that crosses the buffer.
 |---|---|
 | `Terminator` | the zero reference ends the body (F3, R1) |
 | `Truncated` | no byte left for a reference: damage, and the load ends |
-| `Field(L, H)` | one length-framed array field: `L` past the body is damage and ends the load (L4); fewer than two bytes is inert (H2); a count the parent cannot complete is damage inside the field and ends the load; otherwise the header is read against the parent, the elements are bounded by `L`, and the parent resumes at `end` (H3, L1) |
+| `Field(R, L, H)` | one length-framed array field: `L` past the body is damage (L4); a reference the body already carried is damage (R5); fewer than two bytes is damage (H2); a header past `L` is damage (H3); otherwise the elements are bounded by `L` and the parent resumes at `end` (L1). Damage ends the load |
 | `Finished` | stutter once the scan is done |
 
 ## Properties
@@ -259,13 +262,13 @@ header that crosses `L` inside the buffer, and one that crosses the buffer.
 - **TypeOK** — every offset bounded by `N + MaxL + 1`.
 - **NoReadPastBuffer** — no field's read reaches past the buffer (L4, H5).
 - **ResumeAtEnd** — after every field the parent did not stop on, it resumed
-  exactly at `start + L` (L1): a count that crossed `L` moves no resume point.
+  exactly at `start + L` (L1).
 - **DamageEndsLoad** — once `malformed` is set the scan is done: no field is
-  read after damage, so nothing a later field held can stand beside it
-  (docs/SPEC-TABLES.md §4).
-- **HeaderAgainstParent** — a count is damage only when the PARENT cannot
-  complete it (H3): a header the buffer holds is read whether or not the
-  field's own `L` covers it.
+  read after damage (docs/SPEC-TABLES.md §4).
+- **HeaderInsideBody** — no accepted field is shorter than its header and no
+  accepted field's header runs past its `L` (H2, H3).
+- **OneIdOncePerBody** — no field is accepted under a reference its body
+  already carried (R5).
 
 ## Reversed witnesses
 
@@ -274,10 +277,15 @@ the one invariant that names the rule; only that invariant may fail.
 
 | cfg | switch | invariant violated | the bug it is |
 |---|---|---|---|
-| `MCFramingHeaderByChildL.cfg` | `HeaderByChildL` | `HeaderAgainstParent` | the header bounded by the field's own `L`: #2400 (Dart), #2418 (Rust); Java, Luau and Squirrel today (docs/LAYERS/1-framing.md N3) |
+| `MCFramingHeaderAgainstParent.cfg` | `HeaderAgainstParent` | `HeaderInsideBody` | the retired reading: a count spelled past `L` completed from the parent's bytes |
+| `MCFramingShortBodyInert.cfg` | `ShortBodyInert` | `HeaderInsideBody` | the retired reading: a body of fewer than two bytes stepped over as inert |
+| `MCFramingRepeatLastWins.cfg` | `RepeatLastWins` | `OneIdOncePerBody` | the retired reading: a body carrying one id twice accepted, the last occurrence winning |
 | `MCFramingOffByOneAtL.cfg` | `OffByOneAtL` | `NoReadPastBuffer` | a payload ending one byte past the buffer accepted, and read |
-| `MCFramingResumeAtCursor.cfg` | `ResumeAtCursor` | `ResumeAtEnd` | resuming where the header's read stopped instead of at `end`, so a crossed count desynchronizes the parent |
 | `MCFramingResumeAfterDamage.cfg` | `ResumeAfterDamage` | `DamageEndsLoad` | resuming past `L` after damage inside a field, the partial read the ruling of 2026-10-31 removed |
+
+Each counterexample was checked by hand against the code it names: the engine
+before this model's change read a header past `L` (`subTo` clamped the span),
+stepped over a body of fewer than two bytes, and let a repeated id win.
 
 ## Running
 
@@ -288,7 +296,7 @@ nice -n 19 timeout 180s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
   -workers 1 -config MCFraming.cfg -metadir "$JOB/tlc-MCFraming" Framing
 ```
 
-Repeat for each of the five cfgs. The positive cfg must exit 0 with exhaustive
+Repeat for each of the six cfgs. The positive cfg must exit 0 with exhaustive
 completion; each reversed cfg must report its named invariant violation. The
 runs are recorded in `tla/RUNS.tsv`.
 
