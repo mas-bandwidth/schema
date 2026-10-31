@@ -5903,7 +5903,7 @@ endef
 # it, and requires the clean output to pass.
 .PHONY: message-form-fixed-only-lock-negative-control
 message-form-fixed-only-lock-negative-control:
-	go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
+	SCHEMA_SLOW=1 go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
 
 .PHONY: tables-message-form-text-negative-control
 tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp
