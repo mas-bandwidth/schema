@@ -152,9 +152,9 @@ end
 
 -- ---- VALUES (docs/PORT-MOO.md, THE VALUE MAPPING) -------------------------
 
--- the used bytes of a wstring(N) or bytes(N) value: its buffer and the length
--- beside it, in BYTES (a wstring's Length is in code units)
-local function used(v: any, slot: string, wide: boolean?): (buffer?, number)
+-- the used bytes of a bytes(N) value: its buffer and the length beside it, in
+-- BYTES
+local function used(v: any, slot: string): (buffer?, number)
 	local b = v[slot]
 	if type(b) ~= "buffer" then
 		return nil, 0
@@ -162,9 +162,6 @@ local function used(v: any, slot: string, wide: boolean?): (buffer?, number)
 	local n = v[slot .. "Length"]
 	if type(n) ~= "number" then
 		n = buffer.len(b)
-	end
-	if wide then
-		n *= 2
 	end
 	if n > buffer.len(b) or n < 0 then
 		n = buffer.len(b)
@@ -592,16 +589,6 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?, named: an
 			return true
 		end
 		return write_arm_header(c, St.lookup(e.t), w, val)
-	elseif s == "str" and e.wide then
-		if type(val) ~= "buffer" then
-			return refuse(c, "invalid_value", named)
-		end
-		local units = len or (buffer.len(val) // 2)
-		if units * 2 > buffer.len(val) or (e.bound ~= nil and units > e.bound) or not V.wide(val, 0, units * 2) then
-			return refuse(c, "invalid_value", named)
-		end
-		w_leb(w, units * 2)
-		w_buf(w, val, 0, units * 2)
 	elseif s == "str" or s == "text" then
 		local text = if val == nil then "" else val
 		if not text_ok(text, if s == "str" then e.bound else nil) then
@@ -657,12 +644,6 @@ local function elem_is_default(e: any, val: any, len: number?): boolean
 	end
 	if s == "union" then
 		return type(val) ~= "table" or val.Type == 0
-	end
-	if s == "str" and e.wide then
-		if type(val) ~= "buffer" then
-			return true
-		end
-		return (len or 0) == 0
 	end
 	if s == "str" or s == "text" then
 		return val == nil or val == ""
@@ -763,14 +744,6 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 		return write_body(c, St.lookup(arm.t), w, val)
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		w_leb(w, if not val then 0 else c.nodes.index[val])
-	elseif s == "str" and arm.wide then
-		local b, n = used(u, arm.slot, true)
-		if b ~= nil and n > 0 then
-			if not V.wide(b, 0, n) or (arm.bound ~= nil and n // 2 > arm.bound) then
-				return refuse(c, "invalid_value", arm)
-			end
-			w_buf(w, b, 0, n)
-		end
 	elseif s == "str" or s == "text" then
 		local text = if val == nil then "" else val
 		if not text_ok(text, if s == "str" then arm.bound else nil) then
@@ -778,7 +751,7 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 		end
 		w_str(w, text)
 	elseif s == "bytes" then
-		local b, n = used(u, arm.slot, false)
+		local b, n = used(u, arm.slot)
 		w_u8(w, 6) -- bytes ride as an array of u8 (§2.5)
 		w_leb(w, n)
 		if b ~= nil and n > 0 then
@@ -910,7 +883,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		end
 		if s == "arr" or s == "bytes" then
 			if s == "bytes" then
-				local b, n = used(v, fd.slot, false)
+				local b, n = used(v, fd.slot)
 				if n > fd.bound then
 					return refuse(c, "invalid_value", fd)
 				end
@@ -937,17 +910,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			return true
 		end
 		header(c, w, fd.id, fd.k)
-		if s == "str" and fd.wide then
-			local b, n = used(v, fd.slot, true)
-			if b ~= nil and (n // 2 > fd.bound or not V.wide(b, 0, n)) then
-				return refuse(c, "invalid_value", fd)
-			end
-			w_leb(w, n)
-			if b ~= nil and n > 0 then
-				w_buf(w, b, 0, n)
-			end
-			return true
-		elseif s == "union" then
+		if s == "union" then
 			if type(val) ~= "table" or val.Type == 0 then
 				w_leb(w, 0)
 				return true
@@ -958,21 +921,6 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	end
 	if s == "arr" and fd.array == "keyed" then
 		return write_keyed(c, fd, w, val)
-	end
-	if s == "str" and fd.wide then
-		local b, n = used(v, fd.slot, true)
-		if not required and n == 0 then
-			return true -- wide text takes no specified default
-		end
-		if b ~= nil and (n // 2 > fd.bound or not V.wide(b, 0, n)) then
-			return refuse(c, "invalid_value", fd)
-		end
-		header(c, w, fd.id, fd.k)
-		w_leb(w, n)
-		if b ~= nil and n > 0 then
-			w_buf(w, b, 0, n)
-		end
-		return true
 	end
 	if s == "str" or s == "text" then
 		local text = if val == nil then "" else val
@@ -988,7 +936,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return true
 	end
 	if s == "bytes" then
-		local b, n = used(v, fd.slot, false)
+		local b, n = used(v, fd.slot)
 		if not required and equals_def(b, n, fd.def) then
 			return true
 		end

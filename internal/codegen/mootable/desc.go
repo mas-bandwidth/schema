@@ -151,8 +151,7 @@ func guardLua(pairs [][2]any) string {
 // key, ordinal, header kind, SHAPE and what the shape needs. The shapes:
 //
 //	bool, int, float   a scalar at its kind's width
-//	str                string(N) (a moo string) or wstring(N) (wide = true:
-//	                   a buffer of UTF-16LE units and its Length), kind 12/33
+//	str                string(N) (a moo string), kind 12
 //	text               an unbounded string, kind 12 (string?)
 //	bytes              bytes(N), kind 14 over element kind 6 (a buffer)
 //	enum               kind 30, the variant name's id
@@ -210,7 +209,7 @@ func fieldDesc(g *Gen, owner string, f *ir.Field, ordinal int, guard string) str
 // kind 12, its own L and bytes (§2.13).
 func elemDesc(g *Gen, f *ir.Field) string {
 	if ir.TextListPlain(f) {
-		return fmt.Sprintf("{ s = \"str\", bound = %d, wide = false }", ir.TextListValue(f).Type.Size)
+		return fmt.Sprintf("{ s = \"str\", bound = %d }", ir.TextListValue(f).Type.Size)
 	}
 	e := *f
 	e.Array = ir.ArrayNone
@@ -249,7 +248,7 @@ func valueDesc(g *Gen, f *ir.Field, def bool) string {
 		if def {
 			d = ", def = " + luaString(f.DefBytes)
 		}
-		return fmt.Sprintf("s = \"str\", bound = %d, wide = %v%s", t.Size, d)
+		return fmt.Sprintf("s = \"str\", bound = %d%s", t.Size, d)
 	case t.Kind == ir.TBytes:
 		d := ""
 		if def {

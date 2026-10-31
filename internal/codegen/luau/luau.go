@@ -701,8 +701,7 @@ func typeWord(t ir.FieldType) string {
 	return fmt.Sprintf("bytes(%d)", t.Size)
 }
 
-// bufferInit is a string/bytes/wstring value's storage: a buffer of its
-// maximum size (a wstring's is two bytes a code unit).
+// bufferInit is a string/bytes value's storage: a buffer of its maximum size.
 func bufferInit(t ir.FieldType) string {
 	return fmt.Sprintf("buffer.create(%d)", t.Size)
 }

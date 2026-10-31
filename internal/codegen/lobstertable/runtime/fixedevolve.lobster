@@ -29,7 +29,6 @@ let tableFixedWidenF = 7
 let tableFixedConst = 8
 
 let tableFixedTextUtf8 = 1
-let tableFixedTextWide = 2
 let tableFixedTextBytes = 3
 
 let TableOpenExact = 0
@@ -288,7 +287,7 @@ def fixed_signed_kind(kind:int) -> bool:
 def fixed_kind_known(kind:int) -> bool:
     if kind >= 1 and kind <= 30:
         return true
-    return kind == 32 or kind == 33 or kind == 35
+    return kind == 32 or kind == 35
 
 def fixed_ordinal_width(n:int) -> bool:
     return n == 1 or n == 2 or n == 4 or n == 8
@@ -1142,8 +1141,6 @@ def fixed_wide_ill_formed(p:string, base:int, used:int) -> bool:
 def fixed_text_ill_formed(meta:int, used:int, p:string, base:int) -> bool:
     if meta == tableFixedTextUtf8:
         return not fixed_utf8_valid_no_nul(p, base, used)
-    if meta == tableFixedTextWide:
-        return fixed_wide_ill_formed(p, base, used)
     return false
 
 def fixed_text_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:int) -> string:
@@ -1162,8 +1159,7 @@ def fixed_text_refusal(plan:[TableFixedEntry], count:int, src:string, src_base:i
                 if v < 0 or v > p.size:
                     return TableRefuseCountOverBound
             elif p.op == tableFixedText:
-                let unit = if p.meta == tableFixedTextWide: 2 else: 1
-                let capn = p.size / unit
+                let capn = p.size
                 let v = read_int32_le(src, src_base + p.src)
                 if v < 0 or v > capn:
                     return TableRefuseLengthOverBound

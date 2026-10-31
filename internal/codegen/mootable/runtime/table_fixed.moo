@@ -50,7 +50,6 @@ local KIND_KEYED = 16
 local KIND_STRING = 12
 local KIND_ENUM = 30
 local KIND_NOPAYLOAD = 32
-local KIND_WSTRING = 33
 local KIND_OPTIONAL = 35
 
 -- A refusal is raised as a table and caught at the entry points; nothing
@@ -212,7 +211,7 @@ local function parseLayout(bytes: string, recordBytes: number): Node
 				end
 				table.insert(node.children, c)
 			end
-		elseif e.kind == KIND_STRING or e.kind == KIND_WSTRING then
+		elseif e.kind == KIND_STRING then
 			if kids ~= 0 or e.size < COUNT then
 				refuse("layout_malformed")
 			end
@@ -297,7 +296,7 @@ compileValue = function(f: any, n: Node, census: any): boolean
 		n.remap = enumRemap(f.vs, n)
 		return true
 	elseif s == "str" then
-		return k == (if f.wide then KIND_WSTRING else KIND_STRING)
+		return k == KIND_STRING
 	elseif s == "bytes" then
 		return k == KIND_ARRAY and n.children[1].kind == 6 and n.children[1].size == 1
 	elseif s == "tab" then
@@ -523,22 +522,12 @@ end
 local function readText(f: any, n: Node, dx: number, rec: buffer): (any, number)
 	local off = n.off + dx
 	local length = u32(rec, off)
-	local unit = if f.wide then 2 else 1
+	local unit = 1
 	local cap = (n.size - COUNT) // unit
 	if length > cap then
 		refuse("length_over_bound")
 	end
 	local at = off + COUNT
-	if f.wide then
-		if not V.wide(rec, at, length * 2) then
-			refuse("text_ill_formed")
-		end
-		local bound = f.bound or length
-		local units = if length > bound then V.clampWide(rec, at, bound) else length
-		local b = buffer.create(bound * 2)
-		buffer.copy(b, 0, rec, at, units * 2)
-		return b, units
-	end
 	if not V.utf8(rec, at, length) then
 		refuse("text_ill_formed")
 	end
@@ -559,7 +548,7 @@ local function land(v: any, f: any, got: any, extra: any, lens: any)
 		if lens ~= nil then
 			v[f.slot .. "Length"] = lens
 		end
-	elseif f.s == "bytes" or (f.s == "str" and f.wide) then
+	elseif f.s == "bytes" then
 		v[f.slot .. "Length"] = extra
 	end
 end
@@ -587,8 +576,6 @@ local function freshElement(e: any): any
 		return S.lookup(e.t).new()
 	elseif e.s == "bytes" then
 		return buffer.create(e.bound)
-	elseif e.s == "str" and e.wide then
-		return buffer.create(e.bound * 2)
 	elseif e.s == "str" then
 		return ""
 	elseif e.s == "bool" then
@@ -682,7 +669,7 @@ readValue = function(f: any, n: Node, dx: number, rec: buffer, rep: any, named: 
 			end
 		end
 		local lens: any = nil
-		if e.s == "bytes" or (e.s == "str" and e.wide) then
+		if e.s == "bytes" then
 			lens = table.create(f.bound, 0)
 		end
 		if f.array == "keyed" then
@@ -737,7 +724,7 @@ end
 
 -- the companion a field's value rides with: a Length or a Count
 local function companion(f: any, v: any): any
-	if f.s == "bytes" or (f.s == "str" and f.wide) then
+	if f.s == "bytes" then
 		return v[f.slot .. "Length"]
 	elseif f.s == "arr" then
 		if f.array == "counted" then
@@ -812,20 +799,11 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 		end
 		writeOrdinal(out, off, n.size, v)
 	elseif s == "str" then
-		if f.wide then
-			local units = extra or 0
-			if type(v) ~= "buffer" or units < 0 or units > f.bound or units * 2 > buffer.len(v) or not V.wide(v, 0, units * 2) then
-				refuse("invalid_value", false, fieldName(named))
-			end
-			buffer.writeu32(out, off, units)
-			buffer.copy(out, off + COUNT, v, 0, units * 2)
-		else
-			if type(v) ~= "string" or #v > f.bound or not V.utf8String(v) then
-				refuse("invalid_value", false, fieldName(named))
-			end
-			buffer.writeu32(out, off, #v)
-			buffer.writestring(out, off + COUNT, v)
+		if type(v) ~= "string" or #v > f.bound or not V.utf8String(v) then
+			refuse("invalid_value", false, fieldName(named))
 		end
+		buffer.writeu32(out, off, #v)
+		buffer.writestring(out, off + COUNT, v)
 	elseif s == "bytes" then
 		local length = extra or 0
 		if type(v) ~= "buffer" or length < 0 or length > f.bound or length > buffer.len(v) then

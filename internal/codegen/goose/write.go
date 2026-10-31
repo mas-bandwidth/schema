@@ -43,7 +43,7 @@ func (w *wgen) emitWriteField(f *ir.Field, ind string) error {
 }
 
 // emitWriteScalar writes one value: a field, or one element of an array.
-// length is the used-length slot of a string, bytes or wstring value.
+// length is the used-length slot of a string or bytes value.
 func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 	t := f.Type
 	switch t.Kind {

@@ -15,7 +15,7 @@ import .schema_rt;
 let ShapeBool: u8 = 1;   // bool
 let ShapeInt: u8 = 2;    // an integer at its kind's width; bits(N) and fixed too
 let ShapeFloat: u8 = 3;  // float32, float64
-let ShapeStr: u8 = 4;    // string(N), wstring(N)
+let ShapeStr: u8 = 4;    // string(N)
 let ShapeText: u8 = 5;   // an unbounded string element or map key
 let ShapeBytes: u8 = 6;  // bytes(N)
 let ShapeEnum: u8 = 7;   // kind 30, the variant name's id
@@ -69,7 +69,6 @@ struct FieldDesc {
     flo: f64,
     fhi: f64,
     fres: f64,
-    wide: bool,               // wstring
     optional: bool,           // ?T, its presence in <slot>Present
     required: bool,
     deprecated: bool,

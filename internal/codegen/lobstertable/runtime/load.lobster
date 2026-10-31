@@ -73,8 +73,6 @@ class Value:
     f:float = 0.0
     // s: a string(N) or bytes(N) payload at its used extent
     s:string = ""
-    // units: a wstring(N)'s UTF-16 code units at their used extent
-    units:[int] = []
     // tab: a by-value table, a packet type, a body arm, an array element
     // record, a map entry
     tab:Record? = nil
@@ -301,7 +299,7 @@ def skip(r:Reader, kind:int) -> bool:
     if kind == 17 or kind == 30:
         let v, ok = leb(r)
         return ok or v != 0
-    if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33:
+    if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32:
         let n, ok = leb(r)
         if not ok or not has(r, n):
             return false
@@ -369,42 +367,6 @@ def text_boundary(b:string, at:int, n:int, bound:int) -> int:
     var cut = bound
     while cut > 0 and (b[at + cut] & 0xC0) == 0x80:
         cut--
-    return cut
-
-def wide_units(b:string, at:int, n:int) -> [int]:
-    let out = []
-    var i = 0
-    while i + 1 < n:
-        push(out, b[at + i] | (b[at + i + 1] << 8))
-        i += 2
-    return out
-
-def wide_valid(units:[int]) -> bool:
-    var i = 0
-    while i < length(units):
-        let u = units[i]
-        if u == 0:
-            return false
-        if u >= 0xD800 and u <= 0xDBFF:
-            if i + 1 >= length(units):
-                return false
-            let low = units[i + 1]
-            if low < 0xDC00 or low > 0xDFFF:
-                return false
-            i++
-        elif u >= 0xDC00 and u <= 0xDFFF:
-            return false
-        i++
-    return true
-
-def wide_boundary(units:[int], bound:int) -> int:
-    if length(units) <= bound:
-        return length(units)
-    var cut = bound
-    if cut > 0:
-        let last = units[cut - 1]
-        if last >= 0xD800 and last <= 0xDBFF:
-            cut--
     return cut
 
 // THE INT128 ORDER (docs/PORT-LOBSTER.md, THE NUMBER MODEL): the high lane
@@ -702,7 +664,7 @@ def reset_slot(sl:Slot):
     sl.entries = []
     if f.s == "map":
         return
-    if f.s == "text" or f.s == "bytes" or (f.s == "str" and not f.wide):
+    if f.s == "text" or f.s == "bytes" or f.s == "str":
         if length(f.def_str) > 0:
             sl.cell.s = copy(f.def_str)
             sl.count = length(f.def_str)
@@ -833,8 +795,6 @@ def shape_key(fd:FieldDescriptor) -> string:
     let s = fd.s
     if s == "arr":
         return if fd.array == "keyed": "keyed" else: "arr"
-    if s == "str" and fd.wide:
-        return "wstr"
     if s == "text":
         return "str"
     if s == "sblob" or s == "bblob":
@@ -1042,55 +1002,6 @@ class StringShape : Shape
         return true
 
 let string_shape = register_shape(StringShape { key: "str" })
-
-// WIDE TEXT (§3, kind 33): an odd L is damage, as is an unpaired surrogate
-// or a zero unit; a clamp never splits a pair.
-class WideShape : Shape
-    def field(r:Reader, sl:Slot) -> bool:
-        let rep = r.st.report
-        let n, ok = leb(r)
-        if not ok or not has(r, n):
-            rep.malformed = true
-            return false
-        let at = r.off
-        r.off += n
-        if (n & 1) != 0:
-            rep.malformed = true
-            sl.cell = field_default(sl.fd)
-            sl.count = 0
-            return true
-        let units = wide_units(r.b, at, n)
-        if not wide_valid(units):
-            rep.malformed = true
-            sl.cell = field_default(sl.fd)
-            sl.count = 0
-            return true
-        var keep = length(units)
-        if keep > sl.fd.bound:
-            keep = wide_boundary(units, sl.fd.bound)
-            rep.clamped++
-        sl.cell.units = slice(units, 0, keep)
-        sl.count = keep
-        return true
-    def arm(r:Reader, fv:Slot, n:int) -> bool:
-        let rep = r.st.report
-        if (n & 1) != 0:
-            rep.malformed = true
-            return false
-        let units = wide_units(r.b, r.off, n)
-        if not wide_valid(units):
-            rep.malformed = true
-            return false
-        var keep = length(units)
-        if keep > fv.fd.bound:
-            keep = wide_boundary(units, fv.fd.bound)
-            rep.clamped++
-        fv.cell.units = slice(units, 0, keep)
-        fv.count = keep
-        r.off += n
-        return true
-
-let wide_shape = register_shape(WideShape { key: "wstr" })
 
 // nested_body decodes a by-value body framed by its own L into rec (§3): a
 // body whose terminator is not the last byte of its L is framing damage and
@@ -1512,7 +1423,7 @@ let union_shape = register_shape(UnionShape { key: "union" })
 // past the bound dropping its entry as clamped, and a key KIND the
 // declaration does not name emptying the map for one kind_mismatch.
 def key_is_string(k:FieldDescriptor) -> bool:
-    return k.s == "text" or (k.s == "str" and not k.wide)
+    return k.s == "text" or k.s == "str"
 
 def map_key_order(k:FieldDescriptor, a:Value, b:Value) -> int:
     if key_is_string(k):

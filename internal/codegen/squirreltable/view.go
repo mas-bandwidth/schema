@@ -146,7 +146,7 @@ func viewFieldKind(f *ir.Field) int {
 }
 
 // viewArrayBound is §8.1's bound: a fixed, bounded or keyed array's capacity,
-// a string's, bytes' or wstring's declared maximum, and 0 for a scalar, a lone
+// a string's or bytes' declared maximum, and 0 for a scalar, a lone
 // *T and an unbounded container (where `unbounded` is the tell).
 func viewArrayBound(f *ir.Field) int64 {
 	switch {

@@ -73,7 +73,7 @@ parseShape = function(b, state, kind) {
   }
   if(kind==11)return s;
   if(kind==12){s.Max=readLeb(b,state);if(state.bad||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
-  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>33||s.ElemKind==12){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
+  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>32||s.ElemKind==12){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
   if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==31||kind==32){return s;}
   state.bad=true;return s;
 };
@@ -83,7 +83,7 @@ local parseVocabulary = function(words) {
     if(state.at+9>state.end){state.bad=true;break;}
     local start=state.at,id=readU64(words,state.at);state.at+=8;
     local kind=words[state.at]&0xff;state.at++;
-    if(kind>33||id==0xfffffffffffffffd||id==0xfffffffffffffffe){state.bad=true;break;}
+    if(kind>32||id==0xfffffffffffffffd||id==0xfffffffffffffffe){state.bad=true;break;}
     if(id==0xffffffffffffffff){if(kind!=0||nodeSeen){state.bad=true;break;}nodeSeen=true;}
     local shape=parseShape(words,state,kind);if(state.bad)break;
     local entry={Id=id,Kind=kind,Shape=shape};
@@ -103,7 +103,7 @@ skipFileKind = function(b,state,kind) {
   switch(kind){case 1:case 2:case 6:case 20:case 25:width=1;break;case 3:case 7:case 21:case 26:width=2;break;case 4:case 8:case 10:case 22:case 27:width=4;break;case 5:case 9:case 11:case 23:case 28:width=8;break;case 18:case 19:case 24:case 29:width=16;break;}
   if(width>0){if(state.at+width>state.end){state.bad=true;return;}state.at+=width;return;}
   if(kind==17 || kind==30){readLeb(b,state);return;}
-  if(kind==12 || kind==13 || kind==14 || kind==16 || kind==31 || kind==32 || kind==33){local n=readLeb(b,state);if(state.bad||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
+  if(kind==12 || kind==13 || kind==14 || kind==16 || kind==31 || kind==32){local n=readLeb(b,state);if(state.bad||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
   if(kind==15){local tag=readLeb(b,state);if(state.bad||tag==0)return;if(state.at>=state.end){state.bad=true;return;}local arm=b[state.at]&0xff;state.at++;skipFileKind(b,state,arm);return;}
   state.bad=true;
 };
@@ -292,33 +292,10 @@ local numberBits = function(fd) {
   if (fd.bits > 0) return fd.bits;
   return fd.width * 8;
 };
-// WIDE TEXT ON THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): kind 33's
-// content rule, SURROGATES PAIRED and no zero unit (wideValid in
-// internal/tablewire/text.go), and its clamp, which never splits a pair
-// (wideBoundary). Here ill-formed text is damage and TERMINAL: a bit stream
-// has no defined position to continue from.
-local wideValid = function(units) {
-  local n = units.len();
-  for (local i = 0; i < n; i++) {
-    local u = units[i];
-    if (u == 0) return false;
-    if (u >= 0xD800 && u <= 0xDBFF) {
-      if (i + 1 >= n || units[i + 1] < 0xDC00 || units[i + 1] > 0xDFFF) return false;
-      i++;
-    } else if (u >= 0xDC00 && u <= 0xDFFF) return false;
-  }
-  return true;
-};
-local wideClamp = function(units, bound) {
-  local cut = bound;
-  if (cut > 0 && units[cut - 1] >= 0xD800 && units[cut - 1] <= 0xDBFF) cut--;
-  return units.slice(0, cut);
-};
 
 local defaultValue = function(fd, value, owner) {
   if (("optional" in fd) && fd.optional) return !owner[fd.member + "Present"];
   if (fd.shape == "str") return value == fd.def;
-  if (fd.shape == "wstr") return value.len() == 0;
   if (fd.shape == "bytes") {
     if (value.len() != fd.def.len()) return false;
     for (local i = 0; i < value.len(); i++) if (value[i] != fd.def[i]) return false;
@@ -467,13 +444,6 @@ writePayload = function(T, w, fd, value, depth) {
     local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound)); alignWrite(w);
     for (local i = 0; i < n; i++) put(w, value[i] & 0xff, 8); return;
   }
-  if (fd.shape == "wstr") {
-    // the length at bits_required(0, N), NO align, then sixteen bits a code
-    // unit (§3.3); the used length is checked, the content is not (§3)
-    local n = value.len(); if (n > fd.bound) { w.bad = true; return; } put(w, n, bitCount(fd.bound));
-    foreach (u in value) { if (typeof u != "integer" || u < 0 || u > 0xFFFF) { w.bad = true; return; } put(w, u, 16); }
-    return;
-  }
   if (fd.shape == "tab") { writeBody(T, w, T.Descriptors[fd.table], value, depth + 1); return; }
   if (fd.shape == "union") {
     local ud = T[fd.table + "Descriptor"], arm = null;
@@ -511,10 +481,6 @@ skipPayload = function(T, v, r, fd, depth) {
     local n = get(r, bitCount(fd.bound)); if (r.bad || n > fd.bound) { r.bad = true; return; }
     if (!alignRead(r)) { r.bad = true; return; } skip(r, n * 8); return;
   }
-  if (fd.shape == "wstr") {
-    local n = get(r, bitCount(fd.bound)); if (r.bad || n > fd.bound) { r.bad = true; return; }
-    skip(r, n * 16); return;
-  }
   if (fd.shape == "tab") { local d = T.Descriptors[fd.table]; for (;;) { local ref=get(r,v.RefBits); if(r.bad||ref==0)return; local id=idAt(v,ref); local f=id==null?null:d.byId[id]; if(f==null){r.bad=true;return;} skipPayload(T,v,r,f,depth+1); } }
   if (fd.shape == "union") {
     local ref=get(r,v.RefBits); if(r.bad||ref==0)return;
@@ -548,13 +514,6 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local kept=n<fd.bound?n:fd.bound;if(kept<n)r.clamped++;
     local b=blob(kept);for(local i=0;i<n;i++){local x=get(r,8)&0xff;if(i<kept)b[i]=x;}
     owner[member]=b;return;
-  }
-  if (fd.shape == "wstr") {
-    local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max||r.bits+n*16>r.b.len()*8){r.bad=true;return;}
-    local units=array(n);for(local i=0;i<n;i++)units[i]=get(r,16);
-    if(r.bad||!wideValid(units)){r.bad=true;return;}
-    if(n>fd.bound){r.clamped++;units=wideClamp(units,fd.bound);}
-    owner[member]=units;return;
   }
   if(fd.shape=="tab"){local child=T.Descriptors[fd.table].make();readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);owner[member]=child;return;}
   if(fd.shape=="union"){

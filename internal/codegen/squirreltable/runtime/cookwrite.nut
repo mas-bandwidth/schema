@@ -326,15 +326,6 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
     if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, used, 4, order);
     return true;
   }
-  if (f.shape == "wstr") {
-    // WIDE TEXT (docs/SPEC-TABLES.md §7.2): char16_t units in the cook's own
-    // byte order, the used length in CODE UNITS at the count companion
-    local units = inst[f.member];
-    local used = units == null ? 0 : units.len();
-    for (local i = 0; i < used; i++) put(buf, at + 2 * i, units[i], 2, order);
-    if (f.countOffset >= 0) put(buf, at + f.countOffset - f.offset, used, 4, order);
-    return true;
-  }
   if (f.shape == "tab") {
     return recordWrite(T, recordFields(T, f.table), inst[f.member], buf, regionBase, at, order, nodes, offsets);
   }

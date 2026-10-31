@@ -566,7 +566,7 @@ local isKeyed = function(d) { return d.shape == "arr" && d.kind == 16; };
 
 local shapeOf = function(T, d) {
   switch (d.shape) {
-    case "str": case "wstr": case "bytes": case "sblob": case "bblob": case "enum": return 's';
+    case "str": case "bytes": case "sblob": case "bblob": case "enum": return 's';
     case "arr": return d.kind == 16 ? 'o' : 'a';
     case "union": case "ptr": case "map": return 'o';
     case "tab": return has(tableDesc(T, d.table), "jsonArray") ? 'a' : 'o';
@@ -580,7 +580,7 @@ local elemShapeOf = function(T, e) {
   switch (e.shape) {
     case "union": case "ptr": case "map": return 'o';
     case "tab": return has(tableDesc(T, e.table), "jsonArray") ? 'a' : 'o';
-    case "enum": case "str": case "wstr": case "sblob": case "bblob": return 's';
+    case "enum": case "str": case "sblob": case "bblob": return 's';
     case "flags": return 'a';
     case "bool": return 'b';
   }
@@ -695,7 +695,6 @@ local elemZero = function(T, e) {
     case "union": return unionDesc(T, e.table).make();
     case "ptr": case "sblob": case "bblob": case "enum": return null;
     case "str": return "";
-    case "wstr": return [];
     case "bytes": return blob(0);
     case "bool": return false;
     case "float": return 0.0;
@@ -799,35 +798,6 @@ local jsonString = function(s) {
   return join(out);
 };
 
-// WIDE TEXT IN THE TEXT (docs/SPEC-TABLES.md §16.2): the code units
-// TRANSCODED at the boundary into one JSON string. A well-formed pair is its
-// astral code point; storage built in code holding an unpaired surrogate
-// writes it as U+FFFD (§16.3's maximal-subpart rule, one per unit), and a zero
-// unit writes `\u0000` through jsonString. A slot that is not a code unit, an
-// integer in [0, 0xFFFF], has no text spelling: null, and the write refuses.
-local wideJsonString = function(units) {
-  if (typeof units != "array") return null;
-  local bs = [];
-  local n = units.len();
-  for (local i = 0; i < n; i++) {
-    local u = units[i];
-    if (typeof u != "integer" || u < 0 || u > 0xFFFF) return null;
-    local code = u;
-    if (u >= 0xD800 && u <= 0xDBFF && i + 1 < n && typeof units[i + 1] == "integer" &&
-        units[i + 1] >= 0xDC00 && units[i + 1] <= 0xDFFF) {
-      code = 0x10000 + ((u - 0xD800) << 10) + (units[i + 1] - 0xDC00);
-      i++;
-    } else if (u >= 0xD800 && u <= 0xDFFF) {
-      code = 0xFFFD;
-    }
-    if (code < 0x80) bs.append(code);
-    else if (code < 0x800) bs.extend([0xc0 | (code >> 6), 0x80 | (code & 0x3f)]);
-    else if (code < 0x10000) bs.extend([0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f)]);
-    else bs.extend([0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f)]);
-  }
-  return jsonString(bytesToString(bs));
-};
-
 local indent = function(depth) {
   local s = "\n";
   for (local i = 0; i < depth; i++) s += "  ";
@@ -917,7 +887,7 @@ countField = function(T, d, val, g) {
   switch (d.shape) {
     case "sblob": return countBlob("s", val, g);
     case "bblob": return countBlob("b", val, g);
-    case "str": case "wstr": case "bytes": return true;
+    case "str": case "bytes": return true;
     case "ptr": return countNode(T, tableDesc(T, d.table), val, g);
     case "arr": {
       local n = isKeyed(d) ? d.bound : writeCount(d, val);
@@ -1084,12 +1054,6 @@ writeField = function(T, d, val, depth, g, out) {
       out.append(b64Text(val));
       return true;
     case "str": out.append(jsonString(val)); return true;
-    case "wstr": {
-      local w = wideJsonString(val);
-      if (w == null) return false;
-      out.append(w);
-      return true;
-    }
     case "bytes": out.append(b64Text(val)); return true;
     case "map": return writeMap(T, d, val, depth, g, out);
     case "arr": {
@@ -1196,12 +1160,6 @@ writeScalar = function(T, d, val, depth, g, out) {
       return true;
     }
     case "str": out.append(jsonString(val)); return true;
-    case "wstr": {
-      local w = wideJsonString(val);
-      if (w == null) return false;
-      out.append(w);
-      return true;
-    }
   }
   if (d.kind == 36) { out.append(jsonString(timestampText(val))); return true; }
   if (wideKind(d.kind)) {
@@ -1428,42 +1386,6 @@ local textZero = function(r, name) {
   if (!("reason" in r.report) || r.report.reason == null) r.report.reason <- "text_holds_zero: " + name;
   r.bad = true;
   return false;
-};
-
-// ONE JSON STRING INTO WIDE TEXT (docs/SPEC-TABLES.md §16.2, §16.3;
-// read.go scanWString): the string is scanned as UTF-8 first, so ill-formed
-// text refuses by name before anything is placed; a zero refuses the read as
-// text_holds_zero for `where`; then the code points are TRANSCODED to UTF-16
-// code units, and a value longer than `bound` units is CLAMPED as a prefix of
-// whole code points, so a pair is never split. Answers [units, clamped], or
-// null when the read refused.
-local scanWide = function(r, bound, where) {
-  local s = scanBytes(r, -1);
-  if (s == null) return null;
-  local b = s[0];
-  if (hasZero(b)) { textZero(r, where); return null; }
-  local units = [];
-  local clamped = false;
-  local i = 0, n = b.len();
-  while (i < n) {
-    local c = b[i] & 0xff;
-    local code, want;
-    if (c < 0x80) { code = c; want = 1; }
-    else if ((c & 0xe0) == 0xc0) { code = c & 0x1f; want = 2; }
-    else if ((c & 0xf0) == 0xe0) { code = c & 0x0f; want = 3; }
-    else { code = c & 0x07; want = 4; }
-    for (local k = 1; k < want; k++) code = (code << 6) | (b[i + k] & 0x3f);
-    i += want;
-    local need = code >= 0x10000 ? 2 : 1;
-    if (units.len() + need > bound) { clamped = true; break; }
-    if (need == 1) units.append(code);
-    else {
-      code -= 0x10000;
-      units.append(0xD800 + (code >> 10));
-      units.append(0xDC00 + (code & 0x3ff));
-    }
-  }
-  return [units, clamped];
 };
 
 // ONE RFC 8259 number (read.go walkNumber, scanNumber): [token, integral] or
@@ -1718,13 +1640,6 @@ readField = function(T, c, fd, r, v, depth) {
       if (hasZero(s[0])) return textZero(r, c.name + "." + fd.name);
       if (s[1]) r.report.clamped++;
       v[fd.member] = bytesToString(s[0]);
-      return true;
-    }
-    case "wstr": {
-      local w = scanWide(r, fd.bound, c.name + "." + fd.name);
-      if (w == null) return false;
-      if (w[1]) r.report.clamped++;
-      v[fd.member] = w[0];
       return true;
     }
     case "bytes": {
@@ -2249,13 +2164,6 @@ readScalar = function(T, d, r, holder, key, depth, where) {
       if (hasZero(s[0])) return textZero(r, where);
       if (s[1]) r.report.clamped++;
       holder[key] = bytesToString(s[0]);
-      return true;
-    }
-    case "wstr": {
-      local w = scanWide(r, d.bound, where);
-      if (w == null) return false;
-      if (w[1]) r.report.clamped++;
-      holder[key] = w[0];
       return true;
     }
     case "bool":

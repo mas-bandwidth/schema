@@ -259,7 +259,7 @@ func (g *gen) assemble() []byte {
 // The module-local holders and guards. A holder is consumed in the call that
 // fills it (moo is single threaded, and generated code never holds one
 // across a nested Write or Read), so one of each serves the whole module.
-var helperOrder = []string{"NUM", "WIDE", "BOOL", "STR", "isInt", "isWide", "validText", "validWide"}
+var helperOrder = []string{"NUM", "WIDE", "BOOL", "STR", "isInt", "isWide", "validText"}
 
 var helperSrc = map[string]string{
 	"NUM":  "local NUM: { value: any } = { value = 0 }\n",
@@ -324,32 +324,6 @@ local function validText(s: string): boolean
 			if rem == 3 and (point < 0x10000 or point > 0x10FFFF) then
 				return false
 			end
-		end
-	end
-	return true
-end
-`,
-	"validWide": `-- validWide: n UTF-16 code units, none zero, every surrogate paired (SPEC §4.12)
-local function validWide(b: buffer, n: number): boolean
-	local i = 0
-	while i < n do
-		local u = buffer.readu16(b, i * 2)
-		if u == 0 then
-			return false
-		end
-		if u >= 0xD800 and u <= 0xDBFF then
-			if i + 1 >= n then
-				return false
-			end
-			local lo = buffer.readu16(b, i * 2 + 2)
-			if lo < 0xDC00 or lo > 0xDFFF then
-				return false
-			end
-			i += 2
-		elseif u >= 0xDC00 and u <= 0xDFFF then
-			return false
-		else
-			i += 1
 		end
 	end
 	return true

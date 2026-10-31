@@ -218,35 +218,7 @@ function V.utf8String(s: string): boolean
 	return V.utf8(probe, 0, #s)
 end
 
--- wide(b, at, n): n bytes of UTF-16LE code units, none zero, every surrogate
--- paired (docs/SPEC-TABLES.md §3, §4)
-function V.wide(b: buffer, at: number, n: number): boolean
-	local units = n // 2
-	local i = 0
-	while i < units do
-		local u = buffer.readu16(b, at + i * 2)
-		if u == 0 then
-			return false
-		end
-		if u >= 0xD800 and u <= 0xDBFF then
-			if i + 1 >= units then
-				return false
-			end
-			local low = buffer.readu16(b, at + (i + 1) * 2)
-			if low < 0xDC00 or low > 0xDFFF then
-				return false
-			end
-			i += 2
-		elseif u >= 0xDC00 and u <= 0xDFFF then
-			return false
-		else
-			i += 1
-		end
-	end
-	return true
-end
-
--- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12 / 33)
+-- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12)
 function V.clampUtf8(b: buffer, at: number, keep: number): number
 	while keep > 0 do
 		local x = buffer.readu8(b, at + keep)
@@ -256,16 +228,6 @@ function V.clampUtf8(b: buffer, at: number, keep: number): number
 		keep -= 1
 	end
 	return keep
-end
-
-function V.clampWide(b: buffer, at: number, units: number): number
-	if units > 0 then
-		local last = buffer.readu16(b, at + (units - 1) * 2)
-		if last >= 0xD800 and last <= 0xDBFF then
-			units -= 1
-		end
-	end
-	return units
 end
 
 -- ---------------------------------------------------------------------------

@@ -224,7 +224,7 @@ end
 -- a str element or string(N) value: the buffer, then the int32 used length
 -- at the next four-aligned offset past its N + 1 slots
 local function textAt(ctx: any, e: any, at: number, lenAt: number?): string
-	local units = if e.wide then 2 else 1
+	local units = 1
 	local la = lenAt or align_up(at + ((e.bound or 0) + 1) * units, 4)
 	local n = buffer.readi32(ctx.buffer, la)
 	if n < 0 then
@@ -288,18 +288,7 @@ local function readField(ctx: any, owner: string, fd: any, l: any, base: number,
 			return
 		end
 	end
-	if s == "str" and fd.wide then
-		local n = buffer.readi32(b, base + l.p[2])
-		if n < 0 then
-			n = 0
-		elseif n > fd.bound then
-			n = fd.bound
-		end
-		local out = buffer.create(fd.bound * 2)
-		buffer.copy(out, 0, b, at, n * 2)
-		v[slot] = out
-		v[slot .. "Length"] = n
-	elseif s == "str" then
+	if s == "str" then
 		v[slot] = textAt(ctx, fd, at, base + l.p[2])
 	elseif s == "bytes" then
 		local n = buffer.readi32(b, base + l.p[2])

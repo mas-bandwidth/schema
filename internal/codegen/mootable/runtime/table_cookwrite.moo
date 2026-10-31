@@ -292,7 +292,7 @@ writeElement = function(ctx: any, owner: string, fd: any, e: any, at: number, w:
 	return writeScalar(ctx, owner, fd, e, at, w, x)
 end
 
--- the live length of a wstring(N) or bytes(N) value, clamped to its bound
+-- the live length of a bytes(N) value, clamped to its bound
 local function usedLength(v: any, slot: string, bound: number): number
 	local n = v[slot .. "Length"]
 	if type(n) ~= "number" or n < 0 then
@@ -312,23 +312,7 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 	if fd.present ~= nil then
 		buffer.writeu8(b, base + l.p[#l.p], if v[fd.present] == true then 1 else 0)
 	end
-	if s == "str" and fd.wide then
-		local src = v[slot]
-		local n = usedLength(v, slot, fd.bound)
-		if n > 0 and type(src) ~= "buffer" then
-			return fail(ctx, "invalid_value", owner, fd)
-		end
-		if ctx.big then
-			for i = 0, n - 1 do
-				local u = buffer.readu16(src, i * 2)
-				buffer.writeu8(b, at + i * 2, u % 256)
-				buffer.writeu8(b, at + i * 2 + 1, u // 256)
-			end
-		elseif n > 0 then
-			buffer.copy(b, at, src, 0, n * 2)
-		end
-		putUN(ctx, base + l.p[2], 4, n)
-	elseif s == "str" then
+	if s == "str" then
 		local src = v[slot]
 		if type(src) ~= "string" or #src > fd.bound then
 			return fail(ctx, "invalid_value", owner, fd)

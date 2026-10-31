@@ -378,7 +378,7 @@ local function fixedKind(k: number): boolean
 end
 
 local function knownKind(k: number): boolean
-	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or (k >= 30 and k <= 33) or k == 36
+	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or (k >= 30 and k <= 32) or k == 36
 end
 
 -- the compressed float's derivation (ir.TableMessageQuantization): the step
@@ -464,7 +464,7 @@ readShape = function(b: buffer, at: number, e: number, kind: number): (any, numb
 		end
 		return s, nil
 	end
-	if kind == 12 or kind == 33 then
+	if kind == 12 then
 		local n
 		n, at = V.leb(b, at, e)
 		if n == nil or n > INT32_MAX then
@@ -649,7 +649,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 					return false
 				end
 				at += w
-			elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 or kind == 33 then
+			elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 then
 				local n
 				n, at = V.leb(data, at, start)
 				if n == nil or at + n > start then
@@ -980,17 +980,6 @@ end
 
 local function encodeText(c: any, fd: any, shape: any, kind: number, holder: any, val: any, named: any): boolean
 	local w = c.w
-	if kind == 33 then
-		local units = holder[fd.slot .. "Length"] or 0
-		if type(val) ~= "buffer" or units * 2 > buffer.len(val) then
-			return fail(c, "invalid_value", named)
-		end
-		put(w, units, bitsReq(0, shape.max))
-		for i = 0, units - 1 do
-			put(w, buffer.readu16(val, i * 2), 16)
-		end
-		return true
-	end
 	local s = if val == nil then "" else val
 	if type(s) ~= "string" or not V.utf8String(s) then
 		return fail(c, "invalid_value", named)
@@ -1205,11 +1194,7 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		return encodeKeyed(c, fd, entry, val)
 	end
 	if s == "str" then
-		if fd.wide then
-			if (v[fd.slot .. "Length"] or 0) == 0 then
-				return true
-			end
-		elseif val == nil or val == "" then
+		if val == nil or val == "" then
 			return true
 		end
 		wref(c, entry.slot)
@@ -1572,12 +1557,6 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 			return false
 		end
 		return skipBits(r, n * 8)
-	elseif kind == 33 then
-		local n, ok = get(r, bitsReq(0, shape.max))
-		if not ok then
-			return false
-		end
-		return skipBits(r, n * 16)
 	elseif kind == 31 then
 		if not ralign(r) then
 			return false
@@ -1869,37 +1848,6 @@ local function decodeText(t: any, fd: any, entry: any, holder: any): boolean
 	else
 		holder[fd.slot] = buffer.readstring(r.b, at, keep)
 	end
-	return true
-end
-
--- wstring(N): the length, NO align, sixteen bits a unit
-local function decodeWide(t: any, fd: any, entry: any, holder: any): boolean
-	local r = t.r
-	local n, ok = get(r, bitsReq(0, entry.shape.max))
-	if not ok or not has(r, n * 16) then
-		return dmal(t)
-	end
-	local units = buffer.create(n * 2)
-	for i = 0, n - 1 do
-		local u = get(r, 16)
-		buffer.writeu16(units, i * 2, u)
-	end
-	if not V.wide(units, 0, n * 2) then
-		return dmal(t)
-	end
-	local keep = n
-	if fd.bound ~= nil and keep > fd.bound then
-		keep = V.clampWide(units, 0, fd.bound)
-		t.report.clamped += 1
-	end
-	local dst = holder[fd.slot]
-	if type(dst) ~= "buffer" or buffer.len(dst) < keep * 2 then
-		dst = buffer.create(math.max(keep, fd.bound or keep) * 2)
-		holder[fd.slot] = dst
-	end
-	buffer.fill(dst, 0, 0)
-	buffer.copy(dst, 0, units, 0, keep * 2)
-	holder[fd.slot .. "Length"] = keep
 	return true
 end
 
@@ -2267,8 +2215,6 @@ local function decodeField(t: any, fd: any, entry: any, holder: any): boolean
 		return true
 	elseif s == "arr" and fd.array == "keyed" then
 		return decodeKeyed(t, fd, entry, holder)
-	elseif s == "str" and fd.wide then
-		return decodeWide(t, fd, entry, holder)
 	elseif s == "str" or s == "bytes" then
 		return decodeText(t, fd, entry, holder)
 	elseif s == "arr" then

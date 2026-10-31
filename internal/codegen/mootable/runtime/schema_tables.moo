@@ -35,7 +35,6 @@ export type FieldDescriptor = {
 	unbounded: boolean?,
 	min: number?,
 	keyvs: { { any } }?,
-	wide: boolean?,
 	buf: boolean?,
 	f32: boolean?,
 	flo: { number }?,

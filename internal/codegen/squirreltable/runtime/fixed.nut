@@ -120,22 +120,3 @@ _M.textIllFormed <- function(b, at, n) {
   }
   return false;
 };
-
-// wideUnits reads n UTF-16 code units at b[at..at+2n), two bytes each
-// little-endian, into the array wide-text storage holds, or answers null when
-// they are NOT wide text (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11;
-// SPEC.md §4.12): a zero unit, a high surrogate not followed by a low one, or
-// a low surrogate first. It mirrors the Go leg's wide text check.
-_M.wideUnits <- function(b, at, n) {
-  local units = array(n);
-  for (local i = 0; i < n; i++) units[i] = (b[at + 2 * i] & 0xff) | ((b[at + 2 * i + 1] & 0xff) << 8);
-  for (local i = 0; i < n; i++) {
-    local u = units[i];
-    if (u == 0) return null;
-    if (u >= 0xD800 && u <= 0xDBFF) {
-      if (i + 1 >= n || units[i + 1] < 0xDC00 || units[i + 1] > 0xDFFF) return null;
-      i++;
-    } else if (u >= 0xDC00 && u <= 0xDFFF) return null;
-  }
-  return units;
-};

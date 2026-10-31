@@ -312,7 +312,6 @@ const (
 	kF32
 	kF64
 	kStr
-	kWStr
 	kBytes
 	kStruct
 	kUnion
@@ -459,8 +458,6 @@ func (e *fixedEmit) writeElem(ind int, f *ir.Field, pl place) {
 		e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f64_bits(%s), 8);", pl.val)
 	case kStr, kBytes:
 		e.p(ind, "schema_rt::fixed_put_text(out, %s, %s, %d);", pl.val, pl.length, f.Type.Size)
-	case kWStr:
-		e.p(ind, "schema_rt::fixed_put_wtext(out, %s, %s, %d);", pl.val, pl.length, f.Type.Size)
 	case kStruct:
 		e.home(f.Type.Name)
 		e.p(ind, "_%sFixedWrite(out, %s);", f.Type.Name, pl.val)
@@ -525,8 +522,6 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 	switch e.kindOf(f) {
 	case kStr:
 		e.p(ind, "if !schema_rt::fixed_text_ok(%s, %s, %d) { return false; }", pl.val, pl.length, f.Type.Size)
-	case kWStr:
-		e.p(ind, "if !schema_rt::fixed_wtext_ok(%s, %s, %d) { return false; }", pl.val, pl.length, f.Type.Size)
 	case kBytes:
 		e.p(ind, "if !schema_rt::fixed_len_ok(%s, %d) { return false; }", pl.length, f.Type.Size)
 	case kStruct, kUnion:
@@ -587,8 +582,6 @@ func (e *fixedEmit) scanElem(ind int, f *ir.Field, off string) {
 	switch e.kindOf(f) {
 	case kStr:
 		flavour = 1
-	case kWStr:
-		flavour = 2
 	case kBytes:
 		flavour = 3
 	case kStruct, kUnion:
@@ -666,9 +659,6 @@ func (e *fixedEmit) landElem(ind int, f *ir.Field, pl place, off string) {
 	case kStr, kBytes:
 		e.p(ind, "%s = schema_rt::fixed_i32(b, %s);", pl.length, off)
 		e.p(ind, "schema_rt::fixed_get_text(b, %s + 4, %s);", off, pl.val)
-	case kWStr:
-		e.p(ind, "%s = schema_rt::fixed_i32(b, %s);", pl.length, off)
-		e.p(ind, "schema_rt::fixed_get_wtext(b, %s + 4, %s);", off, pl.val)
 	case kStruct, kUnion:
 		e.home(f.Type.Name)
 		e.p(ind, "_%sFixedRead(b, %s, %s);", f.Type.Name, off, pl.val)

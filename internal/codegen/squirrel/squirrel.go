@@ -425,8 +425,7 @@ func emitClass(m *Module, d *ir.Struct) {
 }
 
 // fieldMembers is every member one field occupies: the value, and beside it
-// the used length of a string, bytes or wstring, or the count of a counted
-// array.
+// the used length of a string or bytes, or the count of a counted array.
 func fieldMembers(f *ir.Field) []string {
 	name := Member(f)
 	out := []string{name}

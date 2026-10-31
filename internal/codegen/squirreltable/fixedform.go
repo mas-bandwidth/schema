@@ -447,16 +447,15 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 	}
 }
 
-// fixedIsText is a lone string(N), bytes(N) or wstring(N): a length and its
+// fixedIsText is a lone string(N) or bytes(N): a length and its
 // buffer, where an array element or a union arm holds one too.
 func fixedIsText(f *ir.Field) bool {
 	return f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes)
 }
 
 // fixedEmitWriteText stores a text field at `at + off`: the int32 used length,
-// then that many units, the slack left at the template's zeros. A byte or a
-// string unit is one byte; a WIDE unit is two, little-endian, and the length
-// counts CODE UNITS (docs/SPEC-TABLES.md §3.4, §7.2).
+// then that many bytes, the slack left at the template's zeros
+// (docs/SPEC-TABLES.md §3.4, §7.2).
 func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
 	m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
 	m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %s + %d + i] = %s[i] & 0xff;\n", ind, expr, off, fixedCountBytes, expr)
@@ -464,9 +463,8 @@ func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
 
 // fixedEmitDecodeText reads a text field at `at + off` back into expr: a
 // length past the PLAN's bound refuses length_over_bound, and ill-formed text
-// refuses text_ill_formed — UTF-8 for a string, paired surrogates and no zero
-// unit for wide text (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md
-// §4.5, §5.4 fix 11).
+// refuses text_ill_formed — UTF-8 for a string (docs/SPEC-TABLES.md §3.4,
+// docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11).
 func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
 	m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 	m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, f.Type.Size)

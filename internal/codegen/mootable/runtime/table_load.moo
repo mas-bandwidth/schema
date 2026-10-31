@@ -60,7 +60,7 @@ local function skip(r: any, kind: number): boolean
 		r.at += w
 		return true
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
 			return false
@@ -994,35 +994,11 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		dst[i] = x
 		return true
 	elseif s == "str" or s == "text" then
-		-- a text element is kind 12 (33 wide): its own L, then L bytes (§2.13, §3)
+		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
 			report.malformed = true
 			return false
-		end
-		if e.wide then
-			if n % 2 ~= 0 or not V.wide(r.b, r.at, n) then
-				report.malformed = true
-				r.at += n
-				return true
-			end
-			local units = n // 2
-			if e.bound ~= nil and units > e.bound then
-				units = V.clampWide(r.b, r.at, e.bound)
-				report.clamped += 1
-			end
-			local b = dst[i]
-			if type(b) ~= "buffer" or buffer.len(b) < units * 2 then
-				b = buffer.create(units * 2)
-				dst[i] = b
-			end
-			buffer.fill(b, 0, 0)
-			buffer.copy(b, 0, r.b, r.at, units * 2)
-			if lens ~= nil then
-				lens[i] = units
-			end
-			r.at += n
-			return true
 		end
 		if not V.utf8(r.b, r.at, n) then
 			-- the element does not land: the list keeps the prefix (§2.13, §3)
@@ -1065,31 +1041,17 @@ local function read_arm(arm: any, sub: any, u: any): boolean
 	end
 	if s == "str" then
 		local n = sub.e - sub.at
-		if arm.wide then
-			if n % 2 ~= 0 or not V.wide(sub.b, sub.at, n) then
-				_report.malformed = true
-				sub.at = sub.e
-				return false
-			end
-			local units = n // 2
-			if arm.bound ~= nil and units > arm.bound then
-				units = V.clampWide(sub.b, sub.at, arm.bound)
-				_report.clamped += 1
-			end
-			store_buffer(u, arm.slot, sub.b, sub.at, units * 2, units)
-		else
-			if not V.utf8(sub.b, sub.at, n) then
-				_report.malformed = true
-				sub.at = sub.e
-				return false
-			end
-			local keep = n
-			if arm.bound ~= nil and keep > arm.bound then
-				keep = V.clampUtf8(sub.b, sub.at, arm.bound)
-				_report.clamped += 1
-			end
-			u[arm.slot] = buffer.readstring(sub.b, sub.at, keep)
+		if not V.utf8(sub.b, sub.at, n) then
+			_report.malformed = true
+			sub.at = sub.e
+			return false
 		end
+		local keep = n
+		if arm.bound ~= nil and keep > arm.bound then
+			keep = V.clampUtf8(sub.b, sub.at, arm.bound)
+			_report.clamped += 1
+		end
+		u[arm.slot] = buffer.readstring(sub.b, sub.at, keep)
 		sub.at = sub.e
 		return true
 	elseif s == "text" then
@@ -1209,8 +1171,7 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 end
 
 -- ONE FIELD (§3): every value read is stored in its slot in the shape
--- docs/PORT-MOO.md names; a string clamps at a whole code point and a wide
--- string at a whole code unit.
+-- docs/PORT-MOO.md names; a string clamps at a whole code point.
 read_field = function(fd: any, r: any, v: any): ...any
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
@@ -1227,23 +1188,6 @@ read_field = function(fd: any, r: any, v: any): ...any
 		if r.bad or r.at + n > r.e then
 			_report.malformed = true
 			return false
-		end
-		if fd.wide then
-			if n % 2 ~= 0 or not V.wide(r.b, r.at, n) then
-				_report.malformed = true
-				r.at += n
-				return true
-			end
-			local units = n // 2
-			if fd.bound ~= nil and units > fd.bound then
-				units = V.clampWide(r.b, r.at, fd.bound)
-				_report.clamped += 1
-			end
-			if fd.slot ~= nil and v ~= nil then
-				store_buffer(v, fd.slot, r.b, r.at, units * 2, units)
-			end
-			r.at += n
-			return true
 		end
 		if not V.utf8(r.b, r.at, n) then
 			_report.malformed = true

@@ -165,7 +165,7 @@ local function writeField(block: any, info: any, f: any, at: number, v: any): an
 	end
 	local slot = at + f.offset
 	if f.counted then
-		local width = if f.wide then 2 else 1
+		local width = 1
 		local len = if type(v) == "string" then #v else buffer.len(v)
 		local used = len // width
 		if used > f.arrayBound then

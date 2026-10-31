@@ -134,7 +134,7 @@ local function skip_payload(c: any, kind: number): boolean
 		c.at += w
 		return true
 	end
-	if kind == 12 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 31 or kind == 32 then
 		local n = c_leb(c)
 		if n == nil or c.at + n > c.e then
 			return false
@@ -707,32 +707,19 @@ local function m_ref(rs: any, t: any): string
 end
 
 -- one text or blob payload and its FILE bytes: a string(N) or bytes(N) is a
--- length at its own width, the ALIGN, then the bytes; a wide string is a length
--- and then sixteen bits a code unit; the escape aligns, reads a thirty-two bit
+-- length at its own width, the ALIGN, then the bytes; the escape aligns, reads a thirty-two bit
 -- L and takes L bytes opaque (§3.3). Answers the bytes as a buffer
 local function m_opaque(rs: any, t: any, entry: any): buffer?
 	local r = t.r
 	local n = 0
 	local kind = entry.kind
-	if kind == 12 or kind == 33 then
+	if kind == 12 then
 		local raw, ok = B.get(r, B.bitsReq(0, entry.shape.max))
 		if not ok then
 			rs.bad = true
 			return nil
 		end
 		n = raw
-		if kind == 33 then
-			if not B.has(r, n * 16) then
-				rs.bad = true
-				return nil
-			end
-			local units = buffer.create(n * 2)
-			for i = 0, n - 1 do
-				local u = B.get(r, 16)
-				buffer.writeu16(units, i * 2, u)
-			end
-			return units
-		end
 		if not B.ralign(r) then
 			rs.bad = true
 			return nil
@@ -984,7 +971,7 @@ m_content = function(rs: any, t: any, entry: any, depth: number)
 		m_payload(rs, t, entry, depth)
 	elseif kind == 32 then
 		-- nothing rides, and the outer length is what says so
-	elseif kind == 12 or kind == 31 or kind == 33 then
+	elseif kind == 12 or kind == 31 then
 		-- a content copied whole carries no inner length: the outer one frames it
 		local b = m_opaque(rs, t, entry)
 		if b ~= nil then
@@ -1043,7 +1030,7 @@ m_payload = function(rs: any, t: any, entry: any, depth: number)
 		m_framed(rs, t, arm, depth)
 	elseif kind == 13 or kind == 14 or kind == 16 then
 		m_framed(rs, t, entry, depth)
-	elseif kind == 12 or kind == 31 or kind == 33 then
+	elseif kind == 12 or kind == 31 then
 		-- an opaque payload rides behind a CANONICAL LEB128 LENGTH on the file
 		local b = m_opaque(rs, t, entry)
 		if b == nil then

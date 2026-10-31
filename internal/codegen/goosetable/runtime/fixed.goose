@@ -179,19 +179,6 @@ fn fixed_put_text(out: u8[>..]&, s: const u8[:], n: i32, cap: i64) {
     fixed_put_zeros(out, cap - used);
 }
 
-// fixed_put_wtext writes a wstring(N): the length in CODE UNITS, then the used
-// units, two bytes each, then zero to N units (docs/FIXED-FORM-ALGORITHM.md §3).
-fn fixed_put_wtext(out: u8[>..]&, s: const u16[:], n: i32, cap: i64) {
-    let used = n as i64;
-    fixed_put(out, n as! u32, 4);
-    var i: i64 = 0;
-    while i < used {
-        fixed_put(out, s[i], 2);
-        i += 1;
-    }
-    fixed_put_zeros(out, (cap - used) * 2);
-}
-
 // fixed_get_text lands a text or bytes payload: the identity plan's text op
 // copies the whole declared span (docs/FIXED-FORM-ALGORITHM.md §4.1, `text`:
 // min(mine, theirs), which on the identity plan is N).
@@ -199,14 +186,6 @@ fn fixed_get_text(b: const u8[:], at: i64, dst: u8[:]) {
     var i: i64 = 0;
     while i < dst.len {
         dst[i] = b[at + i];
-        i += 1;
-    }
-}
-
-fn fixed_get_wtext(b: const u8[:], at: i64, dst: u16[:]) {
-    var i: i64 = 0;
-    while i < dst.len {
-        dst[i] = b[at + 2 * i] | (b[at + 2 * i + 1] as u16) << 8;
         i += 1;
     }
 }
@@ -264,51 +243,10 @@ fn fixed_utf8_ok(s: const u8[:], at: i64, n: i64) -> bool {
     return true;
 }
 
-// fixed_utf16_unit_ok walks n code units through unit(i) — paired
-// surrogates, no zero unit (docs/FIXED-FORM-ALGORITHM.md §3.1: an astral pair
-// counts two). Two entry points: storage units and wire bytes.
-fn fixed_utf16_ok(s: const u16[:], n: i64) -> bool {
-    var i: i64 = 0;
-    while i < n {
-        let u = s[i];
-        if u == 0 { return false; }
-        if u >= 0xD800 && u <= 0xDBFF {
-            if i + 1 >= n { return false; }
-            let lo = s[i + 1];
-            if lo < 0xDC00 || lo > 0xDFFF { return false; }
-            i += 2;
-        } else if u >= 0xDC00 && u <= 0xDFFF {
-            return false;
-        } else {
-            i += 1;
-        }
-    }
-    return true;
-}
-
-fn fixed_wire_utf16_ok(b: const u8[:], at: i64, n: i64) -> bool {
-    var i: i64 = 0;
-    while i < n {
-        let u = b[at + 2 * i] | (b[at + 2 * i + 1] as u16) << 8;
-        if u == 0 { return false; }
-        if u >= 0xD800 && u <= 0xDBFF {
-            if i + 1 >= n { return false; }
-            let lo = b[at + 2 * i + 2] | (b[at + 2 * i + 3] as u16) << 8;
-            if lo < 0xDC00 || lo > 0xDFFF { return false; }
-            i += 2;
-        } else if u >= 0xDC00 && u <= 0xDFFF {
-            return false;
-        } else {
-            i += 1;
-        }
-    }
-    return true;
-}
-
 // THE WRITE CONTRACT (docs/FIXED-FORM-ALGORITHM.md §3.1): Goose has no
 // debug-only idiom the generated code can rely on, so the writer refuses as Go
-// does, in every build — a length outside 0..N, a string whose used bytes are
-// not UTF-8 or hold a NUL, a wstring whose used units are unpaired or zero.
+// does, in every build — a length outside 0..N, or a string whose used bytes
+// are not UTF-8 or hold a NUL.
 fn fixed_len_ok(n: i32, cap: i64) -> bool {
     return n >= 0 && n <= cap;
 }
@@ -318,15 +256,10 @@ fn fixed_text_ok(s: const u8[:], n: i32, cap: i64) -> bool {
     return fixed_utf8_ok(s, 0, n);
 }
 
-fn fixed_wtext_ok(s: const u16[:], n: i32, cap: i64) -> bool {
-    if !fixed_len_ok(n, cap) { return false; }
-    return fixed_utf16_ok(s, n);
-}
-
 // THE READER'S SCAN (docs/FIXED-FORM-ALGORITHM.md §4.5): a count or a length
 // past its bound, or text whose used units break the content rule, REFUSES BY
 // NAME before any destination byte is written. flavour is §4.1's: 1 utf8,
-// 2 wide, 3 bytes.
+// 3 bytes.
 fn fixed_scan_count(b: const u8[:], at: i64, bound: i64) -> i64 {
     let v = fixed_i32(b, at);
     if v < 0 || v > bound { return FixedRefuseCountOverBound; }
@@ -337,7 +270,6 @@ fn fixed_scan_text(b: const u8[:], at: i64, cap: i64, flavour: i64) -> i64 {
     let v = fixed_i32(b, at);
     if v < 0 || v > cap { return FixedRefuseLengthOverBound; }
     if flavour == 1 && !fixed_utf8_ok(b, at + 4, v) { return FixedRefuseTextIllFormed; }
-    if flavour == 2 && !fixed_wire_utf16_ok(b, at + 4, v) { return FixedRefuseTextIllFormed; }
     return 0;
 }
 

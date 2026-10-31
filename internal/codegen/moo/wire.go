@@ -11,7 +11,7 @@
 // would trap such a write (IMPLEMENTING.md U9), and the guards keep the trap
 // for real misuse of the stream (a buffer too small). A read refuses through
 // the stream's one latch (stream:error() names the reason) or, for a schema
-// rule the runtime does not know (const, reserved, wstring validation), by
+// rule the runtime does not know (const, reserved), by
 // returning false unlatched.
 package moo
 

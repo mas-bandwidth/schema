@@ -613,9 +613,8 @@ func typeWord(t ir.FieldType) string {
 	return fmt.Sprintf("bytes(%d)", t.Size)
 }
 
-// byteDefault is a string/bytes/wstring field's specified default as the
-// full array literal and its used length (SPEC §4.2): bytes for string and
-// bytes, UTF-16 code units for wstring.
+// byteDefault is a string/bytes field's specified default as the full array
+// literal and its used length (SPEC §4.2).
 func (g *Gen) byteDefault(f *ir.Field) (string, int) {
 	if !f.HasDefault || len(f.DefBytes) == 0 {
 		return "", 0
