@@ -38,7 +38,7 @@ var luauModuleKeys = map[string][]string{
 		"announceRead",
 	},
 	"schema_refusal.luau":  {"ReadStrict", "ReadStrictNames"},
-	"schema_retain.luau":   {"LoadRetain", "SaveRetain"},
+	"schema_retain.luau":   {"LoadRetain", "LoadRetainTolerant", "SaveRetain"},
 	"schema_save.luau":     {"measure", "save"},
 	"schema_tables.luau":   {"keyed", "knownId", "lookup", "table", "union", "wireIds"},
 	"schema_text.luau":     {"LoadText", "SaveText"},
