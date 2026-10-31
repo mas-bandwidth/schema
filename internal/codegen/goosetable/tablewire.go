@@ -7,7 +7,7 @@ package goosetable
 // and union descriptor of the unit, and the four facts a FieldDesc does not
 // carry — the key enum of an enum-keyed array, the variants retired in place,
 // and the if/else guards a writer evaluates. This part emits that registry
-// ONCE per unit, as `TableUnit`, in the unit's own module ([UnitModule]),
+// ONCE per unit, as `TableUnit`, in the unit's package module [UnitModule],
 // which is named for the package: an earlier-sorting file joining the unit
 // moves no byte of any file's module (docs/PORTING.md J2).
 //
@@ -28,7 +28,7 @@ import (
 const UnitName = "TableUnit"
 
 func init() {
-	RegisterUnit("tablewire", emitTableWireUnit)
+	RegisterUnit("tablewire", "Unit", emitTableWireUnit)
 }
 
 // unitDecls is every struct and union the table walk can meet, by name:

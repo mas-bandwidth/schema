@@ -8,12 +8,13 @@
 # before every file in it, and requires (1) every module that is not a schema
 # file's own <Base>.goose or <Base>Table.goose — the runtime — to be present
 # in both trees under the same name with the same bytes, and (2) each original
-# file's <Base>Table.goose to be byte-identical. The unit's own module,
-# <Package>Unit.goose (internal/codegen/goosetable UnitModule), holds the data
-# that spans every file, so its bytes grow with the unit; it is held to its
-# HOME instead: present under the package's name in both trees whenever either
-# tree has one, and the only module that declares the unit registry
-# (`let TableUnit:`). Each module that moved is named; one is red.
+# file's <Base>Table.goose to be byte-identical. The unit's package modules,
+# <Package><Surface>.goose (internal/codegen/goosetable PackageModule), hold the
+# data that spans every file, so their bytes grow with the unit; each is held
+# to its HOME instead: present under the package's name in both trees whenever
+# either tree has one, and the only module that declares its unit-wide data
+# (TableUnit, CookRecords, BlockRecords, MessageVocabulary). Each module that
+# moved is named; one is red.
 set -u
 
 if [ $# -ne 2 ]; then
@@ -35,7 +36,14 @@ own() { # own <dir> <file>: the file is a schema file's own module
 }
 
 pkg=$(sed -n 's/^package \([A-Za-z0-9_]*\).*/\1/p' tables/examples/*.schema | head -1)
-unit=$(printf '%s' "$pkg" | cut -c1 | tr '[:lower:]' '[:upper:]')$(printf '%s' "$pkg" | cut -c2-)Unit.goose
+P=$(printf '%s' "$pkg" | cut -c1 | tr '[:lower:]' '[:upper:]')$(printf '%s' "$pkg" | cut -c2-)
+# the package modules (internal/codegen/goosetable PackageModule), each with the
+# declaration that is unit-wide data and may live nowhere else
+homes="Unit:TableUnit Cook:CookRecords Block:BlockRecords Message:MessageVocabulary"
+ishome() {
+	for h in $homes; do [ "$1" = "$P${h%%:*}.goose" ] && return 0; done
+	return 1
+}
 
 bad=0
 runtime=0
@@ -44,7 +52,7 @@ for f in $( (cd "$w/base" && ls *.goose; cd "../added" && ls *.goose) | LC_ALL=C
 	if own tables/examples "$f" || own "$w/src" "$f"; then
 		continue
 	fi
-	[ "$f" = "$unit" ] && continue
+	ishome "$f" && continue
 	runtime=$((runtime + 1))
 	if [ ! -f "$w/base/$f" ] || [ ! -f "$w/added/$f" ]; then
 		echo "runtime module $f moved: in $( [ -f "$w/base/$f" ] && echo the base tree || echo the tree with Aaa.schema ) only"
@@ -58,19 +66,23 @@ if [ $runtime -eq 0 ]; then
 	echo "goose runtime home gate REFUSES: no runtime module in either tree"
 	exit 2
 fi
-# the unit module: at the package's home in both trees, and the only home of
-# the registry
+# each package module: at the package's home in both trees, and the only home
+# of its unit-wide declaration
 units=0
-if [ -f "$w/base/$unit" ] || [ -f "$w/added/$unit" ]; then
-	units=1
-	if [ ! -f "$w/base/$unit" ] || [ ! -f "$w/added/$unit" ]; then
-		echo "unit module $unit moved: in $( [ -f "$w/base/$unit" ] && echo the base tree || echo the tree with Aaa.schema ) only"
-		bad=1
+for h in $homes; do
+	m=$P${h%%:*}.goose
+	decl=${h#*:}
+	if [ -f "$w/base/$m" ] || [ -f "$w/added/$m" ]; then
+		units=$((units + 1))
+		if [ ! -f "$w/base/$m" ] || [ ! -f "$w/added/$m" ]; then
+			echo "package module $m moved: in $( [ -f "$w/base/$m" ] && echo the base tree || echo the tree with Aaa.schema ) only"
+			bad=1
+		fi
 	fi
-fi
-for tree in base added; do
-	for f in $(cd "$w/$tree" && grep -l '^let TableUnit:' *.goose 2>/dev/null); do
-		[ "$f" = "$unit" ] || { echo "unit registry in $f in the $tree tree: its home is $unit"; bad=1; }
+	for tree in base added; do
+		for f in $(cd "$w/$tree" && grep -l "^let $decl:" *.goose 2>/dev/null); do
+			[ "$f" = "$m" ] || { echo "unit-wide $decl in $f in the $tree tree: its home is $m"; bad=1; }
+		done
 	done
 done
 tables=0
@@ -84,4 +96,4 @@ if [ $bad -ne 0 ]; then
 	echo "GOOSE RUNTIME HOME GATE FAILED: a module moved when an earlier-sorting file joined the unit"
 	exit 1
 fi
-echo "goose runtime home gate: $runtime runtime modules and $tables table modules unmoved, and $units unit module at $unit, when an earlier-sorting file joins the unit"
+echo "goose runtime home gate: $runtime runtime modules and $tables table modules unmoved, and $units package modules at $P<Surface>.goose, when an earlier-sorting file joins the unit"
