@@ -15,10 +15,13 @@ import (
 // and the text lists (docs/PORT-LOBSTER.md); every other target
 // carries none at this stage.
 var nonGoCarriers = map[string][]string{
-	"c":       {carryOptionalVariableClosure},
-	"cs":      {carryOptionalVariableClosure},
-	"cpp":     {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
-	"dart":    {carryOptionalVariableClosure},
+	"c":    {carryOptionalVariableClosure},
+	"cs":   {carryOptionalVariableClosure},
+	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
+	"dart": {carryOptionalVariableClosure},
+	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
+	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine
+	"moo": {carryTimestamp, carryIntegrity, carryTextList, carryTextListTotal, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 	"lobster": {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap},
 }
 

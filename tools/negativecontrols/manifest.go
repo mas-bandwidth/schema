@@ -63,6 +63,11 @@ type Group struct {
 	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
 	// GOLANGCI_LINT_VERSION rather than against test/conformance/*/ci.json.
 	Golangci string `json:"golangci,omitempty"`
+	// Moo says the row needs the moo pin (make/moo.mk's MOO_PIN, a commit of
+	// mas-bandwidth/moo), which .github/actions/moo restores or builds into
+	// dist/moo. Like dotnet it is a marker, "pin", and never a version: the
+	// commit lives in make/moo.mk alone.
+	Moo string `json:"moo,omitempty"`
 	// Lobster is the pinned Lobster release (make/lobster.mk's
 	// LOBSTER_VERSION), installed by `make dist-lobster`.
 	Lobster string `json:"lobster,omitempty"`
@@ -82,7 +87,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "lobster"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "moo", "lobster"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.
@@ -100,6 +105,8 @@ func (g Group) toolchain(field string) string {
 		return g.OTP
 	case "elixir":
 		return g.Elixir
+	case "moo":
+		return g.Moo
 	case "lobster":
 		return g.Lobster
 	}
@@ -195,6 +202,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		OTP      string `json:"otp"`
 		Elixir   string `json:"elixir"`
 		Golangci string `json:"golangci"`
+		Moo      string `json:"moo"`
 		Lobster  string `json:"lobster"`
 	}
 	if when != whenPullRequest && when != whenNightly {
@@ -215,6 +223,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			OTP:      g.OTP,
 			Elixir:   g.Elixir,
 			Golangci: g.Golangci,
+			Moo:      g.Moo,
 			Lobster:  g.Lobster,
 		})
 	}

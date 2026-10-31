@@ -124,6 +124,12 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
+
       # THE LOBSTER PIN, installed as make/lobster.mk's dist-lobster does, at
       # the row's version; the linux release links libOpenGL and libGLX, which
       # the hosted ubuntu image does not carry.
@@ -134,6 +140,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
       # The two halves split so a failing build fails the run before the
       # harness's overhead shows in the log; both run with the row's env so
       # a toolchain-on-PATH leg (java, elixir, js, dart, rust) sees the
