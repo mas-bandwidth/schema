@@ -55,6 +55,20 @@ import '../../../build/tables-generated-dart/k1/Tblk1Wire.dart' as tblk1;
 import '../../../build/tables-generated-dart/k2/Tblk2Wire.dart' as tblk2;
 import '../../../build/tables-generated-dart/a2/Tbla2Wire.dart' as tbla2;
 import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Wire.dart' as scalardemo2;
+import '../../../build/tables-generated-dart/examples/TablesCook.dart' as tablescook;
+import '../../../build/tables-generated-dart/examples/NestedCook.dart' as nestedcook;
+import '../../../build/tables-generated-dart/examples/KeyedCook.dart' as keyedcook;
+import '../../../build/tables-generated-dart/examples/WideCook.dart' as widecook;
+import '../../../build/tables-generated-dart/v1/V1Cook.dart' as v1cook;
+import '../../../build/tables-generated-dart/v2/V2Cook.dart' as v2cook;
+import '../../../build/tables-generated-dart/p1/P1Cook.dart' as p1cook;
+import '../../../build/tables-generated-dart/p3/P3Cook.dart' as p3cook;
+import '../../../build/tables-generated-dart/m1/M1Cook.dart' as m1cook;
+import '../../../build/tables-generated-dart/m2/M2Cook.dart' as m2cook;
+import '../../../build/tables-generated-dart/stream/StreamCook.dart' as streamcook;
+import '../../../build/tables-generated-dart/messages/MessagesCook.dart' as messagescook;
+import '../../../build/tables-generated-dart-scalars/scalars/ScalarsCook.dart' as scalarscook;
+import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -744,6 +758,8 @@ int surfaceCook(String outDir) {
 }
 
 // A row this leg cannot carry writes <case>.absent (test/conformance/README.md).
+// Every instance root answers wire: its form-1 load re-saved byte for byte,
+// the same pair json-read and json-write already exercise.
 // graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
 // report for the roots the variable class carries. mapdemo, messagedemo,
 // scalars and widedemo answer the same four for every root: maps, unions and
@@ -824,6 +840,46 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
+    case 'listdemo Army':
+      return listdemo.armyWireSave(listdemo.armyWireLoad(wire));
+    case 'listdemo Mixed':
+      return listdemo.mixedWireSave(listdemo.mixedWireLoad(wire));
+    case 'streamdemo Feed':
+      return streamdemo.feedWireSave(streamdemo.feedWireLoad(wire));
+    case 'tabledemo ArchiveConfig':
+      return tabledemo.archiveConfigWireSave(tabledemo.archiveConfigWireLoad(wire));
+    case 'tabledemo KeyedConfig':
+      return tabledemo.keyedConfigWireSave(tabledemo.keyedConfigWireLoad(wire));
+    case 'tabledemo WideBlob':
+      return tabledemo.wideBlobWireSave(tabledemo.wideBlobWireLoad(wire));
+    case 'tblm1 Msg':
+      return tblm1.msgWireSave(tblm1.msgWireLoad(wire));
+    case 'tblm2 Msg':
+      return tblm2.msgWireSave(tblm2.msgWireLoad(wire));
+    case 'tblp1 Chain':
+      return tblp1.chainWireSave(tblp1.chainWireLoad(wire));
+    case 'tblp3 Chain':
+      return tblp3.chainWireSave(tblp3.chainWireLoad(wire));
+    case 'vocabdemo Wide00':
+      return vocabdemo.wide00WireSave(vocabdemo.wide00WireLoad(wire));
+    case 'vocabdemo Wide09':
+      return vocabdemo.wide09WireSave(vocabdemo.wide09WireLoad(wire));
+    case 'vocab9demo Wide00':
+      return vocab9demo.wide00WireSave(vocab9demo.wide00WireLoad(wire));
+    case 'vocab9demo Wide19':
+      return vocab9demo.wide19WireSave(vocab9demo.wide19WireLoad(wire));
+    case 'backenddemo LoginRequest':
+      return backenddemo.loginRequestWireSave(backenddemo.loginRequestWireLoad(wire));
+    case 'backenddemo MatchResult':
+      return backenddemo.matchResultWireSave(backenddemo.matchResultWireLoad(wire));
+    case 'backenddemo StorePurchase':
+      return backenddemo.storePurchaseWireSave(backenddemo.storePurchaseWireLoad(wire));
+    case 'tabledemo LoadoutConfig':
+      return tabledemo.loadoutConfigWireSave(tabledemo.loadoutConfigWireLoad(wire));
+    case 'tabledemo ProfileConfig':
+      return tabledemo.profileConfigWireSave(tabledemo.profileConfigWireLoad(wire));
+    case 'tabledemo RootConfig':
+      return tabledemo.rootConfigWireSave(tabledemo.rootConfigWireLoad(wire));
   }
   return null;
 }
@@ -1208,29 +1264,9 @@ String? loadReport(String unit, String root, Uint8List wire) {
 //
 // A row whose instance this leg cannot load writes <case>.absent with the
 // reason, by unit (test/conformance/README.md).
-const Map<String, String> cookWriteAbsent = <String, String>{
-  'tabledemo': _fixedFormOnly,
-  'tblv1': _fixedFormOnly,
-  'tblv2': _fixedFormOnly,
-  'tblp1': _fixedFormOnly,
-  'tblp3': _fixedFormOnly,
-  'tblm1': _fixedFormOnly,
-  'tblm2': _fixedFormOnly,
-  'messagedemo':
-      'the Dart table backend refuses the unit (a union arm '
-      'carrying `was`, docs/SPEC-TABLES.md §5): no Dart value to cook',
-  'streamdemo':
-      'the Dart table backend refuses the unit (a union a table '
-      'closure holds, docs/SPEC-TABLES.md §2.6, §11): no Dart value to cook',
-  'scalars':
-      'the unit carries the wide kinds, for which the Dart table '
-      'backend emits no cook form (docs/SPEC-TABLES.md §3)',
-};
-
-const String _fixedFormOnly =
-    'the Dart fixed class reads form 3 only and '
-    "this instance's wire is form 1, which Dart reads for the variable class "
-    'alone (docs/SPEC-TABLES.md §3, §3.4): no Dart value to cook';
+// Every unit's rows are answered today; the map stays as the one place a
+// future absence is named.
+const Map<String, String> cookWriteAbsent = <String, String>{};
 
 // cookWriter loads one instance and answers its measured extent and the
 // writer for one byte order, or null when this leg has no codec for it.
@@ -1255,6 +1291,127 @@ const String _fixedFormOnly =
       return (
         assets.CatalogCook.cookMeasure(value),
         (out, order) => assets.CatalogCook.cook(value, out, order),
+      );
+    case 'tabledemo ArchiveConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.archiveConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        nestedcook.ArchiveConfigCookWire.cookMeasure(value),
+        (out, order) => nestedcook.ArchiveConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo KeyedConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.keyedConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        keyedcook.KeyedConfigCookWire.cookMeasure(value),
+        (out, order) => keyedcook.KeyedConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo LoadoutConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.loadoutConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        tablescook.LoadoutConfigCookWire.cookMeasure(value),
+        (out, order) => tablescook.LoadoutConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo ProfileConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.profileConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        tablescook.ProfileConfigCookWire.cookMeasure(value),
+        (out, order) => tablescook.ProfileConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo RootConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.rootConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        tablescook.RootConfigCookWire.cookMeasure(value),
+        (out, order) => tablescook.RootConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo WideBlob':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.wideBlobWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        widecook.WideBlobCookWire.cookMeasure(value),
+        (out, order) => widecook.WideBlobCookWire.cook(value, out, order),
+      );
+    case 'tblv1 Cfg':
+      final r = tblv1.TableWireReport();
+      final value = tblv1.cfgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        v1cook.CfgCookWire.cookMeasure(value),
+        (out, order) => v1cook.CfgCookWire.cook(value, out, order),
+      );
+    case 'tblv2 Cfg':
+      final r = tblv2.TableWireReport();
+      final value = tblv2.cfgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        v2cook.CfgCookWire.cookMeasure(value),
+        (out, order) => v2cook.CfgCookWire.cook(value, out, order),
+      );
+    case 'tblp1 Chain':
+      final r = tblp1.TableWireReport();
+      final value = tblp1.chainWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        p1cook.ChainCookWire.cookMeasure(value),
+        (out, order) => p1cook.ChainCookWire.cook(value, out, order),
+      );
+    case 'tblp3 Chain':
+      final r = tblp3.TableWireReport();
+      final value = tblp3.chainWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        p3cook.ChainCookWire.cookMeasure(value),
+        (out, order) => p3cook.ChainCookWire.cook(value, out, order),
+      );
+    case 'tblm1 Msg':
+      final r = tblm1.TableWireReport();
+      final value = tblm1.msgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        m1cook.MsgCookWire.cookMeasure(value),
+        (out, order) => m1cook.MsgCookWire.cook(value, out, order),
+      );
+    case 'tblm2 Msg':
+      final r = tblm2.TableWireReport();
+      final value = tblm2.msgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        m2cook.MsgCookWire.cookMeasure(value),
+        (out, order) => m2cook.MsgCookWire.cook(value, out, order),
+      );
+    case 'messagedemo ToolMessage':
+      final r = messagedemo.TableWireReport();
+      final value = messagedemo.toolMessageWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        messagescook.ToolMessageCookWire.cookMeasure(value),
+        (out, order) =>
+            messagescook.ToolMessageCookWire.cook(value, out, order),
+      );
+    case 'scalars SimState':
+      final r = scalardemo.TableWireReport();
+      final value = scalardemo.simStateWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        scalarscook.SimStateCookWire.cookMeasure(value),
+        (out, order) => scalarscook.SimStateCookWire.cook(value, out, order),
+      );
+    case 'streamdemo Feed':
+      final r = streamdemo.TableWireReport();
+      final value = streamdemo.feedWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        streamcook.FeedCook.cookMeasure(value),
+        (out, order) => streamcook.FeedCook.cook(value, out, order),
       );
   }
   return null;
@@ -1373,6 +1530,10 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = graphdemo.TableTextReport();
         graphdemo.sceneFromJson(text, r);
         break;
+      case 'mapdemo Text':
+        r = mapdemo.TableTextReport();
+        mapdemo.textFromJson(text, r);
+        break;
       case 'messagedemo ToolMessage':
         r = messagedemo.TableTextReport();
         messagedemo.toolMessageFromJson(text, r);
@@ -1405,6 +1566,84 @@ int surfaceJsonHostile(String outDir) {
     File('$outDir/${f[1]}').writeAsStringSync(verdict);
   }
   return 0;
+}
+
+// ---- retain and retain-save (docs/SPEC-TABLES.md §6.6): RT1's Node loaded
+// with retention at the row's two capacities, measured and saved back. `retain`
+// prints `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
+// saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
+// what this port's own records cost, and the second load gets one byte less
+// (test/conformance/README.md). The id list's capacity is a count.
+//
+// A retain-message row's root is a plain `table` — Node in RT1 — which carries
+// no message verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
+// the form), so the driver answers ABSENT and names the reason, as the Go
+// leg's does.
+const int _retainRoomy = 1 << 20;
+
+int surfaceRetain(String outDir, bool saves) {
+  for (final f in lines) {
+    if (f[0] != 'retain' && f[0] != 'retain-message') continue;
+    if (saves && f[f.length - 1] == '-') continue;
+    if (f[0] == 'retain-message') {
+      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
+      continue;
+    }
+    if (f[2] != 'tblrt1' || f[3] != 'Node') {
+      stderr.writeln('driver: retain ${f[1]} names ${f[2]} ${f[3]}');
+      return 1;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
+    var store = tblrt1.TableRetain(_retainRoomy, ids);
+    var report = tblrt1.TableWireReport();
+    if (f[5] == 'short') {
+      tblrt1.nodeWireLoadRetain(wire, store, report);
+      if (report.malformed || report.refused) {
+        stderr.writeln('driver: ${f[1]}: capacity probe refused');
+        return 1;
+      }
+      store = tblrt1.TableRetain(store.used - 1 < 0 ? 0 : store.used - 1, ids);
+      report = tblrt1.TableWireReport();
+    }
+    final root = tblrt1.nodeWireLoadRetain(wire, store, report);
+    if (report.malformed || report.refused) {
+      stderr.writeln('driver: ${f[1]}: retaining load failed');
+      return 1;
+    }
+    final size = tblrt1.nodeWireMeasureRetain(root, store);
+    final save = tblrt1.TableWireReport();
+    final out = tblrt1.nodeWireSaveRetain(root, store, save);
+    if (size < 0 || out.length != size) {
+      stderr.writeln('driver: ${f[1]}: retaining measure and save disagree');
+      return 1;
+    }
+    // the save is a function of the value and the store: a second one writes
+    // the same bytes and loses the same records
+    final second = tblrt1.TableWireReport();
+    final again = tblrt1.nodeWireSaveRetain(root, store, second);
+    if (!_sameBytes(again, out) || second.retainLost != save.retainLost) {
+      stderr.writeln('driver: ${f[1]}: retaining save is not repeatable');
+      return 1;
+    }
+    if (saves) {
+      File('$outDir/${f[1]}').writeAsBytesSync(out);
+    } else {
+      File('$outDir/${f[1]}').writeAsStringSync(
+        '${report.retained},${report.retainLost},${report.unknown} '
+        '${save.retainLost}\n',
+      );
+    }
+  }
+  return 0;
+}
+
+bool _sameBytes(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 int surfaceReport(String outDir) {
@@ -1687,12 +1926,13 @@ int surfaceMessage(String outDir) {
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
-    // cook-write the graphdemo and blobdemo rows (§7.6). The
+    // cook-write the graphdemo and blobdemo rows (§7.6). retain and
+    // retain-save carry RT1's retaining round trip (§6.6). The
     // accelerators and the forgery surfaces stay, and cook-reason and
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\njson-read\njson-write\njson-hostile\nreport\n'
+    'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
 
@@ -1752,11 +1992,6 @@ class _ByteSource {
 }
 
 void _putU8(List<int> out, int v) => out.add(v & 0xFF);
-void _putU16(List<int> out, int v) {
-  out.add(v & 0xFF);
-  out.add((v >> 8) & 0xFF);
-}
-
 void _putU32(List<int> out, int v) {
   for (var i = 0; i < 4; i++) {
     out.add((v >> (8 * i)) & 0xFF);
@@ -1916,6 +2151,10 @@ int run(List<String> args) {
       return surfaceWire(out);
     case 'message':
       return surfaceMessage(out);
+    case 'retain':
+      return surfaceRetain(out, false);
+    case 'retain-save':
+      return surfaceRetain(out, true);
     case 'json-read':
       return surfaceJsonRead(out);
     case 'json-write':

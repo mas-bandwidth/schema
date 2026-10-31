@@ -420,6 +420,11 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		g.emitCookVariableExtent(r)
 		g.emitCookVariableCarve(r)
 	}
+	if !g.form1 && len(g.form1Unions) > 0 {
+		// the element writers of the unions a list of unions queued (§2.6);
+		// a fixed root's form-1 class drains its own queue after this
+		g.emitCookForm1UnionWriters()
+	}
 	g.trimBlank()
 }
 
@@ -727,6 +732,11 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				g.pf("%s    for (var i = 0; i < n; i++) {\n", ind)
 				if ref := tableRef(f); ref != nil {
 					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, ref.Name, size)
+				} else if un := unionRef(f); un != nil {
+					// a LIST OF UNIONS (§2.6): each element is the union's own
+					// storage, written where it lies by the union's element writer
+					g.queueForm1Union(un)
+					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, un.Name, size)
 				} else {
 					// inside the `if (out != null)` above: out is promoted
 					g.emitCookScalarStore(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
@@ -857,6 +867,17 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
 			}
 			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+		case unionRef(f) != nil:
+			// an element that is a union: its own storage, a dead slot being
+			// the zero storage the region already holds (§2.6)
+			g.pf("%s  if (i >= %s.length) break;\n", ind, expr)
+			g.emitCookForm1UnionElement(unionRef(f), expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
+		case isWide(f):
+			// a wide element (§3, §15): a dead slot is the raw zero, which
+			// the zero-filled region already holds, so only live ones write
+			g.pf("%s  if (i >= %s.length) break;\n", ind, expr)
+			g.pf("%s  final e = %s[i];\n", ind, expr)
+			g.emitCookElementWide(f, "e", offset, stride, ind+"  ")
 		default:
 			zero := "0"
 			switch f.Type.Kind {
@@ -879,6 +900,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			g.emitCookRef(ind+"  ", fmt.Sprintf("at + %d + i * %d", offset, stride), expr+"[i]")
 		case ref != nil:
 			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
+		case unionRef(f) != nil:
+			g.emitCookForm1UnionElement(unionRef(f), expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
+		case isWide(f):
+			g.pf("%s  final e = %s[i];\n", ind, expr)
+			g.emitCookElementWide(f, "e", offset, stride, ind+"  ")
 		default:
 			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
@@ -898,7 +924,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, text)
 		g.pf("%s  }\n%s}\n", ind, ind)
 	case isWide(f):
-		g.emitCookVariableWide(f, expr, offset, ind)
+		g.emitCookVariableWide(f, expr, fmt.Sprintf("at + %d", offset), fmt.Sprintf("at + %d", offset+8), int64(ir.TableKindWidth(wideKind(f))), ind)
 	default:
 		g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
 	}
@@ -908,9 +934,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 // §3, §15) at its kind's width, byte-identical to the Go reference leg
 // (internal/codegen/gotable/cookwrite.go): a 128-bit value as its low 64-bit
 // half first and then the high half, each word in the target byte order, and a
-// narrower fixed-point value as its width bytes in that same order.
-func (g *cookGen) emitCookVariableWide(f *ir.Field, expr string, offset int64, ind string) {
-	width := int64(ir.TableKindWidth(wideKind(f)))
+// narrower fixed-point value as its width bytes in that same order. addr is
+// the slot's address expression and addr8 the same plus eight (the high word
+// of a 128-bit value), so an array element (`at + 8 + i * 4`) rides the same
+// write as a field.
+func (g *cookGen) emitCookVariableWide(f *ir.Field, expr, addr, addr8 string, width int64, ind string) {
 	g.pf("%sif (out != null) {\n", ind)
 	if width == 16 {
 		// toSigned(64) re-spells the 64-bit half as Dart's signed int, so a
@@ -921,15 +949,39 @@ func (g *cookGen) emitCookVariableWide(f *ir.Field, expr string, offset int64, i
 		// first on a big-endian one (internal/codegen/gotable/cookwrite.go).
 		g.pf("%s  final wLow = %s.toSigned(64).toInt();\n", ind, expr)
 		g.pf("%s  final wHigh = (%s >> 64).toSigned(64).toInt();\n", ind, expr)
-		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wLow : wHigh,\n%s    order,\n%s  );\n", ind, ind, offset, ind, ind, ind)
-		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wHigh : wLow,\n%s    order,\n%s  );\n", ind, ind, offset+8, ind, ind, ind)
+		g.emitDartCall(ind+"  ", "out.setUint64", addr, "order == Endian.little ? wLow : wHigh", "order")
+		g.emitDartCall(ind+"  ", "out.setUint64", addr8, "order == Endian.little ? wHigh : wLow", "order")
 	} else {
-		g.pf("%s  for (var i = 0; i < %d; i++) {\n", ind, width)
-		g.pf("%s    var shift = order == Endian.little ? i : %d - 1 - i;\n", ind, width)
-		g.pf("%s    out.setUint8(at + %d + i, (%s >> (shift * 8)).toUnsigned(8).toInt());\n", ind, offset, expr)
+		// the byte index is `b`, never `i`: an array element's addr already
+		// reads the element index i
+		g.pf("%s  for (var b = 0; b < %d; b++) {\n", ind, width)
+		g.pf("%s    var shift = order == Endian.little ? b : %d - 1 - b;\n", ind, width)
+		g.emitDartCall(ind+"    ", "out.setUint8", addr+" + b", fmt.Sprintf("(%s >> (shift * 8)).toUnsigned(8).toInt()", expr))
 		g.pf("%s  }\n", ind)
 	}
 	g.pf("%s}\n", ind)
+}
+
+// emitDartCall writes one call statement in the spelling `dart format`
+// writes: on one line when it fits in 80 columns, else one argument a line
+// with a trailing comma.
+func (g *cookGen) emitDartCall(ind, callee string, args ...string) {
+	if one := fmt.Sprintf("%s%s(%s);", ind, callee, strings.Join(args, ", ")); len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s(\n", ind, callee)
+	for _, a := range args {
+		g.pf("%s  %s,\n", ind, a)
+	}
+	g.pf("%s);\n", ind)
+}
+
+// emitCookElementWide writes element i of an array of a wide kind at its
+// stride, the element's raw BigInt in `expr` (§3, §15, §7.2).
+func (g *cookGen) emitCookElementWide(f *ir.Field, expr string, offset, stride int64, ind string) {
+	addr := fmt.Sprintf("at + %d + i * %d", offset, stride)
+	g.emitCookVariableWide(f, expr, addr, addr+" + 8", stride, ind)
 }
 
 const dartCookWriteReport = `

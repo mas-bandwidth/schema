@@ -945,7 +945,7 @@ func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabula
 	}
 	// the scalar sink is written and never read: the bits are what is kept
 	g.pf("%s    // ignore: unused_local_variable\n", ind)
-	g.pf("%s    var t;\n", ind)
+	g.pf("%s    Object? t;\n", ind)
 	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
 }
 
