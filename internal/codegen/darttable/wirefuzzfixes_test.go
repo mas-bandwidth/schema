@@ -155,7 +155,7 @@ func TestWireFuzzFindingsAreSpelledByTheEmitter(t *testing.T) {
 			name: "a keyed array's header is read against the parent, as the engine's keyed body reads it (§3.2)",
 			text: tabledemo, want: ", int elemKind, int pairs", gone: "final pairs = p.readLeb();",
 			revert: func(s string) string {
-				return strings.Replace(s, ", int elemKind, int pairs", "", -1) + "\tfinal pairs = p.readLeb();\n"
+				return strings.ReplaceAll(s, ", int elemKind, int pairs", "") + "\tfinal pairs = p.readLeb();\n"
 			},
 		},
 	}
