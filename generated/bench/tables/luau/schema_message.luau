@@ -624,7 +624,7 @@ local function refuseNonFinite(report: any, field: string, read: boolean)
 end
 
 -- LoadMessagesTolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5,
--- §3.3): every body it recovered, with the damage on the report.
+-- §3.3): evolution may recover a value, but damage discards the whole batch.
 function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local desc = messageRoot(root)
 	if report == nil then report = {} end
@@ -662,7 +662,7 @@ function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: nu
 	end
 	if malformed then
 		report.malformed = true
-		return got, bodies
+		return 0, {}
 	end
 	if dep.found then
 		local copy = buffer.create(len)
@@ -670,7 +670,7 @@ function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: nu
 		local got2, bodies2, malformed2 = walkBodies(v, copy, desc, count, true)
 		if malformed2 then
 			report.malformed = true
-			return got2, bodies2
+			return 0, {}
 		end
 		return got2, bodies2
 	end

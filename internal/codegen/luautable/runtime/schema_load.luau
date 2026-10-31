@@ -1466,9 +1466,8 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 end
 
 -- loadTolerant loads a form-1 wire at the table descriptor `root`, fills
--- report, and returns the recovered root value; it is the TOLERANT walk and
--- only this explicit name reaches it (docs/SPEC-TABLES.md §6.5: the plain
--- name is the strict read, so a recovered value never comes back under it).
+-- report, and returns the root only when the wire is whole. Tolerant
+-- evolution is not damage: malformed input is discarded on every read (§4).
 function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	local o = open(bytes, report)
 	if o == nil then return nil end
@@ -1492,7 +1491,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		local ref = r_leb(walk)
 		if walk.bad then break end
 		if ref == 0 then
-			if walk.at ~= o.e then report.malformed = true; return v end
+			if walk.at ~= o.e then report.malformed = true; return nil end
 			break
 		end
 		if ref > #_table or walk.at >= walk.e then break end
@@ -1551,9 +1550,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		report.refused = (report.refused or 0) + 1
 		return nil
 	end
-	-- A REGION READ KEEPS ITS RECOVERED VALUE under the explicit tolerant
-	-- name (docs/SPEC-TABLES.md §6.5); ReadStrict is the caller that refuses
-	-- a count_refusal by name.
+	if report.malformed then return nil end
 	return v
 end
 
@@ -1998,13 +1995,14 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	end
 	if _countRefused then
 		-- the BUILDER-path storage refusal (docs/SPEC-TABLES.md §6.5, Go
-		-- tablewire.CountRefusal): the tolerant region read kept its prefix,
-		-- the strict read refuses whole
+		-- tablewire.CountRefusal): both reads discard the damaged value;
+		-- the strict read keeps the specific refusal reason
 		rep.reason = "count_refusal"
 		return nil
 	end
 	if v == nil and rep.malformed then
-		rep.reason = "wire_damaged"
+		rep.reason = "malformed"
+		rep.field = witness(root, b, "malformed")
 		return nil
 	end
 	for _, k in REFUSING do

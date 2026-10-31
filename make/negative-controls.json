@@ -1514,7 +1514,8 @@
         "tables-luau-usage-negative-control",
         "tables-luau-versioning-negative-control",
         "tables-luau-wire-fuzz-negative-control",
-        "tables-luau-wire-fuzz-vectors-negative-control"
+        "tables-luau-wire-fuzz-vectors-negative-control",
+        "tables-luau-damage-discard-negative-control"
       ],
       "luau": "0.741"
     },
