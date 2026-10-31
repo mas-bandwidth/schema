@@ -765,8 +765,8 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 	}
 }
 
-// TestAReferenceAtAndAboveTheEntryCount: E is 33 and a reference is six
-// bits, so 34, 35 and 63 are spellable and damage; the entry count itself is
+// TestAReferenceAtAndAboveTheEntryCount: E is 32 and a reference is six
+// bits, so 33, 34 and 63 are spellable and damage; the entry count itself is
 // the last legal slot and must resolve. Red if a leg resolves past E, refuses
 // E, discards the fields decoded before the bad reference, or reads a body
 // after it.
@@ -783,7 +783,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	if want := 1 + (8+6+64+6+7)/8; len(one) != want {
 		t.Fatalf("the vector is %d bytes, the arithmetic says %d", len(one), want)
 	}
-	for _, past := range []uint64{34, 35, 63} {
+	for _, past := range []uint64{33, 34, 63} {
 		damaged := append([]byte(nil), one...)
 		setBits(damaged, 1, 78, 6, past)
 		if past == 63 {
@@ -804,7 +804,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 			t.Errorf("reference %d: the returned count reads %d", past, count)
 		}
 	}
-	// the entry count itself, 33, names StorePurchase's own type id, a kind-0
+	// the entry count itself, 32, names StorePurchase's own type id, a kind-0
 	// entry no field of LoginRequest carries: §4's ordinary unknown, and then
 	// a terminator at bit 84
 	last := wireBytes(t, "testdata/wire/tables/message_reference_last_slot.bin")

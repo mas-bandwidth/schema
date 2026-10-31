@@ -153,20 +153,20 @@ static void pin_message_vector( const char * name, const T & value,
 
 static void test_message_form_goldens()
 {
-    // THE ANNOUNCEMENT: 33 entries and 361 bytes, an ordinary form 1 FILE
+    // THE ANNOUNCEMENT: 32 entries and 352 bytes, an ordinary form 1 FILE
     // (docs/SPEC-TABLES.md §3.3)
     {
         static uint8_t announcement[4096];
         const int64_t bytes = backenddemo::Announce( announcement, sizeof( announcement ) );
-        CHECK( bytes == 361 );
+        CHECK( bytes == 352 );
         CHECK( announcement[0] == 1 );
         pin_table_golden( "backend_conn", announcement, bytes );
         // and a buffer one byte short is refused rather than half-written
         CHECK( backenddemo::Announce( announcement, bytes - 1 ) == -1 );
         VOCABULARY( backenddemo, vocabulary );
         CHECK( backenddemo::AnnounceRead( vocabulary, announcement, bytes, NULL ) );
-        CHECK( vocabulary.count == 33 );
-        CHECK( vocabulary.ref_bits == 6 ); // bits_required( 0, 33 )
+        CHECK( vocabulary.count == 32 );
+        CHECK( vocabulary.ref_bits == 6 ); // bits_required( 0, 32 )
         CHECK( backenddemo::kTableMessageRefBitsHere == 6 );
     }
 
@@ -406,7 +406,7 @@ static void test_message_form_reload()
     // announcement carries under the reserved id, and what a refusal names.
     CHECK( vocabulary.announced );
     CHECK( vocabulary.build_version == backenddemo::BuildVersion );
-    CHECK( vocabulary.count == 33 );
+    CHECK( vocabulary.count == 32 );
 
     reload_message_golden<backenddemo::LoginRequest>( "login_full", vocabulary,
         backenddemo::LoginRequestLoadMessages, backenddemo::LoginRequestMeasureMessages, backenddemo::LoginRequestSaveMessages, backenddemo::LoginRequestReset );
@@ -469,14 +469,14 @@ static void test_message_form_reload()
 
 static void test_message_form_wide_vocabulary()
 {
-    // vocabdemo: 130 field names, the tail, and ten table ids: 144 entries, 8 bits
+    // vocabdemo: 130 field names, the tail, and ten table ids: 143 entries, 8 bits
     {
         VOCABULARY( vocabdemo, vocabulary );
         static uint8_t announcement[16384];
         const int64_t announced = vocabdemo::Announce( announcement, sizeof( announcement ) );
         CHECK( announced == vocabdemo::AnnounceMeasure() );
         CHECK( vocabdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
-        CHECK( vocabulary.count == 144 && vocabulary.ref_bits == 8 );
+        CHECK( vocabulary.count == 143 && vocabulary.ref_bits == 8 );
         CHECK( vocabdemo::kTableMessageRefBitsHere == 8 );
         pin_table_golden( "vocab_conn", announcement, announced );
 
@@ -527,14 +527,14 @@ static void test_message_form_wide_vocabulary()
         CHECK( low_bytes == 1 + ( 8 + 8 + 32 + 8 + 7 ) / 8 );
         pin_table_golden( "vocab_low_message", low_message, low_bytes );
     }
-    // vocab9demo: 260 field names, the tail, and twenty table ids: 284 entries, 9 bits
+    // vocab9demo: 260 field names, the tail, and twenty table ids: 283 entries, 9 bits
     {
         VOCABULARY( vocab9demo, vocabulary );
         static uint8_t announcement[16384];
         const int64_t announced = vocab9demo::Announce( announcement, sizeof( announcement ) );
         CHECK( announced == vocab9demo::AnnounceMeasure() );
         CHECK( vocab9demo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
-        CHECK( vocabulary.count == 284 && vocabulary.ref_bits == 9 );
+        CHECK( vocabulary.count == 283 && vocabulary.ref_bits == 9 );
         CHECK( vocab9demo::kTableMessageRefBitsHere == 9 );
         pin_table_golden( "vocab9_conn", announcement, announced );
 
@@ -819,28 +819,28 @@ static void test_message_form_refusals()
     // caller declared for its resolved storage, and the vocabulary's bytes
     // read off the field's own L before an entry is touched.
     {
-        VOCABULARY_AT( backenddemo, vocabulary, 32 ); // one below what this unit announces
+        VOCABULARY_AT( backenddemo, vocabulary, 31 ); // one below what this unit announces
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &report ) );
         CHECK( report.refused && report.reason == backenddemo::vocabulary_too_large );
         CHECK( !report.malformed && !vocabulary.announced );
         CHECK( vocabulary.count == 0 );
         // and exactly at the bound it is read, which is the unit's own count
-        VOCABULARY_AT( backenddemo, exact, 33 );
-        CHECK( backenddemo::kTableMessageEntriesHere == 33 );
+        VOCABULARY_AT( backenddemo, exact, 32 );
+        CHECK( backenddemo::kTableMessageEntriesHere == 32 );
         CHECK( backenddemo::AnnounceRead( exact, announcement, announced, NULL ) );
-        // the BYTE bound: the unit's vocabulary is 318 bytes of entries
+        // the BYTE bound: the unit's vocabulary is 309 bytes of entries
         VOCABULARY( backenddemo, bytes_bound );
-        bytes_bound.max_bytes = 317;
+        bytes_bound.max_bytes = 308;
         backenddemo::TableReport bytes_report;
         CHECK( !backenddemo::AnnounceRead( bytes_bound, announcement, announced, &bytes_report ) );
         CHECK( bytes_report.refused && bytes_report.reason == backenddemo::vocabulary_too_large && !bytes_bound.announced );
         VOCABULARY( backenddemo, bytes_exact );
-        bytes_exact.max_bytes = 318;
+        bytes_exact.max_bytes = 309;
         CHECK( backenddemo::AnnounceRead( bytes_exact, announcement, announced, NULL ) );
         int64_t field_bytes = 0;
         announcement_vocabulary( announcement, field_bytes );
-        CHECK( field_bytes == 318 );
+        CHECK( field_bytes == 309 );
     }
 
     // A REFUSED ANNOUNCEMENT SETS NO VOCABULARY, so every message on that
@@ -1254,7 +1254,7 @@ static void test_message_form_announcement_check()
         CHECK( backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( vocabulary.announced );
         CHECK( vocabulary.build_version == 0x8877665544332211ull );
-        CHECK( vocabulary.count == 33 );
+        CHECK( vocabulary.count == 32 );
         CHECK( report.unknown == 1 );
         CHECK( !report.refused && !report.malformed );
         pin_table_golden( "announce_unknown_field", forged, bytes );
@@ -1378,7 +1378,7 @@ static void test_message_form_reserved_ids()
 
 // ---- A REFERENCE AT AND ABOVE THE ENTRY COUNT (§3.3) ------------------------
 //
-// E is 33 and a reference is six bits, so 34, 35 and 63 are spellable and
+// E is 32 and a reference is six bits, so 33, 34 and 63 are spellable and
 // damage. The entry count ITSELF is the last legal slot and must resolve. The
 // fields decoded before a bad reference stand, and nothing after it is read.
 
@@ -1394,7 +1394,7 @@ static void test_message_form_reference_bound()
     // player_id: reference (6) and u64 (64), then the terminator at bit 78 of
     // the stream: 8 + 6 + 64 = 78
     CHECK( bytes == 1 + ( 8 + 6 + 64 + 6 + 7 ) / 8 );
-    const uint64_t past[3] = { 34, 35, 63 };
+    const uint64_t past[3] = { 33, 34, 63 };
     for ( int i = 0; i < 3; i++ )
     {
         static uint8_t damaged[64];
@@ -1415,7 +1415,7 @@ static void test_message_form_reference_bound()
         CHECK( count == 0 );
         if ( i == 2 ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }
-    // the entry count itself, 33, is the LAST LEGAL SLOT and must resolve: it
+    // the entry count itself, 32, is the LAST LEGAL SLOT and must resolve: it
     // names StorePurchase's own type id, a kind-0 entry no field of
     // LoginRequest carries, so it is §4's ordinary unknown
     {
@@ -1424,7 +1424,7 @@ static void test_message_form_reference_bound()
         for ( int b = 0; b < 6; b++ )
         {
             const int64_t bit = 78 + b;
-            if ( ( 33u >> b ) & 1 ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+            if ( ( 32u >> b ) & 1 ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
             else { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
         }
         // then a terminator at bit 84, and the pad from 90 stays zero
