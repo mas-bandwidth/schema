@@ -144,6 +144,12 @@ func TestCookWriteRust(t *testing.T) {
 		key := inst[0] + "." + inst[1]
 		files, err := rusttable.Generate(u)
 		if err != nil {
+			// a unit this backend refuses by name is owed whole, and only a
+			// root named on cookWriteOwed may be (§15)
+			if _, owed := cookWriteOwed[key]; owed {
+				reached[key] = true
+				continue
+			}
 			t.Fatalf("%s: %v", inst[0], err)
 		}
 		has, loads := false, false
