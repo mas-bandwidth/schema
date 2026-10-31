@@ -761,14 +761,15 @@
     {
       "name": "java-tables-more",
       "when": "pull-request",
-      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22).",
+      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22). The hostile-corpus control (docs/HOSTILE-CORPUS.md) rides here too: it flips the generated text reader's malformed check in a scratch copy, requires the corpus runner to red naming an unexplained case, then reruns the unplanted gate green; one schema generate of eight units and two javac passes, 10 s on the studio.",
       "targets": [
         "tables-java-fuzz-negative-control",
         "tables-java-json-differential-negative-control",
         "tables-java-keyed-negative-control",
         "tables-java-runtime-home-negative-control",
         "tables-java-slot-negative-control",
-        "tables-java-soak-negative-control"
+        "tables-java-soak-negative-control",
+        "schema-java-runs-hostile-corpus-negative-control"
       ],
       "java": "21"
     },
@@ -778,6 +779,24 @@
       "why": "the Java fixed-form VERSIONING control alone (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), split from the java row (see its why): it rebuilds through an overlay, dumps the reference and runs a submake over both columns of every row of \u00a75.7. Measured 68 s of control time on ubuntu-latest inside the java row on 2026-10-21.",
       "targets": [
         "tables-java-versioning-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-finite",
+      "when": "pull-request",
+      "why": "the Java leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md §3.3, the 2026-10-27 finite rule): it removes each check from the generated code in turn (the variable read, the retained unknown, the message read, the fixed read, the variable writer, the record accessor) and requires exactly that check's lines of TestJavaFiniteFloats red and every other line green. Six javac-and-run probes over one small unit, about 2 s each on the author's machine (arm64 macOS), so well inside the rule on its own row.",
+      "targets": [
+        "tables-java-finite-float-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-wire-fuzz",
+      "when": "pull-request",
+      "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. Its own group so the fuzz time never crowds the java rows. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "targets": [
+        "tables-java-wire-fuzz-negative-control"
       ],
       "java": "21"
     },
@@ -935,6 +954,16 @@
       "dart": "3.13.2"
     },
     {
+      "name": "lobster-fuzz",
+      "when": "pull-request",
+      "why": "the Lobster leg's hostile-corpus control (a load that calls a clean wire damaged reds the corpus) and its wire-fuzz control (a dropped unknown count reds the fuzz; descriptors without their guards red the pinned guard-false-pointer vector). Both run the pinned v2026.8 toolchain, which the row installs (with the two GL libraries its release binary links) through its lobster field. Measured on the studio off one warm build: 2.3 s and 4.4 s.",
+      "targets": [
+        "schema-lobster-runs-hostile-corpus-negative-control",
+        "tables-lobster-wire-fuzz-negative-control"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
@@ -1011,6 +1040,16 @@
         "tables-luau-wire-fuzz-negative-control"
       ],
       "luau": "0.741"
+    },
+    {
+      "name": "lobster",
+      "when": "pull-request",
+      "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio. The bench legs' control (bench/lobster/negative-control.sh) flips each leg's golden, plants a compiler warning under the packet runner and a seconds_elapsed() clock and a corpus name in .lobster files under a copy of bench/, and requires each refused by name beside clean baselines; about 3 s. Both fit the per-commit rule with room.",
+      "targets": [
+        "bench-lobster-gate-negative-control",
+        "schema-lobster-generated-strict-gate-negative-control"
+      ],
+      "lobster": "v2026.8"
     },
     {
       "name": "moo",

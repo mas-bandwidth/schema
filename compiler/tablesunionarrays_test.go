@@ -43,7 +43,7 @@ func TestUnionArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, unionArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "js" || target == "rust" || target == "java" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "js" || target == "rust" || target == "java" || target == "lobster" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)

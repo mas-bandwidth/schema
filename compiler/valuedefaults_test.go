@@ -56,6 +56,28 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "lobster" {
+			// the table runtime carries the defaults (docs/PORT-LOBSTER.md,
+			// THE LOAD): the constructor writes each into its buffer, and the
+			// descriptor carries it for the load's absent field
+			if err != nil {
+				t.Fatalf("lobster refused table defaults: %v", err)
+			}
+			code := string(out["ProbeTable.lobster"])
+			for _, want := range []string{
+				`value.Name = schema_rt.put(value.Name, "untitled")`,
+				"value.NameLength = 8",
+				`value.Tag = schema_rt.put(value.Tag, "ab")`,
+				"value.TagLength = 2",
+				"Caps: 3 // specified default (SPEC §5)",
+				`has_def: true, def_str: "untitled"`,
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("lobster default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "dart" {
 			if err != nil {
 				t.Fatalf("dart refused table defaults: %v", err)

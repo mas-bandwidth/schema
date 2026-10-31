@@ -137,6 +137,41 @@ public final class TableBytes {
     public static double f64(byte[] data, int at) {
         return Double.longBitsToDouble(i64(data, at));
     }
+
+    // A RECORD'S FLOAT ACCESSOR NEVER ANSWERS A NaN OR AN INFINITY
+    // (docs/SPEC-TABLES.md §3.3; ruling 2 of 2026-10-27): Open stays one check,
+    // so the accessor that decodes the float tests its raw bits, and a
+    // non-finite one is refused by name — thrown as NonFiniteFloat, the field
+    // spelled <Record>.<field> — and its value is never returned. A finite
+    // read allocates nothing.
+    public static float f32(byte[] data, int at, String field) {
+        int bits = i32(data, at);
+        if ((bits & 0x7f800000) == 0x7f800000) {
+            throw new NonFiniteFloat(field);
+        }
+        return Float.intBitsToFloat(bits);
+    }
+
+    public static double f64(byte[] data, int at, String field) {
+        long bits = i64(data, at);
+        if ((bits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            throw new NonFiniteFloat(field);
+        }
+        return Double.longBitsToDouble(bits);
+    }
+
+    /** the accessor's refusal of a non-finite float: non_finite_float, naming the field. */
+    public static final class NonFiniteFloat extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        /** the field the refused float sits in, as {@code <Record>.<field>}. */
+        public final String field;
+
+        public NonFiniteFloat(String field) {
+            super("non_finite_float: " + field, null, false, false);
+            this.field = field;
+        }
+    }
 }
 `
 
@@ -357,6 +392,10 @@ type blockGen struct {
 
 func (g *blockGen) f(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
 
+// fieldName names a projection field for a float accessor's refusal,
+// <Table>.<field> (docs/SPEC-TABLES.md §3.3).
+func (g *blockGen) fieldName(f *ir.Field) string { return g.bl.Table.DeclaredName() + "." + f.Name }
+
 func (g *blockGen) emit() {
 	bl := g.bl
 	name := bl.Table.Name
@@ -479,7 +518,7 @@ func (g *blockGen) emitProjectionAccessors() {
 				g.f("    public static int %sAt(int at, int i) { return at + %d + i * %d; }\n\n", name, pieces[0].Offset, elemSize)
 			} else {
 				g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n\n",
-					elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
+					elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize), g.fieldName(f)))
 			}
 			if f.Array == ir.ArrayCounted {
 				g.f("    public static int %sCount(byte[] data, int at) { return TableBytes.i32(data, at + %d); }\n\n",
@@ -490,7 +529,7 @@ func (g *blockGen) emitProjectionAccessors() {
 		default:
 			typ := javaRecordType(f.Type)
 			g.f("    public static %s %s(byte[] data, int at) { return %s; }\n\n",
-				typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset)))
+				typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset), g.fieldName(f)))
 		}
 		if f.Type.Optional {
 			g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, at + %d); }\n\n",
