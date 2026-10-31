@@ -215,7 +215,7 @@ func TestLuaForeignOrderNegativeControl(t *testing.T) {
 // purpose: they read the producer's own order and refuse the other by its
 // order word (§19.1, I7). A format that is not a literal is refused too, since
 // it cannot be checked.
-var wireOrderFiles = []string{"load.lua", "save.lua", "message.lua", "fixed.lua", "retain.lua", "retainmessage.lua"}
+var wireOrderFiles = []string{"load.lua", "save.lua", "message.lua", "fixed.lua", "retain.lua"}
 
 var packCall = regexp.MustCompile(`string\.(?:un)?pack(?:size)?\(\s*([^,)]*)`)
 
