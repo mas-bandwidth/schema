@@ -92,19 +92,24 @@ IO.puts("ok")
 	cases := []struct {
 		name, schema, probe string
 		plant               [][2]string // the old behaviour, planted back
+		// crash, when set, is the one uncaught error that also counts as red on
+		// the rule: the planted behaviour reaching a decoder that only matches
+		// its exact width, so the unchecked length ends the load in that
+		// function instead of on a probe check.
+		crash string
 	}{
 		{"widened arm", a2, armProbe, [][2]string{{
 			"retyped_arm(a, name, k, binary_part(content, 0, l), report)",
 			"{:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}",
-		}}},
+		}}, ""},
 		{"arm length off width", a2, armProbe, [][2]string{{
 			"if arm_framing_damaged?(a, inner) do",
 			"if false and arm_framing_damaged?(a, inner) do",
-		}}},
+		}}, "(FunctionClauseError) no function clause matching in Tbla2.Table.float_of/3"},
 		{"slot out of range", stream, slotProbe, [][2]string{{
 			":out_of_range -> {nil, %{report | malformed: true}}",
 			":out_of_range -> {nil, report}",
-		}}},
+		}}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -122,7 +127,7 @@ IO.puts("ok")
 			if err == nil {
 				t.Fatalf("REVERSED WITNESS FAILED: the old behaviour planted back left the probe green\n%s", out)
 			}
-			if !strings.Contains(out, "FAIL: ") {
+			if !strings.Contains(out, "FAIL: ") && (c.crash == "" || !strings.Contains(out, c.crash)) {
 				t.Fatalf("REVERSED WITNESS FAILED: the probe went red, but not on a check: %v\n%s", err, out)
 			}
 		})
