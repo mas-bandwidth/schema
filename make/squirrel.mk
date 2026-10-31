@@ -39,6 +39,19 @@ dist-squirrel:
 	@echo "sha256 $(SQUIRREL_SHA256)"
 	@echo "sq $(CURDIR)/$(SQUIRREL_DIR)/bin/sq"
 
+# THE COMMITTED PACKET TREES, as every main port carries generated/<lang> and
+# generated/<lang>-ludicrous: the packet emitter's output for examples/ and
+# examples128/, checked current by ci-full.yml's `generated` job
+# (test/generated-tree/verify derives this stamp list) and linted by
+# make/schema-squirrel-generated-lint-gate.mk.
+generated/squirrel/.stamp: bin/schema $(SCHEMAS)
+	./bin/schema generate --lang squirrel --out generated/squirrel examples
+	@touch $@
+
+generated/squirrel-ludicrous/.stamp: bin/schema $(SCHEMAS128)
+	./bin/schema generate --lang squirrel --out generated/squirrel-ludicrous examples128
+	@touch $@
+
 # THE TOOLCHAIN GATE, this leg's half (issue #599): `make test` runs this before
 # the chain starts and refuses by name when the pin does not resolve.
 .PHONY: toolchain-squirrel

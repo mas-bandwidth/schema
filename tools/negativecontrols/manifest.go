@@ -58,6 +58,9 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
+	// Squirrel is the pinned interpreter's version (make/squirrel.mk builds
+	// it with `make dist-squirrel`); the row's install step keys on it.
+	Squirrel string `json:"squirrel,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -74,7 +77,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "squirrel"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.
@@ -92,6 +95,8 @@ func (g Group) toolchain(field string) string {
 		return g.OTP
 	case "elixir":
 		return g.Elixir
+	case "squirrel":
+		return g.Squirrel
 	}
 	return ""
 }
@@ -176,14 +181,15 @@ func (m Manifest) tiers() []string {
 // hundred-target line out of the matrix value.
 func (m Manifest) matrix(when string) ([]byte, error) {
 	type row struct {
-		Name   string `json:"name"`
-		Rust   string `json:"rust"`
-		Dotnet string `json:"dotnet"`
-		Node   string `json:"node"`
-		Dart   string `json:"dart"`
-		Java   string `json:"java"`
-		OTP    string `json:"otp"`
-		Elixir string `json:"elixir"`
+		Name     string `json:"name"`
+		Rust     string `json:"rust"`
+		Dotnet   string `json:"dotnet"`
+		Node     string `json:"node"`
+		Dart     string `json:"dart"`
+		Java     string `json:"java"`
+		OTP      string `json:"otp"`
+		Elixir   string `json:"elixir"`
+		Squirrel string `json:"squirrel"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -194,14 +200,15 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			continue
 		}
 		rows = append(rows, row{
-			Name:   g.Name,
-			Rust:   g.Rust,
-			Dotnet: g.Dotnet,
-			Node:   g.Node,
-			Dart:   g.Dart,
-			Java:   g.Java,
-			OTP:    g.OTP,
-			Elixir: g.Elixir,
+			Name:     g.Name,
+			Rust:     g.Rust,
+			Dotnet:   g.Dotnet,
+			Node:     g.Node,
+			Dart:     g.Dart,
+			Java:     g.Java,
+			OTP:      g.OTP,
+			Elixir:   g.Elixir,
+			Squirrel: g.Squirrel,
 		})
 	}
 	return json.Marshal(struct {
