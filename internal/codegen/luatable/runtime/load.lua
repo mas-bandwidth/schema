@@ -490,9 +490,8 @@ local function less_than(d, a, b)
   return math.ult(a, b)
 end
 
--- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3;
--- Glenn, 2026-10-27, "tables go finite-only too, same rule as packets"): the
--- test runs on the wire's bits before they become a Lua number and before the
+-- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3):
+-- the test runs on the wire's bits before they become a Lua number and before the
 -- field is written. The read names the float <Owner>.<field> (the first name
 -- wins) and the load, the tolerant one included, refuses as non_finite_float
 -- and lands nothing. ctx.owner and ctx.field are the body and the field the

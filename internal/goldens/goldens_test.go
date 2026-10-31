@@ -194,6 +194,14 @@ func TestGoldenSourceElixir(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "elixir"), files)
 }
 
+// TestGoldenSourceLua pins the generated Lua byte-for-byte (SPEC §7.2 gate 1,
+// tenth target): the unit modules and the serialize runtime written beside them.
+func TestGoldenSourceLua(t *testing.T) {
+	u := loadCorpus(t)
+	files := generate(t, u, "lua", nil)
+	pinDir(t, filepath.Join(goldenDir, "lua"), files)
+}
+
 // The enum `Count` export moves NEITHER WIRE. Count is generated-code
 // surface: it enters no wire-shape projection and no cook projection, so the
 // packet wire's protocol id and the table wire's build version must both
@@ -298,7 +306,7 @@ func TestGoldenWideSource(t *testing.T) {
 
 // The packet file is isolated from examples-wide's table kind 33 and its
 // baseline. Each port pins the exact same packet declarations as C++.
-var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir"}
+var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lua"}
 
 func TestGoldenPacketWideSource(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(corpusWideDir, "WideText.schema"))
@@ -345,9 +353,10 @@ func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 		// refuse THIS unit only for its `was =` arm. Every built-in target now
 		// carries the construct, so the loop is the guard for the next target;
 		// compiler's TestWideTextInATableClosureRefusesMissingCarriers pins the
-		// by-name refusal itself.
+		// by-name refusal itself. Lua joined as a builtin on 2026-10-28
+		// and generates this unit too.
 		switch target {
-		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir":
+		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir", "lua":
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

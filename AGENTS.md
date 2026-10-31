@@ -2,7 +2,7 @@
 
 Do not edit. `make map` regenerates this file. Rules: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Glenn, 2026-09-18: AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink.
 
-Schema is the data language for games. One definition compiles to bit-packed codecs in C, C++, C#, Dart, Elixir, Go, Java, JavaScript and Rust. The compiler is AGPL-3.0; generated code is yours ([LICENSE](LICENSE)). Public Go API: `compiler/`, `ir/`.
+Schema is the data language for games. One definition compiles to bit-packed codecs in C, C++, C#, Dart, Elixir, Go, Java, JavaScript, Lua and Rust. The compiler is AGPL-3.0; generated code is yours ([LICENSE](LICENSE)). Public Go API: `compiler/`, `ir/`.
 
 ```
 make
@@ -21,7 +21,7 @@ bin/schema check <dir>
 | `examples/` | type-wire corpus | `go test ./internal/goldens` | `make check` |
 | `examples-wide/` | wide-text corpus | `go test ./internal/goldens` | `make check` |
 | `examples128/` | int128/fixed corpus | `go test ./internal/goldens` | `make check` |
-| `generated/` | committed nine-language output | `test/generated-tree/verify` | `make generated-current` |
+| `generated/` | committed per-language output | `test/generated-tree/verify` | `make generated-current` |
 | `images/` | README art | `none` | `none` |
 | [internal/](internal/AGENTS.md) | compiler internals | `go test ./internal/...` | `go test ./internal/...` |
 | `ir/` | public IR | `go test ./ir` | `go test ./ir` |

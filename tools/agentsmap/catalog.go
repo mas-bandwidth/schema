@@ -41,7 +41,7 @@ var catalog = []Entry{
 	e("examples", "type-wire corpus", "go test ./internal/goldens", "make check"),
 	e("examples-wide", "wide-text corpus", "go test ./internal/goldens", "make check"),
 	e("examples128", "int128/fixed corpus", "go test ./internal/goldens", "make check"),
-	e("generated", "committed nine-language output", "test/generated-tree/verify", "make generated-current"),
+	e("generated", "committed per-language output", "test/generated-tree/verify", "make generated-current"),
 	e("images", "README art", "none", "none"),
 	page("internal", "compiler internals", "go test ./internal/...", "go test ./internal/..."),
 	e("ir", "public IR", "go test ./ir", "go test ./ir"),

@@ -121,6 +121,26 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "lua" {
+			// the descriptor-driven runtime carries the construct: each
+			// field's row is optional and names its presence companion
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang lua refused the supported shape: %v", err)
+			}
+			code := string(files["ProbeTables.lua"])
+			for _, f := range []string{"entries", "weights", "grades"} {
+				i := strings.Index(code, `name = "`+f+`"`)
+				if i < 0 {
+					t.Fatalf("--lang lua: no descriptor row for %s", f)
+				}
+				row, _, _ := strings.Cut(code[i:], "\n    },") // one descriptor row, as the formatter lays it out
+				if !strings.Contains(row, "optional = true,\n      present = \""+f+"_present\"") {
+					t.Errorf("--lang lua: %s is not an optional array row with its presence companion", f)
+				}
+			}
+			continue
+		}
 		if target == "elixir" {
 			// the variable form carries the construct (docs/SPEC-TABLES.md
 			// §2.3, §2.6): one Table.ex codec per unit

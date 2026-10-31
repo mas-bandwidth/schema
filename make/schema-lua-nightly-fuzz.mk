@@ -79,13 +79,13 @@ $(LUA_FUZZ_SEEDDIR)/truncated.bin: make/schema-lua-nightly-fuzz.mk
 	@printf '\001\000\000\000\000\000\000\000\000' > $@
 	@echo "schema-lua-fuzz: 9-byte truncated wire seed written to $@"
 
-# one generated unit per corpus line; the tag-built compiler is the port's own
+# one generated unit per corpus line; bin/schema (its lua target) is the port's own
 # emitter, so the fuzzer and the gate cannot disagree about what was generated.
-$(LUA_FUZZ_GENERATED)/.stamp: build/schema-lua $(LUA_FUZZ_CORPUS) $(LUA_FUZZ_SCRIPT) $(LUA_FUZZ_SEEDDIR)/truncated.bin make/schema-lua-nightly-fuzz.mk
+$(LUA_FUZZ_GENERATED)/.stamp: bin/schema $(LUA_FUZZ_CORPUS) $(LUA_FUZZ_SCRIPT) $(LUA_FUZZ_SEEDDIR)/truncated.bin make/schema-lua-nightly-fuzz.mk
 	@rm -rf $(LUA_FUZZ_GENERATED) && mkdir -p $(LUA_FUZZ_GENERATED)
 	@while read -r key dir; do \
 		[ -n "$$key" ] || continue; \
-		if ! ./build/schema-lua generate --lang lua --out $(LUA_FUZZ_GENERATED)/$$key $$dir > $(LUA_FUZZ_GENERATED)/$$key.log 2>&1; then \
+		if ! ./bin/schema generate --lang lua --out $(LUA_FUZZ_GENERATED)/$$key $$dir > $(LUA_FUZZ_GENERATED)/$$key.log 2>&1; then \
 			rm -rf $(LUA_FUZZ_GENERATED)/$$key; \
 			mv $(LUA_FUZZ_GENERATED)/$$key.log $(LUA_FUZZ_GENERATED)/$$key.refused; \
 			echo "schema-lua-fuzz: $$key refused: $$(head -1 $(LUA_FUZZ_GENERATED)/$$key.refused)"; \

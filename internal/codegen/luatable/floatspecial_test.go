@@ -38,7 +38,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
@@ -458,14 +457,7 @@ func fsLoadUnit(t *testing.T) *ir.Unit {
 	if err := os.WriteFile(schemaPath, []byte(fsLuaSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := compiler.GatherPaths([]string{dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
+	u := luarun.LoadUnit(t, dir)
 	return u
 }
 

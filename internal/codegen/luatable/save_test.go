@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -306,14 +305,7 @@ func TestLuaTableSaveBlobArms(t *testing.T) {
 	if err := os.WriteFile(schemaPath, []byte(blobSaveUnit), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := compiler.GatherPaths([]string{dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
+	u := luarun.LoadUnit(t, dir)
 	cases := []struct{ name, text string }{
 		{"text_arm_and_blobs", `{ "note": "ab", "buf": "AQID", "reach": { "text": "hi" }, "past": 4 }`},
 		{"text_arm_alone", `{ "reach": { "text": "" } }`},

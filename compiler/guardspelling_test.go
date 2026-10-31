@@ -57,6 +57,7 @@ var guardComment = map[string]string{
 	"go":     " — wire branch",
 	"java":   " — wire branch",
 	"js":     " — wire branch",
+	"lua":    " — wire branch",
 	"rust":   " — wire branch",
 }
 
