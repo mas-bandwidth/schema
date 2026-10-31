@@ -131,15 +131,15 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
 // `full` is a buffer the whole load fits in; `short` is one byte short of the
 // LAST record, found by loading once at full and reading what it used. The
 // id capacity is `full` or a count. The form-2 row (`retain-message`) names a
-// plain `table` root (RT1's Node), which carries no message verbs (§3.3: "a
-// plain `table T` may not" ride the form): a named absence, as the Go leg
+// variable table root (RT1's Node), which carries no message verbs (§3.3: only
+// a fixed table rides the message form): a named absence, as the Go leg
 // answers it.
 fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
     for line in lines {
         let f = words(line);
         if f.len < 1 { continue; }
         if f[0] == "retain-message" {
-            if f.len > 3 && f[3] == unit { absent(f[1], "plain table: §3.3"); }
+            if f.len > 3 && f[3] == unit { absent(f[1], "variable table: §3.3"); }
             continue;
         }
         // the derived manifest carries no expectation: the harness keeps the
@@ -218,8 +218,8 @@ fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
 // A message row names its CONNECTION, whose announcement is the peer's
 // vocabulary and whose unit is the unit under test; the glue's
 // conformance_message carries every root the unit has the message form for,
-// which is a fixed table's (§3.3: "a plain `table T` may not" ride it): a
-// plain table's row is a named absence, as the Go leg answers it.
+// which is a fixed table's (§3.3: only a fixed table rides the message form):
+// a variable table's row is a named absence, as the Go leg answers it.
 fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -238,7 +238,7 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
         var out: u8[>..] = [];
         let n = conformance_message(f[3], ann, wire, out);
         if n == -1 {
-            absent(f[1], "plain table: §3.3");
+            absent(f[1], "variable table: §3.3");
             continue;
         }
         if n < 0 {
