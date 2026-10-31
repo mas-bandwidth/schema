@@ -846,50 +846,28 @@ func (g *gen) emitCookMapFinds(st *ir.Struct) {
 	if len(maps) == 0 {
 		return
 	}
-	g.pf("impl %sRow {
-", st.Name)
+	g.pf("impl %sRow {\n", st.Name)
 	for _, f := range maps {
 		key := ir.MapKeyField(f)
 		entry := f.MapEntry.Name + "Row"
 		k := ir.RustSnake(ir.MapKeyFieldName)
-		g.pf("    /// The entry of `%s` whose key is `key`, by binary search over the
-", f.Name)
-		g.pf("    /// ascending entry array (docs/SPEC-TABLES.md §2.8).
-")
-		g.pf("    ///
-    /// # Safety
-")
-		g.pf("    /// The row must sit in a cook whose region holds its entry array (a cook
-")
-		g.pf("    /// is trusted input, §7).
-")
+		g.pf("    /// The entry of `%s` whose key is `key`, by binary search over the\n", f.Name)
+		g.pf("    /// ascending entry array (docs/SPEC-TABLES.md §2.8).\n")
+		g.pf("    ///\n    /// # Safety\n")
+		g.pf("    /// The row must sit in a cook whose region holds its entry array (a cook\n")
+		g.pf("    /// is trusted input, §7).\n")
 		if key.Type.Kind == ir.TString {
-			g.pf("    pub unsafe fn %s_find(&self, key: &[u8]) -> Option<&%s> {
-", f.Name, entry)
-			g.pf("        let entries = unsafe { self.%s.as_slice() };
-", f.Name)
-			g.pf("        entries
-            .binary_search_by(|e| e.%s[..e.%s_length.max(0) as usize].cmp(key))
-", k, k)
-			g.pf("            .ok()
-            .map(|i| &entries[i])
-    }
-
-")
+			g.pf("    pub unsafe fn %s_find(&self, key: &[u8]) -> Option<&%s> {\n", f.Name, entry)
+			g.pf("        let entries = unsafe { self.%s.as_slice() };\n", f.Name)
+			g.pf("        entries\n            .binary_search_by(|e| e.%s[..e.%s_length.max(0) as usize].cmp(key))\n", k, k)
+			g.pf("            .ok()\n            .map(|i| &entries[i])\n    }\n\n")
 			continue
 		}
-		g.pf("    pub unsafe fn %s_find(&self, key: %s) -> Option<&%s> {
-", f.Name, cookElemType(key), entry)
-		g.pf("        let entries = unsafe { self.%s.as_slice() };
-", f.Name)
-		g.pf("        entries.binary_search_by(|e| e.%s.cmp(&key)).ok().map(|i| &entries[i])
-    }
-
-", k)
+		g.pf("    pub unsafe fn %s_find(&self, key: %s) -> Option<&%s> {\n", f.Name, cookElemType(key), entry)
+		g.pf("        let entries = unsafe { self.%s.as_slice() };\n", f.Name)
+		g.pf("        entries.binary_search_by(|e| e.%s.cmp(&key)).ok().map(|i| &entries[i])\n    }\n\n", k)
 	}
-	g.pf("}
-
-")
+	g.pf("}\n\n")
 }
 
 // cookNamedTextReachable reports whether constructed storage of st, or of a
