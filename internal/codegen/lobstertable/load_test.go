@@ -187,11 +187,6 @@ def dcell(v:schema_rt.Value, fd:schema_rt.FieldDescriptor, kind:int) -> string:
         return "i{v.i}"
     if s == "float":
         return dfloat(v.f, fd.f32)
-    if s == "str" and fd.wide:
-        let us:[string] = []
-        for(v.units) u:
-            push(us, "{u}")
-        return "u" + concat_string(us, ",")
     if s == "str" or s == "text" or s == "bytes":
         return "s" + hexs(v.s)
     if s == "enum":
