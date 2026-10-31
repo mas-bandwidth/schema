@@ -52,7 +52,9 @@ var squirrelDeclarationSuffixes = []string{
 }
 
 // SquirrelDeclarationSuffixes is squirrelDeclarationSuffixes, a copy.
-func SquirrelDeclarationSuffixes() []string { return append([]string(nil), squirrelDeclarationSuffixes...) }
+func SquirrelDeclarationSuffixes() []string {
+	return append([]string(nil), squirrelDeclarationSuffixes...)
+}
 
 // squirrelModuleKeys is every name the Squirrel table backend defines that a
 // declaration does not spell: the unit's own keys on its table module

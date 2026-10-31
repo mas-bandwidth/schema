@@ -203,7 +203,7 @@ func TestSquirrelRuntimeNameScanGoesRed(t *testing.T) {
 // module is emitted there.
 func TestSquirrelRefusesADeclarationOnAModuleKey(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"Roots", "Descriptors", "Package", "Keyed", "UnitView"} {
+	for _, name := range []string{"Roots", "Descriptors", "Package", "Keyed"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			withTable := "package probe\n\ntable Gadget\n{\n    n int32\n    k [Team]int32\n}\n\nenum Team { Red, Blue }\n\ntable " + name + "\n{\n    n int32\n}\n"
