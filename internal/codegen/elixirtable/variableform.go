@@ -2,11 +2,8 @@
 // id-table wire, for the variable class beyond the card record — pointers to
 // tables and the flat node table (§2.1, §3.1), blobs (*bytes and *string,
 // §2.5), unbounded arrays of scalar, string and enum elements and arrays of
-// pointers (§2.9), the remaining scalars, and the text form (§16). A map
-// (§2.8) or a union the closure holds (§2.6) does not refuse a unit that also
-// carries those lists: the roots that reach one are named uncarried and
-// answer an error, so the driver writes <case>.absent rather than a wrong
-// byte (§11). A unit that is only that construct is still refused by name.
+// pointers (§2.9), maps (§2.8), union arms (§2.6), enum-keyed arrays (§2.4),
+// the remaining scalars, and the text form (§16).
 //
 // The wire is the same bytes the Go, C, C++ and C# backends write
 // (docs/SPEC-TABLES.md §3, §3.1): the form byte, then a body of `(reference,
@@ -171,16 +168,11 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  # declared default, the value a fixed-class read leaves where the wire\n")
 	b.WriteString("  # carries nothing it can place.\n")
 	b.WriteString("  def new(table), do: defaults(Map.fetch!(@tables, table))\n\n")
-	uncarried := uncarriedRootNames(u)[:0] // EXPERIMENT
-	b.WriteString(uncarriedAttribute(uncarried))
 	cookUncarried := cookUncarriedRootNames(u)
 	b.WriteString(cookUncarriedAttribute(cookUncarried))
 	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
 	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
-	if len(uncarried) == 0 {
-		runtime = withoutUncarriedClauses(runtime)
-	}
 	if len(cookUncarried) == 0 {
 		cook = withoutCookUncarriedGuard(cook)
 	}
@@ -205,72 +197,6 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString(retain)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
-}
-
-// uncarriedRootNames names every table in the closure that reaches a map, a
-// union, or an enum-keyed array (docs/SPEC-TABLES.md §2.4, §2.6, §2.8, §11).
-// A map's generated entry is
-// uncarried on its own. The value type a map points at stays carried when no
-// field of that type is itself a map or a union: Item is a map's value and a
-// fixed table, and marking it uncarried would drop a root the wire still
-// carries. A holder is uncarried once a field of it names an uncarried table,
-// by value, by pointer or as an array element, so Army follows Squad. Names
-// are sorted.
-func uncarriedRootNames(u *ir.Unit) []string {
-	closure := ir.TableClosure(u)
-	poison := map[string]bool{}
-	changed := true
-	for changed {
-		changed = false
-		for name := range closure {
-			if poison[name] {
-				continue
-			}
-			st := u.Tables[name]
-			if st == nil {
-				continue
-			}
-			if reachesUncarried(st, poison) {
-				poison[name] = true
-				changed = true
-			}
-		}
-	}
-	names := make([]string, 0, len(poison))
-	for name := range poison {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// reachesUncarried reports a table the variable form must not walk
-// (docs/SPEC-TABLES.md §2.4, §2.6, §2.8). A union arm's payload is not a
-// field of the arm's table, so Point stays carried when Hit's arm names it.
-// An enum-keyed array is kind 16 (§3.2); this walker encodes an array as
-// kind 14, so a root that reaches one answers an error instead of a wrong
-// body (§11).
-func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
-	if st.IsMapEntry() {
-		return true
-	}
-	for _, f := range st.Fields {
-		if f.IsMap() || f.KeyEnum != "" {
-			return true
-		}
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Union:
-			return true
-		case *ir.Struct:
-			if poison[ref.Name] {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 var armKindPattern = regexp.MustCompile(`\bt: :([a-z_]+)`)
@@ -381,7 +307,8 @@ func withArmKinds(runtime string, kinds map[string]bool) string {
 // Elixir's type checker proves always raises; such a unit is emitted without
 // them.
 var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "arm_node_key",
-	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm"}
+	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm",
+	"scan_union", "scan_arm"}
 
 var unionClauses = []string{
 	"  defp collect_list_nodes(%{elem_kind: 15}",
@@ -395,6 +322,8 @@ var unionClauses = []string{
 	"  defp json_list_elem(%{elem_kind: 15}",
 	"  defp json_read_field(%{t: :union}",
 	"  defp json_read_list_elem(%{elem_kind: 15}",
+	"  defp scan_header(%{t: :union}",
+	"  defp scan_element(f, 15,",
 }
 
 const unionNodeBranch = "        :union ->\n          collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
@@ -554,23 +483,6 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 	return b.String()
 }
 
-// uncarriedClauses are the runtime's refusals of an uncarried root, each the
-// whole clause and the blank line after it. A unit whose closure carries every
-// root has an empty @uncarried, so each guard reads `table in []`: never true,
-// which Elixir's type checker reports as a guard that will never succeed (and
-// `table` as unused). Such a unit is emitted without them.
-var uncarriedClauses = []string{
-	"  def load_measure(table, _data) when table in @uncarried, do: -1\n\n",
-}
-
-// withoutUncarriedClauses is the runtime source for a unit whose @uncarried is
-// empty: the uncarried refusal goes. The edit must apply, so a template change
-// that moves it fails the emitter's tests rather than silently shipping the
-// guard.
-func withoutUncarriedClauses(runtime string) string {
-	return replaceOnce(runtime, uncarriedClauses[0], "")
-}
-
 // cookUncarriedGuard is the cook plan's refusal of a root the cook writer does
 // not lay out. A unit whose @cook_uncarried is empty would read `table in []`,
 // a guard that never succeeds, so the plan keeps only its value check.
@@ -661,28 +573,6 @@ func cookUncarriedAttribute(names []string) string {
 	list.WriteString("]")
 	b.WriteString(exAttribute("cook_uncarried", list.String()) + "\n")
 	b.WriteString("  def cook_carried?(table), do: table not in @cook_uncarried\n\n")
-	return b.String()
-}
-
-// uncarriedAttribute is the module attribute the public clauses guard on, and
-// carried?/1 the wire-fuzz roster reads (docs/SPEC-TABLES.md §11). The list is
-// string literals so `table in @uncarried` is a legal guard. An empty list
-// never matches, and every root of that unit stays carried.
-func uncarriedAttribute(names []string) string {
-	var b strings.Builder
-	b.WriteString("  # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md\n")
-	b.WriteString("  # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them\n")
-	b.WriteString("  # (§3, §3.2, §16) and the cook write lays them out (§7.2); the wire-fuzz\n")
-	b.WriteString("  # roster does not yet, so carried?/1 answers false for them there and the\n")
-	b.WriteString("  # roster sends it no mutant.\n")
-	var list strings.Builder
-	list.WriteString("[")
-	for _, name := range names {
-		fmt.Fprintf(&list, "%q, ", name)
-	}
-	list.WriteString("]")
-	b.WriteString(exAttribute("uncarried", list.String()) + "\n")
-	b.WriteString("  def carried?(table), do: table not in @uncarried\n\n")
 	return b.String()
 }
 
@@ -4317,44 +4207,43 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     with {ref, rest} when ref != 0 <- leb(bin),
          id when id != :error <- resolve(ids, ref),
          <<kind, rest2::binary>> <- rest do
-      f = find_field(desc, id)
-
-      cond do
-        f == nil ->
-          case slice(rest2, kind) do
-            {:ok, _payload, rest3} -> scan_record(desc, rest3, ids, at)
-            :error -> at
-          end
-
-        kind == 15 and f.t == :union ->
-          case scan_union(f.elem, rest2, ids, at) do
-            :refused -> :refused
-            {at2, rest3} -> scan_record(desc, rest3, ids, at2)
-          end
-
-        kind not in [13, 14, 16] ->
-          case slice(rest2, kind) do
-            {:ok, _payload, rest3} -> scan_record(desc, rest3, ids, at)
-            :error -> at
-          end
-
-        true ->
-          case framed_body(rest2) do
-            :error ->
-              at
-
-            {payload, rest3} when kind == f.kind ->
-              case scan_field(f, payload, ids, at) do
-                :refused -> :refused
-                at2 -> scan_record(desc, rest3, ids, at2)
-              end
-
-            {_payload, rest3} ->
-              scan_record(desc, rest3, ids, at)
-          end
+      case scan_header(find_field(desc, id), kind, rest2, ids, at) do
+        :refused -> :refused
+        {:cont, at2, rest3} -> scan_record(desc, rest3, ids, at2)
+        {:halt, at2} -> at2
       end
     else
       _ -> at
+    end
+  end
+
+  defp scan_header(%{t: :union} = f, 15, bin, ids, at) do
+    case scan_union(f.elem, bin, ids, at) do
+      :refused -> :refused
+      {at2, rest} -> {:cont, at2, rest}
+    end
+  end
+
+  defp scan_header(f, kind, bin, ids, at) when f != nil and kind in [13, 14, 16] do
+    case framed_body(bin) do
+      :error ->
+        {:halt, at}
+
+      {payload, rest} when kind == f.kind ->
+        case scan_field(f, payload, ids, at) do
+          :refused -> :refused
+          at2 -> {:cont, at2, rest}
+        end
+
+      {_payload, rest} ->
+        {:cont, at, rest}
+    end
+  end
+
+  defp scan_header(_f, kind, bin, _ids, at) do
+    case slice(bin, kind) do
+      {:ok, _payload, rest} -> {:cont, at, rest}
+      :error -> {:halt, at}
     end
   end
 
@@ -4376,20 +4265,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     with <<kind, rest::binary>> when byte_size(rest) >= 1 <- body,
          true <- kind == expected or kind_widens?(kind, expected),
          {count, elems} <- leb(rest) do
-      extent =
-        cond do
-          t == :map ->
-            entry = Map.fetch!(@tables, f.elem)
-            {entry.size, entry.align}
-
-          t == :list and not is_map_key(f, :array_bound) ->
-            {f.elem_size, f.elem_align}
-
-          true ->
-            nil
-        end
-
-      case extent do
+      case element_extent(f) do
         nil ->
           scan_elements(f, kind, elems, count, ids, at)
 
@@ -4405,17 +4281,30 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  defp scan_field(%{t: :table} = f, body, ids, at),
+    do: scan_record(Map.fetch!(@tables, f.elem), body, ids, at)
+
+  defp scan_field(_f, _body, _ids, at), do: at
+
+  # the storage one element of a map or an unbounded list takes in its
+  # holder's node extent; a fixed or counted array and an enum-keyed array
+  # sit inside the record and command none
+  defp element_extent(%{t: :map} = f) do
+    entry = Map.fetch!(@tables, f.elem)
+    {entry.size, entry.align}
+  end
+
+  defp element_extent(%{t: :list} = f) when not is_map_key(f, :array_bound),
+    do: {f.elem_size, f.elem_align}
+
+  defp element_extent(_f), do: nil
+
   # the fewest bytes one element of a kind can take, so a count the bytes behind
   # it cannot frame is refused before any storage is reserved for it
   defp count_floor(13), do: 2
   defp count_floor(17), do: 1
   defp count_floor(36), do: 8
   defp count_floor(kind), do: max(kind_width(kind), 1)
-
-  defp scan_field(%{t: :table} = f, body, ids, at),
-    do: scan_record(Map.fetch!(@tables, f.elem), body, ids, at)
-
-  defp scan_field(_f, _body, _ids, at), do: at
 
   # the elements of one map, list or array that are bodies of their own:
   # tables, map entries and union arms (an enum-keyed slot leads with its key)
@@ -4424,49 +4313,42 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp scan_elements(_f, _kind, _elems, 0, _ids, at), do: at
 
   defp scan_elements(f, kind, elems, n, ids, at) do
-    keyed =
-      if f.t == :keyed do
-        case leb(elems) do
-          {_key, rest} -> {:ok, rest}
-          :error -> :error
-        end
-      else
-        {:ok, elems}
-      end
+    case scan_key(f, elems) do
+      {_key, rest} -> scan_element(f, kind, rest, n, ids, at)
+      :error -> at
+    end
+  end
 
-    case keyed do
+  defp scan_key(%{t: :keyed}, elems), do: leb(elems)
+  defp scan_key(_f, elems), do: {nil, elems}
+
+  defp scan_element(f, 15, elems, n, ids, at) do
+    case scan_union(element_name(f), elems, ids, at) do
+      :refused -> :refused
+      {at2, rest} -> scan_elements(f, 15, rest, n - 1, ids, at2)
+    end
+  end
+
+  defp scan_element(f, kind, elems, n, ids, at) do
+    case framed_body(elems) do
       :error ->
         at
 
-      {:ok, elems} when kind == 15 ->
-        case scan_union(f.elem, elems, ids, at) do
+      {payload, rest} ->
+        case scan_record(Map.fetch!(@tables, element_name(f)), payload, ids, at) do
           :refused -> :refused
-          {at2, rest} -> scan_elements(f, kind, rest, n - 1, ids, at2)
-        end
-
-      {:ok, elems} ->
-        case framed_body(elems) do
-          :error ->
-            at
-
-          {payload, rest} ->
-            elem = if f.t == :map, do: f.elem, else: element_table(f)
-
-            case scan_record(Map.fetch!(@tables, elem), payload, ids, at) do
-              :refused -> :refused
-              at2 -> scan_elements(f, kind, rest, n - 1, ids, at2)
-            end
+          at2 -> scan_elements(f, kind, rest, n - 1, ids, at2)
         end
     end
   end
 
-  defp element_table(%{t: :keyed, item: item}), do: item.elem
-  defp element_table(f), do: f.elem
+  defp element_name(%{t: :keyed, item: item}), do: item.elem
+  defp element_name(f), do: f.elem
 
   # scan_union reads one arm header and descends into the arm's payload the
   # way a field of the arm's type is descended into: a by-value table, a list,
-  # a map, a nested union. It answers the extent and the bytes after the arm,
-  # and damage ends the enclosing walk.
+  # a map, a nested union. It answers the extent and the bytes after the arm;
+  # damage answers no bytes after it, which ends the enclosing walk.
   defp scan_union(union, bin, ids, at) do
     with {ref, rest} <- leb(bin) do
       if ref == 0 do
