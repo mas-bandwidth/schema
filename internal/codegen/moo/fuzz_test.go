@@ -533,12 +533,12 @@ func splitLines(s string) []string {
 func mutate(r *rand.Rand, img []byte) []fuzzRead {
 	reads := []fuzzRead{{how: "as written", data: img}}
 	clone := func() []byte { return append([]byte(nil), img...) }
-	for k := 0; k < 3; k++ {
+	for range 3 {
 		switch op := r.IntN(6); {
 		case op == 0 && len(img) > 0: // flip 1-4 bits
 			b := clone()
 			n := 1 + r.IntN(4)
-			for i := 0; i < n; i++ {
+			for range n {
 				bit := r.IntN(len(b) * 8)
 				b[bit/8] ^= 1 << (bit % 8)
 			}
@@ -554,7 +554,7 @@ func mutate(r *rand.Rand, img []byte) []fuzzRead {
 		case op == 3: // trailing bytes
 			n := 1 + r.IntN(3)
 			b := clone()
-			for i := 0; i < n; i++ {
+			for range n {
 				b = append(b, byte(r.IntN(256)))
 			}
 			reads = append(reads, fuzzRead{how: fmt.Sprintf("%d trailing bytes", n), data: b})
@@ -747,7 +747,7 @@ func TestMooWireFuzzAgreesWithTheGoTarget(t *testing.T) {
 	rounds := envInt(t, "SCHEMA_MOO_FUZZ_ROUNDS", 1)
 	c := buildCorpus(t, nil)
 	total := &fuzzResult{reasons: map[string]int{}, mooReasons: map[string]int{}, rootsSeen: map[string]bool{}}
-	for k := uint64(0); k < rounds; k++ {
+	for k := range rounds {
 		res := c.round(t, seed+k, n)
 		reportFindings(t, res)
 		total.cases += res.cases
