@@ -144,7 +144,8 @@
         "tables-lua-alloc-runtime-negative-control",
         "tables-lua-soak-negative-control",
         "tables-lua-release-negative-control",
-        "conformance-negative-control-lua-absent"
+        "conformance-negative-control-lua-absent",
+        "tables-lua-damage-discard-negative-control"
       ],
       "lua": "5.4.8"
     },

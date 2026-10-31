@@ -1928,12 +1928,9 @@ local function release(ctx)
 end
 
 -- LoadTolerant loads a form-1 wire for table `name` of module T into a fresh
--- value, fills report, and returns the value. A FIXED root (no pointer in its
--- by-value closure, docs/SPEC-TABLES.md §2.2) ALWAYS LOADS (§4.2, §6.5;
--- internal/tablewire decodeWith): a wire refused by its form byte (§3) or one
--- that does not open (an empty or short wire, an unreadable trailer, bytes
--- after the root's terminator) answers the root at its defaults, with the
--- report saying what happened. Only a VARIABLE root answers nil there.
+-- value and fills report. Damage discards the whole load (§4): every root
+-- class returns nil when malformed, including a wire that cannot open.
+-- Evolution remains tolerant under this explicit name (§6.5).
 --
 -- `state` (L.NewState()) and `into` are the CALLER-OWNED STORAGE form
 -- (docs/PORTING.md M1): with `into`, the root is the caller's value, put back to
@@ -1944,7 +1941,7 @@ end
 -- plain form. A load that answers nil leaves `into` at defaults or partly read.
 --
 -- This is THE TOLERANT READ (docs/SPEC-TABLES.md §6.5), under its explicit
--- name: it keeps the recovered value and its report. The plain L.Load below is
+-- name: it keeps a valid value and its evolution report. The plain L.Load below is
 -- the strict read.
 function L.LoadTolerant(T, name, bytes, report, state, into)
   local desc = T.Tables[name]
@@ -1975,11 +1972,9 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   end
   local o = open(bytes, blen, report, state)
   if o == nil then
-    -- A WIRE THAT DOES NOT OPEN IS MALFORMED, NOT A REGION REFUSAL: the
-    -- file's own framing stopped it before any field, and the tolerant read
-    -- answers the root at its defaults (decodeWith keeps the instance it was
-    -- handed). Only a FORM this build does not carry is a refusal, and a
-    -- VARIABLE root answers nil for that (§3, §4.2).
+    if report.malformed then return nil end
+    -- An unsupported form keeps its existing class-specific refusal; it is
+    -- not a decoded damaged value (§3, §4.2).
     if desc == nil then return nil end
     if report.refused ~= 0 and desc.variable then return nil end
     if into ~= nil then return D.reset(T, desc, into) end
@@ -2057,6 +2052,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   end
   resolve(ctx, root, desc)
   release(ctx)
+  if report.malformed then return nil end
   return root
 end
 

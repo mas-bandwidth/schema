@@ -1402,6 +1402,7 @@ function S.LoadRetain(T, name, bytes, retain, report)
   rep.retained = rep.retained or 0
   rep.retainLost = rep.retainLost or 0
   local v = load.Load(T, name, bytes, rep)
+  if rep.malformed then return nil end
   local retainedBefore, lostBefore = rep.retained, rep.retainLost
   capture(T, name, bytes, retain, rep)
   -- a retained unknown float that is not finite refuses the whole read, and
@@ -1415,6 +1416,7 @@ function S.LoadRetain(T, name, bytes, retain, report)
     rep.retained, rep.retainLost = retainedBefore, lostBefore
     return nil
   end
+  if rep.malformed then return nil end
   return v
 end
 
