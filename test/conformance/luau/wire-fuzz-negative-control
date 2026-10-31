@@ -16,7 +16,7 @@
 # The scratch tree mirrors the three paths the driver resolves relative to
 # itself (test/conformance/luau/wirefuzz.luau, build/conformance-luau,
 # build/luau-driver/units.luau), so the committed driver runs unchanged over
-# the planted units. Nothing outside build/luau-wire-fuzz-nc is written.
+# the planted units. Nothing outside $LUAU_WFNC_OUT (build/luau-wire-fuzz-nc by default) is written.
 #
 # The working directory is the repository root; make/luau-fuzz.mk builds the
 # harness, the units, units.luau and the native host first.
@@ -24,7 +24,7 @@
 # usage: sh test/conformance/luau/wire-fuzz-negative-control
 set -eu
 
-out=build/luau-wire-fuzz-nc
+out=${LUAU_WFNC_OUT:-build/luau-wire-fuzz-nc}
 host=${LUAUFUZZHOST:-build/luaufuzzhost/luaufuzzhost}
 for need in build/conformance-harness "$host" build/conformance-luau build/luau-driver/units.luau; do
 	if [ ! -e "$need" ]; then

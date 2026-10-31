@@ -238,6 +238,9 @@ local function wide_ok(b: buffer, at: number, n: number): boolean
 	return true
 end
 
+-- ir.TableWireIdTableBound: the most entries an id table may hold (§3)
+local ID_TABLE_BOUND = 4096
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed.
 local function open(bytes: buffer, report: any): any
@@ -249,6 +252,10 @@ local function open(bytes: buffer, report: any): any
 	-- integer: a high-bit count is huge, never negative, and refuses here
 	local count = integer.tonumber(buffer.readinteger(bytes, len - 8))
 	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return nil end
+	-- THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+	-- CHECK): a table of more than ID_TABLE_BOUND entries is malformed on the
+	-- whole-wire rule, whatever the buffer would hold
+	if count > ID_TABLE_BOUND then report.malformed = true; return nil end
 	local endpos = len - 8 - count * 8
 	local ids = {}
 	local seen: { [integer]: boolean } = {}
@@ -671,10 +678,15 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	local endpos = r.at + n
 	local landed: { any } = {}
 	if n >= 2 then
-		local sub = new_reader(r.b, r.at, endpos)
-		local ek = r_u8(sub)
-		local count = r_leb(sub)
-		if sub.bad then report.malformed = true; r.at = endpos; return true end
+		-- THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
+		-- (internal/tablewire decode.go mapField, subTo; docs/SPEC-TABLES.md
+		-- §2.8, §3): a count LEB128 that runs past the map's L still reads,
+		-- the element kind is judged, and the entries walk an empty body.
+		local hdr = new_reader(r.b, r.at, r.e)
+		local ek = r_u8(hdr)
+		local count = r_leb(hdr)
+		if hdr.bad then report.malformed = true; r.at = endpos; return true end
+		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
 		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2; internal/tablewire
 		-- decode.go collectionCap): a REGION read reports damage and resumes,
@@ -792,10 +804,16 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	local dst: any = nil
 	if v ~= nil and fd.slot ~= nil then dst = v[fd.slot] end
 	if n >= 2 then
-		local sub = new_reader(r.b, r.at, endpos)
-		local ek = r_u8(sub)
-		local count = r_leb(sub)
-		if sub.bad then report.malformed = true; r.at = endpos; return true end
+		-- THE KEYED BODY'S HEADER IS READ AGAINST THE PARENT, as every
+		-- array's is (internal/tablewire decode.go keyed, subTo;
+		-- docs/SPEC-TABLES.md §3, §3.2): a pair count that runs past the
+		-- body's L still reads, the element kind is judged before the
+		-- triples, and the triples walk an empty body.
+		local hdr = new_reader(r.b, r.at, r.e)
+		local ek = r_u8(hdr)
+		local count = r_leb(hdr)
+		if hdr.bad then report.malformed = true; r.at = endpos; return true end
+		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
 		if ek ~= fd.ek then
 			if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
 			report.widened = report.widened + 1
@@ -1093,75 +1111,63 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	return true
 end
 
--- ONE ARM's payload, the bytes under the arm's L (§3's arm payload table): a
--- string is its bytes with no length of its own, bytes(N) and an array are the
--- array body, everything else is what a field of that type carries.
-local function read_arm(arm: any, sub: any, u: any): boolean
+-- AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6, §3; docs/PORTING.md M18):
+-- an arm's payload is exactly the bytes a field of its type puts after its own
+-- framing prefix, so the arm is read by read_field, the field's own reader,
+-- with the arm's L standing in for the field's length. What this function
+-- adds is FRAMING ALONE, never a payload reader of its own:
+--
+--   - a length-shaped arm (text, bytes, an array, a table, a map) is read by
+--     read_field from the arm's L, over a reader that ends where the arm's
+--     payload ends, so its L is the field's L and every rule after it is the
+--     field's;
+--   - a fixed-width arm's L must be its kind's width, and a reference-shaped
+--     arm's L must be exactly the reference it frames: either is the arm's own
+--     framing damage, the union reading None and the parent reading on past L
+--     (the engine tests the same facts, internal/tablewire decode.go arm);
+--   - a POINTER arm's framing is checked BEFORE its reference is registered,
+--     because the engine checks r.off == n before resolveCell, so a damaged
+--     arm cannot produce a pointee-kind mismatch.
+--
+-- lpos is where the arm's L begins, sub the reader over its payload. The
+-- answer is true when the arm's value is whole: read_field's third answer
+-- says a payload was damaged inside its own L, and its second that an array
+-- carried a foreign element kind; either reads None.
+local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any): boolean
 	local s = arm.s
-	-- A FIXED-WIDTH ARM'S L IS ITS KIND'S WIDTH (docs/SPEC-TABLES.md §3): an
-	-- L that is not that
-	-- width is the arm's own framing damage, so the union reads None and the
-	-- parent reads on past L. The engine tests the same fact before reading
-	-- (internal/tablewire decode.go, arm: ArmWireFixedWidth).
 	if s == "bool" or s == "int" or s == "float" then
 		local w = width_of(arm.k)
 		if w > 0 and sub.e - sub.at ~= w then
 			_report.malformed = true
-			sub.at = sub.e
 			return false
 		end
+		return (read_field(arm, sub, u))
 	end
-	if s == "str" then
-		local n = sub.e - sub.at
-		if arm.wide then
-			if n % 2 ~= 0 then _report.malformed = true; sub.at = sub.e; return false end
-			if not wide_ok(sub.b, sub.at, n) then _report.malformed = true; sub.at = sub.e; return false end
-			local units = n / 2
-			if arm.bound ~= nil and units > arm.bound then units = clamp_wide(sub.b, sub.at, arm.bound); _report.clamped = _report.clamped + 1 end
-			store_bytes(u, arm.slot, sub.b, sub.at, units * 2, units)
-		else
-			if not utf8_ok(sub.b, sub.at, n) then _report.malformed = true; sub.at = sub.e; return false end
-			local keep = n
-			if arm.bound ~= nil and keep > arm.bound then keep = clamp_utf8(sub.b, sub.at, arm.bound); _report.clamped = _report.clamped + 1 end
-			store_bytes(u, arm.slot, sub.b, sub.at, keep, keep)
+	if s == "ptr" or s == "enum" then
+		if s == "ptr" then
+			local framing = new_reader(sub.b, sub.at, sub.e)
+			r_leb(framing)
+			if framing.bad or framing.at ~= framing.e then
+				_report.malformed = true
+				return false
+			end
 		end
-		sub.at = sub.e
-		return true
-	elseif s == "text" then
-		u[arm.slot] = copy_out(sub.b, sub.at, sub.e - sub.at)
-		sub.at = sub.e
-		return true
-	elseif s == "bytes" or s == "arr" then
-		local selected = true
-		if sub.e - sub.at >= 2 then selected = array_body(arm, sub, _report, u) end
-		sub.at = sub.e
-		-- a FOREIGN ELEMENT KIND means the payload is not this arm's, so the
-		-- union reads None (§3, internal/tablewire decode.go arm)
-		return selected
-	end
-	if s == "ptr" then
-		-- A POINTER ARM IS THE REFERENCE AND NOTHING ELSE (§3): an L that
-		-- framed more is the arm's own damage, and the index is never
-		-- RESOLVED — the engine checks r.off == n BEFORE resolveCell, so a
-		-- damaged arm cannot produce a pointee-kind mismatch. Registering it
-		-- here, after the check, is that same order.
-		local index = r_leb(sub)
-		if sub.bad or sub.at ~= sub.e then
+		local ok = read_field(arm, sub, u)
+		if ok and sub.at ~= sub.e then
+			-- a reference-shaped arm's L is the byte count of the reference it
+			-- frames (§3): an L that framed more is the arm's own damage
 			_report.malformed = true
-			sub.at = sub.e
 			return false
 		end
-		_pending[#_pending + 1] = { holder = u, key = arm.slot, index = index, d = arm }
-		return true
+		return ok
 	end
-	local ok = read_field(arm, sub, u)
-	if ok and s == "enum" and sub.at ~= sub.e then
-		-- a reference-shaped arm's L is the byte count of the reference it
-		-- frames (§3): an L that framed more is the arm's own damage
-		_report.malformed = true
-		return false
+	if s == "union" then
+		-- a NESTED UNION's field line has no L of its own: its arm line (the
+		-- arm id reference, the kind, the arm's L) is the outer arm's payload
+		return read_field(arm, sub, u) == true
 	end
-	return ok
+	local ok, selected, intact = read_field(arm, new_reader(r.b, lpos, sub.e), u)
+	return ok == true and selected ~= false and intact ~= false
 end
 
 -- AN ARM HEADER IS A FIELD HEADER (§3, §2.6): the arm id reference, the arm's
@@ -1177,6 +1183,7 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 	if ref > #_table then report.malformed = true; return u, false end
 	local armID = _table[ref]
 	local kind = r_u8(r)
+	local lpos = r.at
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then report.malformed = true; return u, false end
 	local sub = new_reader(r.b, r.at, r.at + n)
@@ -1204,18 +1211,6 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 		else
 			report.kindMismatch = report.kindMismatch + 1
 		end
-	elseif arm.s == "tab" then
-		-- a table arm stores its instance and sets Type only when the
-		-- sub-reader ended exactly at the frame's end; a body whose
-		-- terminator is not the frame's last byte reads None (§3)
-		local inst = S.lookup(arm.t).new()
-		read_body(S.lookup(arm.t), sub, inst, true)
-		if sub.at ~= sub.e then
-			report.malformed = true
-		else
-			u[arm.slot] = inst
-			u.Type = arm.tag
-		end
 	elseif arm.s == "void" then
 		-- a payload-free arm carries L = 0; an L that is not zero is that
 		-- arm's own framing damage (docs/SPEC-TABLES.md §3)
@@ -1225,7 +1220,7 @@ read_union = function(fd: any, r: any, report: any): (any, boolean)
 			u.Type = arm.tag
 		end
 	else
-		if read_arm(arm, sub, u) then u.Type = arm.tag end
+		if read_arm(arm, r, lpos, sub, u) then u.Type = arm.tag end
 	end
 	r.at = r.at + n
 	return u, true
@@ -1234,6 +1229,10 @@ end
 -- ONE FIELD (docs/SPEC-TABLES.md §3): every value read is stored in its slot
 -- in the shape docs/PORT-LUAU.md THE TYPE MAPPING names; a string clamps at a
 -- whole code point and a wide string at a whole code unit (§3, KIND 12 / 33).
+-- It answers (ok, selected, intact): ok false stops the body; selected false
+-- is an array of a FOREIGN ELEMENT KIND (§3); intact false is a payload
+-- damaged inside its own L, which a field answers with its declared default
+-- and a union arm (read_arm) with None.
 read_field = function(fd: any, r: any, v: any): any
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
@@ -1245,8 +1244,8 @@ read_field = function(fd: any, r: any, v: any): any
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
 		if fd.wide then
-			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true end
-			if not wide_ok(r.b, r.at, n) then _report.malformed = true; r.at = r.at + n; return true end
+			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true, nil, false end
+			if not wide_ok(r.b, r.at, n) then _report.malformed = true; r.at = r.at + n; return true, nil, false end
 			local units = n / 2
 			if fd.bound ~= nil and units > fd.bound then units = clamp_wide(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
 			if fd.slot ~= nil and v ~= nil then store_bytes(v, fd.slot, r.b, r.at, units * 2, units) end
@@ -1254,9 +1253,17 @@ read_field = function(fd: any, r: any, v: any): any
 			return true
 		end
 		if not utf8_ok(r.b, r.at, n) then
+			-- ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): the field
+			-- reads its DECLARED DEFAULT, one malformed counts, and the parent
+			-- reads on past L. An earlier occurrence of the field does not
+			-- survive it (internal/tablewire decode.go field, FieldDefaultCell).
 			_report.malformed = true
+			if fd.slot ~= nil and v ~= nil then
+				local def: string = fd.def or ""
+				store_bytes(v, fd.slot, buffer.fromstring(def), 0, #def, #def)
+			end
 			r.at = r.at + n
-			return true
+			return true, nil, false
 		end
 		local keep = n
 		if fd.bound ~= nil and n > fd.bound then keep = clamp_utf8(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
@@ -1266,6 +1273,14 @@ read_field = function(fd: any, r: any, v: any): any
 	elseif s == "text" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
+		if not utf8_ok(r.b, r.at, n) then
+			-- ILL-FORMED TEXT IS DAMAGE at any bound (docs/SPEC-TABLES.md §3,
+			-- §4): one malformed counts and the parent reads on past L
+			_report.malformed = true
+			if fd.slot ~= nil and v ~= nil then v[fd.slot] = fd.def or "" end
+			r.at = r.at + n
+			return true, nil, false
+		end
 		if fd.slot ~= nil and v ~= nil then v[fd.slot] = copy_out(r.b, r.at, n) end
 		r.at = r.at + n
 		return true
@@ -1295,6 +1310,8 @@ read_field = function(fd: any, r: any, v: any): any
 			_report.malformed = true
 			inst = d.new()
 			if fd.slot ~= nil and v ~= nil then v[fd.slot] = inst end
+			r.at = r.at + n
+			return true, nil, false
 		end
 		r.at = r.at + n
 		return true
@@ -1448,13 +1465,10 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	return false
 end
 
--- loadTolerant loads a form-1 wire at the table descriptor `root`, fills
--- report, and returns the recovered root value; it is the TOLERANT walk and
--- only this explicit name reaches it (docs/SPEC-TABLES.md §6.5: the plain
--- name is the strict read, so a recovered value never comes back under it).
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
-	local o = open(bytes, report)
-	if o == nil then return nil end
+-- Walk a file whose id table has opened. Keeping this separate lets the
+-- strict wrapper retain wire_damaged for unopened input and its field/counter
+-- diagnostics for a decoded value that the damage rule now discards (§4).
+local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	_table = o.table
 	_report = report
 	_countRefused = false
@@ -1475,7 +1489,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		local ref = r_leb(walk)
 		if walk.bad then break end
 		if ref == 0 then
-			if walk.at ~= o.e then report.malformed = true; return v end
+			if walk.at ~= o.e then report.malformed = true; return nil end
 			break
 		end
 		if ref > #_table or walk.at >= walk.e then break end
@@ -1534,10 +1548,16 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		report.refused = (report.refused or 0) + 1
 		return nil
 	end
-	-- A REGION READ KEEPS ITS RECOVERED VALUE under the explicit tolerant
-	-- name (docs/SPEC-TABLES.md §6.5); ReadStrict is the caller that refuses
-	-- a count_refusal by name.
+	if report.malformed then return nil end
 	return v
+end
+
+-- loadTolerant returns a value only when the wire is whole. Tolerant
+-- evolution is not damage: malformed input is discarded on every read (§4).
+function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	local o = open(bytes, report)
+	if o == nil then return nil end
+	return loadOpened(root, bytes, report, o)
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
@@ -1972,7 +1992,12 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	local v = L.loadTolerant(root, b, rep)
+	local opened = open(b, rep)
+	if opened == nil then
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local v = loadOpened(root, b, rep, opened)
 	if rep.nonFiniteFloat ~= nil then
 		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
 		rep.reason = "non_finite_float"
@@ -1981,13 +2006,9 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	end
 	if _countRefused then
 		-- the BUILDER-path storage refusal (docs/SPEC-TABLES.md §6.5, Go
-		-- tablewire.CountRefusal): the tolerant region read kept its prefix,
-		-- the strict read refuses whole
+		-- tablewire.CountRefusal): both reads discard the damaged value;
+		-- the strict read keeps the specific refusal reason
 		rep.reason = "count_refusal"
-		return nil
-	end
-	if v == nil and rep.malformed then
-		rep.reason = "wire_damaged"
 		return nil
 	end
 	for _, k in REFUSING do

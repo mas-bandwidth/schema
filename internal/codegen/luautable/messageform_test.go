@@ -3,8 +3,7 @@ package luautable_test
 // THE MESSAGE FORM'S GOLDENS (docs/SPEC-TABLES.md §3.3): every `message` row
 // of testdata/conformance/tables/MANIFEST.txt, read against its `connection`
 // row's announcement, saved again, and compared byte for byte with the batch
-// wire the C++ reference wrote. A batch with damage in its second body
-// delivers the bodies before it and is malformed, terminal for the batch.
+// wire the C++ reference wrote. Damage in any body discards the whole batch.
 
 import (
 	"bufio"
@@ -57,7 +56,7 @@ func messageManifest(t *testing.T) (map[string][]string, map[string]messageConnR
 				conns[fields[1]] = messageConnRow{unit: fields[2], announcement: fields[4]}
 			}
 		case "message":
-			if len(fields) >= 6 {
+			if len(fields) >= 6 && fields[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, messageRow{name: fields[1], connection: fields[2], root: fields[3], batch: fields[5]})
 			}
 		}
@@ -103,6 +102,45 @@ func buildMessageUnit(t *testing.T, paths []string) (string, []string, map[strin
 	return dir, mods, out
 }
 
+// messageRootFixed reports whether root is a fixed table of the unit: the
+// message form is fixed tables only (docs/SPEC-TABLES.md §3.3).
+func messageRootFixed(t *testing.T, paths []string, rootName string) bool {
+	t.Helper()
+	files, err := compiler.GatherPaths(prefix(paths))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := u.Tables[rootName]
+	return st != nil && st.FixedDeclared
+}
+
+// refusalProbe calls each batch verb over root and prints what each answered:
+// a variable root is refused by name before a byte is read or written.
+func refusalProbe(mods []string, rootName string) string {
+	var b strings.Builder
+	b.WriteString("local M = require(\"./schema_message\")\n")
+	for _, m := range mods {
+		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
+	}
+	fmt.Fprintf(&b, `local v = M.NewVocabulary()
+local verbs = {
+	{ "LoadMessages", function() return M.LoadMessages(v, %[1]q, buffer.create(2), 256, {}) end },
+	{ "LoadMessagesTolerant", function() return M.LoadMessagesTolerant(v, %[1]q, buffer.create(2), 256, {}) end },
+	{ "MeasureMessages", function() return M.MeasureMessages(v, %[1]q, { {} }, {}) end },
+	{ "SaveMessages", function() return M.SaveMessages(v, %[1]q, { {} }, {}) end },
+}
+for _, verb in verbs do
+	local ok, err = pcall(verb[2])
+	print(verb[1] .. " " .. (if ok then "answered" elseif string.find(tostring(err), %[1]q, 1, true) then "refused-by-name" else "refused: " .. tostring(err)))
+end
+`, rootName)
+	return b.String()
+}
+
 func messageProbe(mods []string, rootName, load string) string {
 	var b strings.Builder
 	b.WriteString("local M = require(\"./schema_message\")\nlocal inputs = require(\"./inputs\")\n")
@@ -145,8 +183,14 @@ func messageMainWith(t *testing.T, dir string, mods []string, rootName, load str
 func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 	t.Parallel()
 	units, conns, rows := messageManifest(t)
-	if len(rows) != 13 {
-		t.Fatalf("the manifest names %d message rows, want the 13 this card pins", len(rows))
+	fixed := 0
+	for _, row := range rows {
+		if messageRootFixed(t, units[conns[row.connection].unit], row.root) {
+			fixed++
+		}
+	}
+	if fixed != 12 {
+		t.Fatalf("the manifest names %d message rows over a fixed root, want the 12 this card pins", fixed)
 	}
 	compared := 0
 	for _, row := range rows {
@@ -155,6 +199,9 @@ func TestLuauMessageFormMatchesTheGoldens(t *testing.T) {
 			conn, ok := conns[row.connection]
 			if !ok {
 				t.Fatalf("message %s names connection %s with no connection row", row.name, row.connection)
+			}
+			if !messageRootFixed(t, units[conn.unit], row.root) {
+				return // a variable table carries no message form (§3.3)
 			}
 			ann, err := os.ReadFile(filepath.Join(root, conn.announcement))
 			if err != nil {
@@ -234,12 +281,12 @@ func TestLuauMessageFormNegativeControl(t *testing.T) {
 	t.Logf("the batch comparison went red: %q", out)
 }
 
-// TestLuauMessageFormDamageStopsAtTheSecondBody holds §3.3's terminal rule:
-// damage inside body 2 delivers body 1 on the TOLERANT read, counts one
-// malformed, and reads nothing after it; the plain read is STRICT and hands
-// back no body, refusing the batch (docs/SPEC-TABLES.md §6.5). The fixture
+// TestLuauMessageFormDamageRefusesTheBatch holds the damage rule on a message
+// batch: DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4, §3.3), so
+// damage inside body 2 is refused, malformed, on the tolerant read and on the
+// plain STRICT read alike (§6.5); no count or body is compared. The fixture
 // flips 63 (thirty past E) into the second body's first reference.
-func TestLuauMessageFormDamageStopsAtTheSecondBody(t *testing.T) {
+func TestLuauMessageFormDamageRefusesTheBatch(t *testing.T) {
 	t.Parallel()
 	units, conns, _ := messageManifest(t)
 	conn := conns["backend_conn"]
@@ -253,11 +300,61 @@ func TestLuauMessageFormDamageStopsAtTheSecondBody(t *testing.T) {
 	}
 	dir, mods, _ := buildMessageUnit(t, units[conn.unit])
 	out := messageMainWith(t, dir, mods, "LoginRequest", "LoadMessagesTolerant", ann, batch)
-	if !strings.HasPrefix(out, "count 1 malformed true") {
-		t.Fatalf("damage in body 2 did not stop at body 1: %q", out)
+	if !strings.HasPrefix(out, "count 0 malformed true") {
+		t.Fatalf("the tolerant batch read did not refuse a damaged batch: %q", out)
 	}
 	out = messageMainWith(t, dir, mods, "LoginRequest", "LoadMessages", ann, batch)
 	if !strings.HasPrefix(out, "count -1 malformed true") {
 		t.Fatalf("the plain batch read handed back a body of a damaged batch: %q", out)
+	}
+}
+
+// TestLuauMessageFormIsFixedTablesOnly holds §3.3's class rule on the Luau leg:
+// every batch verb refuses a variable root by name, with or without a pointer
+// in its closure, before a byte is read or written.
+func TestLuauMessageFormIsFixedTablesOnly(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	schema := filepath.Join(dir, "Probe.schema")
+	src := `package probe
+
+fixed table Fixedroot { x int32 }
+table Varplain { x int32 }
+table Varleaf { x int32 }
+table Varroot { leaf *Varleaf }
+`
+	if err := os.WriteFile(schema, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(abs, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, mods, _ := buildMessageUnit(t, []string{rel})
+	for _, name := range []string{"Varplain", "Varroot"} {
+		if err := os.WriteFile(filepath.Join(out, "main.luau"), []byte(refusalProbe(mods, name)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(luaurun.Run(t, out, "main.luau", nil))), "\n")
+		if len(lines) != 4 {
+			t.Fatalf("%s: the probe printed %q", name, lines)
+		}
+		for _, line := range lines {
+			if !strings.HasSuffix(line, " refused-by-name") {
+				t.Errorf("the variable root %s: %s", name, line)
+			}
+		}
+	}
+	// the control: the fixed root is not refused
+	if err := os.WriteFile(filepath.Join(out, "main.luau"), []byte(refusalProbe(mods, "Fixedroot")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := string(luaurun.Run(t, out, "main.luau", nil))
+	if strings.Contains(got, "refused-by-name") {
+		t.Errorf("the fixed root Fixedroot was refused: %s", got)
 	}
 }

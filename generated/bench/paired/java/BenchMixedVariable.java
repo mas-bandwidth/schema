@@ -1348,6 +1348,7 @@ public final class BenchMixedVariable {
             return null;
         }
         Value v = new Value();
+        report.rootTypeId = TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {
@@ -1380,8 +1381,12 @@ public final class BenchMixedVariable {
         if (report.refused) {
             return null;
         }
-        if (loadMeasure(data) < 0) {
+        TableVariable.Measure measure = new TableVariable.Measure();
+        if (loadMeasure(data, measure) < 0) {
             report.refused = true;
+            if (measure.report.reason != null) {
+                report.reason = measure.report.reason;
+            }
             return null;
         }
         resolveNodes(v, nt, v, TYPE_ID, report);
@@ -2137,7 +2142,8 @@ public final class BenchMixedVariable {
             }
             in.p++;
             if ("sequence".equals(key)) {
-                if (seenField[0]) {
+                boolean repeated = seenField[0];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[0] = true;
@@ -2147,14 +2153,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.sequence = (int) in.integer(false, 0L, 0xffffL);
+                        long placed = in.integer(false, 0L, 0xffffL);
+                        if (!in.rejected) {
+                            v.sequence = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("ack_sequence".equals(key)) {
-                if (seenField[1]) {
+                boolean repeated = seenField[1];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[1] = true;
@@ -2164,14 +2174,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.ackSequence = (int) in.integer(true, 0, 65535);
+                        long placed = in.integer(true, 0, 65535);
+                        if (!in.rejected) {
+                            v.ackSequence = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("ack_bits".equals(key)) {
-                if (seenField[2]) {
+                boolean repeated = seenField[2];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[2] = true;
@@ -2181,14 +2195,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.ackBits = (int) in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        if (!in.rejected) {
+                            v.ackBits = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("session_id".equals(key)) {
-                if (seenField[3]) {
+                boolean repeated = seenField[3];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[3] = true;
@@ -2198,14 +2216,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.sessionId = in.integer(false, 0L, 0xffffffffffffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffffffffffffL);
+                        if (!in.rejected) {
+                            v.sessionId = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("client_id".equals(key)) {
-                if (seenField[4]) {
+                boolean repeated = seenField[4];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[4] = true;
@@ -2215,14 +2237,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.clientId = (int) in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        if (!in.rejected) {
+                            v.clientId = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("nonce".equals(key)) {
-                if (seenField[5]) {
+                boolean repeated = seenField[5];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[5] = true;
@@ -2232,14 +2258,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.nonce = in.integer(false, 0L, 0xffffffffffffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffffffffffffL);
+                        if (!in.rejected) {
+                            v.nonce = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("world_time".equals(key)) {
-                if (seenField[6]) {
+                boolean repeated = seenField[6];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[6] = true;
@@ -2249,14 +2279,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.worldTime = in.integer(true, -1000000000000L, 1000000000000L);
+                        long placed = in.integer(true, -1000000000000L, 1000000000000L);
+                        if (!in.rejected) {
+                            v.worldTime = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("frame_tick".equals(key)) {
-                if (seenField[7]) {
+                boolean repeated = seenField[7];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[7] = true;
@@ -2266,14 +2300,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.frameTick = in.integer(false, 0L, 0xffffffffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffffffffL);
+                        if (!in.rejected) {
+                            v.frameTick = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("server_time".equals(key)) {
-                if (seenField[8]) {
+                boolean repeated = seenField[8];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[8] = true;
@@ -2294,7 +2332,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("entities".equals(key)) {
-                if (seenField[9]) {
+                boolean repeated = seenField[9];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[9] = true;
@@ -2302,6 +2341,9 @@ public final class BenchMixedVariable {
                     in.skipValue();
                     in.rep.kindMismatch++;
                 } else {
+                    if (repeated && in.peek() != 'n') {
+                        v.entities = new ArrayList<>();
+                    }
                     if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
@@ -2326,6 +2368,7 @@ public final class BenchMixedVariable {
                             } else if (ec != '{') {
                                 in.skipValue();
                                 in.rep.kindMismatch++;
+                                v.entities.add(new MixedEntityVariable.Value());
                             } else {
                                 MixedEntityVariable.Value e = new MixedEntityVariable.Value();
                                 MixedEntityVariable.jsonReadFields(in, e);
@@ -2350,7 +2393,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("stats".equals(key)) {
-                if (seenField[10]) {
+                boolean repeated = seenField[10];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[10] = true;
@@ -2358,6 +2402,9 @@ public final class BenchMixedVariable {
                     in.skipValue();
                     in.rep.kindMismatch++;
                 } else {
+                    if (repeated && in.peek() != 'n') {
+                        v.stats = new ArrayList<>();
+                    }
                     if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
@@ -2382,6 +2429,7 @@ public final class BenchMixedVariable {
                             } else if (ec != '{') {
                                 in.skipValue();
                                 in.rep.kindMismatch++;
+                                v.stats.add(new MixedStatVariable.Value());
                             } else {
                                 MixedStatVariable.Value e = new MixedStatVariable.Value();
                                 MixedStatVariable.jsonReadFields(in, e);
@@ -2406,7 +2454,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("game_event".equals(key)) {
-                if (seenField[11]) {
+                boolean repeated = seenField[11];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[11] = true;
@@ -2417,7 +2466,8 @@ public final class BenchMixedVariable {
                     v.gameEvent = MixedEventVariable.readJson(in);
                 }
             } else if ("loadout".equals(key)) {
-                if (seenField[12]) {
+                boolean repeated = seenField[12];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[12] = true;
@@ -2425,6 +2475,9 @@ public final class BenchMixedVariable {
                     in.skipValue();
                     in.rep.kindMismatch++;
                 } else {
+                    if (repeated && in.peek() != 'n') {
+                        v.loadout = new ArrayList<>();
+                    }
                     if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
@@ -2469,7 +2522,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("player_name".equals(key)) {
-                if (seenField[13]) {
+                boolean repeated = seenField[13];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[13] = true;
@@ -2485,7 +2539,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("payload".equals(key)) {
-                if (seenField[14]) {
+                boolean repeated = seenField[14];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[14] = true;
@@ -2511,7 +2566,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("aim_x".equals(key)) {
-                if (seenField[15]) {
+                boolean repeated = seenField[15];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[15] = true;
@@ -2521,14 +2577,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.aimX = in.number32();
+                        float placed = in.number32();
+                        if (!in.rejected) {
+                            v.aimX = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("aim_y".equals(key)) {
-                if (seenField[16]) {
+                boolean repeated = seenField[16];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[16] = true;
@@ -2538,14 +2598,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.aimY = in.number32();
+                        float placed = in.number32();
+                        if (!in.rejected) {
+                            v.aimY = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("aim_z".equals(key)) {
-                if (seenField[17]) {
+                boolean repeated = seenField[17];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[17] = true;
@@ -2555,14 +2619,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.aimZ = in.number32();
+                        float placed = in.number32();
+                        if (!in.rejected) {
+                            v.aimZ = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("recoil".equals(key)) {
-                if (seenField[18]) {
+                boolean repeated = seenField[18];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[18] = true;
@@ -2572,14 +2640,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.recoil = in.number32();
+                        float placed = in.number32();
+                        if (!in.rejected) {
+                            v.recoil = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("drift".equals(key)) {
-                if (seenField[19]) {
+                boolean repeated = seenField[19];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[19] = true;
@@ -2589,14 +2661,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.drift = in.number();
+                        double placed = in.number();
+                        if (!in.rejected) {
+                            v.drift = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("wide_key".equals(key)) {
-                if (seenField[20]) {
+                boolean repeated = seenField[20];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[20] = true;
@@ -2620,7 +2696,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("flux".equals(key)) {
-                if (seenField[21]) {
+                boolean repeated = seenField[21];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[21] = true;
@@ -2644,7 +2721,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("ping".equals(key)) {
-                if (seenField[22]) {
+                boolean repeated = seenField[22];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[22] = true;
@@ -2665,7 +2743,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("crc_hint".equals(key)) {
-                if (seenField[23]) {
+                boolean repeated = seenField[23];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[23] = true;
@@ -2675,14 +2754,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.crcHint = (int) in.integer(false, 0L, 0xffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffL);
+                        if (!in.rejected) {
+                            v.crcHint = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("has_extra".equals(key)) {
-                if (seenField[24]) {
+                boolean repeated = seenField[24];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[24] = true;
@@ -2702,7 +2785,8 @@ public final class BenchMixedVariable {
                     }
                 }
             } else if ("extra".equals(key)) {
-                if (seenField[25]) {
+                boolean repeated = seenField[25];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[25] = true;
@@ -2712,14 +2796,18 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.extra = (int) in.integer(true, 0, 255);
+                        long placed = in.integer(true, 0, 255);
+                        if (!in.rejected) {
+                            v.extra = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("idle_ticks".equals(key)) {
-                if (seenField[26]) {
+                boolean repeated = seenField[26];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[26] = true;
@@ -2729,7 +2817,10 @@ public final class BenchMixedVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.idleTicks = (int) in.integer(true, 0, 15);
+                        long placed = in.integer(true, 0, 15);
+                        if (!in.rejected) {
+                            v.idleTicks = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;

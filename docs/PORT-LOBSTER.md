@@ -64,7 +64,7 @@ a type name where it is used.
 | `string(N)`, `bytes(N)` | a `string` of N bytes used as a buffer, and `<Name>Length:int` beside it (SPEC §4.7) | `schema_rt.zeros(N)`; a default is written in with `schema_rt.put` and its length set |
 | `wstring(N)` (§4.12) | a `string` of 2N bytes holding UTF-16LE code units, and `<Name>Length` in code units | `schema_rt.zeros(2N)` |
 | `[N]uint8` | a `string` of N bytes, 0-based — the bulk path's own type | `schema_rt.zeros(N)` |
-| `[N]T`, `[E]T` (key k at index k), any other element | a vector `[T]` of exactly N elements, 0-based | `[]`, then N `push`es of the element's construction |
+| `[N]T`, `[E]T` (key k at index k-1), any other element | a vector `[T]` of exactly N elements, 0-based | `[]`, then N `push`es of the element's construction |
 | `[..N]T`, `[A..N]T` | the same vector of N, and `<Name>Count:int` beside it | the count born at A (SPEC §4.6) |
 | `[N]string(M)` | `[string]` of N buffers, `<Name>Length:[int]` beside it | N fresh buffers, N zeros |
 | `const` | a top-level `let`: `int`, `float` or `Int128`, folded to its literal with the schema spelling as a trailing comment | — |
@@ -89,6 +89,7 @@ descriptor fact (`fixed`), not a storage difference.
 | `[..N]*T`, `[N]*T` | `[T?]`, nil-filled, and the count where counted | N `nil`s |
 | `map[K]V` (§2.8) | `[Entry]`, a vector of the generated `<Table><Field>Entry` class `{ Key, Value }`, which the save walk sorts by key | `[]` |
 | a union with table arms (§2.6) | as a packet union, in the table module | `Type = UTypeNone` |
+| `[E]T` in a table or a type a table reaches (§2.4) | the same vector, and three functions in the table module that take the key (docs/PORTING.md M5): `<Owner><Field>Slot(key)` is the slot key names, refused by name for None, a negative key and any key past `EMax` in every build (`schema_rt.keyed_slot`, a VM bounds error that names the array and the key, which `--runtime-no-asserts` keeps); `<Owner><Field>At(v, key)` reads it; `<Owner><Field>Each(v) key, e:` yields every key beside its element | — |
 | `\| required`, `\| deprecated`, `was`, `json = "…"`, `forms`, `integrity` | no storage: descriptor facts and generation facts | — |
 
 **The descriptor.** Beside every table's class and constructor,
@@ -333,8 +334,9 @@ count, presence bit, element, entry, arm and node, floats by their bits and
 a graph by first-visit labels. `TestLobsterTableLoadNegativeControl` patches
 the unknown-field count out of the emitted runtime and holds the comparison
 red. `TestLobsterTableLoadBytesCountPastItsBody` raises a bytes body's count
-past what its L frames (§4) and holds the report and the value to Go's: the
-prefix the body frames, malformed, and the next field read at its own header.
+past what its L frames (§4) and holds the leg to Go's refusal: damage
+discards the whole load, so the read says malformed and nothing of the value
+is compared.
 
 ## THE HARNESS
 
@@ -516,6 +518,7 @@ stands:
 | the JSON text form both ways | `lobstertable/json.go` | landed |
 | the hand-editable text form | `lobstertable/text_form.go` | landed |
 | the conformance leg, every surface answered | `test/conformance/lobster/` | landed |
+| the card facade and its conformance leg (docs/PORTING.md J6): load, save, render, parse, bounds, upgrade, edit, taskhash and view over the Card unit, SHA-256 written in Lobster; the driver stages the facade into the generated unit, where Lobster resolves imports | `tables/cards/lobster/`, `make/lobster.mk` (`cards-lobster-*`) | landed |
 | the wire-fuzz differential and the hostile corpus | `make/lobster-fuzz.mk`, `make/lobster-hostile.mk` | landed, with the retain and message arms; a variable message root is not carried (as Go) |
 | the strict gate, CI, the register column, the roadmap column | `make/schema-lobster-generated-strict-gate.mk`, `.github/workflows/*`, `docs/PORTING.md`, `docs/roadmap.sexp` | landed |
 | the integrity trailer and the `forms` declaration (§2.12, §2.14) | — | owed |

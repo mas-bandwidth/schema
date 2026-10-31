@@ -15,7 +15,7 @@ import (
 // (§3), and the flat node table of §3.1 for the `*string` blob pointers the
 // card's `done_when`, `source`, `body` and `extra[].value` carry. This file
 // emits the Java runtime and the per-table load/save for exactly the card's
-// constructs: plain `table` roots and tables as list elements, bool/int32/
+// constructs: variable table roots and tables as list elements, bool/int32/
 // int64/enum fields, string(N), the *string byte buffer (§2.5) and unbounded
 // lists of tables ([]T, §2.9). Every other variable-class construct is refused
 // by name before this emitter runs (refuseVariableForm, javatable.go).
@@ -75,6 +75,12 @@ public final class TableVariable {
         public String reason;
         public int retained;
         public int retainLost;
+        // THE NUMBERING this load reads against, set when the node table is
+        // read, and the root's type: every node reference is JUDGED as it is
+        // read (judge, below), and a damaged table resolves nothing (§3.1).
+        NodeRecord[] nodeRecs;
+        boolean nodesGood;
+        long rootTypeId;
 
         // reset puts every counter back to its start, so one Report can serve
         // call after call (a reused Measure) without a fresh object per call.
@@ -88,6 +94,9 @@ public final class TableVariable {
             reason = null;
             retained = 0;
             retainLost = 0;
+            nodeRecs = null;
+            nodesGood = false;
+            rootTypeId = 0;
         }
     }
 
@@ -746,7 +755,9 @@ public final class TableVariable {
             return -1;
         }
         long count = u64(data, data.length - 8);
-        if (count < 0 || count > (data.length - 9) / 8) {
+        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+        // whatever the buffer would hold
+        if (count < 0 || count > 4096 || count > (data.length - 9) / 8) {
             report.malformed = true;
             return -1;
         }
@@ -1344,18 +1355,60 @@ public final class TableVariable {
         // (internal/tablewire/decodenodes.go). An ABSENT field is an empty but
         // valid numbering, and a whole read carries the records.
         NodeTable nt = new NodeTable();
+        report.nodeRecs = null;
+        report.nodesGood = false;
         if (bad) {
             nt.bad = true;
             return nt;
         }
         if (payload == null) {
+            report.nodesGood = true;
             return nt;
         }
         nt.recs = nodes(payload, retain);
         if (nt.recs == null) {
             nt.bad = true;
+        } else {
+            report.nodeRecs = nt.recs;
+            report.nodesGood = true;
         }
         return nt;
+    }
+
+    // THE RESOLUTION'S COUNTERS ARE NOT COUNTED TWICE: every reference was
+    // judged as it was read, so the pass that places the surviving values
+    // reports into this one, which nothing reads.
+    static final Report QUIET = new Report();
+
+    // judge is §3.1's verdict on one node reference AS IT IS READ, in every
+    // occurrence that carries it, an occurrence a later one replaces included
+    // (internal/tablewire/decodenodes.go resolveCell): 0 is null; 1 is the
+    // root, a kind mismatch unless the slot names the root's own type; a
+    // reference ABOVE the entry count is an unreadable reference, which is
+    // damage (§4); a record this reader cannot name reads null, counted once
+    // at the scan; and a record of another type is a kind mismatch. target is
+    // the slot's table type id, or STRING_ID / BYTES_ID for a byte buffer.
+    // Only the slots a field keeps are read: a clamped array's tail past its
+    // bound is stepped over by the field's length, unread.
+    static void judge(long index, Report report, long target) {
+        if (!report.nodesGood || index == 0) {
+            return;
+        }
+        if (index == 1) {
+            if (target == STRING_ID || target == BYTES_ID || target != report.rootTypeId) {
+                report.kindMismatch++;
+            }
+            return;
+        }
+        NodeRecord[] recs = report.nodeRecs;
+        if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) { // a reference is unsigned
+            report.malformed = true; // a reference above the entry count is damage
+            return;
+        }
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId != 0 && rec.typeId != target) {
+            report.kindMismatch++;
+        }
     }
 
     // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
@@ -2020,6 +2073,9 @@ public final class TableJson {
         int p;
         final TableVariable.Report rep;
         boolean bad;
+        // rejected: the last number read was the wrong shape for its kind (counted
+        // kind_mismatch); the caller leaves the field's current value standing.
+        boolean rejected;
 
         In(byte[] t, TableVariable.Report rep) {
             this.t = t;
@@ -2083,6 +2139,7 @@ public final class TableJson {
         }
 
         public double number() {
+            rejected = false;
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
             if (bad || tok == null) {
@@ -2100,6 +2157,7 @@ public final class TableJson {
             // would refuse.
             if (!Double.isFinite(value)) {
                 rep.kindMismatch++;
+                rejected = true;
                 return 0.0;
             }
             return value;
@@ -2111,6 +2169,7 @@ public final class TableJson {
         // rounds twice, and the nearest double to a decimal just off a float32
         // midpoint can BE that midpoint (§16.2).
         public float number32() {
+            rejected = false;
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
             if (bad || tok == null) {
@@ -2128,6 +2187,7 @@ public final class TableJson {
             // is the wrong shape for the kind (§16.3).
             if (!Float.isFinite(value)) {
                 rep.kindMismatch++;
+                rejected = true;
                 return 0.0f;
             }
             return value;
@@ -2277,10 +2337,15 @@ public final class TableJson {
                 } else {
                     int cp = utf8(c);
                     if (cp < 0) {
-                        b.append('\ufffd');
-                    } else {
-                        b.appendCodePoint(cp);
+                        // §16.3: a raw ill-formed byte refuses the read by name; a
+                        // silent U+FFFD would make two different texts one value.
+                        bad = true;
+                        if (rep.reason == null) {
+                            rep.reason = "string_not_utf8: <root>";
+                        }
+                        return null;
                     }
+                    b.appendCodePoint(cp);
                 }
             }
         }
@@ -2312,7 +2377,7 @@ public final class TableJson {
                 cp = (cp << 6) | (n & 0x3f);
             }
             p += want - 1;
-            if (want == 3 && cp < 0x800) {
+            if (want == 3 && (cp < 0x800 || (cp >= 0xd800 && cp <= 0xdfff))) {
                 return -1;
             }
             if (want == 4 && cp < 0x10000) {
@@ -2380,6 +2445,7 @@ public final class TableJson {
         // range and counting a genuinely fractional value as a kind mismatch
         // (never coerced), a value past the range as a clamp (§16.2).
         public long integer(boolean signed, long min, long max) {
+            rejected = false;
             boolean[] integral = new boolean[1];
             String tok = scanNumber(integral);
             if (bad) {
@@ -2423,12 +2489,14 @@ public final class TableJson {
                 if (signed) {
                     if (!Double.isFinite(d) || d != (double) (long) d) {
                         rep.kindMismatch++;
+                        rejected = true;
                         return 0;
                     }
                     v = (long) d;
                 } else {
                     if (!Double.isFinite(d) || Math.rint(d) != d) {
                         rep.kindMismatch++;
+                        rejected = true;
                         return 0;
                     }
                     if (d < 0.0) {
@@ -2467,11 +2535,27 @@ public final class TableJson {
             return v;
         }
 
+        // scanStored reads a string the walk PLACES in text storage (a string(N)
+        // or *string value, a text-list element, a map key). A stored string that
+        // decodes to U+0000 refuses the read (§16.3): no wire carries a zero in
+        // text. A string only compared or skipped goes through scanString.
+        public String scanStored() {
+            String s = scanString();
+            if (s != null && s.indexOf('\0') >= 0) {
+                bad = true;
+                if (rep.reason == null) {
+                    rep.reason = "text_holds_zero";
+                }
+                return null;
+            }
+            return s;
+        }
+
         // readString reads one string and clamps it at the bound, counting the
         // clamp (§16.2). The cut lands at a code point boundary, never through
         // a multi-byte character.
         public String readString(int bound) {
-            String s = scanString();
+            String s = scanStored();
             if (s == null) {
                 return "";
             }
@@ -3088,6 +3172,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	} else {
+		fmt.Fprintf(&b, "        report.rootTypeId = TYPE_ID;\n")
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
@@ -3129,7 +3214,12 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		// read either. So the walk runs on every load that has not refused:
 		// measureFields IS the oracle walk, and the load refuses exactly where
 		// loadMeasure answers -1, whatever the read reported.
-		fmt.Fprintf(&b, "        if (loadMeasure(data) < 0) { report.refused = true; return null; }\n")
+		fmt.Fprintf(&b, "        TableVariable.Measure measure = new TableVariable.Measure();\n")
+		fmt.Fprintf(&b, "        if (loadMeasure(data, measure) < 0) {\n")
+		fmt.Fprintf(&b, "            report.refused = true;\n")
+		fmt.Fprintf(&b, "            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
+		fmt.Fprintf(&b, "            return null;\n")
+		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
@@ -3408,7 +3498,7 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 		} else {
 			size, align = ir.ListElementLayout(u, f)
 		}
-		b.WriteString("        if (count < 0 || count > 0x7FFFFFFFL) { report.refused = true; return at; }\n")
+		b.WriteString("        if (count < 0 || count > 0x7FFFFFFFL) { report.refused = true; report.reason = \"count_refusal\"; return at; }\n")
 		b.WriteString("        long floor = 1;\n")
 		for _, k := range accepted {
 			floor := int64(ir.TableKindWidth(k))
@@ -3667,11 +3757,30 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            in.p++;\n")
 	for i, f := range st.Fields {
 		fmt.Fprintf(b, "            if (%q.equals(key)) {\n", jsonKey(f))
-		fmt.Fprintf(b, "                if (seenField[%d]) { in.rep.duplicate++; } seenField[%d] = true;\n", i, i)
+		fmt.Fprintf(b, "                boolean repeated = seenField[%d];\n", i)
+		fmt.Fprintf(b, "                if (repeated) { in.rep.duplicate++; } seenField[%d] = true;\n", i)
 		// §16.2: the wrong JSON type for the kind is skipped and counted
 		// kind_mismatch, never coerced; null goes to the field's own reader,
 		// which is where a `?T` and a pointer take their absence.
-		fmt.Fprintf(b, "                if (in.peek() != 'n' && !(%s)) { in.skipValue(); in.rep.kindMismatch++; } else {\n", variableJsonShape(f, "in.peek()"))
+		// PRESENCE OF THE KEY IS PRESENCE (§16.2): a `?T` whose value is the wrong
+		// shape is still present, at its defaults.
+		present := ""
+		if f.Type.Optional {
+			present = fmt.Sprintf(" v.%sPresent = true;", varMember(f))
+		}
+		fmt.Fprintf(b, "                if (in.peek() != 'n' && !(%s)) { in.skipValue(); in.rep.kindMismatch++;%s } else {\n", variableJsonShape(f, "in.peek()"), present)
+		// RE-ESTABLISHMENT HAPPENS ON PLACEMENT (§16.2): a repeat the walk takes
+		// replaces the first occurrence whole, at the field's defaults; only
+		// `null` on a field that takes it is a placement too.
+		// A scalar's read overwrites it whole, or leaves it standing when the
+		// value is rejected, so only the composites are reset first.
+		if f.KeyEnum == "" && !f.IsMap() && (f.Array != ir.ArrayNone || isStruct(f)) {
+			takesNull := "in.peek() != 'n'"
+			if f.Type.Optional || f.Type.Pointer {
+				takesNull = "true"
+			}
+			fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+		}
 		readJsonFieldValue(b, u, st, f)
 		b.WriteString("                }\n")
 		b.WriteString("            } else ")
@@ -3856,7 +3965,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			if un := variableUnion(f); un != nil {
 				// §16.2: an element of the wrong JSON shape is skipped and
 				// counted kind_mismatch, exactly as the field gate does.
-				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; } else { v.%s.add(%sVariable.readJson(in)); }\n", m, un.Name)
+				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); } else { v.%s.add(%sVariable.readJson(in)); }\n", m, un.Name, m, un.Name)
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
@@ -4058,7 +4167,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	m := varMember(f)
 	switch {
 	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "                if (in.peek() == '\"') { String text = in.scanString(); if (text != null) { char[] units = text.toCharArray(); if (!TableVariable.wideValid(units)) { in.rep.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, in.rep); } } } else { in.skipValue(); in.rep.kindMismatch++; }\n", m, m, f.Type.Size)
+		fmt.Fprintf(b, "                if (in.peek() == '\"') { String text = in.scanStored(); if (text != null) { char[] units = text.toCharArray(); if (!TableVariable.wideValid(units)) { in.rep.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, in.rep); } } } else { in.skipValue(); in.rep.kindMismatch++; }\n", m, m, f.Type.Size)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
@@ -4096,7 +4205,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                            // takes its label, so a reference reads null (§16.7).\n")
 		b.WriteString("                            in.rep.clamped++;\n")
 		b.WriteString("                            in.skipValue();\n")
-		b.WriteString("                        } else if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                        } else if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); }\n", m, target.Name)
 		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
 		b.WriteString("                        idx++;\n")
 		b.WriteString("                        ec = in.peek();\n")
@@ -4109,7 +4218,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		readJsonArrayValue(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
-		fmt.Fprintf(b, "                else if (in.peek() == '\"') { v.%s = in.scanString(); }\n", m)
+		fmt.Fprintf(b, "                else if (in.peek() == '\"') { v.%s = in.scanStored(); }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
@@ -4135,18 +4244,18 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                else if (in.peek() == 'f') { in.lit(\"false\"); v." + m + " = false; }\n")
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat32:
-		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.number32(); }\n", m)
+		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { float placed = in.number32(); if (!in.rejected) { v.%s = placed; } }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.number(); }\n", m)
+		fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { double placed = in.number(); if (!in.rejected) { v.%s = placed; } }\n", m)
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits:
 		min, max := jsonIntRange(f)
 		signed := f.Type.Signed && f.Type.Kind == ir.TInt
 		if f.Type.Width <= 32 {
-			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = (int) in.integer(%t, %s, %s); }\n", m, signed, min, max)
+			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { long placed = in.integer(%t, %s, %s); if (!in.rejected) { v.%s = (int) placed; } }\n", signed, min, max, m)
 		} else {
-			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { v.%s = in.integer(%t, %s, %s); }\n", m, signed, min, max)
+			fmt.Fprintf(b, "                if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) { long placed = in.integer(%t, %s, %s); if (!in.rejected) { v.%s = placed; } }\n", signed, min, max, m)
 		}
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TNamed:
@@ -4240,6 +4349,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			fmt.Fprintf(b, "                                    TableVariable.judge(idx, report, %sVariable.TYPE_ID);\n", f.Type.Ref.(*ir.Struct).Name)
 			for _, member := range []string{m, m + "Idx"} {
 				if f.Array == ir.ArrayFixed {
 					fmt.Fprintf(b, "                                    TableVariable.put(v.%s, (int) i, %s);\n", member, map[bool]string{true: "null", false: "idx"}[member == m])
@@ -4256,10 +4366,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			fmt.Fprintf(b, "                                    TableVariable.judge(idx, report, %sVariable.TYPE_ID);\n", f.Type.Ref.(*ir.Struct).Name)
 			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
-			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else { report.refused = true; if (n < 0 || n > 0x7FFFFFFFL) { report.reason = \"count_refusal\"; } }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -4308,7 +4419,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else { report.refused = true; if (n < 0 || n > 0x7FFFFFFFL) { report.reason = \"count_refusal\"; } }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -4316,7 +4427,14 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	case isScalarArray(f):
 		writeArrayFieldRead(b, u, st, f)
 	case f.Type.Blob() || (f.Type.Pointer && isStruct(f)):
-		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
+		target := "TableVariable.BYTES_ID"
+		switch {
+		case f.Type.Kind == ir.TString:
+			target = "TableVariable.STRING_ID"
+		case isStruct(f):
+			target = f.Type.Ref.(*ir.Struct).Name + "Variable.TYPE_ID"
+		}
+		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); TableVariable.judge(v.%sIdx, report, %s); }\n", m, m, target)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
@@ -4392,7 +4510,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	ek := variableElemWireKind(f)
 	cond := variableCompatibleKinds(ek, "ek")
-	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; } else {"
+	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; report.reason = \"count_refusal\"; } else {"
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
@@ -4874,20 +4992,20 @@ func writeVariableResolveField(b *strings.Builder, f *ir.Field) {
 	}
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, report); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, TableVariable.QUIET); }\n", m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, report); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, TableVariable.QUIET); }\n", m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (!v.%sIdx.isEmpty()) {\n", m)
 		fmt.Fprintf(b, "            v.%s.clear();\n", m)
 		fmt.Fprintf(b, "            for (Long idx : v.%sIdx) {\n", m)
-		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt.recs, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, report));\n", m, target.Name, target.Name)
+		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt.recs, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, TableVariable.QUIET));\n", m, target.Name, target.Name)
 		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, report); }\n", m, m, target.Name, m, target.Name)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, TableVariable.QUIET); }\n", m, m, target.Name, m, target.Name)
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        for (%sVariable.Value elem : v.%s) { if (elem != null) %sVariable.resolveNodes(elem, nt, root, rootTypeId, report); }\n", target.Name, m, target.Name)

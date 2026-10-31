@@ -416,9 +416,11 @@ jobs:
         run: make dist-goose
 
       # The Luau leg's pinned interpreter (make/luau.mk dist-luau), for its
-      # release wire-fuzz gate: the driver runs generated Luau under it.
+      # release gates: the wire-fuzz release gate's driver and
+      # tables-luau-release's wire fuzz and usage gate run generated Luau under
+      # it, and dist-luau refuses any archive whose sha256 is not the pin's.
       - name: install the Luau pin
-        if: matrix.target == 'tables-wire-fuzz-release-luau'
+        if: matrix.target == 'tables-wire-fuzz-release-luau' || matrix.target == 'tables-luau-release'
         run: make dist-luau
 
       - name: ${{ matrix.target }}

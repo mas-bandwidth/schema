@@ -412,6 +412,7 @@ public final class MixedPickupEventVariable {
             return null;
         }
         Value v = new Value();
+        report.rootTypeId = TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {
@@ -444,8 +445,12 @@ public final class MixedPickupEventVariable {
         if (report.refused) {
             return null;
         }
-        if (loadMeasure(data) < 0) {
+        TableVariable.Measure measure = new TableVariable.Measure();
+        if (loadMeasure(data, measure) < 0) {
             report.refused = true;
+            if (measure.report.reason != null) {
+                report.reason = measure.report.reason;
+            }
             return null;
         }
         resolveNodes(v, nt, v, TYPE_ID, report);
@@ -759,7 +764,8 @@ public final class MixedPickupEventVariable {
             }
             in.p++;
             if ("item_id".equals(key)) {
-                if (seenField[0]) {
+                boolean repeated = seenField[0];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[0] = true;
@@ -769,14 +775,18 @@ public final class MixedPickupEventVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.itemId = (int) in.integer(false, 0L, 0x3ffL);
+                        long placed = in.integer(false, 0L, 0x3ffL);
+                        if (!in.rejected) {
+                            v.itemId = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("amount".equals(key)) {
-                if (seenField[1]) {
+                boolean repeated = seenField[1];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[1] = true;
@@ -786,7 +796,10 @@ public final class MixedPickupEventVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.amount = (int) in.integer(true, 0, 255);
+                        long placed = in.integer(true, 0, 255);
+                        if (!in.rejected) {
+                            v.amount = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;

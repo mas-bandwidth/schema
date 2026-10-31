@@ -67,8 +67,7 @@ public final class MixedEventRow {
             info.armCount = 3;
             TableCookFieldInfo[] fields = new TableCookFieldInfo[3];
             fields[0] =
-                    TableCookFieldInfo
-                            .of(
+                    TableCookFieldInfo.of(
                                     "hit",
                                     "hit",
                                     4,
@@ -83,8 +82,7 @@ public final class MixedEventRow {
                                     () -> MixedHitEventRow.cookInfo())
                             .arm(1);
             fields[1] =
-                    TableCookFieldInfo
-                            .of(
+                    TableCookFieldInfo.of(
                                     "chat",
                                     "chat",
                                     4,
@@ -99,8 +97,7 @@ public final class MixedEventRow {
                                     () -> MixedChatEventRow.cookInfo())
                             .arm(2);
             fields[2] =
-                    TableCookFieldInfo
-                            .of(
+                    TableCookFieldInfo.of(
                                     "pickup",
                                     "pickup",
                                     4,

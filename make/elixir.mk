@@ -126,9 +126,10 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema \
 	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
 	tblscalars2:test/tables/Scalars2.schema \
-	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema
+	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
+	tblg1:test/tables/G1.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -293,6 +294,84 @@ tables-elixir-json-hostile-f32-negative-control: build/conformance-harness
 	@echo "elixir json-hostile f32 negative control: a stored float32 overflow reds exactly its two rows"
 
 test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
+
+# THE ELIXIR LEG's CONFORMANCE NEGATIVE CONTROLS (docs/PORTING.md I11): a
+# harness that has never gone red on a leg is not watching that leg. Each one
+# sabotages the table EMITTER through a Go overlay (ELIXIR_SABOTAGED_BUILD
+# below), regenerates and recompiles the whole corpus with that compiler, runs
+# the harness's Elixir leg against the sabotaged build in a work directory of
+# its own, and requires the matrix red on the surfaces that read the broken
+# code and green on the surfaces that do not, so the red is localized to the
+# defect and is never a build failure. Nothing tracked is written to.
+#   walk   (I11) the text reader stores the negation of every bool field:
+#          json-read red; json-write and wire green.
+#   shared (M6)  the pack walk's identity check is gone, so a node two
+#          pointers name is written twice: wire and json-read (whose
+#          answer is the saved wire) red; json-write and report green.
+#   label  (M14) the text writer never labels a shared node and writes it in
+#          full at every pointer: json-write red; json-read and wire green.
+#   ids    (M20) the id table is written in reverse first-use order while the
+#          body keeps its references: wire red; json-write green.
+#   arm    (M18) an arm header under another kind reads as the declared arm
+#          instead of a counted kind mismatch: report red; json-write green.
+#   order  (I7)  a byte-swapped block magic is no longer refused by name as a
+#          foreign order: block-reason red; block green.
+#   mapsort (M19) the writer sorts a map's entries DESCENDING: wire red;
+#          report green.
+ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
+ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if false and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
+ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if n < 2 do$$|    if true or n < 2 do|'
+ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
+ELIXIR_CONFORMANCE_ARM_SED    := -e 's| when byte_size(content) >= l and k == a.arm_kind ->| when byte_size(content) >= l ->|'
+ELIXIR_CONFORMANCE_MAPSORT_SED := -e 's~^    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)$$~    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end, :desc)~'
+ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|false -> {:error, :foreign_order}|'
+
+# $(call ELIXIR_CONFORMANCE_CONTROL,dir,emitter,sedvar,red surfaces,green surfaces,what)
+define ELIXIR_CONFORMANCE_CONTROL
+	$(call ELIXIR_SABOTAGED_BUILD,$(1),$(2),$(3))
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir \
+			--work $(1)/work > $(1)/log 2>&1; then \
+		cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) left the Elixir leg green"; exit 1; \
+	fi
+	@for s in $(4); do \
+		grep -qE "^$$s +FAIL" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) did not red $$s"; exit 1; }; \
+	done
+	@for s in $(5); do \
+		grep -qE "^$$s +pass" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) also broke $$s, which never runs the sabotaged code"; exit 1; }; \
+	done
+	@grep -E '^[a-z-]+ +(FAIL|pass)' $(1)/log
+	@echo "elixir conformance negative control: $(6) reds [$(4)] and leaves [$(5)] green"
+endef
+
+.PHONY: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
+	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
+	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
+	conformance-negative-control-elixir-mapsort
+conformance-negative-control-elixir-walk: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-walk,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WALK_SED,json-read,json-write wire,a text reader that negates every bool)
+
+conformance-negative-control-elixir-shared: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-shared,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_SHARED_SED,wire json-read,json-write report,a pack walk that writes a shared node twice)
+
+conformance-negative-control-elixir-label: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-label,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_LABEL_SED,json-write,json-read wire,a text writer that never labels a shared node)
+
+conformance-negative-control-elixir-ids: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-ids,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_IDS_SED,wire,json-write,an id table written in reverse first-use order)
+
+conformance-negative-control-elixir-arm: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-arm,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_ARM_SED,report,json-write,an arm header under another kind read as the declared arm)
+
+conformance-negative-control-elixir-order: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-order,internal/codegen/elixirtable/block.go,ELIXIR_CONFORMANCE_ORDER_SED,block-reason,block,a block reader that no longer names a foreign byte order)
+
+conformance-negative-control-elixir-mapsort: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-mapsort,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_MAPSORT_SED,wire,report,a map writer that sorts its entries descending)
+
+test-elixir: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
+	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
+	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
+	conformance-negative-control-elixir-mapsort
 
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
@@ -674,11 +753,79 @@ tables-elixir-alloc-runtime-negative-control:
 
 test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control
 
+# THE ELIXIR TABLES SOAK (docs/PORTING.md I9), test/elixir-soak/main.exs over
+# the derived manifest and the generated ebin: one PASS is one iteration of
+# every pinned case of the allocation audit above, TABLES_ELIXIR_SOAK_ITERATIONS
+# passes (a count, never a clock: `make shape-gate` refuses a timing primitive
+# outside the sanctioned bench), cut into samples of 200, the audit's own
+# window. Every sample is the audit's own measurement of every case, heap words
+# and binary calls, each held to its pinned budget in $(ELIXIR_ALLOC_BUDGET)
+# with the audit's slack; the VM's binary, ETS, persistent-term and atom drift
+# is printed beside it as the weaker instrument and bounds retention. The pin comes first, as in the audit. THE LENGTH CHECK rides
+# every run: the soak must report exactly the passes and samples its count
+# names, so a soak that ignored its count is red, not silently green. The
+# default count is the release act, about an hour on vision (a pass over the
+# pinned corpus is about 0.4 s there); `test-elixir` runs the
+# short form, two samples.
+TABLES_ELIXIR_SOAK_ITERATIONS ?= 9000
+ELIXIR_SOAK_SHORT := 400
+ELIXIR_SOAK_LOG := build/elixir-soak/log
+
+.PHONY: tables-elixir-soak tables-elixir-soak-short tables-elixir-soak-negative-control
+tables-elixir-soak: build/conformance/manifest.txt
+	$(MIX) format --check-formatted test/elixir-soak/main.exs
+	@mkdir -p $(dir $(ELIXIR_SOAK_LOG))
+	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-soak/main.exs \
+		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
+		$(TABLES_ELIXIR_SOAK_ITERATIONS) $(ELIXIR_ALLOC_BUDGET) > $(ELIXIR_SOAK_LOG) 2>&1; \
+		status=$$?; cat $(ELIXIR_SOAK_LOG); exit $$status
+	@grep -q "soak: worker ran $(TABLES_ELIXIR_SOAK_ITERATIONS) passes, driver took $$(( $(TABLES_ELIXIR_SOAK_ITERATIONS) / 200 )) samples" $(ELIXIR_SOAK_LOG) || \
+		{ echo "SOAK LENGTH FAILED: the soak did not run its $(TABLES_ELIXIR_SOAK_ITERATIONS) passes"; exit 1; }
+	@echo "tables Elixir soak: $(TABLES_ELIXIR_SOAK_ITERATIONS) passes, every sample inside the pinned allocation budget"
+
+tables-elixir-soak-short:
+	$(MAKE) tables-elixir-soak TABLES_ELIXIR_SOAK_ITERATIONS=$(ELIXIR_SOAK_SHORT)
+
+# THE SOAK'S NEGATIVE CONTROL: the emitter sabotage the audit's control plants
+# (ELIXIR_ALLOC_SED: every generated load builds sixteen refc binaries and a
+# thousand-cell list and drops them at once), a matched allocate-and-free per
+# pass that retains nothing. Two samples over four pinned cases keep it inside
+# the CI job's ceiling; the soak must go red on the count at both samples, and
+# the drift line must stay [PASS], which is what says the count saw what drift
+# cannot.
+CONFORMANCE_NEGATIVE_ELIXIR_SOAK := build/elixir-soak-negative
+ELIXIR_SOAK_CONTROL_CASES := root_full,archive,keyed_config,profile_elide
+
+tables-elixir-soak-negative-control: build/conformance/manifest.txt
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK),internal/codegen/elixirtable/variableform.go,ELIXIR_ALLOC_SED)
+	@if ELIXIR_SOAK_CASES=$(ELIXIR_SOAK_CONTROL_CASES) \
+			ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/ebin $(ELIXIR) test/elixir-soak/main.exs \
+			build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) 400 $(ELIXIR_ALLOC_BUDGET) \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a matched allocate-and-free per generated load left the soak green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; fi
+	@grep -q '^soak: 400 passes over 4 pinned cases' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the control did not soak its four cases"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
+	@[ "$$(grep -c '^SOAK FAILED: sample [12]: 4 cases' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log)" -eq 2 ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the count did not red all four cases at both samples"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
+	@grep -qE '^soak: drift .*\[PASS\]' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: drift went red too, so the control does not show the count seeing what drift cannot"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
+	@grep -m1 '^SOAK FAILED: sample' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log
+	@grep '^soak: drift' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log
+	@echo "elixir soak negative control: a matched allocate-and-free per load reds the count at both samples while drift stays silent"
+
+test-elixir: tables-elixir-soak-short tables-elixir-soak-negative-control
+
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Elixir
 # side. The page's cook example is pulled from docs/USAGE.md into a script that
 # reads the fixture cook and evaluates the fragment verbatim against the
 # compiled `graphdemo` modules — so a module name the packet emitter does not
 # write, the drift the register's measured effect names, goes red here.
+ELIXIR_USAGE_EBIN ?= build/elixir-tables-ebin
+
 .PHONY: tables-elixir-usage
 tables-elixir-usage: build/elixir-tables-ebin/.stamp build/cook-open/.stamp docs/USAGE.md
 	@rm -rf build/elixir-usage && mkdir -p build/elixir-usage
@@ -688,7 +835,91 @@ tables-elixir-usage: build/elixir-tables-ebin/.stamp build/cook-open/.stamp docs
 	printf '\nIO.puts("usage: docs/USAGE.md Elixir cook example opened the Scene cook and walked its chain")\n' >> build/elixir-usage/usage.exs
 	grep -q 'cook_open_scene' build/elixir-usage/usage.exs || \
 		{ echo "MISSING: docs/USAGE.md carries no elixir-table-usage example"; exit 1; }
-	$(ELIXIR) -pa build/elixir-tables-ebin build/elixir-usage/usage.exs $(CURDIR)/build/cook-open/Scene.cook
+	$(ELIXIR) -pa $(ELIXIR_USAGE_EBIN) build/elixir-usage/usage.exs $(CURDIR)/build/cook-open/Scene.cook
+
+# ITS NEGATIVE CONTROL (docs/PORTING.md I12), on the EMITTER for the fuzz
+# control's reason: the cook emitter renames the page's entry point
+# (cook_open_<table>/1), the corpus is rebuilt through that compiler, and the
+# page's example run against it must go red naming cook_open_scene. A gate that
+# ran something other than the page, or the committed corpus, would stay green.
+CONFORMANCE_NEGATIVE_ELIXIR_USAGE := build/elixir-usage-negative
+ELIXIR_USAGE_SED := -e 's|exDefDo("  ", "def cook_open_"+lo+"(data)"|exDefDo("  ", "def cook_open_renamed_"+lo+"(data)"|'
+
+.PHONY: tables-elixir-usage-negative-control
+tables-elixir-usage-negative-control: build/cook-open/.stamp docs/USAGE.md
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_USAGE),internal/codegen/elixirtable/cook.go,ELIXIR_USAGE_SED)
+	@if $(MAKE) --no-print-directory tables-elixir-usage ELIXIR_USAGE_EBIN=$(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/ebin \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log 2>&1; then \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log; \
+		echo "NEGATIVE CONTROL FAILED: the page's example ran against a corpus with no cook_open_scene/1"; exit 1; \
+	fi
+	@grep -q 'cook_open_scene' $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log || \
+		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log; echo "NEGATIVE CONTROL FAILED: the usage gate went red, but not on cook_open_scene"; exit 1; }
+	@echo "elixir usage negative control: a renamed cook entry point reds the page's example on cook_open_scene"
+
+test-elixir: tables-elixir-usage-negative-control
+
+# J2 (docs/PORTING.md) — THE RUNTIME HOME, Elixir side. A unit's shared runtime
+# modules are files named by the module, never by the schema file that sorts
+# first, so a file that sorts earlier relocates nothing: the runtime files
+# (ELIXIR_RUNTIME_HOME_FILES) are present and byte-identical across the two
+# trees, and the unit-level modules whose CONTENT is the unit's (the Table
+# descriptors, the build version, the view: ELIXIR_RUNTIME_HOME_NAMED) are
+# present under the same names in both. The gate
+# runs over the compiler ELIXIR_RUNTIME_HOME_SCHEMA so its control can run the
+# same recipe over a sabotaged one.
+ELIXIR_RUNTIME_HOME_SCHEMA ?= ./bin/schema
+ELIXIR_RUNTIME_HOME_DIR    ?= build/runtime-home-elixir
+ELIXIR_RUNTIME_HOME_FILES  := TableRuntime.ex BlockRuntime.ex CookRuntime.ex FixedRuntime.ex
+ELIXIR_RUNTIME_HOME_NAMED  := Table.ex BuildVersion.ex UnitView.ex
+
+.PHONY: tables-elixir-runtime-home
+tables-elixir-runtime-home: bin/schema
+	@rm -rf $(ELIXIR_RUNTIME_HOME_DIR) && mkdir -p $(ELIXIR_RUNTIME_HOME_DIR)/src
+	@cp tables/examples/*.schema $(ELIXIR_RUNTIME_HOME_DIR)/src/
+	@printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > $(ELIXIR_RUNTIME_HOME_DIR)/src/Aaa.schema
+	@$(ELIXIR_RUNTIME_HOME_SCHEMA) generate --lang elixir --out $(ELIXIR_RUNTIME_HOME_DIR)/base tables/examples > /dev/null 2>&1
+	@$(ELIXIR_RUNTIME_HOME_SCHEMA) generate --lang elixir --out $(ELIXIR_RUNTIME_HOME_DIR)/added $(ELIXIR_RUNTIME_HOME_DIR)/src > /dev/null 2>&1
+	@for n in $(ELIXIR_RUNTIME_HOME_NAMED); do \
+		for tree in base added; do \
+			test -f $(ELIXIR_RUNTIME_HOME_DIR)/$$tree/$$n || \
+				{ echo "RUNTIME HOME GATE FAILED: the $$tree tree has no $$n (a unit-level module is named by the module, not by a schema file)"; ls $(ELIXIR_RUNTIME_HOME_DIR)/$$tree; exit 1; }; \
+		done; \
+	done
+	@for n in $(ELIXIR_RUNTIME_HOME_FILES); do \
+		for tree in base added; do \
+			test -f $(ELIXIR_RUNTIME_HOME_DIR)/$$tree/$$n || \
+				{ echo "RUNTIME HOME GATE FAILED: the $$tree tree has no $$n (a runtime module is named by the module, not by a schema file)"; ls $(ELIXIR_RUNTIME_HOME_DIR)/$$tree; exit 1; }; \
+		done; \
+		cmp -s $(ELIXIR_RUNTIME_HOME_DIR)/base/$$n $(ELIXIR_RUNTIME_HOME_DIR)/added/$$n || \
+			{ echo "RUNTIME HOME GATE FAILED: the runtime file $$n changed when the unit gained an earlier-sorting file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Elixir): $(ELIXIR_RUNTIME_HOME_FILES) stay where they are and byte-identical, and $(ELIXIR_RUNTIME_HOME_NAMED) keep their names, when an earlier-sorting file joins the unit"
+
+# Its NEGATIVE CONTROL: put the file-order rule back (the table runtime named
+# by the file that sorts first, ir.ProtocolIdHome) and the gate, run over that
+# compiler, must go red on TableRuntime.ex.
+.PHONY: tables-elixir-runtime-home-negative-control
+tables-elixir-runtime-home-negative-control: bin/schema
+	@mkdir -p build/elixir-runtime-home-negative
+	@sed 's|out\[TableRuntimeModule+".ex"\] = tableRuntimeModule(u, ns)|out[ir.ProtocolIdHome(u)+TableRuntimeModule+".ex"] = tableRuntimeModule(u, ns) // SABOTAGED: back to the file order|' \
+		internal/codegen/elixirtable/elixirtable.go > build/elixir-runtime-home-negative/elixirtable.go.txt
+	@grep -q SABOTAGED build/elixir-runtime-home-negative/elixirtable.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/elixirtable.go":"%s/build/elixir-runtime-home-negative/elixirtable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-runtime-home-negative/overlay.json
+	go build -overlay=build/elixir-runtime-home-negative/overlay.json -o build/elixir-runtime-home-negative/schema ./cmd/schema
+	@if $(MAKE) --no-print-directory tables-elixir-runtime-home \
+			ELIXIR_RUNTIME_HOME_SCHEMA=build/elixir-runtime-home-negative/schema \
+			ELIXIR_RUNTIME_HOME_DIR=build/elixir-runtime-home-negative/tree > build/elixir-runtime-home-negative/log 2>&1; then \
+		cat build/elixir-runtime-home-negative/log; \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule left the runtime home gate green"; exit 1; \
+	fi
+	@grep -q 'TableRuntime.ex' build/elixir-runtime-home-negative/log || \
+		{ cat build/elixir-runtime-home-negative/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on TableRuntime.ex"; exit 1; }
+	@echo "runtime home negative control (Elixir): the file-order rule moves TableRuntime.ex and reds the gate"
+
+test-elixir: tables-elixir-runtime-home tables-elixir-runtime-home-negative-control
 
 # THE ELIXIR RELEASE GATE (certify.yml's release-gates job finds it BY NAME, so
 # landing it is this target and nothing else — no edit to that file).
@@ -829,7 +1060,7 @@ test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots'
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundClampsBeforeReadingElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-variable-class
@@ -1270,7 +1501,7 @@ tables-elixir-message-batch:
 # THE MESSAGE SURFACE ON THE HARNESS (test/conformance/README.md, "The
 # surfaces"; docs/SPEC-TABLES.md §3.3): the driver answers every manifest
 # `message` row whose root is a fixed table, byte-equal to the C++ reference's
-# golden, and writes graph_tree.absent (its root Scene is a plain `table`, which
+# golden, and writes graph_tree.absent (its root Scene is a variable table, which
 # the form refuses by name). TestMessageFormConformanceElixir's harness clause
 # runs `./build/conformance-harness run --only elixir` over the built leg; the
 # target arms SCHEMA_REQUIRE_CORPUS=1 and reds on any `--- SKIP`.
@@ -1482,7 +1713,7 @@ test-elixir: cards-elixir-retain-fuzz
 # ELIXIR_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved. The absent check
 # runs before the harness status is read, so a red run still names them. The
 # --retain arm of this roster is its own gate.
-ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 33
+ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 32
 ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
 .PHONY: tables-elixir-wire-fuzz-all
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
@@ -1672,3 +1903,18 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 	@echo "Elixir UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
 test-elixir: tables-elixir-view
+
+# THE FRAMING SURFACE, its Elixir leg (docs/LAYERS/1-framing.md): the Elixir
+# driver answers every framing row and passes it, none absent
+# (test/conformance/framing/gate). Its negative control takes the id table's
+# 4096-entry cap out of the emitter's open (§3, THE DISTINCTNESS CHECK; rule
+# F6), rebuilds the corpus, and requires framing RED while report stays green.
+ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|'
+.PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
+conformance-elixir-framing: build/conformance-harness build-conformance-elixir
+	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
+conformance-negative-control-elixir-framing: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries read as legal)
+	@grep -q "elixir / framing: frame_entries_4097:" build/elixir-conformance-negative-framing/log || \
+		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on frame_entries_4097"; exit 1; }
+test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing

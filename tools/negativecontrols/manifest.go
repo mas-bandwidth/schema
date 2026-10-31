@@ -79,6 +79,11 @@ type Group struct {
 	// Squirrel is the pinned interpreter's version (make/squirrel.mk builds
 	// it with `make dist-squirrel`); the row's install step keys on it.
 	Squirrel string `json:"squirrel,omitempty"`
+	// ClangFormat says the row needs the pinned clang-format (make/c.mk's
+	// CLANG_FORMAT_PIN), which the row installs from PyPI as ci-fast's C and
+	// C++ legs do. Like dotnet it is a marker, "pin", and never a version: the
+	// version lives in make/c.mk alone.
+	ClangFormat string `json:"clang_format,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -205,20 +210,21 @@ func (m Manifest) tiers() []string {
 // hundred-target line out of the matrix value.
 func (m Manifest) matrix(when string) ([]byte, error) {
 	type row struct {
-		Name     string `json:"name"`
-		Rust     string `json:"rust"`
-		Dotnet   string `json:"dotnet"`
-		Node     string `json:"node"`
-		Dart     string `json:"dart"`
-		Java     string `json:"java"`
-		OTP      string `json:"otp"`
-		Elixir   string `json:"elixir"`
-		Lua      string `json:"lua"`
-		Luau     string `json:"luau"`
-		Golangci string `json:"golangci"`
-		Moo      string `json:"moo"`
-		Lobster  string `json:"lobster"`
-		Squirrel string `json:"squirrel"`
+		Name        string `json:"name"`
+		Rust        string `json:"rust"`
+		Dotnet      string `json:"dotnet"`
+		Node        string `json:"node"`
+		Dart        string `json:"dart"`
+		Java        string `json:"java"`
+		OTP         string `json:"otp"`
+		Elixir      string `json:"elixir"`
+		Lua         string `json:"lua"`
+		Luau        string `json:"luau"`
+		Golangci    string `json:"golangci"`
+		Moo         string `json:"moo"`
+		Lobster     string `json:"lobster"`
+		Squirrel    string `json:"squirrel"`
+		ClangFormat string `json:"clang_format"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -229,20 +235,21 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			continue
 		}
 		rows = append(rows, row{
-			Name:     g.Name,
-			Rust:     g.Rust,
-			Dotnet:   g.Dotnet,
-			Node:     g.Node,
-			Dart:     g.Dart,
-			Java:     g.Java,
-			OTP:      g.OTP,
-			Elixir:   g.Elixir,
-			Lua:      g.Lua,
-			Luau:     g.Luau,
-			Golangci: g.Golangci,
-			Moo:      g.Moo,
-			Lobster:  g.Lobster,
-			Squirrel: g.Squirrel,
+			Name:        g.Name,
+			Rust:        g.Rust,
+			Dotnet:      g.Dotnet,
+			Node:        g.Node,
+			Dart:        g.Dart,
+			Java:        g.Java,
+			OTP:         g.OTP,
+			Elixir:      g.Elixir,
+			Lua:         g.Lua,
+			Luau:        g.Luau,
+			Golangci:    g.Golangci,
+			Moo:         g.Moo,
+			Lobster:     g.Lobster,
+			Squirrel:    g.Squirrel,
+			ClangFormat: g.ClangFormat,
 		})
 	}
 	return json.Marshal(struct {

@@ -81,7 +81,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        int[] path = new int[128];\n")
 	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	b.WriteString("        if (r == null) { return null; }\n")
-	b.WriteString("        retain.used = 0; retain.idUsed = 0;\n")
+	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
 	if st.FixedDeclared {
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, null, retain, report, path, 0);\n")
@@ -89,6 +89,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	} else {
+		fmt.Fprintf(&b, "        report.rootTypeId = %sVariable.TYPE_ID;\n", st.Name)
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);\n")
 		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
 		b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
@@ -96,11 +97,29 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "                    rec.table = %sVariable.createNode(rec.typeId);\n", st.Name)
 		b.WriteString("                    if (rec.table == null) { report.unknown++; report.retainLost++; rec.typeId = 0; }\n")
 		b.WriteString("                }\n            }\n")
-		b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
-		fmt.Fprintf(&b, "                if (rec.table != null) { %sVariable.decodeNodeBody(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, report); }\n", st.Name)
+		// A NODE BODY RETAINS LIKE THE ROOT'S (§6.6: "in the root body and in
+		// every node record"): its unknown fields are captured under the node's
+		// own path, keyed by its index in the writer's node table.
+		b.WriteString("            int[] np = new int[128];\n")
+		b.WriteString("            for (int i = 0; i < nt.recs.length; i++) {\n")
+		b.WriteString("                TableVariable.NodeRecord rec = nt.recs[i];\n")
+		b.WriteString("                if (rec.table == null) { continue; }\n")
+		b.WriteString("                retain.nodeKeys.put(rec.table, i);\n")
+		b.WriteString("                np[0] = -(i + 1); np[1] = 0;\n")
+		b.WriteString("                decodeNodeBodyRetain(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, retain, report, np);\n")
 		b.WriteString("            }\n        }\n")
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
 		b.WriteString("        if (report.refused) { return null; }\n")
+		// THE SAME FRAMING WALK the plain load runs after its read: a load refuses
+		// exactly where loadMeasure answers -1 (docs/SPEC-TABLES.md §6.5), so a
+		// container whose count its framing cannot cover is refused whole here
+		// too, never retained around (§6.6).
+		b.WriteString("        TableVariable.Measure measure = new TableVariable.Measure();\n")
+		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure) < 0) {\n", st.Name)
+		b.WriteString("            report.refused = true;\n")
+		b.WriteString("            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
+		b.WriteString("            return null;\n")
+		b.WriteString("        }\n")
 		fmt.Fprintf(&b, "        %sVariable.resolveNodes(v, nt, report);\n", st.Name)
 		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); }\n", st.Name, st.Name)
@@ -108,6 +127,20 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	}
+
+	// THE NODE BODY DISPATCH of the retaining pair: a node record's body read
+	// and written through its own type's retaining walk at depth 1, under the
+	// node's path (§6.6).
+	b.WriteString("    static void decodeNodeBodyRetain(TableVariable.Reader r, Object val, long typeId, TableRetain retain, TableVariable.Report report, int[] path) {\n")
+	for _, t := range cardVariableTables(u) {
+		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sRetain.readFieldsRetain(r, (%sVariable.Value) val, null, retain, report, path, 1); return; }\n", t.Name, t.Name, t.Name)
+	}
+	b.WriteString("    }\n\n")
+	b.WriteString("    static void writeNodeBodyRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, Object val, long typeId, TableRetain retain, TableVariable.Report report, int[] path) {\n")
+	for _, t := range cardVariableTables(u) {
+		fmt.Fprintf(&b, "        if (typeId == %sVariable.TYPE_ID) { %sRetain.writeFieldsRetain(w, nodes, (%sVariable.Value) val, retain, report, path, 1); emitTail(w, retain, report, path, 1); return; }\n", t.Name, t.Name, t.Name)
+	}
+	b.WriteString("    }\n\n")
 
 	// readFieldsRetain: the variable readFields, with capture in the unknown arm
 	// and the body's path threaded into list elements (§6.6).
@@ -225,12 +258,23 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("                    }\n")
 	b.WriteString("                } else {\n")
 	b.WriteString("                    int body = w.off;\n")
-	fmt.Fprintf(&b, "                    %sVariable.writeNodeBody(w, nodes, value, typeId);\n", st.Name)
+	b.WriteString("                    Integer key = retain == null ? null : retain.nodeKeys.get(value);\n")
+	b.WriteString("                    if (key != null) { path[0] = -(key + 1); path[1] = 0; writeNodeBodyRetain(w, nodes, value, typeId, retain, report, path); }\n")
+	fmt.Fprintf(&b, "                    else { %sVariable.writeNodeBody(w, nodes, value, typeId); }\n", st.Name)
 	b.WriteString("                    w.put8(0);\n")
 	b.WriteString("                    w.frame(body);\n")
 	b.WriteString("                }\n")
 	b.WriteString("            }\n")
 	b.WriteString("            w.frameField(table, nodeRef, 12);\n")
+	b.WriteString("        }\n")
+	// A RECORD WHOSE PATH NAMES NO BODY at save is one retain_lost (§6.6, THE
+	// REPORT): the walk above marked every record a body claimed, and the rest
+	// are counted here and the marks cleared, so a second save counts again.
+	b.WriteString("        if (retain != null) {\n")
+	b.WriteString("            for (int at = 0; at < retain.used; at += get32(retain.bytes, at)) {\n")
+	b.WriteString("                if ((retain.bytes[at + 4] & 0x80) == 0) { if (report != null) { report.retainLost++; } }\n")
+	b.WriteString("                else { retain.bytes[at + 4] &= 0x7f; }\n")
+	b.WriteString("            }\n")
 	b.WriteString("        }\n")
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
@@ -268,10 +312,11 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        int at = 0;\n")
 	b.WriteString("        while (at < retain.used) {\n")
 	b.WriteString("            int len = get32(retain.bytes, at);\n")
-	b.WriteString("            int d = retain.bytes[at + 4] & 0xff;\n")
+	b.WriteString("            int d = retain.bytes[at + 4] & 0x7f;\n")
 	b.WriteString("            boolean match = d == depth;\n")
 	b.WriteString("            for (int k = 0; match && k < d; k++) { if (get32(retain.bytes, at + 5 + 8 * k) != path[2 * k] || get32(retain.bytes, at + 9 + 8 * k) != path[2 * k + 1]) { match = false; } }\n")
 	b.WriteString("            if (match) {\n")
+	b.WriteString("                retain.bytes[at + 4] |= (byte) 0x80; // placed, or counted lost below\n")
 	b.WriteString("                int hdr = 14 + 8 * d;\n")
 	b.WriteString("                long id = get64(retain.bytes, at + 5 + 8 * d);\n")
 	b.WriteString("                int kind = retain.bytes[at + 13 + 8 * d] & 0xff;\n")
@@ -361,7 +406,21 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
 		return
 	}
-	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
+	// A SCALAR LEAF is the variable codec's own write, which elides the
+	// DECLARED default (docs/SPEC-TABLES.md §4.2): a retaining save that tested
+	// against zero instead wrote `build int32 = 1` at 1 where the engine elides it.
+	_, isEnum := f.Type.Ref.(*ir.Enum)
+	// a FLAGS field is a scalar leaf too: the switch below has no arm for it,
+	// so a retaining save that fell through wrote nothing for a set of flags
+	// off its declared default
+	_, isFlags := f.Type.Ref.(*ir.Flags)
+	scalar := f.Array == ir.ArrayNone && (f.Type.Kind == ir.TBool || f.Type.Kind == ir.TInt || isEnum || isFlags ||
+		(f.Type.Kind == ir.TString && !f.Type.Blob()))
+	// AN ARRAY OF SCALARS carries no body and so no retained tail: it is the
+	// codec's own write too, which elides a fixed array that holds only its
+	// defaults where a hand-written copy wrote it whole (map_cells, kind #261)
+	scalar = scalar || isScalarArray(f)
+	if scalar || (!isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f)) {
 		var body strings.Builder
 		writeFieldSave(&body, u, st, f)
 		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
@@ -372,29 +431,10 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		fmt.Fprintf(b, "        if(v.%s!=null){int mark=w.ids.count;long ref=w.ref(%s);TableVariable.Writer sw=w.sub(new byte[1<<20]);path[2*depth]=%d;path[2*depth+1]=0;%sRetain.writeBodyRetain(sw,nodes,v.%s,retain,report,path,depth+1);if(sw.off>1){w.putLeb(ref);w.put8(13);w.putLeb(sw.off);w.putBytes(sw.buf,0,sw.off);}else w.ids.count=mark;}\n", m, fieldRef, ordinal, f.Type.Name, m)
 	case f.Type.Kind == ir.TWString:
 		fmt.Fprintf(b, "        if (v.%s.length != 0) { w.putLeb(w.ref(%s)); w.put8(33); w.putLeb(v.%s.length * 2L); for (char c : v.%s) { w.put8(c); w.put8(c >>> 8); } }\n", m, fieldRef, m, m)
-	case isScalarArray(f):
-		writeArrayFieldSaveRef(b, f, fieldRef)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.index(v.%s)); }\n", m, fieldRef, m)
-	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", m, m, fieldRef)
-	case f.Type.Kind == ir.TBool:
-		fmt.Fprintf(b, "        if (v.%s) { w.putLeb(w.ref(%s)); w.put8(1); w.put8(1); }\n", m, fieldRef)
-	case f.Type.Kind == ir.TInt && f.Type.Width <= 32:
-		k := variableWireKind(f)
-		fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(%d); w.put%d(v.%s); }\n", m, fieldRef, k, ir.TableKindWidth(k)*8, m)
-	case f.Type.Kind == ir.TInt:
-		k := variableWireKind(f)
-		fmt.Fprintf(b, "        if (v.%s != 0L) { w.putLeb(w.ref(%s)); w.put8(%d); w.put64(v.%s); }\n", m, fieldRef, k, m)
 	case f.Type.Kind == ir.TNamed:
-		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
-			fmt.Fprintf(b, "        if (v.%s != 0) {\n            w.putLeb(w.ref(%s));\n            w.put8(30);\n            switch (v.%s) {\n", m, fieldRef, m)
-			for i := range enum.Variants {
-				fmt.Fprintf(b, "                case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
-			}
-			b.WriteString("                default: w.putLeb(0); break;\n")
-			b.WriteString("            }\n        }\n")
-		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
+		if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
 			// EVERY ARRAY OF TABLES — unbounded, counted or fixed — is kind 14
 			// over element bodies, and each element body carries its own
 			// retained tail (§6.6). A fixed array is written whole, as the
@@ -450,6 +490,12 @@ public final class TableRetain {
     public int idCapacity;
     public int used;
     public int idUsed;
+    // THE NODE RECORDS a retaining load read, by the record's index in the
+    // writer's node table: a node body's retained fields carry the path
+    // (-(index + 1), 0), and the save finds a node's index by its object, since
+    // the save renumbers the graph from its own edges (§3.1, §6.6). Reset by
+    // every retaining load.
+    final java.util.IdentityHashMap<Object, Integer> nodeKeys = new java.util.IdentityHashMap<>();
 
     // §6.6: an accepted replacement discards the old body's retained tail,
     // including descendants, without moving either cumulative report counter.

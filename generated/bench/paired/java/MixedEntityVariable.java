@@ -954,6 +954,7 @@ public final class MixedEntityVariable {
             return null;
         }
         Value v = new Value();
+        report.rootTypeId = TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {
@@ -986,8 +987,12 @@ public final class MixedEntityVariable {
         if (report.refused) {
             return null;
         }
-        if (loadMeasure(data) < 0) {
+        TableVariable.Measure measure = new TableVariable.Measure();
+        if (loadMeasure(data, measure) < 0) {
             report.refused = true;
+            if (measure.report.reason != null) {
+                report.reason = measure.report.reason;
+            }
             return null;
         }
         resolveNodes(v, nt, v, TYPE_ID, report);
@@ -1459,7 +1464,8 @@ public final class MixedEntityVariable {
             }
             in.p++;
             if ("entity_id".equals(key)) {
-                if (seenField[0]) {
+                boolean repeated = seenField[0];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[0] = true;
@@ -1469,14 +1475,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.entityId = (int) in.integer(false, 0L, 0xfffL);
+                        long placed = in.integer(false, 0L, 0xfffL);
+                        if (!in.rejected) {
+                            v.entityId = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("pos_x".equals(key)) {
-                if (seenField[1]) {
+                boolean repeated = seenField[1];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[1] = true;
@@ -1486,14 +1496,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.posX = (int) in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, -16383, 16383);
+                        if (!in.rejected) {
+                            v.posX = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("pos_y".equals(key)) {
-                if (seenField[2]) {
+                boolean repeated = seenField[2];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[2] = true;
@@ -1503,14 +1517,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.posY = (int) in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, -16383, 16383);
+                        if (!in.rejected) {
+                            v.posY = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("pos_z".equals(key)) {
-                if (seenField[3]) {
+                boolean repeated = seenField[3];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[3] = true;
@@ -1520,14 +1538,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.posZ = (int) in.integer(true, -16383, 16383);
+                        long placed = in.integer(true, -16383, 16383);
+                        if (!in.rejected) {
+                            v.posZ = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("yaw".equals(key)) {
-                if (seenField[4]) {
+                boolean repeated = seenField[4];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[4] = true;
@@ -1537,14 +1559,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.yaw = (int) in.integer(false, 0L, 0x1ffL);
+                        long placed = in.integer(false, 0L, 0x1ffL);
+                        if (!in.rejected) {
+                            v.yaw = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("pitch".equals(key)) {
-                if (seenField[5]) {
+                boolean repeated = seenField[5];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[5] = true;
@@ -1554,14 +1580,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.pitch = (int) in.integer(false, 0L, 0x1ffL);
+                        long placed = in.integer(false, 0L, 0x1ffL);
+                        if (!in.rejected) {
+                            v.pitch = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("vel_x".equals(key)) {
-                if (seenField[6]) {
+                boolean repeated = seenField[6];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[6] = true;
@@ -1571,14 +1601,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.velX = (int) in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, -2048, 2047);
+                        if (!in.rejected) {
+                            v.velX = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("vel_y".equals(key)) {
-                if (seenField[7]) {
+                boolean repeated = seenField[7];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[7] = true;
@@ -1588,14 +1622,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.velY = (int) in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, -2048, 2047);
+                        if (!in.rejected) {
+                            v.velY = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("vel_z".equals(key)) {
-                if (seenField[8]) {
+                boolean repeated = seenField[8];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[8] = true;
@@ -1605,14 +1643,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.velZ = (int) in.integer(true, -2048, 2047);
+                        long placed = in.integer(true, -2048, 2047);
+                        if (!in.rejected) {
+                            v.velZ = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("health".equals(key)) {
-                if (seenField[9]) {
+                boolean repeated = seenField[9];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[9] = true;
@@ -1622,14 +1664,18 @@ public final class MixedEntityVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.health = (int) in.integer(true, 0, 1000);
+                        long placed = in.integer(true, 0, 1000);
+                        if (!in.rejected) {
+                            v.health = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("weapon".equals(key)) {
-                if (seenField[10]) {
+                boolean repeated = seenField[10];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[10] = true;
@@ -1681,7 +1727,8 @@ public final class MixedEntityVariable {
                     }
                 }
             } else if ("damage".equals(key)) {
-                if (seenField[11]) {
+                boolean repeated = seenField[11];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[11] = true;
@@ -1707,7 +1754,8 @@ public final class MixedEntityVariable {
                     }
                 }
             } else if ("moving".equals(key)) {
-                if (seenField[12]) {
+                boolean repeated = seenField[12];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[12] = true;
@@ -1727,7 +1775,8 @@ public final class MixedEntityVariable {
                     }
                 }
             } else if ("firing".equals(key)) {
-                if (seenField[13]) {
+                boolean repeated = seenField[13];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[13] = true;

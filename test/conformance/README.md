@@ -161,11 +161,11 @@ One process per surface, so a runtime starts once rather than once per case.
 | surface | for each | the driver writes | the harness compares against |
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
-| `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes | the message-form golden |
+| `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes; for a row whose message-form wire is `-` (a variable table), `<name>.absent` holding `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)` | the message-form golden, or that exact reason |
 | `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n` | `reports.txt` |
 | `framing` | `framing` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value unless the row says `no-value` or the read was refused | the verdict and the value file on the row (docs/LAYERS/1-framing.md) |
-| `retain` | `retain`, `retain-message` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
-| `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES, one body after another | the pinned saves, back to back |
+| `retain` | `retain` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
+| `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
 | `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n`, or `refused\n` | the verdict in the manifest, or the row's uncarried verdict for an exempt port |
@@ -227,10 +227,8 @@ reference answers both surfaces and the eight ports print ABSENT**, which is the
 same absence the `message` and `wire` surfaces already carry one grain up: a
 port carries no retention at all, so `LoadRetain`, `MeasureRetain` and
 `SaveRetain` are a missing FEATURE and not a failing test, and §6.6's own
-backend status says so. A `retain-message` row needs the form-2 read beside
-them, which no port has either, and its capacity is `full` only: `short` is one
-buffer's rule, a batch takes one buffer a body, and the manifest loader refuses
-the pair by name rather than let each leg read it its own way (schema#681).
+backend status says so. Retention is the variable form's alone: the message
+form is fixed tables only (§3.3), so no row retains over a message.
 
 **`cook-write` IS THE ONE SURFACE WHERE A LANGUAGE WRITES AN ACCELERATOR RATHER
 THAN READING ONE, and the expectation is the TOOL's file.** Every other cook

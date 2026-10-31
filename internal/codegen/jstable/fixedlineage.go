@@ -107,6 +107,19 @@ func jsFixedUnitRoots(u *ir.Unit) []*ir.Struct {
 	return ir.TableFixedJSUnitRoots(u)
 }
 
+// jsMessageUnitRoots is every message-form root of a unit, in file order: a
+// fixed-form root that is a DECLARED fixed table. The message form is fixed
+// tables only (docs/SPEC-TABLES.md §3.3).
+func jsMessageUnitRoots(u *ir.Unit) []*ir.Struct {
+	var out []*ir.Struct
+	for _, st := range jsFixedUnitRoots(u) {
+		if st.FixedDeclared {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
 // ---------------------------------------------------------------------------
 // A HANDED ENTRY THAT IS A LOCK BUG FAILS THE BUILD (§5.9 #8, §5.9 #26)
 // ---------------------------------------------------------------------------

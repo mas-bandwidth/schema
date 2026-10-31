@@ -82,13 +82,7 @@ static partial class Program
         byte[] graphWire = ReadGolden("graph_shared");
         var graph = new Graphdemo.Scene(); var graphReport = new Graphdemo.TableReport();
         Graphdemo.Schema.SceneLoad(graph,graphWire,graphReport);
-        var graphBatch = new[] {graph}; byte[] graphMessage = new byte[Graphdemo.Schema.SceneMeasureMessages(graphBatch)];
-        Graphdemo.Schema.SceneSaveMessages(graphBatch,graphMessage);
-        var graphVocabulary = new Graphdemo.TableVocabulary();
-        Graphdemo.Schema.AnnounceRead(graphVocabulary,Graphdemo.Schema.Announce(),graphReport);
-        Check(Graphdemo.Schema.SceneLoadMeasure(graphWire) == Graphdemo.Schema.SceneLoadMeasure(graphVocabulary,graphMessage),"file and message measure the same graph region");
         Check(MeasureCalls(() => { Graphdemo.Schema.SceneLoadMeasure(graphWire); }) == 0,"variable file LoadMeasure allocates zero");
-        Check(MeasureCalls(() => { Graphdemo.Schema.SceneLoadMeasure(graphVocabulary,graphMessage); }) == 0,"variable message LoadMeasure allocates zero");
 
         var keyed=new Tabledemo.KeyedConfig(); keyed.Teams[(int)Tabledemo.Team.Red].SpawnCount=9;
         var keyedBatch=new[] {keyed}; byte[] keyedMessage=new byte[Tabledemo.Schema.KeyedConfigMeasureMessages(keyedBatch)];

@@ -32,7 +32,7 @@ local surface = args[1]
 local GENERATED = "build/conformance-luau"
 
 local SURFACES = {
-	"wire", "message", "report", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
 	"cook-forgery", "cook-reason", "block-reason",
 }
@@ -244,6 +244,37 @@ local function surfaceReport(lines: { { string } })
 	end
 end
 
+-- THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+-- `report` surface prints it, then the §16 text of the value the read left,
+-- unless the row says `no-value` or the read was refused. Damaged input is
+-- discarded whole (docs/SPEC-TABLES.md §4): the leg owes the refusal and
+-- nothing else. A line is `framing <case> <unit> <root> <wire> [no-value]`.
+local function surfaceFraming(lines: { { string } })
+	for _, f in kind(lines, "framing") do
+		local u = unit(f[3])
+		if u == nil or rootOf(u, f[4]) == nil then
+			say(f[2], nil)
+		else
+			local r = report()
+			local v = u.load.loadTolerant(f[4], file(f[5]), r)
+			local refused = r.refused > 0
+			local malformed = r.malformed or (v == nil and not refused)
+			local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
+				r.unknown, r.kindMismatch, r.widened, r.clamped,
+				r.duplicate, tostring(malformed), refused and "refused" or "read")
+			if v ~= nil and not refused and not malformed and f[6] ~= "no-value" then
+				local jr = report()
+				local json = u.json.ToJson(f[4], v, jr)
+				if json == nil then
+					error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
+				end
+				text ..= buffer.tostring(json)
+			end
+			sayText(f[2], text)
+		end
+	end
+end
+
 -- ---- THE TEXT FORM (docs/SPEC-TABLES.md §16, §16.7) ------------------------
 --
 -- json-read lands the committed text (testdata/conformance/tables/json/
@@ -322,15 +353,12 @@ end
 -- RULE: `short` is ONE BYTE SHORT OF THE LAST RECORD this port wrote, so the
 -- row loads once at a roomy capacity, reads what its own store used, and loads
 -- again one byte under that. The id list's capacity is a COUNT and travels as
--- one. A retain-message row's root is a plain `table` (RT1's Node), which
--- carries no message verbs (§3.3), so it is absent and the reason says so.
+-- one.
 local function surfaceRetain(lines: { { string } }, saves: boolean)
 	local capacityBytes = 1048576
 	local fullIds = 131072
 	for _, f in lines do
-		if f[1] == "retain-message" then
-			print(f[2] .. " absent plain table: docs/SPEC-TABLES.md §3.3")
-		elseif f[1] == "retain" then
+		if f[1] == "retain" then
 			-- retain <case> <unit> <root> <wire> <capacity> <ids>
 			local u = unit(f[3])
 			if u == nil or rootOf(u, f[4]) == nil then
@@ -428,6 +456,8 @@ end
 -- PLURAL: LoadMessages the batch, MeasureMessages and SaveMessages the bodies
 -- it found, the bytes. A line is `message <name> <connection> <root> <file
 -- wire> <message wire>`, a connection `connection <key> <unit> <build> <wire>`.
+-- A root that is a variable table carries no message form (§3.3): a named
+-- absence.
 local function surfaceMessage(lines: { { string } })
 	local connections: { [string]: { string } } = {}
 	for _, c in kind(lines, "connection") do
@@ -440,8 +470,14 @@ local function surfaceMessage(lines: { { string } })
 		end
 		local u = unit(conn[3])
 		local M = u and optional(u, "schema_message")
-		if u == nil or M == nil or rootOf(u, f[4]) == nil then
+		local d = if u ~= nil then rootOf(u, f[4]) else nil
+		if f[6] == "-" then
+			-- a named refusal row: the root is a variable table (§3.3)
+			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+		elseif u == nil or M == nil or d == nil then
 			say(f[2], nil)
+		elseif not (d.table and d.fixed) then
+			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
 		else
 			local v = M.NewVocabulary()
 			local r = report()
@@ -976,6 +1012,8 @@ if surface == "wire" then
 	surfaceWire(lines)
 elseif surface == "report" then
 	surfaceReport(lines)
+elseif surface == "framing" then
+	surfaceFraming(lines)
 elseif surface == "json-read" then
 	surfaceJsonRead(lines)
 elseif surface == "json-write" then

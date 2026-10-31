@@ -15,104 +15,6 @@ import (
 	"unsafe"
 )
 
-func ArchiveConfigLoadMessageBodyRetain(r *TableRetainMessageReader, value *ArchiveConfig) bool {
-	ArchiveConfigReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.ID {
-		case 0xa354fd1ff0c467c5:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload3 := r.Path
-					r.Path = r.Path.step(0, uint32(0))
-					if !RootConfigLoadMessageBodyRetain(r, &value.Root) {
-						return false
-					}
-					r.Path = payload3
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb1e5e28e4479a274:
-			{
-				widened := false
-				if entry.Shape.Kind != 4 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload4 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload4.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload4.Signed(entry.Shape.Kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-						} else if v > 100 {
-							v = 100
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "ArchiveConfig.count")
-						}
-						value.Count = int32(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry, "ArchiveConfig") {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func ArchiveConfigSaveMessageBody(w *TableMessageWriter, value *ArchiveConfig) bool {
 	{
 		probe := *w
@@ -327,10 +229,6 @@ func ArchiveConfigLoadMessagesTolerant(values []ArchiveConfig, vocabulary *Table
 	return count, tableMessageBatchClose(&r)
 }
 func init() {
-	ArchiveConfigTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := ArchiveConfigLoadMessageBodyRetain(&r, (*ArchiveConfig)(p))
-		return r, ok
-	}
 	ArchiveConfigTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
 		return ArchiveConfigSaveMessageBody(w, (*ArchiveConfig)(p))
 	}

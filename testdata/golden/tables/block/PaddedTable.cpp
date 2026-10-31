@@ -3787,7 +3787,14 @@ namespace blockdemo {
 
 bool PaddedRowFromJsonTolerant( PaddedRow & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PaddedRowTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PaddedRowTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PaddedRowTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PaddedRowFromJson( PaddedRow & value, const char * text, int64_t bytes, TableReport * report )
@@ -3820,7 +3827,14 @@ int64_t PaddedRowToJson( const PaddedRow & value, char * buffer, int64_t capacit
 
 bool PaddedFrameFromJsonTolerant( PaddedFrame & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PaddedFrameTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PaddedFrameTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PaddedFrameTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PaddedFrameFromJson( PaddedFrame & value, const char * text, int64_t bytes, TableReport * report )

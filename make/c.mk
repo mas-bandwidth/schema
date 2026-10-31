@@ -232,7 +232,7 @@ build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance
 #
 # `examples` IS NOT ON THIS LIST ANY MORE, for the reason its C++ twin is not
 # (see TABLES_ZERO_COST_HEADERS in the root Makefile): under the KEYWORD (#823)
-# `Guarded.schema`'s `Patrol` is a plain `table` — a guarded branch is exactly
+# `Guarded.schema`'s `Patrol` is a variable table — a guarded branch is exactly
 # the construct that keeps it one — so `tables/examples` is a VARIABLE unit and
 # carries the machinery by right. The follow-on that brings it back is the same
 # one: move `Guarded.schema` into a unit of its own.
@@ -443,6 +443,38 @@ conformance-negative-control-c: build/conformance-harness
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
+
+# I4 (docs/PORTING.md) — PER-CASE ABSENT, the C driver's half. The C leg
+# answers a case it cannot write as `<case>.absent` (spill_absent_reason): the
+# blob_shared instance is a NAMED absence today, as every writer refuses a blob
+# two slots name. The sabotage makes the marker write nothing — a driver that
+# silently drops a case — in a copy of the driver, built against the tree's own
+# generated units, and the harness must go red naming the absence it expected.
+CONFORMANCE_NEGATIVE_C_ABSENT := build/conformance-negative-c-absent
+.PHONY: conformance-negative-control-c-absent
+conformance-negative-control-c-absent: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_C_ABSENT) && mkdir -p $(CONFORMANCE_NEGATIVE_C_ABSENT)
+	@sed 's|    return spill( dir, marker, reason, strlen( reason ) );|    (void) spill; (void) dir; (void) marker; (void) reason; return 1; /* SABOTAGED: the absence is dropped */|' \
+		test/conformance/c/main.c > $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c
+	@grep -q "SABOTAGED: the absence is dropped" $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_CONFORMANCE_INCLUDES) $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c \
+		$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_ABSENT)" > $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C_ABSENT)" > $(CONFORMANCE_NEGATIVE_C_ABSENT)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C_ABSENT)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_C_ABSENT)/work > $(CONFORMANCE_NEGATIVE_C_ABSENT)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a C driver that drops its per-case absence left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; \
+	fi
+	@grep -q "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the dropped absence"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; }
+	@grep -m1 "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log
+	@echo "negative control: a C driver that drops a per-case absence turns the harness red"
+
+test-c: conformance-negative-control-c-absent
 
 # THE NEGATIVE CONTROL FOR THE TWO FOREIGN SURFACES. `cook-foreign` and
 # `block-foreign` are the only rows whose EXPECTED ANSWER IS A REFUSAL, so a
@@ -709,20 +741,56 @@ tables-c-keyed-max-refusal-negative-control: bin/schema test/c-tables/keyed_max_
 # real generated `tables/examples` unit, compiles it under the leg's own
 # -Wall -Wextra -Werror, and runs it — so the day the emitted surface moves,
 # the page goes red with it rather than a release later.
-.PHONY: tables-c-usage
+C_USAGE_GEN ?= build/tables-generated-c/examples
+C_USAGE_OUT ?= build/c-usage
+.PHONY: tables-c-usage tables-c-usage-build
 tables-c-usage: build/tables-generated-c/.stamp docs/USAGE.md
-	@mkdir -p build/c-usage
-	printf '#include "KeyedTable.h"\n\nint main( void )\n{\n' > build/c-usage/usage.c
-	sed -n '/<!-- c-table-usage -->/,/<!-- \/c-table-usage -->/p' docs/USAGE.md \
-		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/c-usage/usage.c
-	printf '    return 0;\n}\n' >> build/c-usage/usage.c
-	grep -q 'SCHEMA_TABLE_KEYED_AT' build/c-usage/usage.c || \
-		{ echo "MISSING: docs/USAGE.md carries no c-table-usage example"; exit 1; }
-	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/examples -I$(SERIALIZE_C) \
-		build/c-usage/usage.c build/tables-generated-c/examples/KeyedTable.c \
-		-o build/c-usage/usage -lm
+	$(MAKE) --no-print-directory tables-c-usage-build C_USAGE_GEN=build/tables-generated-c/examples C_USAGE_OUT=build/c-usage
 	./build/c-usage/usage
 	@echo "usage: docs/USAGE.md's C example compiles and runs against tables/examples"
+
+# the build the gate and its control share: C_USAGE_GEN names the generated
+# tables/examples directory, C_USAGE_OUT where the unit and binary go
+tables-c-usage-build:
+	@mkdir -p $(C_USAGE_OUT)
+	printf '#include "KeyedTable.h"\n\nint main( void )\n{\n' > $(C_USAGE_OUT)/usage.c
+	sed -n '/<!-- c-table-usage -->/,/<!-- \/c-table-usage -->/p' docs/USAGE.md \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(C_USAGE_OUT)/usage.c
+	printf '    return 0;\n}\n' >> $(C_USAGE_OUT)/usage.c
+	grep -q '_TABLE_KEYED_AT' $(C_USAGE_OUT)/usage.c || \
+		{ echo "MISSING: docs/USAGE.md carries no c-table-usage example"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -I$(C_USAGE_GEN) -I$(SERIALIZE_C) \
+		$(C_USAGE_OUT)/usage.c $(C_USAGE_GEN)/KeyedTable.c \
+		-o $(C_USAGE_OUT)/usage -lm
+
+# ITS NEGATIVE CONTROL: the documented surface moves and the page does not. The
+# emitter spells the keyed accessor SCHEMA_<PACKAGE>_TABLE_KEYED_SLOT (its definition and
+# every emitted use, so the unit stays self-consistent) through `go build
+# -overlay`, tables/examples is regenerated from that compiler, and the page's
+# example must fail to compile against it, naming SCHEMA_TABLEDEMO_TABLE_KEYED_AT.
+C_USAGE_NC := build/c-usage-control
+.PHONY: tables-c-usage-negative-control
+tables-c-usage-negative-control: docs/USAGE.md
+	@rm -rf $(C_USAGE_NC) && mkdir -p $(C_USAGE_NC)
+	@sed 's|SCHEMA_TABLE_KEYED_AT(|SCHEMA_TABLE_KEYED_SLOT(|g' internal/codegen/ctable/ctable.go > $(C_USAGE_NC)/ctable.go.txt
+	@sed 's|SCHEMA_TABLE_KEYED_AT(|SCHEMA_TABLE_KEYED_SLOT(|g' internal/codegen/ctable/codecs.go > $(C_USAGE_NC)/codecs.go.txt
+	@cmp -s $(C_USAGE_NC)/ctable.go.txt internal/codegen/ctable/ctable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the rename patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/ctable.go":"%s/$(C_USAGE_NC)/ctable.go.txt","%s/internal/codegen/ctable/codecs.go":"%s/$(C_USAGE_NC)/codecs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(C_USAGE_NC)/overlay.json
+	go build -overlay $(C_USAGE_NC)/overlay.json -o $(C_USAGE_NC)/schema ./cmd/schema
+	$(C_USAGE_NC)/schema generate --lang c --out $(C_USAGE_NC)/examples tables/examples > /dev/null
+	@grep -q "define SCHEMA_TABLEDEMO_TABLE_KEYED_SLOT(" $(C_USAGE_NC)/examples/KeyedTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not move the name"; exit 1; }
+	@if $(MAKE) --no-print-directory tables-c-usage-build C_USAGE_GEN=$(C_USAGE_NC)/examples C_USAGE_OUT=$(C_USAGE_NC)/out > $(C_USAGE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the documented C example compiled against an emitter that moved SCHEMA_TABLE_KEYED_AT"; \
+		cat $(C_USAGE_NC)/log; exit 1; \
+	fi
+	@grep -q "SCHEMA_TABLEDEMO_TABLE_KEYED_AT" $(C_USAGE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the build went red, but not on the documented name"; cat $(C_USAGE_NC)/log; exit 1; }
+	@echo "negative control: the emitted surface moved under docs/USAGE.md's C example and tables-c-usage went red"
+
+test-c: tables-c-usage-negative-control
 
 # J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
 # The C table leg's `--gate` verb round-trips all 64 corpus variants and
@@ -762,6 +830,148 @@ build/schema_test_c_variable_asan: build/tables-generated-c/.stamp test/c-tables
 tables-c-variable: build/schema_test_c_variable build/schema_test_c_variable_asan
 	./build/schema_test_c_variable
 	./build/schema_test_c_variable_asan
+
+# THE SPAN, C side (docs/SPEC-TABLES.md §2.5, §6.5; docs/PORTING.md M17). A
+# byte buffer larger than one 64 KiB slab takes a SPAN of the arena's address
+# space rather than a bump in a slab it does not fit: one 66,000-byte blob,
+# more nodes allocated after it, and the blob read back intact from the arena,
+# the locked region and the wire, plain and under ASan + UBSan.
+C_BLOB_SPAN_SRCS := test/c-tables/blob_span_main.c build/tables-generated-c/blobs/AssetsTable.c
+.PHONY: tables-c-blob-span
+tables-c-blob-span: build/tables-generated-c/.stamp test/c-tables/blob_span_main.c
+	@mkdir -p build/c-blob-span
+	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/blobs -I$(SERIALIZE_C) $(C_BLOB_SPAN_SRCS) -o build/c-blob-span/span -lm
+	$(CC) -std=c99 -Wall -Wextra -Werror -O1 -ffp-contract=off $(C_SANITIZE) -Ibuild/tables-generated-c/blobs -I$(SERIALIZE_C) \
+		$(C_BLOB_SPAN_SRCS) -o build/c-blob-span/span-asan -lm
+	./build/c-blob-span/span
+	./build/c-blob-span/span-asan
+
+test-c: tables-c-blob-span tables-c-blob-span-negative-control tables-c-block-layout-model-negative-control tables-c-little-endian-negative-control
+
+# THE LAYOUT CONTRACT, C side (docs/SPEC-TABLES.md §19.3; docs/PORTING.md M11):
+# every block projection and row the C emitter writes carries
+# SCHEMA_TABLE_STATIC_ASSERTs of its size, alignment, every field offset and
+# every pitch against the numbers the COMPILER's layout model derived, and every
+# C build of a block unit (tables-c-fuzz, the conformance driver) compiles them.
+# THE CONTROL reaches past the emitter into ir.layoutRecord, as the C++/C#
+# tables-block-layout-model-negative-control does: one field's offset is moved
+# in the compiler's model through `go build -overlay`, the block unit is
+# regenerated, and the C compiler must refuse it on a layout static assert.
+C_LAYOUT_NC := build/c-layout-model-control
+.PHONY: tables-c-block-layout-model-negative-control
+tables-c-block-layout-model-negative-control: bin/schema
+	@rm -rf $(C_LAYOUT_NC) && mkdir -p $(C_LAYOUT_NC)
+	@sed 's|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start, Size: offset - start, Align: fieldAlign})|ml.Fields = append(ml.Fields, FieldLayout{Field: f, Offset: start + 8, Size: offset - start, Align: fieldAlign}) // SABOTAGED: one field, moved|' \
+		ir/blocklayout.go > $(C_LAYOUT_NC)/blocklayout.go.txt
+	@cmp -s $(C_LAYOUT_NC)/blocklayout.go.txt ir/blocklayout.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/ir/blocklayout.go":"%s/$(C_LAYOUT_NC)/blocklayout.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_LAYOUT_NC)/overlay.json
+	go build -overlay $(C_LAYOUT_NC)/overlay.json -o $(C_LAYOUT_NC)/schema ./cmd/schema
+	$(C_LAYOUT_NC)/schema generate --lang c --out $(C_LAYOUT_NC)/block tables/block > /dev/null
+	@./bin/schema generate --lang c --out $(C_LAYOUT_NC)/block-good tables/block > /dev/null
+	@$(CC) $(TABLES_CFLAGS) -fsyntax-only -I$(C_LAYOUT_NC)/block-good -I$(SERIALIZE_C) $(C_LAYOUT_NC)/block-good/RenderBlock.c > $(C_LAYOUT_NC)/good.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the tree's own block unit does not compile"; cat $(C_LAYOUT_NC)/good.log; exit 1; }
+	@if $(CC) $(TABLES_CFLAGS) -fsyntax-only -I$(C_LAYOUT_NC)/block -I$(SERIALIZE_C) $(C_LAYOUT_NC)/block/RenderBlock.c > $(C_LAYOUT_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: C accepted a moved offset from the compiler's model"; exit 1; \
+	fi
+	@grep -q "schema_table_assert_.* is negative\|static assertion failed" $(C_LAYOUT_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: C went red, but not on a layout static assert"; cat $(C_LAYOUT_NC)/log; exit 1; }
+	@grep -m1 "moved" $(C_LAYOUT_NC)/log || true
+	@echo "negative control: a moved offset in the compiler's model turns the C layout static asserts red"
+
+# ITS NEGATIVE CONTROL: the C allocator sends a blob past a slab to the span
+# on two branches (the size test, and the fresh-slab fit test behind it); the
+# sabotage makes both fall through, so the blob is bump-allocated in a 64 KiB
+# slab and runs off its end over the slabs the nodes after it are handed. The
+# gate's own driver, over the sabotaged emitter's blobs unit, must go red on
+# the blob. Overlay, so no tracked file is written.
+C_BLOB_SPAN_NC := build/c-blob-span-control
+.PHONY: tables-c-blob-span-negative-control
+tables-c-blob-span-negative-control: test/c-tables/blob_span_main.c
+	@rm -rf $(C_BLOB_SPAN_NC) && mkdir -p $(C_BLOB_SPAN_NC)
+	@sed 's|{ return table_arena_grab_span(worker->arena,bytes); }|{ /* SABOTAGED: no blob takes a span */ }|g' \
+		internal/codegen/ctable/arena.go > $(C_BLOB_SPAN_NC)/arena.go.txt
+	@test "$$(grep -c 'SABOTAGED: no blob takes a span' $(C_BLOB_SPAN_NC)/arena.go.txt)" = 2 || \
+		{ echo "NEGATIVE CONTROL FAILED: the span sabotage did not patch both branches"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/ctable/arena.go":"%s/$(C_BLOB_SPAN_NC)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_BLOB_SPAN_NC)/overlay.json
+	go build -overlay $(C_BLOB_SPAN_NC)/overlay.json -o $(C_BLOB_SPAN_NC)/schema ./cmd/schema
+	$(C_BLOB_SPAN_NC)/schema generate --lang c --out $(C_BLOB_SPAN_NC)/blobs tables/blobs > /dev/null
+	@grep -q "SABOTAGED: no blob takes a span" $(C_BLOB_SPAN_NC)/blobs/AssetsTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted the span branches"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -I$(C_BLOB_SPAN_NC)/blobs -I$(SERIALIZE_C) \
+		test/c-tables/blob_span_main.c $(C_BLOB_SPAN_NC)/blobs/AssetsTable.c -o $(C_BLOB_SPAN_NC)/span -lm
+	@if ./$(C_BLOB_SPAN_NC)/span > $(C_BLOB_SPAN_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a blob bump-allocated in a slab it does not fit left tables-c-blob-span GREEN"; \
+		cat $(C_BLOB_SPAN_NC)/log; exit 1; \
+	fi
+	@grep -q "blob past the slab" $(C_BLOB_SPAN_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the driver went red, but not on the blob"; cat $(C_BLOB_SPAN_NC)/log; exit 1; }
+	@grep -m1 "blob past the slab" $(C_BLOB_SPAN_NC)/log
+	@echo "negative control: a C blob larger than a slab, denied its span, is overwritten by the nodes after it"
+
+# THE C WIRE PROBES' CONTROLS (compiler/tablescwire_test.go). Each sabotages
+# one line of the C emitter through `go test -overlay` and requires its probe,
+# which holds the generated C to the compiler engine's bytes, to go RED on its
+# own CHECK.
+#
+# M14 (docs/PORTING.md), the `&node` label in the C text form: a node two
+# references name is written in full at every appearance, with no label.
+# TestCTableWireGraphIdentity's JSON half reads the text back into a builder,
+# and the save of that builder must be the engine's bytes; two copies of the
+# shared node cannot be.
+C_JSON_LABEL_SED := s|    if ( entry->count <= 1 ) { return table_json_write_value(out,node,f->table,depth); }|    if ( 1 ) { return table_json_write_value(out,node,f->table,depth); } /* SABOTAGED: no label */|
+C_JSON_LABEL_RED := root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected)
+.PHONY: tables-c-json-label-negative-control
+tables-c-json-label-negative-control:
+	@rm -rf build/c-json-label-nc && mkdir -p build/c-json-label-nc
+	@sed -e '$(C_JSON_LABEL_SED)' internal/codegen/ctable/graph_json.go > build/c-json-label-nc/emitter.go.txt
+	@grep -q 'SABOTAGED: no label' build/c-json-label-nc/emitter.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/ctable/graph_json.go":"%s/build/c-json-label-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-json-label-nc/overlay.json
+	@if SCHEMA_SLOW=1 go test -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
+			-run '^TestCTableWireGraphIdentity$$' > build/c-json-label-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-json-label-nc/log || ! grep -q -- '--- PASS' build/c-json-label-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity did not run (skipped), so this control is watching nothing"; \
+			cat build/c-json-label-nc/log; exit 1; \
+		fi; \
+		echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity stayed green under the sabotage"; cat build/c-json-label-nc/log; exit 1; \
+	fi
+	@grep -q -- '--- FAIL: TestCTableWireGraphIdentity' build/c-json-label-nc/log && grep -qF '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on its own CHECK"; cat build/c-json-label-nc/log; exit 1; }
+	@grep -m1 -F '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log
+	@echo "negative control: a shared node written twice in the C text form turns TestCTableWireGraphIdentity red on the engine's bytes"
+
+# M19, the C map's sorted entry array: the save's ascending order (the heap sort
+# of table_sequence_order) is removed, so entries ride in insertion order.
+# TestCTableWireMaps inserts its keys out of order and must save the engine's
+# bytes.
+C_MAP_SORT_SED := s|    for(i=(int64_t)value->count/2;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|    for(i=(int64_t)value->count-1;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|
+C_MAP_SORT_RED := !memcmp(wire,expected,sizeof(expected))
+.PHONY: tables-c-map-sort-negative-control
+tables-c-map-sort-negative-control:
+	@rm -rf build/c-map-sort-nc && mkdir -p build/c-map-sort-nc
+	@sed -e '$(C_MAP_SORT_SED)' internal/codegen/ctable/sequence.go > build/c-map-sort-nc/emitter.go.txt
+	@grep -q 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/ctable/sequence.go":"%s/build/c-map-sort-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-map-sort-nc/overlay.json
+	@if SCHEMA_SLOW=1 go test -v -overlay build/c-map-sort-nc/overlay.json -count=1 ./compiler \
+			-run '^TestCTableWireMaps$$' > build/c-map-sort-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-map-sort-nc/log || ! grep -q -- '--- PASS' build/c-map-sort-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps did not run (skipped), so this control is watching nothing"; \
+			cat build/c-map-sort-nc/log; exit 1; \
+		fi; \
+		echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps stayed green under the sabotage"; cat build/c-map-sort-nc/log; exit 1; \
+	fi
+	@grep -q -- '--- FAIL: TestCTableWireMaps' build/c-map-sort-nc/log && grep -qF '$(C_MAP_SORT_RED)' build/c-map-sort-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on its own CHECK"; cat build/c-map-sort-nc/log; exit 1; }
+	@grep -m1 -F '$(C_MAP_SORT_RED)' build/c-map-sort-nc/log
+	@echo "negative control: a C map saved in insertion order turns TestCTableWireMaps red on the engine's bytes"
+
+test-c: tables-c-json-label-negative-control tables-c-map-sort-negative-control
 
 # THE NEGATIVE CONTROL FOR THE FORGERY FUZZER, and it is the one that changed
 # the fuzzer's design.
@@ -1271,21 +1481,41 @@ tables-c-clean: build/tables-generated-c/.stamp generated/c/.stamp generated/c-l
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
 		echo "tables-c-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
 	fi; \
-	bad=0; allow=make/c-format-allow.txt; seen=build/c-format-seen.txt; : > $$seen; \
-	for f in $$(find $(C_FORMAT_TREES) \( -name '*.h' -o -name '*.c' \) | sort); do \
-		if $(CLANG_FORMAT) --style=file:$(CURDIR)/.clang-format "$$f" | cmp -s "$$f" -; then \
-			if grep -Fxq "$$f" $$allow; then echo "tables-c-clean: $$f is clean now — remove its line from $$allow"; bad=1; fi; \
-		else \
-			echo "$$f" >> $$seen; \
-			grep -Fxq "$$f" $$allow || { echo "tables-c-clean: clang-format drift in $$f, which $$allow does not list (the list only shrinks)"; bad=1; }; \
-		fi; \
-	done; \
-	for f in $$(grep -v '^#' $$allow | grep .); do \
-		[ -f "$$f" ] || { echo "tables-c-clean: $$f is listed in $$allow but no longer generated — remove its line"; bad=1; }; \
-	done; \
-	[ $$bad -eq 0 ] || exit 1; \
-	echo "C: clang-format $(CLANG_FORMAT_MAJOR) clean over $(C_FORMAT_TREES), $$(wc -l < $$seen | tr -d ' ') table-emitter files still on the ratchet"
+	CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
 test-c: tables-c-clean
+
+# ITS NEGATIVE CONTROL: one struct typedef brace written K&R in the C PACKET
+# emitter (tools/sabotage c-clean-format-drift), whose output the gate holds to
+# zero drift, built under `go build -overlay`; the examples corpus generated
+# with it must turn the gate's own engine red naming Types.h. The guard comes
+# first: the unsabotaged emitter's Types.h is green under the same engine, or
+# the control would be watching a file that was red anyway. The engine runs
+# over Types.h alone, the one file the plant reaches, so a drift elsewhere in
+# the packet output (ExampleView.h is not clean) cannot answer for it. It needs the
+# pinned clang-format, and refuses by name where that does not resolve.
+C_CLEAN_CONTROL := build/c-clean-control
+.PHONY: tables-c-format-negative-control
+tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/checks/c-clean-format.sh
+	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 && [ "$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p')" = "$(CLANG_FORMAT_MAJOR)" ] || \
+		{ echo "NEGATIVE CONTROL CANNOT RUN: clang-format $(CLANG_FORMAT_PIN) does not resolve (CLANG_FORMAT = $(CLANG_FORMAT)), and a drift control without the formatter proves nothing"; exit 1; }
+	@rm -rf $(C_CLEAN_CONTROL) && mkdir -p $(C_CLEAN_CONTROL) && : > $(C_CLEAN_CONTROL)/empty.txt
+	./bin/schema generate --lang c --out $(C_CLEAN_CONTROL)/clean-all examples
+	@mkdir -p $(C_CLEAN_CONTROL)/clean && cp $(C_CLEAN_CONTROL)/clean-all/Types.h $(C_CLEAN_CONTROL)/clean/
+	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged C packet emitter's output is not format-clean, so this control would watch a tree that was red anyway"; cat $(C_CLEAN_CONTROL)/guard.out; exit 1; }
+	go run ./tools/sabotage -name c-clean-format-drift -out $(C_CLEAN_CONTROL)/c.gotext internal/codegen/c/c.go
+	@printf '{"Replace":{"%s/internal/codegen/c/c.go":"%s/$(C_CLEAN_CONTROL)/c.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(C_CLEAN_CONTROL)/overlay.json
+	go build -overlay $(C_CLEAN_CONTROL)/overlay.json -o $(C_CLEAN_CONTROL)/schema ./cmd/schema
+	$(C_CLEAN_CONTROL)/schema generate --lang c --out $(C_CLEAN_CONTROL)/sabotaged-all examples
+	@mkdir -p $(C_CLEAN_CONTROL)/sabotaged && cp $(C_CLEAN_CONTROL)/sabotaged-all/Types.h $(C_CLEAN_CONTROL)/sabotaged/
+	@grep -q '^typedef struct [A-Za-z0-9_]* {$$' $(C_CLEAN_CONTROL)/sabotaged/Types.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no K&R brace"; exit 1; }
+	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a K&R struct brace in the emitted C left the format gate green"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; \
+	fi
+	@grep -q 'clang-format drift in .*/sabotaged/Types\.h' $(C_CLEAN_CONTROL)/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; }
+	@echo "negative control: one K&R struct brace in the emitted C turns the format gate (clang-format) RED naming the file"
 
 # The file-wire differential: the compiler's independent engine owns every
 # expected byte and report. Unsupported roster entries are named absent.
@@ -1348,7 +1578,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
-	@grep -q 'the report differs' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
+	@grep -qE 'the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
 	@echo 'C wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-c: tables-c-wire-fuzz-negative-control
@@ -1436,7 +1666,7 @@ test-c tables-c: tables-c-message-negative-control
 .PHONY: tables-c-retain tables-c-retain-negative-control
 tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
 	sh test/slowgate/proof tables-c-retain \
-		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
+		'TestCTableRetainFile TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName' \
 		./compiler -run '^TestCTableRetain' -count=1
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin

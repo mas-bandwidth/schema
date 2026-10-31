@@ -4573,7 +4573,14 @@ bool RowFromJsonTolerant( RowBuilder & builder, const char * text, int64_t bytes
 {
     Row * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, RowTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, RowTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RowTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RowFromJson( RowBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4610,7 +4617,14 @@ bool WideRowFromJsonTolerant( WideRowBuilder & builder, const char * text, int64
 {
     WideRow * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, WideRowTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, WideRowTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; WideRowTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool WideRowFromJson( WideRowBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4647,7 +4661,14 @@ bool EdgeRowFromJsonTolerant( EdgeRowBuilder & builder, const char * text, int64
 {
     EdgeRow * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, EdgeRowTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, EdgeRowTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; EdgeRowTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool EdgeRowFromJson( EdgeRowBuilder & builder, const char * text, int64_t bytes, TableReport * report )

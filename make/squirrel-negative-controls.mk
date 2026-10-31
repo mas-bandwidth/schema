@@ -41,3 +41,48 @@ tables-squirrel-save-negative-control: $(SQUIRREL_NC_DEPS)
 	$(call squirrel_nc,$@,TestSquirrelTableSaveNegativeControl,internal/codegen/squirreltable)
 tables-squirrel-base64-text-negative-control: $(SQUIRREL_NC_DEPS)
 	$(call squirrel_nc,$@,TestSquirrelBase64TextNegativeControl,internal/codegen/squirreltable)
+
+# The 3.0.0 register's Squirrel controls (docs/PORTING.md M5, M6, M12, M14, M19
+# and the builder's count refusal): each plants its defect in a scratch copy of
+# one emitted runtime and requires its gate to go red on its own rows.
+.PHONY: tables-squirrel-keyed-negative-control tables-squirrel-save-identity-negative-control \
+	tables-squirrel-block-byte-order-negative-control tables-squirrel-json-label-negative-control \
+	tables-squirrel-map-sort-negative-control tables-squirrel-count-stop-negative-control
+
+tables-squirrel-keyed-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelKeyedNegativeControls,internal/codegen/squirreltable)
+tables-squirrel-save-identity-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelTableSaveIdentityNegativeControl,internal/codegen/squirreltable)
+tables-squirrel-block-byte-order-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelBlockByteOrderNegativeControl,internal/codegen/squirreltable)
+tables-squirrel-json-label-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelJsonLabelNegativeControl,internal/codegen/squirreltable)
+tables-squirrel-map-sort-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelMapWriterSortNegativeControl,internal/codegen/squirreltable)
+tables-squirrel-count-stop-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelCountRefusalStopsTheBuilderNegativeControl,internal/codegen/squirreltable)
+.PHONY: tables-squirrel-block-order-word-negative-control
+tables-squirrel-block-order-word-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelBlockOrderWordNegativeControl,internal/codegen/squirreltable)
+
+# I13, THE TEXT DIFFERENTIAL (docs/PORTING.md): the emitted save and ToJson
+# against the compiler's own engine over 200 random float instances, both
+# directions; its control writes a float32 at six significant digits.
+.PHONY: tables-squirrel-text-differential tables-squirrel-text-differential-negative-control
+tables-squirrel-text-differential: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelTextDifferentialAgainstTheGoEngine,internal/codegen/squirreltable)
+tables-squirrel-text-differential-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelTextDifferentialNegativeControl,internal/codegen/squirreltable)
+
+.PHONY: tables-squirrel-damage-discard tables-squirrel-damage-discard-negative-control
+tables-squirrel-damage-discard: toolchain-squirrel dist-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelDamageDiscardsValues TestSquirrelDelegatedDamageDiscardsValue' ./internal/codegen/squirreltable -run '^TestSquirrel(DamageDiscardsValues|DelegatedDamageDiscardsValue)$$' -count=1
+tables-squirrel-damage-discard-negative-control: toolchain-squirrel dist-squirrel
+	$(call squirrel_nc,$@,TestSquirrelDamageDiscardNegativeControl,internal/codegen/squirreltable)
+
+# M18: union-arm framing hands every payload to the ordinary field reader.
+.PHONY: tables-squirrel-arms tables-squirrel-arms-negative-control
+tables-squirrel-arms: toolchain-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelArmIsAFieldLine TestSquirrelTableLoadMatchesTheReports TestSquirrelWideTextMatchesTheWire' ./internal/codegen/squirreltable -run '^TestSquirrel(ArmIsAFieldLine|TableLoadMatchesTheReports|WideTextMatchesTheWire)$$' -count=1
+tables-squirrel-arms-negative-control:
+	sh test/slowgate/proof $@ 'TestSquirrelArmFieldLineNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelArmFieldLineNegativeControl$$' -count=1

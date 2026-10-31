@@ -143,6 +143,14 @@ func agVerdict(a agAnswer, o agOracle) string {
 	if o.noRoot {
 		return "the engine refused the root itself"
 	}
+	if o.counts.malformed {
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
+		// owes the refusal, and no counter or saved byte is compared
+		if !a.counts.malformed || a.loaded {
+			return fmt.Sprintf("the engine discards a damaged load; the Lua load says %+v (loaded=%t)", a.counts, a.loaded)
+		}
+		return ""
+	}
 	if !a.loaded {
 		return fmt.Sprintf("the Lua load returned no root; the engine read %+v (refused=%t)", o.counts, o.refused)
 	}

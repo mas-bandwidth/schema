@@ -641,10 +641,11 @@ jobs:
       # (TestGooseFixedFormAgreesWithTheByteOracle) and its negative control fail
       # rather than skip without the corpus the steps above built. The unit
       # groups' `go test` runs the same packages without the corpus, where
-      # those two skip. Goose's versioning rows are owed (schema#2236).
-      - name: the Goose leg reads the reference's fixed-form bytes
+      # those two skip. `tables-goose-versioning` is §5.7's two columns over
+      # every versioning row (make/goose-versioning.mk).
+      - name: the Goose leg reads the reference's fixed-form bytes, and reads backward over every versioning row
         if: matrix.group == 'versioning'
-        run: make dist-goose test-goose
+        run: make dist-goose test-goose tables-goose-versioning tables-goose-message-form
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
@@ -1094,7 +1095,60 @@ jobs:
         run: make ${{ matrix.targets }} ${{ matrix.env }}
 
       - name: the ${{ matrix.lang }} leg over every surface
-        run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }}
+        run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }} --results build/conformance/legs/${{ matrix.lang }}.json
+
+      # Every case's verdict, for the proof job below (tools/matrix proof). It
+      # is uploaded whether the leg passed or not: a failing leg is a red cell
+      # the proof must name, not a hole in the table.
+      - name: keep the ${{ matrix.lang }} leg's per-case results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-results-${{ matrix.lang }}
+          path: build/conformance/legs/${{ matrix.lang }}.json
+          if-no-files-found: ignore
+
+  # THE PROOF TABLE, the 3.0.0 gate (docs/MATRIX.md, "Proof: the 3.0.0 gate";
+  # tools/matrix proof). Glenn, 2026-10-31: "We need to prove this before
+  # v3.0.0 not just hope that it's correct and complete." It reads every
+  # conformance leg's per-case results and computes the feature x language
+  # table; it prints the red list and goes RED while any cell is red or
+  # docs/proof.json is not what the results compute, so main shows what parity
+  # still owes on every merge. Its report (the commit, the red cells) is kept
+  # as the `proof` artifact: release.yml downloads it for the commit it
+  # releases, and `make release` refuses unless it is green at that commit.
+  proof:
+    if: always() && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    needs: conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: every leg's per-case results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --pattern 'conformance-results-*' --dir build/conformance/artifacts
+          mkdir -p build/conformance/legs
+          find build/conformance/artifacts -name '*.json' -exec cp {} build/conformance/legs/ ;
+          ls build/conformance/legs
+      - name: the proof table
+        run: go run ./tools/matrix proof -results build/conformance/legs -report build/proof/proof.json -commit "$GITHUB_SHA"
+      - name: keep the proof report for the release
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: proof
+          path: build/proof/proof.json
+          if-no-files-found: ignore
 
   # C# WIRE AND REGION FUZZ (issue #751).
   #
@@ -1420,6 +1474,8 @@ jobs:
             target: tables-c-big-endian-negative-control
           - leg: go
             target: conformance-big-endian
+          - leg: go-control
+            target: conformance-big-endian-negative-control
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2181,6 +2237,19 @@ jobs:
       - name: install the Squirrel pin
         if: matrix.squirrel != ''
         run: make dist-squirrel
+
+      # THE C AND C++ FORMAT GATES' formatter, for a row naming `clang_format`:
+      # clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
+      # names, as ci-fast's C and C++ legs install it.
+      - name: the pinned clang-format
+        if: matrix.clang_format != ''
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and

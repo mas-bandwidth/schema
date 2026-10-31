@@ -122,13 +122,37 @@ tables-rust-features: build/tables-generated-rust/.stamp
 	done
 	@echo "rust feature gate: minimal, cook-only, block-only and everything all build, the first three clean under clippy -D warnings (everything: tables-rust-clippy)"
 
+# RUST_CLIPPY_ROOT is the tree the gate walks; its control hands it a copy.
+RUST_CLIPPY_ROOT ?= build/tables-generated-rust
 .PHONY: tables-rust-clippy
 tables-rust-clippy: build/tables-generated-rust/.stamp
-	@for unit in build/tables-generated-rust/*/; do \
+	@for unit in $(RUST_CLIPPY_ROOT)/*/; do \
 		[ -f $$unit/Cargo.toml ] || continue; \
 		( cd $$unit && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet -- -D warnings ) || exit 1; \
 	done
 	@echo "rust clippy gate: every generated unit is clean under clippy -D warnings"
+
+# THE CLIPPY GATE'S NEGATIVE CONTROL (docs/PORTING.md J4): one generated unit
+# is copied beside the tree at the same depth (its serialize path still
+# resolves) and a declaration clippy alone objects to (`&Vec<u8>` where a slice
+# serves, clippy::ptr_arg; rustc is silent on it) is planted in its lib.rs, as
+# an emitter drifting from the language's conventions would write it. The gate,
+# walking that copy, must go red and name the lint.
+RUST_CLIPPY_CONTROL := build/rust-clippy-control
+.PHONY: tables-rust-clippy-negative-control
+tables-rust-clippy-negative-control: build/tables-generated-rust/.stamp
+	@rm -rf $(RUST_CLIPPY_CONTROL) && mkdir -p $(RUST_CLIPPY_CONTROL)
+	@cp -R build/tables-generated-rust/tabledemo $(RUST_CLIPPY_CONTROL)/tabledemo
+	@rm -rf $(RUST_CLIPPY_CONTROL)/tabledemo/target
+	@printf '\npub fn planted_by_the_clippy_control(v: &Vec<u8>) -> usize {\n    v.len()\n}\n' >> $(RUST_CLIPPY_CONTROL)/tabledemo/src/lib.rs
+	@if $(MAKE) --no-print-directory tables-rust-clippy RUST_CLIPPY_ROOT=$(RUST_CLIPPY_CONTROL) > $(RUST_CLIPPY_CONTROL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a planted clippy::ptr_arg left the Rust clippy gate green"; \
+		cat $(RUST_CLIPPY_CONTROL)/log; exit 1; \
+	fi
+	@grep -q 'ptr_arg' $(RUST_CLIPPY_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the clippy gate went red, but not on the planted lint"; \
+		  cat $(RUST_CLIPPY_CONTROL)/log; exit 1; }
+	@echo "negative control: a planted clippy::ptr_arg in a generated unit turns tables-rust-clippy RED"
 
 # THE RUST TABLE SURFACE ON A BIG-ENDIAN TARGET (docs/SPEC-TABLES.md §7.1,
 # §19.1, §20.3). The pinned toolchain cross-compiles to s390x — the same
@@ -579,7 +603,7 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	$(MAKE) tables-rust-fixed-matched
 	# THE SOAK (docs/PORTING.md I9): 4194304 passes gated on the allocator call count,
 	# and the control that watches the count go red on a planted pair
-	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=4194304
+	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=$(TABLES_RUST_PR_SOAK_ITERATIONS)
 	$(MAKE) tables-rust-soak-negative-control
 	# THE ALLOCATION GATE (docs/PORTING.md M1, I1): every read path at zero
 	# allocator calls, row by row, and the control that localizes a plant
@@ -826,43 +850,53 @@ tables-rust-message-batch:
 
 test-rust: tables-rust-message-batch
 
-# A FLOAT CROSSES TWO WIDTHS BY BIT SURGERY (docs/PORTING.md M21; SPEC.md
-# §4.3, docs/SPEC-TABLES.md §4): the variable runtime's table_widen_f32 and
-# the message runtime's table_message_widen_f32, cut out of the generated
-# modules as emitted and run over every float32 class, must keep a NaN's
-# payload and its quiet bit exactly as written, and the codec's kind-10 rung
-# into a float64 cell must go through the first. SCHEMA_REQUIRE_CORPUS=1 turns
-# the rustc skip into a failure, so the target never passes on a SKIP.
-.PHONY: tables-rust-float-nan tables-rust-float-nan-negative-control
-tables-rust-float-nan:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run 'TestRustFloatWideningKeepsNaNPayloads$$' -v
-	@echo 'tables Rust float NaN: a float32 widens into a float64 cell by bit surgery, NaN payloads kept'
+# THE FINITE FLOAT RULE ON THE RUST LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27: "Tables go finite-only too, same rule as packets"): every read
+# refuses a NaN or an infinity on its raw bits as non_finite_float, the
+# tolerant read included, every writer refuses one, and -0 and the subnormals
+# ride bit for bit, in the variable, message, fixed and cook forms and on a
+# retained unknown float. The gate is TestRustFiniteFloat; its reversed witness
+# takes each half of the rule out of the generated Rust in turn (the variable
+# read and writer, the retain test, the message read and writer, the fixed
+# read's finite pass and writer, the cook writer), and each must red exactly
+# its own clauses. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a
+# failure, so neither target passes on a SKIP.
+.PHONY: tables-rust-finite-float tables-rust-finite-float-negative-control
+tables-rust-finite-float:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloat$$' -v
+tables-rust-finite-float-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloatNegativeControl$$' -v
 
-# Its negative control puts the hardware conversion back in table_widen_f32
-# through a `go test -overlay` of internal/codegen/rusttable/variable.go (no
-# tracked file is edited): the signalling NaNs come back with the quiet bit
-# set, and the test must go red on table_widen_f32's NAN probe.
-tables-rust-float-nan-negative-control:
-	@rm -rf build/rust-float-nan-control && mkdir -p build/rust-float-nan-control
-	@sed 's|if bits \& 0x7F80_0000 == 0x7F80_0000 \&\& bits \& 0x007F_FFFF != 0 {|if false \&\& bits \& 0x7F80_0000 == 0x7F80_0000 {|' \
-		internal/codegen/rusttable/variable.go > build/rust-float-nan-control/variable.go.txt
-	@cmp -s internal/codegen/rusttable/variable.go build/rust-float-nan-control/variable.go.txt && \
-		{ echo "NEGATIVE CONTROL: the bit-surgery sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/rusttable/variable.go":"%s/build/rust-float-nan-control/variable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/rust-float-nan-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
-			-overlay=build/rust-float-nan-control/overlay.json \
-			-run 'TestRustFloatWideningKeepsNaNPayloads$$' ./internal/codegen/rusttable/ > build/rust-float-nan-control/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the widening stayed green with the hardware conversion put back"; \
-		exit 1; \
-	fi
-	@grep -q 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the signalling NaN's payload"; \
-		  cat build/rust-float-nan-control/log; exit 1; }
-	@grep -m1 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log
-	@echo "rust float NaN negative control: the hardware conversion in table_widen_f32 turns the probe RED on a signalling NaN"
+test-rust: tables-rust-finite-float
 
-test-rust: tables-rust-float-nan tables-rust-float-nan-negative-control
+# KEYED ARRAYS INDEX BY KEY, REFUSED AT BOTH ENDS (docs/PORTING.md M5,
+# docs/SPEC-TABLES.md §2.3): table_enums.rs's table_keyed / <Enum>::keyed take
+# the KEY, refuse None and any key past E.Max with a panic naming the key in an
+# optimized build, and iterate key beside slot. The gate compiles a probe
+# against tables/examples' HullConfig (its variable struct and its fixed row);
+# its control takes the None half, the E.Max half and the shift out of the
+# emitted runtime in turn, and each must red exactly its own clause.
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure.
+.PHONY: tables-rust-keyed tables-rust-keyed-negative-control
+tables-rust-keyed:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRust$$' -v
+tables-rust-keyed-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRustNegativeControl$$' -v
+
+test-rust: tables-rust-keyed tables-rust-keyed-negative-control
+
+# THE MAP WRITER HOLDS THE SORT (docs/PORTING.md M19, docs/SPEC-TABLES.md
+# §2.8): tables/maps' Fleet loaded from the pinned map_full wire, every map
+# REVERSED at every depth, must save the pinned bytes again and write the same
+# text. Its control makes the save's sort and then the text writer's a no-op
+# in the emitted Rust, and each must red exactly its own clause.
+.PHONY: tables-rust-map-sort tables-rust-map-sort-negative-control
+tables-rust-map-sort:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRust$$' -v
+tables-rust-map-sort-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRustNegativeControl$$' -v
+
+test-rust: tables-rust-map-sort tables-rust-map-sort-negative-control
 
 # THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
 # listing oracle as the reference, through the Rust surface, mirroring
@@ -964,7 +998,7 @@ build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.r
 tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
 	@set -e; for arm in '' '--retain'; do \
-		./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
+		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
 			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
 		cat build/rust-wire-fuzz-all.log; \
 		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
@@ -990,12 +1024,12 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness
 		"$(CURDIR)" "$(CURDIR)" > build/rust-wire-fuzz-control/overlay.json
 	go build -overlay=build/rust-wire-fuzz-control/overlay.json -o build/rust-wire-fuzz-control/schema ./cmd/schema
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build build/rust-wire-fuzz-control/driver build/rust-wire-fuzz-control/schema
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver build/rust-wire-fuzz-control/driver \
+	@if ./build/conformance-harness wire-fuzz --driver build/rust-wire-fuzz-control/driver \
 			--n 0 --failed build/rust-wire-fuzz-control/failed.bin > build/rust-wire-fuzz-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
 		cat build/rust-wire-fuzz-control/log; exit 1; \
 	fi
-	@grep -q '^harness: FAILED after [0-9]* mutants: the report differs' build/rust-wire-fuzz-control/log || \
+	@grep -qE '^harness: FAILED after [0-9]* mutants: (the report differs|the oracle discards a damaged load)' build/rust-wire-fuzz-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the report"; \
 		  cat build/rust-wire-fuzz-control/log; exit 1; }
 	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
@@ -1018,7 +1052,92 @@ tables-rust-usage:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$'
 	@echo "tables Rust usage: docs/USAGE.md's Rust example compiles and runs"
 
-test-rust: tables-rust-usage
+# I12's control: two edited copies of docs/USAGE.md through the gate's
+# SCHEMA_USAGE_DOC — a renamed call (the example no longer compiles) and a
+# wrong declared default (it compiles and its assert fails at run time) — and
+# each must fail the gate.
+.PHONY: tables-rust-usage-negative-control
+tables-rust-usage-negative-control:
+	@rm -rf build/rust-usage-control && mkdir -p build/rust-usage-control
+	@sed 's/let wire = root_config_save(&config);/let wire = root_config_saev(\&config);/' docs/USAGE.md > build/rust-usage-control/renamed.md
+	@sed 's/assert_eq!(loaded.weapons\[0\].speed, 500.0);/assert_eq!(loaded.weapons[0].speed, 501.0);/' docs/USAGE.md > build/rust-usage-control/default.md
+	@for c in renamed default; do \
+		if cmp -s docs/USAGE.md build/rust-usage-control/$$c.md; then \
+			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \
+		if SCHEMA_USAGE_DOC=$(CURDIR)/build/rust-usage-control/$$c.md PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 \
+				go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$' > build/rust-usage-control/$$c.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Rust usage gate"; exit 1; fi; \
+		grep -q "docs/USAGE.md's Rust example did not\|did not build\|error" build/rust-usage-control/$$c.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the $$c copy went red, but not on the example"; cat build/rust-usage-control/$$c.log; exit 1; }; \
+		echo "tables-rust-usage negative control: the $$c copy fails the gate"; \
+	done
+
+test-rust: tables-rust-usage tables-rust-usage-negative-control
+
+# M11 (docs/PORTING.md): THE COOKED LAYOUT CONTRACT IS ASSERTED IN THE
+# GENERATED CODE — a const assert of every cooked record's size, alignment and
+# field offsets, which every cargo build of a generated unit evaluates
+# (tables-rust-clippy, and for s390x tables-rust-big-endian). The gate pins
+# that the asserts are emitted; its control takes the record size assert and
+# the field offset asserts out of the emitter through go test -overlay.
+.PHONY: tables-rust-cook-layout tables-rust-cook-layout-negative-control
+tables-rust-cook-layout:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestCookLayoutIsAssertedAtCompileTime$$'
+tables-rust-cook-layout-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-cook-layout-control internal/codegen/rusttable/cook.go \
+		's|const _: () = assert!(core::mem::size_of::<%sRow>()|// SABOTAGED (core::mem::size_of::<%sRow>()|; s|const _: () = assert!(core::mem::offset_of!(%sRow, %s)|// SABOTAGED (core::mem::offset_of!(%sRow, %s)|' \
+		'^TestCookLayoutIsAssertedAtCompileTime$$' 'the record family is missing'
+
+# M12 (docs/PORTING.md): THE BYTE ORDER IS THE READER'S. Every multi-byte
+# read and write composes explicit little-endian bytes, the accelerators refuse
+# a foreign file by the magic and then the order word, and the cook writer
+# takes the target's order as a parameter. The gate is
+# TestBlockBuildAndCookWriteRust (the cook written in both orders, each header
+# naming its order in its own byte order, and the C++ reader opening the Rust
+# block), beside the cook-foreign and block-foreign conformance surfaces; its
+# control makes the cook's scalar put (table_cook_put) ignore the target order.
+.PHONY: tables-rust-byte-order tables-rust-byte-order-negative-control
+tables-rust-byte-order:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestBlockBuildAndCookWriteRust$$'
+tables-rust-byte-order-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-byte-order-control internal/codegen/rusttable/cook.go \
+		's|let shift = if order == 2 { width as usize - 1 - i } else { i };|let shift = i; // SABOTAGED: the target order ignored|' \
+		'^TestBlockBuildAndCookWriteRust$$' "the big-endian cook's header names byte order"
+
+# I7 (docs/PORTING.md): THE OTHER ORDER'S WORD UNDER AN INTACT MAGIC, the half
+# of the cross-endian refusal no harness surface forges: a cook and a block
+# whose magic and build version are intact and whose order word names the
+# other order are refused by their own Open (TestRustOtherOrderWordIsRefused).
+# tables-rust-big-endian beside it evaluates every layout assert for s390x.
+# The control takes the order-word check out of the cook's Open and then out
+# of the block's, and each must red exactly its own half.
+.PHONY: tables-rust-order-word tables-rust-order-word-negative-control
+tables-rust-order-word:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestRustOtherOrderWordIsRefused$$'
+tables-rust-order-word-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-order-word-cook-control internal/codegen/rusttable/cook.go \
+		's|        if table_cook_read64(bytes.add(16)) != TABLE_COOK_BYTE_ORDER {$$|        if false { // SABOTAGED: the order word unread|' \
+		'^TestRustOtherOrderWordIsRefused$$' 'FOREIGNCOOK'
+	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-order-word-block-control internal/codegen/rusttable/block.go \
+		's|if table_block_read64(base.add(16)) != TABLE_BLOCK_BYTE_ORDER {\\n")|if false {\\n") // SABOTAGED: the order word unread|' \
+		'^TestRustOtherOrderWordIsRefused$$' 'FOREIGNBLOCK'
+
+# M14 (docs/PORTING.md): A SHARED NODE IS DEFINED ONCE WITH `&node` AND NAMED
+# BY ITS LABEL AFTER (docs/SPEC-TABLES.md §16.7). The gate is
+# TestVariableClassBeyondCardConstructsRust (graph_shared's text the oracle's,
+# byte for byte); its control renames the label the emitted writer opens a
+# shared node with, and the gate must red on the text comparison.
+.PHONY: tables-rust-node-label tables-rust-node-label-negative-control
+tables-rust-node-label:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestVariableClassBeyondCardConstructsRust$$'
+tables-rust-node-label-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-node-label-control internal/codegen/rusttable/variabletext.go \
+		'/w.out.push_str/s|&node|&nod|' \
+		'^TestVariableClassBeyondCardConstructsRust$$' 'graph_shared'
+
+test-rust: tables-rust-cook-layout tables-rust-cook-layout-negative-control tables-rust-byte-order tables-rust-byte-order-negative-control
+test-rust: tables-rust-order-word tables-rust-order-word-negative-control tables-rust-node-label tables-rust-node-label-negative-control
+test-rust: tables-rust-clippy-negative-control tables-rust-release-negative-control
 
 # I13 (docs/PORTING.md): the Rust leg's text differential against a third
 # implementation. A Rust probe (rustc, no cargo) draws 200 random float instances
@@ -1055,12 +1174,33 @@ test-rust: tables-rust-json-differential tables-rust-json-differential-negative-
 RUST_RELEASE_SEED ?= 68719476731
 RUST_RELEASE_N ?= 1000000
 TABLES_RUST_RELEASE_SOAK_ITERATIONS ?= 16777216
-.PHONY: tables-rust-release
+TABLES_RUST_PR_SOAK_ITERATIONS := 4194304
+.PHONY: tables-rust-release tables-rust-release-negative-control
 tables-rust-release:
+	@[ $(RUST_RELEASE_N) -gt $(N) ] && [ "$(RUST_RELEASE_SEED)" != "$(SEED)" ] && \
+		[ $(TABLES_RUST_RELEASE_SOAK_ITERATIONS) -gt $(TABLES_RUST_PR_SOAK_ITERATIONS) ] || \
+		{ echo "tables-rust-release: THE RELEASE TIER DOES NOT SCALE the PR tier (fuzz N $(RUST_RELEASE_N) vs $(N), seed $(RUST_RELEASE_SEED) vs $(SEED), soak $(TABLES_RUST_RELEASE_SOAK_ITERATIONS) vs $(TABLES_RUST_PR_SOAK_ITERATIONS)): J3 wants more mutants, a second seed and a longer soak"; exit 1; }
 	$(MAKE) tables-rust-wire-fuzz-all tables-rust-fuzz N=$(RUST_RELEASE_N) SEED=$(RUST_RELEASE_SEED)
 	$(MAKE) tables-rust-wire-fuzz-negative-control
 	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=$(TABLES_RUST_RELEASE_SOAK_ITERATIONS)
 	$(MAKE) tables-rust-soak-negative-control
+
+# THE RELEASE TIER'S NEGATIVE CONTROL (docs/PORTING.md J3): the tier's whole
+# claim is that it SCALES the PR tier, so each of the three scalings is taken
+# away in turn — the fuzz count back to the PR's N, the second seed back to the
+# PR's seed, the soak back to the PR's count — and the release target must
+# refuse each before it runs a mutant, naming the tier that does not scale.
+tables-rust-release-negative-control:
+	@for sabotage in "RUST_RELEASE_N=$(N)" "RUST_RELEASE_SEED=$(SEED)" \
+			"TABLES_RUST_RELEASE_SOAK_ITERATIONS=$(TABLES_RUST_PR_SOAK_ITERATIONS)"; do \
+		if $(MAKE) --no-print-directory tables-rust-release $$sabotage > build/rust-release-control.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: tables-rust-release ran with $$sabotage"; exit 1; \
+		fi; \
+		grep -q 'THE RELEASE TIER DOES NOT SCALE' build/rust-release-control.log || \
+			{ echo "NEGATIVE CONTROL FAILED: tables-rust-release with $$sabotage went red, but not on the scaling"; \
+			  cat build/rust-release-control.log; exit 1; }; \
+		echo "negative control: tables-rust-release refuses $$sabotage"; \
+	done
 
 # THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the generated
 # retaining load's capacity check is sabotaged to keep nothing, through a
@@ -1285,6 +1425,52 @@ conformance-negative-control-rust-walk: build/conformance-harness
 
 test-rust: conformance-negative-control-rust-walk
 
+# I4 (docs/PORTING.md): PER-CASE ABSENT. A case this driver cannot answer on a
+# surface it otherwise implements is written `<case>.absent`, and the harness
+# counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust
+# leg and requires it green WITH absences counted; its control rebuilds the
+# driver (its own target directory) from a copy whose four absence writes
+# (the named refusal, the not-applicable rows and spill_absent) write an ANSWER
+# where the `.absent` marker belongs, and the leg must go red on the surfaces
+# that carry an absence.
+RUST_ABSENT_CONTROL := build/rust-absent-control
+.PHONY: conformance-rust-absent conformance-rust-absent-negative-control
+conformance-rust-absent: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
+	@mkdir -p build
+	@if ! ./build/conformance-harness run --only rust --work build/conformance-rust-absent-work > build/conformance-rust-absent.log 2>&1; then \
+		cat build/conformance-rust-absent.log; echo "conformance-rust-absent: the Rust leg is red"; exit 1; \
+	fi
+	@cat build/conformance-rust-absent.log
+	@grep -Eq 'pass [0-9]+/[0-9]+ \+[0-9]+a' build/conformance-rust-absent.log || \
+		{ echo "conformance-rust-absent: no surface counted a per-case absence"; exit 1; }
+	@echo "conformance-rust-absent: the Rust leg is green with its per-case absences counted"
+conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
+	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
+	@sed -e 's|spill(dir, &format!("{name}.absent"), b"");|spill(dir, name, b""); // SABOTAGED: an absence answered as an answer|' \
+		-e 's|&format!("{}.absent", f\[1\])|\&f[1] /* SABOTAGED: an absence answered as an answer */|g' \
+		test/conformance/rust/src/main.rs > $(RUST_ABSENT_CONTROL)/driver/src/main.rs
+	@[ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = 4 ] || \
+		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach all four absence writes"; exit 1; }
+	@cmp -s test/conformance/rust/src/main.rs $(RUST_ABSENT_CONTROL)/driver/src/main.rs && \
+		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
+	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
+	cd $(RUST_ABSENT_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_ABSENT_CONTROL)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(RUST_ABSENT_CONTROL)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(RUST_ABSENT_CONTROL)/driver/driver && chmod +x $(RUST_ABSENT_CONTROL)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(RUST_ABSENT_CONTROL)" > $(RUST_ABSENT_CONTROL)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(RUST_ABSENT_CONTROL)/drivers.txt \
+			--work $(RUST_ABSENT_CONTROL)/work > $(RUST_ABSENT_CONTROL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: absences answered as empty answers left the Rust leg green"; \
+		cat $(RUST_ABSENT_CONTROL)/log; exit 1; \
+	fi
+	@cat $(RUST_ABSENT_CONTROL)/log
+	@grep -Eq '^ *wire +FAIL' $(RUST_ABSENT_CONTROL)/log && grep -Eq '^ *message +FAIL' $(RUST_ABSENT_CONTROL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on wire and message, where it answers absent"; exit 1; }
+	@echo "Rust absent negative control: an absence written as an answer turns the Rust leg red"
+
+test-rust: conformance-rust-absent conformance-rust-absent-negative-control
+
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
 # cards-generate and cards-wire-fuzz (make/go.mk) against the same oracle
@@ -1320,7 +1506,7 @@ build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_
 # vectors out of this Card-only manifest. The greps hold the nonzero
 # seed/mutant claim and the zero-divergence claim explicitly.
 cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-rust-wire-fuzz.log 2>&1; \
@@ -1341,7 +1527,7 @@ cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
 # port.
 .PHONY: cards-rust-retain-fuzz
 cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --retain --seed 24845619678 --n 100 \
 		> build/cards-rust-retain-fuzz.log 2>&1; \
@@ -1424,3 +1610,32 @@ cards-rust-conformance-hash-negative-control: build/conformance-harness cards-ru
 test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negative-control
 test-rust: cards-rust-conformance-upgrade-negative-control cards-rust-conformance-hash-negative-control
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
+
+# THE FRAMING SURFACE, its Rust leg (docs/LAYERS/1-framing.md): the Rust
+# driver answers every framing row and passes it, none absent
+# (test/conformance/framing/gate). Its negative control rebuilds the driver
+# over a copy of the tblr1 crate whose load takes the id table's 4096-entry cap
+# out (§3, THE DISTINCTNESS CHECK; rule F6), and requires the framing surface
+# to go RED on frame_entries_4097.
+RUST_FRAMING_CONTROL := build/rust-framing-control
+.PHONY: conformance-rust-framing conformance-negative-control-rust-framing
+conformance-rust-framing: build/conformance-harness build/conformance-rust
+	sh test/conformance/framing/gate rust test/conformance/rust/driver build/conformance-rust-framing
+conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
+	@rm -rf $(RUST_FRAMING_CONTROL) && mkdir -p $(RUST_FRAMING_CONTROL)/driver
+	@cp -R build/tables-generated-rust/tblr1 $(RUST_FRAMING_CONTROL)/tblr1
+	@grep -rl 'if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }' $(RUST_FRAMING_CONTROL)/tblr1 | \
+		xargs sed -i.orig 's|if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }|if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; } // SABOTAGED|'
+	@[ "$$(grep -rc 'SABOTAGED' $(RUST_FRAMING_CONTROL)/tblr1 --include='*.rs' | awk -F: '{s+=$$2} END {print s}')" -ge 1 ] || \
+		{ echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
+	@find $(RUST_FRAMING_CONTROL)/tblr1 -name '*.orig' -delete
+	@cp -R test/conformance/rust/src $(RUST_FRAMING_CONTROL)/driver/src
+	@sed 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
+		test/conformance/rust/Cargo.toml > $(RUST_FRAMING_CONTROL)/driver/Cargo.toml
+	@! cmp -s test/conformance/rust/Cargo.toml $(RUST_FRAMING_CONTROL)/driver/Cargo.toml || \
+		{ echo "NEGATIVE CONTROL: the tblr1 path did not move"; exit 1; }
+	cd $(RUST_FRAMING_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_FRAMING_CONTROL)/target cargo build --quiet
+	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/target/debug/conformance-rust \
+		$(RUST_FRAMING_CONTROL)/run frame_entries_4097
+test-rust: conformance-rust-framing conformance-negative-control-rust-framing
