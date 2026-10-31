@@ -1191,6 +1191,14 @@
       "targets": [
         "tables-cpp-warnings-negative-control"
       ]
+    },
+    {
+      "name": "release-form-gate",
+      "when": "pull-request",
+      "why": "the build version's form gate's control (docs/VERSIONING.md, \"The release policy\"): tools/releasetag's FormGate is handed the tag's form twice through a go test overlay and TestReleaseFormGate must go red on the patch release that moves the form, and on it alone. One small go test build, Go only, a few seconds.",
+      "targets": [
+        "release-form-gate-negative-control"
+      ]
     }
   ],
   "excluded": [
