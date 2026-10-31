@@ -208,8 +208,8 @@ type runPatternException struct {
 // build/tables-generated-go/cards, a generated module that does not exist
 // until `make cards-generate` builds it; six run inside test/go-tables, a
 // separate Go module whose generated replacements do not exist until `make`
-// builds them; and one is a $(3) template with no value until the caller
-// expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
+// builds them; and two are $(3) templates with no value until the caller
+// expands them; two pair an empty -run '^$' with -fuzz so only the fuzz target
 // runs.
 var runPatternExceptions = []runPatternException{
 	{"make/go.mk:312", "cd build/tables-generated-go/cards && go test ... . — build/tables-generated-go/cards is a generated module that does not exist until make cards-generate builds it, so -list cannot run from the repo root"},
@@ -226,6 +226,7 @@ var runPatternExceptions = []runPatternException{
 	{"make/moo-text.mk:32", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it"},
 	{"make/moo-tables.mk:18", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them"},
 	{"Makefile:5606", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"make/js.mk:1497", "inside define js_jstable_control: $(3) is the caller's test name and $(4) its package, so the pattern has no value until expansion"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every

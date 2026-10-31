@@ -1512,7 +1512,9 @@ define js_leg_control
 	@go run ./tools/sabotage -name $(1) -out build/$@/source.gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
 	@go build -overlay=build/$@/overlay.json -o build/$@/schema ./cmd/schema
-	@for u in examples pointers block; do ./build/$@/schema generate --lang js --out build/$@/generated/$$u tables/$$u || exit 1; done
+	@./build/$@/schema generate --lang js --out build/$@/generated/examples tables/examples
+	@./build/$@/schema generate --lang js --out build/$@/generated/pointers tables/pointers
+	@./build/$@/schema generate --lang js --out build/$@/generated/block tables/block
 	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/$@/generated $(NODE) test/js-tables/main.mjs > build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left the JavaScript leg green"; cat build/$@/log; exit 1; \
 	fi
@@ -1601,7 +1603,9 @@ tables-js-release-negative-control: bin/schema build/tables-generated-js/.stamp 
 	@go run ./tools/sabotage -name js-block-extent-bounds -out build/$@/source.gotext internal/codegen/jstable/block.go
 	@printf '{"Replace":{"%s/internal/codegen/jstable/block.go":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
 	@go build -overlay=build/$@/overlay.json -o build/$@/schema ./cmd/schema
-	@for u in examples pointers block; do ./build/$@/schema generate --lang js --out build/$@/generated/$$u tables/$$u || exit 1; done
+	@./build/$@/schema generate --lang js --out build/$@/generated/examples tables/examples
+	@./build/$@/schema generate --lang js --out build/$@/generated/pointers tables/pointers
+	@./build/$@/schema generate --lang js --out build/$@/generated/block tables/block
 	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/$@/generated $(MAKE) --no-print-directory tables-js-release > build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the release tier stayed green over a block reader with no extent bound"; cat build/$@/log; exit 1; \
 	fi
