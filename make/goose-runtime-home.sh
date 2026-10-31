@@ -6,9 +6,10 @@
 #
 # Generates tables/examples, then the same unit with an Aaa.schema that sorts
 # before every file in it, and requires (1) every module that is not a schema
-# file's own <Base>.goose or <Base>Table.goose — the runtime — to be present
-# in both trees under the same name with the same bytes, and (2) each original
-# file's <Base>Table.goose to be byte-identical. The unit's package modules,
+# file's own (<Base>.goose, <Base>Table.goose, <Base>Cook.goose,
+# <Base>Block.goose) — the runtime — to be present in both trees under the same
+# name with the same bytes, and (2) each original file's <Base>Table.goose,
+# <Base>Cook.goose and <Base>Block.goose to be byte-identical. The unit's package modules,
 # <Package><Surface>.goose (internal/codegen/goosetable PackageModule), hold the
 # data that spans every file, so their bytes grow with the unit; each is held
 # to its HOME instead: present under the package's name in both trees whenever
@@ -31,7 +32,9 @@ printf 'package tabledemo\n\ntable AaaRow\n{\n    tag uint8\n}\n' >"$w/src/Aaa.s
 
 own() { # own <dir> <file>: the file is a schema file's own module
 	b=${2%.goose}
-	b=${b%Table}
+	for s in Table Cook Block; do
+		[ "${b%"$s"}" != "$b" ] && [ -f "$1/${b%"$s"}.schema" ] && return 0
+	done
 	[ -f "$1/$b.schema" ]
 }
 
@@ -87,13 +90,16 @@ for h in $homes; do
 done
 tables=0
 for s in tables/examples/*.schema; do
-	t=$(basename "$s" .schema)Table.goose
-	[ -f "$w/base/$t" ] || continue
-	tables=$((tables + 1))
-	cmp -s "$w/base/$t" "$w/added/$t" || { echo "table module $t moved: its bytes changed when Aaa.schema joined the unit"; bad=1; }
+	for sfx in Table Cook Block; do
+		t=$(basename "$s" .schema)$sfx.goose
+		[ -f "$w/base/$t" ] || continue
+		tables=$((tables + 1))
+		[ -f "$w/added/$t" ] || { echo "$(echo $sfx | tr '[:upper:]' '[:lower:]') module $t moved: in the base tree only"; bad=1; continue; }
+		cmp -s "$w/base/$t" "$w/added/$t" || { echo "$(echo $sfx | tr '[:upper:]' '[:lower:]') module $t moved: its bytes changed when Aaa.schema joined the unit"; bad=1; }
+	done
 done
 if [ $bad -ne 0 ]; then
 	echo "GOOSE RUNTIME HOME GATE FAILED: a module moved when an earlier-sorting file joined the unit"
 	exit 1
 fi
-echo "goose runtime home gate: $runtime runtime modules and $tables table modules unmoved, and $units package modules at $P<Surface>.goose, when an earlier-sorting file joins the unit"
+echo "goose runtime home gate: $runtime runtime modules and $tables file modules unmoved, and $units package modules at $P<Surface>.goose, when an earlier-sorting file joins the unit"
