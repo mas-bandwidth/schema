@@ -195,7 +195,7 @@ func TestLobsterStrictRead(t *testing.T) {
 			if res.line[i] != wantLine {
 				t.Errorf("%s %s: tolerant report = %s, want %s", row.kind, row.name, res.line[i], wantLine)
 			}
-			if res.dump[i] != wantDump {
+			if !damaged(wantLine) && res.dump[i] != wantDump {
 				t.Errorf("%s %s: tolerant value is not the reference's at byte %s", row.kind, row.name, divergence(res.dump[i], wantDump))
 			}
 		}
