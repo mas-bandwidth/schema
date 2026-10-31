@@ -41,6 +41,7 @@ message      <name> <connection> <root> <file-form wire> <message-form wire>
 retain          <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
 retain-message  <case> <connection> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
 report       <case> <unit> <root> <wire file>
+framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
 cook-write   <instance> <little-endian file> <big-endian file>
@@ -108,6 +109,17 @@ refusal      <forgery> <reason>
   many files as the batch has bodies.
 - **`report`** is bytes read by a type that did not write them — the evolution
   class. The counters and the verdict live in `reports.txt`, keyed by `<case>`.
+- **`framing`** is one hand-built wire per rule and bound of the FRAMING layer
+  (docs/LAYERS/1-framing.md): the record scan, the `L` bounds, the header read
+  against the parent, damage and where reading resumes, the node-table scan.
+  `<verdict>` is `refused` or the §4 report,
+  `<unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>`,
+  and `<value file>` is the §16 text the read must leave, under
+  `framing/<value>.json`, or `-` for a row that owes the report alone. Both
+  are HAND-AUTHORED from the rule text, never pinned from a leg or the engine,
+  which is what makes the row an expectation. The wire files under
+  `testdata/wire/tables/framing/` are the bytes of the scripts in
+  `test/conformance/harness/framing_vectors_test.go`, held equal by test.
 - **`json-hostile`** is one tree per rule the text form states (§16.2, §16.3,
   §17.5), and the verdict is `refused` or the §4 report the read produces,
   `<unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>`. `<tree>` is the

@@ -126,6 +126,31 @@ type ReportCase struct {
 	Wire string
 }
 
+// FramingCase is one hand-built framing vector (docs/LAYERS/1-framing.md): the
+// wire, the read report it owes, and the file holding the §16 text of the
+// value it owes, or "" where the row owes the report alone. The report and the
+// value are HAND-AUTHORED from the rule text, which is what makes the row an
+// expectation rather than a restatement of what one engine happens to do.
+type FramingCase struct {
+	Name    string
+	Unit    string
+	Root    string
+	Wire    string
+	Refused bool
+	Counts  Counts
+	Value   string
+}
+
+// Verdict is the report line the row owes, in the spelling every leg's
+// `report` surface prints: five zero counters, no damage and the refusal
+// verdict for a refused read.
+func (f FramingCase) Verdict() string {
+	if f.Refused {
+		return Counts{Refused: true}.String()
+	}
+	return f.Counts.String()
+}
+
 // Hostile is one tree of the hostile-value battery (docs/SPEC-TABLES.md §16.2,
 // §16.3, §17.5) and the verdict every implementation owes it: `refused`, or the
 // §4 report the read produces. Tree is the directory `schema pack` reads, so
@@ -378,6 +403,7 @@ type Manifest struct {
 	Retains     []RetainCase
 	Instances   []Instance
 	Reports     []ReportCase
+	Framings    []FramingCase
 	Hostiles    []Hostile
 	Cooks       []Cook
 	CookWrites  []CookWrite
@@ -564,6 +590,30 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)
 			}
 			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]})
+		case "framing":
+			// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the verdict is
+			// `refused` or the §4 report, and the value is a §16 text file or
+			// `-` for a row that owes the report alone.
+			if len(f) != 7 {
+				return nil, fmt.Errorf("%s: framing takes case, unit, root, wire, verdict, value file or -", where)
+			}
+			fc := FramingCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]}
+			if f[5] == "refused" {
+				fc.Refused = true
+			} else {
+				c, err := ParseCounts(f[5])
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", where, err)
+				}
+				fc.Counts = c
+			}
+			if f[6] != "-" {
+				if fc.Refused {
+					return nil, fmt.Errorf("%s: a refused read has no value to owe", where)
+				}
+				fc.Value = f[6]
+			}
+			m.Framings = append(m.Framings, fc)
 		case "json-hostile":
 			if len(f) != 6 && len(f) != 8 {
 				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict, and optionally carried-by=<ports> uncarried=<verdict>", where)

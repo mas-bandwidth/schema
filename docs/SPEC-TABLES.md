@@ -19204,7 +19204,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | array class and bound; string/`bytes` capacity | layout | `array=`, `bound=`, and the `size=` they produce |
 | a keyed array's KEY enum | layout | `key=` — its slots ride by that enum's variant-name hashes (§3.2) |
 | a MAP field's class and its ELEMENT | layout | `kind=14`, `array=map` and `elem=` the generated entry's own storage size on the field line, the pitch its entries lie at, and the `size=` the sixteen-byte slot produces (§2.8) |
-| an UNBOUNDED ARRAY field's class and its ELEMENT | layout | `kind=14`, `array=unbounded` and `elem=` the element's own storage size on the field line, the pitch its elements lie at, and the `size=` the sixteen-byte slot produces (§2.9). It carries no `bound=`, for the map's reason: it declares no extent and its count is a wire fact |
+| an UNBOUNDED ARRAY field's class and its ELEMENT | layout | `kind=14`, `array=unbounded`, `elem=` the element's own storage size on the field line, the pitch its elements lie at, `elemkind=` the element's own wire kind, and the `size=` the sixteen-byte slot produces (§2.9). The element's kind is its own token because `kind=` on a list's line is the array's 14: a retype that keeps the element's size, `[]int32` to `[]float32`, and a move to or from `[]*T` move the id through it (§4.1). It carries no `bound=`, for the map's reason: it declares no extent and its count is a wire fact |
 | a MAP's generated ENTRY, its layout and its two fields | layout | its own `record` line, keyed by the holder's wire id and the map field's wire id and never by the entry's generated name, with the `key` and `value` `field` lines under it (§2.8) |
 | a MAP's KEY kind and KEY capacity | layout | `kind=` and `bound=` on the entry's `key` line, which is where a key edit moves the id |
 | an out-of-line array's pitch | layout | `stride=` on the `slot` line |
@@ -19278,7 +19278,7 @@ lines are what it produces:
 record <Name> sizeof=<n> alignof=<n>
     field <id> kind=<n> offset=<n> size=<n> [ frac=<n> ]
         [ type=<Name> | enum=<Name> | union=<Name> ]
-        [ elem=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
+        [ elem=<n> ] [ elemkind=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
         [ bound=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
@@ -19320,7 +19320,12 @@ of declaration it names"*:
   list's line carries `kind=14`**, the array's own kind, as a map's does,
   where a fixed or bounded array's line carries its ELEMENT's kind: the two
   spellings are one wire (§2.9) and two storages, and this projection digests
-  storage.
+  storage. **So a list's line carries its element's kind in `elemkind=`**,
+  right after `elem=`, the same number a scalar field's `kind=` would be
+  (`10` for `[]float32`, `17` for `[]*T`, `13` for a list of tables): the size
+  alone would let `[]int32` and `[]float32` share an id, and a cooked list
+  would read under the other kind. A map's line needs none: its element is the
+  entry, whose `key` and `value` lines carry their own kinds.
 - **`text=unbounded`** marks an UNBOUNDED text element's `value` or an
   unbounded map `key` (§2.13.1), which carries no `bound=`: its storage is the
   eight-byte blob slot, so its `size=` is eight, and the line differs from any
@@ -19433,7 +19438,9 @@ FORM's too. Bump `N` when this rendering changes, and bump it when the cook's
 own form changes — the region's pack order (§6.3), the node directory's
 encoding, the header's shape. Those are compiler and runtime facts rather than
 declaration facts, and without a version for them a cook's bytes could diverge
-with the id unmoved, which the invariant does not permit. **Form 4 changed the
+with the id unmoved, which the invariant does not permit. **Form 5 added
+`elemkind=` to the unbounded array's line**, so a same-size element retype
+moves the id (§4.1). **Form 4 changed the
 line facts to the WIRE names** §4.1 says every referent carries: the `block`
 line prints the table's wire name, a by-value arm's `payload=` prints its
 referent's wire name, and a variant default's `default=` prints the variant's
@@ -19483,7 +19490,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 4
+schema-build-version 5
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -19498,12 +19505,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0x91cc2ade8160c4c7`**. `ShipConfig` gets no
+and the build version is **`0x482a6d07fc09a843`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xb0834916acb6dd3c`**, deliberately not equal to the protocol id, so no
+**`0xfb3cc9032b967207`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 

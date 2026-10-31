@@ -1200,7 +1200,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static ` + forceInline + ` uint32_t bucket_of( uint64_t id )
