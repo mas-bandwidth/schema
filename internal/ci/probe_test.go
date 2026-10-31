@@ -157,9 +157,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err == nil {
 		t.Fatalf("unmarked unregistered backend passed the gate:\n%s", out)
 	}
-	// a tagged leg in the tree (goose) is still a skeleton; the unmarked lua
+	// a tagged leg in the tree (goose) is still a skeleton; the unmarked zig
 	// must not be
-	if strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") || !strings.Contains(out, "the lua backend stopped for another reason") {
+	if strings.Contains(out, "zig has no --lang yet (schema new-leg skeleton)") || !strings.Contains(out, "the zig backend stopped for another reason") {
 		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
 }
