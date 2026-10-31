@@ -157,3 +157,51 @@ tables-cpp-soak-negative-control: build/tables-generated/.stamp test/tables/soak
 	@grep -m1 "drift flat" build/cpp-soak-sabotage/log
 	@echo "negative control: a matched new/delete pair per iteration leaves the drift line flat and turns the C++ soak's ALLOCATION COUNT red"
 
+
+# J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
+# The C++ table leg's `--gate` verb (bench/tables/cpp/table_main.cpp) runs
+# every correctness gate it runs before a timed pass — variant 0 against
+# testdata/wire/bench_table.bin, all 64 variants loaded, re-saved and compared
+# byte for byte, reused storage — and returns before the clock starts. This
+# builds the leg the way the bench builds it (bench/tables/cpp/leg, -O3
+# -DNDEBUG) and runs ONLY the gate: a correctness check, no timing.
+.PHONY: tables-cpp-bench-gate
+tables-cpp-bench-gate: generated/bench/tables/cpp/.stamp
+	bench/tables/cpp/leg build
+	bench/tables/cpp/leg run --gate
+test: tables-cpp-bench-gate
+
+# ITS NEGATIVE CONTROL. A gate that has never been red proves nothing, so this
+# feeds the built leg's --gate a golden with ONE byte changed, and then the
+# true golden with one byte changed in variant 0 of the variant corpus, and
+# requires each to be refused with the gate's own words before any timing.
+# The same leg over the true files must pass first, so a red here is the
+# corruption and not the harness.
+.PHONY: tables-cpp-bench-gate-negative-control
+tables-cpp-bench-gate-negative-control: generated/bench/tables/cpp/.stamp
+	bench/tables/cpp/leg build
+	@rm -rf build/cpp-bench-gate-sabotage && mkdir -p build/cpp-bench-gate-sabotage/wire build/cpp-bench-gate-sabotage/variants
+	./build/schema_tables_bench_cpp --gate > build/cpp-bench-gate-sabotage/clean.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate is red over the true corpus"; cat build/cpp-bench-gate-sabotage/clean.log; exit 1; }
+	@cp testdata/wire/bench_table.bin build/cpp-bench-gate-sabotage/wire/bench_table.bin
+	@cp bench/corpus/variants/bench_table.variants.bin build/cpp-bench-gate-sabotage/variants/bench_table.variants.bin
+	@b=$$(od -An -tu1 -j1000 -N1 build/cpp-bench-gate-sabotage/wire/bench_table.bin | tr -d ' '); \
+		printf "$$(printf '\\%03o' $$(( (b + 1) % 256 )))" | dd of=build/cpp-bench-gate-sabotage/wire/bench_table.bin bs=1 seek=1000 conv=notrunc 2>/dev/null; \
+		cmp -s testdata/wire/bench_table.bin build/cpp-bench-gate-sabotage/wire/bench_table.bin && \
+		{ echo "NEGATIVE CONTROL FAILED: the golden was not changed"; exit 1; } || true
+	@if ./build/schema_tables_bench_cpp --gate --wire-dir build/cpp-bench-gate-sabotage/wire > build/cpp-bench-gate-sabotage/golden.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a golden one byte off left the bench gate green"; \
+		cat build/cpp-bench-gate-sabotage/golden.log; exit 1; \
+	fi
+	@grep -q "WIRE GOLDEN MISMATCH" build/cpp-bench-gate-sabotage/golden.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the golden"; cat build/cpp-bench-gate-sabotage/golden.log; exit 1; }
+	@b=$$(od -An -tu1 -j1000 -N1 build/cpp-bench-gate-sabotage/variants/bench_table.variants.bin | tr -d ' '); \
+		printf "$$(printf '\\%03o' $$(( (b + 1) % 256 )))" | dd of=build/cpp-bench-gate-sabotage/variants/bench_table.variants.bin bs=1 seek=1000 conv=notrunc 2>/dev/null
+	@if ./build/schema_tables_bench_cpp --gate --variant-dir build/cpp-bench-gate-sabotage/variants > build/cpp-bench-gate-sabotage/variant.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a variant one byte off left the bench gate green"; \
+		cat build/cpp-bench-gate-sabotage/variant.log; exit 1; \
+	fi
+	@grep -q "WIRE GOLDEN MISMATCH" build/cpp-bench-gate-sabotage/variant.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the golden"; cat build/cpp-bench-gate-sabotage/variant.log; exit 1; }
+	@grep -m1 "WIRE GOLDEN MISMATCH" build/cpp-bench-gate-sabotage/golden.log
+	@echo "negative control: one changed byte in the golden, or in variant 0, turns the C++ bench gate red before any clock"
