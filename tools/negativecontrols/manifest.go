@@ -58,6 +58,11 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
+	// Golangci is the golangci-lint release this row installs (no leading
+	// v), for the generated-Go lint controls. It is not a conformance
+	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
+	// GOLANGCI_LINT_VERSION rather than against test/conformance/*/ci.json.
+	Golangci string `json:"golangci,omitempty"`
 	// Lobster is the pinned Lobster release (make/lobster.mk's
 	// LOBSTER_VERSION), installed by `make dist-lobster`.
 	Lobster string `json:"lobster,omitempty"`
@@ -181,14 +186,15 @@ func (m Manifest) tiers() []string {
 // hundred-target line out of the matrix value.
 func (m Manifest) matrix(when string) ([]byte, error) {
 	type row struct {
-		Name    string `json:"name"`
-		Rust    string `json:"rust"`
-		Dotnet  string `json:"dotnet"`
-		Node    string `json:"node"`
-		Dart    string `json:"dart"`
-		Java    string `json:"java"`
-		OTP     string `json:"otp"`
-		Elixir  string `json:"elixir"`
+		Name     string `json:"name"`
+		Rust     string `json:"rust"`
+		Dotnet   string `json:"dotnet"`
+		Node     string `json:"node"`
+		Dart     string `json:"dart"`
+		Java     string `json:"java"`
+		OTP      string `json:"otp"`
+		Elixir   string `json:"elixir"`
+		Golangci string `json:"golangci"`
 		Lobster string `json:"lobster"`
 	}
 	if when != whenPullRequest && when != whenNightly {
@@ -200,14 +206,15 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			continue
 		}
 		rows = append(rows, row{
-			Name:    g.Name,
-			Rust:    g.Rust,
-			Dotnet:  g.Dotnet,
-			Node:    g.Node,
-			Dart:    g.Dart,
-			Java:    g.Java,
-			OTP:     g.OTP,
-			Elixir:  g.Elixir,
+			Name:     g.Name,
+			Rust:     g.Rust,
+			Dotnet:   g.Dotnet,
+			Node:     g.Node,
+			Dart:     g.Dart,
+			Java:     g.Java,
+			OTP:      g.OTP,
+			Elixir:   g.Elixir,
+			Golangci: g.Golangci,
 			Lobster: g.Lobster,
 		})
 	}

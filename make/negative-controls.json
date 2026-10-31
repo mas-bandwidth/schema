@@ -518,6 +518,15 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-finite",
+      "when": "pull-request",
+      "why": "the C# finite rule (docs/SPEC-TABLES.md §3.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. A job of its own for the cs-tables group's 5-minute timeout; four probe builds, 8 s on the author's machine.",
+      "targets": [
+        "tables-cs-finite-float-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-packet",
       "when": "pull-request",
       "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the finite-float read rule (float-finite and double-finite each deleted in serialize.cs, each required to red exactly its own vectors), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
@@ -652,9 +661,23 @@
       "node": "26"
     },
     {
+      "name": "dart-conformance",
+      "when": "pull-request",
+      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point, and the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host.",
+      "dart": "3.13.2",
+      "targets": [
+        "conformance-negative-control-dart-walk",
+        "conformance-negative-control-dart-zero",
+        "conformance-negative-control-dart-block",
+        "tables-dart-wire-fuzz-negative-control",
+        "schema-dart-runs-hostile-corpus-negative-control",
+        "tables-dart-usage-negative-control"
+      ]
+    },
+    {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
+      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7. The form-1 cook writer's control adds two driver compiles and two dart-only harness runs, about 30 s.",
       "targets": [
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
@@ -681,7 +704,11 @@
         "tables-dart-float-jit-negative-control",
         "tables-dart-float-jit-sdk-negative-control",
         "tables-dart-float-jit-boxing-negative-control",
-        "tables-dart-text-differential-negative-control"
+        "tables-dart-text-differential-negative-control",
+        "tables-dart-finite-float-negative-control",
+        "tables-dart-cookwrite-negative-control",
+        "tables-dart-clean-negative-control",
+        "tables-dart-retain-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -884,7 +911,8 @@
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
-      ]
+      ],
+      "golangci": "2.12.2"
     },
     {
       "name": "dart-nightly",
@@ -892,7 +920,8 @@
       "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
       "targets": [
         "schema-dart-nightly-fuzz-negative-control"
-      ]
+      ],
+      "dart": "3.13.2"
     },
     {
       "name": "lobster-fuzz",
