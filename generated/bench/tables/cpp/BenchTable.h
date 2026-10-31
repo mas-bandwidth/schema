@@ -16,7 +16,8 @@ namespace benchtable {
 inline constexpr uint64_t ProtocolId = 0x0926221bcb6f475full;
 
 // enum TableWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
-enum class TableWeapon : uint8_t {
+enum class TableWeapon : uint8_t
+{
     None = 0,
     Fists = 1,
     Pistol = 2,
@@ -180,7 +181,8 @@ inline const char * FlagNamesTableDamage( uint64_t value, char * buffer, int buf
 }
 
 // type TableHitEvent
-struct TableHitEvent {
+struct TableHitEvent
+{
     uint32_t target_id = 0;
     int32_t damage = 0; // wire [0, 4095]
     int32_t hit_kind = 0; // wire [0, 7]
@@ -191,7 +193,8 @@ inline constexpr int64_t TableHitEventMaxBits = 28; // longest wire path; align 
 inline constexpr int64_t TableHitEventMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type TableChatEvent
-struct TableChatEvent {
+struct TableChatEvent
+{
     int32_t channel = 0; // wire [0, 3]
     uint32_t speaker = 0;
 };
@@ -200,7 +203,8 @@ inline constexpr int64_t TableChatEventMaxBits = 14; // longest wire path; align
 inline constexpr int64_t TableChatEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type TablePickupEvent
-struct TablePickupEvent {
+struct TablePickupEvent
+{
     uint32_t item_id = 0;
     int32_t amount = 0; // wire [0, 255]
 };
@@ -209,7 +213,8 @@ inline constexpr int64_t TablePickupEventMaxBits = 18; // longest wire path; ali
 inline constexpr int64_t TablePickupEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // TableEventType: union TableEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class TableEventType : uint8_t {
+enum class TableEventType : uint8_t
+{
     None = 0,
     Hit = 1,
     Chat = 2,
@@ -251,21 +256,21 @@ struct TableEvent
 
     TableHitEvent & SelectHit() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &hit ) TableHitEvent{};
+        ::new ( static_cast<void *>( &hit ) ) TableHitEvent{};
         type = TableEventType::Hit;
         return hit;
     }
 
     TableChatEvent & SelectChat() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &chat ) TableChatEvent{};
+        ::new ( static_cast<void *>( &chat ) ) TableChatEvent{};
         type = TableEventType::Chat;
         return chat;
     }
 
     TablePickupEvent & SelectPickup() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &pickup ) TablePickupEvent{};
+        ::new ( static_cast<void *>( &pickup ) ) TablePickupEvent{};
         type = TableEventType::Pickup;
         return pickup;
     }

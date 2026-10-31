@@ -139,6 +139,9 @@ class TableReport {
   int buildVersionRemote = 0;
   int buildVersionOwn = 0;
   String reason = '';
+  /// The float whose raw bits a read found to be a NaN or an infinity, as
+  /// <Table>.<field>, '' when it found none (docs/SPEC-TABLES.md §3.3).
+  String nonFiniteFloat = '';
 
   void Damage() {
     malformed = true;
@@ -149,6 +152,14 @@ class TableReport {
     refused = true;
     reason = why;
     return false;
+  }
+
+  /// EVERY READ REFUSES A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3), the
+  /// tolerant batch read included: the reason names the field, and the batch
+  /// lands nothing.
+  bool RefuseNonFiniteFloat(String field) {
+    nonFiniteFloat = field;
+    return Refuse('non_finite_float: $field');
   }
 }
 

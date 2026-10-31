@@ -667,3 +667,85 @@ func testRoot(t *testing.T) string {
 	}
 	return root
 }
+
+// TestAToolBoundGroupInstallsItsTool holds the two nightly reds of
+// 2026-10-18..25 shut. The dart-nightly row named no `dart`, so its job
+// installed no Dart and `make` refused at toolchain-dart before the control
+// ran; the nightly row ran the generated-Go golangci-lint controls on a hosted
+// runner that has no golangci-lint, so the probe refused before them. A row
+// whose targets reach a tool by name has to install that tool, and the pin it
+// installs is the one the make fragment checks for.
+func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
+	root := testRoot(t)
+	m, err := loadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk, err := os.ReadFile(filepath.Join(root, "make", "schema-go-generated-golangci-lint-gate.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin := ""
+	for line := range strings.SplitSeq(string(mk), "\n") {
+		if rest, ok := strings.CutPrefix(line, "GOLANGCI_LINT_VERSION ?="); ok {
+			pin = strings.TrimSpace(rest)
+		}
+	}
+	if pin == "" {
+		t.Fatal("make/schema-go-generated-golangci-lint-gate.mk sets no GOLANGCI_LINT_VERSION, so there is no pin to hold a group against")
+	}
+	for _, g := range m.Groups {
+		lint, dart := false, false
+		for _, target := range g.Targets {
+			lint = lint || strings.Contains(target, "golangci-lint")
+			dart = dart || strings.HasPrefix(target, "schema-dart-")
+		}
+		if lint && g.Golangci == "" {
+			t.Errorf("group %q runs golangci-lint controls and names no `golangci`, so its job installs none and the probe refuses before the controls run", g.Name)
+		}
+		if g.Golangci != "" && g.Golangci != pin {
+			t.Errorf("group %q installs golangci-lint %s and the make fragment pins %s: bump both or neither", g.Name, g.Golangci, pin)
+		}
+		if dart && g.Dart == "" {
+			t.Errorf("group %q runs Dart controls and names no `dart`, so its job installs no Dart and make refuses at toolchain-dart", g.Name)
+		}
+	}
+	// And each workflow that expands a tier carrying a golangci row has the
+	// step that installs it.
+	for _, leg := range legs {
+		tier := whenPullRequest
+		if strings.HasSuffix(leg.command, " "+whenNightly) {
+			tier = whenNightly
+		}
+		needs := false
+		for _, g := range m.Groups {
+			needs = needs || (g.When == tier && g.Golangci != "")
+		}
+		if !needs {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", leg.workflow))
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc, err := parseWorkflow(string(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		steps, err := mappingAt(doc, "jobs", leg.job, "steps")
+		if err != nil {
+			t.Fatal(err)
+		}
+		list, _ := steps.([]any)
+		found := false
+		for _, item := range list {
+			step, _ := item.(map[string]any)
+			if cond, _ := step["if"].(string); strings.Contains(cond, "matrix.golangci != ''") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf(".github/workflows/%s: the %s job has no step keyed on matrix.golangci, and the %s tier carries a row that needs golangci-lint", leg.workflow, leg.job, tier)
+		}
+	}
+}

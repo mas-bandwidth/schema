@@ -24,14 +24,6 @@ impl From<serialize::Error> for Error {
     }
 }
 
-// serialize.rs 2.0.0 writes are infallible: their Result carries an
-// uninhabited error, and `?` on one needs this vacuous conversion.
-impl From<core::convert::Infallible> for Error {
-    fn from(e: core::convert::Infallible) -> Error {
-        match e {}
-    }
-}
-
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 // PacketMode — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2);

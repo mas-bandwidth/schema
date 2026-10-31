@@ -1,8 +1,8 @@
-// THE THREE CENSUS-GATED RUNTIMES OF THE C TABLE EMITTER, AND THE FIXTURES
+// THE TWO CENSUS-GATED RUNTIMES OF THE C TABLE EMITTER, AND THE FIXTURES
 // THAT PROVE EACH BOTH WAYS (docs/SPEC-TABLES.md §2.2, §3, §4). Card C-6's own
 // dead-output condition, check_default, is next door in tabledeadc_test.go.
 //
-// The C Table header used to carry three blocks in units that no call site in
+// The C Table header used to carry two blocks in units that no call site in
 // those units could reach:
 //
 //   - KIND 33's RUNTIME, table_wire_utf16_unit / table_wire_utf16 /
@@ -10,10 +10,6 @@
 //     (wire_read.go) and a `wstring(N)` arm (unions.go), and both sit behind
 //     ir.TWString, so a unit whose wide-text census is empty had thirty-two
 //     lines it could not reach.
-//   - THE FLOAT RUNG, table_wire_widen_f32. Its two call sites — the file
-//     wire's widened scalar and the message form's f32-shaped entry — are both
-//     behind a DECLARED kind 11, so a unit whose closure declares no f64 had
-//     nine lines it could not reach.
 //   - THE BYTE BUFFER'S OWN SURFACE: the two views, the two reserved type ids,
 //     the three read accessors and the blob node type. All of it is reached
 //     from a `*bytes` or a `*string` DECLARATION and from nowhere else, so a
@@ -205,24 +201,33 @@ func TestCTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
 	deadCCompile(t, files)
 }
 
-func TestCTableWidenF32FollowsTheCensus(t *testing.T) {
+// TestCTableFloatRungIsTheFiniteTestAndTheConversion holds the float rung,
+// kind 10 into a declared kind 11, to the finite rule (docs/SPEC-TABLES.md
+// §3.3, §4). There was a census-gated table_wire_widen_f32 here, which carried
+// a NaN's payload across by hand; a NaN or an infinity is now refused on its
+// raw bits before the rung, and every finite float32 is exactly a float64, so
+// the rung is the ordinary conversion and no unit carries a helper for it.
+func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 	with, files := deadCHeader(t, deadCF64Src)
-	if !strings.Contains(with, "static SCHEMA_UNUSED double table_wire_widen_f32") {
-		t.Error("a unit that declares float64 must carry table_wire_widen_f32")
+	if strings.Contains(with, "table_wire_widen_f32") {
+		t.Error("the NaN-payload surgery table_wire_widen_f32 is still emitted")
 	}
-	// the file wire's widened scalar and the message form's f32-shaped entry,
-	// which are the two call sites the census is taken for
-	if !strings.Contains(with, "double decoded_wide = table_wire_widen_f32( table_reader_get32(") {
-		t.Error("the f64 field's file-wire codec must call table_wire_widen_f32")
-	}
-	if !strings.Contains(with, "decoded=table_wire_widen_f32(table_float_to_bits(narrow));") {
-		t.Error("the f64 field's message-form codec must call table_wire_widen_f32")
+	// the file wire's widened scalar and the message form's f32-shaped entry
+	// read into the f64 field: the finite test, then the conversion
+	for _, want := range []string{
+		"if ( !table_bits_finite32( widened_bits ) ) { table_non_finite_float( r->report ); break; }",
+		"double decoded_wide = (double) table_bits_to_float( widened_bits );",
+		"decoded=(double)narrow;",
+	} {
+		if !strings.Contains(with, want) {
+			t.Errorf("the f64 field's float rung must read %q", want)
+		}
 	}
 	deadCCompile(t, files)
 
 	without, files := deadCHeader(t, deadCF32Src)
-	if strings.Contains(without, "table_wire_widen_f32") {
-		t.Error("a unit that declares no float64 must carry no table_wire_widen_f32")
+	if strings.Contains(without, "decoded_wide = (double)") {
+		t.Error("a unit that declares no float64 has no float rung to emit")
 	}
 	// the ladder PREDICATE stays in every unit: a kind comparison is what
 	// every reader does, and it is named on the absent side on purpose
