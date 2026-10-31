@@ -5532,20 +5532,71 @@ tables-cpp-region-discard-negative-control:
 	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
 
-# BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
-# rule): the standing control for the pinned vector nested_arm_trailing. The
-# ORACLE is taught the opposite reading, a nested-union arm whose L runs past
-# the whole inner union is malformed, through a Go build overlay on a COPY of
-# decode.go, and a replay of that vector must go red on it by name: the leg
-# reads the envelope clean and the sabotaged oracle no longer agrees. The
-# replay, not a whole run, because the enumerated pass meets an envelope of the
-# same shape earlier (message_arms, pass arm #21) and would stop there first.
+# INPUT NO WRITER PRODUCES IS DAMAGE, in the C++ reference (docs/SPEC-TABLES.md
+# §4; Glenn, 2026-10-31). One control per refusal: the refusal is blinded in a
+# COPY of its emitter, given to go test through a build overlay, and
+# TestNoWriterInputIsDamageCPP must go red naming exactly that item. Nothing
+# tracked is written to.
+#
+# $(1) the item, $(2) the emitter file under internal/codegen/cpptable,
+# $(3) the sed script, $(4) the line the gate must print.
+CPP_NOWRITER_NC := build/cpp-nowriter-nc
+define cpp_nowriter_control
+	@rm -rf $(CPP_NOWRITER_NC)-$(1) && mkdir -p $(CPP_NOWRITER_NC)-$(1)
+	@sed $(3) internal/codegen/cpptable/$(2) > $(CPP_NOWRITER_NC)-$(1)/$(2).txt
+	@cmp -s internal/codegen/cpptable/$(2) $(CPP_NOWRITER_NC)-$(1)/$(2).txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/$(2)":"%s/$(CPP_NOWRITER_NC)-$(1)/$(2).txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_NOWRITER_NC)-$(1)/overlay.json
+	@if go test -count=1 -overlay $(CPP_NOWRITER_NC)-$(1)/overlay.json -run '^TestNoWriterInputIsDamageCPP$$$$' \
+			./internal/codegen/cpptable > $(CPP_NOWRITER_NC)-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) refusal is gone and the gate stayed green"; \
+		cat $(CPP_NOWRITER_NC)-$(1)/log; exit 1; \
+	fi
+	@grep -q "$(4)" $(CPP_NOWRITER_NC)-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on $(1)"; \
+		  cat $(CPP_NOWRITER_NC)-$(1)/log; exit 1; }
+	@grep -m1 "$(4)" $(CPP_NOWRITER_NC)-$(1)/log
+	@echo "negative control: blinding the C++ $(1) refusal turns the no-writer gate RED"
+endef
+
+# item 2: one id twice in one body
+.PHONY: tables-cpp-nowriter-repeated-id-negative-control
+tables-cpp-nowriter-repeated-id-negative-control:
+	$(call cpp_nowriter_control,repeated-id,codecs.go,-e 's@if ( !seen.add( field_ref, r.ids->count ) )@if ( false \&\& !seen.add( field_ref, r.ids->count ) )@',item2: a root id twice: the load was not refused)
+
+# item 3: a header outside its body's L, inert again
+.PHONY: tables-cpp-nowriter-short-header-negative-control
+tables-cpp-nowriter-short-header-negative-control:
+	$(call cpp_nowriter_control,short-header,codecs.go,-e 's@if ( body_len < 2 ) { r.report->malformed = true; return false; }@if ( body_len < 2 ) { r.offset = body_end; break; }@' -e 's@if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }@if ( !r.getleb( count ) ) { r.report->malformed = true; return false; }@',item3: an array body of one byte: the load was not refused)
+
+# item 4, the wire: one map key twice lands as a second entry
+.PHONY: tables-cpp-nowriter-map-key-negative-control
+tables-cpp-nowriter-map-key-negative-control:
+	$(call cpp_nowriter_control,map-key,maps.go,-e 's@if ( order >= 0 )@if ( order > 0 )@',item4-wire: one map key twice was not refused)
+
+# item 4, the text: one JSON member name twice is held without a check
+.PHONY: tables-cpp-nowriter-json-name-negative-control
+tables-cpp-nowriter-json-name-negative-control:
+	$(call cpp_nowriter_control,json-name,json.go,-e 's@    const uint64_t print = TableJsonNamePrint( in, at );@    if ( at >= 0 ) { return true; } const uint64_t print = TableJsonNamePrint( in, at );@',item4-json: a field named twice: the read was not refused)
+
+# item 5: bytes after a nested union inside its arm's L
+.PHONY: tables-cpp-nowriter-nested-arm-negative-control
+tables-cpp-nowriter-nested-arm-negative-control:
+	$(call cpp_nowriter_control,nested-arm,arms.go,-e 's@if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true; break; } // bytes after the inner union@if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true; break; } // bytes after the inner union@',item5: a byte after the inner union: the load was not refused)
+
+# A NESTED UNION FILLS ITS ARM'S L EXACTLY (docs/SPEC-TABLES.md §3, §4): the
+# standing control for the pinned vector nested_arm_trailing. The ORACLE is
+# taught the old reading, a nested-union arm whose L runs past the whole inner
+# union is read clean, by deleting its refusal from a COPY of decode.go through
+# a Go build overlay, and a replay of that vector must go red on it by name:
+# the leg refuses the envelope and the sabotaged oracle no longer agrees.
 # Nothing tracked is written to.
 NESTED_TRAIL_NC := build/wire-fuzz-nc-nested-arm-trailing
 .PHONY: tables-wire-fuzz-nested-arm-trailing-negative-control
 tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(NESTED_TRAIL_NC) && mkdir -p $(NESTED_TRAIL_NC)
-	@sed -e 's|^\(\t\tok = r.unionCell(&fv.Cell, fv, -1)\)$$|\1; if ok \&\& r.off != n { r.report.Malformed = true; return false } // NEGATIVE CONTROL: the envelope refused|' \
+	@sed -e '/ok = r.unionCell(&fv.Cell, fv)$$/{n;s|if ok \&\& r.off != n {|if false \&\& ok \&\& r.off != n { // NEGATIVE CONTROL: the envelope read clean|;}' \
 		internal/tablewire/decode.go > $(NESTED_TRAIL_NC)/decode.go.txt
 	@cmp -s internal/tablewire/decode.go $(NESTED_TRAIL_NC)/decode.go.txt && \
 		{ echo "NEGATIVE CONTROL: the nested-arm sabotage patched nothing"; exit 1; } || true
