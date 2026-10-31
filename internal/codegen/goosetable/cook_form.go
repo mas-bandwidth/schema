@@ -6,7 +6,7 @@
 // enumeration plus its own root's two layout facts, exactly as the C and C++
 // legs spell it (internal/codegen/ctable/cook.go).
 //
-// THE COOK'S PACKAGE MODULE, <Package>Cook.goose (PackageModule; docs/PORTING.md
+// THE COOK'S PACKAGE MODULE, <package>_cook.goose (PackageModule; docs/PORTING.md
 // J2), carries what the unit has once: BuildVersion (§20), the cook records
 // (CookRecords: every record of the table closure at the layout
 // ir.RecordLayout computes, the one model the build version digests), each
@@ -37,21 +37,21 @@ const cookModule = "cook_form"
 
 func init() {
 	RegisterModule("cook_form", generateCookModules)
-	RegisterUnit("cook_form", "Cook", emitCookPackage)
+	RegisterUnit("cook_form", "cook", emitCookPackage)
 }
 
-// cookPackage is the unit's cook package module, <Package>Cook, or "" for a
+// cookPackage is the unit's cook package module, <package>_cook, or "" for a
 // unit that declares no table and so has no cook.
 func cookPackage(u *ir.Unit) string {
 	for _, f := range u.Files {
 		if len(f.Tables) > 0 {
-			return PackageModule(u, "Cook")
+			return PackageModule(u, "cook")
 		}
 	}
 	return ""
 }
 
-// emitCookPackage writes the unit's cook data into <Package>Cook.goose: the
+// emitCookPackage writes the unit's cook data into <package>_cook.goose: the
 // build version, the records, the accessors and the record writers, then each
 // table's place in the records.
 func emitCookPackage(g *goose.Gen) error {
