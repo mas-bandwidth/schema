@@ -41,7 +41,10 @@ case "$surface" in
 	exit 1
 	;;
 esac
-stage=build/conformance-moo-driver/$surface
+# $MOO_DRIVER_STAGE (default build/conformance-moo-driver) holds the staged
+# source per surface: a run beside another (a negative control under make -j)
+# names its own, so no two runs stage into one directory.
+stage=${MOO_DRIVER_STAGE:-build/conformance-moo-driver}/$surface
 mkdir -p "$stage" || exit 1
 perl test/conformance/moo/stage.pl "$1" "$surface" "$stage" "$generated" || exit 1
 if [ "$surface" = list ]; then

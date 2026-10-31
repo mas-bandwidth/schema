@@ -361,7 +361,13 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
 		return
 	}
-	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
+	// A SCALAR LEAF is the variable codec's own write, which elides the
+	// DECLARED default (docs/SPEC-TABLES.md §4.2): a retaining save that tested
+	// against zero instead wrote `build int32 = 1` at 1 where the engine elides it.
+	_, isEnum := f.Type.Ref.(*ir.Enum)
+	scalar := f.Array == ir.ArrayNone && (f.Type.Kind == ir.TBool || f.Type.Kind == ir.TInt || isEnum ||
+		(f.Type.Kind == ir.TString && !f.Type.Blob()))
+	if scalar || (!isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f)) {
 		var body strings.Builder
 		writeFieldSave(&body, u, st, f)
 		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
@@ -376,25 +382,8 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		writeArrayFieldSaveRef(b, f, fieldRef)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.index(v.%s)); }\n", m, fieldRef, m)
-	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) { byte[] b = v.%s.getBytes(StandardCharsets.UTF_8); w.putLeb(w.ref(%s)); w.put8(12); w.putLeb(b.length); w.putBytes(b, 0, b.length); }\n", m, m, fieldRef)
-	case f.Type.Kind == ir.TBool:
-		fmt.Fprintf(b, "        if (v.%s) { w.putLeb(w.ref(%s)); w.put8(1); w.put8(1); }\n", m, fieldRef)
-	case f.Type.Kind == ir.TInt && f.Type.Width <= 32:
-		k := variableWireKind(f)
-		fmt.Fprintf(b, "        if (v.%s != 0) { w.putLeb(w.ref(%s)); w.put8(%d); w.put%d(v.%s); }\n", m, fieldRef, k, ir.TableKindWidth(k)*8, m)
-	case f.Type.Kind == ir.TInt:
-		k := variableWireKind(f)
-		fmt.Fprintf(b, "        if (v.%s != 0L) { w.putLeb(w.ref(%s)); w.put8(%d); w.put64(v.%s); }\n", m, fieldRef, k, m)
 	case f.Type.Kind == ir.TNamed:
-		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
-			fmt.Fprintf(b, "        if (v.%s != 0) {\n            w.putLeb(w.ref(%s));\n            w.put8(30);\n            switch (v.%s) {\n", m, fieldRef, m)
-			for i := range enum.Variants {
-				fmt.Fprintf(b, "                case %d: w.putLeb(w.ref(0x%016xL)); break;\n", i+1, ir.TableWireId(enum.VariantWireName(i)))
-			}
-			b.WriteString("                default: w.putLeb(0); break;\n")
-			b.WriteString("            }\n        }\n")
-		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
+		if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
 			// EVERY ARRAY OF TABLES — unbounded, counted or fixed — is kind 14
 			// over element bodies, and each element body carries its own
 			// retained tail (§6.6). A fixed array is written whole, as the

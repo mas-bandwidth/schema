@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -347,11 +348,13 @@ use crate::*;
 		g.emitFixedWriteUnion(un)
 		g.emitFixedScatterUnion(un)
 		g.emitFixedClampUnion(un)
+		g.emitFixedFiniteUnion(un)
 	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
 		g.emitFixedClampBody(st)
+		g.emitFixedFiniteBody(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
@@ -1210,11 +1213,20 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("pub const fn %s_fixed_measure(count: usize) -> usize {\n", name)
 	g.pf("    TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
 
+	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	g.pf("/// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or\n")
-	g.pf("/// None when the buffer is smaller than %s_fixed_measure says.\n", name)
+	g.pf("/// None when the buffer is smaller than %s_fixed_measure says", name)
+	if finite {
+		g.pf(" or a float\n/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3)")
+	}
+	g.pf(".\n")
 	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
 	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
 	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
+	if finite {
+		g.pf("    // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.\n")
+		g.pf("    if values.iter().any(|value| !%s(value).is_empty()) {\n        return None;\n    }\n", fn(st.Name, "fixed_finite_body"))
+	}
 	g.pf("    buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = TABLE_FIXED_FORM;\n")
 	g.pf("    buffer[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]\n")
@@ -1377,6 +1389,20 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        }\n")
 	g.pf("        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
+	if finite {
+		g.pf("        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs\n")
+		g.pf("        // FIRST, before the bounds pass, over the storage the run just wrote,\n")
+		g.pf("        // and a NaN or an infinity refuses the whole batch as\n")
+		g.pf("        // non_finite_float, naming the field. Nothing of the batch is kept:\n")
+		g.pf("        // every record this call wrote goes back to its declared defaults.\n")
+		g.pf("        let why = %s(&values[k]);\n", fn(st.Name, "fixed_finite_body"))
+		g.pf("        if !why.is_empty() {\n")
+		g.pf("            for value in values.iter_mut().take(k + 1) {\n")
+		g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
+		g.pf("            }\n")
+		g.pf("            return report.refuse_non_finite(why);\n")
+		g.pf("        }\n")
+	}
 	if fixedRangeClampNeeded(st) {
 		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("        // storage the scatter just wrote: the same pass for either plan,\n")
@@ -1809,4 +1835,183 @@ func fixedFloatLit(v float64) string {
 		s += ".0"
 	}
 	return s
+}
+
+/* ---- the read-side finite pass ---------------------------------------------
+
+A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+finite-only too, same rule as packets"): every fixed read refuses a NaN or an
+infinity as non_finite_float, naming the field, and the test runs FIRST, before
+the bounds pass, so a compressed float's clamp never sees one. Like the bounds
+pass it runs over STORAGE after the record lands, so ONE pass covers both
+plans: the identity copy and a lineage plan's widenF, whose ordinary conversion
+keeps a NaN a NaN and an infinity an infinity. It walks only what a read can
+have written (a counted array's live elements, an optional's payload when
+present, a union's set arm), and the writer runs the same pass before it writes
+a byte. It is the Go leg's <T>FixedFiniteBody (gotable/fixedform.go). */
+
+// fixedFiniteNeededStruct is whether a fixed type holds a float anywhere a
+// read lands one. A type that holds none gets no pass (§2.2's zero-cost rule).
+func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	return slices.ContainsFunc(st.Fields, func(f *ir.Field) bool { return fixedFiniteNeededField(f, seen) })
+}
+
+func fixedFiniteNeededField(f *ir.Field, seen map[string]bool) bool {
+	if f == nil {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedFiniteNeededStruct(r, seen)
+		case *ir.Union:
+			return slices.ContainsFunc(r.Variants, func(v ir.UnionVariant) bool { return fixedFiniteNeededField(v.F, seen) })
+		}
+	}
+	return false
+}
+
+func fixedFiniteNeededUnion(un *ir.Union) bool {
+	return slices.ContainsFunc(un.Variants, func(v ir.UnionVariant) bool { return fixedFiniteNeededField(v.F, map[string]bool{}) })
+}
+
+// emitFixedFiniteBody emits <t>_fixed_finite_body: the first non-finite
+// float's <Owner>.<field>, or "" for a record whose floats are all finite.
+func (g *gen) emitFixedFiniteBody(st *ir.Struct) {
+	if !fixedFiniteNeededStruct(st, map[string]bool{}) {
+		return
+	}
+	g.pf("/// %s's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a\n", st.Name)
+	g.pf("/// NaN or an infinity, named <Owner>.<field>, or \"\" when every float is finite.\n")
+	g.pf("pub fn %s(value: &%sRow) -> &'static str {\n", fn(st.Name, "fixed_finite_body"), st.Name)
+	for _, f := range st.Fields {
+		g.emitFixedFiniteField(f, "value."+f.Name, 4)
+	}
+	g.pf("    \"\"\n}\n\n")
+}
+
+// emitFixedFiniteUnion is a union's share: the ARM THE TAG NAMES and no other.
+func (g *gen) emitFixedFiniteUnion(un *ir.Union) {
+	if !fixedFiniteNeededUnion(un) {
+		return
+	}
+	g.pf("/// %s's finite rule (docs/SPEC-TABLES.md §3.3): the arm THE TAG NAMES.\n", un.Name)
+	g.pf("pub fn %s(value: &%sRow) -> &'static str {\n", fn(un.Name, "fixed_finite_body"), un.Name)
+	var holding []int
+	for i, v := range un.Variants {
+		if fixedFiniteNeededField(v.F, map[string]bool{}) {
+			holding = append(holding, i)
+		}
+	}
+	arm := func(i, indent int) {
+		v := un.Variants[i]
+		ind := strings.Repeat(" ", indent)
+		g.pf("%s// SAFETY: the tag was just matched against `%s`.\n", ind, v.Name)
+		g.pf("%slet arm = unsafe { value.arms.%s };\n", ind, v.Name)
+		g.emitFixedFiniteArm(v.F, indent)
+	}
+	if len(holding) == 1 {
+		g.pf("    if value.tag == %d {\n", holding[0]+1)
+		arm(holding[0], 8)
+		g.pf("    }\n    \"\"\n}\n\n")
+		return
+	}
+	g.pf("    match value.tag {\n")
+	for _, i := range holding {
+		g.pf("        %d => {\n", i+1)
+		arm(i, 12)
+		g.pf("        }\n")
+	}
+	g.pf("        _ => {} // None, and any arm that holds no float\n")
+	g.pf("    }\n    \"\"\n}\n\n")
+}
+
+// emitFixedFiniteArm walks one union arm's `arm` binding, in the clamp pass's
+// shape (emitFixedClampArm).
+func (g *gen) emitFixedFiniteArm(f *ir.Field, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch f.Array {
+	case ir.ArrayFixed:
+		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedFiniteElement(f, "arm[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case ir.ArrayCounted:
+		g.pf("%sfor i in 0..arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
+		g.emitFixedFiniteElement(f, "arm.value[i]", indent+4)
+		g.pf("%s}\n", ind)
+	default:
+		g.emitFixedFiniteElement(f, "arm", indent)
+	}
+}
+
+// emitFixedFiniteField walks ONE field's live storage.
+func (g *gen) emitFixedFiniteField(f *ir.Field, expr string, indent int) {
+	if !fixedFiniteNeededField(f, map[string]bool{}) {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		// an absent optional's payload is the template's zeros, never read (§3.4)
+		g.pf("%sif value.%s_present {\n", ind, f.Name)
+		g.emitFixedFinitePayload(f, expr, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedFinitePayload(f, expr, indent)
+}
+
+func (g *gen) emitFixedFinitePayload(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	loop := func(count string) {
+		g.pf("%sfor i in 0..%s {\n", ind, count)
+		g.emitFixedFiniteElement(f, expr+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	}
+	switch {
+	case f.KeyEnum != "":
+		loop(fmt.Sprint(f.KeyEnumRef.Max))
+	case f.Array == ir.ArrayFixed:
+		loop(fmt.Sprint(f.ArrayBound))
+	case f.Array == ir.ArrayCounted:
+		// the live count and never the slack (§3.4)
+		loop(fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound))
+	default:
+		g.emitFixedFiniteElement(f, expr, indent)
+	}
+}
+
+// emitFixedFiniteElement is ONE element: a test for a float, a call for a
+// declaration that holds one.
+func (g *gen) emitFixedFiniteElement(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("%sif !%s.is_finite() {\n%s    return %q;\n%s}\n", ind, expr, ind, g.floatOwner(f), ind)
+		return
+	case ir.TNamed:
+	default:
+		return
+	}
+	name := ""
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedFiniteNeededStruct(r, map[string]bool{}) {
+			name = r.Name
+		}
+	case *ir.Union:
+		if fixedFiniteNeededUnion(r) {
+			name = r.Name
+		}
+	}
+	if name == "" {
+		return
+	}
+	g.pf("%slet why = %s(&%s);\n%sif !why.is_empty() {\n%s    return why;\n%s}\n", ind, fn(name, "fixed_finite_body"), expr, ind, ind, ind)
 }

@@ -74,7 +74,8 @@ func u64(v uint64) []byte {
 
 // leb, one canonical LEB128, is messagerules_test.go's helper.
 
-func ptr(v uint64) *uint64 { return &v }
+//go:fix inline
+func ptr(v uint64) *uint64 { return new(v) }
 
 func mustHex(s string) []byte {
 	out, err := hex.DecodeString(s)

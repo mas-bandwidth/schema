@@ -1,0 +1,38 @@
+#!/bin/sh
+# The moo runtime-home check (make/moo-open-gates.mk, docs/PORTING.md J2).
+# usage: check <base tree> <added tree> <joining base> <schema dir>
+# The added tree is the base tree's unit with one earlier-sorting schema file,
+# <joining base>.schema, joined. A schema file's modules are <Base>.moo (the
+# packet surface) and <Base>Table.moo (the table surface), named by the file
+# itself; every other emitted module is the RUNTIME (serialize*.moo,
+# schema_tables.moo, table_*.moo, json.moo, textcarrier.moo), named by the
+# runtime and never by a schema file. Every file of the base tree is in the
+# added tree under the same name, the added tree has no file the base tree
+# lacks but the joining file's own two modules, and every runtime module is
+# byte-identical across the two trees.
+set -eu
+base=$1 added=$2 joining=$3 schemas=$4
+own() {
+	b=${1%.moo}
+	b=${b%Table}
+	[ -f "$schemas/$b.schema" ]
+}
+runtime=0
+for f in "$base"/*.moo; do
+	[ -e "$f" ] || { echo "RUNTIME HOME GATE FAILED: the base tree emitted no module"; exit 1; }
+	n=$(basename "$f")
+	test -f "$added/$n" || { echo "RUNTIME HOME GATE FAILED: the module $n moved when the unit gained an earlier-sorting file"; exit 1; }
+	own "$n" && continue
+	runtime=$((runtime + 1))
+	cmp -s "$f" "$added/$n" || { echo "RUNTIME HOME GATE FAILED: the runtime module $n changed when the unit gained an earlier-sorting file"; exit 1; }
+done
+for f in "$added"/*.moo; do
+	n=$(basename "$f")
+	test -f "$base/$n" && continue
+	case "$n" in
+	"$joining".moo | "$joining"Table.moo) ;;
+	*) echo "RUNTIME HOME GATE FAILED: the module $n appeared when the unit gained an earlier-sorting file"; exit 1 ;;
+	esac
+done
+[ "$runtime" -gt 0 ] || { echo "RUNTIME HOME GATE FAILED: the base tree carries no runtime module"; exit 1; }
+echo "runtime home: $runtime runtime modules byte-identical, every schema module in place"
