@@ -411,7 +411,7 @@ func checkNames(u *ir.Unit) error {
 
 // refuseVariableForm refuses, by name, every variable-class construct the card
 // record does not use (docs/SPEC-TABLES.md §2, §11). The VARIABLE FORM (§3,
-// form byte 1) is taught for plain `table` roots and tables as list elements,
+// form byte 1) is taught for variable table roots and tables as list elements,
 // bool/int32/int64/enum fields, string(N), the *string and *bytes byte buffers
 // (§2.5) and unbounded lists of tables ([]T, §2.9). Every other
 // variable-class construct — a map (§2.8), a union arm (§2.6), a pointer to a

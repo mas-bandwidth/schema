@@ -17,7 +17,7 @@ package gotable
 // Every subtest generates TWO units of one fixed table — an OLDER and a NEWER
 // schema — and drives the older unit's Announce and SaveMessages into the
 // newer unit's AnnounceRead and LoadMessages, exactly as an endpoint pair would.
-// A fixed table carries the message form (§3.3); a plain table may not.
+// A fixed table carries the message form (§3.3); a variable table has none.
 
 import (
 	"fmt"

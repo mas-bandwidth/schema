@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -45,6 +44,9 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 		// bodies calls again.
 		return nil, &MessageRefusal{Reason: ReasonBatchTooLarge}
 	}
+	if err := messageRoot(m, insts[0].Def); err != nil {
+		return nil, err
+	}
 	vocabulary := ir.TableVocabulary(m.Unit)
 	slots := make(map[string]uint64, len(vocabulary))
 	for i, e := range vocabulary {
@@ -53,12 +55,8 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 	w := &bitWriter{}
 	w.put(uint64(len(insts)-1), 8) // the count, a ranged integer over [1, 256]
 	for _, inst := range insts {
-		g, err := Number(m, inst)
-		if err != nil {
-			return nil, err
-		}
-		e := &bitEncoder{m: m, g: g, slots: slots, refBits: ir.TableMessageRefBits(len(vocabulary)), indexBits: ir.TableMessageBitsRequired(0, 1)}
-		if err := encodeBitBody(e, w, inst, true); err != nil {
+		e := &bitEncoder{m: m, slots: slots, refBits: ir.TableMessageRefBits(len(vocabulary))}
+		if err := encodeBitBody(e, w, inst); err != nil {
 			return nil, err
 		}
 		if e.missing != "" {
@@ -78,16 +76,14 @@ func EncodeMessage(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error)
 	return EncodeMessages(m, []*tabletext.Instance{inst})
 }
 
-// bitEncoder is one body's context: the closure the walks run over, the
-// NUMBERING its pointers resolve through, and the unit's compiled slot table,
-// which is the same table for every body of the batch.
+// bitEncoder is one body's context: the closure the walks run over and the
+// unit's compiled slot table, which is the same table for every body of the
+// batch.
 type bitEncoder struct {
-	m         *tabletext.Model
-	g         *NodeGraph
-	slots     map[string]uint64
-	refBits   int
-	indexBits int // a node index's width: bits_required(0, node count)
-	missing   string
+	m       *tabletext.Model
+	slots   map[string]uint64
+	refBits int
+	missing string
 }
 
 // ref writes one entry's REFERENCE: its slot in the unit's vocabulary, in
@@ -108,15 +104,8 @@ func (e *bitEncoder) name(w *bitWriter, id uint64) {
 }
 
 // encodeBitBody is one table body: its fields, then the ZERO REFERENCE that
-// ends it. THE NODE TABLE, WHEN A ROOT HAS ONE, IS ITS FIRST FIELD, because a
-// pointer index is `bits_required(0, node count)` wide and the node count
-// rides in the node table (§3.1, §3.3).
-func encodeBitBody(e *bitEncoder, w *bitWriter, inst *tabletext.Instance, root bool) error {
-	if root && e.g != nil && len(e.g.Records()) > 0 {
-		if err := encodeBitNodeTable(e, w); err != nil {
-			return err
-		}
-	}
+// ends it.
+func encodeBitBody(e *bitEncoder, w *bitWriter, inst *tabletext.Instance) error {
 	guards := tabletext.Guards(inst.Def)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
@@ -137,23 +126,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 	shape := entry.Shape
 	kind := ir.TableWireScalarKind(f)
 
-	if f.Type.Pointer && f.Array == ir.ArrayNone {
-		index := e.g.Index(fv.Cell.Node)
-		if f.Type.Blob() {
-			index = e.g.BlobIndex(fv.Cell.Blob)
-		}
-		if index == ir.NodeWireIndexNull {
-			return nil // null is elided, exactly as it is on a file (§3.1)
-		}
-		e.ref(w, entry)
-		w.put(index, e.indexBits)
-		return nil
-	}
-
 	switch {
-	case f.IsMap():
-		return encodeBitMap(e, w, fv, entry)
-
 	case f.Type.Optional:
 		if !fv.Present {
 			return nil // PRESENCE is the payload (§2.3)
@@ -167,7 +140,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 			}
 			return encodeBitArray(e, w, fv, entry, count)
 		case kind == ir.TableKindTable:
-			return encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell), false)
+			return encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell))
 		case kind == ir.TableKindEnum:
 			return encodeBitEnum(e, w, f, &fv.Cell)
 		default:
@@ -257,7 +230,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 	case kind == ir.TableKindTable:
 		start := w.bits()
 		e.ref(w, entry)
-		if err := encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell), false); err != nil {
+		if err := encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell)); err != nil {
 			return err
 		}
 		if w.bits()-start == 2*e.refBits {
@@ -327,10 +300,7 @@ func encodeBitElement(e *bitEncoder, w *bitWriter, f *ir.Field, shape ir.TableMe
 	}
 	switch int(shape.Elem) {
 	case ir.TableKindTable:
-		return encodeBitBody(e, w, subInstanceOf(e.m, f, cell), false)
-	case ir.TableKindPointer:
-		w.put(e.g.Index(cell.Node), e.indexBits)
-		return nil
+		return encodeBitBody(e, w, subInstanceOf(e.m, f, cell))
 	case ir.TableKindEnum:
 		return encodeBitEnum(e, w, f, cell)
 	case ir.TableKindUnion:
@@ -435,7 +405,7 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 		if payload == nil {
 			payload = e.m.New(arm.Ref)
 		}
-		return encodeBitBody(e, w, payload, false)
+		return encodeBitBody(e, w, payload)
 	}
 	f := arm.F
 	fv := cell.Arm
@@ -444,13 +414,6 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 	}
 	shape := entry.Shape
 	switch {
-	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		index := e.g.Index(fv.Cell.Node)
-		if f.Type.Blob() {
-			index = e.g.BlobIndex(fv.Cell.Blob)
-		}
-		w.put(index, e.indexBits)
-		return nil
 	case f.Type.Kind == ir.TString:
 		w.put(uint64(len(fv.Cell.Str)), ir.TableMessageBitsRequired(0, shape.Max))
 		w.align()
@@ -486,7 +449,7 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 	case tabletext.EnumOf(f) != nil:
 		return encodeBitEnum(e, w, f, &fv.Cell)
 	case tabletext.StructOf(f) != nil:
-		return encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell), false)
+		return encodeBitBody(e, w, subInstanceOf(e.m, f, &fv.Cell))
 	}
 	return encodeBitValue(e, w, f, entry.Kind, shape, &fv.Cell)
 }
@@ -514,7 +477,7 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 		elem := &bitWriter{}
 		if int(shape.Elem) == ir.TableKindTable {
 			sub := *e
-			if err := encodeBitBody(&sub, elem, subInstanceOf(e.m, f, cell), false); err != nil {
+			if err := encodeBitBody(&sub, elem, subInstanceOf(e.m, f, cell)); err != nil {
 				return err
 			}
 			e.missing = sub.missing
@@ -534,60 +497,6 @@ func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 	for _, slot := range present {
 		e.name(w, slot.keyID)
 		if err := encodeBitElement(e, w, f, shape, &fv.Elems[slot.slot]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// encodeBitMap writes one map field (docs/SPEC-TABLES.md §2.8): the entry
-// count, then the generated `{ key, value }` bodies in ascending key order
-// with no key twice. An entry always rides, because identity there is the key.
-func encodeBitMap(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.TableVocabularyEntry) error {
-	f := fv.Def
-	if len(fv.Entries) == 0 {
-		return nil
-	}
-	order := make([]int, len(fv.Entries))
-	for i := range order {
-		order[i] = i
-	}
-	sort.SliceStable(order, func(a, b int) bool {
-		return tabletext.MapKeyOrder(f,
-			tabletext.MapKeyOf(f, fv.Entries[order[a]].Tab),
-			tabletext.MapKeyOf(f, fv.Entries[order[b]].Tab)) < 0
-	})
-	e.ref(w, entry)
-	w.put(uint64(len(order)), ir.TableMessageCountBits(entry.Shape))
-	for _, at := range order {
-		if err := encodeBitBody(e, w, fv.Entries[at].Tab, false); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// encodeBitNodeTable writes the numbering as the ROOT body's FIRST field
-// (§3.1, §3.3): the node count, then the records back to back, each its type
-// id's reference and then its body or its bytes.
-//
-// A pointer index is `bits_required(0, node count)` wide, so the node count
-// has to be read before an index can be, and that is the one ordering
-// constraint this form puts on a body.
-func encodeBitNodeTable(e *bitEncoder, w *bitWriter) error {
-	records := e.g.Records()
-	e.indexBits = ir.TableMessageBitsRequired(0, int64(len(records))+1)
-	e.name(w, ir.TableNodeWireId)
-	w.put(uint64(len(records)), 32)
-	for _, node := range records {
-		e.name(w, node.TypeId())
-		if node.Blob != nil {
-			w.put(uint64(len(node.Blob.Data)), 32)
-			w.align()
-			w.bytes(node.Blob.Data)
-			continue
-		}
-		if err := encodeBitBody(e, w, node.Inst, false); err != nil {
 			return err
 		}
 	}

@@ -249,7 +249,7 @@ func fieldShape(f *ir.Field) byte {
 func (e *jsonEmit) names(name string, variants []string) string {
 	g := e.g
 	id := "_" + name + "JsonNames"
-	if g.Declared(id) {
+	if g.DeclaredBySurface(id) {
 		return id
 	}
 	g.Declare(id)

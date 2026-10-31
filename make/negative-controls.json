@@ -41,6 +41,7 @@
       "why": "the C two-units control and the generated C tree it builds (23 s), the doc/tags family (17 s), the projection's wire-law and variant-order controls, the C ref-ordinal rewind, and the small refusers: clamps, JSON, was, retention, runtime homes, zero-cost, block, python packet and toolchain: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
         "build-version-elemkind-negative-control",
+        "message-form-fixed-only-lock-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
         "tables-block-const-negative-control",
@@ -58,7 +59,6 @@
         "tables-json-negative-control",
         "tables-py-packet-negative-control",
         "tables-retain-fixed-class-negative-control",
-        "tables-retain-message-form-negative-control",
         "tables-runtime-home-negative-control",
         "tables-slot-negative-control",
         "tables-view-containment-negative-control",
@@ -112,12 +112,13 @@
     {
       "name": "base-conformance-2",
       "when": "pull-request",
-      "why": "the shared conformance harness's Go side: the Go leg's wire, walk and wire-fuzz controls, which share one generated Go tree and one build/conformance-go (72 s together on run 40684250024), and the Go rows control beside them. One half of what was the single `base-conformance` group, cut on 2026-10-28 because that group ran 261 s median and 296 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 259 s of control time over 7 controls). Measured about 75 s of control time on run 40684770225 and 108 s on run 40684250024. The Lua packet finite-float control rides here because this row installs the pinned Lua interpreter (make dist-lua) and already builds build/schema-lua for conformance-negative-control-lua; on that build it is two small sabotage-tool runs and two Lua checker runs over one generated unit, 3.7 s on the studio with a cold Go build cache, so the row stays inside the 120 s rule.",
+      "why": "the shared conformance harness's Go side: the Go leg's wire, walk and wire-fuzz controls, which share one generated Go tree and one build/conformance-go (72 s together on run 40684250024), and the Go rows control beside them. One half of what was the single `base-conformance` group, cut on 2026-10-28 because that group ran 261 s median and 296 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 259 s of control time over 7 controls). Measured about 75 s of control time on run 40684770225 and 108 s on run 40684250024. The proof gate's end-to-end control (proof-negative-control: the Go leg run twice through a substituted registry, once with one wire answer deleted, and tools/matrix proof required red naming that case) rides here on the same build/conformance-go. The Lua packet finite-float control rides here because this row installs the pinned Lua interpreter (make dist-lua) and already builds build/schema-lua for conformance-negative-control-lua; on that build it is two small sabotage-tool runs and two Lua checker runs over one generated unit, 3.7 s on the studio with a cold Go build cache, so the row stays inside the 120 s rule.",
       "targets": [
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
-        "conformance-go-rows-negative-control"
+        "conformance-go-rows-negative-control",
+        "proof-negative-control"
       ]
     },
     {
@@ -413,12 +414,10 @@
     {
       "name": "message-form",
       "when": "pull-request",
-      "why": "the message form's blades: the count, the emitter, the text content rule, the blob one, and the form-2 retain capture. The one control of this family that drives 49 sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured 16 s over 5 controls.",
+      "why": "the message form's blades: the count, the emitter and the text content rule. The one control of this family that drives the sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured under 16 s over 3 controls.",
       "targets": [
-        "tables-message-form-blob-negative-control",
         "tables-message-form-count-negative-control",
         "tables-message-form-emitter-negative-control",
-        "tables-message-form-retain-negative-control",
         "tables-message-form-text-negative-control"
       ]
     },
@@ -485,13 +484,12 @@
     {
       "name": "wire-fuzz",
       "when": "pull-request",
-      "why": "the tolerant-wire oracle, nested-arm trailing and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
+      "why": "the tolerant-wire oracle and nested-arm trailing controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
         "tables-wire-fuzz-discard-negative-control",
         "tables-cpp-discard-negative-control",
         "tables-cpp-region-discard-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
-        "tables-wire-fuzz-node-type-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]
     },
@@ -500,7 +498,6 @@
       "when": "pull-request",
       "why": "the tolerant-wire oracles for the message form's text and blob records, and the retain one. Measured 3 s over 3 controls.",
       "targets": [
-        "tables-wire-fuzz-message-blob-oracle-negative-control",
         "tables-wire-fuzz-message-text-oracle-negative-control",
         "tables-wire-fuzz-retain-oracle-negative-control"
       ]
@@ -538,14 +535,6 @@
       ]
     },
     {
-      "name": "wire-fuzz-blob-node",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine and 58 s on the runner.",
-      "targets": [
-        "tables-wire-fuzz-blob-node-negative-control"
-      ]
-    },
-    {
       "name": "wire-fuzz-wide-text",
       "when": "pull-request",
       "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 28 s on the author's machine and 75 s on the runner.",
@@ -562,14 +551,6 @@
       ]
     },
     {
-      "name": "wire-fuzz-message-blob",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
-      "targets": [
-        "tables-wire-fuzz-message-blob-leg-negative-control"
-      ]
-    },
-    {
       "name": "wire-fuzz-retain-class",
       "when": "pull-request",
       "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 29 s on the author's machine.",
@@ -580,9 +561,8 @@
     {
       "name": "moo-tables",
       "when": "pull-request",
-      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), the message form's capture call planted out of table_message.moo (retain_message_tail's counters move), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
+      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
       "targets": [
-        "tables-moo-retain-message-negative-control",
         "tables-moo-retain-negative-control",
         "tables-moo-retain-refusal-negative-control"
       ],
@@ -634,7 +614,6 @@
       "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds).",
       "targets": [
         "tables-cs-pack-negative-control",
-        "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
         "tables-cs-json-differential-negative-control",
         "tables-cs-byte-order-negative-control"
@@ -998,7 +977,8 @@
         "tables-java-wire-fuzz-negative-control",
         "tables-java-retain-fuzz-negative-control",
         "tables-java-map-count-negative-control",
-        "tables-java-keyed-count-negative-control"
+        "tables-java-keyed-count-negative-control",
+        "tables-java-retain-node-negative-control"
       ],
       "java": "21"
     },
@@ -1240,11 +1220,12 @@
     {
       "name": "goose-blockcook",
       "when": "pull-request",
-      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and three harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order), and the forgery fuzzer's two both-bounds extent controls (about 4 s together). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because three harness runs (about 55 s on a laptop) would push the goose group past the 120 s rule.",
+      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and three harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order), and the forgery fuzzer's two both-bounds extent controls (about 4 s together), and the accessor/descriptor agreement's control (a pointer accessor moved in accel.go under go test -overlay; two small goose runs). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because three harness runs (about 55 s on a laptop) would push the goose group past the 120 s rule.",
       "targets": [
         "tables-goose-accel-negative-control",
         "tables-goose-block-negative-control",
-        "tables-goose-fuzz-negative-control"
+        "tables-goose-fuzz-negative-control",
+        "tables-goose-accessor-negative-control"
       ]
     },
     {
@@ -1261,12 +1242,13 @@
     {
       "name": "goose-gates",
       "when": "pull-request",
-      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the strict gate's plant and its emitter sabotage, and the runtime home's file-order control. Each installs the pinned Goose compiler itself (make dist-goose) where it needs it; two rebuild the compiler under a go build -overlay. Go and nothing else. Measured at 3.2 s of control time together on the author's machine off a warm build (2026-10-28); its own group so the fixed-form control's corpus build in group goose stays apart from it.",
+      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the strict gate's plant and its emitter sabotage, and the runtime home's file-order control, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it; two rebuild the compiler under a go build -overlay. Go and nothing else. Measured at 3.2 s of control time together on the author's machine off a warm build (2026-10-28); its own group so the fixed-form control's corpus build in group goose stays apart from it.",
       "targets": [
         "tables-goose-runtime-home-negative-control",
         "tables-goose-strict-emitter-negative-control",
         "tables-goose-strict-negative-control",
-        "tables-goose-unit-home-negative-control"
+        "tables-goose-unit-home-negative-control",
+        "tables-goose-names-negative-control"
       ]
     },
     {
@@ -1607,9 +1589,10 @@
     {
       "name": "release-form-gate",
       "when": "pull-request",
-      "why": "the build version's form gate's control (docs/VERSIONING.md, \"The release policy\"): tools/releasetag's FormGate is handed the tag's form twice through a go test overlay and TestReleaseFormGate must go red on the patch release that moves the form, and on it alone. One small go test build, Go only, a few seconds.",
+      "why": "the build version's form gate's control (docs/VERSIONING.md, \"The release policy\"): tools/releasetag's FormGate is handed the tag's form twice through a go test overlay and TestReleaseFormGate must go red on the patch release that moves the form, and on it alone. One small go test build, Go only, a few seconds. Beside it, the release lock's control (release-proof-gate-negative-control): tools/matrix VerifyRelease is sabotaged through a go run overlay to pass red cells, and release-proof-refusal, which hands `make release` a red proof report at HEAD, must go red. Go only, a few seconds.",
       "targets": [
-        "release-form-gate-negative-control"
+        "release-form-gate-negative-control",
+        "release-proof-gate-negative-control"
       ]
     },
     {

@@ -1,7 +1,7 @@
 // A VARIABLE ROOT WHOSE NUMBERING CAN NAME NOTHING (docs/SPEC-TABLES.md §2.2).
 //
 // The `fixed table` keyword creates a state that did not exist while the class
-// was derived: a plain `table` is the VARIABLE wire whatever its fields are, so
+// was derived: a variable table is the VARIABLE wire whatever its fields are, so
 // a unit can hold a variable root with no pointer, no map and no unbounded
 // array under it. Its node dispatch then has no case. The emitter used to
 // write `switch ( type_id ) { default: break; }`, which MSVC /W4 /WX refuses

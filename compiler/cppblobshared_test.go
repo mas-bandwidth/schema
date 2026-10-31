@@ -1,10 +1,10 @@
 // ONE BLOB RECORD NAMED FROM TWO SLOTS IS blob_shared (docs/SPEC-TABLES.md
 // §2.5, §16.7) on the C++ leg. The answer key is Go's
 // internal/codegen/gotable/blobnamedtwice_test.go: TestBlobNamedTwiceSeed24's
-// wire (the seed-24 fuzz value, xor 0x01 at byte 6), TestBlobNamedTwiceWriters'
-// refusals, and TestBlobNamedTwiceMessageForm's writer refusal are transcribed
-// below for the same schema text and the same input bytes. Every expected
-// answer is that test's; none is a value this port computed for itself.
+// wire (the seed-24 fuzz value, xor 0x01 at byte 6) and
+// TestBlobNamedTwiceWriters' refusals are transcribed below for the same schema
+// text and the same input bytes. Every expected answer is that test's; none is a
+// value this port computed for itself.
 //
 // The rule: every writer refuses a graph whose two slots name one blob (by
 // name, blob_shared, never a bare -1); the tolerant read keeps the ONE node
@@ -160,8 +160,7 @@ int main()
     }
 
     // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB (Go
-    // TestBlobNamedTwiceWriters): Measure, Save and the text writer, and the
-    // message region writer by name.
+    // TestBlobNamedTwiceWriters): Measure, Save and the text writer.
     {
         RootBuilder b;
         Root * r = b.GetRoot();
@@ -177,14 +176,6 @@ int main()
         CHECK( b.Lock() ); // Lock packs a shared node ONCE (Go TestBlobNamedTwiceWriters)
         const Root * c = b.AsConst();
         CHECK( RootToJsonMeasure( c ) == -1 );
-        // THE MESSAGE WRITER REFUSES BY NAME TOO, never a bare -1 (Go
-        // TestBlobNamedTwiceMessageForm pins numbering.reason blob_shared).
-        TableReport mr{};
-        CHECK( RootMeasureMessages( &c, 1, &mr ) == -1 );
-        CHECK( mr.refuse_reason == blob_shared );
-        TableReport sr{};
-        CHECK( RootSaveMessages( &c, 1, saved, (int64_t) sizeof saved, &sr ) == -1 );
-        CHECK( sr.refuse_reason == blob_shared );
     }
 
     // THE SAME VALUE WITH TWO BLOBS SAVES AND ROUND-TRIPS (Go
@@ -229,61 +220,6 @@ int main()
         CHECK( v != NULL && !r.malformed && r.blob_shared == 0 && r.refuse_reason == ok );
         CHECK( TableBytesAt( v->f2 ).length == 3 && memcmp( TableBytesAt( v->f2 ).data, "abc", 3 ) == 0 );
         CHECK( TableBytesAt( v->u0.ptr ).length == 3 && memcmp( TableBytesAt( v->u0.ptr ).data, "xyz", 3 ) == 0 );
-    }
-
-    // THE MESSAGE READER KEEPS THE ONE NODE AND COUNTS IT (Go
-    // TestBlobNamedTwiceMessageForm): the body is built with the writer's own
-    // steps and no blob_shared check, and the reader answers BlobShared 1 with
-    // both slots naming the one decoded node.
-    {
-        RootBuilder mb;
-        Root * mr = mb.GetRoot();
-        CHECK( mr != NULL );
-        TableBytesSlot blob = mb.AllocBytes( 3 );
-        CHECK( !blob.null() );
-        memcpy( blob.data, "abc", 3 );
-        mr->f2 = blob.ref;
-        mr->u0.type = U0Type::Ptr;
-        mr->u0.ptr = blob.ref;
-
-        TableArenaCtx ctx = { &mb.arena };
-        TableNumbering numbering;
-        TableNumberingInit( numbering, TableDefaultAllocator() );
-        CHECK( RootNumberFrom( ctx, numbering, *mr ) && numbering.shared );
-        const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-        static uint8_t message[4096];
-        TableMessageBatch batch;
-        CHECK( TableMessageBatchBegin( batch, message, (int64_t) sizeof message, 1 ) );
-        CHECK( TableMessageNodeTableSave( ctx, numbering, index_bits, batch.w ) );
-        CHECK( RootSaveMessageBody( ctx, numbering, index_bits, batch.w, *mr ) );
-        batch.written++;
-        const int64_t message_bytes = TableMessageBatchEnd( batch );
-        TableNumberingShutdown( numbering );
-        CHECK( message_bytes > 2 );
-
-        TableMessageEntry vocabulary_entries[ kTableMessageEntriesHere ];
-        TableVocabulary vocabulary( vocabulary_entries, kTableMessageEntriesHere );
-        static uint8_t announcement[4096];
-        const int64_t announced = Announce( announcement, (int64_t) sizeof announcement );
-        CHECK( announced > 0 && announced == AnnounceMeasure() );
-        CHECK( AnnounceRead( vocabulary, announcement, announced, NULL ) );
-
-        int64_t attribution = 0;
-        const int64_t need = RootLoadMeasure( vocabulary, message, message_bytes, &attribution );
-        CHECK( need > 0 );
-        static uint8_t message_region[ 1 << 17 ];
-        const Root * loaded[1] = { NULL };
-        int64_t loaded_count = 1;
-        TableReport message_read{};
-        CHECK( RootLoadMessages( loaded, &loaded_count, message_region, need, vocabulary, message, message_bytes, &message_read ) );
-        CHECK( loaded_count == 1 && loaded[0] != NULL && !message_read.malformed );
-        CHECK( message_read.blob_shared == 1 );
-        if ( loaded[0] != NULL )
-        {
-            const TableBytesView first = TableBytesAt( loaded[0]->f2 );
-            const TableBytesView second = TableBytesAt( loaded[0]->u0.ptr );
-            CHECK( first.length == 3 && second.length == 3 && first.data != NULL && first.data == second.data );
-        }
     }
 
     // A NUMBERING THAT CANNOT ALLOCATE IS A REFUSAL, not a walk that treats the

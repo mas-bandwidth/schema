@@ -644,7 +644,7 @@ if (mode == "cook-write") {
 // THE MESSAGE FORM (§3.3): AnnounceRead the connection's announcement into one
 // direction's vocabulary, LoadMessages the batch against it into a storage of
 // the form's batch maximum, then MeasureMessages and SaveMessages, the bytes.
-// A PLAIN table has no message form (§3.3): that row is absent by name.
+// A variable table has no message form (§3.3): that row is absent by name.
 if (mode == "message") {
   local connections = {};
   foreach (ln in lines) {
@@ -657,10 +657,15 @@ if (mode == "message") {
     local name = f[1]; local root = f[3];
     if (!(f[2] in connections)) throw name + ": no connection " + f[2];
     local conn = connections[f[2]];
+    if (f[5] == "-") {
+      // a named refusal row: the root is a variable table (§3.3)
+      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+      continue;
+    }
     if (!generated(conn.unit)) { writeAbsent(name); continue; }
     local T = openUnit(conn.unit)[1];
     if (!T.Descriptors[root].fixed) {
-      writeText(outdir + "/" + name + ".absent", "plain table: §3.3");
+      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
       continue;
     }
     local v = {};
@@ -686,19 +691,13 @@ if (mode == "message") {
 // retain_lost the save adds, `<retained>,<retain_lost>,<unknown> <save lost>`;
 // `retain-save` writes the saved bytes. `short` is one byte short of the last
 // record: load once at a roomy capacity, read what the store used, and load
-// again one byte under it. The id list's capacity is a count. A form-2 row
-// (retain-message) is the message form's, which a retained save refuses by
-// name (§3.3): absent by name, as the Go leg answers it.
+// again one byte under it. The id list's capacity is a count.
 if (mode == "retain" || mode == "retain-save") {
   local saves = mode == "retain-save";
   foreach (ln in lines) {
     local f = splitFields(ln);
-    if (f.len() < 2 || (f[0] != "retain" && f[0] != "retain-message")) continue;
+    if (f.len() < 2 || f[0] != "retain") continue;
     local name = f[1];
-    if (f[0] == "retain-message") {
-      writeText(outdir + "/" + name + ".absent", "plain table: §3.3");
-      continue;
-    }
     if (f.len() < 7) throw name + ": a retain row takes unit, root, wire and two capacities";
     local unit = f[2]; local root = f[3];
     if (!generated(unit)) { writeAbsent(name); continue; }
