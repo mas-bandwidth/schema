@@ -129,7 +129,7 @@ static void field_deprecate_case()
 // ---------------------------------------------------------------------------
 // clause 3 — A narrower integer or float: widened exactly, `widened` counts.
 // int_widen: int16 -> int32; the three values a widening gets wrong.
-// float_widen: float32 -> float64; a signalling NaN's payload rides the 22 bits.
+// float_widen: float32 -> float64; a finite value, a subnormal among them, exactly.
 
 static void int_widen_case()
 {
@@ -164,8 +164,12 @@ static void int_widen_case()
 
 static void float_widen_case()
 {
-    const uint32_t kSignalling = 0x7F8ABCDEu;
-    float sf; std::memcpy( &sf, &kSignalling, 4 );
+    // A FINITE float32 widens EXACTLY through the ordinary conversion
+    // (docs/SPEC-TABLES.md §3.3, §4): a negative SUBNORMAL with a rich
+    // mantissa, the value a widening that renormalized wrongly would move.
+    // A NaN is not a value of the type any more; R21 holds its refusal.
+    const uint32_t kSubnormal = 0x807ABCDEu;
+    float sf; std::memcpy( &sf, &kSubnormal, 4 );
 
     vold_float_widen::FloatWiden old;
     vold_float_widen::FloatWidenReset( old );
@@ -181,13 +185,14 @@ static void float_widen_case()
     check( vnew_float_widen::FloatWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
                                                   plan.data(), 1024, NULL, &r ) == 1,
            "R20/float-widen: the OLD file reads one record on the NEW reader" );
-    uint64_t got = 0;
+    const double want = (double) sf;
+    uint64_t got = 0, want_bits = 0;
     std::memcpy( &got, &back.v, 8 );
-    check( ( got >> 63 ) == ( kSignalling >> 31 ) && ( ( got >> 52 ) & 0x7FFull ) == 0x7FFull,
-           "R20/float-widen: a NaN of the same sign stays a NaN" );
-    const uint32_t payload22 = kSignalling & 0x003FFFFFu;
-    check( (uint32_t) ( ( got >> 29 ) & 0x003FFFFFull ) == payload22,
-           "R20/float-widen: the 22 payload bits BELOW the quiet bit ride exactly" );
+    std::memcpy( &want_bits, &want, 8 );
+    check( got == want_bits && ( got >> 63 ) == 1u,
+           "R20/float-widen: a negative subnormal widens to exactly its own value, sign and all" );
+    check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
+           "R20/float-widen: lead and trail bracket the row exactly" );
     check( r.widened == 1, "R20/float-widen: `widened` counts exactly once" );
     check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
            "R20/float-widen: nothing else fired" );

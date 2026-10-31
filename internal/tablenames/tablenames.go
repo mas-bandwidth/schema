@@ -234,7 +234,8 @@ var claimed Backend
 
 // define is how a backend's file registers the names its emitted text carries.
 // A name another backend already registered gains this backend's bit. Its
-// What stays the lowest bit's, so init order decides nothing; Scoped holds
+// What stays the lowest bit's, so init order decides nothing (an empty What
+// never replaces a described one); Scoped holds
 // only if EVERY definer scopes it, because the claim is the union over the
 // backends and one unit-level spelling claims the name for all of them;
 // RustConst and View are kept whichever definer set them.
@@ -260,7 +261,7 @@ func define(b Backend, names ...Name) {
 			continue
 		}
 		have := &registry[i]
-		if b < have.By&-have.By {
+		if n.What != "" && (have.What == "" || b < have.By&-have.By) {
 			have.What = n.What
 		}
 		have.By |= b

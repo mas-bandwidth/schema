@@ -1,0 +1,42 @@
+#!/bin/sh
+# THE GOOSE LEG's driver (test/conformance/README.md; docs/PORT-GOOSE.md, THE
+# HARNESS).
+#
+# Every call is handed to ONE Goose program, test/conformance/goose/main.goose,
+# under the pinned compiler (`goose run`, the in-process TinyCC). The program's
+# arguments follow `--`, without which `goose run` takes them as more input
+# files. A Goose program reads files and writes stdout through the standard
+# library's os module, so the manifest goes IN as its path and the answers come
+# OUT on stdout, one line per case — the case name, a space, the answer's bytes
+# as lowercase hex — which this script writes as one file per case into
+# <outdir> (a case the leg cannot answer is the line "<case> absent", written
+# as <case>.absent). The program's exit status is the compiler's: 2 on a
+# surface is ABSENT, and this script passes it through. The compiler's own
+# progress lines go to stderr, kept under build/conformance-goose/driver.
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+main=test/conformance/goose/main.goose
+goose=${GOOSE:-dist/goose-v2026.2-linux-x64/goose}
+dir=build/conformance-goose/driver
+mkdir -p "$dir" || exit 1
+case "$2" in
+list)
+	"$goose" run "$main" -- list "$1" 2>"$dir/list.err"
+	status=$?
+	[ "$status" -eq 0 ] || cat "$dir/list.err" >&2
+	exit "$status"
+	;;
+*)
+	mkdir -p "$3" || exit 1
+	"$goose" run "$main" -- "$2" "$1" >"$dir/$2.out" 2>"$dir/$2.err"
+	status=$?
+	if [ "$status" -ne 0 ]; then
+		[ "$status" -eq 2 ] || cat "$dir/$2.err" >&2
+		exit "$status"
+	fi
+	GOOSE_OUTDIR=$3 perl -ne 'chomp; my ($c, $h) = split / /, $_, 2; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{GOOSE_OUTDIR}/$c.absent") or die; close $f; next } open(my $f, ">:raw", "$ENV{GOOSE_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
+	;;
+esac

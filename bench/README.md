@@ -20,13 +20,14 @@ rust, cs and js runners (`bench/c`, `bench/go`, `bench/rust`, `bench/cs`,
 `bench/js`) are its ports, wired per the contract below. Three further
 legs — `bench/java`, `bench/dart`, `bench/elixir` — measure those
 backends' GENERATED codecs over the same shape under the same contract
-(see "The codegen-only legs" below).
+(see "The codegen-only legs" below), and `bench/goose` measures the Goose
+port's generated codec over its vendored serialize.goose the same way.
 
 ## Running
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir   # one language leg
+    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster   # one language leg
     bench/run.sh --quick         # the iteration instrument: bench_mixed only,
                                  # 3 measured runs per leg, golden gate intact,
                                  # and the blended table (per-message time
@@ -512,6 +513,26 @@ A runner is a standalone program in `bench/<lang>/` that:
   `../../build/bench/schema_bench_dart --csv`
 - **elixir**: `bench/elixir/main.exs` — run from `bench/elixir` under the
   pinned BEAM toolchain PATH as `elixir main.exs --csv`
+- **goose**: `bench/goose/main.goose` — `run.sh` builds `build/schema-goose`
+  (the `schema_leg_goose` tag), generates `bench/corpus/Bench.schema` for
+  Goose into `build/bench/goose-src` beside a copy of the runner, and builds
+  it with the pinned compiler (`make dist-goose`, or `GOOSE`) as
+  `goose build -O2` with the host C compiler; run from `bench/goose` as
+  `../../build/bench/schema_bench_goose --csv`. Rows: `linkage=hdr` (codec,
+  vendored runtime and runner are one C translation unit), `checks=always`
+  (Goose has no build-removable check: the writer refuses and the reader
+  validates in every build), `opt=O2`, `inline=unknown`.
+- **lobster**: `bench/lobster/main.lobster` — run from the repository root
+  as `bench/lobster/run --csv` under the pinned toolchain (`LOBSTER`
+  overrides; `make dist-lobster`): the generated codec in
+  `generated/bench/lobster` with its vendored serialize.lobster beside it,
+  the default JIT with `--runtime-no-asserts`, `linkage=jit`,
+  `checks=contract`, `inline=unknown`. Every line the program prints is
+  tagged and `bench/lobster/route.sh` refuses an untagged one, so a compiler
+  warning fails the leg. `make bench-lobster-gate` is its no-clock gate. The
+  `--cpp` ahead-of-time row docs/PORT-LOBSTER.md asks for is owed
+  (schema-lobster-bench-cpp): the pinned release has no `dev/` tree to
+  compile it against.
 
 If a runner or its toolchain is missing, `run.sh` prints `SKIP <lang>`
 with the reason.

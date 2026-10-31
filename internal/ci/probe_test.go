@@ -45,6 +45,24 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// a tagged port in the real tree (a `schema new-leg` leg, make/<lang>.mk
+	// beside a build-tagged compiler/target_<lang>.go) is identified by the
+	// target file's first line, so the fixture carries those files too
+	targets, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(string(data), "//go:build schema_leg_") {
+			if err := os.WriteFile(filepath.Join(fixture, "compiler", filepath.Base(target)), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +78,33 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// A real `schema new-leg` leg in the tree (make/<lang>.mk beside a
+	// compiler/target_<lang>.go behind its schema_leg_<lang> tag, such as
+	// goose, docs/PORT-GOOSE.md) is a skeleton here too: its marker file is carried into the fixture, so the gate skips
+	// it by the same rule.
+	skeletons := 1 // the planted lua
+	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range tagged {
+		lang := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(src), "target_"), ".go")
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, _, _ := strings.Cut(string(data), "\n")
+		if first != "//go:build schema_leg_"+lang {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(fixture, "make", lang+".mk")); err != nil {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(fixture, "compiler", filepath.Base(src)), []byte(first+"\n\npackage compiler\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		skeletons++
 	}
 	run := func(dir, name string, args ...string) string {
 		t.Helper()
@@ -100,7 +145,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			legs = append(legs, mk)
 		}
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-1 {
+	if len(legs) == 0 || refused+carried != len(legs)-skeletons {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
@@ -142,7 +187,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err == nil {
 		t.Fatalf("unmarked unregistered backend passed the gate:\n%s", out)
 	}
-	if strings.Contains(out, "schema new-leg skeleton") || !strings.Contains(out, "backend stopped for another reason") {
+	// a tagged leg in the tree (goose) is still a skeleton; the unmarked lua
+	// must not be
+	if strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") || !strings.Contains(out, "the lua backend stopped for another reason") {
 		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
 }

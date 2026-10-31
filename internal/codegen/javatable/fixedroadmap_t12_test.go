@@ -278,7 +278,7 @@ public final class ProbeFu1Oracle {
         v[0].pick.labelled.trail = 202;
         v[0].tail = 11;
         v[0].mark = (short) -1;
-        v[0].heat = Float.intBitsToFloat(0x7F800001);
+        v[0].heat = Float.intBitsToFloat(0x00000001); // the smallest subnormal (finite corpus, docs/SPEC-TABLES.md §3.3)
 
         v[1].flag = false;
         v[1].notePresent = false;
@@ -287,7 +287,7 @@ public final class ProbeFu1Oracle {
         v[1].pick.plain.n = 303;
         v[1].tail = 12;
         v[1].mark = (short) -32768;
-        v[1].heat = Float.intBitsToFloat(0xFFA5A5A5);
+        v[1].heat = Float.intBitsToFloat(0x80000000); // -0
 
         v[2].flag = true;
         v[2].note = -7;
@@ -357,7 +357,7 @@ public final class ProbeFu2Oracle {
         v[0].pick.labelled.trail = 222;
         v[0].tail = 21;
         v[0].mark = -70000;
-        v[0].heat = Double.longBitsToDouble(0x7FF00DEFACED0001L);
+        v[0].heat = Double.longBitsToDouble(0x800FFFFFFFFFFFFFL); // the largest negative subnormal
         v[0].extra = 909;
 
         v[1].flag = false;

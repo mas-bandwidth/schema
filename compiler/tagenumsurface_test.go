@@ -95,6 +95,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "WeaponFireTypeMax",
 		nameFunc: "func (v WeaponFireType) String() string {",
 	},
+	"goose": {
+		noCount:  "WeaponFireTypeCount",
+		max:      "let WeaponFireTypeMax: WeaponFireType = 2; // the exported extent (SPEC §4.2)",
+		nameFunc: "fn EnumNameWeaponFireType(value: WeaponFireType) -> const u8[:] {",
+	},
 	"java": {
 		noCount:  " COUNT = ",
 		max:      "        public static final byte MAX = 2;",
@@ -106,6 +111,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		noCount:  "WeaponFireTypeCount",
 		max:      "export const WeaponFireTypeMax = 2; // the exported extent (SPEC §4.2)",
 		nameFunc: "export function EnumNameWeaponFireType(value) {",
+	},
+	"lobster": {
+		noCount:  "WeaponFireTypeCount",
+		max:      "let WeaponFireTypeMax = 2 // the exported extent (SPEC §4.2)",
+		nameFunc: "def EnumNameWeaponFireType(value:int) -> string:",
 	},
 	"rust": {
 		noCount:  "    pub const COUNT: ",

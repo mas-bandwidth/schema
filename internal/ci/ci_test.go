@@ -1001,7 +1001,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 				errs = append(errs, fmt.Sprintf("push to %s did not select self-hosted %s (err=%v)", branch, wantKey, err))
 			}
 		}
-		for _, fullJob := range []string{"generated", "conformance", "cs-fuzz", "cs-tables", "big-endian", "lint", "vuln", "windows", "msvc", "shape-gate", "cpp-lock", "negative-controls"} {
+		for _, fullJob := range []string{"generated", "conformance", "cs-fuzz", "js-fuzz", "cs-tables", "big-endian", "lint", "vuln", "windows", "msvc", "shape-gate", "cpp-lock", "negative-controls"} {
 			if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], fullJob, pushEv); err != nil || !ok {
 				errs = append(errs, fmt.Sprintf("push to %s did not run ci-full.yml:%s (err=%v)", branch, fullJob, err))
 			}
@@ -1083,6 +1083,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-lobster-generated-strict-gate.yml:strict",
 		"schema-squirrel-all-port-differential.yml:fast",
 		"schema-squirrel-all-port-differential.yml:nightly",
 		"schema-squirrel-nightly-fuzz.yml:fuzz",

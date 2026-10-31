@@ -39,8 +39,8 @@ package darttable
 //
 // dart/R20 [weak]: §21.2's landing rules.
 //
-// dart/R21 [owed]: widenf is the bit-exact widening — signalling NaNs kept, the
-// quiet bit carried as the writer wrote it.
+// dart/R21 [owed]: widenf is the exact widening of a finite float32, and a
+// NaN or an infinity refuses as non_finite_float (docs/SPEC-TABLES.md §3.3).
 //
 // dart/R29 [owed]: the band case: the widening across the 65536 ceiling, and
 // the bounds pass clamping to the writer's bounds.
@@ -479,20 +479,16 @@ func t04R20(t *testing.T) {
 
 // ---- dart/R21 -----------------------------------------------------------------
 
-// t04R21 holds dart/R21 to §4's float rung and §5.2's table: "widenf is the f32
-// at src as an f64 at dst ... both are exact by construction, NaN payloads
-// included". The hardware f32->f64 conversion QUIETS a signalling NaN and can
-// drop a payload bit, so the emitted runtime assembles every all-ones exponent
-// by hand — f64's all-ones exponent and the 23-bit mantissa shifted left by 29,
-// which carries the quiet bit as the writer wrote it.
+// t04R21 holds dart/R21 to §4's float rung and §5.2's table, under the finite
+// rule (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only
+// too, same rule as packets"): widenf is the f32 at src as an f64 at dst, and
+// for a FINITE float32 the ordinary conversion is exact by construction, -0
+// and the subnormals included. A NaN or an infinity is no value a table
+// carries: it may widen to anything the hardware gives, and the decode's
+// raw-bits test on the widened cell refuses it as non_finite_float, naming the
+// field, with nothing landed.
 func t04R21(t *testing.T) {
-	t04Has(t, fixedRuntime, "(bits & 0x7f800000) == 0x7f800000 && (bits & 0x007fffff) != 0", "R21 the all-ones exponent is handled on the bits")
-	t04Has(t, fixedRuntime, "0x7ff0000000000000", "R21 f64's all-ones exponent")
-	t04Has(t, fixedRuntime, "<< 29", "R21 the 23-bit mantissa becomes the 52-bit one")
-	t04Has(t, fixedRuntime, "sourceView.getFloat32(s, Endian.little)", "R21 every other exponent converts exactly")
-	// THE BIT ASSEMBLY IS THE WIDENF OP THE TABLE NAMES, not a hardware
-	// conversion dressed as one: the all-ones exponent is chosen before any
-	// getFloat32 call in the op.
+	t04Has(t, fixedRuntime, "sourceView.getFloat32(s, Endian.little)", "R21 the float rung is the ordinary conversion")
 	at := strings.Index(fixedRuntime, "case TableFixedOp.widenFloat:")
 	if at < 0 {
 		t.Fatal("R21: the runtime has no widenFloat op")
@@ -501,35 +497,52 @@ func t04R21(t *testing.T) {
 	if end := strings.Index(rest, "case TableFixedOp.constant:"); end >= 0 {
 		rest = rest[:end]
 	}
-	if !strings.Contains(rest, "(bits & 0x7f800000) == 0x7f800000") {
-		t.Error("R21: the widenFloat op widens through the hardware conversion alone")
+	if strings.Contains(rest, "<< 29") {
+		t.Error("R21: the widenFloat op still assembles NaN payloads by hand; the finite rule retired the surgery")
 	}
-	// Run the emitted Dart against the versioning corpus, and inspect the raw
-	// destination image before Dart decodes the f64 as a double. This exercises
-	// the negative signaling NaN's sign, payload, exponent and still-clear quiet
-	// bit (§5.2, §5.9 #18).
+	// Run the emitted Dart against the versioning corpus with finite cells
+	// planted in the old record — -0, the smallest subnormal and an ordinary
+	// value — and inspect the raw destination image: each widens exactly. A
+	// planted signalling NaN and an infinity refuse the read by name, and the
+	// value the caller handed in is back at its defaults (§3.3).
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 	body := `  final data = File(FILE).readAsBytesSync();
   final head = ByteData.sublistView(data);
   final layoutBytes = head.getUint32(t.TableFixedLimits.headerBytes, Endian.little);
   final recordAt = t.TableFixedLimits.layoutAt + layoutBytes;
-  final negative = Uint8List.fromList(data);
-  ByteData.sublistView(negative).setUint32(recordAt + 8 + 4, 0xFF8ABCDE, Endian.little);
-  final negativeValues = <t.FloatWiden>[t.FloatWiden()];
-  t.initFloatWiden(negativeValues[0]);
-  final negativePlan = t.floatWidenFixedNewPlan();
-  final negativeReport = t.TableFixedReport();
-  final n = LOAD(negativeValues, negativeValues.length, negative,
-      negative.length, negativePlan, negativeReport);
-  check(n == 1 && negativeReport.widened == 1,
-      'negative signalling-NaN widening did not execute: n=$n ${why(negativeReport)}');
-  // 0xFF8ABCDE -> 0xFFF1579BC0000000: sign retained, exponent widened,
-  // payload shifted exactly, and the f64 quiet bit remains clear.
-  const want = <int>[0x00, 0x00, 0x00, 0xC0, 0x9B, 0x57, 0xF1, 0xFF];
-  for (var i = 0; i < want.length; i++) {
-    check(negativePlan.image[4 + i] == want[i],
-        'negative signalling-NaN bit $i is ${negativePlan.image[4 + i]}, want ${want[i]}');
+  final finite = <int, List<int>>{
+    0x80000000: <int>[0, 0, 0, 0, 0, 0, 0, 0x80], // -0
+    0x00000001: <int>[0, 0, 0, 0, 0, 0, 0xA0, 0x36], // 2^-149
+    0x3FC00000: <int>[0, 0, 0, 0, 0, 0, 0xF8, 0x3F], // 1.5
+  };
+  finite.forEach((bits, want) {
+    final planted = Uint8List.fromList(data);
+    ByteData.sublistView(planted).setUint32(recordAt + 8 + 4, bits, Endian.little);
+    final values = <t.FloatWiden>[t.FloatWiden()];
+    final plan = t.floatWidenFixedNewPlan();
+    final report = t.TableFixedReport();
+    final n = LOAD(values, values.length, planted, planted.length, plan, report);
+    check(n == 1 && report.widened == 1,
+        'finite widening of $bits did not execute: n=$n ${why(report)}');
+    for (var i = 0; i < want.length; i++) {
+      check(plan.image[4 + i] == want[i],
+          'finite widening of $bits: byte $i is ${plan.image[4 + i]}, want ${want[i]}');
+    }
+  });
+  for (final bits in <int>[0xFF8ABCDE, 0x7F800000]) {
+    final planted = Uint8List.fromList(data);
+    ByteData.sublistView(planted).setUint32(recordAt + 8 + 4, bits, Endian.little);
+    final values = <t.FloatWiden>[t.FloatWiden()..v = 7.0..lead = 9];
+    final report = t.TableFixedReport();
+    final n = LOAD(values, values.length, planted, planted.length,
+        t.floatWidenFixedNewPlan(), report);
+    check(n == -1 && report.refused == t.TableFixedRefusal.nonFiniteFloat,
+        'non-finite $bits was not refused as non_finite_float: n=$n ${why(report)}');
+    check(report.nonFiniteFloat == 'FloatWiden.v',
+        'non-finite $bits: the refusal names "${report.nonFiniteFloat}"');
+    check(values[0].v == 0.0 && values[0].lead == 1 && values[0].trail == 2,
+        'non-finite $bits: the value did not go back to its defaults');
   }`
 	out, err := runVersionProbe(t, dartBin, "VNEW_float_widen", []string{"VOLD_float_widen"}, 0,
 		filepath.Join(corpus, "old_float_widen.bin"), body)
