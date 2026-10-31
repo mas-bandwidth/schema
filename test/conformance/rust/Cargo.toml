@@ -41,6 +41,8 @@ vocabdemo = { path = "../../../build/tables-generated-rust/vocabdemo" }
 vocab9demo = { path = "../../../build/tables-generated-rust/vocab9demo" }
 tblrt1 = { path = "../../../build/tables-generated-rust/tblrt1" }
 widedemo = { path = "../../../build/tables-generated-rust/widedemo" }
+scalars = { path = "../../../build/tables-generated-rust/scalars" }
+tblscalars2 = { path = "../../../build/tables-generated-rust/tblscalars2" }
 
 [profile.dev]
 # the conformance corpus is small and the driver runs seven times per matrix;

@@ -577,18 +577,19 @@ impl TableNodeReader {
 /// size, 0 for every framed or reference-shaped kind.
 pub fn table_kind_width(kind: u8) -> usize {
     match kind {
-        1 | 2 | 6 => 1,
-        3 | 7 => 2,
-        4 | 8 | 10 => 4,
-        5 | 9 | 11 | 36 => 8,
-        18 | 19 => 16,
+        1 | 2 | 6 | 20 | 25 => 1,
+        3 | 7 | 21 | 26 => 2,
+        4 | 8 | 10 | 22 | 27 => 4,
+        5 | 9 | 11 | 23 | 28 | 36 => 8,
+        18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
 }
 
 /// Whether a payload under kind decodes EXACTLY into a field declared at
 /// declared (§4): an integer into a WIDER integer of the same signedness, and
-/// f32 into f64. Every other pair is a kind mismatch.
+/// f32 into f64. Every other pair is a kind mismatch, the fixed-point kinds
+/// 20–29 every way: a raw value read at another F is another number (§4).
 pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
     match declared {
         3..=5 => (2..declared).contains(&kind),
@@ -613,7 +614,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
         raw |= (buf[*off + i] as u64) << (8 * i);
     }
     *off += w;
-    if matches!(kind, 2..=5) && w < 8 {
+    if matches!(kind, 2..=5 | 20..=23) && w < 8 {
         let s = 64 - 8 * w as u32;
         raw = (((raw << s) as i64) >> s) as u64;
     }
@@ -622,6 +623,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
 
 /// Read one 128-bit scalar (or a narrower integer widened into it) at kind's
 /// own width (§3, §4): little-endian, sign-extended into u128 for signed kinds.
+/// A fixed128 or ufixed128 (kinds 24, 29) is its sixteen raw bytes.
 pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u128> {
     let w = table_kind_width(kind);
     if w == 0 || *off + w > end {
@@ -1581,6 +1583,38 @@ pub fn json_format_g(v: f64, prec: usize) -> String {
     trim(&format!("{:.*}", (prec as i32 - 1 - exp) as usize, v))
 }
 
+/// A FIXED value's text (docs/SPEC-TABLES.md §16.2): WHOLE UNITS, the shortest
+/// EXACT decimal with at least one fractional digit (`1.0`, `-0.25`),
+/// spelled from the raw integer at F fractional bits with no float between.
+/// A signed raw value arrives sign-extended into the u128.
+#[allow(dead_code)]
+pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
+    let mut m = raw;
+    if signed && (raw as i128) < 0 {
+        out.push('-');
+        m = raw.wrapping_neg();
+    }
+    let whole = m.checked_shr(frac).unwrap_or(0);
+    out.push_str(&whole.to_string());
+    out.push('.');
+    let mask = if frac >= 128 { u128::MAX } else { (1u128 << frac) - 1 };
+    let mut f = m & mask;
+    if f == 0 {
+        out.push('0');
+        return;
+    }
+    while f != 0 {
+        // f × 10 across 132 bits: the digit is what rises past bit F
+        let lo = (f as u64 as u128) * 10;
+        let hi = (f >> 64) * 10 + (lo >> 64);
+        let low = (hi << 64) | (lo & 0xffff_ffff_ffff_ffff);
+        let carry = hi >> 64;
+        let digit = if frac >= 128 { carry } else { (low >> frac) | (carry << (128 - frac)) };
+        out.push((b'0' + digit as u8) as char);
+        f = low & mask;
+    }
+}
+
 /// A float at the SHORTEST precision that reads back as the same value at the
 /// field's own width (docs/SPEC-TABLES.md §16.2), exactly as the reference
 /// writes it. A non-finite value has no JSON spelling; the writer marks it.
@@ -1936,64 +1970,159 @@ impl<'a> Jr<'a> {
         }
         Some(if neg { -(mag as i128) } else { mag as i128 })
     }
-    pub fn read_i128(&mut self) -> Option<i128> {
+    /// A WIDE value (docs/SPEC-TABLES.md §16.2): a 128-bit integer (frac 0)
+    /// or a fixed(I, F)'s raw integer, read EXACTLY from any number token whose
+    /// value the Q I.F grid holds — `2`, `2.0` and `20e-1` are one value —
+    /// with no binary float between, as two's complement in a u128. A digit
+    /// the grid cannot hold is kind_mismatch, the wrong shape, never rounded;
+    /// a magnitude past 128 bits saturates and counts clamped; a value of
+    /// another JSON type is kind_mismatch, skipped. The caller clamps to the
+    /// field's raw range.
+    pub fn read_wide(&mut self, signed: bool, frac: u32) -> Option<u128> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
         }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            return Some(match t.parse::<i128>() {
-                Ok(v) => v,
-                Err(_) => {
-                    self.clamped += 1;
-                    if t.starts_with('-') { i128::MIN } else { i128::MAX }
-                }
-            });
+        let token = self.number_token()?;
+        let t = token.as_bytes();
+        let negative = t.first() == Some(&b'-');
+        let mut i = usize::from(negative);
+        let int_start = i;
+        while i < t.len() && t[i].is_ascii_digit() {
+            i += 1;
         }
-        let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
-            self.kind_mismatch += 1;
-            return None;
-        }
-        Some(f as i128)
-    }
-    pub fn read_u128(&mut self) -> Option<u128> {
-        let c = self.peek();
-        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.kind_mismatch += 1;
-            self.skip_value();
-            return None;
-        }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            if let Some(rest) = t.strip_prefix('-') {
-                if rest.bytes().all(|b| b == b'0') {
-                    return Some(0);
-                }
-                self.clamped += 1;
-                return Some(0);
+        let int_len = i - int_start;
+        let mut frac_start = i;
+        let mut frac_len = 0;
+        if i < t.len() && t[i] == b'.' {
+            i += 1;
+            frac_start = i;
+            while i < t.len() && t[i].is_ascii_digit() {
+                i += 1;
             }
-            return Some(match t.parse::<u128>() {
-                Ok(v) => v,
-                Err(_) => {
-                    self.clamped += 1;
-                    u128::MAX
-                }
-            });
+            frac_len = i - frac_start;
         }
-        let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
+        let mut exp: i64 = 0;
+        if i < t.len() && (t[i] == b'e' || t[i] == b'E') {
+            i += 1;
+            let mut eneg = false;
+            if i < t.len() && (t[i] == b'-' || t[i] == b'+') {
+                eneg = t[i] == b'-';
+                i += 1;
+            }
+            while i < t.len() && t[i].is_ascii_digit() {
+                if exp < 100000 {
+                    exp = exp * 10 + i64::from(t[i] - b'0');
+                }
+                i += 1;
+            }
+            if eneg {
+                exp = -exp;
+            }
+        }
+        let digit = |k: usize| if k < int_len { t[int_start + k] } else { t[frac_start + k - int_len] };
+        let (mut start, mut end) = (0usize, int_len + frac_len);
+        let mut point = int_len as i64 + exp;
+        while start < end && digit(start) == b'0' {
+            start += 1;
+            point -= 1;
+        }
+        while end > start && digit(end - 1) == b'0' {
+            end -= 1;
+        }
+        let signed_max = i128::MAX as u128;
+        let signed_min = 1u128 << 127;
+        let mut raw = 0u128;
+        let mut saturated = false;
+        if start == end {
+            // zero, in any spelling, -0 included
+        } else if point > 40 {
+            saturated = true;
+            raw = match (negative, signed) {
+                (false, true) => signed_max,
+                (false, false) => u128::MAX,
+                (true, true) => signed_min,
+                (true, false) => 0,
+            };
+        } else if point < -40 {
             self.kind_mismatch += 1;
             return None;
+        } else {
+            // the decimal fraction, at most 128 places: Q I.F holds I + F <= 128
+            // bits, so a nonzero digit past the 128th place is inexact
+            let mut fd = [0u8; 128];
+            let mut n = point.min(0).unsigned_abs() as usize;
+            let mut k = (point.max(0) as usize) + start;
+            while k < end {
+                if n >= 128 {
+                    if digit(k) != b'0' {
+                        self.kind_mismatch += 1;
+                        return None;
+                    }
+                } else {
+                    fd[n] = digit(k) - b'0';
+                    n += 1;
+                }
+                k += 1;
+            }
+            let mut fraction = 0u128;
+            for _ in 0..frac {
+                let mut carry = 0u8;
+                for d in fd[..n].iter_mut().rev() {
+                    let x = *d * 2 + carry;
+                    *d = x % 10;
+                    carry = x / 10;
+                }
+                fraction = (fraction << 1) | u128::from(carry);
+            }
+            if fd[..n].iter().any(|&d| d != 0) {
+                self.kind_mismatch += 1;
+                return None;
+            }
+            let mut whole = 0u128;
+            let mut k = start as i64;
+            while k < start as i64 + point && !saturated {
+                let d = if (k as usize) < end { u128::from(digit(k as usize) - b'0') } else { 0 };
+                match whole.checked_mul(10).and_then(|w| w.checked_add(d)) {
+                    Some(w) => whole = w,
+                    None => saturated = true,
+                }
+                k += 1;
+            }
+            if !saturated && frac > 0 && whole.checked_shr(128 - frac).unwrap_or(0) != 0 {
+                saturated = true;
+            }
+            if !saturated {
+                raw = whole.checked_shl(frac).unwrap_or(0) | fraction;
+            }
+            if signed {
+                if !saturated && !negative && raw >> 127 != 0 {
+                    saturated = true;
+                }
+                if !saturated && negative && raw > signed_min {
+                    saturated = true;
+                }
+                if saturated {
+                    raw = if negative { signed_min } else { signed_max };
+                } else if negative {
+                    raw = raw.wrapping_neg();
+                }
+            } else {
+                if saturated {
+                    raw = u128::MAX;
+                }
+                if negative && raw != 0 {
+                    raw = 0;
+                    saturated = true;
+                }
+            }
         }
-        if f < 0.0 {
+        if saturated {
             self.clamped += 1;
-            return Some(0);
         }
-        Some(f as u128)
+        Some(raw)
     }
     /// A float field's value (docs/SPEC-TABLES.md §16.2).
     pub fn read_float(&mut self) -> Option<f64> {

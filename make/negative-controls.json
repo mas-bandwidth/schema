@@ -906,6 +906,14 @@
   ],
   "excluded": [
     {
+      "target": "tables-rust-wide-clamp-negative-control",
+      "reason": "run on every full-ci pull request by ci-full.yml's conformance leg for rust (test/conformance/rust/ci.json names it among the leg's build targets), beside the driver it sabotages: the control regenerates the two wide-scalar crates under an overlay and relinks that warm driver in its own target directory, about 15 s, where a negative-controls group would first pay the driver's whole cold build (62 s on the author's machine at four jobs) and leave the owner's two-minute rule."
+    },
+    {
+      "target": "tables-rust-wide-text-negative-control",
+      "reason": "run on every full-ci pull request by ci-full.yml's conformance leg for rust (test/conformance/rust/ci.json names it among the leg's build targets), for the reason its clamp twin is: it relinks the warm conformance driver against two regenerated crates, about 10 s, where a group of its own would pay the driver's cold build first."
+    },
+    {
       "target": "tables-cs-clean-negative-control-run",
       "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs-packet group already runs the wrapper, so running the body again proves the same planted misindent twice."
     },

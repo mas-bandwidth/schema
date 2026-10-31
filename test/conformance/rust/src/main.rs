@@ -812,7 +812,9 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 // carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
 // Catalog (blobdemo), the map corpus's roots (mapdemo) and the fixed roots of
 // the three evolution pairs (tblv1/tblv2, tblw1/tblw2, tblr1/tblr2) and the
-// wide-text unit's roots (widedemo). Every
+// wide-text unit's roots (widedemo), and the wide scalars' SimState under both
+// builds (scalars, tblscalars2: the fixed-point family and the 128-bit
+// integers, §3 kinds 18–29). Every
 // other case is answered `<case>.absent` — a root this driver does not name
 // yet, or a unit the compiler refuses for rust whole, as tables/lists is for
 // its union — which the matrix counts as the row of work that is left, never
@@ -825,6 +827,16 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 macro_rules! with_root {
     ($unit:expr, $root:expr, |$load:ident, $save:ident, $to_json:ident, $from_json:ident| $body:expr) => {{
         match ($unit, $root) {
+            ("scalars", "SimState") => {
+                #[allow(unused_imports)]
+                use scalars::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("tblscalars2", "SimState") => {
+                #[allow(unused_imports)]
+                use tblscalars2::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json};
+                Some($body)
+            }
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
                 use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};

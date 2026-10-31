@@ -296,7 +296,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists \
 	messagedemo:tables/messages streamdemo:tables/stream \
-	scalars:tables/scalars blockdemo:tables/block blockhome:tables/blockhome \
+	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
@@ -320,7 +320,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -902,6 +902,82 @@ tables-rust-guard-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage turned the case whose guard holds red"; exit 1; }
 	@grep -m1 'case guard_false_resting_set: the Rust save' build/rust-guard-control/log
 	@echo "rust guard negative control: turning the guard gate off turns exactly the false-guard G1 cases RED"
+
+
+# THE WIDE-SCALAR NEGATIVE CONTROLS (docs/SPEC-TABLES.md §3, §4, §16.2): the
+# fixed-point family and the 128-bit integers on the variable wire and in the
+# text form. Each sabotages ONE rule in the generator through a `go run
+# -overlay`, so no tracked file is edited, regenerates the two scalar units
+# (scalars, tblscalars2) into build/rust-wide-control, rebuilds the conformance
+# driver against them (the other units are the ones the driver already built,
+# and the shared target directory compiles nothing but the two crates and the
+# driver again), and requires the matrix to go RED on that rule's rows and on
+# nothing else:
+#   - clamp: a fixed field's declared range is not shifted by F onto the raw
+#     scale, so the stored raw values clamp to the whole-unit bounds — report
+#     goes red (the clamps scalars_full_as_2 counts move), json-hostile's
+#     wide rows go red, the other units' rows stay green;
+#   - text: the Q-grid exactness check never fires, so a fraction finer than
+#     F rounds instead of counting kind_mismatch — json-hostile goes red on
+#     fixed-fraction-too-fine, and wire, report and json-read stay green.
+RUST_WIDE_CONTROL := build/rust-wide-control
+RUST_WIDE_CONTROL_UNITS := scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema
+
+define rust-wide-control
+	@rm -rf $(RUST_WIDE_CONTROL)/$(1) && mkdir -p $(RUST_WIDE_CONTROL)/$(1)/driver
+	@sed '$(2)' internal/codegen/rusttable/$(3) > $(RUST_WIDE_CONTROL)/$(1)/$(3).txt
+	@cmp -s internal/codegen/rusttable/$(3) $(RUST_WIDE_CONTROL)/$(1)/$(3).txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/$(3)":"%s/$(RUST_WIDE_CONTROL)/$(1)/$(3).txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_WIDE_CONTROL)/$(1)/overlay.json
+	@for unit in $(RUST_WIDE_CONTROL_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		go run -overlay=$(RUST_WIDE_CONTROL)/$(1)/overlay.json ./cmd/schema generate --lang rust \
+			--out $(RUST_WIDE_CONTROL)/$(1)/$$name/src $$path 2>/dev/null || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$name \
+			> $(RUST_WIDE_CONTROL)/$(1)/$$name/Cargo.toml; \
+	done
+	@sed -e 's|^name = "conformance-rust"|name = "conformance-rust-wide-$(1)"|' \
+		-e 's|^path = "src/main.rs"|path = "../../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|"\.\./\.\./\.\./build/|"../../../../build/|' \
+		-e 's|build/tables-generated-rust/scalars"|$(RUST_WIDE_CONTROL)/$(1)/scalars"|' \
+		-e 's|build/tables-generated-rust/tblscalars2"|$(RUST_WIDE_CONTROL)/$(1)/tblscalars2"|' \
+		test/conformance/rust/Cargo.toml > $(RUST_WIDE_CONTROL)/$(1)/driver/Cargo.toml
+	cd $(RUST_WIDE_CONTROL)/$(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/test/conformance/rust/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/test/conformance/rust/target/debug/conformance-rust-wide-$(1)" "$$@"\n' "$(CURDIR)" \
+		> $(RUST_WIDE_CONTROL)/$(1)/driver/driver && chmod +x $(RUST_WIDE_CONTROL)/$(1)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(RUST_WIDE_CONTROL)/$(1)" > $(RUST_WIDE_CONTROL)/$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(RUST_WIDE_CONTROL)/$(1)/drivers.txt \
+			--work $(RUST_WIDE_CONTROL)/$(1)/work > $(RUST_WIDE_CONTROL)/$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left the Rust matrix green"; \
+		cat $(RUST_WIDE_CONTROL)/$(1)/log; exit 1; \
+	fi
+endef
+
+# the two sabotages, held in variables because a `$(call)` argument cannot
+# carry a comma
+RUST_WIDE_CLAMP_SED := s@rlo, rhi, ok := ir.TableRawRange(f)@rlo, rhi, ok := f.IntMin, f.IntMax, f.HasIntRange \&\& f.IntMin != nil \&\& f.IntMax != nil@
+RUST_WIDE_TEXT_SED := s@if fd\[\.\.n\]\.iter()\.any(|&d| d != 0) {@if false {@
+# every failing row a control may name: the wide scalars' own rows
+RUST_WIDE_ROWS := scalars_|field_scalar_widen|fixed-|ufixed-|int128-|uint128-
+
+.PHONY: tables-rust-wide-clamp-negative-control tables-rust-wide-text-negative-control
+tables-rust-wide-clamp-negative-control: build/conformance-harness build/conformance-rust
+	$(call rust-wide-control,clamp,$(RUST_WIDE_CLAMP_SED),variablecodec.go)
+	@grep -q '^  rust / report: scalars_full_as_2' $(RUST_WIDE_CONTROL)/clamp/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on report scalars_full_as_2"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; }
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars went red"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; fi
+	@echo "rust wide-scalar clamp negative control: a fixed range left on the whole-unit scale turns exactly the wide-scalar rows red"
+
+tables-rust-wide-text-negative-control: build/conformance-harness build/conformance-rust
+	$(call rust-wide-control,text,$(RUST_WIDE_TEXT_SED),variabletext.go)
+	@grep -q '^  rust / json-hostile: fixed-fraction-too-fine' $(RUST_WIDE_CONTROL)/text/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-fraction-too-fine"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; }
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/text/log | grep -v -E '^  rust / json-hostile: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars' json-hostile rows went red"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; fi
+	@echo "rust wide-scalar text negative control: rounding a too-fine fixed fraction turns exactly the wide json-hostile rows red"
 
 test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-rust-json-hostile-negative-control
 
