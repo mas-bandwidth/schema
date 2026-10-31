@@ -1004,10 +1004,11 @@
     {
       "name": "goose-blockcook",
       "when": "pull-request",
-      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and three harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because three harness runs (about 55 s on a laptop) would push the goose group past the 120 s rule.",
+      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and three harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order), and the forgery fuzzer's two both-bounds extent controls (about 4 s together). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because three harness runs (about 55 s on a laptop) would push the goose group past the 120 s rule.",
       "targets": [
         "tables-goose-accel-negative-control",
-        "tables-goose-block-negative-control"
+        "tables-goose-block-negative-control",
+        "tables-goose-fuzz-negative-control"
       ]
     },
     {

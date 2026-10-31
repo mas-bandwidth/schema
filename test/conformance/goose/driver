@@ -29,6 +29,8 @@
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
 #        driver <manifest> block-lead
+#        driver <manifest> block-fuzz <seed> <n>
+#        driver <manifest> cook-fuzz <seed> <n> <fixtures dir>
 main=test/conformance/goose/main.goose
 goose=${GOOSE:-dist/goose-v2026.2-linux-x64/goose}
 units=${SCHEMA_GOOSE_GENERATED:-build/conformance-goose}
@@ -108,6 +110,10 @@ accel_glue() {
 		for t in $blocks; do echo "    if table == \"$t\" { return $ns::${t}BlockOpenReason(b, lead); }"; done
 		echo "    return -1;"
 		echo "}"
+		echo "fn accel_block_bytes(table: const u8[:], b: const u8[:]) -> i64 {"
+		for t in $blocks; do echo "    if table == \"$t\" { return $ns::${t}BlockBytes(b); }"; done
+		echo "    return -1;"
+		echo "}"
 		echo "fn accel_block_record(table: const u8[:]) -> i64 {"
 		for t in $blocks; do echo "    if table == \"$t\" { return $ns::${t}BlockRecord; }"; done
 		echo "    return -1;"
@@ -155,6 +161,26 @@ accel_units() {
 	cook-write) awk 'NR == FNR { if ($1 == "cook-write") w[$2] = 1; next } $1 == "instance" && ($2 in w) { print $3 }' "$1" "$1" ;;
 	esac | sort -u
 }
+# THE FORGERY FUZZER (docs/PORTING.md I3): accel.goose's block-fuzz and
+# cook-fuzz over every unit the manifest's block or cook lines name. The cook
+# half reads the Go reference's cooks from <fixtures dir> (the harness
+# materialises them: build/conformance/fixtures). Each prints its counts and
+# the seed; the first mutant the oracle rejects is printed and the run fails.
+if [ "$2" = block-fuzz ] || [ "$2" = cook-fuzz ]; then
+	kind=${2%-fuzz}
+	status=0
+	for key in $(accel_units "$1" "$kind"); do
+		[ -d "$units/$key" ] || { echo "driver: $units/$key is missing (make build/conformance-goose)" >&2; exit 1; }
+		a=$(accel_prep "$units/$key" "$key") || exit 1
+		if [ "$kind" = cook ]; then
+			"$goose" run "$a/accel.goose" -- cook-fuzz "$1" "$key" "$3" "$4" "$5" 2>"$dir/cook-fuzz.$key.err" || status=1
+		else
+			"$goose" run "$a/accel.goose" -- block-fuzz "$1" "$key" "$3" "$4" 2>"$dir/block-fuzz.$key.err" || status=1
+		fi
+		[ "$status" -eq 0 ] || { cat "$dir/$2.$key.err" >&2; exit 1; }
+	done
+	exit "$status"
+fi
 if [ "$2" = block-lead ]; then
 	status=0
 	for key in $(accel_units "$1" block-lead); do

@@ -524,7 +524,7 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-json-form | the JSON text form and base64 text (I13) | `goosetable/json_form.go`, its runtime file, `compiler/carries_goose_json_form.go` |
 | schema-goose-text-form | the hand-editable text form (M9, M14) | `goosetable/text_form.go`, its runtime file |
 | schema-goose-conformance-leg | `main.goose`, `make conformance` and the hostile corpus (M4b, I2, I11, J2) | `test/conformance/goose/main.goose`, `make/goose-conformance.mk` |
-| schema-goose-fuzz-differential | the wire fuzzer against the Go engine (I3, I15) | `test/conformance/goose/wirefuzz.goose`, `make/goose-fuzz.mk` |
+| schema-goose-fuzz-differential | the wire fuzzer against the Go engine (I15), and the accelerators' forgery fuzzer (I3) | `test/conformance/goose/wirefuzz.goose`, `make/goose-fuzz.mk`; `test/conformance/goose/accel.goose` (block-fuzz, cook-fuzz), `test/conformance/goose/negative-control-fuzz`, `make/goose-blockcook.mk` |
 | schema-goose-ci-on-fleet | CI on the fleet runners (J3) | `.github/workflows/schema-goose.yml` |
 | schema-goose-bench | the packet and table bench legs beside C++, Rust and Go (I8, J5) | `bench/goose/`, `bench/tables/goose/` |
 | schema-goose-bench-report | Goose vs C++ vs Rust (and Lobster) on one machine | `docs/BENCH-GOOSE-LOBSTER.md` |

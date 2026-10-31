@@ -25,7 +25,11 @@
 //
 // `block-lead` is no harness surface: it is the block lead gate
 // (docs/PORTING.md I5), every block image at every lead 0..64, which make
-// tables-goose-block-lead runs.
+// tables-goose-block-lead runs. Nor are the forgery fuzzer's two halves
+// (docs/PORTING.md I3), which make tables-goose-fuzz runs:
+//
+//   accel.goose block-fuzz <manifest> <unit> <seed> <n>
+//   accel.goose cook-fuzz <manifest> <unit> <seed> <n> <fixtures dir>
 //
 // BOTH DUMPS ARE WRITTEN AGAINST THE DESCRIPTORS AND NOTHING ELSE — the unit's
 // BlockRecords and CookRecords, the records as data — so two implementations'
@@ -306,10 +310,10 @@ fn block_dump(out: u8[>..]&, name: const u8[:], b: const u8[:]) -> bool {
 // The node dump's state: whether it has failed. What it has written is `out`,
 // and every node it has reached, by offset, in visit order — one node, one
 // visit (§6.3) — is `reached`.
-struct CookWalk { failed: bool }
+struct CookWalk { failed: bool, quiet: bool }
 
 fn cook_fail(w: CookWalk&, why: const u8[:]) {
-    if !w.failed { write_stderr(str("driver: ", why, "\n")); }
+    if !w.failed && !w.quiet { write_stderr(str("driver: ", why, "\n")); }
     w.failed = true;
 }
 
@@ -409,7 +413,7 @@ fn cook_dump(out: u8[>..]&, root: const u8[:], b: const u8[:]) -> bool {
     }
     let region = schema_rt::cook_region(b);
     var reached: i64[>..] = [];
-    var w = CookWalk { failed: false };
+    var w = CookWalk { failed: false, quiet: false };
     cook_node(out, reached, w, region, 0, accel_cook_record(root), 0);
     return !w.failed;
 }
@@ -570,6 +574,238 @@ fn surface_cook_write(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
+// ---- THE FORGERY FUZZER (docs/PORTING.md I3; docs/SPEC-TABLES.md §19.2, §7) ----
+//
+// The forgery battery above is a fixed list, one row per clause Open checks.
+// This is the standing gate beside it, the Go leg's TestBlockForgeryFuzz and
+// TestCookForgeryFuzz in Goose: valid images from the corpus, mutated by the
+// passes below, and ONE ORACLE over every mutant —
+//
+//   REFUSE, or OPEN and be WHOLE. A mutant either makes Open refuse, or it
+//   opens, and then every bound the oracle RE-DERIVES from the descriptors
+//   (the unit's BlockRecords and CookRecords, the records as data) and from
+//   the words the instance carries holds — never Open's own arithmetic, which
+//   is the only reason the two can disagree — and a READ of every byte of
+//   every row (the block) or of the region and every node a walk reaches
+//   (the cook) stays inside the extent the caller passed.
+//
+// WHAT GOOSE GIVES AND WHAT IT DOES NOT. Every Goose slice index is checked:
+// a read past the view aborts the program (goose_spec.md, the abort list), so
+// the walk cannot read a neighbour, which the sanitized twin is for on the
+// C++ side; the oracle's own arithmetic names the forgery before the walk
+// would. Open takes a `const u8[:]`, so a write past the extent is not
+// expressible, and the C++ fuzzer's poison check has nothing to watch here.
+//
+// Every mutant is a pure function of (seed, image, index): the passes draw
+// from the standard library's splitmix64, seeded with the seed and the
+// image's name, so a failure names the one case that reproduces it.
+
+fn fuzz_seed(seed: i64, name: const u8[:]) -> rng {
+    var h: u64 = 0xcbf29ce484222325;
+    for c in name {
+        h = (h ^ c) * 0x100000001b3;
+    }
+    return rng { (seed as! u64) ^ h };
+}
+
+// fuzz_mutate applies ONE deterministic mutation and names it: a word of the
+// prologue or header, a word of a triple, a bit anywhere, and the two facts no
+// file can carry — the caller's CLAIMED EXTENT (a short claim is what a
+// truncation is; `buffer` cuts or zero-extends to it, so nothing clamps the
+// draw back to the file's own length) and the BASE's lead past an aligned
+// address.
+fn fuzz_mutate(r: rng&, m: u8[:], claim: i64&, lead: i64&, why: u8[>..]&) {
+    let pass = r.rand_int(5);
+    if pass == 0 {
+        let at = r.rand_int(m.len / 8) * 8;
+        schema_rt::accel_put(m, at, r.rand_u64(), 8);
+        format(why, "u64 at ", at);
+    } else if pass == 1 {
+        let at = r.rand_int(m.len / 4) * 4;
+        schema_rt::accel_put(m, at, r.rand_u64(), 4);
+        format(why, "u32 at ", at);
+    } else if pass == 2 {
+        let at = r.rand_int(m.len);
+        let bit = r.rand_int(8) as u64;
+        m[at] = m[at] ^ ((1 as u64) << bit) as! u8;
+        format(why, "bit at ", at);
+    } else if pass == 3 {
+        claim = r.rand_int(m.len * 2);
+        format(why, "claimed extent ", claim);
+    } else {
+        lead = r.rand_int(64);
+        format(why, "base +", lead);
+    }
+}
+
+// fuzz_fail names the case and stops: the first mutant the oracle rejects is
+// the finding.
+fn fuzz_fail(what: const u8[:], i: i64, why: const u8[:], finding: const u8[:]) {
+    write_stdout(str("FUZZ FAILED: ", what, " case ", i, " (", why, "): ", finding, "\n"));
+    exit(1);
+}
+
+// block_whole is the BLOCK ORACLE over one opened mutant: the projection
+// inside the extent, then per out-of-line array of the projection's record
+// the triple read out of the instance — the pitch against the ROW RECORD'S
+// size (this build's own), the count against the descriptor's declared
+// maximum, the offset_of and the rows inside the extent — and the used
+// extent the generated <T>BlockBytes answers inside it too. Then it READS
+// every byte of the projection and of every row. It answers the finding, ""
+// for whole.
+fn block_whole(table: const u8[:], b: const u8[:], sink: u64&, finding: u8[>..]&) -> bool {
+    let records = accel_block_records();
+    let rec = records[accel_block_record(table)];
+    let extent = b.len as u64;
+    if (rec.size as u64) > extent { format(finding, "the projection of ", rec.size, " bytes leaves an extent of ", extent); return false; }
+    for f in rec.fields {
+        if !f.out_of_line { continue; }
+        let row = records[f.record];
+        let offset_of = schema_rt::accel_u64(b, f.offset_of_offset);
+        let count = schema_rt::accel_u32(b, f.count_offset);
+        let pitch = schema_rt::accel_u32(b, f.stride_offset);
+        if pitch != row.size as u64 { format(finding, f.name, " opened at a pitch of ", pitch, ", and this build's row is ", row.size); return false; }
+        if count > f.array_bound as u64 { format(finding, f.name, " opened with ", count, " rows, past the declared maximum of ", f.array_bound); return false; }
+        if offset_of > extent { format(finding, f.name, " starts at ", offset_of, ", outside an extent of ", extent); return false; }
+        let rows = count * pitch; // both bounded above: this cannot carry
+        if rows > extent - offset_of { format(finding, f.name, "'s ", count, " rows at ", offset_of, " leave an extent of ", extent); return false; }
+        var i = offset_of as! i64;
+        let end = (offset_of + rows) as! i64;
+        while i < end {
+            sink = sink ^ b[i];
+            i += 1;
+        }
+    }
+    let used = accel_block_bytes(table, b);
+    if used < 0 || used > b.len { format(finding, "Open reported ", used, " used bytes inside an extent of ", b.len); return false; }
+    var i: i64 = 0;
+    while i < rec.size {
+        sink = sink ^ b[i];
+        i += 1;
+    }
+    return true;
+}
+
+// fuzz_block is the block half: every block image of this unit, the clean
+// image opened and held whole first (or the fuzzer mutates nothing), then N
+// mutants.
+fn fuzz_block(lines: const u8[:][:], unit: const u8[:], seed: i64, n: i64) {
+    var images: i64 = 0;
+    var sink: u64 = 0;
+    for line in lines {
+        let l = words(line);
+        if l.len < 4 || l[0] != "block" || l[2] != unit { continue; }
+        images += 1;
+        let table = block_table(l[1]);
+        let image = slurp(l[3]);
+        if accel_block_reason(table, image, 0) != schema_rt::TableRefuseOk { fuzz_fail(l[1], -1, "clean", "the corpus's own image does not open"); }
+        var clean: u8[>..] = [];
+        if !block_whole(table, image, sink, clean) { fuzz_fail(l[1], -1, "clean", clean); }
+        var r = fuzz_seed(seed, l[1]);
+        var refused: i64 = 0;
+        var opened: i64 = 0;
+        var i: i64 = 0;
+        while i < n {
+            var m: u8[>..] = [];
+            m.append(image);
+            var claim = image.len;
+            var lead: i64 = 0;
+            var why: u8[>..] = [];
+            fuzz_mutate(r, m, claim, lead, why);
+            var buf: u8[>..] = [];
+            buffer(buf, m, claim, lead);
+            if accel_block_reason(table, buf, lead) != schema_rt::TableRefuseOk {
+                refused += 1;
+            } else {
+                opened += 1;
+                var finding: u8[>..] = [];
+                if !block_whole(table, buf, sink, finding) { fuzz_fail(l[1], i, why, finding); }
+            }
+            i += 1;
+        }
+        write_stdout(str("block-fuzz: ", l[1], ": seed ", seed, ", ", n, " mutants: ", refused, " refused, ", opened, " opened and walked whole (", sink & 1, ")\n"));
+    }
+    if images == 0 { write_stdout(str("block-fuzz: unit ", unit, " has no block image\n")); exit(1); }
+}
+
+// cook_whole is the COOK ORACLE over one opened mutant: the data part
+// re-derived from the header words — align_up(64, alignment), the data
+// length — inside the extent and at least the root record's size, every byte
+// of it READ, and then the node walk the cook surface takes, from the root,
+// every pointer through cook_deref: a walk that meets a forged count or a
+// reference outside the region stops by name (that is a refusal of the read,
+// not an escape); a walk that would read outside the region aborts.
+fn cook_whole(root: const u8[:], b: const u8[:], sink: u64&, walks: i64&, finding: u8[>..]&) -> bool {
+    let rec = accel_cook_records()[accel_cook_record(root)];
+    let extent = b.len as u64;
+    if extent < schema_rt::TableCookHeaderBytes as u64 { format(finding, "a cook of ", extent, " bytes opened, shorter than its header"); return false; }
+    let alignment = schema_rt::accel_u64(b, 40);
+    if alignment == 0 || alignment > 4096 { format(finding, "a cook opened naming a region alignment of ", alignment); return false; }
+    let data_offset = ((schema_rt::TableCookHeaderBytes as u64) + alignment - 1) / alignment * alignment;
+    let data_length = schema_rt::accel_u64(b, 24);
+    if data_offset > extent || data_length > extent - data_offset { format(finding, "the region of ", data_length, " bytes at ", data_offset, " leaves a file of ", extent); return false; }
+    if data_length < rec.size as u64 { format(finding, "a region of ", data_length, " bytes opened for a root of ", rec.size); return false; }
+    var i = data_offset as! i64;
+    let end = (data_offset + data_length) as! i64;
+    while i < end {
+        sink = sink ^ b[i];
+        i += 1;
+    }
+    let region = schema_rt::cook_region(b);
+    if region.len as u64 != data_length { format(finding, "cook_region answered ", region.len, " bytes, the header ", data_length); return false; }
+    var out: u8[>..] = [];
+    var reached: i64[>..] = [];
+    var w = CookWalk { failed: false, quiet: true };
+    cook_node(out, reached, w, region, 0, accel_cook_record(root), 0);
+    if !w.failed { walks += 1; }
+    return true;
+}
+
+// fuzz_cook is the cook half: every cook case of this unit, its fixture the
+// Go reference's (the harness materialises them under <fixtures>), the clean
+// cook opened, held whole and walked first, then N mutants.
+fn fuzz_cook(lines: const u8[:][:], unit: const u8[:], seed: i64, n: i64, fixtures: const u8[:]) {
+    var cases: i64 = 0;
+    var sink: u64 = 0;
+    for line in lines {
+        let l = words(line);
+        if l.len < 5 || l[0] != "cook" || l[2] != unit { continue; }
+        cases += 1;
+        let root = l[3];
+        let image = slurp(str(fixtures, "/", l[1], ".cook"));
+        if accel_cook_reason(root, image, 0) != schema_rt::TableRefuseOk { fuzz_fail(l[1], -1, "clean", "the corpus's own cook does not open"); }
+        var walks: i64 = 0;
+        var clean: u8[>..] = [];
+        if !cook_whole(root, image, sink, walks, clean) { fuzz_fail(l[1], -1, "clean", clean); }
+        if walks != 1 { fuzz_fail(l[1], -1, "clean", "the corpus's own cook does not walk"); }
+        walks = 0;
+        var r = fuzz_seed(seed, l[1]);
+        var refused: i64 = 0;
+        var opened: i64 = 0;
+        var i: i64 = 0;
+        while i < n {
+            var m: u8[>..] = [];
+            m.append(image);
+            var claim = image.len;
+            var lead: i64 = 0;
+            var why: u8[>..] = [];
+            fuzz_mutate(r, m, claim, lead, why);
+            var buf: u8[>..] = [];
+            buffer(buf, m, claim, lead);
+            if accel_cook_reason(root, buf, lead) != schema_rt::TableRefuseOk {
+                refused += 1;
+            } else {
+                opened += 1;
+                var finding: u8[>..] = [];
+                if !cook_whole(root, buf, sink, walks, finding) { fuzz_fail(l[1], i, why, finding); }
+            }
+            i += 1;
+        }
+        write_stdout(str("cook-fuzz: ", l[1], ": seed ", seed, ", ", n, " mutants: ", refused, " refused, ", opened, " opened and held whole, ", walks, " walked to the end (", sink & 1, ")\n"));
+    }
+    if cases == 0 { write_stdout(str("cook-fuzz: unit ", unit, " has no cook\n")); exit(1); }
+}
+
 fn main() {
     let argv = args();
     if argv.len < 3 {
@@ -581,7 +817,7 @@ fn main() {
         write_stdout("cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\n");
         return;
     }
-    if argv.len != 4 {
+    if argv.len < 4 {
         write_stderr("usage: accel.goose <surface> <manifest> <unit>\n");
         exit(1);
     }
@@ -599,6 +835,8 @@ fn main() {
     if surface == "cook-reason" { surface_forgery(lines, unit, "cook", true); return; }
     if surface == "cook-write" { surface_cook_write(lines, unit); return; }
     if surface == "block-lead" { surface_block_lead(lines, unit); return; }
+    if surface == "block-fuzz" && argv.len == 6 { fuzz_block(lines, unit, number(argv[4]), number(argv[5])); return; }
+    if surface == "cook-fuzz" && argv.len == 7 { fuzz_cook(lines, unit, number(argv[4]), number(argv[5]), argv[6]); return; }
     // a surface this program does not answer: ABSENT, never a guessed answer
     exit(2);
 }
