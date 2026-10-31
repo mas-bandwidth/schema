@@ -9,6 +9,7 @@ package luatable
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
@@ -332,6 +333,9 @@ func fixedRoots(u *ir.Unit) []*ir.Struct {
 		}
 		out = append(out, st)
 	}
+	// u.Tables is a map: the roots are emitted in name order, so one unit
+	// generates one file.
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
