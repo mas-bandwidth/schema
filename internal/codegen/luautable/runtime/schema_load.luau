@@ -1265,7 +1265,15 @@ read_field = function(fd: any, r: any, v: any): any
 			return true
 		end
 		if not utf8_ok(r.b, r.at, n) then
+			-- ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): the field
+			-- reads its DECLARED DEFAULT, one malformed counts, and the parent
+			-- reads on past L. An earlier occurrence of the field does not
+			-- survive it (internal/tablewire decode.go field, FieldDefaultCell).
 			_report.malformed = true
+			if fd.slot ~= nil and v ~= nil then
+				local def: string = fd.def or ""
+				store_bytes(v, fd.slot, buffer.fromstring(def), 0, #def, #def)
+			end
 			r.at = r.at + n
 			return true
 		end
