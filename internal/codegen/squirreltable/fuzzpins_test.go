@@ -216,11 +216,14 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 
 // Damaged vectors prove the verdict and absence of a usable partial result.
 func requireSquirrelDiscard(t *testing.T, dir, pkg, mod, root string, data []byte) {
+	requireSquirrelDiscardWithDelegate(t, dir, pkg, mod, root, data, false)
+}
+func requireSquirrelDiscardWithDelegate(t *testing.T, dir, pkg, mod, root string, data []byte, delegated bool) {
 	t.Helper()
 	program := fmt.Sprintf(`local I=dofile("inputs.nut",true);
 local S=dofile(%q,true); local T=S.require(%q); local L=S.require("schema_table_load");
-local report={unknown=0,kindMismatch=0,widened=0,clamped=0,duplicate=0,malformed=false,refused=false}; local value=L.loadTolerant(T,%q,I["case"],report);
-print(report.malformed && value==null ? "discarded" : "kept");`, pkg+"/schema_module.nut", mod, root)
+local report={unknown=0,kindMismatch=0,widened=0,clamped=0,duplicate=0,malformed=false,refused=false,countRefusal=false,missingRequired=false}; if(%t)report.setdelegate({}); local value=L.loadTolerant(T,%q,I["case"],report);
+print(report.malformed && value==null ? "discarded" : "kept");`, pkg+"/schema_module.nut", mod, delegated, root)
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(program))
 	got := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data})))
 	if got != "discarded" {
