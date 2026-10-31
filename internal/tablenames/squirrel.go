@@ -1,5 +1,7 @@
 package tablenames
 
+import "sort"
+
 // Squirrel is the Squirrel table backend (internal/codegen/squirreltable).
 // Its runtimes are separate modules, schema_table_<name>.nut, loaded beside
 // the unit's generated files (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT), so
