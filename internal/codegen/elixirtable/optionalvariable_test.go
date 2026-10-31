@@ -192,3 +192,79 @@ table Holder
     tail    int32
 }
 `
+
+// TestCountPastTheBoundClampsBeforeReadingElixir pins a wire fuzzer divergence
+// on clean input (pass count, tabledemo.WideBlob): a bounded array whose count
+// is past its declared bound reads the first bound elements and counts one
+// clamped (docs/SPEC-TABLES.md §4), and the elements past the bound are never
+// asked of the body, so a body holding only the bound's elements is NOT damage.
+// The answer is the oracle's own (internal/tablewire Decode).
+//
+// THE REVERSED WITNESS reads the whole wire count before clamping, and the
+// probe must go red (the leg then runs off the body and reports malformed).
+func TestCountPastTheBoundClampsBeforeReadingElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+
+	u := unitFrom(t, boundedListProbeSrc)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Holder"))
+	var rep tabletext.Report
+	if !m.Read(inst, []byte(`{"samples":[1,2],"tail":9}`), &rep) {
+		t.Fatal("the oracle did not read the probe text")
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := strings.Index(string(wire), "\x07\x02")
+	if at < 0 {
+		t.Fatalf("no uint16 list header in the probe wire %x", wire)
+	}
+	mutant := append([]byte{}, wire...)
+	mutant[at+1] = 100 // the count, past the bound of 2, one LEB byte
+	var orep tabletext.Report
+	if _, err := tablewire.Decode(m, m.New(m.Lookup("Holder")), mutant, &orep); err != nil {
+		t.Fatal(err)
+	}
+	if orep.Clamped != 1 || orep.Malformed {
+		t.Fatalf("the oracle does not answer the probe as one clamp on clean input: %+v", orep)
+	}
+	probe := fmt.Sprintf(`
+{:ok, v, r} = Blprobe.Table.load("Holder", Base.decode16!(%q, case: :lower))
+if v["samples"] != [1, 2] or v["tail"] != 9 or r.clamped != 1 or r.malformed do
+  IO.puts(:stderr, "FAIL: " <> inspect({v, r}))
+  System.halt(1)
+end
+IO.puts("ok")
+`, hex.EncodeToString(mutant))
+
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("a count past the bound is not clamped before the elements are read: %v\n%s", err, out)
+	}
+
+	const clamp = "{n, report} = clamp_count(n, f, report)"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), clamp)
+		planted[name] = []byte(strings.ReplaceAll(string(data), clamp, "{n, report} = {n, report}"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no clamp-before-read in the generated reader")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the reader without its clamp-before-read still passed: the probe does not see the rule\n%s", out)
+	}
+}
+
+const boundedListProbeSrc = `package blprobe
+
+table Holder
+{
+    samples [..2]uint16
+    tail    int32
+}
+`
