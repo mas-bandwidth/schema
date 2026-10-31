@@ -379,6 +379,33 @@ tables-cs-usage-negative-control: bin/schema build/cook-open/.stamp
 
 test-cs: tables-cs-usage
 
+# M12 (docs/PORTING.md): every multi-byte wire access in the generated C# is an
+# explicit little-endian call or a guarded flat-array copy
+# (test/cs-tables/byte-order). Its control puts one fixed-form flat array read
+# back to an unguarded host-order bulk copy in the emitter (tools/sabotage,
+# table-cs-host-order-read) and requires the scan RED, naming it: every round
+# trip on a little-endian host stays green under that sabotage, which is why the
+# gate is a scan.
+.PHONY: tables-cs-byte-order tables-cs-byte-order-negative-control
+tables-cs-byte-order: build/tables-generated-cs/.stamp
+	sh test/cs-tables/byte-order build/tables-generated-cs
+
+tables-cs-byte-order-negative-control: bin/schema
+	@rm -rf build/cs-byte-order-nc && mkdir -p build/cs-byte-order-nc
+	@go run ./tools/sabotage -name table-cs-host-order-read -out build/cs-byte-order-nc/fixedform.gotext internal/codegen/cstable/fixedform.go
+	@printf '{"Replace":{"%s/internal/codegen/cstable/fixedform.go":"%s/build/cs-byte-order-nc/fixedform.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cs-byte-order-nc/overlay.json
+	@go build -overlay=build/cs-byte-order-nc/overlay.json -o build/cs-byte-order-nc/schema ./cmd/schema
+	./build/cs-byte-order-nc/schema generate --lang cs --out build/cs-byte-order-nc/gen/examples tables/examples
+	@if sh test/cs-tables/byte-order build/cs-byte-order-nc/gen > build/cs-byte-order-nc/log 2>&1; then \
+		cat build/cs-byte-order-nc/log; echo "NEGATIVE CONTROL FAILED: an unguarded host-order wire copy passed the byte-order scan"; exit 1; \
+	fi
+	@grep -q "SABOTAGED: host order" build/cs-byte-order-nc/log || \
+		{ cat build/cs-byte-order-nc/log; echo "NEGATIVE CONTROL FAILED: the scan went red, but not on the planted copy"; exit 1; }
+	@echo "negative control: an unguarded host-order fixed-form copy in the emitter turns tables-cs-byte-order red"
+
+test-cs: tables-cs-byte-order
+
 # I4 (docs/PORTING.md) — PER-CASE ABSENT, C# side. The C# driver answers a case
 # it cannot answer with <case>.absent (test/conformance/cs/src/Program.cs:
 # SpillAbsent, and the wire surface's blob_shared rows), and the harness counts
@@ -794,7 +821,7 @@ tables-cs-release:
 	$(MAKE) tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control
 	$(MAKE) tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control
 	$(MAKE) tables-cs-leg-region-blob-shared-negative-control conformance-cs-absent-negative-control
-	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control
+	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control tables-cs-byte-order-negative-control
 
 # J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
 # The C# table leg's `--gate` verb round-trips all 64 corpus variants and

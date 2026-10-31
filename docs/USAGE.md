@@ -3073,11 +3073,11 @@ Two things about the C# side worth knowing before you reach for it. **A cooked
 record is the same blittable `<Name>Row` struct the block form uses**, from the
 same layout model, so the two accelerators share one set of records; the layout
 is checked once, at start-up, and throws naming the record and the field if your
-runtime disagrees. And **a pointered unit's C# WIRE surface is refused by name**:
-you get the unit's `*Cook.cs` and `*Block.cs` and no Table sources at all, because the
-codec for the variable class is a named follow-on and neither accelerator needs
-one. Your cooked assets open in full; `Measure`, `Save` and `Load` for those
-tables are C++'s or the tool's for now.
+runtime disagrees. And **a pointered unit's C# WIRE surface is carried**: beside
+the unit's `*Cook.cs` and `*Block.cs` you get its Table sources, with `Measure`,
+`Save`, `Load` and `LoadMeasure` for every table, over the managed value and
+over a native region alike, so a cooked asset and its wire file are read by the
+same unit.
 
 **The same cook, from Rust**, on the same two terms — the records are the same
 `<Name>Row` structs the block form uses, and a pointered unit's WIRE surface is

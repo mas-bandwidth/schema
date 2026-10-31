@@ -589,12 +589,13 @@
     {
       "name": "cs-tables",
       "when": "pull-request",
-      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout.",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds).",
       "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
-        "tables-cs-json-differential-negative-control"
+        "tables-cs-json-differential-negative-control",
+        "tables-cs-byte-order-negative-control"
       ],
       "dotnet": "pin"
     },

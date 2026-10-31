@@ -119,3 +119,12 @@ func init() {
 		new: `if (Schema.TableCookRead64(at + %d) == ~Schema.TableCookMagic) { /* SABOTAGED: the magic does not refuse */ reason =`,
 	}}
 }
+
+// M12: one fixed-form flat array read goes back to an unguarded host-order
+// bulk copy, which a little-endian host cannot tell apart from the wire image.
+func init() {
+	sabotages["table-cs-host-order-read"] = []edit{{
+		old: `return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)`,
+		new: `return fmt.Sprintf("(t, b, l) => { if (%s != null) MemoryMarshal.Cast<byte, %s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d))).CopyTo(%s); } /* SABOTAGED: host order */", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)`,
+	}}
+}
