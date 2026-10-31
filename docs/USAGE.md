@@ -4958,7 +4958,8 @@ fill a generated class: it reads the table AS DATA into a `schema_rt.Record`
 (one `Slot` per field, in declaration order; `slot_named` reaches one by its
 schema name, and a name the table does not declare is refused by name), and
 the same `Record` is what a save, a cook and a text write take. A buffer is a
-Lobster string, which has no address, so a cook's `<Table>OpenReason` takes the
+Lobster string, which has no address, so a cook's `<Table>OpenReason` (in the
+unit's namespace, its package: `graphdemo.SceneOpenReason`) takes the
 buffer's lead past an aligned base and answers `"ok"` or the refusal's name
 (`unaligned_base`, a foreign build, the other byte order); `<Table>ReadCook`
 reads a cook back into a `Record`, `nil` for a corrupt one. An enum-keyed array
@@ -4974,9 +4975,9 @@ import .GraphTable
 
 // open the cook another build wrote; a refusal names a foreign build, a
 // corrupt file or the other byte order: fall back to the tolerant wire
-let why = SceneOpenReason(bytes, 0, false)
+let why = graphdemo.SceneOpenReason(bytes, 0, false)
 assert why == "ok"
-let scene = SceneReadCook(bytes)                // nil for a forged cook
+let scene = graphdemo.SceneReadCook(bytes)      // nil for a forged cook
 assert scene
 var node = schema_rt.slot_named(scene, "head").cell.node
 while node:
