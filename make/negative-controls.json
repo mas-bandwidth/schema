@@ -134,18 +134,20 @@
     {
       "name": "lua",
       "when": "pull-request",
-      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). Beside them, two reversed witnesses on the same build: the release tier's wire fuzz at its release count on seed 2 over a copy of the units whose load counts every unknown field twice (red at the first divergence, J3), and a copy of the driver whose absent() writes nothing (one harness run over the leg; red because an unanswered case never passes, I4). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). Beside them, two reversed witnesses on the same build: the release tier's wire fuzz at its release count on seed 2 over a copy of the units whose load counts every unknown field twice (red at the first divergence, J3), and a copy of the driver whose absent() writes nothing (one harness run over the leg; red because an unanswered case never passes, I4). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
         "conformance-negative-control-lua-walk",
+        "conformance-negative-control-lua-framing",
         "schema-lua-fuzz-negative-control",
         "schema-lua-resource-bounds-negative-control",
         "tables-lua-alloc-negative-control",
         "tables-lua-alloc-runtime-negative-control",
         "tables-lua-soak-negative-control",
         "tables-lua-release-negative-control",
-        "conformance-negative-control-lua-absent"
+        "conformance-negative-control-lua-absent",
+        "tables-lua-damage-discard-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -467,6 +469,14 @@
       ]
     },
     {
+      "name": "base-c-framing",
+      "when": "pull-request",
+      "why": "the C driver's framing control (docs/LAYERS/1-framing.md): a complete C conformance driver rebuilt against a scratch copy of the generated units with the 4096-entry id-table cap removed, and one harness run of the C leg. Alone for the reason base-c-absent is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "conformance-negative-control-c-framing"
+      ]
+    },
+    {
       "name": "base-c-format",
       "when": "pull-request",
       "clang_format": "pin",
@@ -566,7 +576,8 @@
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
       "targets": [
         "tables-moo-retain-negative-control",
-        "tables-moo-retain-refusal-negative-control"
+        "tables-moo-retain-refusal-negative-control",
+      "tables-moo-damage-discard-negative-control"
       ],
       "moo": "pin"
     },
@@ -1534,6 +1545,7 @@
         "bench-luau-gate-negative-control",
         "conformance-negative-control-luau",
         "conformance-negative-control-luau-emitter",
+        "conformance-negative-control-luau-framing",
         "conformance-negative-control-luau-walk",
         "luau-ludicrous-negative-control",
         "luau-nightly-fuzz-negative-control",
@@ -1558,7 +1570,8 @@
         "tables-luau-usage-negative-control",
         "tables-luau-versioning-negative-control",
         "tables-luau-wire-fuzz-negative-control",
-        "tables-luau-wire-fuzz-vectors-negative-control"
+        "tables-luau-wire-fuzz-vectors-negative-control",
+        "tables-luau-damage-discard-negative-control"
       ],
       "luau": "0.741"
     },
@@ -1588,9 +1601,10 @@
     {
       "name": "moo-conformance",
       "when": "pull-request",
-      "why": "the moo leg's two conformance negative controls (make/moo-conformance.mk, test/conformance/moo/negative-control; docs/PORTING.md I2 and I11), on the moo pin .github/actions/moo restores into dist/moo: each seds one runtime file the table emitter embeds, builds a private compiler with go build -overlay, regenerates the manifest's units and runs the harness over them, which must go red on exactly the named surfaces with the neighbours green (report: the load counting each unknown field twice, report and retain red; walk: the text reader's field-key index missing the first field, json-read and json-hostile red). Measured 6.9 s and 6.8 s on amd-3 (2026-10-31; 10.2 s and 9.7 s under a load of 14 on its 16 cores), the overlay compile and the 33 units' generation included, so the row is the harness build plus the pin's cache restore.",
+      "why": "the moo leg's three conformance negative controls (make/moo-conformance.mk, test/conformance/moo/negative-control; docs/PORTING.md I2 and I11, docs/LAYERS/1-framing.md F6), on the moo pin .github/actions/moo restores into dist/moo: each seds one runtime file the table emitter embeds, builds a private compiler with go build -overlay, regenerates the manifest's units and runs the harness over them, which must go red on exactly the named surfaces with the neighbours green (report: the load counting each unknown field twice, framing, report and retain red; walk: the text reader's field-key index missing the first field, json-read and json-hostile red; framing: the id table's 4096-entry bound dropped, framing red on frame_entries_4097). The framing control measured 57.5 s on hulk (2026-10-31) under a load of about 90 on its 17 cores, where the report and walk controls took 46.3 s and 64.3 s. Measured 6.9 s and 6.8 s on amd-3 (2026-10-31; 10.2 s and 9.7 s under a load of 14 on its 16 cores), the overlay compile and the 33 units' generation included, so the row is the harness build plus the pin's cache restore.",
       "targets": [
         "conformance-negative-control-moo",
+        "conformance-negative-control-moo-framing",
         "conformance-negative-control-moo-walk"
       ],
       "moo": "pin"
@@ -1607,8 +1621,9 @@
     {
       "name": "moo-open-gates",
       "when": "pull-request",
-      "why": "the moo leg's controls of make/moo-open-gates.mk, on the moo pin .github/actions/moo restores: the runtime home's (docs/PORTING.md J2; the file-order rule put back through go build -overlay, the tables/examples unit generated with and without an earlier-sorting file, and the home must move) and the documented surface's (I12; two edited copies of docs/USAGE.md, a renamed save and a walk that reads nothing, each must fail the moo usage gate). Go, the moo pin and nothing else: 1.3 s and 2.0 s on amd-3 (2026-10-31) with the compiler built.",
+      "why": "the moo leg's controls of make/moo-open-gates.mk, on the moo pin .github/actions/moo restores: the runtime home's (docs/PORTING.md J2; the file-order rule put back through go build -overlay, the tables/examples unit generated with and without an earlier-sorting file, and the home must move) and the documented surface's (I12; two edited copies of docs/USAGE.md, a renamed save and a walk that reads nothing, each must fail the moo usage gate), and the arm field line's (M18; a per-shape payload reader planted into table_load.moo's read_arm and a table-arm reader into read_union, each must be the one finding of the source scan, a Go test over the embedded runtime that needs no moo). Go, the moo pin and nothing else: 1.3 s and 2.0 s on amd-3 (2026-10-31) with the compiler built; the arm control is one go test of internal/codegen/mootable, 1.6 s on hulk (2026-10-31).",
       "targets": [
+        "tables-moo-arms-negative-control",
         "tables-moo-runtime-home-negative-control",
         "tables-moo-usage-negative-control"
       ],

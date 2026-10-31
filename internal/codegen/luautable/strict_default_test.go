@@ -18,7 +18,7 @@ import (
 // PLAIN NAME IS THE STRICT READ on the Luau leg: L.load refuses what
 // R.ReadStrict refuses and hands back no recovered value, naming the same
 // reason, while the tolerant walk lives under its own L.loadTolerant name and
-// keeps the recovered value with the counters moved. The wires and the
+// keeps an evolved value, but discards a damaged load (§4). The wires and the
 // counters are schema-go's own engine (internal/tablewire and
 // internal/tabletext) over the same unit, never typed by hand.
 func TestLuauDefaultReadIsStrict(t *testing.T) {
@@ -58,7 +58,7 @@ table Var
 
 	// A TRUNCATED WIRE keeps the id table readable and cuts the root body's
 	// terminator: the framing opens, the walk stops, and the tolerant read
-	// hands back the recovered (defaulted) root with malformed counted.
+	// discards the whole value with malformed counted.
 	empty := encodeWire(t, model, model.New(st))
 	if len(empty) < 2 {
 		t.Fatalf("the empty wire is too short to truncate: %d bytes", len(empty))
@@ -147,16 +147,21 @@ end
 		tolerantValue, tolerantCounters := fields[4], fields[5]
 		readValue, readReason := fields[6], fields[7]
 
-		// THE TOLERANT WALK IS THE CONTROL: it keeps the recovered value with
-		// the counters the Go engine counted, under the explicit name only.
-		if tolerantValue == "nil" {
-			t.Fatalf("%s: L.loadTolerant handed back no recovered value", name)
-		}
-		if tolerantCounters != oracle.counters {
-			t.Errorf("%s: L.loadTolerant counters are %s, the Go reference says %s", name, tolerantCounters, oracle.counters)
-		}
-		if tolerantValue != fmt.Sprint(oracle.n) {
-			t.Errorf("%s: L.loadTolerant recovered n=%s, the Go reference says %d", name, tolerantValue, oracle.n)
+		// Tolerant evolution keeps a value; damage refuses it under either name (§4).
+		if strings.HasSuffix(oracle.counters, ",true") {
+			if tolerantValue != "nil" || !strings.HasSuffix(tolerantCounters, ",true") {
+				t.Errorf("%s: damaged tolerant load returned value=%s counters=%s", name, tolerantValue, tolerantCounters)
+			}
+		} else {
+			if tolerantValue == "nil" {
+				t.Fatalf("%s: L.loadTolerant handed back no recovered value", name)
+			}
+			if tolerantCounters != oracle.counters {
+				t.Errorf("%s: L.loadTolerant counters are %s, the Go reference says %s", name, tolerantCounters, oracle.counters)
+			}
+			if tolerantValue != fmt.Sprint(oracle.n) {
+				t.Errorf("%s: L.loadTolerant recovered n=%s, the Go reference says %d", name, tolerantValue, oracle.n)
+			}
 		}
 
 		// R.ReadStrict IS THE NAME §6.5 GIVES: L.load must answer the same one.

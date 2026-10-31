@@ -136,10 +136,8 @@ func TestLuaMessageFormMatchesTheGoldens(t *testing.T) {
 	assertDamagedBatch(t, repo, units, conns)
 }
 
-// assertDamagedBatch holds the batch's damage rule (§3.3): "DAMAGE INSIDE BODY
-// k DELIVERS BODIES 1 to k - 1", one `malformed`, and nothing at or after body
-// k. The pinned three-body batch has body 2's field reference planted at 63,
-// thirty past E, so body 1 stands and the batch is refused.
+// assertDamagedBatch holds §4: damage in body 2 discards the whole batch.
+// The pinned input retains its original mutation; no partial body is usable.
 func assertDamagedBatch(t *testing.T, repo string, units map[string][]string, conns map[string]manifestConn) {
 	t.Helper()
 	conn, ok := conns["backend_conn"]
@@ -171,10 +169,9 @@ local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
 local values = T.LoadMessages("LoginRequest", vocab, inputs.batch, report)
-assert(values ~= nil, "a damaged batch was refused rather than read")
-assert(#values == 1, "damage in body 2 delivered " .. #values .. " bodies, not one")
+assert(values ~= nil, "a damaged batch should return an empty result")
+assert(#values == 0, "damage in body 2 delivered partial bodies")
 assert(report.malformed == true, "damage in body 2 did not report malformed")
-assert(report.refused == 0, "damage in body 2 was reported as a refusal")
 print("damage-ok")
 `)
 	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce, "batch": batch})

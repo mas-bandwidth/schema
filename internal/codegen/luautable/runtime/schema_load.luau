@@ -238,6 +238,9 @@ local function wide_ok(b: buffer, at: number, n: number): boolean
 	return true
 end
 
+-- ir.TableWireIdTableBound: the most entries an id table may hold (§3)
+local ID_TABLE_BOUND = 4096
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed.
 local function open(bytes: buffer, report: any): any
@@ -249,6 +252,10 @@ local function open(bytes: buffer, report: any): any
 	-- integer: a high-bit count is huge, never negative, and refuses here
 	local count = integer.tonumber(buffer.readinteger(bytes, len - 8))
 	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return nil end
+	-- THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+	-- CHECK): a table of more than ID_TABLE_BOUND entries is malformed on the
+	-- whole-wire rule, whatever the buffer would hold
+	if count > ID_TABLE_BOUND then report.malformed = true; return nil end
 	local endpos = len - 8 - count * 8
 	local ids = {}
 	local seen: { [integer]: boolean } = {}
@@ -1458,13 +1465,10 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	return false
 end
 
--- loadTolerant loads a form-1 wire at the table descriptor `root`, fills
--- report, and returns the recovered root value; it is the TOLERANT walk and
--- only this explicit name reaches it (docs/SPEC-TABLES.md §6.5: the plain
--- name is the strict read, so a recovered value never comes back under it).
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
-	local o = open(bytes, report)
-	if o == nil then return nil end
+-- Walk a file whose id table has opened. Keeping this separate lets the
+-- strict wrapper retain wire_damaged for unopened input and its field/counter
+-- diagnostics for a decoded value that the damage rule now discards (§4).
+local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	_table = o.table
 	_report = report
 	_countRefused = false
@@ -1485,7 +1489,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		local ref = r_leb(walk)
 		if walk.bad then break end
 		if ref == 0 then
-			if walk.at ~= o.e then report.malformed = true; return v end
+			if walk.at ~= o.e then report.malformed = true; return nil end
 			break
 		end
 		if ref > #_table or walk.at >= walk.e then break end
@@ -1544,10 +1548,16 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		report.refused = (report.refused or 0) + 1
 		return nil
 	end
-	-- A REGION READ KEEPS ITS RECOVERED VALUE under the explicit tolerant
-	-- name (docs/SPEC-TABLES.md §6.5); ReadStrict is the caller that refuses
-	-- a count_refusal by name.
+	if report.malformed then return nil end
 	return v
+end
+
+-- loadTolerant returns a value only when the wire is whole. Tolerant
+-- evolution is not damage: malformed input is discarded on every read (§4).
+function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	local o = open(bytes, report)
+	if o == nil then return nil end
+	return loadOpened(root, bytes, report, o)
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
@@ -1982,7 +1992,12 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	local v = L.loadTolerant(root, b, rep)
+	local opened = open(b, rep)
+	if opened == nil then
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local v = loadOpened(root, b, rep, opened)
 	if rep.nonFiniteFloat ~= nil then
 		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
 		rep.reason = "non_finite_float"
@@ -1991,13 +2006,9 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	end
 	if _countRefused then
 		-- the BUILDER-path storage refusal (docs/SPEC-TABLES.md §6.5, Go
-		-- tablewire.CountRefusal): the tolerant region read kept its prefix,
-		-- the strict read refuses whole
+		-- tablewire.CountRefusal): both reads discard the damaged value;
+		-- the strict read keeps the specific refusal reason
 		rep.reason = "count_refusal"
-		return nil
-	end
-	if v == nil and rep.malformed then
-		rep.reason = "wire_damaged"
 		return nil
 	end
 	for _, k in REFUSING do

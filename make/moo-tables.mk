@@ -43,3 +43,9 @@ tables-moo-retain-negative-control: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainNegativeControl$$'
 tables-moo-retain-refusal-negative-control: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainRefusesWhatThePageRefuses$$'
+
+# Damage (§4) refuses the whole load or batch. The control removes each
+# runtime discard and requires the same malformed inputs to expose values.
+.PHONY: tables-moo-damage-discard-negative-control
+tables-moo-damage-discard-negative-control: toolchain-moo
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooDamageDiscardNegativeControls$$'
