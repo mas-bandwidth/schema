@@ -476,6 +476,47 @@ conformance-negative-control-c-absent: build/conformance-harness build/tables-ge
 
 test-c: conformance-negative-control-c-absent
 
+# THE NEGATIVE CONTROL FOR THE FRAMING SURFACE (docs/LAYERS/1-framing.md). The
+# framing vectors hold the C reader to layer 1's rules; this one breaks the
+# bounded-work contract (docs/SPEC-TABLES.md §3: an id table claiming more than
+# 4096 entries is malformed for the whole wire) in a scratch copy of the
+# generated units, builds the driver against the copy, and requires the harness
+# red on the framing surface, on the 4097-entry vector, while the wire and
+# report surfaces stay green. The tracked tree is never written to.
+CONFORMANCE_NEGATIVE_C_FRAMING := build/conformance-negative-c-framing
+.PHONY: conformance-negative-control-c-framing
+conformance-negative-control-c-framing: build/conformance-harness build/conformance-c
+	@rm -rf $(CONFORMANCE_NEGATIVE_C_FRAMING) && mkdir -p $(CONFORMANCE_NEGATIVE_C_FRAMING)
+	@cp -R build/tables-generated-c $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated
+	@for f in $$(grep -rl 'if ( count > 4096 ) { report->malformed = 1; return 0; }' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated); do \
+		sed 's|if ( count > 4096 ) { report->malformed = 1; return 0; }|if ( 0 ) { return 0; } /* SABOTAGED: the 4096-entry cap */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -rq 'SABOTAGED: the 4096-entry cap' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_FRAMING)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_FRAMING)/generated,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_FRAMING)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_FRAMING)" > $(CONFORMANCE_NEGATIVE_C_FRAMING)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C_FRAMING)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C_FRAMING)" > $(CONFORMANCE_NEGATIVE_C_FRAMING)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C_FRAMING)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_C_FRAMING)/work > $(CONFORMANCE_NEGATIVE_C_FRAMING)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a C reader without the 4096-entry cap left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; \
+	fi
+	@grep -q "frame_entries_4097" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the 4097-entry vector"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
+	@grep -q "framing       FAIL" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the framing surface did not go red"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
+	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire surface went red too, so the control localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
+	@grep -m1 "frame_entries_4097" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log
+	@echo "negative control: a C reader without the 4096-entry cap turns the framing surface red"
+
+test-c: conformance-negative-control-c-framing
+
 # THE NEGATIVE CONTROL FOR THE TWO FOREIGN SURFACES. `cook-foreign` and
 # `block-foreign` are the only rows whose EXPECTED ANSWER IS A REFUSAL, so a
 # driver that never made the file foreign in the first place would pass them by
