@@ -150,6 +150,10 @@ class LoadState:
     nodes:[Node] = []
     named:[int] = []
     count_refused:bool = false
+    // region is THE REGION READ (Go's DecodeRegion): a load the caller sized
+    // with load_measure first, so a collection count past the storage cap is
+    // damage the walk reports and resumes past, never a refusal (§2.9)
+    region:bool = false
 
 // A Reader is a cursor over data[lo:hi] (Go's wireReader over a sub-slice).
 class Reader:
@@ -1172,9 +1176,11 @@ class TextListShape : Shape
 let text_list_shape = register_shape(TextListShape { key: "textlist" })
 
 // collection_cap: a count past the int32 storage cap (§2.9). A variable
-// root's load refuses the partial value; a value-only read reports damage.
+// root's builder load refuses the partial value; a region read and a
+// value-only read report damage and resume after the field's L (Go's
+// collectionCap).
 def collection_cap(r:Reader) -> bool:
-    if not r.st.variable:
+    if not r.st.variable or r.st.region:
         r.st.report.malformed = true
         return true
     r.st.count_refused = true
@@ -1544,7 +1550,7 @@ def map_key_fits(k:FieldDescriptor, key:Value) -> bool:
 // kind the declaration does not name, and whether it widened.
 def map_key(body:Reader, k:FieldDescriptor, entry:Record) -> Value, bool, bool, bool:
     let st = body.st
-    let scratch = LoadState { data: st.data, ids: st.ids, report: LoadReport {}, variable: st.variable, good: st.good, root: st.root, nodes: st.nodes, named: [], count_refused: false }
+    let scratch = LoadState { data: st.data, ids: st.ids, report: LoadReport {}, variable: st.variable, good: st.good, root: st.root, nodes: st.nodes, named: [], count_refused: false, region: st.region }
     let scan = Reader { b: body.b, lo: body.lo, off: body.lo, hi: body.hi, st: scratch }
     let cell = entry.fields[0].cell
     let want = k.k
@@ -1960,7 +1966,18 @@ def decode_variable(st:LoadState, root:Record, hi:int):
 // missing required field and a non-finite float refuse even here (§2.3,
 // §3.3): nil, with the field named in report.reason.
 def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
-    let rec = load_walk(root, data, report)
+    return load_tolerant_in(root, data, report, false)
+
+// load_region_tolerant is load_tolerant as THE REGION READ (Go's
+// DecodeRegion): the read a caller makes after load_measure sized the wire.
+// It differs in one rule (§2.9): a collection count past the storage cap is
+// counted malformed and the walk resumes after the field's L, where the
+// builder read refuses the partial value.
+def load_region_tolerant(root:string, data:string, report:LoadReport) -> Record?:
+    return load_tolerant_in(root, data, report, true)
+
+def load_tolerant_in(root:string, data:string, report:LoadReport, region:bool) -> Record?:
+    let rec = load_walk(root, data, report, region)
     if report.non_finite_float != "":
         report.reason = "non_finite_float: " + report.non_finite_float
         release(rec)
@@ -2082,8 +2099,8 @@ def release(root:Record?) -> void:
         for(found) n:
             push(work, n)
 
-// load_walk is the framing walk both reads share (Go's decodeWalk).
-def load_walk(root:string, data:string, report:LoadReport) -> Record?:
+// load_walk is the framing walk every read shares (Go's decodeWalk).
+def load_walk(root:string, data:string, report:LoadReport, region:bool) -> Record?:
     if length(data) < 1:
         report.malformed = true
         report.stopped = true
@@ -2100,7 +2117,7 @@ def load_walk(root:string, data:string, report:LoadReport) -> Record?:
         report.malformed = true
         report.stopped = true
         return rec
-    let st = LoadState { data: data, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
+    let st = LoadState { data: data, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false, region: region }
     let end, terminated = body_extent(st, first)
     if terminated and end != first:
         report.malformed = true

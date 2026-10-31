@@ -29,7 +29,7 @@
 //                     the measure -1; a variable root answers load_measure
 //                     (region_measure.lobster, Go's FileRegionMeasure), and a
 //                     measure that refuses the framing loads nothing (§6.5).
-//   file, retain 1    the variable roots, through load_retain and save_retain
+//   file, retain 1    the variable roots, through load_region_retain and save_retain
 //                     with both capacities large (§6.6), the measure as above
 //                     and the two retention counters beside the six.
 //   file, form 2      the fixed message roots, through load_messages_tolerant
@@ -166,7 +166,8 @@ def load_one(name:string, form:int, retain:int):
     reply(record(true, rep, rep.malformed or (rep.stopped and not form_refused), form_refused, n, out))
 
 // variable_one is a variable root in the region arms: the measure first,
-// then the load, the plain one or the retaining one
+// then the region read (load_region_tolerant or load_region_retain), which
+// the oracle's DecodeRegion and DecodeRegionRetain answer
 def variable_one(name:string, data:string, retain:bool):
     let measure, _whole, refused = schema_rt.load_measure(name, data)
     if refused:
@@ -177,7 +178,7 @@ def variable_one(name:string, data:string, retain:bool):
     let form_refused = length(data) >= 1 and data[0] != 1
     if retain:
         let store = schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }
-        let rec = schema_rt.load_retain(name, data, store, rep)
+        let rec = schema_rt.load_region_retain(name, data, store, rep)
         let _probe, why = schema_rt.save_reasoned(rec)
         var n = -1
         var out = ""
@@ -189,7 +190,7 @@ def variable_one(name:string, data:string, retain:bool):
         schema_rt.release(rec)
         reply(record_measured(true, rep, rep.malformed or (rep.stopped and not form_refused), form_refused, measure, true, n, out))
         return
-    var rec = schema_rt.load_tolerant(name, data, rep)
+    var rec = schema_rt.load_region_tolerant(name, data, rep)
     if not rec:
         rec = schema_rt.new_record(schema_rt.table_of(name))
     let n, out = save_answer(rec)

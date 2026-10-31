@@ -317,13 +317,22 @@ class RetainCaptureImpl : RetainCapture
 // exactly what load reads and reports exactly what load reports, and beside
 // that keeps the fields this build cannot name in the caller's Retain.
 def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record:
+    return load_retain_in(root, data, retain, report, false)
+
+// load_region_retain is load_retain as THE REGION READ (Go's
+// DecodeRegionRetain): the retaining read after load_measure, with
+// load_region_tolerant's one rule (§2.9).
+def load_region_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record:
+    return load_retain_in(root, data, retain, report, true)
+
+def load_retain_in(root:string, data:string, retain:Retain, report:LoadReport, region:bool) -> Record:
     retain.used = 0
     retain.ids = []
     retain.holders = []
     retain.known = known_ids()
     let mark = length(retain_captures)
     register_retain_capture(RetainCaptureImpl { retain: retain, report: report })
-    let rec = load_tolerant(root, data, report)
+    let rec = load_tolerant_in(root, data, report, region)
     truncate(retain_captures, mark)
     if rec:
         return rec

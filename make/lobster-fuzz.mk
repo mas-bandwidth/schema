@@ -19,7 +19,7 @@
 # the third is a flag of the ordinary run, with the
 # message roots riding the ordinary run itself:
 #
-#   --retain           the variable roots through load_retain and save_retain
+#   --retain           the variable roots through load_region_retain and save_retain
 #                      with both capacities large (§6.6), the retention report
 #                      held to the oracle beside the six counters
 #   message roots      the harness's ordinary run already mutates the manifest's
