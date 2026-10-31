@@ -143,9 +143,9 @@ generated/bench/tables/lua/.stamp: ;
 # quantized float's write refusal. The generator emits the runtime beside the
 # module, so each control sabotages that emitted copy (tools/sabotage, one
 # direction at a time) and must fail exactly the vectors its .expected names.
-build/packet-finite/lua/.stamp: build/schema-lua test/packet-finite/lua/Finite.schema
+build/packet-finite/lua/.stamp: bin/schema test/packet-finite/lua/Finite.schema
 	@rm -rf build/packet-finite/lua && mkdir -p build/packet-finite/lua
-	./build/schema-lua generate --lang lua --out build/packet-finite/lua/generated test/packet-finite/lua/Finite.schema
+	./bin/schema generate --lang lua --out build/packet-finite/lua/generated test/packet-finite/lua/Finite.schema
 	@touch $@
 
 .PHONY: packet-finite-lua packet-finite-lua-negative-control

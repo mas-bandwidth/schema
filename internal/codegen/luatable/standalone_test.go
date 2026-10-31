@@ -1,6 +1,7 @@
 package luatable
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuaUnitStandsAlone holds docs/PORTING.md M4b for the Lua leg: a
@@ -25,6 +27,7 @@ import (
 // must NOT load, so the probe is shown to see a dependency outside the unit
 // (a probe that loaded the missing module from anywhere else would pass it).
 func TestLuaUnitStandsAlone(t *testing.T) {
+	slowtest.Gate(t, "the pinned lua")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	units := manifestUnits(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
@@ -174,18 +177,14 @@ func TestLuaTextWalkIsOneFileAcrossUnits(t *testing.T) {
 
 	// the reversed witness: one changed byte in one unit's copy
 	planted := map[string]map[string][]byte{}
-	for key, files := range generated {
-		planted[key] = files
-	}
+	maps.Copy(planted, generated)
 	keys := make([]string, 0, len(planted))
 	for key := range planted {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	victim := map[string][]byte{}
-	for name, data := range planted[keys[len(keys)-1]] {
-		victim[name] = data
-	}
+	maps.Copy(victim, planted[keys[len(keys)-1]])
 	changed := append([]byte(nil), victim["json.lua"]...)
 	changed[len(changed)-1] ^= 0x20
 	victim["json.lua"] = changed
