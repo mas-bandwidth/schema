@@ -209,8 +209,8 @@ fixed table Root { pick Pick }
 // c/W7 — "arg and meta are two lanes". FIXED-FORM-ALGORITHM §4.1: "`arg` and
 // `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never share one. A
 // `string(N)` under a union arm needs both, and one lane gives whichever was
-// stamped last: a byte string under arm `2` read as WIDE, or an entry that runs
-// only when the tag equals the flavour — under the wrong arm." The text field
+// stamped last: a text string under arm `3` read as BYTES, or an entry that
+// runs only when the tag equals the flavour — under the wrong arm." The text field
 // under arm 2 is the one entry where both lanes are live. The test asserts the
 // PUBLISHED identity row carries arg 2 and meta 1 (utf8), the plan COMPILED by
 // the runtime carries the same two, and the text lands whole on both plans.

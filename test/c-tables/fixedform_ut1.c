@@ -5,11 +5,10 @@
    arm could be guarded correctly or read with the right flavour and could not
    be both.
 
-   The string sits under the SECOND arm on purpose: a string(N)'s flavour is 1
-   and the second arm's ordinal is 2, so the collision does not merely lose a
-   fact — it turns a byte string into a WIDE one, halving the bound and
-   terminating two bytes at a time. This translation unit is the ONLY one that
-   names tblut1's types; see fixedform.h for why there is more than one. */
+   The string sits under the SECOND arm, whose ordinal names no flavour; the
+   collision is watched where it bites, under UT2's third arm (fixedform_ut2.c).
+   This translation unit is the ONLY one that names tblut1's types; see
+   fixedform.h for why there is more than one. */
 
 #include <string.h>
 
@@ -57,31 +56,6 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
     fixed_check( back.pick.as.b.m == 1234 && back.head == 42 && back.tail == 99,
                  "C two lanes: the rest of the record" );
     fixed_check( r.clamped == 0 && !r.malformed && !r.refused, "C two lanes: a clean read moves no counter" );
-}
-
-/* THE NEGATIVE CONTROL — the bug itself, watched failing. The flavour is put
-   back into the guard's lane, which is exactly what the one shared lane did,
-   and the SAME record read by the SAME loop comes out wrong: the arm's ordinal
-   2 reads as kTableFixedTextWide, so the length is halved and the terminator
-   lands two bytes early. */
-void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes )
-{
-    static tblut1_table_fixed_entry_t shared[16];
-    tblut1_ut_root_t wrong;
-    tblut1_table_report_t r;
-    const uint8_t * body;
-    int32_t i;
-
-    (void) bytes;
-    for ( i = 0; i < tblut1_ut_root_fixed_plan_count; i++ ) { shared[i] = tblut1_ut_root_fixed_plan[i]; }
-    shared[3].meta = shared[3].arg; /* ONE LANE, as it was */
-
-    tblut1_ut_root_reset( &wrong );
-    memset( &r, 0, sizeof( r ) );
-    body = data + TBLUT1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblut1_ut_root_fixed_layout ) + 8;
-    tblut1_table_fixed_run( shared, tblut1_ut_root_fixed_plan_count, tblut1_ut_root_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, tblut1_ut_root_fixed_guards );
-    fixed_check( wrong.pick.as.b.label_length != 7 || strcmp( wrong.pick.as.b.label, "seven77" ) != 0,
-                 "C NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
 }
 
 /* ...and the other direction: a UT2 record whose arm is `b` at ordinal 3. */

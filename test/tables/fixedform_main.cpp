@@ -899,10 +899,9 @@ static void bytes_row_case()
 // had one lane between them, and a `string(N)` under a union's arm could be
 // guarded correctly or read with the right flavour and could not be both.
 //
-// UT1's string sits under the SECOND arm on purpose: a `string(N)`'s flavour is
-// 1 and the second arm's ordinal is 2, so the collision does not merely lose a
-// fact — it turns a byte string into a WIDE one, halving the bound and
-// terminating two bytes at a time.
+// UT2's string sits under the THIRD arm, and 3 is the bytes flavour: there a
+// shared lane does not merely lose a fact, it reads a string as bytes and never
+// terminates it, which is what the negative control below watches.
 static void union_text_case()
 {
     tblut1::UtRoot one;
@@ -936,25 +935,48 @@ static void union_text_case()
         check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes: a clean read moves no counter" );
     }
 
-    // THE NEGATIVE CONTROL — the bug itself, watched failing. The flavour is
-    // put back into the guard's lane, which is exactly what the one shared lane
-    // did, and the SAME record read by the SAME loop comes out wrong: the arm's
-    // ordinal 2 reads as kTableFixedTextWide, so the length is halved and the
-    // terminator lands two bytes early.
+    // THE NEGATIVE CONTROL — the bug itself, watched failing. With one shared
+    // lane the flavour IS the guard's ordinal. UT1's string is ordinal 2, which
+    // names no flavour, so the collision bites where the ordinal IS one: UT2's
+    // string is the THIRD arm, and 3 is the bytes flavour. A full-length string
+    // read through UT2's identity plan with the flavour put back into the
+    // guard's lane reads as bytes and is never terminated; the same record
+    // through the two lanes is.
     {
-        std::vector<tblut1::TableFixedEntry> shared( tblut1::UtRootFixedPlan,
-                                                     tblut1::UtRootFixedPlan + tblut1::UtRootFixedPlanCount );
-        shared[3].meta = shared[3].arg; // ONE LANE, as it was
-        tblut1::UtRoot wrong;
-        tblut1::UtRootReset( wrong );
-        tblut1::TableReport r;
-        const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
-        // The copy keeps the identity plan's pooled guard chains, so it runs
-        // against the identity plan's pool, exactly as UtRootFixedLoad does.
-        tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
-                               body, (uint8_t *) &wrong, &r, tblut1::UtRootFixedGuards );
-        check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
-               "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
+        tblut2::UtRoot full;
+        tblut2::UtRootReset( full );
+        full.head = 5;
+        full.tail = 6;
+        full.pick.type = tblut2::PickType::B;
+        std::memcpy( full.pick.b.label, "eighteen", 9 ); // eight characters: no slack to terminate it
+        full.pick.b.label_length = 8;
+        full.pick.b.m = 77;
+        std::vector<uint8_t> w3( (size_t) tblut2::UtRootFixedMeasure( 1 ) );
+        check( tblut2::UtRootFixedSave( &full, 1, w3.data(), (int64_t) w3.size() ) == (int64_t) w3.size(), "UT2 full-length save" );
+        int32_t text = -1;
+        for ( int32_t i = 0; i < tblut2::UtRootFixedPlanCount; ++i )
+        {
+            if ( tblut2::UtRootFixedPlan[i].op == tblut2::kTableFixedText ) { text = i; }
+        }
+        check( text >= 0 && tblut2::UtRootFixedPlan[text].arg == 3 && tblut2::UtRootFixedPlan[text].meta == tblut2::kTableFixedTextUtf8,
+               "two lanes: UT2's text entry is the third arm's, flavoured utf8" );
+        const uint8_t * body = w3.data() + tblut2::kTableFixedHeaderBytes + 4 + tblut2::UtRootFixedLayoutBytes + 8;
+        for ( int lanes = 2; lanes >= 1; --lanes )
+        {
+            std::vector<tblut2::TableFixedEntry> plan( tblut2::UtRootFixedPlan, tblut2::UtRootFixedPlan + tblut2::UtRootFixedPlanCount );
+            if ( lanes == 1 ) { plan[text].meta = plan[text].arg; } // ONE LANE, as it was
+            tblut2::UtRoot read;
+            tblut2::UtRootReset( read );
+            std::memset( read.pick.b.label, 'X', sizeof( read.pick.b.label ) );
+            tblut2::TableReport r;
+            // The copy keeps the identity plan's pooled guard chains, so it runs
+            // against the identity plan's pool, exactly as UtRootFixedLoad does.
+            tblut2::TableFixedRun( plan.data(), tblut2::UtRootFixedPlanCount, tblut2::UtRootFixedPlanGuarded,
+                                   body, (uint8_t *) &read, &r, tblut2::UtRootFixedGuards );
+            const bool whole = read.pick.b.label_length == 8 && std::strcmp( read.pick.b.label, "eighteen" ) == 0;
+            if ( lanes == 2 ) { check( whole, "two lanes: the full-length string reads terminated" ); }
+            else { check( !whole, "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" ); }
+        }
     }
 
     // A COMPILED PLAN: UT2 inserted an arm IN THE MIDDLE, so the same string is

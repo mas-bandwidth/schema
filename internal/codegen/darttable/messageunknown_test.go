@@ -32,7 +32,18 @@ type messageUnknownRow struct {
 	root    string
 	wantGo  int
 	wireHex string
+	// annHex, when set, is the announcement the receipt was made under, which
+	// the manifest row no longer carries: a mutant's references are slots
+	// of THAT vocabulary, so it is read under the connection that made it.
+	annHex string
 }
+
+// backendConnWideTail is backenddemo's announcement as the wire fuzz run of
+// the LoginRequest receipts saw it: its tail carried a third blob id,
+// fnv1a64("wstring"), so every table name sat one slot higher than today's
+// (docs/SPEC-TABLES.md §3.3). A current reader takes it as an ordinary
+// announcement whose extra name it does not know.
+const backendConnWideTail = "010109ae8544080a63d016020ec10206be02e5e9b563d0a9b8cf0f38c48d74ffe34ac109000dfa34688b0f86260e00200600f9080bbd37d565b80800dd240af523a655c71e266814ba79e336f30900298b551875ace3980e0a0a0df524f6e7fb630ec104011100204a75304802a398060104011a4de85c199a42820c201897806bf58b76a30601070140882aff5c8845a7080016d40a899bfba5751e07ec28db19b1ee6100c7f87b8e19177dd900546a0a98196582ea00cae8a8d71977ed5a00b01eb5b5072b200900cf5a96b5075ffb0800243cd2e88bdf380b0059bed5b5070f460900d2298fe1b65dc7030dc47867d77ccd519b0dc2f098556fe9a80b0dffffffffffffffff00e44f1c4f47c02e2f0058fcaffad8e04b7000c7d47b26b09d295f0035e6b3c00f528820003fa5b6b0dc9eac16003f4cef5a0c54e9670024c3f5f6a941b2230075c23f6a372e36180000fefffffffffffffffdffffffffffffff0200000000000000"
 
 const wide09Mutant = "0200760100000077020000007803000000ac79040000007a050000007b060000007c070000007d080000007e090000007f0a000000800b000000810c000000820d00000000"
 
@@ -41,14 +52,14 @@ var messageUnknownRows = []messageUnknownRow{
 	// pass reference #1, mutant 60, run seed 24845619678: the reference
 	// counts 2 unknown, the Dart leg counted 1 (the 1-vs-2 case).
 	{name: "LoginRequest_mutant60_unknown_1_vs_2", row: "login_full", root: "LoginRequest", wantGo: 2,
-		wireHex: "02006100000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403101"},
+		wireHex: "02006100000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403101", annHex: backendConnWideTail},
 	// backenddemo.LoginRequest on the wire-fuzz random pass's first
 	// decoded-value save divergence (pass bit #390, run seed 24845619678):
 	// the reference counts 0 unknown and both legs mark the body malformed,
 	// so the unknown count agrees even though the save does not (the save
 	// divergence is another cause, named in the card's report).
 	{name: "LoginRequest_save_divergence_malformed", row: "login_full", root: "LoginRequest", wantGo: 0,
-		wireHex: "02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800003101"},
+		wireHex: "02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800003101", annHex: backendConnWideTail},
 	// The vocabdemo.Wide09 receipt (vocab_conn's announcement).
 	{name: "Wide09_example", row: "vocab_wide", root: "Wide09", wantGo: 0, wireHex: wide09Mutant},
 	// The same bytes against the connection's other message root, whose
@@ -97,6 +108,11 @@ func TestMessageUnknownCountDart(t *testing.T) {
 			wire, err := hex.DecodeString(c.wireHex)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if c.annHex != "" {
+				if row.announce, err = hex.DecodeString(c.annHex); err != nil {
+					t.Fatal(err)
+				}
 			}
 			goUnknown, goMalformed := goMessageUnknown(t, row, c.root, wire)
 			if goUnknown != c.wantGo {

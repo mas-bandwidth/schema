@@ -47,7 +47,10 @@ func TestCorpusBaselinesAreCurrent(t *testing.T) {
 				t.Fatalf("the corpus does not compile: %v", err)
 			}
 			live := baseline.Render(u)
+			// the history and the retired-names ledger are the FILE's own, carried
+			// forward by `--update` exactly as here (file.go), never rendered
 			live.History = committedFile.History
+			live.Retired = committedFile.Retired
 			if live.Text() != string(want) {
 				t.Errorf("%s is stale — regenerate it deliberately:\n  ./bin/schema tables-baseline --update --reason \"...\" %s\n--- committed ---\n%s\n--- current ---\n%s",
 					path, dir, want, live.Text())

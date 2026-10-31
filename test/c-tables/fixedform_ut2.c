@@ -58,3 +58,51 @@ void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
     fixed_check( r.clamped == 0 && !r.malformed && !r.refused,
                  "C two lanes, compiled: a clean read moves no counter" );
 }
+
+/* THE NEGATIVE CONTROL — the bug itself, watched failing. With one shared lane
+   the flavour IS the guard's ordinal, and UT2's string is the THIRD arm: 3 is
+   the bytes flavour, so a full-length string read through the identity plan
+   with the flavour put back into the guard's lane reads as bytes and is never
+   terminated. The same record through the two lanes is. */
+void fixed_ut2_shared_lane_control( void )
+{
+    static uint8_t data[512];
+    static tblut2_table_fixed_entry_t plan[64];
+    tblut2_ut_root_t full;
+    tblut2_ut_root_t read;
+    tblut2_table_report_t r;
+    const uint8_t * body;
+    int64_t n;
+    int32_t i, text = -1, lanes;
+
+    tblut2_ut_root_reset( &full );
+    full.head = 5;
+    full.tail = 6;
+    full.pick.type = TBLUT2_PICK_TYPE_B;
+    memcpy( full.pick.as.b.label, "eighteen", 9 ); /* eight characters: no slack to terminate it */
+    full.pick.as.b.label_length = 8;
+    full.pick.as.b.m = 77;
+    n = tblut2_ut_root_fixed_save( &full, 1, data, (int64_t) sizeof( data ) );
+    fixed_check( n == tblut2_ut_root_fixed_measure( 1 ), "C UT2 full-length save" );
+    for ( i = 0; i < tblut2_ut_root_fixed_plan_count; i++ )
+    {
+        if ( tblut2_ut_root_fixed_plan[i].op == TBLUT2_K_TABLE_FIXED_TEXT ) { text = i; }
+    }
+    fixed_check( text >= 0 && tblut2_ut_root_fixed_plan[text].arg == 3 && tblut2_ut_root_fixed_plan[text].meta == TBLUT2_K_TABLE_FIXED_TEXT_UTF8,
+                 "C two lanes: UT2's text entry is the third arm's, flavoured utf8" );
+    if ( text < 0 ) { return; }
+    body = data + TBLUT2_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblut2_ut_root_fixed_layout ) + 8;
+    for ( lanes = 2; lanes >= 1; lanes-- )
+    {
+        int whole;
+        for ( i = 0; i < tblut2_ut_root_fixed_plan_count; i++ ) { plan[i] = tblut2_ut_root_fixed_plan[i]; }
+        if ( lanes == 1 ) { plan[text].meta = (uint8_t) plan[text].arg; } /* ONE LANE, as it was */
+        tblut2_ut_root_reset( &read );
+        memset( read.pick.as.b.label, 'X', sizeof( read.pick.as.b.label ) );
+        memset( &r, 0, sizeof( r ) );
+        tblut2_table_fixed_run( plan, tblut2_ut_root_fixed_plan_count, tblut2_ut_root_fixed_plan_guarded, body, (uint8_t *) &read, &r, tblut2_ut_root_fixed_guards );
+        whole = read.pick.as.b.label_length == 8 && memcmp( read.pick.as.b.label, "eighteen", 9 ) == 0;
+        if ( lanes == 2 ) { fixed_check( whole, "C two lanes: the full-length string reads terminated" ); }
+        else { fixed_check( !whole, "C NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" ); }
+    }
+}
