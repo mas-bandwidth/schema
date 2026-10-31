@@ -12,15 +12,15 @@
 # no-text instance, each held to the reference outputs taken once at the start.
 #
 # THE GATE IS THE ALLOCATION COUNT, RE-MEASURED EVERY SAMPLE. The passes are cut
-# into sixteen samples, and each sample measures the audit's two counters over
-# its own window in ONE long-lived process: heap words (the words this
-# process's collections reclaimed, traced with :erlang.trace/3 on
-# :garbage_collection, plus the live change across the window) and binary
-# calls (binary_alloc's VM-wide call counter). Each sample's per-pass figure
-# must sit inside the sum of the cases' pinned budgets in
-# test/conformance/elixir/alloc-budget.txt, with the audit's own slack per
-# case: a path that allocates and frees the same bytes every pass reds here at
-# the first sample and at every sample after it.
+# into sixteen samples, and each sample gives every case its share of the
+# passes back to back and measures the audit's two counters over that window
+# in ONE long-lived process: heap words (the words this process's collections
+# reclaimed, traced with :erlang.trace/3 on :garbage_collection, plus the live
+# change across the window) and binary calls (binary_alloc's VM-wide call
+# counter). Every case's per-pass figure must sit inside its pinned budget in
+# test/conformance/elixir/alloc-budget.txt with the audit's own slack, at every
+# sample: a path that allocates and frees the same bytes every pass reds here
+# at the first sample and at every sample after it, naming the case.
 #
 # DRIFT IS THE WEAKER INSTRUMENT, KEPT BESIDE IT: the live heap words after a
 # full collection and the VM's binary memory, read at the first sample and at
@@ -68,15 +68,12 @@ defmodule Soak do
       System.halt(1)
     end
 
-    heap_ceiling = Enum.sum(for c <- cases, do: c.words + @heap_slack + div(c.words, 10_000))
-    binary_ceiling = Enum.sum(for c <- cases, do: c.binary + @binary_slack)
     window = div(passes, @samples)
     lead = passes - window * @samples
 
     IO.puts(
       "soak: #{passes} passes over #{length(cases)} pinned cases, #{@samples} samples of " <>
-        "#{window} passes; the ceiling per pass is #{heap_ceiling} heap words and " <>
-        "#{binary_ceiling} binary calls"
+        "#{window} passes, each case held to its pinned budget at every sample"
     )
 
     parent = self()
@@ -98,15 +95,31 @@ defmodule Soak do
       end
 
     over =
-      for {i, words, binary} <- samples, words > heap_ceiling or binary > binary_ceiling do
+      for {i, figures} <- samples do
+        cols =
+          for {c, {w, b}} <- figures,
+              w > c.words + @heap_slack + div(c.words, 10_000) or b > c.binary + @binary_slack do
+            "#{c.name} #{w} words (pinned #{c.words}), #{b} binary calls (pinned #{c.binary})"
+          end
+
+        total_w = Enum.sum(for {_c, {w, _b}} <- figures, do: w)
+        total_b = Enum.sum(for {_c, {_w, b}} <- figures, do: b)
+
         IO.puts(
-          "SOAK FAILED: sample #{i}: #{words} heap words and #{binary} binary calls per pass, " <>
-            "over the ceiling of #{heap_ceiling} and #{binary_ceiling}: the generated code " <>
-            "allocates more per pass than the pinned budget"
+          "soak: sample #{i}: #{total_w} heap words, #{total_b} binary calls per pass, " <>
+            "#{length(cols)} cases over their pinned budget"
         )
 
-        i
+        if cols != [] do
+          IO.puts(
+            "SOAK FAILED: sample #{i}: #{length(cols)} cases allocate more per pass than " <>
+              "their pinned budget, first #{hd(cols)}"
+          )
+        end
+
+        cols
       end
+      |> Enum.reject(&(&1 == []))
 
     IO.puts("soak: worker ran #{ran} passes, driver took #{length(samples)} samples")
 
@@ -141,9 +154,7 @@ defmodule Soak do
   end
 
   def main(_) do
-    IO.puts(
-      "usage: main.exs <manifest> <pinned OTP> <pinned Elixir> <passes> [<budget file>]"
-    )
+    IO.puts("usage: main.exs <manifest> <pinned OTP> <pinned Elixir> <passes> [<budget file>]")
 
     System.halt(2)
   end
@@ -160,21 +171,31 @@ defmodule Soak do
 
     samples =
       for i <- 1..@samples do
-        binary0 = binary_calls()
-        :erlang.garbage_collect()
-        live0 = used()
-        reclaimed = traced(fn -> spin(cases, window) end)
-        live1 = used()
-        binary1 = binary_calls()
-        words = div(reclaimed + (live1 - live0), window)
-        binary = div(binary1 - binary0, window)
-        IO.puts("soak: sample #{i}: #{words} heap words, #{binary} binary calls per pass")
-        {i, words, binary}
+        {i, Enum.map(cases, fn c -> {c, window(c, window)} end)}
       end
 
     :erlang.garbage_collect()
     drift = {used() - live_first, :erlang.memory(:binary) - binary_first}
     {samples, lead + window * @samples, drift}
+  end
+
+  # ONE CASE'S WINDOW in a sample: its share of the sample's passes, run back to
+  # back and measured on its own, so the count names the case that moved
+  defp window(c, n) do
+    binary0 = binary_calls()
+    :erlang.garbage_collect()
+    live0 = used()
+    reclaimed = traced(fn -> repeat(c, n) end)
+    live1 = used()
+    binary1 = binary_calls()
+    {div(reclaimed + (live1 - live0), n), div(binary1 - binary0, n)}
+  end
+
+  defp repeat(_c, 0), do: :ok
+
+  defp repeat(c, n) do
+    once(c)
+    repeat(c, n - 1)
   end
 
   defp spin(_cases, 0), do: :ok
@@ -215,7 +236,15 @@ defmodule Soak do
         text = if flags == [] and File.exists?(json), do: File.read!(json), else: nil
 
         [
-          %{name: name, mod: mod, root: root, wire: bytes, text: text, words: words, binary: binary}
+          %{
+            name: name,
+            mod: mod,
+            root: root,
+            wire: bytes,
+            text: text,
+            words: words,
+            binary: binary
+          }
         ]
       else
         _ -> []
