@@ -517,6 +517,7 @@ stands:
 | the JSON text form both ways | `lobstertable/json.go` | landed |
 | the hand-editable text form | `lobstertable/text_form.go` | landed |
 | the conformance leg, every surface answered | `test/conformance/lobster/` | landed |
+| the card facade and its conformance leg (docs/PORTING.md J6): load, save, render, parse, bounds, upgrade, edit, taskhash and view over the Card unit, SHA-256 written in Lobster; the driver stages the facade into the generated unit, where Lobster resolves imports | `tables/cards/lobster/`, `make/lobster.mk` (`cards-lobster-*`) | landed |
 | the wire-fuzz differential and the hostile corpus | `make/lobster-fuzz.mk`, `make/lobster-hostile.mk` | landed, with the retain and message arms; a variable message root is not carried (as Go) |
 | the strict gate, CI, the register column, the roadmap column | `make/schema-lobster-generated-strict-gate.mk`, `.github/workflows/*`, `docs/PORTING.md`, `docs/roadmap.sexp` | landed |
 | the integrity trailer and the `forms` declaration (§2.12, §2.14) | — | owed |

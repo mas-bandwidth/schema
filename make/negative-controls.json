@@ -1329,6 +1329,17 @@
       "lobster": "v2026.8"
     },
     {
+      "name": "lobster-cards",
+      "when": "pull-request",
+      "why": "the Lobster leg's card driver controls (docs/PORTING.md J6; make/lobster.mk): render, upgrade and taskhash each damaged through a test-only switch in tables/cards/lobster/driver, the harness required red on that surface and green on each of the other eight. They need the pinned v2026.8 toolchain, which the row installs through its lobster field, bin/schema, the harness and the Card unit generated for Lobster, and no compile weight of their own: each is one harness run over the 43-case corpus. Measured on hetzner1 off one warm build: 2.5 s to 2.6 s each.",
+      "targets": [
+        "cards-lobster-conformance-hash-negative-control",
+        "cards-lobster-conformance-negative-control",
+        "cards-lobster-conformance-upgrade-negative-control"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
       "name": "lobster-gates",
       "when": "pull-request",
       "why": "the Lobster leg's open-gate controls (make/lobster-open-gates.mk): the key accessor's three guards (M5), the map writer's sort (M19), the block lead and the order word (I5, I7), the runtime names both ways (I6), the text differential's float32 cap (I13), the runtime home's file order (J2) and the USAGE fragment (I12). Each is one go test or one script over the pinned v2026.8 toolchain, which the row installs through its lobster field. Measured on hulk off one warm build: 1 s to 3 s each.",
