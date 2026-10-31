@@ -622,9 +622,11 @@ const nestedDefaultElidesBody = `
 // TestMessageFormSkipDepthDart is the message_skip_depth boundary on the
 // generated Dart reader (docs/SPEC-TABLES.md, limit value 128). The typed body
 // reads references at tableMessageRefBits, and skip reads vocabulary.refBits,
-// so the probe sets those equal. Slots 1..3 are Root's fields; the unknown
-// entry rides at slot 8. Verdicts are the spec's. The above-limit rows are
-// complete zero-padded batches whose only fault is depth past 128.
+// so the probe sets those equal. Root's eight fields announce eight entries, so
+// a reference is four bits; the probe's own vocabulary puts the unknown entry
+// at slot 8, under an id no field of Root carries. Verdicts are the spec's. The
+// above-limit rows are complete zero-padded batches whose only fault is depth
+// past 128.
 func TestMessageFormSkipDepthDart(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, `package probe
@@ -633,6 +635,11 @@ fixed table Root {
     a int32
     b bool
     c uint8
+    d int32
+    e int32
+    f int32
+    g int32
+    h int32
 }
 `)
 	out, err := runBatchProbe(t, u, "Root", dartSkipDepthBody)
@@ -642,8 +649,8 @@ fixed table Root {
 }
 
 const dartSkipDepthBody = `
-  // Slot 8 is the Root name, not a field of this root (a, b, c are 1..3).
-  // A reference width below 4 cannot spell it.
+  // Slot 8 carries an id no field of Root has. A reference width below 4
+  // cannot spell it.
   check(h.tableMessageRefBits >= 4, 'skip depth slot needs four reference bits, got ${h.tableMessageRefBits}');
   final width = h.tableMessageRefBits;
   final sig14 = Uint8List(12);
