@@ -3683,6 +3683,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-cook-fuzz-negative-control
 	$(MAKE) tables-cook-open
 	$(MAKE) tables-cpp-usage
+	$(MAKE) tables-cpp-usage-negative-control
 	$(MAKE) tables-cook-write
 	$(MAKE) tables-cook-write-negative-control
 	$(MAKE) tables-cook-write-hooks-negative-control
