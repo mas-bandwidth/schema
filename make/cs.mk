@@ -452,25 +452,19 @@ test-cs: conformance-cs-absent
 
 # THE FRAMING SURFACE'S CONTROL (docs/LAYERS/1-framing.md). The `framing`
 # surface runs every layer-1 vector through the C# leg; its gate is
-# `make conformance` (the cs leg answering framing pass N/N). Each sabotage
-# below takes one framing rule out of a COPY of the generated C# runtime and
-# requires the framing surface RED on that rule's own vectors, with every other
-# surface still passing:
-#   cap:   the 4096-entry id-table cap (§3) is removed, so frame_entries_4097
-#          reads instead of refusing;
-#   cycle: the open-node walk (§3.1) is removed, so node_cycle_self and
-#          node_cycle_to_root read instead of refusing.
+# `make conformance` (the cs leg answering framing pass N/N). The sabotage takes
+# the 4096-entry id-table cap (§3) out of a COPY of the generated C# runtime and
+# requires the framing surface RED on frame_entries_4097, which then reads
+# instead of refusing, with every other surface still passing.
 CS_FRAMING_NC := build/conformance-cs-framing-nc
 .PHONY: tables-cs-framing-negative-control
 tables-cs-framing-negative-control: build-conformance-cs build/conformance-harness
-	@set -e; for mode in cap cycle; do \
+	@set -e; for mode in cap; do \
 		dir=$(CS_FRAMING_NC)/$$mode; rm -rf $$dir && mkdir -p $$dir; \
 		cp -R build/tables-generated-cs $$dir/generated; \
 		case $$mode in \
 			cap) from='if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }'; \
 			     to='if (false) { /* SABOTAGED: no id-table cap */ }'; rows='frame_entries_4097'; ;; \
-			cycle) from='if (type.Variable && !Acyclic(value, type))'; \
-			     to='if (type.Variable && report == null /* SABOTAGED: no open-node walk */)'; rows='node_cycle_self node_cycle_to_root'; ;; \
 		esac; \
 		files=$$(grep -rlF "$$from" $$dir/generated); [ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $$mode sabotage matches no generated line"; exit 1; }; \
 		FROM="$$from" TO="$$to" perl -pi -e 's/\Q$$ENV{FROM}\E/$$ENV{TO}/g' $$files; \

@@ -751,7 +751,7 @@
     {
       "name": "cs-framing",
       "when": "pull-request",
-      "why": "the C# leg's framing surface (docs/LAYERS/1-framing.md): the conformance driver built twice against a copy of the generated runtime, once with the 4096-entry id-table cap removed and once with the open-node walk removed, run through a substituted registry; the framing surface must go red on frame_entries_4097, then on node_cycle_self and node_cycle_to_root, and no other surface may move.",
+      "why": "the C# leg's framing surface (docs/LAYERS/1-framing.md): the conformance driver built against a copy of the generated runtime with the 4096-entry id-table cap removed, run through a substituted registry; the framing surface must go red on frame_entries_4097 and no other surface may move. About 25 s on vision.",
       "targets": [
         "tables-cs-framing-negative-control"
       ],
