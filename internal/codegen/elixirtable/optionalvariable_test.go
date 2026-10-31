@@ -577,3 +577,79 @@ IO.puts("ok")
 		t.Fatalf("the reader without its timestamp row still passed: the probe does not see the rule\n%s", out)
 	}
 }
+
+// TestCyclicWireLoadTerminatesElixir pins a wire fuzzer stall (pass index,
+// graphdemo.Scene): a ListNode record whose `next` names its own record is a
+// cycle, and a load terminates on any input (docs/SPEC-TABLES.md §3.1: "Load
+// itself is safe on any input: it scans, it terminates, it fabricates
+// nothing"). The engine reads it clean; the leg recursed without end. The
+// probe requires the load to return within ten seconds with the oracle's own
+// report.
+//
+// THE REVERSED WITNESS takes the open-record check out and the probe must go
+// red (the load does not return).
+func TestCyclicWireLoadTerminatesElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "tables", "pointers")
+	u := loadUnit(t, filepath.Join(dir, "Graph.schema"), filepath.Join(dir, "Marks.schema"), filepath.Join(dir, "Parts.schema"))
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "graph_tree.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the node table's first record (node 2, a ListNode): its `next` (ref 9,
+	// kind 17) names node 3; moved to name node 2, its own record
+	at := strings.Index(string(wire), "\x09\x11\x03\x00")
+	if at < 0 {
+		t.Fatalf("graph_tree.bin no longer carries the ListNode next this probe moves: %x", wire)
+	}
+	mutantBytes := append([]byte{}, wire...)
+	mutantBytes[at+2] = 0x02
+	m := tabletext.NewModel(u)
+	var orep tabletext.Report
+	if _, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), mutantBytes, &orep); err != nil {
+		t.Fatal(err)
+	}
+	if orep.Malformed || orep.Unknown != 0 || orep.KindMismatch != 0 {
+		t.Fatalf("the oracle does not read the cyclic probe clean: %+v", orep)
+	}
+	probe := fmt.Sprintf(`
+task = Task.async(fn -> Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower)) end)
+
+case Task.yield(task, 10_000) do
+  {:ok, {:ok, _v, r}} ->
+    if {r.unknown, r.kind_mismatch, r.widened, r.clamped, r.malformed} != {0, 0, 0, 0, false} do
+      IO.puts(:stderr, "FAIL: the cyclic wire's report: " <> inspect(r))
+      System.halt(1)
+    end
+
+  other ->
+    IO.puts(:stderr, "FAIL: the cyclic wire's load did not return: " <> inspect(other))
+    System.halt(1)
+end
+
+IO.puts("ok")
+`, hex.EncodeToString(mutantBytes))
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir load does not terminate on a cyclic wire: %v\n%s", err, out)
+	}
+	const check = "if MapSet.member?(open, idx) do"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), check)
+		planted[name] = []byte(strings.ReplaceAll(string(data), check, "if false do"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no open-record check in the generated reader")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the reader without its open-record check still passed: the probe does not see the rule\n%s", out)
+	}
+}

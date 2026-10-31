@@ -1730,16 +1730,32 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end)
   end
 
+  # A LOAD TERMINATES ON ANY INPUT (docs/SPEC-TABLES.md §3.1): a wire's
+  # pointers can close a cycle, which a BEAM term cannot hold, so a pointer to
+  # a record whose value is still being read resolves to nothing and the walk
+  # ends there.
   defp decode_node_table(nodes, name, body, ids, idx) do
-    desc = Map.fetch!(@tables, name)
+    open = Process.get(:elixir_open_nodes, MapSet.new())
 
-    case entries(body, ids, desc.string_blob, :nested) do
-      {:ok, fields, []} ->
-        {value, _report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
-        {:value, value}
+    if MapSet.member?(open, idx) do
+      :null
+    else
+      Process.put(:elixir_open_nodes, MapSet.put(open, idx))
 
-      _ ->
-        :null
+      try do
+        desc = Map.fetch!(@tables, name)
+
+        case entries(body, ids, desc.string_blob, :nested) do
+          {:ok, fields, []} ->
+            {value, _report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
+            {:value, value}
+
+          _ ->
+            :null
+        end
+      after
+        Process.put(:elixir_open_nodes, open)
+      end
     end
   end
 
