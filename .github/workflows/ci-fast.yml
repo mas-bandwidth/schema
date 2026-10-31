@@ -723,7 +723,7 @@ jobs:
           set -euo pipefail
           case "${{ matrix.leg }}" in
             cpp)    make tables-fixedform
-                    make tables-cpp-clean tables-cpp-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+                    make tables-cpp-clean tables-cpp-format-negative-control tables-cpp-warnings-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
                     make tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;

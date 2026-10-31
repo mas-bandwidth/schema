@@ -1278,6 +1278,63 @@ tables-cook-open: build/schema_test_cook build/schema_test_cook_asan build/cook-
 	./build/schema_test_cook refuse Scene build/cook-open/Scene-be.cook
 	./build/schema_test_cook time Scene build/cook-open/1mb.cook build/cook-open/100mb.cook
 
+# I12 (docs/PORTING.md) — THE DOCUMENTED C++ SURFACE COMPILES AND RUNS. The
+# three ```cpp cook examples docs/USAGE.md marks (cpp-cook-usage-read, -write,
+# -write-pointered) are pulled out of the page VERBATIM, less their #include
+# lines, and test/tables/usage_cpp_main.cpp includes each as a function body
+# against the generated `tables/pointers` unit: the read opens the cooked
+# Scene and walks its chain, and both writes produce a cook this build opens.
+# The day the emitted surface moves, the page goes red with the code.
+CPP_USAGE := build/cpp-usage
+CPP_USAGE_FRAGMENTS := read:cpp-cook-usage-read write:cpp-cook-usage-write write_pointered:cpp-cook-usage-write-pointered
+# The build both use: CPP_USAGE_GEN names the generated tables/pointers
+# directory and CPP_USAGE_OUT where the fragments and the binary go.
+CPP_USAGE_GEN ?= build/tables-generated/pointers
+CPP_USAGE_OUT ?= $(CPP_USAGE)
+.PHONY: tables-cpp-usage-build
+tables-cpp-usage-build:
+	@mkdir -p $(CPP_USAGE_OUT)
+	@for pair in $(CPP_USAGE_FRAGMENTS); do \
+		out=$${pair%%:*}; marker=$${pair#*:}; \
+		sed -n "/<!-- $$marker -->/,/<!-- \/$$marker -->/p" docs/USAGE.md | sed '1,2d' | sed '$$d' | sed '$$d' \
+			| sed '/^#include/d' > $(CPP_USAGE_OUT)/$$out.inc; \
+		test -s $(CPP_USAGE_OUT)/$$out.inc || { echo "MISSING: docs/USAGE.md carries no $$marker example"; exit 1; }; \
+	done
+	$(CXX) $(COOK_CXXFLAGS) -I$(CPP_USAGE_GEN) -Itest/tables -I$(CPP_USAGE_OUT) test/tables/usage_cpp_main.cpp -o $(CPP_USAGE_OUT)/usage
+.PHONY: tables-cpp-usage
+tables-cpp-usage: build/tables-generated/.stamp build/cook-open/.stamp test/tables/usage_cpp_main.cpp docs/USAGE.md
+	$(MAKE) --no-print-directory tables-cpp-usage-build CPP_USAGE_GEN=build/tables-generated/pointers CPP_USAGE_OUT=$(CPP_USAGE)
+	./$(CPP_USAGE)/usage build/cook-open/Scene.cook
+
+# ITS NEGATIVE CONTROL: the documented surface moves and the page does not.
+# The emitter writes a fixed root's measure as <Root>CookSize instead of
+# <Root>CookMeasure (the declaration and its one internal caller, so the
+# emitted unit stays self-consistent), the pointers unit is regenerated from
+# that compiler through `go build -overlay`, and the page's write example must
+# fail to compile against it, naming SettingsCookMeasure.
+CPP_USAGE_NC := build/cpp-usage-control
+.PHONY: tables-cpp-usage-negative-control
+tables-cpp-usage-negative-control: test/tables/usage_cpp_main.cpp docs/USAGE.md
+	@rm -rf $(CPP_USAGE_NC) && mkdir -p $(CPP_USAGE_NC)
+	@sed -e 's|inline int64_t %sCookMeasure( const %s \& value )|inline int64_t %sCookSize( const %s \& value ) /* SABOTAGED: the documented name moved */|' \
+	     -e 's|(uint64_t) %sCookMeasure( value )|(uint64_t) %sCookSize( value )|' \
+		internal/codegen/cpptable/cookwrite.go > $(CPP_USAGE_NC)/cookwrite.go.txt
+	@test "$$(grep -c 'CookSize( ' $(CPP_USAGE_NC)/cookwrite.go.txt)" = 2 || \
+		{ echo "NEGATIVE CONTROL FAILED: the rename did not patch both the declaration and its caller"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cookwrite.go":"%s/$(CPP_USAGE_NC)/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_USAGE_NC)/overlay.json
+	go build -overlay $(CPP_USAGE_NC)/overlay.json -o $(CPP_USAGE_NC)/schema ./cmd/schema
+	$(CPP_USAGE_NC)/schema generate --lang cpp --out $(CPP_USAGE_NC)/pointers tables/pointers > /dev/null
+	@grep -q "SettingsCookSize" $(CPP_USAGE_NC)/pointers/GraphTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not move the name"; exit 1; }
+	@if $(MAKE) --no-print-directory tables-cpp-usage-build CPP_USAGE_GEN=$(CPP_USAGE_NC)/pointers CPP_USAGE_OUT=$(CPP_USAGE_NC)/out > $(CPP_USAGE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the documented C++ example compiled against an emitter that moved SettingsCookMeasure"; \
+		cat $(CPP_USAGE_NC)/log; exit 1; \
+	fi
+	@grep -q "SettingsCookMeasure" $(CPP_USAGE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the build went red, but not on the documented name"; cat $(CPP_USAGE_NC)/log; exit 1; }
+	@echo "negative control: the emitted surface moved under docs/USAGE.md's C++ example and tables-cpp-usage went red"
+
 # THE WRITE SIDE, against the tool's own bytes (docs/SPEC-TABLES.md §7.6). The
 # tool cooked the wire this backend wrote, in BOTH byte orders, and the
 # generated <Root>Cook must land on those files exactly — a second cooker with
@@ -3625,6 +3682,8 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-cook-scale
 	$(MAKE) tables-cook-fuzz-negative-control
 	$(MAKE) tables-cook-open
+	$(MAKE) tables-cpp-usage
+	$(MAKE) tables-cpp-usage-negative-control
 	$(MAKE) tables-cook-write
 	$(MAKE) tables-cook-write-negative-control
 	$(MAKE) tables-cook-write-hooks-negative-control
