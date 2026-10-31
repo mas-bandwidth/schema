@@ -168,6 +168,13 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 		if f == nil {
 			return ""
 		}
+		// A WSTRING is retired (the wstring-removed-utf8 ruling, docs/rulings.json):
+		// the Java cook form carries no wstring slot, so a closure that holds
+		// one by value gets the stub, named here, rather than a writer that
+		// refuses every value at measure.
+		if f.Type.Kind == ir.TWString && !f.Type.Pointer {
+			return owner + "." + f.Name + " is a wstring, which is retired (docs/rulings.json wstring-removed-utf8); the Java cook carries no wstring slot"
+		}
 		if f.Type.Kind != ir.TNamed {
 			return ""
 		}
