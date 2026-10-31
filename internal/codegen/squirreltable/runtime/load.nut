@@ -5,7 +5,8 @@
 // internal/tablewire's decode.go, decodenodes.go and nodetable.go.
 //
 // _M.load(T, root, bytes, report) is the strict read: the root or null (§6.5).
-// _M.loadTolerant(T, root, bytes, report) keeps the recovered root and counters.
+// _M.loadTolerant(T, root, bytes, report) keeps the recovered root and counters;
+// a damaged load (report.malformed) returns null (§4).
 // T is a unit's table module (the exports table schema_module.nut requires);
 // root is the root table's schema name. report is the caller's §4 report: the
 // six counters, the malformed flag and the refusal verdict. It is filled in
@@ -716,17 +717,12 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     return true;
   }
   if (shape == "union") {
-    // A UNION FIELD IS REPLACED ONCE ITS ARM HEADER READS (the engine's
-    // unionCell): a repeat whose arm reference names no entry, or whose kind
-    // or L cannot be read, is framing damage that stops this body and leaves
-    // the earlier occurrence standing (docs/SPEC-TABLES.md §4). Only an
-    // ELEMENT of an array of unions resets at its arm id.
     local u = unionDesc(T, fd.table);
     local inst = u.make();
-    if (!readUnionInto(r, T, table, u, inst, report, st)) return false;
     v[fd.member] = inst;
+    local ok = readUnionInto(r, T, table, u, inst, report, st);
     if (fd.optional) v[fd.member + "Present"] = true;
-    return true;
+    return ok;
   }
   if (shape == "bytes" || shape == "arr") {
     return readFieldArray(fd, r, T, table, v, report, st);
@@ -1524,6 +1520,9 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     if (strict != null && ("_strictFrame" in strict.locals)) strict.locals.report.nonFiniteFloat <- st.nonFinite;
     return null;
   }
+  // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that met
+  // damage returns nothing; the report says malformed and the caller discards
+  if (report.getdelegate() == null && report.malformed) return null;
   if (report.getdelegate() == null) {
     report.blobShared <- st.blobShared;
     if (st.blobShared > 0 && !report.malformed && !report.countRefusal) {
