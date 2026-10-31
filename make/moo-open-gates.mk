@@ -103,9 +103,9 @@ tables-moo-release: toolchain-moo build/conformance-harness build/conformance-mo
 # conformance surfaces over the corpus's arms and the wire-fuzz differential.
 .PHONY: tables-moo-arms tables-moo-arms-negative-control
 tables-moo-arms:
-	SCHEMA_SLOW=1 go test ./internal/codegen/mootable/ -run '^TestMooArmIsAFieldLine$$' -count=1
+	go test ./internal/codegen/mootable/ -run '^TestMooArmIsAFieldLine$$' -count=1
 
 tables-moo-arms-negative-control:
-	SCHEMA_SLOW=1 go test ./internal/codegen/mootable/ -run '^TestMooArmFieldLineNegativeControl$$' -count=1
+	go test ./internal/codegen/mootable/ -run '^TestMooArmFieldLineNegativeControl$$' -count=1
 
 test-moo: tables-moo-arms tables-moo-arms-negative-control

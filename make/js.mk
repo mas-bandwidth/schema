@@ -1658,30 +1658,3 @@ test-js: tables-js-order-word-negative-control
 test-js: tables-js-usage-negative-control
 test-js: tables-js-release-negative-control
 test-js: conformance-negative-control-js-absent
-
-# ---- DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) ----
-#
-# The gate: TestDamageDiscardsTheWholeLoadJavaScript loads a fixed and a
-# variable root damaged inside a nested body, and every malformed `framing`
-# row of the conformance manifest, through Load, LoadRetain and FromJson, and
-# requires no value and an empty retention store; the message batch's half is
-# TestMessageFormBatchJavaScript/damage, where a damaged batch delivers no body.
-.PHONY: tables-js-discard
-tables-js-discard:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
-	@echo 'tables JS discard: damaged input hands back no value on every load (§4)'
-
-test-js: tables-js-discard
-
-# Its controls: the variable form's discard removed (the decoded root comes
-# back around the damage) and the batch's discard removed (the bodies before
-# the damage are delivered), each through a tools/sabotage copy reached by a Go
-# overlay, each requiring its gate red on its own line.
-.PHONY: tables-js-discard-negative-control tables-js-batch-discard-negative-control
-tables-js-discard-negative-control:
-	$(call js_jstable_control,js-discard-dropped,internal/codegen/jstable/variableruntime.go,^TestDamageDiscardsTheWholeLoadJavaScript$$,./internal/codegen/jstable/,Load handed back a value on damage)
-
-tables-js-batch-discard-negative-control:
-	$(call js_jstable_control,js-batch-discard-dropped,internal/codegen/jstable/messagebatch.go,^TestMessageFormBatchJavaScript$$,./internal/codegen/jstable/,damage inside body 2 delivered a body)
-
-test-js: tables-js-discard-negative-control tables-js-batch-discard-negative-control

@@ -301,18 +301,13 @@ the cook's `Open` is the header and the base alone (O(1)) and `Check` runs
 `MessageRoots`, which lists fixed tables alone, and the conformance driver
 answers the `graph_tree` row over the variable `Scene` with the named refusal.
 
-Owed and named, each a `port/lua/open/*` roadmap entry: cross-build
-payload-shape evolution and unknown-field skipping (`retain-message-cross-build`,
-§3.3), and the labelled bench board (`bench-board`: the leg and its gate are
-in, a measured sitting is not). `AnnounceRead` now keeps the sender's slot order
-and entry count, and batch reads use its reference width; an independent
-Go-engine batch tests a sender with extra unused fields against a smaller
-receiver. Reading payloads still uses the receiver's declared shape, so this
-slot repair does not close cross-build evolution.
-
-The `arm-named-tag` item is closed: an arm named `tag` receives an unoccupied
-underscore-suffixed payload slot. `TestLuaArmSlotKeepsTheDiscriminator` checks
-collisions, and `stream_arm_tag` carries the shared conformance case.
+Owed and named, each a `port/lua/open/*` roadmap entry: the cross-build
+announcement read (`retain-message-cross-build`: `announceRead` counts the
+announced entries but resolves the receiver's own vocabulary rather than the
+sender's, §3.3); the labelled bench board
+(`bench-board`: the leg and its gate are in, a measured sitting is not); and a
+union arm named `tag`, whose payload shares the discriminator's key
+(`arm-named-tag`, found by the M18 gate).
 
 Closed 2026-10-29: the USAGE example (`tables-lua-usage`, docs/USAGE.md's
 `lua-table-usage` fragment run against `tables/pointers`, with a two-witness

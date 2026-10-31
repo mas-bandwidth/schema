@@ -67,9 +67,9 @@ func TestSpecGoS7CookWritersAnyPort(t *testing.T) {
 			wants: []string{"invalid_value", "data_cycle", "allocation_failed"},
 		},
 		{
-			name:  "the tool cooks maps and Go holds the extent",
+			name:  "map cooks refuse by name and Go holds the extent",
 			page:  spec,
-			wants: []string{"the tool lays the entry arrays out", "TestCookWriterMapExtentLayout"},
+			wants: []string{"map-bearing unit BY NAME", "TestCookWriterMapExtentLayout"},
 		},
 		{
 			name:  "forms omitting cook gets no Open",

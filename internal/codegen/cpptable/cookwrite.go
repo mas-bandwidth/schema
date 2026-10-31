@@ -573,7 +573,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	if g.anyExtent && g.hasExtent(st) {
 		g.pf("    const int64_t root_extent = %sExtent( ctx, root );\n", n)
 		g.pf("    if ( root_extent < 0 ) { return false; }\n")
-		g.pf("    int64_t offset = %d + root_extent; // the root at zero, its extent behind it\n", ir.CookExtentStart(g.unit, st))
+		g.pf("    int64_t offset = %d + root_extent; // the root at zero, its extent behind it\n", cookAlignUp(ml.Size, ir.RegionAlignFloor))
 	} else {
 		if g.anyExtent {
 			g.pf("    (void) root;\n")
@@ -585,7 +585,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 		}
 		g.pf("    int64_t offset = %d; // the root, at zero\n", ml.Size)
 	}
-	g.pf("    int64_t align = %d;\n", ir.RegionAlignOf(ir.CookNodeAlign(g.unit, st)))
+	g.pf("    int64_t align = %d;\n", ir.RegionAlignOf(ml.Align))
 	g.pf("    if ( region.offsets != NULL ) { region.offsets[0] = 0; }\n")
 	g.pf("    for ( int64_t k = 0; k < numbering.count; k++ )\n    {\n")
 	if nodeDispatchEmpty(reachable, blobs) {

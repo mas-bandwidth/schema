@@ -1,3 +1,0 @@
-#!/bin/sh
-# The host only stages inputs and collects moo's emitted bytes.
-exec build/cards-driver-moo "$@"

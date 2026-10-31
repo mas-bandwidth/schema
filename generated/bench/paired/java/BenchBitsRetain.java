@@ -28,7 +28,6 @@ public final class BenchBitsRetain {
         retain.idUsed = 0;
         retain.nodeKeys.clear();
         BenchBitsVariable.Value v = new BenchBitsVariable.Value();
-        report.rootTypeId = BenchBitsVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {

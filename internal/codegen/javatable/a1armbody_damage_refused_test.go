@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -24,7 +23,6 @@ import (
 // corpus seed a1_arm_body_as_a2 (tbla2.Root).
 func TestJavaFixA1ArmBodyAsA2DamageRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromPath(t, filepath.Join(repo, "test", "tables", "A2.schema"))
 	model := tabletext.NewModel(u)

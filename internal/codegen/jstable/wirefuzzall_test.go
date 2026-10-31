@@ -44,12 +44,12 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "test-js: tables-js-wire-fuzz-all") {
 		t.Fatal("test-js does not run tables-js-wire-fuzz-all")
 	}
-	// The absent set (the 14 message-form seeds the arm does not bind) is
+	// The absent set (the 19 message-form seeds the arm does not bind) is
 	// pinned, so a roster root dropping to absent fails the target. tblg1
 	// Guarded's four answer: the target carries an optional over a variable
 	// closure (docs/SPEC-TABLES.md §2.3).
-	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 14\n") {
-		t.Error("make/js.mk does not pin the absent set at the 14 message-form seeds")
+	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 19\n") {
+		t.Error("make/js.mk does not pin the absent set at the 19 message-form seeds")
 	}
 	if !strings.Contains(target, "', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent '") {
 		t.Errorf("tables-js-wire-fuzz-all does not check the pinned absent count:\n%s", target)

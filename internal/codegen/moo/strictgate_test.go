@@ -47,7 +47,6 @@ var strictGateDirs = []string{
 	"tables/backend",
 	"tables/vocab",
 	"tables/vocab9",
-	"tables/widelist",
 }
 
 // strictGateFiles are the bench corpus's units, one at a time, exactly as the

@@ -412,7 +412,6 @@ public final class MixedChatEventVariable {
             return null;
         }
         Value v = new Value();
-        report.rootTypeId = TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {

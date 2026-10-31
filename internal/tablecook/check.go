@@ -88,10 +88,8 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 // directory's first entry — for the header's alignment gate (§7.1). It is a
 // guarded, best-effort read: on any shape that is not a readable, well-formed
 // cook it returns the region floor, and ReadHeader's own refusals handle the
-// file. The root sits at the region's base, so its NODE's alignment, which
-// for a type that can hold an extent counts every array that extent can hold
-// (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT RULES), is the second term of
-// the gate.
+// file. The root sits at the region's base, so its alignof is the second term
+// of the gate.
 func rootAlignmentOf(m *tabletext.Model, file []byte) int64 {
 	if int64(len(file)) < HeaderBytes {
 		return ir.RegionAlignFloor
@@ -123,7 +121,7 @@ func rootAlignmentOf(m *tabletext.Model, file []byte) int64 {
 	if st == nil {
 		return ir.RegionAlignFloor
 	}
-	return nodeAlign(m.Unit, st)
+	return ir.RecordLayout(m.Unit, st).Align
 }
 
 // checkDirectory is PASS ONE: the directory itself, linearly and with no state.
@@ -148,11 +146,8 @@ func checkDirectory(m *tabletext.Model, h Header, dir []DirectoryEntry) error {
 		name, size, align := "", int64(0), int64(0)
 		switch {
 		case st != nil:
-			// a node starts at its NODE's alignment, its record's or, for a
-			// type that can hold an extent, the greatest any array there asks
-			// for (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT RULES)
 			ml := ir.RecordLayout(m.Unit, st)
-			name, size, align = st.Name, ml.Size, nodeAlign(m.Unit, st)
+			name, size, align = st.Name, ml.Size, ml.Align
 		case e.TypeId == ir.BytesTypeId || e.TypeId == ir.StringTypeId:
 			// a BYTE BUFFER's node (§6.3): pass one bounds its HEADER, at
 			// eight; its length is a field of the region and pass two's

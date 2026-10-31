@@ -759,7 +759,8 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 // before any header is written, so a walk that laid one array short refuses
 // rather than reporting a cook (§7.6).
 func (g *tableGen) emitCookNode(st *ir.Struct) {
-	record := ir.CookExtentStart(g.unit, st)
+	ml := ir.RecordLayout(g.unit, st)
+	record := cookAlignUp(ml.Size, ir.RegionAlignFloor)
 	g.pf("// %sCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).\n", st.Name)
 	g.pf("template <typename Ctx> inline bool %sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
 	if g.isVar(st.Name) {
@@ -812,7 +813,7 @@ func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
 	g.pf("%s{\n", ind)
 	g.pf("%s    const int64_t extent = %sExtent( ctx, %s );\n", ind, st.Name, expr)
 	g.pf("%s    if ( extent < 0 ) { %s }\n", ind, onBad)
-	g.pf("%s    size = %d + extent; node_align = %d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ir.CookNodeAlign(g.unit, st))
+	g.pf("%s    size = %d + extent; node_align = %d;\n", ind, cookAlignUp(ml.Size, ir.RegionAlignFloor), ml.Align)
 	g.pf("%s}\n", ind)
 }
 

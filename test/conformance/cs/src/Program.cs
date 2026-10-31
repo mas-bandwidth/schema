@@ -331,12 +331,6 @@ static partial class Program
         Row<Listdemo.Save, Listdemo.TableReport>("listdemo", "Save", () => new Listdemo.TableReport(), Copy,
             Listdemo.Schema.SaveLoad, Listdemo.Schema.SaveMeasure, Listdemo.Schema.SaveSave,
             Listdemo.Schema.SaveFromJson, Listdemo.Schema.SaveToJsonMeasure, Listdemo.Schema.SaveToJson, Listdemo.Schema.SaveLoadMeasure),
-        Row<Listdemo.Squad, Listdemo.TableReport>("listdemo", "Squad", () => new Listdemo.TableReport(), Copy,
-            Listdemo.Schema.SquadLoad, Listdemo.Schema.SquadMeasure, Listdemo.Schema.SquadSave,
-            Listdemo.Schema.SquadFromJson, Listdemo.Schema.SquadToJsonMeasure, Listdemo.Schema.SquadToJson),
-        Row<Listdemo.Bounded, Listdemo.TableReport>("listdemo", "Bounded", () => new Listdemo.TableReport(), Copy,
-            Listdemo.Schema.BoundedLoad, Listdemo.Schema.BoundedMeasure, Listdemo.Schema.BoundedSave,
-            Listdemo.Schema.BoundedFromJson, Listdemo.Schema.BoundedToJsonMeasure, Listdemo.Schema.BoundedToJson),
         Row<Tblw2.Ship, Tblw2.TableReport>("tblw2", "Ship", () => new Tblw2.TableReport(), Copy,
             Tblw2.Schema.ShipLoad, Tblw2.Schema.ShipMeasure, Tblw2.Schema.ShipSave,
             Tblw2.Schema.ShipFromJson, Tblw2.Schema.ShipToJsonMeasure, Tblw2.Schema.ShipToJson),
@@ -364,9 +358,6 @@ static partial class Program
         Row<Graphdemo.Scene, Graphdemo.TableReport>("graphdemo", "Scene", () => new Graphdemo.TableReport(), Copy,
             Graphdemo.Schema.SceneLoad, Graphdemo.Schema.SceneMeasure, Graphdemo.Schema.SceneSave,
             Graphdemo.Schema.SceneFromJson, Graphdemo.Schema.SceneToJsonMeasure, Graphdemo.Schema.SceneToJson, Graphdemo.Schema.SceneLoadMeasure),
-        Row<Graphdemo.ListNode, Graphdemo.TableReport>("graphdemo", "ListNode", () => new Graphdemo.TableReport(), Copy,
-            Graphdemo.Schema.ListNodeLoad, Graphdemo.Schema.ListNodeMeasure, Graphdemo.Schema.ListNodeSave,
-            Graphdemo.Schema.ListNodeFromJson, Graphdemo.Schema.ListNodeToJsonMeasure, Graphdemo.Schema.ListNodeToJson),
         Row<Wide.Stamp, Wide.TableReport>("widedemo", "Stamp", () => new Wide.TableReport(), Copy,
             Wide.Schema.StampLoad, Wide.Schema.StampMeasure, Wide.Schema.StampSave,
             Wide.Schema.StampFromJson, Wide.Schema.StampToJsonMeasure, Wide.Schema.StampToJson),
@@ -799,54 +790,6 @@ static partial class Program
             string text = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
                           report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
             File.WriteAllText(Path.Combine(outDir, f[1]), text);
-        }
-        return 0;
-    }
-
-    // THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
-    // `report` surface prints it, then the §16 text of the value the read left,
-    // unless the row says `no-value` or the read did not load. A derived line is
-    // `framing <case> <unit> <root> <wire> [no-value]`. Damaged input is
-    // discarded whole (docs/SPEC-TABLES.md §4), so a damaged row owes the
-    // report line alone.
-    static int SurfaceFraming(string outDir)
-    {
-        foreach (string[] f in Kind("framing"))
-        {
-            bool noValue = f.Length > 5 && f[5] == "no-value";
-            Codec codec = Find(f[2], f[3]);
-            if (codec == null)
-            {
-                SpillAbsent(outDir, f[1]);
-                continue;
-            }
-            byte[] wire = File.ReadAllBytes(f[4]);
-            Report report = new Report();
-            object value = codec.Load(wire, report);
-            bool malformed = report.Malformed || (value == null && !report.Refused);
-            string head = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
-                          report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
-            byte[] answer = System.Text.Encoding.ASCII.GetBytes(head);
-            if (value != null && !report.Refused && !noValue)
-            {
-                long size = codec.ToJsonMeasure(value);
-                if (size < 0)
-                {
-                    Console.Error.WriteLine("driver: " + f[1] + " holds a value ToJson refuses");
-                    return 1;
-                }
-                byte[] text = new byte[size];
-                if (codec.ToJson(value, text) != size)
-                {
-                    Console.Error.WriteLine("driver: " + f[1] + " writes a text its measure did not name");
-                    return 1;
-                }
-                byte[] both = new byte[answer.Length + text.Length];
-                answer.CopyTo(both, 0);
-                text.CopyTo(both, answer.Length);
-                answer = both;
-            }
-            File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
         }
         return 0;
     }
@@ -2227,7 +2170,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\n");
+            Console.Out.Write("wire\nmessage\ncook-write\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2244,7 +2187,6 @@ static partial class Program
             case "message": return SurfaceMessage(outDir);
             case "cook-write": return SurfaceCookWrite(outDir);
             case "report": return SurfaceReport(outDir);
-            case "framing": return SurfaceFraming(outDir);
             case "json-read": return SurfaceJsonRead(outDir);
             case "json-write": return SurfaceJsonWrite(outDir);
             case "json-hostile": return SurfaceJsonHostile(outDir);

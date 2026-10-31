@@ -36,9 +36,6 @@ var cookWriteUnits = map[string]string{
 	"tblp3":       "test/tables/P3.schema",
 	"tblm1":       "test/tables/M1.schema",
 	"tblm2":       "test/tables/M2.schema",
-	"mapdemo":     "tables/maps",
-	"listdemo":    "tables/lists",
-	"widelist":    "tables/widelist",
 }
 
 // cookWriteOwed is every root a cook-write row names that has NO FORM-1 READER
@@ -52,7 +49,6 @@ var cookWriteUnits = map[string]string{
 // spent, and the run says so.
 var cookWriteOwed = map[string]string{
 	"scalars.SimState": "the fixed-point kind is outside the variable class's load this leg carries (§15)",
-	"widelist.Wide":    "the 128-bit table-wire kind is outside the variable class's load this leg carries (§15)",
 }
 
 type cookWriteCase struct {
@@ -144,12 +140,6 @@ func TestCookWriteRust(t *testing.T) {
 		key := inst[0] + "." + inst[1]
 		files, err := rusttable.Generate(u)
 		if err != nil {
-			// a unit this backend refuses by name is owed whole, and only a
-			// root named on cookWriteOwed may be (§15)
-			if _, owed := cookWriteOwed[key]; owed {
-				reached[key] = true
-				continue
-			}
 			t.Fatalf("%s: %v", inst[0], err)
 		}
 		has, loads := false, false
@@ -224,7 +214,7 @@ func TestCookWriteRust(t *testing.T) {
 		u := units[name]
 		files, err := rusttable.Generate(u)
 		if err != nil {
-			continue // a unit the backend refuses by name, owed above
+			t.Fatal(err)
 		}
 		dir := filepath.Join(work, name)
 		if err := os.MkdirAll(dir, 0o700); err != nil {

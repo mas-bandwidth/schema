@@ -107,11 +107,7 @@ func loadDrivers(path string) (drivers []driver, discovered bool, err error) {
 // A driver with no ci.json is an error: a leg the harness runs locally and CI
 // never sees is the gap this registry exists to close. So is a ci.json with no
 // driver: a row CI would run for a leg that does not exist.
-//
-// ports leaves the reference leg's row out: the nightly builds the reference in
-// a job of its own and fans the ports out beside it (README.md, "The nightly").
-// The checks above still run over the whole registry.
-func matrix(dir string, ports bool) ([]byte, error) {
+func matrix(dir string) ([]byte, error) {
 	drivers, err := discoverDrivers(dir)
 	if err != nil {
 		return nil, err
@@ -149,9 +145,6 @@ func matrix(dir string, ports bool) ([]byte, error) {
 		row["lang"] = d.lang
 		for k := range row {
 			keys[k] = true
-		}
-		if ports && d.lang == referenceLang {
-			continue
 		}
 		rows = append(rows, row)
 	}

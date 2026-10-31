@@ -12,13 +12,15 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestStreamCountPastBodyClampsLikeGoJavaScript pins the JavaScript leg's read
-// of a stream count whose own spelling runs past the body it is framed by
-// (docs/SPEC-TABLES.md §3, §4; the fuzz vector stream_count_past_body). The
-// oracle, internal/tablewire Decode, reads it as damage, and DAMAGE DISCARDS
-// THE WHOLE LOAD (§4): the JavaScript Load of streamdemo.Feed must hand back no
-// value with the report saying malformed. The counters after damage are not
-// defined, so they are not compared.
+// TestStreamCountPastBodyClampsLikeGoJavaScript pins the JavaScript leg's carry
+// of the clamped counter on a stream count whose own spelling runs past the
+// body it is framed by (docs/SPEC-TABLES.md §3, §4; the fuzz vector
+// stream_count_past_body). The oracle, internal/tablewire Decode — which the Go
+// leg's generated Load matches — counts ONE clamped for an element count that
+// runs past the body, and the JavaScript Load must count the same clamp. The
+// test generates tables/stream into a temp dir, loads stream_count_past_body.bin
+// as streamdemo.Feed in JS, and asserts loaded, malformed and the five counters
+// equal internal/tablewire Decode's report on the same bytes.
 func TestStreamCountPastBodyClampsLikeGoJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
@@ -41,10 +43,8 @@ func TestStreamCountPastBodyClampsLikeGoJavaScript(t *testing.T) {
 	if _, decErr := tablewire.Decode(m, inst, wire, &rep); decErr != nil {
 		t.Fatal(decErr)
 	}
-	if !rep.Malformed {
-		t.Fatalf("the oracle does not read the vector as damage: %+v", rep)
-	}
-	const want = "loaded=false|malformed=true"
+	oracle := fmt.Sprintf("%d|%d|%d|%d|%d|%v",
+		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed)
 
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
@@ -74,7 +74,8 @@ const m = await import(pathToFileURL(%q).href);
 const wire = new Uint8Array(readFileSync(%q));
 const rep = new m.TableVariableReport();
 const v = m.FeedLoad(wire, rep);
-console.log("JS loaded=" + (v !== null) + "|malformed=" + rep.malformed);
+if (v === null) { console.log("JS refused"); }
+else { console.log("JS " + [rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed].join("|")); }
 `, module, wirePath)
 	script := filepath.Join(work, "probe.mjs")
 	if err := os.WriteFile(script, []byte(src), 0o600); err != nil {
@@ -93,9 +94,11 @@ console.log("JS loaded=" + (v !== null) + "|malformed=" + rep.malformed);
 		}
 	}
 	if jsLine == "" {
-		t.Fatalf("the probe printed no verdict:\n%s", out)
+		t.Fatalf("the probe refused or printed no verdict:\n%s", out)
 	}
-	if jsLine != want {
-		t.Errorf("JavaScript answered %q on damage, want %q", jsLine, want)
+	// the leg loads the wire (returns a value) exactly as the oracle produces a
+	// decoded value, and the counters agree
+	if jsLine != oracle {
+		t.Errorf("JavaScript report %q does not match the oracle %q", jsLine, oracle)
 	}
 }

@@ -109,8 +109,6 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		fv.Present = r.buf[pieces[len(pieces)-1].Offset] != 0
 	}
 	switch {
-	case f.IsMap():
-		return r.mapEntries(value.Offset, f, fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return r.ref(value.Offset, f, &fv.Cell)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
@@ -153,43 +151,6 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		return r.list(value.Offset, f, fv)
 	}
 	return r.element(value.Offset, f, &fv.Cell)
-}
-
-// mapEntries reads back ONE map (docs/SPEC-TABLES.md §2.8): the slot's int64
-// SELF-RELATIVE delta and int32 count, then the generated `{ key, value }`
-// entries at the array the delta names, in the order they lie, which a cook
-// holds ascending. A delta or a count outside the region is refused, as a
-// list's is; the key order is `schema cook-check`'s fifth clause (§7.4).
-func (r *regionReader) mapEntries(at int64, f *ir.Field, fv *tabletext.Field) error {
-	delta := int64(r.ord.Uint64(r.buf[at:]))
-	count := int64(int32(r.ord.Uint32(r.buf[at+8:])))
-	if count < 0 {
-		return fmt.Errorf("field %s: the count is %d, and an extent is never negative", f.Name, count)
-	}
-	if delta == RefNull {
-		if count != 0 {
-			return fmt.Errorf("field %s: the reference is null and the count is %d: an empty map is the only map a null names", f.Name, count)
-		}
-		fv.Entries = fv.Entries[:0]
-		return nil
-	}
-	if count == 0 {
-		return fmt.Errorf("field %s: the count is 0 and the reference is not null: an empty map's reference is null in every encoding", f.Name)
-	}
-	size := ir.RecordLayout(r.m.Unit, f.MapEntry).Size
-	start, _, fits := arrayExtent(at, delta, count, size, 0, int64(len(r.buf)))
-	if !fits {
-		return fmt.Errorf("field %s: the entry array at %d with delta %d, count %d and size %d leaves the region of %d bytes", f.Name, at, delta, count, size, len(r.buf))
-	}
-	fv.Entries = fv.Entries[:0]
-	for i := range count {
-		entry := r.m.NewMapEntry(f)
-		if err := r.record(start+i*size, f.MapEntry, entry); err != nil {
-			return err
-		}
-		fv.Entries = append(fv.Entries, tabletext.Cell{Tab: entry})
-	}
-	return nil
 }
 
 // list reads back ONE unbounded array (docs/SPEC-TABLES.md §2.9): the slot's
