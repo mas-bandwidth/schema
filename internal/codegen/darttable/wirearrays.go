@@ -324,11 +324,9 @@ func (g *wireGen) emitKeyedHelper(st *ir.Struct, f *ir.Field) {
 	g.emitGetPayload(singleOf(f), "v[slot]", "p", "\t")
 	g.lenientPayload = false
 	g.pf("}\n\n")
-	g.pf("bool %s(TableWireReader p, %s v%s) {\n", arrayHelper(st, f, "Keyed"), st.Name, hadParam(f))
-	g.pf("\tif (!p.has(1)) { p.report.malformed = true; return false; }\n")
-	g.pf("\tfinal elemKind = p.readByte();\n")
-	g.pf("\tfinal pairs = p.readLeb();\n")
-	g.pf("\tif (pairs == null) { p.report.malformed = true; return false; }\n")
+	// the header (element kind, pair count) arrives read against the parent
+	// by emitLoadArray; p is the body under the field's L
+	g.pf("bool %s(TableWireReader p, %s v, int elemKind, int pairs%s) {\n", arrayHelper(st, f, "Keyed"), st.Name, hadParam(f))
 	// WIDENED at a keyed body's element kind (§4): one count for the field,
 	// every slot read at the wire kind's width
 	if wc := widenCond(ek); wc != "" {
@@ -381,19 +379,17 @@ func (g *wireGen) emitLoadArray(st *ir.Struct, f *ir.Field, ind string) {
 	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
-	if isKeyed(f) {
-		g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, end), v%s);\n", ind, helper, g.hadArg())
-	} else {
-		// A fixed positional array reads its header against the parent too: a
-		// count past the body's own L still clamps at the bound before the
-		// body is consulted (internal/tablewire decode.go arrayBody, subTo;
-		// docs/SPEC-TABLES.md §3, §4). A damaged count is framing damage
-		// inside the body's own L: counted, and the walk goes on past it.
-		g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
-		g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
-		g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end), v, elemKind, count%s);\n", ind, helper, g.hadArg())
-	}
+	// Both arrays read their header against the parent: a count past the
+	// body's own L still reads, a positional count clamps at the bound
+	// before the body is consulted, and a keyed body's element kind is
+	// judged before its triples (internal/tablewire decode.go arrayBody,
+	// keyed, subTo; docs/SPEC-TABLES.md §3, §3.2, §4). A damaged count is
+	// framing damage inside the body's own L: counted, and the walk goes on
+	// past it.
+	g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
+	g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
+	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+	g.pf("%s\t\t%s(TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end), v, elemKind, count%s);\n", ind, helper, g.hadArg())
 	g.pf("%s\t\tr.pos = end;\n", ind)
 	g.pf("%s\t}\n", ind)
 	g.pf("%s\tbreak;\n", ind)
