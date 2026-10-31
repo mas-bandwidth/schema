@@ -470,7 +470,7 @@ tables-cs-framing-negative-control: build-conformance-cs build/conformance-harne
 			cap) from='if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }'; \
 			     to='if (false) { /* SABOTAGED: no id-table cap */ }'; rows='frame_entries_4097'; ;; \
 			cycle) from='if (type.Variable && !Acyclic(value, type))'; \
-			     to='if (false /* SABOTAGED: no open-node walk */)'; rows='node_cycle_self node_cycle_to_root'; ;; \
+			     to='if (type.Variable && report == null /* SABOTAGED: no open-node walk */)'; rows='node_cycle_self node_cycle_to_root'; ;; \
 		esac; \
 		files=$$(grep -rlF "$$from" $$dir/generated); [ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $$mode sabotage matches no generated line"; exit 1; }; \
 		FROM="$$from" TO="$$to" perl -pi -e 's/\Q$$ENV{FROM}\E/$$ENV{TO}/g' $$files; \
