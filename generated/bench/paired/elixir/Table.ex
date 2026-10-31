@@ -1563,7 +1563,12 @@ defmodule Bench.Table do
           end
 
         :table ->
-          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc)
+          # an absent optional (nil) owns no edge (§2.3), and a by-value
+          # table left nil holds its defaults, which name no node
+          case Map.get(value, f.name) do
+            nil -> acc
+            v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
+          end
 
         :list ->
           collect_list_nodes(f, Map.get(value, f.name) || [], acc)
