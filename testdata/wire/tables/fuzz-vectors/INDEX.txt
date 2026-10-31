@@ -205,6 +205,18 @@ region_list_cap_resumes listdemo Album testdata/wire/tables/fuzz-vectors/region_
 # (corpus seed map_full, mapdemo.Fleet), on the CI of PR #2237.
 region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/region_map_skip_past_value.bin
 
+# THE NODE SCAN OF A VARIABLE ROOT REFUSES NOTHING (§3.1, §4). A deletion inside
+# Mixed's id table leaves eleven entries over 80 trailing bytes, so the table
+# starts inside the body: three fields name ids nobody declares, and the last
+# field's L falls past the body's end. The oracle's node-table scan stops at
+# the damage and the body read counts it: three unknown, malformed, the value
+# read. The Rust gathering scan refused the whole file on the unskippable
+# field, so the load returned no root after LoadMeasure sized its region.
+# Found by the random pass of the retention arm at mutant 720704 of seed
+# 68719476731 (corpus seed list_mixed), on tables-rust-release run on vision;
+# the plain arm refuses it the same way.
+root_scan_passes_damage_to_body listdemo Mixed testdata/wire/tables/fuzz-vectors/root_scan_passes_damage_to_body.bin
+
 # A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). The C# writer's default
 # elision compared a float32 or float64 as a VALUE, under which -0 == +0, so a
 # list element's x of -0 was left off the wire and the saved bytes were 57 where
