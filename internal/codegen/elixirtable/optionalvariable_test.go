@@ -442,3 +442,71 @@ IO.puts("ok")
 		t.Fatalf("the reader without its typed node resolution still passed: the probe does not see the rule\n%s", out)
 	}
 }
+
+// TestNodeRecordEventsCountOnceElixir pins a wire fuzzer misread of
+// well-framed input (pass reference, graphdemo.Scene): an event inside a NODE
+// RECORD's body (here an unknown field, a ListNode record's first reference
+// moved to an id no ListNode field has) counts in the load's report, once,
+// as the engine's second pass over the node table counts it
+// (internal/tablewire decodeVariable). The leg resolved the record where a
+// pointer named it and dropped that body's events. The expected report is the
+// oracle's own answer.
+//
+// THE REVERSED WITNESS takes the once-per-record events pass out of the load
+// and the probe must go red.
+func TestNodeRecordEventsCountOnceElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "tables", "pointers")
+	u := loadUnit(t, filepath.Join(dir, "Graph.schema"), filepath.Join(dir, "Marks.schema"), filepath.Join(dir, "Parts.schema"))
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "graph_tree.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the node table's first record: type reference, L, then its first field
+	// reference (8, ListNode.value), moved to 15, an id of another table's field
+	at := strings.Index(string(wire), "\x06\x07\x0e\x08\x04")
+	if at < 0 {
+		t.Fatalf("graph_tree.bin no longer opens its node table with the record this probe moves: %x", wire)
+	}
+	mutantBytes := append([]byte{}, wire...)
+	mutantBytes[at+3] = 0x0f
+	m := tabletext.NewModel(u)
+	var orep tabletext.Report
+	if _, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), mutantBytes, &orep); err != nil {
+		t.Fatal(err)
+	}
+	if orep.Unknown != 1 || orep.Malformed || orep.KindMismatch != 0 {
+		t.Fatalf("the oracle does not answer the probe as one unknown on well-framed input: %+v", orep)
+	}
+	probe := fmt.Sprintf(`
+{:ok, _v, r} = Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower))
+if {r.unknown, r.kind_mismatch, r.widened, r.clamped, r.malformed} != {1, 0, 0, 0, false} do
+  IO.puts(:stderr, "FAIL: an unknown field in a node record: " <> inspect(r))
+  System.halt(1)
+end
+IO.puts("ok")
+`, hex.EncodeToString(mutantBytes))
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir reader drops a node record's events: %v\n%s", err, out)
+	}
+	const pass = "report = merge_report(report, node_events(nodes, ids))"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), pass)
+		planted[name] = []byte(strings.ReplaceAll(string(data), pass, "report = report"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no node events pass in the generated load")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the load without its node events pass still passed: the probe does not see the rule\n%s", out)
+	}
+}

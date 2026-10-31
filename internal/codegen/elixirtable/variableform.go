@@ -1353,6 +1353,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
           {:ok, fields, nodes} ->
             {{value, report}, shared} = blob_namings(fn -> decode(desc, fields, nodes, ids) end)
+            report = merge_report(report, node_events(nodes, ids))
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
@@ -1699,6 +1700,26 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         _ -> :null
       end
     end
+  end
+
+  # node_events decodes every table node record ONCE for its events (docs/SPEC-TABLES.md
+  # §3.1, §4), reachable or not, as the engine's second pass does: a value is
+  # resolved where a pointer names it, which can be more than once or never,
+  # so the record's unknown, kind mismatch, widened, clamped and malformed are
+  # counted here and nowhere else.
+  defp node_events(nodes, ids) do
+    nodes
+    |> Enum.with_index(2)
+    |> Enum.reduce(empty_report(), fn
+      {{:table, name, body}, idx}, acc ->
+        {_value, report} =
+          in_read_holder(idx, fn -> read_element(Map.fetch!(@tables, name), body, nodes, ids) end)
+
+        merge_report(acc, report)
+
+      _, acc ->
+        acc
+    end)
   end
 
   defp decode_node_table(nodes, name, body, ids, idx) do
