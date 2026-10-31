@@ -64,7 +64,19 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 	total := cookHeaderBytes + data + 16
 	g.need(g.homeBase+"Fixed.dart", st.Name)
 	g.pf("  // The fixed cook's extent is constant; every storage slot is written (§7.6).\n")
-	g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
+	if fixedHoldsFloat(st, map[string]bool{}) {
+		// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the measure
+		// refuses a NaN or an infinity with -1, as the cook itself does.
+		head := fmt.Sprintf("  static int cookMeasure(%s value) =>", st.Name)
+		expr := fmt.Sprintf("_cook%s(value, null, 64, Endian.little) ? %d : -1;", st.Name, total)
+		if len(head)+1+len(expr) <= 80 {
+			g.pf("%s %s\n\n", head, expr)
+		} else {
+			g.pf("%s\n      %s\n\n", head, expr)
+		}
+	} else {
+		g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
+	}
 	g.pf("  // Capacity and value validation precede every output write (§7.6).\n")
 	g.pf("  static bool cook(\n    %s value,\n    Uint8List output,\n    Endian order, {\n    TableCookWriteReport? report,\n  }) {\n", st.Name)
 	g.pf("    if (report != null) report.reason = 'ok';\n")
@@ -148,9 +160,13 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		if bound > 0 {
 			stride = pieces[0].Size / bound
 		}
-		// Typed float arrays already hold the transmitted 32-bit cells. Reading
-		// them as doubles would quiet signalling NaNs before narrowing can help.
+		// Typed float arrays already hold the transmitted 32-bit cells, and
+		// each is held finite first (docs/SPEC-TABLES.md §3.3): a NaN or an
+		// infinity refuses the cook, measure and write alike.
 		if f.Type.Kind == ir.TFloat32 {
+			g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.cookRefuseUnless(ind+"  ", expr+"[i].isFinite", "false")
+			g.pf("%s}\n", ind)
 			g.pf("%sif (out != null) {\n", ind)
 			rawLine := fmt.Sprintf("%s  final raw = ByteData.view(%s.buffer, %s.offsetInBytes, %s.lengthInBytes);", ind, expr, expr, expr)
 			if len(rawLine) <= 80 {
@@ -203,9 +219,25 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 		}
 		return
 	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an
+		// infinity refuses the cook, measure and write alike, before its slot
+		// is touched.
+		g.cookRefuseUnless(ind, expr+".isFinite", "false")
+	}
 	g.pf("%sif (out != null) {\n", ind)
 	g.emitCookScalarStore(f, expr, at, width, ind+"  ")
 	g.pf("%s}\n", ind)
+}
+
+// cookRefuseUnless writes `if (!<cond>) return <ret>;` the way dart format
+// does: one line while it fits eighty columns, the condition alone past it.
+func (g *cookGen) cookRefuseUnless(ind, cond, ret string) {
+	if line := fmt.Sprintf("%sif (!%s) return %s;", ind, cond, ret); len(line) <= 80 {
+		g.pf("%s\n", line)
+		return
+	}
+	g.pf("%sif (!%s)\n%s  return %s;\n", ind, cond, ind, ret)
 }
 
 // emitCookScalarStore is emitCookFixedScalar's store with no null test on
@@ -685,6 +717,13 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				g.pf("%s  final start = point;\n", ind)
 			}
 			g.pf("%s  point += n * %d;\n", ind, size)
+			if write && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && tableRef(f) == nil {
+				// a cooked float element is finite (docs/SPEC-TABLES.md §3.3):
+				// measure and write refuse a NaN or an infinity alike
+				g.pf("%s  for (var i = 0; i < n; i++) {\n", ind)
+				g.cookRefuseUnless(ind+"    ", "l[i].isFinite", "-1")
+				g.pf("%s  }\n", ind)
+			}
 			if write {
 				g.pf("%s  if (out != null) {\n", ind)
 				g.pf("%s    final array = %s + start;\n", ind, base)
@@ -990,20 +1029,14 @@ final class TableCookGraph {
 `
 
 const dartCookFloat32Writer = `
-  static final Float32List _cookFloat32 = Float32List(2);
+  static final Float32List _cookFloat32 = Float32List(1);
   static final Uint32List _cook32Words = _cookFloat32.buffer.asUint32List();
-  static final Float64List _cookFloat64 = _cookFloat32.buffer.asFloat64List();
-  static final Uint64List _cook64Words = _cookFloat32.buffer.asUint64List();
 
+  // A cooked float is finite (docs/SPEC-TABLES.md §3.3): the writer refused a
+  // NaN or an infinity before it reaches here, so this is the ordinary
+  // narrowing, exact for every finite float32 value.
   static int float32Bits(double value) {
-    if (!value.isNaN) {
-      _cookFloat32[0] = value;
-      return _cook32Words[0];
-    }
-    _cookFloat64[0] = value;
-    final bits = _cook64Words[0];
-    var mantissa = (bits >>> 29) & 0x7fffff;
-    if (mantissa == 0) mantissa = 0x400000;
-    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+    _cookFloat32[0] = value;
+    return _cook32Words[0];
   }
 `

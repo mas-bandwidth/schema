@@ -1196,6 +1196,25 @@ tables-dart-variable-fixed-class:
 
 test-dart: tables-dart-variable-fixed-class
 
+# FINITE TABLE FLOATS ON THE DART LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27: "Tables go finite-only too, same rule as packets"): every read
+# refuses a NaN or an infinity on its raw bits as non_finite_float, naming the
+# field — the variable form (scalars, list and [N] elements, union arms and a
+# retained unknown float), the message form, the fixed form, and the block and
+# cook accessors, which never return one and latch the refusal on the view —
+# every writer refuses one, and -0 rides by its bits. The reversed witness
+# takes every read-side bit test out of the generated source and requires
+# EXACTLY the read vectors to go red, the writers and -0 staying green.
+.PHONY: tables-dart-finite-float tables-dart-finite-float-negative-control
+tables-dart-finite-float:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartFiniteFloatsEveryForm$$'
+	@echo 'tables Dart finite floats: every read and every writer refuses a NaN or an infinity, and -0 rides'
+tables-dart-finite-float-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartFiniteFloatNegativeControl$$'
+	@echo 'negative control: with the read-side bit tests removed, exactly the Dart read vectors go red'
+
+test-dart: tables-dart-finite-float tables-dart-finite-float-negative-control
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
@@ -1344,7 +1363,7 @@ cards-dart-generate: bin/schema
 # make/go.mk's cards-wire-fuzz does.
 .PHONY: cards-dart-wire-fuzz
 cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart \
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-dart-wire-fuzz.log 2>&1; \
@@ -1366,7 +1385,7 @@ test-dart: cards-dart-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 .PHONY: cards-dart-retain-fuzz
 cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart \
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-dart-retain-fuzz.log 2>&1; \

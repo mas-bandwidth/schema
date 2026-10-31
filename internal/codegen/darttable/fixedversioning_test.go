@@ -156,9 +156,29 @@ var versionRows = []versionRow{
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
+	nonFinite := fixedManifestNonFinite(t, corpus)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
+			if leaf := nonFinite["old_"+r.row+".bin"]; leaf != "" {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 the newer reader
+				// refuses it by name (docs/SPEC-TABLES.md §3.3): a must-refuse
+				// vector until tables-finite/cpp regenerates the corpus, and
+				// an ordinary row after.
+				body := fmt.Sprintf(`  final data = File(FILE).readAsBytesSync();
+  final n = LOAD(values, values.length, data, data.length, plan, report);
+  check(n == -1 && report.refused == t.TableFixedRefusal.nonFiniteFloat,
+      'the non-finite float the older writer wrote was not refused by name: n=$n ${why(report)}');
+  check(report.nonFiniteFloat.endsWith(%q),
+      'the refusal names "${report.nonFiniteFloat}"');`, "."+leaf)
+				out, err := runVersionProbe(t, dartBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
+					filepath.Join(corpus, "old_"+r.row+".bin"), body)
+				if err != nil {
+					t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+				}
+				return
+			}
 			root := versionRoot(t, versionSchema(t, "VOLD_"+r.row))
 			lead, trail := versionBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
 			bracket := ""

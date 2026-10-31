@@ -1202,6 +1202,7 @@ final class FixedTableCookWire {
         out.setUint8(at + 1268 + i, payloadBytes[i]);
       }
     }
+    if (!value.aimX.isFinite) return false;
     if (out != null) {
       out.setUint32(
         at + 1288,
@@ -1209,6 +1210,7 @@ final class FixedTableCookWire {
         order,
       );
     }
+    if (!value.aimY.isFinite) return false;
     if (out != null) {
       out.setUint32(
         at + 1292,
@@ -1216,6 +1218,7 @@ final class FixedTableCookWire {
         order,
       );
     }
+    if (!value.aimZ.isFinite) return false;
     if (out != null) {
       out.setUint32(
         at + 1296,
@@ -1223,6 +1226,7 @@ final class FixedTableCookWire {
         order,
       );
     }
+    if (!value.recoil.isFinite) return false;
     if (out != null) {
       out.setUint32(
         at + 1300,
@@ -1230,6 +1234,7 @@ final class FixedTableCookWire {
         order,
       );
     }
+    if (!value.drift.isFinite) return false;
     if (out != null) {
       out.setFloat64(at + 1304, value.drift, order);
     }

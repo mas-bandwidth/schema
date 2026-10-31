@@ -20,7 +20,9 @@ package darttable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -553,15 +555,30 @@ final class TableWireReport {
   int retained = 0;
   int retainLost = 0;
 
+  // nonFiniteFloat is the STORED refusal of a float whose raw bits are a NaN
+  // or an infinity (docs/SPEC-TABLES.md §3.3): the <Table>.<field> the read
+  // met first, '' when it met none. Every read refuses one, the tolerant one
+  // too: refused rises with it and the load lands nothing, answering the
+  // type's defaults.
+  String nonFiniteFloat = '';
+
+  void refuseNonFiniteFloat(String field) {
+    if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
+    refused = true;
+  }
+
   // reason is the read's refusal BY NAME, in the reference leg's vocabulary
   // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
-  // docs/SPEC-TABLES.md §3, §4): a form byte this reader does not carry is
-  // unknown_form, framing the reader cannot follow is wire_damaged, and a read
-  // that kept its verdict is ok — the mapping the Go leg's measure gives its
-  // two verdicts. It is DERIVED from the two flags rather than stored beside
-  // them, so the verdict and its reason can never disagree. A widened, clamped
-  // or unknown field is not a refusal: the read still answers ok.
+  // docs/SPEC-TABLES.md §3, §4): a non-finite float is non_finite_float naming
+  // the field, and it outranks every later verdict; a form byte this reader
+  // does not carry is unknown_form, framing the reader cannot follow is
+  // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
+  // leg's measure gives its two verdicts. It is DERIVED from the flags and the
+  // stored field rather than kept beside them, so the verdict and its reason
+  // can never disagree. A widened, clamped or unknown field is not a refusal:
+  // the read still answers ok.
   String get reason {
+    if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
@@ -1057,6 +1074,31 @@ final class TableWireReader {
     final v = data[pos];
     pos++;
     return v;
+  }
+
+  // readF32/readF64 read one float payload at an offset the caller has bounded,
+  // TESTING THE RAW BITS FIRST (docs/SPEC-TABLES.md §3.3, a plain float's
+  // special values, the same rule as packets): a NaN or an
+  // infinity never becomes a double. The read is refused as non_finite_float,
+  // naming the field, and 0 stands in for the value the load then discards.
+  // Every finite float32 widens to a double exactly, so the float rung (kind 10
+  // into a float64 field) is the ordinary conversion.
+  double readF32(int at, String field) {
+    final b = readU32(data, at);
+    if ((b & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat(field);
+      return 0.0;
+    }
+    return _f32FromBits(b);
+  }
+
+  double readF64(int at, String field) {
+    final b = readU64(data, at);
+    if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      report.refuseNonFiniteFloat(field);
+      return 0.0;
+    }
+    return _f64FromBits(b);
   }
 
   // readBool reads a bool payload: any nonzero byte reads true, and a byte
@@ -1593,6 +1635,38 @@ double _f64FromBits(int b) {
   bd.setUint64(0, b, Endian.little);
   return bd.getFloat64(0, Endian.little);
 }
+
+// _f32Write/_f64Write are every save's float payload: a NaN or an infinity is
+// REFUSED, never written (docs/SPEC-TABLES.md §3.3, a plain float's special
+// values: no binary form carries one), and the save throws naming the field,
+// as it refuses a data cycle. A finite value rides as its bits.
+int _f32Write(double d, String field) {
+  if (!d.isFinite) _refuseNonFiniteFloat(field);
+  return _f32Bits(d);
+}
+
+int _f64Write(double d, String field) {
+  if (!d.isFinite) _refuseNonFiniteFloat(field);
+  return _f64Bits(d);
+}
+
+Never _refuseNonFiniteFloat(String field) => throw StateError(
+  'non_finite_float: $field — a NaN or an infinity (docs/SPEC-TABLES.md §3.3)',
+);
+
+// _retainedFloatName names a retained unknown float for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3, §6.6): the body's table and the id it
+// cannot name, as sixteen hex digits.
+String _retainedFloatName(String owner, int id) {
+  const digits = '0123456789abcdef';
+  final hex = List<String>.filled(16, '0');
+  var v = id;
+  for (var i = 15; i >= 0; i--) {
+    hex[i] = digits[v & 0xf];
+    v >>>= 4;
+  }
+  return '$owner.0x${hex.join()}';
+}
 `)
 }
 
@@ -1620,6 +1694,62 @@ func (g *wireGen) stringDefault(f *ir.Field) string {
 	return "''"
 }
 
+// dartFloatOwner names a float field <Owner>.<field> for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3), the owner being the table, type or union
+// that declares it — the Go leg's floatOwner (internal/codegen/gotable/read.go),
+// spelled alike so a refusal names the same field on every leg. A field the
+// unit does not hold by pointer (an element copy) is named by the record being
+// emitted when that record declares a field of its name, and by its own name
+// past that.
+func dartFloatOwner(u *ir.Unit, f *ir.Field, cur *ir.Struct) string {
+	for _, m := range []map[string]*ir.Struct{u.Tables, u.Structs} {
+		for _, st := range m {
+			if slices.Contains(st.Fields, f) {
+				return st.DeclaredName() + "." + f.Name
+			}
+		}
+	}
+	for _, m := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range m {
+			for i := range un.Variants {
+				if un.Variants[i].F == f {
+					return un.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	if cur != nil {
+		for _, x := range cur.Fields {
+			if x.Name == f.Name {
+				return cur.DeclaredName() + "." + f.Name
+			}
+		}
+	}
+	return f.Name
+}
+
+// floatRides is the condition under which a float rides past its default
+// elision: its BITS differ from the default's (docs/SPEC-TABLES.md §3.3, -0
+// is a value and it rides). For a finite value the bits differ exactly when
+// the values differ or both are zero with different signs, so a -0 under a +0
+// default rides and a +0 under a declared -0 default rides. A NaN or an
+// infinity rides too, and the writer refuses it there.
+func floatRides(f *ir.Field, expr, lit string) string {
+	def := 0.0
+	if f.HasDefault {
+		def = f.DefFloat
+	}
+	if def != 0 {
+		return expr + " != " + lit
+	}
+	if math.Signbit(def) {
+		return expr + " != 0 || !" + expr + ".isNegative"
+	}
+	return expr + " != 0 || " + expr + ".isNegative"
+}
+
+func (g *wireGen) floatOwner(f *ir.Field) string { return dartFloatOwner(g.unit, f, g.cur) }
+
 func (g *wireGen) floatDefault(f *ir.Field) string {
 	if f.HasDefault {
 		return fmt.Sprintf("%g", f.DefFloat)
@@ -1646,6 +1776,10 @@ func (g *wireGen) enumDefault(f *ir.Field) string {
 // follows the node-table field (§3.1), so the two spellings are both owed.
 func (g *wireGen) emitSaveBody(st *ir.Struct) {
 	n := st.Name
+	// the record a float element copy is named by (floatOwner), restored after
+	prev := g.cur
+	g.cur = st
+	defer func() { g.cur = prev }()
 	fields := dartName(n) + "WireSaveBodyFields"
 	g.pf("void %s(TableWireWriter w, %s v) {\n", fields, n)
 	guards := wireGuards(st)
@@ -1776,18 +1910,21 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.%s(%s);\n", ind, put, expr)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
+		// ELISION COMPARES BITS (a -0 under a +0 default rides), and a NaN or
+		// an infinity is refused before a byte of it is written
+		// (docs/SPEC-TABLES.md §3.3).
 		kind := wireKindF64
-		bits := "_f64Bits"
+		bits := "_f64Write"
 		put := "putU64"
 		if f.Type.Kind == ir.TFloat32 {
 			kind = wireKindF32
-			bits = "_f32Bits"
+			bits = "_f32Write"
 			put = "putU32"
 		}
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.floatDefault(f))
+		g.pf("%sif (%s) {\n", ind, floatRides(f, expr, g.floatDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
-		g.pf("%s\tw.%s(%s(%s));\n", ind, put, bits, expr)
+		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, expr, g.floatOwner(f))
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
@@ -1913,9 +2050,9 @@ func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	case wireKindBool:
 		g.pf("%s\t\ts.putByte(e ? 1 : 0);\n", ind)
 	case wireKindF32:
-		g.pf("%s\t\ts.putU32(_f32Bits(e));\n", ind)
+		g.pf("%s\t\ts.putU32(_f32Write(e, '%s'));\n", ind, g.floatOwner(f))
 	case wireKindF64:
-		g.pf("%s\t\ts.putU64(_f64Bits(e));\n", ind)
+		g.pf("%s\t\ts.putU64(_f64Write(e, '%s'));\n", ind, g.floatOwner(f))
 	default:
 		if ir.TableKindWide(elemKind) {
 			g.pf("%s\t\t_putWide(s, e, %d);\n", ind, ir.TableKindWidth(elemKind))
@@ -1990,7 +2127,14 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t\t\tif (r.retain != null) {\n")
 	g.pf("\t\t\t\t\tfinal start = r.pos;\n")
 	g.pf("\t\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n")
-	g.pf("\t\t\t\t\tif (kind == %d) {\n", wireKindPtr)
+	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+	// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a
+	// NaN or an infinity refuses the read as non_finite_float, named
+	// <Table>.0x<id>, and is not captured.
+	g.pf("\t\t\t\t\tif ((kind == %d && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||\n", wireKindF32)
+	g.pf("\t\t\t\t\t\t\t(kind == %d && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {\n", wireKindF64)
+	g.pf("\t\t\t\t\t\tr.report.refuseNonFiniteFloat(_retainedFloatName('%s', id));\n", st.DeclaredName())
+	g.pf("\t\t\t\t\t} else if (kind == %d) {\n", wireKindPtr)
 	g.pf("\t\t\t\t\t\tr.report.retainLost++;\n")
 	g.pf("\t\t\t\t\t} else {\n")
 	g.pf("\t\t\t\t\t\tfinal sub = TableWireReader.sub(r, start, r.pos);\n")
@@ -2307,22 +2451,27 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		if f.Type.Kind == ir.TFloat32 {
 			declKind = wireKindF32
 		}
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (readF32/readF64,
+		// docs/SPEC-TABLES.md §3.3), before the bits become a double and before
+		// the field is written: the body stops there, and the load lands
+		// nothing. A compressed float takes the test before its bounds.
+		owner := g.floatOwner(f)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tvar d = v.%s;\n", ind, name)
 		g.pf("%s\t\tswitch (kind) {\n", ind)
 		g.pf("%s\t\t\tcase %d:\n", ind, declKind)
 		if f.Type.Kind == ir.TFloat64 {
 			g.pf("%s\t\t\t\tif (!r.has(8)) { r.report.malformed = true; return; }\n", ind)
-			g.pf("%s\t\t\t\td = _f64FromBits(readU64(r.data, r.pos)); r.pos += 8;\n", ind)
+			g.pf("%s\t\t\t\td = r.readF64(r.pos, '%s'); r.pos += 8;\n", ind, owner)
 		} else {
 			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
-			g.pf("%s\t\t\t\td = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;\n", ind)
+			g.pf("%s\t\t\t\td = r.readF32(r.pos, '%s'); r.pos += 4;\n", ind, owner)
 		}
 		g.pf("%s\t\t\t\tbreak;\n", ind)
 		if f.Type.Kind == ir.TFloat64 {
 			g.pf("%s\t\t\tcase %d:\n", ind, wireKindF32)
 			g.pf("%s\t\t\t\tif (!r.has(4)) { r.report.malformed = true; return; }\n", ind)
-			g.pf("%s\t\t\t\td = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;\n", ind)
+			g.pf("%s\t\t\t\td = r.readF32(r.pos, '%s'); r.pos += 4;\n", ind, owner)
 			g.pf("%s\t\t\t\tr.report.widened++;\n", ind)
 			g.pf("%s\t\t\t\tbreak;\n", ind)
 		}
@@ -2331,9 +2480,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t\t\tif (!r.skipKind(kind)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\t\t\tbreak;\n", ind)
 		g.pf("%s\t\t}\n", ind)
+		g.pf("%s\t\tif (r.report.nonFiniteFloat.isNotEmpty) return;\n", ind)
 		if f.HasFloatRange {
+			// one past an end clamps and counts, and a -0 lands as +0,
+			// uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
 			g.pf("%s\t\tif (d < %s) { d = %s; r.report.clamped++; }\n", ind, fmtFloat(f.FMin), fmtFloat(f.FMin))
 			g.pf("%s\t\tif (d > %s) { d = %s; r.report.clamped++; }\n", ind, fmtFloat(f.FMax), fmtFloat(f.FMax))
+			g.pf("%s\t\tif (d == 0) d = 0.0;\n", ind)
 		}
 		g.pf("%s\t\tv.%s = d;\n", ind, name)
 		g.pf("%s\t}\n", ind)
@@ -2422,15 +2575,15 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\t%s.add(%s.readBool());\n", ind, dest, arr)
 	case wireKindF32:
 		g.pf("%s\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
 	case wireKindF64:
 		// f64 widens an f32 element kind (§4). The array already counted widened.
 		g.pf("%s\t\t\tif (elemKind == %d) {\n", ind, wireKindF32)
 		g.pf("%s\t\t\t\tif (!%s.has(4)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\t\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
 		g.pf("%s\t\t\t} else if (elemKind == %d) {\n", ind, wireKindF64)
 		g.pf("%s\t\t\t\tif (!%s.has(8)) { r.report.malformed = true; break; }\n", ind, arr)
-		g.pf("%s\t\t\t\t%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, dest, arr, arr, arr)
+		g.pf("%s\t\t\t\t%s.add(%s.readF64(%s.pos, '%s')); %s.pos += 8;\n", ind, dest, arr, arr, g.floatOwner(f), arr)
 		g.pf("%s\t\t\t} else { r.report.malformed = true; break; }\n", ind)
 	default:
 		if ir.TableKindWide(elemKind) {
@@ -2719,6 +2872,9 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tr.path = [1];\n")
 	g.emitKnownTypes(st, "r", "v")
 	g.pf("\tif (report != null) r.report = report;\n")
+	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
+	// tableOpen clears its NonFiniteFloat
+	g.pf("\tr.report.nonFiniteFloat = '';\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	// verdict 3 is framing damage on the root body, not the file's: the body
@@ -2730,6 +2886,10 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	}
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\t%s(r, v, false);\n", dartName(n)+"WireLoadBody")
+	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+	// any damage the walk met (docs/SPEC-TABLES.md §3.3): nothing lands, and
+	// the caller holds the type's defaults.
+	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) return %s();\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }

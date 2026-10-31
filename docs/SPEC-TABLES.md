@@ -638,14 +638,11 @@ Four spellings are Dart's own and the reason is at each site.
   The refusals a save and a measure answer are the reference's `-1`, in both
   verbs, because a value that measures as unsaveable and a buffer too short
   are one contract in the reference and this port does not split it.
-- **A float32 field's storage is a `double`**, so every elision comparison
-  narrows first (`tableNarrowFloat`). That is what gives the decision C's own
-  float semantics rather than the double's — -0.0 equal to 0.0, a NaN equal to
-  nothing — and what makes a Dart wire byte equal the C++ one for a value the
-  two languages cannot store alike.
-  The `-0.0 equal to 0.0` half is the comparison §3.3's plain-float rule
-  retires: a plain float's elision compares BIT PATTERNS, so this port owes
-  the bit compare after the narrowing (Go first, §3.3).
+- **A float32 field's storage is a `double`**, and a plain float's elision
+  compares BIT PATTERNS (§3.3): a value at a nonzero default elides by `==`,
+  and at a zero default by `==` and the sign (`isNegative`), so a `-0` under a
+  `+0` default rides as it does on every leg. A NaN or an infinity is refused
+  before any comparison matters (§3.3).
 - **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
   of a per-type `<Name>TableFields` class rather than C++'s offset and width: a
   Dart field has no address, and a tear-off of a static method is a
@@ -6970,8 +6967,7 @@ Go dogfooding). Go's wire for a value holding `-0` in an elided plain float
 GAINS that field — its header and four or eight bytes — where a leg still
 comparing with `==` elides it, so until each leg adopts the bit compare the
 legs agree byte for byte on every value except that one. Each other leg owes
-three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
-included, which today gives `-0` C's `==`), and the finite rule of
+three things: elision by bit pattern, and the finite rule of
 2026-10-27: the writer's refusal and every read's `non_finite_float`
 refusal, in all three binary forms. The Go leg and the tool's engines
 (`internal/tablewire`, `internal/tablecook`) keep the rule, held by

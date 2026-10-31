@@ -98,6 +98,10 @@ func (g *wireGen) emitSaveFixed(f *ir.Field, expr, ind string, id uint64) {
 	case ek == wireKindUnion:
 		// a fixed array of unions elides when every slot is None (§3)
 		open = fmt.Sprintf("if (%s.any((e) => e.armTag != 0)) {", expr)
+	case ek == wireKindF32 || ek == wireKindF64:
+		// a float element's elision compares BITS (docs/SPEC-TABLES.md §3.3):
+		// one -0 under a +0 default is enough for the array to ride
+		open = fmt.Sprintf("if (%s.any((e) => %s)) {", expr, floatRides(singleOf(f), "e", g.elemDefault(f)))
 	case ek != wireKindTable:
 		open = fmt.Sprintf("if (%s.any((e) => e != %s)) {", expr, g.elemDefault(f))
 	}
@@ -135,10 +139,15 @@ func (g *wireGen) emitSaveKeyed(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s\t\tfinal slotMark = w.state.mark();\n", ind)
 	g.pf("%s\t\tfinal keyRef = w.refFor(%s);\n", ind, enumVidExpr(e, "slot + 1"))
 	g.pf("%s\t\tfinal eb = w.sub();\n", ind)
-	if ek == wireKindTable {
+	switch ek {
+	case wireKindTable:
 		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
 		g.pf("%s\t\tif (eb.buf.length <= 1) { w.state.rollback(slotMark); continue; }\n", ind)
-	} else {
+	case wireKindF32, wireKindF64:
+		// a float slot at its default elides by BITS (docs/SPEC-TABLES.md §3.3)
+		g.pf("%s\t\tif (!(%s)) { w.state.rollback(slotMark); continue; }\n", ind, floatRides(single, "e", g.elemDefault(f)))
+		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
+	default:
 		g.pf("%s\t\tif (e == %s) { w.state.rollback(slotMark); continue; }\n", ind, g.elemDefault(f))
 		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
 	}
@@ -189,7 +198,9 @@ func (g *wireGen) emitWidenedElems(f *ir.Field, ek int, out, p, ind string) {
 	g.pf("%sfor (var i = 0; i < keep; i++) {\n", ind)
 	g.pf("%s\tif (!%s.has(w)) { %s.report.malformed = true; break; }\n", ind, p, p)
 	if ek == wireKindF64 {
-		g.pf("%s\t%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, out, p, p, p)
+		// a widened float32 element is refused on its raw bits as any float
+		// read is (docs/SPEC-TABLES.md §3.3)
+		g.pf("%s\t%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
 	} else {
 		g.pf("%s\tvar raw = 0;\n", ind)
 		g.pf("%s\tfor (var b = 0; b < w; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, p)
