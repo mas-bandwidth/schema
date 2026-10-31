@@ -345,16 +345,20 @@ const cookRuntimeSource = `  @moduledoc """
   end
 
   @doc """
-  FIND in a cooked map (docs/SPEC-TABLES.md §2.8, docs/PORTING.md M19): a
-  binary search IN PLACE over the span's entries, which lie ascending by key,
-  reading each probed entry's key with key_at: floor(log2 n) + 1 key
-  compares and no copy. Integers compare by value and string keys by their
-  bytes, unsigned, a prefix first, which is the BEAM's own term order on both.
-  {:ok, entry} is the entry's offset in the region; :error a key the map does
-  not hold.
+  FIND in a cooked map (docs/SPEC-TABLES.md §2.8, docs/PORTING.md M19): the
+  holder at at resolved to its span, then a binary search IN PLACE over the
+  entries, which lie ascending by key, reading each probed entry's key with
+  key_at: floor(log2 n) + 1 key compares and no copy. Integers compare by
+  value and string keys by their bytes, unsigned, a prefix first, which is the
+  BEAM's own term order on both. {:ok, entry} is the entry's offset in the
+  region; :error a key the map does not hold, or a holder span/3 refuses.
   """
-  def find(region, start, count, stride, key_at, key),
-    do: search(region, start, stride, key_at, key, 0, count)
+  def find(region, at, stride, key_at, key) do
+    case span(region, at, stride) do
+      {:ok, start, count} -> search(region, start, stride, key_at, key, 0, count)
+      :error -> :error
+    end
+  end
 
   defp search(_region, _start, _stride, _key_at, _key, low, high) when low >= high, do: :error
 
@@ -717,21 +721,15 @@ func (g *gen) cookHolderAccessors(st *ir.Struct, f *ir.Field, fl ir.FieldLayout)
 		if home == "" {
 			home = g.file.Base
 		}
-		keyAt := fmt.Sprintf("&%s.%sCook.%s_node_%s/2", g.ns, moduleBase(home), ir.RustSnake(entry.Name), ir.MapKeyField(f).Name)
-		call := fmt.Sprintf("C.find(region, start, count, %s, %s, key)", exInt(stride), keyAt)
-		arm := "      {:ok, start, count} -> " + call + "\n"
-		if exWidth(arm) > exLineLimit {
-			// the formatter's shape for an arm past the line: the body on
-			// the line under its pattern
-			arm = "      {:ok, start, count} ->\n        " + call + "\n\n"
+		keyAt := fmt.Sprintf("&%s_node_%s/2", ir.RustSnake(entry.Name), ir.MapKeyField(f).Name)
+		if home != g.file.Base {
+			keyAt = fmt.Sprintf("&%s.%sCook.%s_node_%s/2", g.ns, moduleBase(home), ir.RustSnake(entry.Name), ir.MapKeyField(f).Name)
 		}
 		out = append(out, "  # FIND: the entry whose key is key, {:ok, entry} or :error, by a binary\n"+
-			"  # search over the entries where they lie (CookRuntime.find/6)\n"+
+			"  # search over the entries where they lie (CookRuntime.find/5)\n"+
 			fmt.Sprintf("  def %s_node_%s_find(region, node, key) do\n", lo, f.Name)+
-			fmt.Sprintf("    case C.span(region, node + %s, %s) do\n", exInt(fl.Offset), exInt(stride))+
-			arm+
-			"      :error -> :error\n"+
-			"    end\n"+
+			fmt.Sprintf("    key_at = %s\n", keyAt)+
+			fmt.Sprintf("    C.find(region, node + %s, %s, key_at, key)\n", exInt(fl.Offset), exInt(stride))+
 			"  end\n")
 	}
 	return out
