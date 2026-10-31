@@ -997,6 +997,11 @@ macro_rules! with_root {
                 use listdemo::{unbounded_from_json_bytes as $from_json, unbounded_load as $load, unbounded_save_checked as $save, unbounded_to_json_checked as $to_json};
                 Some($body)
             }
+            ("widelist", "Wide") => {
+                #[allow(unused_imports)]
+                use widelistdemo::{wide_from_json_bytes as $from_json, wide_load as $load, wide_save_checked as $save, wide_to_json_checked as $to_json};
+                Some($body)
+            }
             ("messagedemo", "ToolMessage") => {
                 #[allow(unused_imports)]
                 use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
@@ -1389,6 +1394,7 @@ macro_rules! with_cook_root {
             ("listdemo", "Sheet") => { use listdemo::{sheet_load as $load, sheet_cook_write as $cook}; Some($body) }
             ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook}; Some($body) }
             ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook}; Some($body) }
+            ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook}; Some($body) }
             _ => None,
         }
     }};
