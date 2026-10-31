@@ -72,14 +72,14 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 
 // TestOptionalOverVariableClosureIsLegal pins docs/SPEC-TABLES.md §2.3's rule
 // that `?T` and by-value `?[N]T` over a variable closure are legal on Go, C,
-// C#, C++, Dart and Rust, and that the other targets keep refusing by name until their own
+// C#, C++, Dart, Java and Rust, and that the other targets keep refusing by name until their own
 // port lifts it (test/tables/G1.schema carries the scalar half).
 func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 	t.Parallel()
 	src := "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n    pair ?[2]Inner\n}\n"
 	u := unitFromSource(t, src)
 	c := New()
-	for _, lang := range []string{"go", "c", "cs", "cpp", "dart", "rust"} {
+	for _, lang := range []string{"go", "c", "cs", "cpp", "dart", "java", "rust"} {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
 			if _, err := c.Generate(u, lang, nil); err != nil {
