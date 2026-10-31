@@ -68,7 +68,7 @@ end
 `, capacity, idArg, rootName, retainStores)
 	out := g.run(t, main, map[string][]byte{"conn": conn, "message": batch})
 	var o messageOut
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		k, v, _ := strings.Cut(line, " ")
 		switch k {
 		case "ANNOUNCE":
@@ -87,7 +87,7 @@ end
 			rest = strings.Join(f[3:], " ")
 			o.refusedReason = rest
 		case "used":
-			for _, s := range strings.Split(v, ",") {
+			for s := range strings.SplitSeq(v, ",") {
 				if s != "" {
 					n, _ := strconv.Atoi(s)
 					o.used = append(o.used, n)

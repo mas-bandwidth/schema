@@ -149,7 +149,7 @@ func (b *wb) list(name string, n int, body func(i int)) {
 	at := b.openLen()
 	b.u8(uint8(ir.TableKindTable))
 	b.leb(uint64(n))
-	for i := 0; i < n; i++ {
+	for i := range n {
 		body(i)
 	}
 	b.closeLen(at)
@@ -266,7 +266,7 @@ func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
 			at := b.openLen()
 			b.u8(uint8(ir.TableKindUnion))
 			b.leb(6)
-			for i := 0; i < 6; i++ {
+			for i := range 6 {
 				if i == 4 {
 					b.armInner("alpha", 1, 7, true)
 				} else {

@@ -404,7 +404,9 @@ edges = function(d: any, v: any, out: { any }): { any }
 end
 
 -- THE WALK HOLDS ITS OWN STACK: a pointer chain is as deep as it is long.
-local function number(d: any, root: any): (any, any?)
+-- shareBlobs is the cook's numbering (tablewire.NumberPacking, §7.6): a byte
+-- buffer named from two slots is one node there, where the wire refuses it.
+local function number(d: any, root: any, shareBlobs: boolean?): (any, any?)
 	local nodes: any = { list = {}, index = {} }
 	nodes.index[root] = 1
 	local open: { [any]: boolean } = { [root] = true }
@@ -422,7 +424,7 @@ local function number(d: any, root: any): (any, any?)
 			end
 			-- A BLOB IS OWNED BY ONE SLOT (§2.5): a second slot naming the same
 			-- buffer is refused by name, blob_shared
-			if e.blob ~= nil and nodes.index[e.val] ~= nil then
+			if e.blob ~= nil and nodes.index[e.val] ~= nil and not shareBlobs then
 				return nil, { name = "blob_shared", field = e.field }
 			end
 			if nodes.index[e.val] == nil then

@@ -313,6 +313,7 @@ conformance job reads it as the leg's matrix row:
 | `env` | `VAR=value` assignments the make and run steps carry — a toolchain on PATH rather than in `dist/` |
 | `runtime`, `runtime_tag` | the sibling checkout the leg needs (`serialize.cs`) and the workflow variable that pins it (`SERIALIZE_CS_TAG`) |
 | `node`, `rust`, `dart`, `java`, `otp` + `elixir` | the toolchain step to run, and the version it installs |
+| `moo` | the moo pin step to run (`./.github/actions/moo`, which builds `make/moo.mk`'s `MOO_PIN` into `dist/moo/` and caches it): the field's value is the release the pin names, held equal to a negative-control group's `moo` by `tools/negativecontrols` |
 | `dotnet` | the .NET SDK step to run, and the file holding the version — `.github/dotnet-version`, the repo's one pin, because nine `csproj` files under `test/` and `bench/` target it and `certify.yml` builds all of them (issue #470) |
 
 A leg that names a toolchain with no step yet adds one step to the workflow,

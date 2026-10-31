@@ -58,7 +58,10 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
-	// Moo names the moo pin (make/moo.mk); .github/actions/moo builds it.
+	// Moo says the row needs the moo pin (make/moo.mk's MOO_PIN, a commit of
+	// mas-bandwidth/moo), which .github/actions/moo restores or builds into
+	// dist/moo. Like dotnet it is a marker, "pin", and never a version: the
+	// commit lives in make/moo.mk alone.
 	Moo string `json:"moo,omitempty"`
 }
 
@@ -76,7 +79,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "moo"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.

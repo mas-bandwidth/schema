@@ -922,6 +922,12 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
+
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
@@ -1859,16 +1865,17 @@ jobs:
       - uses: ./.github/actions/google-java-format
         if: matrix.java != ''
 
-      # The moo pin the moo controls run under (make/moo.mk; restored from the
-      # cache keyed on the pin, built by `make dist-moo` on a miss).
-      - uses: ./.github/actions/moo
-        if: matrix.moo != ''
-
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         if: matrix.otp != ''
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
 
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and

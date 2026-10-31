@@ -421,9 +421,19 @@ function C.read(handle: any): (any, any)
 	return v, nil
 end
 
--- the cooked layout of a record, for a reflective walker
+-- the cooked layout of a record, for a reflective walker and the write side
 function C.layout(name: string): any
 	return records[name]
+end
+
+-- the cooked layout of a union, and this build's version (§20), for the write
+-- side (table_cookwrite.moo)
+function C.unionLayout(name: string): any
+	return unions[name]
+end
+
+function C.version(): any
+	return build
 end
 
 return table.freeze(C)
