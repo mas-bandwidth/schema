@@ -11,6 +11,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `c-two-units/` | C two units in one TU | `make tables-c-two-units` | `make tables-c-two-units` |
 | `conformance/` | cross-language table matrix | `make conformance` | `make conformance` |
 | `cookgen/` | cook fixture generator | `make tables-cook-scale` | `go build -o build/cookgen ./test/cookgen` |
+| `cpp-tables/` | C++ table runtime-home digest | `make tables-cpp-runtime-home` | `make tables-cpp-runtime-home` |
 | `cs/` | C# packet tests | `make test-cs` | `make test-cs` |
 | `cs-block/` | C# block tests | `make test-cs` | `make test-cs` |
 | `cs-cook/` | C# cook tests | `make test-cs` | `make test-cs` |

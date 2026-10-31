@@ -14,7 +14,8 @@
 namespace example {
 
 // type DefaultArm
-struct DefaultArm {
+struct DefaultArm
+{
     ProbeConfig entries[2] = {}; // used count beside it; wire count in [0, 2]
     int32_t entries_count = 0;
     uint8_t marker = 0; // wire [0, 7]
@@ -24,7 +25,8 @@ inline constexpr int64_t DefaultArmMaxBits = 77; // longest wire path; align pad
 inline constexpr int64_t DefaultArmMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // DefaultChoiceType: union DefaultChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class DefaultChoiceType : uint8_t {
+enum class DefaultChoiceType : uint8_t
+{
     None = 0,
     First = 1,
     Second = 2,
@@ -63,14 +65,14 @@ struct DefaultChoice
 
     DefaultArm & SelectFirst() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &first ) DefaultArm{};
+        ::new ( static_cast<void *>( &first ) ) DefaultArm{};
         type = DefaultChoiceType::First;
         return first;
     }
 
     DefaultArm & SelectSecond() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &second ) DefaultArm{};
+        ::new ( static_cast<void *>( &second ) ) DefaultArm{};
         type = DefaultChoiceType::Second;
         return second;
     }
@@ -80,7 +82,8 @@ inline constexpr int64_t DefaultChoiceMaxBits = 79; // tag + the largest arm; No
 inline constexpr int64_t DefaultChoiceMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type DefaultChoicePacket
-struct DefaultChoicePacket {
+struct DefaultChoicePacket
+{
     DefaultChoice choice;
 };
 
@@ -88,7 +91,8 @@ inline constexpr int64_t DefaultChoicePacketMaxBits = 79; // longest wire path; 
 inline constexpr int64_t DefaultChoicePacketMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type DefaultBulkArm
-struct DefaultBulkArm {
+struct DefaultBulkArm
+{
     DefaultArm payload;
     uint8_t data[2] = {}; // bytes(2): fixed buffer, used length beside it (SPEC §4.7)
     int32_t data_length = 0;
@@ -98,7 +102,8 @@ inline constexpr int64_t DefaultBulkArmMaxBits = 102; // longest wire path; alig
 inline constexpr int64_t DefaultBulkArmMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // DefaultBulkChoiceType: union DefaultBulkChoice's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class DefaultBulkChoiceType : uint8_t {
+enum class DefaultBulkChoiceType : uint8_t
+{
     None = 0,
     First = 1,
     Second = 2,
@@ -137,14 +142,14 @@ struct DefaultBulkChoice
 
     DefaultBulkArm & SelectFirst() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &first ) DefaultBulkArm{};
+        ::new ( static_cast<void *>( &first ) ) DefaultBulkArm{};
         type = DefaultBulkChoiceType::First;
         return first;
     }
 
     DefaultBulkArm & SelectSecond() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &second ) DefaultBulkArm{};
+        ::new ( static_cast<void *>( &second ) ) DefaultBulkArm{};
         type = DefaultBulkChoiceType::Second;
         return second;
     }

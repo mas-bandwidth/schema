@@ -18,7 +18,8 @@ inline constexpr uint64_t ProtocolId = 0xf4a226f4166d919bull;
 
 inline constexpr int64_t MaxWorldUnits = 30000;
 // enum DriveMode — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
-enum class DriveMode : uint8_t {
+enum class DriveMode : uint8_t
+{
     None = 0,
     Cruise = 1,
     Warp = 2,
@@ -40,7 +41,8 @@ inline const char * EnumName( DriveMode value )
 }
 
 // type FixedProbe
-struct FixedProbe {
+struct FixedProbe
+{
     int32_t angle = 0; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-180, 180]
     int64_t position = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-30000, 30000]
     serialize::int128_t reach = 0; // fixed(112, 16) — Q112.16, raw value scaled by 2^16; bounds in whole units; wire [-1000000, 1000000]
@@ -52,7 +54,8 @@ inline constexpr int64_t FixedProbeMaxBits = 156; // longest wire path; align pa
 inline constexpr int64_t FixedProbeMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type UnsignedProbe
-struct UnsignedProbe {
+struct UnsignedProbe
+{
     uint32_t angle = 0; // ufixed(16, 16) — UQ16.16, raw value scaled by 2^16; bounds in whole units; wire [0, 360]
     uint64_t span = 0; // ufixed(48, 16) — UQ48.16, raw value scaled by 2^16; bounds in whole units; wire [0, 281474976710655]
     serialize::uint128_t reach = 0; // ufixed(112, 16) — UQ112.16, raw value scaled by 2^16; bounds in whole units; wire [0, 2000000]
@@ -66,7 +69,8 @@ inline constexpr int64_t UnsignedProbeMaxBits = 196; // longest wire path; align
 inline constexpr int64_t UnsignedProbeMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type WideProbe
-struct WideProbe {
+struct WideProbe
+{
     serialize::uint128_t entity_id = 0;
     serialize::int128_t energy = 0; // wire [-5000000000, 5000000000]
     serialize::int128_t flux = 0; // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
@@ -78,7 +82,8 @@ inline constexpr int64_t WideProbeMaxBits = 403; // longest wire path; align pad
 inline constexpr int64_t WideProbeMaxBytes = 56; // 8-byte write granularity; read slack per the contract above
 
 // type LudicrousState
-struct LudicrousState {
+struct LudicrousState
+{
     DriveMode mode = DriveMode::None;
     FixedProbe probe;
     WideProbe wide;
@@ -95,7 +100,8 @@ inline constexpr int64_t LudicrousStateMaxBits = 1205; // longest wire path; ali
 inline constexpr int64_t LudicrousStateMaxBytes = 152; // 8-byte write granularity; read slack per the contract above
 
 // type DegenerateProbe
-struct DegenerateProbe {
+struct DegenerateProbe
+{
     int32_t locked_fixed = -196608; // fixed(16, 16) — Q16.16, raw value scaled by 2^16; bounds in whole units; wire [-3, -3]
     int32_t locked_int = 7; // wire [7, 7]
     serialize::int128_t locked_wide = -12345678901234; // wire [-12345678901234, -12345678901234]
@@ -106,7 +112,8 @@ inline constexpr int64_t DegenerateProbeMaxBits = 8; // longest wire path; align
 inline constexpr int64_t DegenerateProbeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type FixedVec
-struct FixedVec {
+struct FixedVec
+{
     int64_t x = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-100000, 100000]
     int64_t y = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-100000, 100000]
     int64_t z = 0; // fixed(48, 16) — Q48.16, raw value scaled by 2^16; bounds in whole units; wire [-100000, 100000]
@@ -116,7 +123,8 @@ inline constexpr int64_t FixedVecMaxBits = 102; // longest wire path; align pads
 inline constexpr int64_t FixedVecMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type FixedQuat
-struct FixedQuat {
+struct FixedQuat
+{
     int32_t x = 0; // fixed(2, 30) — Q2.30, raw value scaled by 2^30; bounds in whole units; wire [-1, 1]
     int32_t y = 0; // fixed(2, 30) — Q2.30, raw value scaled by 2^30; bounds in whole units; wire [-1, 1]
     int32_t z = 0; // fixed(2, 30) — Q2.30, raw value scaled by 2^30; bounds in whole units; wire [-1, 1]
