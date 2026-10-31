@@ -712,7 +712,7 @@ local function deprecatedField(v: any, root: string, bodies: any): (string?, str
 		local r = newReader(b.buffer, b.from)
 		r.n = b.to
 		local dep = { write = false, found = false, field = nil, table = nil }
-		local walked = skipRoot(r, st, desc, dep)
+		local walked = skipBody(r, st, desc, dep)
 		-- EVERY WRITER REFUSES A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3)
 		if st.nonFinite ~= nil then return nil, st.nonFinite end
 		if walked and dep.found then
