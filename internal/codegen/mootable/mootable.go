@@ -85,7 +85,7 @@ func runtimeGate(u *ir.Unit) func(name string) bool {
 			return jsonCarried
 		case "table_block.moo", "table_blockread.moo":
 			return blockCarried
-		case "table_cook.moo", "table_cookread.moo":
+		case "table_cook.moo", "table_cookread.moo", "table_cookwrite.moo":
 			return cookCarried
 		}
 		return true
