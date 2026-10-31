@@ -305,6 +305,11 @@ public final class TableCookInfo {
     /** the record holds a list or a map BY VALUE, at any depth: its node is its
      *  storage rounded to eight, then its EXTENT (docs/SPEC-TABLES.md §7.6). */
     public boolean hasExtent;
+    /** the greatest alignment of any element or entry the extent can hold, from the
+     *  TYPES: the node aligns to the greater of this and its record's, and the
+     *  extent begins at the record's size rounded to the greater of this and
+     *  eight (§7.6). 1 for a record with no extent. */
+    public int extentAlign = 1;
     public int size;
     public int align;
     public int numFields;
@@ -781,4 +786,58 @@ func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]boo
 		}
 	}
 	return false
+}
+
+// cookExtentAlign is the greatest alignment of any element or entry a record's
+// extent can hold, at any depth: a list's element, a map's generated entry, and
+// those their elements hold in turn; 1 for a record with no extent. It is
+// derived from the TYPES, never from a value, so a node of one type always
+// takes one alignment (tla/NodeExtent.tla, NodeAlign).
+func cookExtentAlign(u *ir.Unit, st *ir.Struct) int64 {
+	return cookExtentAlignSeen(u, st, map[string]bool{})
+}
+
+func cookExtentAlignSeen(u *ir.Unit, st *ir.Struct, seen map[string]bool) int64 {
+	if st == nil || seen[st.Name] {
+		return 1
+	}
+	seen[st.Name] = true
+	if m := cookMember(u, st.Name); m != nil {
+		st = m
+	}
+	align := int64(1)
+	for _, f := range st.Fields {
+		align = max(align, cookFieldExtentAlign(u, f, seen))
+	}
+	return align
+}
+
+func cookFieldExtentAlign(u *ir.Unit, f *ir.Field, seen map[string]bool) int64 {
+	switch {
+	case f.IsMap():
+		return max(ir.RecordLayout(u, f.MapEntry).Align, cookExtentAlignSeen(u, f.MapEntry, seen))
+	case f.IsList():
+		_, align := ir.ListElementLayout(u, f)
+		return max(align, cookFieldExtentAlign(u, variableElement(f), seen))
+	}
+	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+		return 1
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return cookExtentAlignSeen(u, ref, seen)
+	case *ir.Union:
+		if seen["union:"+ref.Name] {
+			return 1
+		}
+		seen["union:"+ref.Name] = true
+		align := int64(1)
+		for _, v := range ref.Variants {
+			if v.F != nil {
+				align = max(align, cookFieldExtentAlign(u, v.F, seen))
+			}
+		}
+		return align
+	}
+	return 1
 }

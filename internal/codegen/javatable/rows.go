@@ -480,6 +480,7 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	g.f("            info.defaults = %sVariable.Value::new;\n", name)
 	if st := cookMember(g.unit, name); st != nil && cookHasExtent(g.unit, st) {
 		g.f("            info.hasExtent = true;\n")
+		g.f("            info.extentAlign = %d;\n", cookExtentAlign(g.unit, st))
 	}
 	g.f("            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {

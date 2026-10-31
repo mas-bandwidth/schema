@@ -24,7 +24,7 @@ import (
 func TestJavaCookExtentNegativeControl(t *testing.T) {
 	t.Parallel()
 	witnesses := []struct{ name, from, to string }{
-		{"extent_over_record", "at + aligned(n.info.size, FLOOR),", "at, /* SABOTAGED: the extent over the record */"},
+		{"extent_over_record", "at + extentStart(n.info),", "at, /* SABOTAGED: the extent over the record */"},
 		{"skip_align", "cursor[0] = aligned(cursor[0], f.extentAlign);", "/* SABOTAGED: no alignment */"},
 		{"children_first", "cursor[0] += (long) n * f.extentSize;", "/* SABOTAGED: reserved after the children */"},
 		{"unsorted_map", "if (f.storage != TableCookStorage.MAP || out.size() < 2) {", "if (true) { // SABOTAGED: entries in the value's order"},

@@ -308,8 +308,11 @@ array first, then each element's own arrays).
 One node holds two containers in field order, A then B, and each element of A
 may hold one child container. Every shape is chosen at Init: the node's
 alignment (eight or sixteen, because a holder holds a sixteen-byte slot at
-eight) and base, the record's size, each element's size and alignment (at most
-eight), every count and every child count. A map's entries are a list's
+eight) and base, the record's size, each element's size and alignment (up to
+sixteen, a 128-bit element), every count and every child count. A node's
+alignment is DERIVED FROM ITS TYPES: the greater of its record's and every
+element's its extent can hold, and the extent begins at the record's size
+rounded to the greater of eight and that element alignment. A map's entries are a list's
 elements with the generated `{ key, value }` table as the element; the key order
 is not index arithmetic and is not modelled.
 
@@ -327,6 +330,7 @@ is not index arithmetic and is not modelled.
 | cfg | switch | invariant violated | the bug it is |
 |---|---|---|---|
 | `MCNodeExtentSkipAlign.cfg` | `SkipAlign` | `AlignedInRegion` | an array laid at the running offset unaligned (the Rust carve's control `test/rust-cookmap/control align`, and the tool's `tables-lists-tool-cook-negative-control`) |
+| `MCNodeExtentOldRule.cfg` | `OldRule` | `AlignedInRegion` | the node aligned to its record alone and the extent begun at the floor of eight, so a 128-bit element in a record aligned eight lands at eight modulo sixteen (the rule before a node's alignment took its elements') |
 | `MCNodeExtentChildrenFirst.cfg` | `ChildrenFirst` | `NoOverlap` | an element's child array laid before the parent's whole array is reserved |
 | `MCNodeExtentExtentOverRecord.cfg` | `ExtentOverRecord` | `OutsideRecord` | the extent begun at the node's base instead of after the record |
 
@@ -339,12 +343,10 @@ nice -n 19 timeout 300s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
   -workers 1 -config MCNodeExtent.cfg -metadir "$JOB/tlc-MCNodeExtent" MCNodeExtent
 ```
 
-Repeat for each of the four cfgs. The runs are recorded in `tla/RUNS.tsv`.
+Repeat for each of the five cfgs. The runs are recorded in `tla/RUNS.tsv`.
 
 ## What this does not prove
 
-An element aligned sixteen (a 128-bit list element) inside a node aligned eight
-sits at eight modulo sixteen whenever the node does: the layout aligns a node
-to its record and an array to its element relative to the extent, so nothing
-puts such an array on a sixteen-byte boundary. The model holds element
-alignments at eight or less and names this rather than ruling on it.
+The key ORDER of a map's entries is not index arithmetic and is not here: the
+cook writers hold it, and each port's cook-write gate checks it against the
+reference bytes.
