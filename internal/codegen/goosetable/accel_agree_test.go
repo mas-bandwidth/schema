@@ -76,6 +76,24 @@ func TestGooseAccessorsAgreeWithDescriptors(t *testing.T) {
 	}
 }
 
+// agreeBufferBytes holds the largest record of the unit at the row offset
+// of 64, with room to spare.
+func agreeBufferBytes(u *ir.Unit) int64 {
+	most := int64(0)
+	for _, st := range cookRecords(u) {
+		most = max(most, ir.RecordLayout(u, st).Size)
+	}
+	if blocks := ir.Blocks(u); blocks != nil {
+		for _, name := range blocks.Order {
+			most = max(most, blocks.Layout(name).Size)
+		}
+		for _, bl := range blocks.Tables {
+			most = max(most, bl.Projection.Size)
+		}
+	}
+	return (most + 64 + 128 + 63) / 64 * 64
+}
+
 // agreeProgram is the Goose program for one unit and the number of checks it
 // makes.
 func agreeProgram(u *ir.Unit, files map[string][]byte) (string, int) {
@@ -96,7 +114,7 @@ func agreeProgram(u *ir.Unit, files map[string][]byte) (string, int) {
 	fmt.Fprintf(&b, `
 fn pattern() -> u8[>..] {
     var p: u8[>..] = [];
-    for i in 8192 { p.push(((i * 131 + 7) & 0xFF) as! u8); }
+    for i in %[2]d { p.push(((i * 131 + 7) & 0xFF) as! u8); }
     return p;
 }
 fn field_of(rec: const %[1]s::AccelRecord&, name: const u8[:]) -> %[1]s::AccelField {
@@ -118,7 +136,7 @@ fn agree(ok: bool, what: const u8[:], n: i64&) {
 fn main() {
     var n: i64 = 0;
     let at: i64 = 64;
-`, rt)
+`, rt, agreeBufferBytes(u))
 	checks := 0
 	emit := func(format string, args ...any) {
 		fmt.Fprintf(&b, "    "+format+"\n", args...)
@@ -150,7 +168,7 @@ fn main() {
 			if indexed {
 				slots = []int64{0}
 				if facts.ArrayBound > 1 {
-					slots = append(slots, facts.ArrayBound-1)
+					slots = append(slots, 1)
 				}
 			}
 			emit("    {")
@@ -170,8 +188,11 @@ fn main() {
 					emit("        agree(%s(t%s) == %s::accel_text(t, %s + fd.offset, %s + fd.count_offset, fd.array_bound), %q, n);", member, atArg, rt, base, base, label)
 					checks++
 				case f.Type.Pointer && f.Type.Kind == ir.TNamed:
-					emit("        let p = pattern();")
-					emit("        agree(%s(p%s%s) == %s::cook_deref(p, %s + %s), %q, n);", member, atArg, idx, rt, base, off, label)
+					// a delta of eight in the slot the descriptor names: the
+					// accessor must land eight bytes past that slot
+					emit("        var q = pattern();")
+					emit("        %s::accel_put(q, %s + %s, 8, 8);", rt, base, off)
+					emit("        agree(%s(q%s%s) == %s + %s + 8, %q, n);", member, atArg, idx, base, off, label)
 					checks++
 				case accelRef(f) != nil:
 					args := strings.TrimPrefix(atArg, ", ")
