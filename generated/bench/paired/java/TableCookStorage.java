@@ -21,4 +21,6 @@ public enum TableCookStorage {
     BYTES, // uint8[N] with an int32 used length beside it
     UNION, // a TAG at the union's base, the SET arm overlaid after it (§7.2)
     WIDE, // a 128-bit integer: sixteen bytes at sixteen, one eight-byte lane per half
+    LIST, // a []T holder: sixteen bytes, a self-relative reference and an int32 count (§2.9)
+    MAP, // a map holder: the same sixteen bytes over its sorted entry array (§2.8)
 }

@@ -25,6 +25,7 @@ public final class TableCookWrite {
         final boolean text;
         final long id;
         long offset;
+        long extent; // a record's node extent: its lists' and maps' arrays (§7.6)
 
         Node(Object value, TableCookInfo info) {
             this.value = value;
@@ -43,11 +44,18 @@ public final class TableCookWrite {
         }
 
         long size() {
-            return info != null ? info.size : 8L + blob.length + (text ? 1 : 0);
+            if (info == null) {
+                return 8L + blob.length + (text ? 1 : 0);
+            }
+            // a record that holds a list or a map is its storage rounded to the
+            // region's floor of eight, then its extent (§7.6)
+            return info.hasExtent ? aligned(info.size, FLOOR) + extent : info.size;
         }
 
+        // a record node starts at its own type's alignment, a blob at eight, its
+        // header's (internal/tablecook/region.go)
         long align() {
-            return info != null ? Math.max(8, info.align) : 8;
+            return info != null ? info.align : 8;
         }
     }
 
@@ -59,6 +67,8 @@ public final class TableCookWrite {
         private long dataLength;
         private long alignment;
     }
+
+    private static final long FLOOR = 8; // the region's alignment floor (§7.1)
 
     private static long aligned(long n, long a) {
         if (n < 0 || a <= 0 || (a & (a - 1)) != 0 || n > Long.MAX_VALUE - (a - 1)) {
@@ -157,6 +167,14 @@ public final class TableCookWrite {
             return;
         }
         Object source = field(value, f.sourceName);
+        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            // a holder's elements are walked in the order the array lays them:
+            // a list's in index order, a map's entries ascending by key (§2.8)
+            for (Object e : elements(source, f)) {
+                discoverValue(p, e, f.element);
+            }
+            return;
+        }
         if (f.isArray) {
             int used = count(value, f, source);
             if (used < 0 || used > f.arrayBound || (f.countOffset >= 0 && length(source) < used)) {
@@ -209,6 +227,177 @@ public final class TableCookWrite {
         throw new IllegalArgumentException("union tag");
     }
 
+    // ---- THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6; the
+    // layout tla/NodeExtent.tla models, and internal/tablecook/extent.go writes).
+    // A record's lists and maps lay their arrays after the record's own storage:
+    // field by field in declaration order, each holder's WHOLE array at the
+    // running offset rounded to its element's alignment, then, element by
+    // element, the arrays those elements hold — PRE-ORDER. The holder takes the
+    // self-relative delta to its array (zero when empty) and the count. With
+    // out null the same walk measures. at is the record's absolute offset, base
+    // the extent's, and cursor[0] the running offset inside the extent.
+    private static void carveRecord(
+            Plan p,
+            byte[] out,
+            int order,
+            long at,
+            long base,
+            long[] cursor,
+            Object value,
+            TableCookInfo info)
+            throws ReflectiveOperationException {
+        if (value == null || info == null || !info.hasExtent) {
+            return;
+        }
+        for (TableCookFieldInfo f : info.fields) {
+            carveField(p, out, order, at, base, cursor, value, f);
+        }
+    }
+
+    private static void carveField(
+            Plan p,
+            byte[] out,
+            int order,
+            long at,
+            long base,
+            long[] cursor,
+            Object value,
+            TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        if (f.isPointer || absentRecord(value, f)) {
+            return;
+        }
+        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            java.util.List<Object> elems = elements(field(value, f.sourceName), f);
+            int n = elems.size();
+            cursor[0] = aligned(cursor[0], f.extentAlign);
+            long array = base + cursor[0];
+            cursor[0] += (long) n * f.extentSize;
+            long slot = at + f.offset;
+            put(out, order, slot, n > 0 ? array - slot : 0, 8);
+            put(out, order, slot + 8, n, 4);
+            for (int i = 0; i < n; i++) {
+                value(p, out, order, array + (long) i * f.extentSize, elems.get(i), f.element);
+            }
+            for (int i = 0; i < n; i++) {
+                carveValue(
+                        p,
+                        out,
+                        order,
+                        array + (long) i * f.extentSize,
+                        base,
+                        cursor,
+                        elems.get(i),
+                        f.element);
+            }
+            return;
+        }
+        if (f.storage != TableCookStorage.RECORD && f.storage != TableCookStorage.UNION) {
+            return;
+        }
+        TableCookInfo r = f.record();
+        if (r == null || !r.hasExtent) {
+            return;
+        }
+        Object v = field(value, f.sourceName);
+        long dest = at + f.offset;
+        if (f.isArray) {
+            // a slot past the live elements holds the value-initialized element,
+            // which holds no list and no map, so it carves nothing
+            int live = Math.min(count(value, f, v), length(v));
+            for (int i = 0; i < live; i++) {
+                carveValue(
+                        p,
+                        out,
+                        order,
+                        dest + (long) i * f.elemSize,
+                        base,
+                        cursor,
+                        element(v, i),
+                        f);
+            }
+        } else {
+            carveValue(p, out, order, dest, base, cursor, v, f);
+        }
+    }
+
+    private static void carveValue(
+            Plan p,
+            byte[] out,
+            int order,
+            long at,
+            long base,
+            long[] cursor,
+            Object source,
+            TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        if (source == null || f.isPointer) {
+            return;
+        }
+        if (f.storage == TableCookStorage.RECORD) {
+            carveRecord(p, out, order, at, base, cursor, source, f.record());
+        } else if (f.storage == TableCookStorage.UNION) {
+            TableCookInfo u = f.record();
+            if (u == null || !u.hasExtent) {
+                return;
+            }
+            TableCookFieldInfo arm = arm(source, u);
+            if (arm != null) {
+                carveField(p, out, order, at, base, cursor, source, arm);
+            }
+        }
+    }
+
+    // A holder's elements in the order its array lays them: a list's as it holds
+    // them, a map's entries ASCENDING BY KEY (§2.8) — the writer holds the sort,
+    // so a map built out of key order cooks the same bytes. Integers order by
+    // VALUE, signed for the signed kinds and unsigned for the unsigned; strings
+    // by their UTF-8 BYTES, unsigned, a prefix first.
+    private static java.util.List<Object> elements(Object source, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        java.util.ArrayList<Object> out = new java.util.ArrayList<>();
+        if (source == null) {
+            return out;
+        }
+        for (int i = 0, n = length(source); i < n; i++) {
+            out.add(element(source, i));
+        }
+        if (f.storage != TableCookStorage.MAP || out.size() < 2) {
+            return out;
+        }
+        TableCookFieldInfo key = f.element.record().fields[0];
+        Object[] keys = new Object[out.size()];
+        Integer[] order = new Integer[out.size()];
+        for (int i = 0; i < keys.length; i++) {
+            keys[i] = field(out.get(i), key.sourceName);
+            order[i] = i;
+        }
+        java.util.Arrays.sort(order, (a, b) -> compareKeys(keys[a], keys[b], key));
+        java.util.ArrayList<Object> sorted = new java.util.ArrayList<>(out.size());
+        for (Integer i : order) {
+            sorted.add(out.get(i));
+        }
+        return sorted;
+    }
+
+    private static int compareKeys(Object a, Object b, TableCookFieldInfo key) {
+        if (key.storage == TableCookStorage.STRING) {
+            byte[] x = ((String) a).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] y = ((String) b).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            return java.util.Arrays.compareUnsigned(x, y);
+        }
+        long x = ((Number) a).longValue(), y = ((Number) b).longValue();
+        if (key.storage == TableCookStorage.SIGNED) {
+            return Long.compare(x, y);
+        }
+        if (key.elemSize < 8) {
+            long mask = (1L << (8 * key.elemSize)) - 1;
+            x &= mask;
+            y &= mask;
+        }
+        return Long.compareUnsigned(x, y);
+    }
+
     /** Measure and validate before writing; invalid values answer null (§7.6). */
     public static Plan plan(Object root, TableCookInfo info) {
         return plan(root, info, null);
@@ -225,6 +414,13 @@ public final class TableCookWrite {
         try {
             Plan p = new Plan();
             add(p, root, info);
+            for (Node n : p.nodes) {
+                if (n.info != null && n.info.hasExtent) {
+                    long[] cursor = new long[1];
+                    carveRecord(p, null, 0, 0, 0, cursor, n.value, n.info);
+                    n.extent = cursor[0];
+                }
+            }
             long cursor = 0;
             long align = 8;
             for (Node n : p.nodes) {
@@ -355,6 +551,11 @@ public final class TableCookWrite {
     private static void store(
             Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
+        // a LIST's or a MAP's holder is written by the extent's carve, which
+        // places the array it points at (§7.6)
+        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            return;
+        }
         Object v = field(source, f.sourceName);
         if (f.presentOffset >= 0) {
             Object present = field(source, f.sourceName + "Present");
@@ -438,6 +639,17 @@ public final class TableCookWrite {
                 long at = 64L + n.offset;
                 if (n.info != null) {
                     record(p, out, order, at, n.value, n.info);
+                    if (n.info.hasExtent) {
+                        carveRecord(
+                                p,
+                                out,
+                                order,
+                                at,
+                                at + aligned(n.info.size, FLOOR),
+                                new long[1],
+                                n.value,
+                                n.info);
+                    }
                 } else {
                     put(out, order, at, n.blob.length, 4);
                     System.arraycopy(n.blob, 0, out, (int) at + 8, n.blob.length);

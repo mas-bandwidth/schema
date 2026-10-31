@@ -60,6 +60,12 @@ public final class TableCookInfo {
      */
     public java.util.function.Supplier<Object> defaults;
 
+    /**
+     * the record holds a list or a map BY VALUE, at any depth: its node is its storage rounded to
+     * eight, then its EXTENT (docs/SPEC-TABLES.md §7.6).
+     */
+    public boolean hasExtent;
+
     public int size;
     public int align;
     public int numFields;
