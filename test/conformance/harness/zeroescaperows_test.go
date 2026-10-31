@@ -11,8 +11,9 @@ import (
 // battery to docs/SPEC-TABLES.md §16.3's zero rule: a string the read would
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
-// held first in Go and carried by C and Lobster, so the two refusals state the
-// standard's answer with `carried-by=go,c,lobster` and every other port keeps its BASE counters; the skipped
+// held first in Go and carried by C, Lobster and Rust, so the two refusals
+// state the standard's answer with `carried-by=go,c,lobster,rust` and every
+// other port keeps its BASE counters; the skipped
 // value is the clean §4 report with the unknown key counted.
 //
 // A Go answer of the clean counters on the value row must score red, because
@@ -36,8 +37,8 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if strings.Join(row.CarriedBy, ",") != "go,c,lobster" {
-			t.Fatalf("%s: carried-by=%v; Go held the rule first, C and Lobster carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
+		if strings.Join(row.CarriedBy, ",") != "go,c,lobster,rust" {
+			t.Fatalf("%s: carried-by=%v; Go held the rule first, C, Lobster and Rust carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)
@@ -51,6 +52,9 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if got := row.VerdictFor("lobster"); got != "refused" {
 			t.Fatalf("%s: Lobster owes %q, got %q", caseName, "refused", got)
 		}
+		if got := row.VerdictFor("rust"); got != "refused" {
+			t.Fatalf("%s: Rust owes %q, got %q", caseName, "refused", got)
+		}
 		if got := row.VerdictFor("cpp"); got != baseCounters {
 			t.Fatalf("%s: cpp owes %q, got %q", caseName, baseCounters, got)
 		}
@@ -58,7 +62,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		// the harness's own expectations, not a second copy of the rule
 		byLang := map[string]expectation{}
 		exemptNamed := map[string]bool{}
-		for _, lang := range []string{"go", "cpp"} {
+		for _, lang := range []string{"go", "rust", "cpp"} {
 			legWant, exemptions := hostileExpectations(m, lang)
 			for _, e := range legWant {
 				if e.name == caseName {
@@ -71,11 +75,25 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 				}
 			}
 		}
-		if exemptNamed["go"] {
-			t.Fatalf("%s: Go carries the rule and must not be exempted", caseName)
+		if exemptNamed["go"] || exemptNamed["rust"] {
+			t.Fatalf("%s: Go and Rust carry the rule and must not be exempted", caseName)
 		}
 		if !exemptNamed["cpp"] {
 			t.Fatalf("%s: cpp is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)
+		}
+		if got := string(byLang["rust"].want); got != "refused\n" {
+			t.Fatalf("%s: the Rust expectation is %q", caseName, got)
+		}
+		// the reversed witness for the Rust leg: its reader storing the zero
+		// as text again answers the base counters, and that must score red
+		rustDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(rustDir, byLang["rust"].name), []byte(baseCounters+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rr := &result{}
+		scoreAnswer("rust", "json-hostile", rustDir, byLang["rust"], Instance{}, rr)
+		if len(rr.failures) == 0 {
+			t.Fatalf("%s: Rust answering %q scored green against %q; it must score red", caseName, baseCounters, byLang["rust"].want)
 		}
 		if got := string(byLang["go"].want); got != "refused\n" {
 			t.Fatalf("%s: the Go expectation is %q", caseName, got)

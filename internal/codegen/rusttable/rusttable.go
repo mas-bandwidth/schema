@@ -338,6 +338,8 @@ func tableFieldTypeName(f *ir.Field) string {
 			return fmt.Sprintf("int%d", f.Type.Width)
 		}
 		return fmt.Sprintf("uint%d", f.Type.Width)
+	case ir.TFixed:
+		return ir.FieldTypeSpelling(f)
 	case ir.TNamed:
 		return f.Type.Name
 	}
