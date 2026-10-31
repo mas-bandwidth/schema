@@ -142,6 +142,8 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A hyphenated make/<leg>-<surface>.mk is a companion fragment of a leg
+	// (make/luau-serialize.mk, docs/PORT-LUAU.md), not a port.
 	var legs []string
 	for _, mk := range mkFiles {
 		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")

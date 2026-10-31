@@ -61,7 +61,8 @@ type Group struct {
 	// Lua is the pinned PUC-Rio interpreter's version: a row that names it
 	// builds it with `make dist-lua` (make/lua.mk holds the pin and its
 	// sha256) before its controls run.
-	Lua string `json:"lua,omitempty"`
+	Lua  string `json:"lua,omitempty"`
+	Luau string `json:"luau,omitempty"`
 	// Golangci is the golangci-lint release this row installs (no leading
 	// v), for the generated-Go lint controls. It is not a conformance
 	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
@@ -94,7 +95,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "moo", "lobster", "squirrel"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "luau", "moo", "lobster", "squirrel"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.
@@ -112,6 +113,8 @@ func (g Group) toolchain(field string) string {
 		return g.OTP
 	case "elixir":
 		return g.Elixir
+	case "luau":
+		return g.Luau
 	case "moo":
 		return g.Moo
 	case "lobster":
@@ -211,6 +214,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		OTP      string `json:"otp"`
 		Elixir   string `json:"elixir"`
 		Lua      string `json:"lua"`
+		Luau     string `json:"luau"`
 		Golangci string `json:"golangci"`
 		Moo      string `json:"moo"`
 		Lobster  string `json:"lobster"`
@@ -234,6 +238,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			OTP:      g.OTP,
 			Elixir:   g.Elixir,
 			Lua:      g.Lua,
+			Luau:     g.Luau,
 			Golangci: g.Golangci,
 			Moo:      g.Moo,
 			Lobster:  g.Lobster,

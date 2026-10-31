@@ -27,7 +27,7 @@
 #                 whose toolchain is missing prints as an ABSENT row with
 #                 the reason (#175).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
-#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster).
+#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau).
 #                 An --only run whose leg is skipped (missing toolchain)
 #                 exits non-zero with the reason — zero rows is a refusal,
 #                 never a quietly green empty CSV (#175). For shared boxes
@@ -143,8 +143,8 @@ if [ "$QUICK" = 1 ]; then
     RUNNER_ARGS="$RUNNER_ARGS --quick"
 fi
 case "$ONLY" in
-    ""|c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster) ;;
-    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster)" >&2; exit 1 ;;
+    ""|c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau) ;;
+    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau)" >&2; exit 1 ;;
 esac
 
 # §3.5 provenance mechanics: sets the SERIALIZE* defaults, materializes the
@@ -237,6 +237,15 @@ beam_pinned() {
     done
     return 1
 }
+# The Luau leg (bench/luau/run): the pinned interpreter, LUAU overriding, exactly
+# as make/luau.mk pins it. The generated unit carries its vendored
+# serialize.luau beside it, so there is no runtime checkout to verify.
+LUAU_BIN="${LUAU:-$PWD/dist/luau-0.741/luau}"
+LUAU_VERSION=""
+if [ -x "$LUAU_BIN" ]; then
+    LUAU_VERSION="$LUAU_BIN (pin 0.741)"
+fi
+
 # The Lobster leg (bench/lobster/run): the pinned toolchain, LOBSTER overriding,
 # exactly as make/lobster.mk pins it. The generated unit carries its vendored
 # serialize.lobster beside it, so there is no runtime checkout to verify.
@@ -359,6 +368,7 @@ emit_preamble() {
         echo "# elixir: ${ELIXIR_VERSION:-not present} (generated codecs, zero runtime dependency; pinned BEAM toolchain)"
         echo "# goose: ${GOOSE_VERSION:-not present} (generated codec over vendored serialize.goose; goose build -O2 with the host C compiler, one translation unit)"
         echo "# lobster: ${LOBSTER_VERSION:-not present} (generated codec + vendored serialize.lobster; default JIT, --runtime-no-asserts; the --cpp row is owed, schema-lobster-bench-cpp)"
+        echo "# luau: ${LUAU_VERSION:-not present} (generated codec + vendored serialize.luau; the interpreter, native codegen OFF; iters rescaled for the interpreter, recorded per row)"
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
         # the schema commit carries its BRANCH, exactly as every runtime line
@@ -707,6 +717,20 @@ if [ -z "$ONLY" ] || [ "$ONLY" = lobster ]; then
     fi
 fi
 
+# ---- Luau (generated codec + its vendored serialize.luau; pinned interpreter, native codegen off) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = luau ]; then
+    if [ -f bench/luau/main.luau ]; then
+        if [ -x "$LUAU_BIN" ]; then
+            echo "== luau: run ==" >&2
+            $PIN env LUAU="$LUAU_BIN" bench/luau/run $RUNNER_ARGS >> "$OUT"
+        else
+            skip_leg luau "runner present but no luau at $LUAU_BIN (make dist-luau, or set LUAU)"
+        fi
+    else
+        skip_leg luau "runner not landed yet (bench/luau/main.luau)"
+    fi
+fi
+
 # ---- inline verdict pass (§4.1/§4.2): backfill the inline column ----
 # js is absent from this list DELIBERATELY: the verdict is a per-compiled-
 # language disassembly pass and a JIT leg has no AOT artifact to walk —
@@ -759,7 +783,7 @@ fi
 
 # ---- #175: an --only run that produced zero data rows is a failure, not a
 # quietly green empty CSV — the leg was skipped, not measured. Refuse. ----
-DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster),' "$OUT" 2>/dev/null || true)"
+DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau),' "$OUT" 2>/dev/null || true)"
 if [ -n "$ONLY" ] && [ "${DATA_ROWS:-0}" -eq 0 ]; then
     echo "REFUSED (#175): --only $ONLY produced ZERO rows — see the SKIP reason above; nothing was measured" >&2
     echo "results: $OUT (EMPTY — refused)" >&2

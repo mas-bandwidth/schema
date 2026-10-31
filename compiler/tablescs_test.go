@@ -148,10 +148,10 @@ func TestCsCarriesBlobs(t *testing.T) {
 	if err == nil {
 		t.Fatal("refuseBlobs accepted a blob-bearing unit for a new leg")
 	}
-	carry := "c, cpp, cs, dart, elixir, go, js, lobster, lua and rust"
+	carry := "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau and rust"
 	wants := []string{"--lang cs", "--lang js", "--lang rust"}
 	if slices.Contains(blobTargets, "squirrel") {
-		carry = "c, cpp, cs, dart, elixir, go, js, lobster, lua, rust and squirrel"
+		carry = "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau, rust and squirrel"
 		wants = append(wants, "--lang squirrel")
 	}
 	wants = append(wants, "*bytes and *string are "+carry+" only today")

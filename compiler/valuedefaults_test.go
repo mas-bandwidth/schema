@@ -39,6 +39,23 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "luau" {
+			// the descriptors carry each declared default as the value the
+			// absent-field answer returns: text, bytes and the flags word
+			if err != nil {
+				t.Fatalf("luau refused table defaults: %v", err)
+			}
+			var all strings.Builder
+			for _, b := range out {
+				all.Write(b)
+			}
+			for _, want := range []string{`def = "untitled"`, `def = "ab"`, `def = 3i`, `def = "new"`, `def = 1i`} {
+				if !strings.Contains(all.String(), want) {
+					t.Errorf("luau descriptors lack %q", want)
+				}
+			}
+			continue
+		}
 		if target == "lobster" {
 			// the table runtime carries the defaults (docs/PORT-LOBSTER.md,
 			// THE LOAD): the constructor writes each into its buffer, and the

@@ -203,6 +203,14 @@ func TestGoldenSourceLua(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "lua"), files)
 }
 
+// TestGoldenSourceLuau pins the generated Luau byte-for-byte (SPEC §7.2
+// gate 1, tenth target).
+func TestGoldenSourceLuau(t *testing.T) {
+	u := loadCorpus(t)
+	files := generate(t, u, "luau", nil)
+	pinDir(t, filepath.Join(goldenDir, "luau"), files)
+}
+
 // The enum `Count` export moves NEITHER WIRE. Count is generated-code
 // surface: it enters no wire-shape projection and no cook projection, so the
 // packet wire's protocol id and the table wire's build version must both
@@ -307,7 +315,7 @@ func TestGoldenWideSource(t *testing.T) {
 
 // The packet file is isolated from examples-wide's table kind 33 and its
 // baseline. Each port pins the exact same packet declarations as C++.
-var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lua", "lobster", "squirrel"}
+var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lua", "lobster", "squirrel", "luau"}
 
 func TestGoldenPacketWideSource(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(corpusWideDir, "WideText.schema"))
@@ -366,7 +374,7 @@ func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 		// by-name refusal itself. Lua joined as a builtin on 2026-10-28
 		// and generates this unit too.
 		switch target {
-		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir", "lua", "lobster", "squirrel":
+		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir", "lua", "lobster", "squirrel", "luau":
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

@@ -1235,8 +1235,10 @@ it (§4.6).
   through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Lua
   (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
-  a write traps naming `non_finite_float`, a read refuses with it. Every
-  packet target enforces it. A
+  a write traps naming `non_finite_float`, a read refuses with it. Luau
+  (serialize.luau v2.1.3) enforces it through its vendored serialize
+  runtime: a write traps naming the finite rule, a read refuses with
+  `non_finite_float`. Every packet target enforces it. A
   *quantized* `float32` is a different field: its wire is the step index and
   not the pattern, per its row below. The table forms take the same rule
   (SPEC-TABLES.md §3.3; Glenn, 2026-10-27).

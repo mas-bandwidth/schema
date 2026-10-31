@@ -396,7 +396,7 @@ typedef struct TableReport
        the tolerant read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported form byte, not framing damage */
+    int refused;           /* a refusal by name (reason), not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
@@ -404,6 +404,13 @@ typedef struct TableReport
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+       an infinity is refused on its raw bits by every read, the tolerant one
+       included, so a read that moves this answers refused, reason
+       SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
+       a read can tell its own refusal from a caller's report that already
+       held one. */
+    int32_t non_finite_floats;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -412,7 +419,11 @@ typedef struct TableReport
     uint64_t layout_hash;
 } TableReport;
 
-enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
+/* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
+   bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
+   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   names it whichever form a unit carries. */
+enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_TABLE_NON_FINITE_FLOAT = 21 };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -548,6 +559,37 @@ static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcp
 static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+
+/* A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's own rule): a
+   NaN or an infinity, whatever its sign or payload, has an all-ones exponent,
+   and that is the whole test. Every read runs it on the RAW BITS, before they
+   become a float and before the field is written; every writer runs it on the
+   bits of the value it was handed. -0 and the subnormals are finite and ride
+   bit-exact. */
+static SCHEMA_UNUSED int table_bits_finite32( uint32_t bits ) { return ( bits & 0x7f800000u ) != 0x7f800000u; }
+static SCHEMA_UNUSED int table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
+static SCHEMA_UNUSED int table_float_finite( float f ) { return table_bits_finite32( table_float_to_bits( f ) ); }
+static SCHEMA_UNUSED int table_double_finite( double d ) { return table_bits_finite64( table_double_to_bits( d ) ); }
+/* table_non_finite_float is a read meeting one: the read is REFUSED by name,
+   non_finite_float, and the walk goes on so the framing verdict is the one a
+   finite wire gets; the load that started it answers the refusal at its end
+   (table_non_finite_refused) and lands nothing. */
+static SCHEMA_UNUSED void table_non_finite_float( TableReport * report )
+{
+    report->refused = 1;
+    report->reason = SCHEMA_TABLE_NON_FINITE_FLOAT;
+    report->non_finite_floats++;
+}
+/* table_non_finite_refused is that load's end: 1 when the walk met a
+   non-finite float since before, the refusal stamped again over whatever the
+   walk met after it, because it outranks any damage (§3.3). */
+static SCHEMA_UNUSED int table_non_finite_refused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return 0; }
+    report->refused = 1;
+    report->reason = SCHEMA_TABLE_NON_FINITE_FLOAT;
+    return 1;
+}
 
 #endif /* ` + guard + ` */
 `

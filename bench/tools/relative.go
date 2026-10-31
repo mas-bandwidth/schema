@@ -79,6 +79,7 @@ var langs = []struct{ key, name string }{
 	{"js", "JavaScript"}, {"java", "Java"}, {"dart", "Dart"}, {"elixir", "Elixir"},
 	{"goose", "Goose"},
 	{"lobster", "Lobster"},
+	{"luau", "Luau"},
 }
 
 // unratioable: languages whose rows carry inline=unknown by construction, so
@@ -91,7 +92,7 @@ var langs = []struct{ key, name string }{
 // cannot be ratioed by construction refuse the whole table; they publish in
 // the absolute table, which is where the pass reports them.
 var unratioable = map[string]bool{
-	"js": true, "java": true, "dart": true, "elixir": true, "goose": true, "lobster": true,
+	"js": true, "java": true, "dart": true, "elixir": true, "goose": true, "lobster": true, "luau": true,
 }
 
 // reference is the table's 100% language.
