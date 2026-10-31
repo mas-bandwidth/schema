@@ -100,6 +100,7 @@ var runnerDirs = []string{
 	"bench/dart/",
 	"bench/elixir/",
 	"bench/go/",
+	"bench/goose/",
 	"bench/java/",
 	"bench/js/",
 	"bench/rust/",
@@ -135,7 +136,7 @@ const ledgerPath = "bench/" + ledgerName
 var sourceExts = map[string]bool{
 	".c": true, ".h": true, ".inc": true, ".cpp": true, ".hpp": true, ".cc": true,
 	".cs": true, ".go": true, ".rs": true, ".java": true, ".js": true, ".mjs": true,
-	".dart": true, ".ex": true, ".exs": true, ".sh": true, ".py": true, ".rb": true,
+	".dart": true, ".goose": true, ".ex": true, ".exs": true, ".sh": true, ".py": true, ".rb": true,
 	".kt": true, ".swift": true, ".zig": true,
 }
 
