@@ -10,14 +10,15 @@
 # make/moo-conformance.mk), a repo-relative path: the negative control points
 # the SAME driver at a sabotaged copy of it. moo cannot list a directory, so
 # test/conformance/moo/stage.pl writes each unit's <Base>Table module list
-# into $MOOFUZZ_STAGE (default build/moo-wire-fuzz/stage) first.
+# into $MOOFUZZ_STAGE first (default build/moo-wire-fuzz/stage-<pid>, one per
+# driver process, so runs side by side never share one).
 #
 # The working directory is the repository root.
 #
 # usage: ./build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver [--seed S] [--n N]
 host=${MOOFUZZHOST:-build/moofuzzhost/moofuzzhost}
 generated=${SCHEMA_MOO_GENERATED:-build/conformance-moo}
-stage=${MOOFUZZ_STAGE:-build/moo-wire-fuzz/stage}
+stage=${MOOFUZZ_STAGE:-build/moo-wire-fuzz/stage-$$}
 for need in "$host" "$generated"; do
 	if [ ! -e "$need" ]; then
 		echo "wirefuzz-driver: $need is missing: run make tables-moo-wire-fuzz, which builds it" >&2

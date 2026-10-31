@@ -4948,6 +4948,42 @@ end
 ```
 <!-- /lua-table-usage -->
 
+**moo** — moo v1.3.0 (the deterministic Luau fork whose one number is
+Q48.16), no dependencies. Generated code is self-contained: a
+`<Base>Table.moo` of descriptors per schema file, with the runtime modules
+(`schema_tables`, `table_load`, `table_save`, `table_cookread`, ...) beside
+them, each reached as `require("./<module>")`. A value is a plain table built
+by its descriptor's constructor, its fields in UpperCamelCase slots
+(`hull.Turrets`, `turret.Damage`), and the bytes are a `buffer`. moo has no
+float: a `float32` field holds its binary32 PATTERN as a number (25.0 is
+`0x41C80000`). An enum-keyed array is a plain array with key k at index k;
+`S.keyed(table, field)` is the accessor that refuses None and any key past the
+enum's last variant by name. The plain read is the strict one: it answers the
+value, or `nil` with the refusal's name in `report.reason`. This fragment is
+run against the `tables/examples` unit by `make tables-moo-usage`:
+
+<!-- moo-table-usage -->
+```lua
+local S = require("./schema_tables")
+local save = require("./table_save")
+local load = require("./table_load")
+require("./KeyedTable")
+
+local hulls = S.lookup("HullConfig")
+local hull = hulls.new()                            -- every field at its declared default
+local turrets = S.keyed("HullConfig", "turrets")    -- one slot per Weapon variant
+turrets.get(hull.Turrets, turrets.key("Missile")).Damage = 0x41C80000 -- 25.0
+
+local bytes = save.save(hulls, hull)                -- the id-table wire, as a buffer
+local report = load.newReport()
+local back = load.load("HullConfig", bytes, report) -- nil and report.reason on a refusal
+if back == nil then error("the hull did not read: " .. report.reason) end
+for key, turret in turrets.each(back.Turrets) do
+  use(turret.Damage)
+end
+```
+<!-- /moo-table-usage -->
+
 All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
