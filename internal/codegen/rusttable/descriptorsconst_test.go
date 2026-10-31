@@ -37,13 +37,13 @@ var (
 
 // the publication forms a descriptor must never take: a lazy cell, a mutable
 // static (the plain cache: read it, build on None, store back), interior
-// mutability, or a lock
+// mutability, or a lock.
 var rustLazyTokens = []string{
 	"OnceLock", "OnceCell", "LazyLock", "LazyCell", "lazy_static", "once_cell",
 	"static mut ", "thread_local!", "RefCell<", "Mutex<", "RwLock<", "AtomicPtr",
 }
 
-// the two named factories, exactly as the runtimes declare them
+// the two named factories, exactly as the runtimes declare them.
 var rustNamedFactories = []string{
 	"pub element: Option<fn() -> &'static TableBlockInfo>,",
 	"pub record: Option<fn() -> &'static TableCookInfo>,",

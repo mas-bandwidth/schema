@@ -84,7 +84,7 @@ var rustTextDifferentialSpellings = []struct {
 
 const (
 	// the Go, Dart and Java cells' seed and count, so every leg draws the same
-	// float patterns in the same order
+	// float patterns in the same order.
 	rustTextDifferentialSeed = 24845619678
 	rustTextDifferentialN    = 200
 )
