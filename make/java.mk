@@ -1659,7 +1659,7 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # those close; raising N to $(N) and running --retain whole closes the card.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header whose foreign element kind
 # carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,

@@ -266,6 +266,15 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("            }\n")
 	b.WriteString("            w.frameField(table, nodeRef, 12);\n")
 	b.WriteString("        }\n")
+	// A RECORD WHOSE PATH NAMES NO BODY at save is one retain_lost (§6.6, THE
+	// REPORT): the walk above marked every record a body claimed, and the rest
+	// are counted here and the marks cleared, so a second save counts again.
+	b.WriteString("        if (retain != null) {\n")
+	b.WriteString("            for (int at = 0; at < retain.used; at += get32(retain.bytes, at)) {\n")
+	b.WriteString("                if ((retain.bytes[at + 4] & 0x80) == 0) { if (report != null) { report.retainLost++; } }\n")
+	b.WriteString("                else { retain.bytes[at + 4] &= 0x7f; }\n")
+	b.WriteString("            }\n")
+	b.WriteString("        }\n")
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
 	// a NaN or an infinity refuses the save (docs/SPEC-TABLES.md §3.3)
@@ -302,10 +311,11 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        int at = 0;\n")
 	b.WriteString("        while (at < retain.used) {\n")
 	b.WriteString("            int len = get32(retain.bytes, at);\n")
-	b.WriteString("            int d = retain.bytes[at + 4] & 0xff;\n")
+	b.WriteString("            int d = retain.bytes[at + 4] & 0x7f;\n")
 	b.WriteString("            boolean match = d == depth;\n")
 	b.WriteString("            for (int k = 0; match && k < d; k++) { if (get32(retain.bytes, at + 5 + 8 * k) != path[2 * k] || get32(retain.bytes, at + 9 + 8 * k) != path[2 * k + 1]) { match = false; } }\n")
 	b.WriteString("            if (match) {\n")
+	b.WriteString("                retain.bytes[at + 4] |= (byte) 0x80; // placed, or counted lost below\n")
 	b.WriteString("                int hdr = 14 + 8 * d;\n")
 	b.WriteString("                long id = get64(retain.bytes, at + 5 + 8 * d);\n")
 	b.WriteString("                int kind = retain.bytes[at + 13 + 8 * d] & 0xff;\n")
