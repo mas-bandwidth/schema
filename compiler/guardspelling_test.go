@@ -55,6 +55,7 @@ var guardComment = map[string]string{
 	"dart":   " — wire branch",
 	"elixir": " — wire branch",
 	"go":     " — wire branch",
+	"goose":  " — wire branch",
 	"java":   " — wire branch",
 	"js":     " — wire branch",
 	"rust":   " — wire branch",
