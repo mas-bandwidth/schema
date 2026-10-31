@@ -156,6 +156,30 @@ var cookWriteCarried = []cookWriteUnit{
 		{"ToolMessage", []string{"message_open", "message_transaction", "message_ping", "message_save",
 			"message_empty", "message_batch", "message_arms", "message_arm_edits", "message_ack", "message_trace"}},
 	}},
+	{"../../../tables/maps", "mapdemo", "mapdemo", []cookWriteRoot{
+		{"Cells", []string{"map_cells"}},
+		{"Chunks", []string{"map_chunks"}},
+		{"Crews", []string{"map_crews"}},
+		{"Depth", []string{"map_depth"}},
+		{"Docs", []string{"map_docs"}},
+		{"Fleet", []string{"map_empty", "map_full"}},
+		{"Pairs", []string{"map_pairs"}},
+		{"Slots", []string{"map_slots"}},
+		{"Spans", []string{"map_spans"}},
+		{"Trails", []string{"map_trails"}},
+		{"Runs", []string{"map_runs"}},
+	}},
+	{"../../../tables/widelist", "widelist", "widelistdemo", []cookWriteRoot{
+		{"Wide", []string{"widelist_wide"}},
+	}},
+	{"../../../tables/lists", "listdemo", "listdemo", []cookWriteRoot{
+		{"Save", []string{"list_tables", "list_scalars", "list_empty", "list_erased"}},
+		{"Mixed", []string{"list_mixed"}},
+		{"Album", []string{"list_shared", "list_before_pointer"}},
+		{"Sheet", []string{"list_nested"}},
+		{"Army", []string{"list_of_maps"}},
+		{"Unbounded", []string{"list_migrates"}},
+	}},
 	{"../../../tables/stream", "streamdemo", "streamdemo", []cookWriteRoot{
 		{"Feed", []string{"stream_chain", "stream_header", "stream_parts", "stream_arm_first", "stream_arm_pointer", "stream_arm_tag"}},
 	}},
@@ -173,10 +197,14 @@ var cookWriteCarried = []cookWriteUnit{
 // cookWriteStub: a root whose closure holds a construct the Java cook form
 // does not carry, so cook.go emits <Root>Cook as the STUB (a private
 // constructor, no method). The conformance driver answers these rows absent
-// on exactly that evidence, and cook_absent_is_structural pins it here. It is
-// empty since the cook form carries unions (§7.2): every union root moved to
-// cookWriteCarried.
-var cookWriteStub = []cookWriteUnit{}
+// on exactly that evidence, and cook_absent_is_structural pins it here.
+var cookWriteStub = []cookWriteUnit{
+	// Text holds a wstring(6) map value: wstring is retired (docs/rulings.json
+	// wstring-removed-utf8), and the Java cook carries no wstring slot
+	{"../../../tables/maps", "mapdemo", "mapdemo", []cookWriteRoot{
+		{"Text", []string{"map_text"}},
+	}},
+}
 
 // cookWriteNoForm: a unit for which the generator emits no cook form at all:
 // no <Root>Cook and no TableCookInfo. The driver answers these rows absent on
