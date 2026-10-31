@@ -515,7 +515,7 @@ func LoadCitable(root string) (map[string]string, error) {
 		text := string(data)
 		if p == portingPath {
 			var keep []string
-			for _, l := range strings.Split(text, "\n") {
+			for l := range strings.SplitSeq(text, "\n") {
 				if !strings.HasPrefix(strings.TrimSpace(l), "|") {
 					keep = append(keep, l)
 				}
