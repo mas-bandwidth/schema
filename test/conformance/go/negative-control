@@ -32,12 +32,12 @@ leb|leb-driver)
     sed 's/if i > 0 \&\& b == 0/if false/' "$source" > "$out/source.gotext"
     ;;
 frame-cap)
-    source=$(grep -l 'if n > 4096 { return r, TableOpenDamaged }' build/tables-generated-go/r1/*Table.go)
-    sed 's/if n > 4096 { return r, TableOpenDamaged }/if false { return r, TableOpenDamaged } \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
+    source=$(grep -l 'if n > 4096 {' build/tables-generated-go/r1/*Table.go)
+    sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
     ;;
 frame-cycle)
-    source=$(grep -l 'return n.reason==TableRefuseDataCycle' build/tables-generated-go/pointers/*.go)
-    sed 's/return n.reason==TableRefuseDataCycle/return false \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
+    source=$(grep -l 'return n.reason == TableRefuseDataCycle' build/tables-generated-go/pointers/*.go)
+    sed 's/return n.reason == TableRefuseDataCycle/return false \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
     ;;
 absent)
     # both writers of the marker: the bare one and the one carrying a reason

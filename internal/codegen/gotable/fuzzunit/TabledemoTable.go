@@ -2803,7 +2803,24 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	if tableNonFiniteRefused(report) {
 		return nil
 	}
+	if !report.Malformed && tableCyclic(base, root, nil) {
+		report.Malformed = true
+		return nil
+	} // a pointer naming an open node is damage: the whole load is refused (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1, §4)
 	return base
+}
+
+// tableCyclic walks a decoded graph from its root with the writer's own
+// numbering walk and reports a reference to a node whose descent is still OPEN
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1): no writer produces one, so a read that meets one
+// has met damage. A share of a closed node is legal and is not this.
+func tableCyclic(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) bool {
+	n, ok := tableNumber(root, info, a)
+	if ok {
+		n.Release()
+		return false
+	}
+	return n.reason == TableRefuseDataCycle
 }
 func tablePackNodeBytes(e *tableNodeEntry, a *TableArena) int64 {
 	if e.info != nil {
@@ -3080,6 +3097,10 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	if tableNonFiniteRefused(report) {
 		return false
 	}
+	if ok && !worker.refused && !report.Malformed && tableCyclic(p, root, worker.Arena) {
+		report.Malformed = true
+		return false
+	} // a pointer naming an open node (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1, §4)
 	return ok && !worker.refused
 }
 
@@ -4355,6 +4376,10 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	if tableNonFiniteRefused(report) {
 		return nil
 	}
+	if !report.Malformed && tableCyclic(base, root, nil) {
+		report.Malformed = true
+		return nil
+	} // a pointer naming an open node is damage: the whole load is refused (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1, §4)
 	return base
 }
 func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, retain *TableRetain, report *TableReport, allocator ...TableAllocator) int64 {
