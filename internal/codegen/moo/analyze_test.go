@@ -91,7 +91,7 @@ func TestMooAnalyzerGateNegativeControl(t *testing.T) {
 	}
 	// Exactly its row: every diagnostic is the plant (the analyzer may name a
 	// module once per path it reaches it by, never anything else).
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		if !strings.Contains(line, "Wire.moo") || !strings.Contains(line, "LocalUnused") || !strings.Contains(line, "plantedUnused") {
 			t.Fatalf("the analyzer reported something other than the plant:\n%s", out)
 		}

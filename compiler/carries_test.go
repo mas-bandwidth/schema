@@ -17,6 +17,9 @@ var nonGoCarriers = map[string][]string{
 	"cs":   {carryOptionalVariableClosure},
 	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 	"dart": {carryOptionalVariableClosure},
+	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
+	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine
+	"moo": {carryTimestamp, carryIntegrity, carryTextList, carryTextListTotal, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {

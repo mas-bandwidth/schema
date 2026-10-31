@@ -167,7 +167,7 @@ func strictGatePinned(analyze string) error {
 	}
 	out, err := exec.Command(filepath.Join(dir, "moo"), "--version").CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("the moo beside the analyzer %s does not run: %v", analyze, err)
+		return fmt.Errorf("the moo beside the analyzer %s does not run: %w", analyze, err)
 	}
 	if got := strings.TrimSpace(string(out)); got != strictGateRelease {
 		return fmt.Errorf("the moo beside the analyzer %s reports %q, not the pinned %q", analyze, got, strictGateRelease)
@@ -349,7 +349,7 @@ func TestMooGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 			// with its path stripped: every line is the one plant.
 			want := fmt.Sprintf("u000/Wire.moo:%d.", line)
 			rows := map[string]bool{}
-			for _, l := range strings.Split(strings.TrimSpace(string(got)), "\n") {
+			for l := range strings.SplitSeq(strings.TrimSpace(string(got)), "\n") {
 				i := strings.Index(l, want)
 				if i < 0 || !strings.Contains(l, c.kind) || !strings.Contains(l, plant) && c.kind != "TypeError" {
 					t.Fatalf("a diagnostic that is not the plant (want a %s at %s):\n%s", c.kind, want, got)

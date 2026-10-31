@@ -24,11 +24,10 @@ import (
 )
 
 var (
-	minInt32  = big.NewInt(math.MinInt32)
-	maxInt32  = big.NewInt(math.MaxInt32)
-	minInt64  = new(big.Int).SetInt64(math.MinInt64)
-	maxInt64  = new(big.Int).SetInt64(math.MaxInt64)
-	maxUint64 = new(big.Int).SetUint64(math.MaxUint64)
+	minInt32 = big.NewInt(math.MinInt32)
+	maxInt32 = big.NewInt(math.MaxInt32)
+	minInt64 = new(big.Int).SetInt64(math.MinInt64)
+	maxInt64 = new(big.Int).SetInt64(math.MaxInt64)
 )
 
 func fitsInt32(lo, hi *big.Int) bool { return lo.Cmp(minInt32) >= 0 && hi.Cmp(maxInt32) <= 0 }
