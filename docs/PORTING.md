@@ -1329,7 +1329,7 @@ table of controls.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ❌ #514 | ❌ #515 |
+| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ✅ `conformance-negative-control-rust-walk` | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ❌ #514 | ❌ #515 |
 
 ### I12 — The documented surface compiles and runs
 
