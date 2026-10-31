@@ -507,7 +507,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 
 	g.pf("Uint8List %sWireSaveRetain(%s v, TableRetain retain, TableWireReport report) {\n", d, n)
 	g.pf("\tretain.idUsed = 0;\n")
-	g.pf("\tfinal state = WireState();\n")
+	g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
 	g.pf("\tstate.retain = retain;\n")
 	g.pf("\tstate.report = report;\n")
 	g.pf("\tstate.indexRoot(v);\n")
