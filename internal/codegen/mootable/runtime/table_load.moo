@@ -1068,6 +1068,9 @@ end
 --     by read_field from the arm's L, over a reader that ends where the arm's
 --     payload ends, so its L is the field's L and every rule after it is the
 --     field's;
+--   - a union arm is the inner union's header and payload, which a union field
+--     carries with no L of its own, so read_field reads it over the arm's
+--     frame;
 --   - a fixed-width arm's L must be its kind's width, and a reference-shaped
 --     arm's L must be exactly the reference it frames: either is the arm's own
 --     framing damage, the union reading None and the parent reading on past L
@@ -1088,6 +1091,11 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any, holder
 			_report.malformed = true
 			return false
 		end
+		return (read_field(arm, sub, u))
+	end
+	if s == "union" then
+		-- a union field carries no L of its own: its payload is the inner
+		-- union's header and payload, read over the arm's frame
 		return (read_field(arm, sub, u))
 	end
 	if s == "ptr" or s == "sblob" or s == "bblob" or s == "enum" then
