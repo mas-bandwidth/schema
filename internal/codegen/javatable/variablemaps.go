@@ -166,16 +166,17 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}
 	fmt.Fprintf(b, "                    v.%s.clear(); boolean keyWidened=false; for(long i=0;i<n;i++){TableVariable.Reader er=ar.body();if(er==null)break;%s keyValue=new %s();TableVariable.Report keyReport=new TableVariable.Report();TableVariable.Reader kr=new TableVariable.Reader(er.buf,er.ids,keyReport);kr.off=er.off;kr.limit=er.limit;"+st.Name+"Variable.readMapKey_%s(kr,keyValue,keyReport);\n", m, entry, entry, m)
-	discard := ""
-	if retain {
-		discard = fmt.Sprintf("retain.discardField(path,depth,%d);", ordinal)
-	}
 	// A KEY KIND the declaration WIDENS counts for the map at the first key
 	// that carries it (§2.8, §4: "a widened counts for the map"), BEFORE the
 	// scan's framing or a later key's mismatch is judged. The oracle counts it
 	// in mapField as soon as mapKey reports the widened kind, even where the
 	// same key scan then flags malformed: java-fix-map-widened-count.
-	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();%s break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m, discard)
+	// A KEY KIND the reader does not declare EMPTIES the map for one
+	// kind_mismatch (§2.8), and that is not one of the five occurrences that
+	// discard retained records (§6.6, record lifetime): the records held under
+	// the entries read before it keep their paths, and the save counts each one
+	// retain_lost when its path names no body.
+	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m)
 	key := ir.MapKeyField(f)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)

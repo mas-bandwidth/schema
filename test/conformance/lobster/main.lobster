@@ -181,7 +181,7 @@ def surface_block_dump(text:string):
 // `message <name> <connection> <root> <file wire> <message wire>`, and its
 // third word is the CONNECTION, joined to its
 // `connection <key> <unit> 0x<build> <announcement>` line for the unit. A root
-// that is a plain table carries no message verbs (§3.3): a named absence.
+// that is a variable table carries no message verbs (§3.3): a named absence.
 def surface_message(text:string):
     let lines = tokenize(text, "\n", " \t\r")
     for(lines) line:
@@ -196,7 +196,7 @@ def surface_message(text:string):
                     announcement = c[4]
             if unit == unit_key:
                 if not schema_rt.is_message_root(f[3]):
-                    print(f[1] + " absent blob_shared")
+                    print(f[1] + " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
                 else:
                     let v = schema_rt.new_vocabulary(schema_rt.message_entries_here())
                     let rep = schema_rt.LoadReport {}
@@ -311,13 +311,8 @@ def surface_reason(text:string, kind:string):
 // MeasureRetain, SaveRetain; the counters `<retained>,<retain_lost>,<unknown>
 // <save lost>`, or the saved bytes. A retain line is `retain <case> <unit>
 // <root> <wire> <capacity> <ids>`: `short` is one byte short of what this
-// leg's own load used, so the driver loads once roomy and once again. A
-// retain-message row needs the message form's SaveRetain, which §3.3 refuses
-// by name over a plain table root: a named absence, as the Go leg answers it.
+// leg's own load used, so the driver loads once roomy and once again.
 def surface_retain(text:string, saves:bool):
-    for(lines(text, "retain-message")) f:
-        if length(f) >= 4 and f[3] == unit_key:
-            print(f[1] + " absent plain table: §3.3")
     for(rows(text, "retain")) f:
         let wire = fixture(f[4])
         let ids = if f[6] == "full": 1 << 17 else: string_to_int(f[6])

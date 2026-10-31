@@ -170,8 +170,8 @@ func goReportText(r tabletext.Report) string {
 // TestLuauTableTextLists holds docs/SPEC-TABLES.md §2.13 in the Luau table
 // surface over the text-list tables of TestGoTableStringArraysAndJSONArrayRoot:
 // every value saves the Go engine's bytes and loads back equal, an element past
-// M clamps as the Go load clamps it, and an element that is not UTF-8 gives the
-// Go load's verdict. Every expected wire and verdict is computed here from
+// M clamps as the Go load clamps it, and an element that is not UTF-8 is
+// damage, refused as the Go load refuses it. Every expected wire and verdict is computed here from
 // internal/tabletext and internal/tablewire, never typed by hand.
 func TestLuauTableTextLists(t *testing.T) {
 	t.Parallel()
@@ -224,15 +224,17 @@ func TestLuauTableTextLists(t *testing.T) {
 	t.Run("ill-formed UTF-8 is malformed", func(t *testing.T) {
 		raw := textListRawWire(t, m, "\xff\xfe")
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), raw, &report); !ok || err != nil {
-			t.Fatalf("the Go load stops rather than reporting: ok=%v err=%v", ok, err)
+		// damage discards the whole load (docs/SPEC-TABLES.md §4): the Go
+		// load refuses it, and the leg owes the refusal and nothing else
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), raw, &report); ok || err != nil {
+			t.Fatalf("the Go load does not refuse the damaged load: ok=%v err=%v", ok, err)
 		}
 		if !report.Malformed {
 			t.Fatalf("the Go load does not call the element malformed: %+v", report)
 		}
 		got := runTextListProbe(t, g, raw)
-		if got.report != goReportText(report) {
-			t.Errorf("the load report is %s, want the Go engine's %s", got.report, goReportText(report))
+		if !strings.HasSuffix(got.report, ",true") {
+			t.Errorf("the load report is %s, and a damaged load owes malformed", got.report)
 		}
 	})
 }

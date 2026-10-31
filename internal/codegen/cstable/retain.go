@@ -87,12 +87,13 @@ func (g *tableGen) emitRetainRefusals() {
 			if st.IsMapEntry() {
 				continue
 			}
-			if !variable[st.Name] {
-				why := "FIXED-class root: retain-unknown requires a variable region and its node directory (SPEC-TABLES section 6.6)."
-				g.pf("[Obsolete(%q, true)] public static IntPtr %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
-				g.pf("[Obsolete(%q, true)] public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { throw new NotSupportedException(); }\n", why, st.Name)
-				g.pf("[Obsolete(%q, true)] public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
+			if variable[st.Name] {
+				continue
 			}
+			why := "FIXED-class root: retain-unknown requires a variable region and its node directory (SPEC-TABLES section 6.6)."
+			g.pf("[Obsolete(%q, true)] public static IntPtr %sLoadRetain(IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain retain, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
+			g.pf("[Obsolete(%q, true)] public static long %sMeasureRetain(IntPtr region, ref TableRetain retain) { throw new NotSupportedException(); }\n", why, st.Name)
+			g.pf("[Obsolete(%q, true)] public static long %sSaveRetain(IntPtr region, ref TableRetain retain, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", why, st.Name)
 			g.pf("[Obsolete(\"Retention writing the MESSAGE form is refused by name; save each retained region as a file.\", true)] public static long %sSaveRetainMessages(ReadOnlySpan<IntPtr> roots, Span<TableRetain> retains, Span<byte> bytes, TableReport report) { throw new NotSupportedException(); }\n", st.Name)
 		}
 	}

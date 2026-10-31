@@ -73,7 +73,7 @@ func TestUnboundedTextRefusals(t *testing.T) {
 			"package t\ntable T {\n    m map[uint8][]string\n}\n"},
 		{"map[?string]T", "an OPTIONAL key is refused",
 			"package t\ntable T {\n    m map[?string]int32\n}\n"},
-		{"a fixed table field", "fixed table F: field name is a bare `string`, and unbounded text is a VARIABLE-table construct — declare string(N), or drop `fixed` from F and hold the text as []string or a map[string]V key in a plain `table`",
+		{"a fixed table field", "fixed table F: field name is a bare `string`, and unbounded text is a VARIABLE-table construct — declare string(N), or drop `fixed` from F and hold the text as []string or a map[string]V key in a variable table",
 			"package t\nfixed table F {\n    name string\n}\n"},
 		{"a fixed table unbounded list", "fixed table F: field rules is a text list ([..N]string), and a text list is a VARIABLE-table construct",
 			"package t\nfixed table F {\n    rules [..4]string\n}\n"},

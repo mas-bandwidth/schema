@@ -66,7 +66,7 @@ func TestFlatElementArrayCostsOneLeaf(t *testing.T) {
 //
 // THE KEYWORD IS WHAT THE CAP ANSWERS TO (#823, docs/SPEC-TABLES.md §2.2). A
 // DECLARED `fixed table` past the cap is a REFUSAL BY NAME and the unit does not
-// compile — a fixed table never silently falls back to form 1. A plain `table`
+// compile — a fixed table never silently falls back to form 1. A variable table
 // is the variable wire by declaration and never a fixed root at all, so the cap
 // has nothing to say about it and says nothing.
 func TestWalkedElementArrayPastTheCapIsRefusedByName(t *testing.T) {
@@ -103,7 +103,7 @@ func TestWalkedElementArrayPastTheCapIsRefusedByName(t *testing.T) {
 		}
 	}
 
-	// THE SAME SHAPE ON A PLAIN `table` IS THE VARIABLE WIRE BY DECLARATION: no
+	// THE SAME SHAPE ON A VARIABLE table IS THE VARIABLE WIRE BY DECLARATION: no
 	// refusal, no warning, and no fixed form to drop.
 	plain := leafCapUnit(t, strings.Replace(src, "fixed table Wide", "table Wide", 1))
 	pst := plain.Tables["Wide"]
@@ -111,14 +111,14 @@ func TestWalkedElementArrayPastTheCapIsRefusedByName(t *testing.T) {
 		t.Fatal("the plain probe declares Wide")
 	}
 	if pst.FixedDeclared {
-		t.Fatal("a plain `table` came out of the IR declared fixed")
+		t.Fatal("a variable table came out of the IR declared fixed")
 	}
 	pwarns, perrs := ir.TableFixedLeafCapRefusals(plain)
 	if len(pwarns) != 0 || len(perrs) != 0 {
-		t.Fatalf("a plain table is not a fixed root, so the cap says nothing: warns=%v errs=%v", pwarns, perrs)
+		t.Fatalf("a variable table is not a fixed root, so the cap says nothing: warns=%v errs=%v", pwarns, perrs)
 	}
 	if ir.TableFixedEmitted(plain, pst) {
-		t.Error("a plain table got the fixed form")
+		t.Error("a variable table got the fixed form")
 	}
 }
 

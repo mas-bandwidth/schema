@@ -66,7 +66,7 @@ func tableUnit(t *testing.T, src string) *ir.Unit {
 
 // TestRandomTableGenerator pins the generator's contract over seeds 0..399:
 // every generated unit passes the checker, integrity is declared only on a
-// plain `table` Root (never a `fixed table` Root), and the census over seeds
+// variable table Root (never a `fixed table` Root), and the census over seeds
 // 0..399 covers both units with `integrity` and units without.
 func TestRandomTableGenerator(t *testing.T) {
 	t.Parallel()

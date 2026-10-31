@@ -3,7 +3,6 @@ package gotable
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"regexp"
-	"strings"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
@@ -15,7 +14,6 @@ func (g *tableGen) emitRetainRuntime() {
 		g.pf("0x%016x,", id)
 	}
 	g.pf("}\n%s", goRetainRuntime)
-	g.emitRetainMessageRuntime()
 	source := tableSourceSpan(tableWireSource, "type TableWriter struct", "// TableOpenVerdict")
 	source = tableSourceReplace(source, "TableWriter", "TableRetainWriter", -1)
 	source = tableSourceReplace(source, "TableIds", "TableRetainIds", -1)
@@ -55,7 +53,7 @@ func (g *tableGen) emitRetainRuntime() {
 func tableRuntimeForUnit(regional bool) string {
 	s := tableRuntime()
 	if regional {
-		s = tableSourceReplace(s, "type TableTypeInfo struct {", "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool\nLoadMessageBodyRetain func(TableRetainMessageReader,unsafe.Pointer)(TableRetainMessageReader,bool)", 1)
+		s = tableSourceReplace(s, "type TableTypeInfo struct {", "type TableTypeInfo struct {\nSaveBodyRetain func(*TableRetainWriter,unsafe.Pointer)bool\nLoadBodyRetain func(TableRetainReader,unsafe.Pointer)bool", 1)
 	}
 	return s
 }
@@ -104,21 +102,20 @@ func retainDepth(u *ir.Unit) int {
 	return n
 }
 
-var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadMessageBody|LoadBody|MeasureBody|SaveBodyFields|SaveBody)\b`)
+var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadBody|MeasureBody|SaveBodyFields|SaveBody)\b`)
 
 func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if st.IsTable && !st.IsMapEntry() {
-		for _, verb := range []string{"LoadRetainBuilder", "SaveRetainMessages"} {
-			g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
-		}
+		g.pf("const %sLoadRetainBuilder = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
 		if !ir.VariableTables(g.unit)[st.Name] {
-			// The message form is a FIXED table's (docs/SPEC-TABLES.md §3.3):
-			// "`fixed table T` may ride here, a plain `table T` may not".
-			// Retention on it is a REGION round trip (§6.6), and a fixed-class
-			// root has no region, so the form's LoadRetainMessages is refused by
-			// name beside its SaveRetainMessages refusal rather than left as a
-			// missing symbol.
-			g.pf("const %sLoadRetainMessages = %q\n", st.Name, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
+			// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3), and
+			// retention on it is a REGION round trip (§6.6) that a fixed-class
+			// root has no region for, so the form's two retaining verbs are
+			// refused by name rather than left as missing symbols. A variable
+			// table has no message form, so it has no message verb to refuse.
+			for _, verb := range []string{"SaveRetainMessages", "LoadRetainMessages"} {
+				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a region round trip through the VARIABLE form")
+			}
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {
 				g.pf("const %s%s = %q\n", st.Name, verb, st.DeclaredName()+": retention requires a variable root and its region directory")
 			}
@@ -149,46 +146,16 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	side.emitTableMeasure(st)
 	side.emitTableWrite(st)
 	side.emitTableRead(st)
-	if g.surfaces.Message {
-		side.into(&side.message, func() { side.emitMessageRead(st) })
-	}
-	// The message-form reader rides only on a message surface; every other
-	// rewrite is the region body's and must be present. The whole family is
-	// validated against those stated surfaces first, so a vanished or doubled
-	// anchor panics by name (>=1, or ==0 when the surface is off) instead of
-	// silently dropping a behaviour; each half is then rewritten alone and the
-	// two halves must be the whole, byte for byte.
-	rewrites := []string{"TableMessageReader", "TableRetainMessageReader", "TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
-	retained := func(source string) string {
-		source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
-		for i := 0; i < len(rewrites); i += 2 {
-			source = strings.ReplaceAll(source, rewrites[i], rewrites[i+1])
-		}
-		return source
-	}
-	haveMessage := side.message.Len() > 0
-	whole := side.body.String() + side.message.String()
-	if !retainBodyName.MatchString(whole) {
+	rewrites := []string{"TableWriter", "TableRetainWriter", "TableReader", "TableRetainReader", "TableIds", "TableRetainIds"}
+	source := side.body.String()
+	if !retainBodyName.MatchString(source) {
 		panic("retaining body family has no source codecs")
 	}
-	whole = retainBodyName.ReplaceAllString(whole, "${1}${2}Retain")
+	source = retainBodyName.ReplaceAllString(source, "${1}${2}Retain")
 	for i := 0; i < len(rewrites); i += 2 {
-		old, new := rewrites[i], rewrites[i+1]
-		want := -1
-		if old == "TableMessageReader" && !haveMessage {
-			want = 0
-		}
-		whole = tableSourceReplace(whole, old, new, want)
+		source = tableSourceReplace(source, rewrites[i], rewrites[i+1], -1)
 	}
-	core, message := retained(side.body.String()), retained(side.message.String())
-	if core+message != whole {
-		panic("retaining body family does not split at the message form's seam")
-	}
-	g.pf("%s", core)
-	// the retaining MESSAGE read is the message form's, beside the plain one
-	if message != "" && g.messageCarries(st) {
-		g.into(&g.message, func() { g.pf("%s", message) })
-	}
+	g.pf("%s", source)
 	g.needsMath = g.needsMath || side.needsMath
 	g.unsafeUsed = true
 }

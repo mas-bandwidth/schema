@@ -60,7 +60,7 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(rf), "\n") {
+	for line := range strings.SplitSeq(string(rf), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 2 && !strings.HasPrefix(f[0], "#") {
 			reports[f[0]] = f[1]
@@ -111,7 +111,7 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 			c.want["retain"][f[1]], c.unitOf["retain"][f[1]] = f[7]+" "+f[8]+"\n", f[2]
 			if f[9] != "-" {
 				var saves strings.Builder
-				for _, p := range strings.Split(f[9], ",") {
+				for p := range strings.SplitSeq(f[9], ",") {
 					saves.WriteString(read(p))
 				}
 				c.want["retain-save"][f[1]], c.unitOf["retain-save"][f[1]] = saves.String(), f[2]
@@ -216,7 +216,7 @@ func runWireSurfaces(t *testing.T, c *wireCorpus, surfaces []string, override ma
 				for _, s := range mine {
 					out := gooserun.RunArgs(t, dir, "main.goose", files, s, "manifest.txt", key)
 					mu.Lock()
-					for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+					for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
 						name, h, ok := strings.Cut(line, " ")
 						if !ok {
 							continue

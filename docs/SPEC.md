@@ -2177,10 +2177,9 @@ used length in code units (SPEC-TABLES.md §7.2), and its text form is a JSON
 string transcoded at the boundary (SPEC-TABLES.md §16.2). **The validation
 above holds on both, and only the SHAPE of the refusal differs.** A packet
 read is terminal, so an unpaired surrogate, a zero code unit or a group above
-`0xFFFF` fails the read and stops it. A table read is tolerant and
-length-framed, so the same content is FRAMING-CLASS DAMAGE there: the field
-reads its declared default, one `malformed` counts, and the parent reads on
-past `L` (SPEC-TABLES.md §3, §4). **Neither reader accepts it**, which is what
+`0xFFFF` fails the read and stops it. On a table read the same content is
+DAMAGE, and damage refuses the whole load as `malformed` (SPEC-TABLES.md §3,
+§4). **Neither reader accepts it**, which is what
 keeps the paragraph above true as written — every generated reader enforces
 these rules, in all nine targets, in every build mode — and what lets the table
 wire's `Save` check the used length alone, because ill-formed text never
@@ -2201,9 +2200,8 @@ guards the copy, and **a zero code unit among the used units is refused**,
 exactly as §4.7 refuses the interior null and symmetric with the reader's
 zero-group refusal. **The table wire's `Save` checks the used length and
 nothing about the content**, which is the shape kind `12` already has there:
-ill-formed text is a READ-side verdict on that wire, framing-class damage the
-reader answers with the declared default and one `malformed`
-(SPEC-TABLES.md §3). Surrogate pairing is NOT checked on write. It is a writer
+ill-formed text is a READ-side verdict on that wire, damage the reader answers
+by refusing the whole load as `malformed` (SPEC-TABLES.md §3, §4). Surrogate pairing is NOT checked on write. It is a writer
 obligation whose enforcement is the reader on the other end, which refuses
 an unpaired surrogate under the rules above. A code unit above `0xFFFF`
 cannot be written at all, because the storage holds 16 bits per unit in
