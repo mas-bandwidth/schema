@@ -5603,9 +5603,14 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages_tolerant(graphdemo_meta_t 
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)graphdemo_meta_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN meta_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN meta_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_meta_load_messages( graphdemo_meta_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -5971,9 +5976,14 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages_tolerant(graphdemo_set
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)graphdemo_settings_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN settings_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN settings_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_settings_load_messages( graphdemo_settings_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -12599,9 +12609,15 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_messages_tolerant(const graphd
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0, no root and the region zeroed (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN list_node_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+/* The PLAIN list_node_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and no root is handed back (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_list_node_load_messages( const graphdemo_list_node_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -13104,9 +13120,15 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_messages_tolerant(const graphd
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0, no root and the region zeroed (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN tree_node_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+/* The PLAIN tree_node_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and no root is handed back (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_tree_node_load_messages( const graphdemo_tree_node_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -13609,9 +13631,15 @@ static SCHEMA_UNUSED int graphdemo_layer_load_messages_tolerant(const graphdemo_
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0, no root and the region zeroed (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN layer_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+/* The PLAIN layer_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and no root is handed back (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_layer_load_messages( const graphdemo_layer_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -14144,9 +14172,15 @@ static SCHEMA_UNUSED int graphdemo_scene_load_messages_tolerant(const graphdemo_
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0, no root and the region zeroed (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN scene_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+/* The PLAIN scene_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and no root is handed back (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_scene_load_messages( const graphdemo_scene_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -14649,9 +14683,15 @@ static SCHEMA_UNUSED int graphdemo_depot_load_messages_tolerant(const graphdemo_
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0, no root and the region zeroed (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN depot_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+/* The PLAIN depot_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and no root is handed back (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_depot_load_messages( const graphdemo_depot_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -15184,9 +15224,15 @@ static SCHEMA_UNUSED int graphdemo_album_load_messages_tolerant(const graphdemo_
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0, no root and the region zeroed (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN album_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+/* The PLAIN album_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and no root is handed back (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_album_load_messages( const graphdemo_album_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -15493,6 +15539,13 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_retain_messages(const graphdem
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch: count 0, no root, the region zeroed and every body's retention emptied (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++){roots[i]=NULL;
+ if(retains)graphdemo_table_retain_reset(retains+i,NULL,NULL);
+ }*count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_tree_node_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
@@ -15779,6 +15832,13 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_retain_messages(const graphdem
  /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
  if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
  *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ /* damage anywhere in the batch discards the whole batch: count 0, no root, the region zeroed and every body's retention emptied (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++){roots[i]=NULL;
+ if(retains)graphdemo_table_retain_reset(retains+i,NULL,NULL);
+ }*count=0;
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
@@ -16069,6 +16129,13 @@ static SCHEMA_UNUSED int graphdemo_layer_load_retain_messages(const graphdemo_la
  /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
  if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
  *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ /* damage anywhere in the batch discards the whole batch: count 0, no root, the region zeroed and every body's retention emptied (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++){roots[i]=NULL;
+ if(retains)graphdemo_table_retain_reset(retains+i,NULL,NULL);
+ }*count=0;
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
@@ -16384,6 +16451,13 @@ static SCHEMA_UNUSED int graphdemo_scene_load_retain_messages(const graphdemo_sc
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch: count 0, no root, the region zeroed and every body's retention emptied (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++){roots[i]=NULL;
+ if(retains)graphdemo_table_retain_reset(retains+i,NULL,NULL);
+ }*count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
 static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_depot_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
@@ -16671,6 +16745,13 @@ static SCHEMA_UNUSED int graphdemo_depot_load_retain_messages(const graphdemo_de
  /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
  if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
  *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ /* damage anywhere in the batch discards the whole batch: count 0, no root, the region zeroed and every body's retention emptied (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++){roots[i]=NULL;
+ if(retains)graphdemo_table_retain_reset(retains+i,NULL,NULL);
+ }*count=0;
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
@@ -16983,6 +17064,13 @@ static SCHEMA_UNUSED int graphdemo_album_load_retain_messages(const graphdemo_al
  /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
  if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
  *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ /* damage anywhere in the batch discards the whole batch: count 0, no root, the region zeroed and every body's retention emptied (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++){roots[i]=NULL;
+ if(retains)graphdemo_table_retain_reset(retains+i,NULL,NULL);
+ }*count=0;
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
