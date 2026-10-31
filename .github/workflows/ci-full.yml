@@ -767,6 +767,12 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # THE LUAU PIN: update-goldens runs the Luau type-wire golden tests, which
+      # run generated Luau under the pinned interpreter and fail, never skip,
+      # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
+      - name: install the Luau pin
+        run: make dist-luau
+
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens
 
