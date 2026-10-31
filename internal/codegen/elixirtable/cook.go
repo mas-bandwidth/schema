@@ -320,9 +320,9 @@ const cookRuntimeSource = `  @moduledoc """
 
   @doc """
   A LIST's or a MAP's SPAN (docs/SPEC-TABLES.md §2.8, §2.9): the sixteen-byte
-  holder at `at`, the self-relative delta to the element array and the int32
+  holder at at, the self-relative delta to the element array and the int32
   count beside it, resolved IN PLACE to {:ok, start, count}: where the array
-  lies in the region and how many elements of `stride` bytes it holds. Nothing
+  lies in the region and how many elements of stride bytes it holds. Nothing
   is copied. An empty holder is {:ok, nil, 0}; a negative count, or an array
   that runs past the region, is :error.
   """
@@ -347,7 +347,7 @@ const cookRuntimeSource = `  @moduledoc """
   @doc """
   FIND in a cooked map (docs/SPEC-TABLES.md §2.8, docs/PORTING.md M19): a
   binary search IN PLACE over the span's entries, which lie ascending by key,
-  reading each probed entry's key with `key_at`: floor(log2 n) + 1 key
+  reading each probed entry's key with key_at: floor(log2 n) + 1 key
   compares and no copy. Integers compare by value and string keys by their
   bytes, unsigned, a prefix first, which is the BEAM's own term order on both.
   {:ok, entry} is the entry's offset in the region; :error a key the map does
@@ -705,10 +705,8 @@ func (g *gen) cookHolderAccessors(st *ir.Struct, f *ir.Field, fl ir.FieldLayout)
 		what = "MAP"
 	}
 	out := []string{
-		fmt.Sprintf("  # a %s's holder, in place: {:ok, start, count} over elements of
-", what) +
-			fmt.Sprintf("  # %s_node_%s_stride() bytes from start, {:ok, nil, 0} when empty
-", lo, f.Name) +
+		fmt.Sprintf("  # a %s's holder, in place: {:ok, start, count} over elements of\n", what) +
+			fmt.Sprintf("  # %s_node_%s_stride() bytes from start, {:ok, nil, 0} when empty\n", lo, f.Name) +
 			exDefDo("  ", fmt.Sprintf("def %s_node_%s(region, node)", lo, f.Name),
 				fmt.Sprintf("C.span(region, node + %s, %s)", exInt(fl.Offset), exInt(stride))),
 		exDefDo("  ", fmt.Sprintf("def %s_node_%s_stride", lo, f.Name), exInt(stride)),
@@ -720,22 +718,21 @@ func (g *gen) cookHolderAccessors(st *ir.Struct, f *ir.Field, fl ir.FieldLayout)
 			home = g.file.Base
 		}
 		keyAt := fmt.Sprintf("&%s.%sCook.%s_node_%s/2", g.ns, moduleBase(home), ir.RustSnake(entry.Name), ir.MapKeyField(f).Name)
-		out = append(out, "  # FIND: the entry whose key is key, {:ok, entry} or :error, by a binary
-"+
-			"  # search over the entries where they lie (CookRuntime.find/6)
-"+
-			fmt.Sprintf("  def %s_node_%s_find(region, node, key) do
-", lo, f.Name)+
-			fmt.Sprintf("    case C.span(region, node + %s, %s) do
-", exInt(fl.Offset), exInt(stride))+
-			fmt.Sprintf("      {:ok, start, count} -> C.find(region, start, count, %s, %s, key)
-", exInt(stride), keyAt)+
-			"      :error -> :error
-"+
-			"    end
-"+
-			"  end
-")
+		call := fmt.Sprintf("C.find(region, start, count, %s, %s, key)", exInt(stride), keyAt)
+		arm := "      {:ok, start, count} -> " + call + "\n"
+		if exWidth(arm) > exLineLimit {
+			// the formatter's shape for an arm past the line: the body on
+			// the line under its pattern
+			arm = "      {:ok, start, count} ->\n        " + call + "\n\n"
+		}
+		out = append(out, "  # FIND: the entry whose key is key, {:ok, entry} or :error, by a binary\n"+
+			"  # search over the entries where they lie (CookRuntime.find/6)\n"+
+			fmt.Sprintf("  def %s_node_%s_find(region, node, key) do\n", lo, f.Name)+
+			fmt.Sprintf("    case C.span(region, node + %s, %s) do\n", exInt(fl.Offset), exInt(stride))+
+			arm+
+			"      :error -> :error\n"+
+			"    end\n"+
+			"  end\n")
 	}
 	return out
 }
