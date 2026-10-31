@@ -191,7 +191,7 @@ var nfCases = []nfCase{
 }
 
 // the sentinel each location holds while the oracle writes the wire a
-// non-finite row patches: distinctive finite bits, found exactly once
+// non-finite row patches: distinctive finite bits, found exactly once.
 const (
 	nfSentinel32 = 0x3E1A2B3C
 	nfSentinel64 = 0x3FB1A2B3C4D5E6F7

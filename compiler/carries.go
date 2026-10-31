@@ -68,7 +68,7 @@ func registerCarries(target string, constructs ...string) {
 // section 2 (the carry* constants). Go runs a package's init functions in
 // file-name order, so a target's carries_<target>.go file (its registerCarries)
 // runs before a carries_<target>_<feature>.go file (its registerCarried).
-func registerCarried(target, construct string) { //nolint:unused // called by the tagged schema_leg_* feature files
+func registerCarried(target, construct string) {
 	registerCarriedIn(targetCarries, target, construct)
 }
 
