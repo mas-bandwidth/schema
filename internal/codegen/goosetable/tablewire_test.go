@@ -297,8 +297,9 @@ func sabotage(t *testing.T, file, from, to string) map[string][]byte {
 //     rows go red, and wire and report stay green.
 //   - the SAVE numbers each node one past its first-visit index (§3.1, M6):
 //     only wire rows go red;
-//   - the LOAD composes a multi-byte value high byte first (M12: byte order is
-//     the reader's, composed by shifts): wire rows go red.
+//   - the SAVE writes a multi-byte value high byte first (M12: byte order is
+//     the format's, composed by shifts, never the host's): only wire rows go
+//     red.
 func TestGooseTableWireNegativeControl(t *testing.T) {
 	t.Parallel()
 	c := readWireCorpus(t)
@@ -326,11 +327,11 @@ func TestGooseTableWireNegativeControl(t *testing.T) {
 		{"save-numbering", "wire_save.goose",
 			"    c.index[wire] = c.order.len + 1;", "    c.index[wire] = c.order.len + 2;",
 			map[string]func(string) bool{"wire": func(string) bool { return true }}, "wire"},
-		// M12: the load composes a multi-byte value high byte first, the
-		// host-order read the method refuses
-		{"load-byte-order", "wire_load.goose",
-			"        v |= b << ((8 * i) as! u64);", "        v |= b << ((8 * (w - 1 - i)) as! u64);",
-			map[string]func(string) bool{"wire": func(string) bool { return true }, "report": func(string) bool { return true }}, "wire"},
+		// M12: the save writes a multi-byte value high byte first, the
+		// host-order write of a big-endian host the method refuses
+		{"save-byte-order", "wire_save.goose",
+			"        c.out.push((x & 0xFF) as! u8);\n        x = x >> 8;", "        c.out.push(((v >> ((8 * (w - 1 - i)) as! u64)) & 0xFF) as! u8);\n        x = x >> 8;",
+			map[string]func(string) bool{"wire": func(string) bool { return true }}, "wire"},
 	}
 	for _, ctl := range controls {
 		t.Run(ctl.name, func(t *testing.T) {
