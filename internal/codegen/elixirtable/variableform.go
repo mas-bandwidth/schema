@@ -4461,8 +4461,10 @@ const variableRetainSource = `
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
        %{retain | records: [], used: 0, ids: []}}
+
     :wire_damaged ->
-      {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+      {:error, :malformed, reasoned(report, :malformed),
+       %{retain | records: [], used: 0, ids: []}}
   end
 
   def measure_retain(table, value, retain) when is_map(value) do

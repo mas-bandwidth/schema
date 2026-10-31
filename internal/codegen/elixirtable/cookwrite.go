@@ -541,7 +541,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     do: cook_walk_holder(f, cook_list(value, f), f.elem_size, f.elem_align, rec + f.cook_off, ctx)
 
   defp cook_walk_field(%{t: :map} = f, value, rec, ctx),
-    do: cook_walk_holder(f, cook_list(value, f), f.entry_size, f.entry_align, rec + f.cook_off, ctx)
+    do:
+      cook_walk_holder(f, cook_list(value, f), f.entry_size, f.entry_align, rec + f.cook_off, ctx)
 
   # a record held by value, and a fixed or counted array's live elements
   defp cook_walk_field(%{t: :table, elem: elem} = f, value, rec, ctx),
