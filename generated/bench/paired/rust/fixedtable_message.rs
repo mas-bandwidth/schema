@@ -210,7 +210,13 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 /// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
 /// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
+///
+/// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
+/// no body of it is delivered, so the count is zero, every body read so far
+/// goes back to its declared defaults, and the reason is non_finite_float.
 pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
+    report.non_finite_float = "";
+    report.non_finite_float_id = None;
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
@@ -218,8 +224,14 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
         return (count, report.refuse(TableReason::BatchTooLarge));
     }
     let mut r = TableBitReader::new(&data[2..]);
-    for (i, value) in values.iter_mut().take(count).enumerate() {
-        if !fixed_table_load_message_body(&mut r, vocabulary, report, value) {
+    for i in 0..count {
+        if !fixed_table_load_message_body(&mut r, vocabulary, report, &mut values[i]) || !report.non_finite_float.is_empty() {
+            if !report.non_finite_float.is_empty() {
+                for value in values.iter_mut().take(i + 1) {
+                    *value = fixed_table_message_default();
+                }
+                return (0, report.refuse(TableReason::NonFiniteFloat));
+            }
             return (i, false);
         }
     }

@@ -1146,7 +1146,7 @@ tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-gen
 			> build/js-wire-fuzz-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: an enum reference past the id table was read as unknown and the differential stayed green'; exit 1; \
 	fi
-	@grep -q 'the report differs' build/js-wire-fuzz-sabotage/log || \
+	@grep -qE 'the report differs|the oracle discards a damaged load' build/js-wire-fuzz-sabotage/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the differential went red, but not on the report'; cat build/js-wire-fuzz-sabotage/log; exit 1; }
 	@echo 'JavaScript wire negative control: an enum reference past the id table changes the read report'
 

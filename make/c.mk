@@ -1578,7 +1578,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
-	@grep -q 'the report differs' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
+	@grep -qE 'the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
 	@echo 'C wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-c: tables-c-wire-fuzz-negative-control

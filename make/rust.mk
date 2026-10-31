@@ -850,43 +850,24 @@ tables-rust-message-batch:
 
 test-rust: tables-rust-message-batch
 
-# A FLOAT CROSSES TWO WIDTHS BY BIT SURGERY (docs/PORTING.md M21; SPEC.md
-# §4.3, docs/SPEC-TABLES.md §4): the variable runtime's table_widen_f32 and
-# the message runtime's table_message_widen_f32, cut out of the generated
-# modules as emitted and run over every float32 class, must keep a NaN's
-# payload and its quiet bit exactly as written, and the codec's kind-10 rung
-# into a float64 cell must go through the first. SCHEMA_REQUIRE_CORPUS=1 turns
-# the rustc skip into a failure, so the target never passes on a SKIP.
-.PHONY: tables-rust-float-nan tables-rust-float-nan-negative-control
-tables-rust-float-nan:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run 'TestRustFloatWideningKeepsNaNPayloads$$' -v
-	@echo 'tables Rust float NaN: a float32 widens into a float64 cell by bit surgery, NaN payloads kept'
+# THE FINITE FLOAT RULE ON THE RUST LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27: "Tables go finite-only too, same rule as packets"): every read
+# refuses a NaN or an infinity on its raw bits as non_finite_float, the
+# tolerant read included, every writer refuses one, and -0 and the subnormals
+# ride bit for bit, in the variable, message, fixed and cook forms and on a
+# retained unknown float. The gate is TestRustFiniteFloat; its reversed witness
+# takes each half of the rule out of the generated Rust in turn (the variable
+# read and writer, the retain test, the message read and writer, the fixed
+# read's finite pass and writer, the cook writer), and each must red exactly
+# its own clauses. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a
+# failure, so neither target passes on a SKIP.
+.PHONY: tables-rust-finite-float tables-rust-finite-float-negative-control
+tables-rust-finite-float:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloat$$' -v
+tables-rust-finite-float-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloatNegativeControl$$' -v
 
-# Its negative control puts the hardware conversion back in table_widen_f32
-# through a `go test -overlay` of internal/codegen/rusttable/variable.go (no
-# tracked file is edited): the signalling NaNs come back with the quiet bit
-# set, and the test must go red on table_widen_f32's NAN probe.
-tables-rust-float-nan-negative-control:
-	@rm -rf build/rust-float-nan-control && mkdir -p build/rust-float-nan-control
-	@sed 's|if bits \& 0x7F80_0000 == 0x7F80_0000 \&\& bits \& 0x007F_FFFF != 0 {|if false \&\& bits \& 0x7F80_0000 == 0x7F80_0000 {|' \
-		internal/codegen/rusttable/variable.go > build/rust-float-nan-control/variable.go.txt
-	@cmp -s internal/codegen/rusttable/variable.go build/rust-float-nan-control/variable.go.txt && \
-		{ echo "NEGATIVE CONTROL: the bit-surgery sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/rusttable/variable.go":"%s/build/rust-float-nan-control/variable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/rust-float-nan-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
-			-overlay=build/rust-float-nan-control/overlay.json \
-			-run 'TestRustFloatWideningKeepsNaNPayloads$$' ./internal/codegen/rusttable/ > build/rust-float-nan-control/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the widening stayed green with the hardware conversion put back"; \
-		exit 1; \
-	fi
-	@grep -q 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the signalling NaN's payload"; \
-		  cat build/rust-float-nan-control/log; exit 1; }
-	@grep -m1 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log
-	@echo "rust float NaN negative control: the hardware conversion in table_widen_f32 turns the probe RED on a signalling NaN"
-
-test-rust: tables-rust-float-nan tables-rust-float-nan-negative-control
+test-rust: tables-rust-finite-float
 
 # KEYED ARRAYS INDEX BY KEY, REFUSED AT BOTH ENDS (docs/PORTING.md M5,
 # docs/SPEC-TABLES.md §2.3): table_enums.rs's table_keyed / <Enum>::keyed take
@@ -1017,7 +998,7 @@ build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.r
 tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
 	@set -e; for arm in '' '--retain'; do \
-		./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
+		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
 			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
 		cat build/rust-wire-fuzz-all.log; \
 		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
@@ -1043,12 +1024,12 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness
 		"$(CURDIR)" "$(CURDIR)" > build/rust-wire-fuzz-control/overlay.json
 	go build -overlay=build/rust-wire-fuzz-control/overlay.json -o build/rust-wire-fuzz-control/schema ./cmd/schema
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build build/rust-wire-fuzz-control/driver build/rust-wire-fuzz-control/schema
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver build/rust-wire-fuzz-control/driver \
+	@if ./build/conformance-harness wire-fuzz --driver build/rust-wire-fuzz-control/driver \
 			--n 0 --failed build/rust-wire-fuzz-control/failed.bin > build/rust-wire-fuzz-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
 		cat build/rust-wire-fuzz-control/log; exit 1; \
 	fi
-	@grep -q '^harness: FAILED after [0-9]* mutants: the report differs' build/rust-wire-fuzz-control/log || \
+	@grep -qE '^harness: FAILED after [0-9]* mutants: (the report differs|the oracle discards a damaged load)' build/rust-wire-fuzz-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the report"; \
 		  cat build/rust-wire-fuzz-control/log; exit 1; }
 	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
@@ -1525,7 +1506,7 @@ build/conformance-rust-card: cards-rust-generate test/conformance/rust/src/wire_
 # vectors out of this Card-only manifest. The greps hold the nonzero
 # seed/mutant claim and the zero-divergence claim explicitly.
 cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-rust-wire-fuzz.log 2>&1; \
@@ -1546,7 +1527,7 @@ cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card
 # port.
 .PHONY: cards-rust-retain-fuzz
 cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card
-	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust \
+	@timeout $(CARDS_RUST_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-rust-card wire-fuzz' --retain --seed 24845619678 --n 100 \
 		> build/cards-rust-retain-fuzz.log 2>&1; \
