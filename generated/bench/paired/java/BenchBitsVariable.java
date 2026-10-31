@@ -626,8 +626,12 @@ public final class BenchBitsVariable {
         if (report.refused) {
             return null;
         }
-        if (loadMeasure(data) < 0) {
+        TableVariable.Measure measure = new TableVariable.Measure();
+        if (loadMeasure(data, measure) < 0) {
             report.refused = true;
+            if (measure.report.reason != null) {
+                report.reason = measure.report.reason;
+            }
             return null;
         }
         resolveNodes(v, nt, v, TYPE_ID, report);
@@ -989,7 +993,8 @@ public final class BenchBitsVariable {
             }
             in.p++;
             if ("b7".equals(key)) {
-                if (seenField[0]) {
+                boolean repeated = seenField[0];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[0] = true;
@@ -999,14 +1004,18 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b7 = (int) in.integer(false, 0L, 0x7fL);
+                        long placed = in.integer(false, 0L, 0x7fL);
+                        if (!in.rejected) {
+                            v.b7 = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("b13".equals(key)) {
-                if (seenField[1]) {
+                boolean repeated = seenField[1];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[1] = true;
@@ -1016,14 +1025,18 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b13 = (int) in.integer(false, 0L, 0x1fffL);
+                        long placed = in.integer(false, 0L, 0x1fffL);
+                        if (!in.rejected) {
+                            v.b13 = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("b23".equals(key)) {
-                if (seenField[2]) {
+                boolean repeated = seenField[2];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[2] = true;
@@ -1033,14 +1046,18 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b23 = (int) in.integer(false, 0L, 0x7fffffL);
+                        long placed = in.integer(false, 0L, 0x7fffffL);
+                        if (!in.rejected) {
+                            v.b23 = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("b3".equals(key)) {
-                if (seenField[3]) {
+                boolean repeated = seenField[3];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[3] = true;
@@ -1050,14 +1067,18 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b3 = (int) in.integer(false, 0L, 0x7L);
+                        long placed = in.integer(false, 0L, 0x7L);
+                        if (!in.rejected) {
+                            v.b3 = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("b32".equals(key)) {
-                if (seenField[4]) {
+                boolean repeated = seenField[4];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[4] = true;
@@ -1067,14 +1088,18 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b32 = (int) in.integer(false, 0L, 0xffffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffffL);
+                        if (!in.rejected) {
+                            v.b32 = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("b11".equals(key)) {
-                if (seenField[5]) {
+                boolean repeated = seenField[5];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[5] = true;
@@ -1084,14 +1109,18 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b11 = (int) in.integer(false, 0L, 0x7ffL);
+                        long placed = in.integer(false, 0L, 0x7ffL);
+                        if (!in.rejected) {
+                            v.b11 = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("b19".equals(key)) {
-                if (seenField[6]) {
+                boolean repeated = seenField[6];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[6] = true;
@@ -1101,14 +1130,18 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b19 = (int) in.integer(false, 0L, 0x7ffffL);
+                        long placed = in.integer(false, 0L, 0x7ffffL);
+                        if (!in.rejected) {
+                            v.b19 = (int) placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
                 }
             } else if ("b48".equals(key)) {
-                if (seenField[7]) {
+                boolean repeated = seenField[7];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[7] = true;
@@ -1118,7 +1151,10 @@ public final class BenchBitsVariable {
                     in.rep.kindMismatch++;
                 } else {
                     if (in.peek() == '-' || (in.peek() >= '0' && in.peek() <= '9')) {
-                        v.b48 = in.integer(false, 0L, 0xffffffffffffL);
+                        long placed = in.integer(false, 0L, 0xffffffffffffL);
+                        if (!in.rejected) {
+                            v.b48 = placed;
+                        }
                     } else {
                         in.skipValue();
                         in.rep.kindMismatch++;
